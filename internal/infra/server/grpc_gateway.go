@@ -103,7 +103,7 @@ func portFromAddr(addr string) string {
 
 func authIncomingHeaderMatcher(key string) (string, bool) {
 	switch strings.ToLower(key) {
-	case "authorization", "cookie", "x-api-key", "X-Graviton-Project", "x-request-id":
+	case "authorization", "cookie", "x-api-key", "x-graviton-project", "x-request-id":
 		return strings.ToLower(key), true
 	default:
 		return runtime.DefaultHeaderMatcher(key)

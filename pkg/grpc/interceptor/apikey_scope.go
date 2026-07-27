@@ -8,9 +8,10 @@ const StorageServiceCreateFile = "/graviton.server.v1.StorageService/CreateFile"
 // APIKeyScopeAllowed reports whether scopes grant access to the given gRPC method.
 func APIKeyScopeAllowed(fullMethod string, scopes []string) bool {
 	resource := apiKeyScopeResource(fullMethod)
-	// Methods without a mapped resource (e.g. health) are always allowed.
+	// Fail closed: methods without a mapped resource are denied, so a newly
+	// added ACCESS_API_KEY service cannot silently bypass scope checks.
 	if resource == "" {
-		return true
+		return false
 	}
 	if len(scopes) == 0 {
 		// An API key with no scopes has no access to resource-scoped methods.
@@ -36,7 +37,7 @@ func apiKeyScopeResource(fullMethod string) string {
 	}
 	svc := parts[len(parts)-2]
 	switch {
-	case strings.Contains(svc, "Projects"):
+	case strings.Contains(svc, "Projects"), strings.Contains(svc, "OAuthProviders"):
 		return "projects"
 	case strings.Contains(svc, "APIKeys"):
 		return "apikeys"

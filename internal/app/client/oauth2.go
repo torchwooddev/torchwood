@@ -197,12 +197,17 @@ func (a *Account) HandleOAuth2Callback(ctx context.Context, provider, code, stat
 		State:    state,
 	})
 	if err != nil {
-		failureURL := result.FailureURL
-		if failureURL == "" {
-			failureURL = "/"
+		// completeOAuth2Code 在多数失败分支返回 nil result，这里必须兜底。
+		failureURL := "/"
+		var successURL string
+		if result != nil {
+			if result.FailureURL != "" {
+				failureURL = result.FailureURL
+			}
+			successURL = result.SuccessURL
 		}
 		return &OAuth2CallbackResult{
-			SuccessURL:  result.SuccessURL,
+			SuccessURL:  successURL,
 			FailureURL:  failureURL,
 			RedirectURL: appendQuery(failureURL, "error", status.Convert(err).Message()),
 		}, err
