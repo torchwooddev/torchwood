@@ -231,6 +231,29 @@ func TestValidator_ValidateAdminJWT(t *testing.T) {
 	require.False(t, p.IsPlatformAdmin)
 }
 
+func TestValidator_ValidateAdminJWT_RejectsRefreshToken(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	admin := &projects.ConsoleAdmin{
+		ID:    "admin-1",
+		Email: "admin@graviton.local",
+		Role:  "owner",
+	}
+	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{})
+
+	token := signToken(t, jwtparser.Claims{
+		UserID:    admin.ID,
+		Username:  admin.Email,
+		ActorKind: "admin",
+		TokenType: jwtparser.TokenTypeRefresh,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour).Unix(),
+	})
+	_, err := v.ValidateToken(ctx, token)
+	requireCode(t, err, codes.Unauthenticated)
+}
+
 func TestValidator_ValidateAdminJWT_Revoked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

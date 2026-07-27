@@ -11,6 +11,7 @@ import (
 	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
 	"github.com/deeploop-ai/graviton/pkg/idgen"
 	"github.com/deeploop-ai/graviton/pkg/jwtparser"
+	"github.com/deeploop-ai/graviton/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -127,6 +128,22 @@ func (s *SessionService) EnsureActiveSession(ctx context.Context, projectID, ses
 	if expireAtRaw, ok := sessionDoc.Data["expire_at"]; ok {
 		if expireAt, err := parseSessionTime(expireAtRaw); err == nil && expireAt.Before(time.Now()) {
 			return status.Error(codes.Unauthenticated, "session expired")
+		}
+	}
+	return nil
+}
+
+// DeleteSessionsByUser removes every session document owned by the user.
+func (s *SessionService) DeleteSessionsByUser(ctx context.Context, projectID, userID string) error {
+	list, err := s.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+		Queries: []string{query.BuildEqual("user_id", userID)},
+	}, databases.SystemPrincipal)
+	if err != nil {
+		return err
+	}
+	for i := range list.Documents {
+		if err := s.docDB.DeleteDocument(ctx, projectID, "default", "sessions", list.Documents[i].ID, databases.SystemPrincipal); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -81,7 +81,9 @@ func SetupTestDB(t *testing.T) *clients.Database {
 }
 
 func uniqueTestDBName() string {
-	return fmt.Sprintf("%s_%d_%d", testDBPrefix(), os.Getpid(), testDBSeq.Add(1))
+	// Postgres folds unquoted identifiers to lowercase; keep the generated
+	// name lowercase so the DSN database name matches the created database.
+	return strings.ToLower(fmt.Sprintf("%s_%d_%d", testDBPrefix(), os.Getpid(), testDBSeq.Add(1)))
 }
 
 func testDBPrefix() string {

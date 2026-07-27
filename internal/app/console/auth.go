@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
@@ -13,6 +14,7 @@ import (
 	"github.com/deeploop-ai/graviton/pkg/jwtparser"
 	"github.com/deeploop-ai/graviton/pkg/password"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -20,10 +22,11 @@ type Auth struct {
 	cfg              *config.AppConfig
 	adminRepo        projects.ConsoleAdminRepository
 	adminRevokeStore domainauth.AdminTokenRevokeStore
+	loginThrottle    domainauth.LoginThrottle
 }
 
-func NewAuth(cfg *config.AppConfig, adminRepo projects.ConsoleAdminRepository, adminRevokeStore domainauth.AdminTokenRevokeStore) *Auth {
-	return &Auth{cfg: cfg, adminRepo: adminRepo, adminRevokeStore: adminRevokeStore}
+func NewAuth(cfg *config.AppConfig, adminRepo projects.ConsoleAdminRepository, adminRevokeStore domainauth.AdminTokenRevokeStore, loginThrottle domainauth.LoginThrottle) *Auth {
+	return &Auth{cfg: cfg, adminRepo: adminRepo, adminRevokeStore: adminRevokeStore, loginThrottle: loginThrottle}
 }
 
 type SignInCommand struct {
@@ -42,16 +45,26 @@ type TokenPair struct {
 }
 
 func (a *Auth) SignIn(ctx context.Context, cmd SignInCommand) (*TokenPair, error) {
+	clientInfo := contexts.ClientInfoFrom(ctx)
+	throttleEmail := strings.ToLower(strings.TrimSpace(cmd.Email))
+	if err := a.checkLoginThrottle(ctx, throttleEmail, clientInfo.IP); err != nil {
+		return nil, err
+	}
+	invalidCredentials := func() (*TokenPair, error) {
+		a.recordLoginFailure(ctx, throttleEmail, clientInfo.IP)
+		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
+	}
 	admin, err := a.adminRepo.GetConsoleAdminByEmail(ctx, cmd.Email)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "admin lookup failed")
 	}
 	if admin == nil {
-		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
+		return invalidCredentials()
 	}
 	if ok, _ := password.Verify(cmd.Password, admin.PasswordHash); !ok {
-		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
+		return invalidCredentials()
 	}
+	a.resetLoginThrottle(ctx, throttleEmail, clientInfo.IP)
 	return a.issueAdminTokens(admin.ID, admin.Email, admin.Role)
 }
 
@@ -73,15 +86,85 @@ func (a *Auth) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*Toke
 }
 
 func (a *Auth) SignOut(ctx context.Context) error {
-	p, ok := contexts.Principal(ctx)
-	if !ok || p.ActorKind != shared.ActorKindAdmin || p.UserID == "" || a.adminRevokeStore == nil {
+	if a.adminRevokeStore == nil {
+		return nil
+	}
+	adminID := ""
+	if p, ok := contexts.Principal(ctx); ok && p.ActorKind == shared.ActorKindAdmin {
+		adminID = p.UserID
+	}
+	if adminID == "" {
+		// No principal (e.g. the access token already expired): fall back to the
+		// raw credential in the request metadata and revoke best-effort.
+		adminID = a.adminIDFromMetadata(ctx)
+	}
+	if adminID == "" {
 		return nil
 	}
 	refreshTTL := 7 * 24 * time.Hour
 	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetRefreshTtl()); err == nil {
 		refreshTTL = d
 	}
-	return a.adminRevokeStore.RevokeBefore(ctx, p.UserID, time.Now(), refreshTTL)
+	return a.adminRevokeStore.RevokeBefore(ctx, adminID, time.Now(), refreshTTL)
+}
+
+// adminIDFromMetadata extracts the admin id from the bearer token or console
+// session cookie in the request metadata, tolerating expired tokens while still
+// verifying the signature.
+func (a *Auth) adminIDFromMetadata(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	secret := []byte(a.cfg.GetSecurity().GetJwt().GetSecret())
+	if raw := metadataValue(md, "authorization"); raw != "" {
+		if parts := strings.Fields(raw); len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
+			if claims, ok := jwtparser.ParseAllowExpired(secret, parts[1]); ok && claims.ActorKind == "admin" {
+				return claims.UserID
+			}
+		}
+	}
+	if raw := metadataValue(md, "cookie"); raw != "" {
+		for _, part := range strings.Split(raw, ";") {
+			name, value, found := strings.Cut(strings.TrimSpace(part), "=")
+			if !found || value == "" || name != "GRAVITON_session_console" {
+				continue
+			}
+			if claims, ok := jwtparser.ParseAllowExpired(secret, value); ok && claims.ActorKind == "admin" {
+				return claims.UserID
+			}
+		}
+	}
+	return ""
+}
+
+func metadataValue(md metadata.MD, key string) string {
+	values := md.Get(key)
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(values[0])
+}
+
+func (a *Auth) checkLoginThrottle(ctx context.Context, email, ip string) error {
+	if a.loginThrottle == nil {
+		return nil
+	}
+	return a.loginThrottle.Check(ctx, domainauth.LoginNamespaceAdmin, email, ip)
+}
+
+func (a *Auth) recordLoginFailure(ctx context.Context, email, ip string) {
+	if a.loginThrottle == nil {
+		return
+	}
+	_ = a.loginThrottle.RecordFailure(ctx, domainauth.LoginNamespaceAdmin, email, ip)
+}
+
+func (a *Auth) resetLoginThrottle(ctx context.Context, email, ip string) {
+	if a.loginThrottle == nil {
+		return
+	}
+	_ = a.loginThrottle.Reset(ctx, domainauth.LoginNamespaceAdmin, email, ip)
 }
 
 func (a *Auth) checkAdminTokenRevoked(ctx context.Context, claims *jwtparser.Claims) error {
@@ -92,7 +175,7 @@ func (a *Auth) checkAdminTokenRevoked(ctx context.Context, claims *jwtparser.Cla
 	if err != nil {
 		return err
 	}
-	if !revokedBefore.IsZero() && claims.IssuedAt < revokedBefore.Unix() {
+	if !revokedBefore.IsZero() && claims.IssuedAt <= revokedBefore.Unix() {
 		return status.Error(codes.Unauthenticated, "token revoked")
 	}
 	return nil

@@ -33,4 +33,6 @@ type SessionService interface {
 	CreateSessionAndTokens(ctx context.Context, projectID, userID, email, provider string) (*TokenBundle, string, error)
 	IssueTokens(ctx context.Context, projectID, userID, email, sessionID string) (*TokenBundle, string, error)
 	EnsureActiveSession(ctx context.Context, projectID, sessionID, userID string) error
+	// DeleteSessionsByUser removes every session of the user (e.g. after a password change).
+	DeleteSessionsByUser(ctx context.Context, projectID, userID string) error
 }

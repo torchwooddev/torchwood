@@ -56,6 +56,7 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	redisOTPChallengeStore := auth.NewRedisOTPChallengeStore(redisClient)
 	redisOAuthStateStore := auth.NewRedisOAuthStateStore(redisClient)
 	redisAccountTokenStore := auth.NewRedisAccountTokenStore(redisClient)
+	redisLoginThrottle := auth.NewRedisLoginThrottle(redisClient)
 	service, err := idgen.NewService(appConfig, redisClient, projectsRepository)
 	if err != nil {
 		cleanup()
@@ -63,7 +64,7 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	}
 	mailerService := messaging.NewMailer(appConfig)
 	smsService := messaging.NewSMSService(appConfig)
-	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, service, mailerService, smsService)
+	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, service, mailerService, smsService)
 	accountService := clientgrpc.NewAccountService(account)
 	databases := client.NewDatabases(projectsRepository, documentDB)
 	databasesService := clientgrpc.NewDatabasesService(databases)
@@ -89,7 +90,7 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	servergrpcTeamsService := servergrpc.NewTeamsService(teams)
 	serverDatabases := server.NewDatabases(projectsRepository, documentDB)
 	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases)
-	consoleAuth := console.NewAuth(appConfig, consoleAdminRepository, redisAdminTokenRevokeStore)
+	consoleAuth := console.NewAuth(appConfig, consoleAdminRepository, redisAdminTokenRevokeStore, redisLoginThrottle)
 	authService := consolegrpc.NewAuthService(consoleAuth)
 	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, authService)
 	if err != nil {

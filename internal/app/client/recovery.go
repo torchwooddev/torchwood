@@ -129,5 +129,8 @@ func (a *Account) UpdateRecovery(ctx context.Context, cmd UpdateRecoveryCommand)
 	}, nil), databases.SystemPrincipal); err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
+	if err := a.sessions.DeleteSessionsByUser(ctx, projectID, userID); err != nil {
+		return fmt.Errorf("delete sessions after password reset: %w", err)
+	}
 	return nil
 }

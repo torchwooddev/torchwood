@@ -14,6 +14,7 @@ import (
 	"github.com/deeploop-ai/graviton/pkg/jwtparser"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -56,12 +57,56 @@ func TestAuth_SignOut_RevokesAdminTokens(t *testing.T) {
 		UserID:    "admin-1",
 	})
 	store := newMemAdminRevokeStore()
-	authUC := console.NewAuth(testConfig(), nil, store)
+	authUC := console.NewAuth(testConfig(), nil, store, nil)
 
 	require.NoError(t, authUC.SignOut(ctx))
 	revoked, err := store.RevokedBefore(ctx, "admin-1")
 	require.NoError(t, err)
 	require.False(t, revoked.IsZero())
+}
+
+func TestAuth_SignOut_ExpiredTokenStillRevokes(t *testing.T) {
+	t.Parallel()
+	store := newMemAdminRevokeStore()
+	authUC := console.NewAuth(testConfig(), nil, store, nil)
+
+	// No principal in context (access token expired); the raw token is only
+	// available in the request metadata.
+	expiredToken, err := jwtparser.Generate([]byte(testConfig().GetSecurity().GetJwt().GetSecret()), jwtparser.Claims{
+		UserID:    "admin-9",
+		ActorKind: "admin",
+		TokenType: jwtparser.TokenTypeAccess,
+		IssuedAt:  time.Now().Add(-48 * time.Hour).Unix(),
+		ExpiresAt: time.Now().Add(-24 * time.Hour).Unix(),
+	})
+	require.NoError(t, err)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+expiredToken))
+
+	require.NoError(t, authUC.SignOut(ctx))
+	revoked, err := store.RevokedBefore(ctx, "admin-9")
+	require.NoError(t, err)
+	require.False(t, revoked.IsZero())
+}
+
+func TestAuth_SignOut_ExpiredTokenWrongSignatureIgnored(t *testing.T) {
+	t.Parallel()
+	store := newMemAdminRevokeStore()
+	authUC := console.NewAuth(testConfig(), nil, store, nil)
+
+	forgedToken, err := jwtparser.Generate([]byte("another-secret"), jwtparser.Claims{
+		UserID:    "admin-9",
+		ActorKind: "admin",
+		TokenType: jwtparser.TokenTypeAccess,
+		IssuedAt:  time.Now().Add(-48 * time.Hour).Unix(),
+		ExpiresAt: time.Now().Add(-24 * time.Hour).Unix(),
+	})
+	require.NoError(t, err)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+forgedToken))
+
+	require.NoError(t, authUC.SignOut(ctx))
+	revoked, err := store.RevokedBefore(ctx, "admin-9")
+	require.NoError(t, err)
+	require.True(t, revoked.IsZero())
 }
 
 func TestAuth_RefreshToken_RejectsRevokedAdmin(t *testing.T) {
@@ -82,7 +127,7 @@ func TestAuth_RefreshToken_RejectsRevokedAdmin(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	authUC := console.NewAuth(testConfig(), nil, store)
+	authUC := console.NewAuth(testConfig(), nil, store, nil)
 	_, err = authUC.RefreshToken(ctx, console.RefreshTokenCommand{RefreshToken: refreshToken})
 	require.Error(t, err)
 	st, ok := status.FromError(err)

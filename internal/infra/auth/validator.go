@@ -103,6 +103,9 @@ func (v *Validator) validateAPIKey(ctx context.Context, raw string) (*shared.Pri
 func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Claims) (*shared.Principal, error) {
 	switch claims.ActorKind {
 	case "admin":
+		if claims.TokenType != "" && claims.TokenType != jwtparser.TokenTypeAccess {
+			return nil, status.Error(codes.Unauthenticated, "invalid token type")
+		}
 		if err := v.checkAdminTokenRevoked(ctx, claims); err != nil {
 			return nil, err
 		}
@@ -243,7 +246,7 @@ func (v *Validator) checkAdminTokenRevoked(ctx context.Context, claims *jwtparse
 	if err != nil {
 		return err
 	}
-	if !revokedBefore.IsZero() && claims.IssuedAt < revokedBefore.Unix() {
+	if !revokedBefore.IsZero() && claims.IssuedAt <= revokedBefore.Unix() {
 		return status.Error(codes.Unauthenticated, "token revoked")
 	}
 	return nil

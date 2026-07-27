@@ -92,6 +92,7 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 	if strings.TrimSpace(info.Email) == "" {
 		return nil, fmt.Errorf("oauth provider did not return an email address")
 	}
+	info.Email = normalizeEmail(info.Email)
 	identity, err := a.findIdentity(ctx, projectID, provider, info.ProviderUID)
 	if err != nil {
 		return nil, err
@@ -147,6 +148,7 @@ func (a *Account) linkOAuthIdentity(ctx context.Context, projectID, userID, prov
 	if info == nil || info.ProviderUID == "" {
 		return status.Error(codes.InvalidArgument, "oauth profile missing provider uid")
 	}
+	info.Email = normalizeEmail(info.Email)
 	existing, err := a.findIdentity(ctx, projectID, provider, info.ProviderUID)
 	if err != nil {
 		return err

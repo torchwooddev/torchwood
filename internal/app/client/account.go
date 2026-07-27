@@ -34,6 +34,7 @@ type Account struct {
 	otp            domainauth.OTPChallengeStore
 	oauthState     domainauth.OAuthStateStore
 	tokens         domainauth.AccountTokenStore
+	loginThrottle  domainauth.LoginThrottle
 	idGen          domainidgen.Generator
 	mailer         messaging.Mailer
 	sms            messaging.SMSSender
@@ -48,6 +49,7 @@ func NewAccount(
 	otp domainauth.OTPChallengeStore,
 	oauthState domainauth.OAuthStateStore,
 	tokens domainauth.AccountTokenStore,
+	loginThrottle domainauth.LoginThrottle,
 	idGen domainidgen.Generator,
 	mailer messaging.Mailer,
 	sms messaging.SMSSender,
@@ -61,6 +63,7 @@ func NewAccount(
 		otp:            otp,
 		oauthState:     oauthState,
 		tokens:         tokens,
+		loginThrottle:  loginThrottle,
 		idGen:          idGen,
 		mailer:         mailer,
 		sms:            sms,
@@ -119,7 +122,8 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 	if cmd.ProjectID == "" {
 		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
 	}
-	if cmd.Email == "" {
+	email := normalizeEmail(cmd.Email)
+	if email == "" {
 		return nil, nil, "", status.Error(codes.InvalidArgument, "email is required")
 	}
 	if cmd.Password == "" {
@@ -138,7 +142,7 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 
 	// Check email unique.
 	list, err := a.docDB.ListDocuments(ctx, project.ID, "default", "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", cmd.Email)},
+		Queries:  []string{query.BuildEqual("email", email)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
 	if err != nil {
@@ -160,7 +164,7 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 	userDoc := databases.Document{
 		ID: userID,
 		Data: map[string]any{
-			"email":          cmd.Email,
+			"email":          email,
 			"password_hash":  hash,
 			"name":           cmd.Name,
 			"status":         users.StatusActive,
@@ -206,11 +210,20 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 	if cmd.ProjectID == "" {
 		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
 	}
-	if cmd.Email == "" {
+	email := normalizeEmail(cmd.Email)
+	if email == "" {
 		return nil, nil, "", status.Error(codes.InvalidArgument, "email is required")
 	}
 	if cmd.Password == "" {
 		return nil, nil, "", status.Error(codes.InvalidArgument, "password is required")
+	}
+	clientInfo := contexts.ClientInfoFrom(ctx)
+	if err := a.checkLoginThrottle(ctx, email, clientInfo.IP); err != nil {
+		return nil, nil, "", err
+	}
+	invalidCredentials := func() (*User, *TokenBundle, string, error) {
+		a.recordLoginFailure(ctx, email, clientInfo.IP)
+		return nil, nil, "", status.Error(codes.Unauthenticated, "invalid credentials")
 	}
 	project, err := a.projectRepo.GetProject(ctx, cmd.ProjectID)
 	if err != nil {
@@ -224,26 +237,48 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 	}
 
 	list, err := a.docDB.ListDocuments(ctx, project.ID, "default", "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", cmd.Email)},
+		Queries:  []string{query.BuildEqual("email", email)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
 	if err != nil {
 		return nil, nil, "", err
 	}
 	if len(list.Documents) == 0 {
-		return nil, nil, "", status.Error(codes.Unauthenticated, "invalid credentials")
+		return invalidCredentials()
 	}
 	userDoc := list.Documents[0]
 	hash, _ := userDoc.Data["password_hash"].(string)
 	if ok, _ := password.Verify(cmd.Password, hash); !ok {
-		return nil, nil, "", status.Error(codes.Unauthenticated, "invalid credentials")
+		return invalidCredentials()
 	}
 
 	user := mapUserDoc(&userDoc)
 	if !users.CanAuthenticate(user.Status) {
 		return nil, nil, "", status.Error(codes.Unauthenticated, "user account is not active")
 	}
+	a.resetLoginThrottle(ctx, email, clientInfo.IP)
 	return a.finishSignIn(ctx, project.ID, user)
+}
+
+func (a *Account) checkLoginThrottle(ctx context.Context, email, ip string) error {
+	if a.loginThrottle == nil {
+		return nil
+	}
+	return a.loginThrottle.Check(ctx, domainauth.LoginNamespaceEndUser, email, ip)
+}
+
+func (a *Account) recordLoginFailure(ctx context.Context, email, ip string) {
+	if a.loginThrottle == nil {
+		return
+	}
+	_ = a.loginThrottle.RecordFailure(ctx, domainauth.LoginNamespaceEndUser, email, ip)
+}
+
+func (a *Account) resetLoginThrottle(ctx context.Context, email, ip string) {
+	if a.loginThrottle == nil {
+		return
+	}
+	_ = a.loginThrottle.Reset(ctx, domainauth.LoginNamespaceEndUser, email, ip)
 }
 
 func (a *Account) Me(ctx context.Context) (*User, error) {
@@ -313,9 +348,9 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	if cmd.Name != "" {
 		updates["name"] = cmd.Name
 	}
-	if cmd.Email != "" && cmd.Email != stringValue(doc.Data["email"]) {
+	if email := normalizeEmail(cmd.Email); email != "" && email != stringValue(doc.Data["email"]) {
 		list, err := a.docDB.ListDocuments(ctx, p.ProjectID, "default", "users", databases.Query{
-			Queries:  []string{query.BuildEqual("email", cmd.Email)},
+			Queries:  []string{query.BuildEqual("email", email)},
 			PageSize: 1,
 		}, databases.SystemPrincipal)
 		if err != nil {
@@ -324,7 +359,7 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		if len(list.Documents) > 0 && list.Documents[0].ID != p.UserID {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
-		updates["email"] = cmd.Email
+		updates["email"] = email
 		updates["email_verified"] = false
 	}
 	if cmd.Password != "" {
@@ -354,6 +389,11 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
 		return nil, fmt.Errorf("update account: %w", err)
+	}
+	if _, passwordChanged := updates["password_hash"]; passwordChanged {
+		if err := a.sessions.DeleteSessionsByUser(ctx, p.ProjectID, p.UserID); err != nil {
+			return nil, fmt.Errorf("delete sessions after password change: %w", err)
+		}
 	}
 	return mapUserDoc(&updated), nil
 }

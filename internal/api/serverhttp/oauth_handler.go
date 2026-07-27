@@ -53,6 +53,7 @@ func (h *OAuthHandler) callback(w http.ResponseWriter, r *http.Request, pathPara
 			Value:    result.SessionCookie,
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   r.TLS != nil,
 			SameSite: http.SameSiteLaxMode,
 		})
 	}

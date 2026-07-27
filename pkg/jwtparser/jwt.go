@@ -1,6 +1,7 @@
 package jwtparser
 
 import (
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -59,6 +60,29 @@ func Parse(secret []byte, tokenString string) (*Claims, bool) {
 	}
 	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {
+		return nil, false
+	}
+	return claims, true
+}
+
+// ParseAllowExpired validates the signature and claims of a JWT signed with HS256
+// but tolerates an expired token. Intended for best-effort flows such as sign-out,
+// where the caller only needs the identity of an already-expired credential.
+func ParseAllowExpired(secret []byte, tokenString string) (*Claims, bool) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return secret, nil
+	}, jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithValidMethods([]string{"HS256"}))
+	if err != nil && !errors.Is(err, jwt.ErrTokenExpired) {
+		return nil, false
+	}
+	if token == nil {
+		return nil, false
+	}
+	claims, ok := token.Claims.(*Claims)
+	if !ok {
+		return nil, false
+	}
+	if err == nil && !token.Valid {
 		return nil, false
 	}
 	return claims, true
