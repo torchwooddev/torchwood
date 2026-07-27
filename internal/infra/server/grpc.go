@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	clientv1 "github.com/deeploop-ai/graviton/genproto/client/v1"
@@ -17,6 +19,7 @@ import (
 	"github.com/deeploop-ai/graviton/pkg/grpc/interceptor"
 	"github.com/lynx-go/lynx"
 	lynxgrpc "github.com/lynx-go/lynx/server/grpc"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -93,7 +96,61 @@ func NewGRPCServer(
 	serverv1.RegisterDatabasesServiceServer(grpcSrv, databases)
 	consolev1.RegisterConsoleAuthServiceServer(grpcSrv, consoleAuth)
 
+	// fail-closed：所有已注册方法都必须带有 authz 注解，缺失的方法会在拦截器里被放行。
+	if err := assertRegisteredMethodsHaveAuthz(grpcSrv, publicMethods, apiKeyMethods, permissionMethods); err != nil {
+		return nil, err
+	}
+
 	return srv, nil
+}
+
+// authzExemptServicePrefixes 是不参与业务 authz 注解校验的 gRPC 框架内置服务白名单：
+// grpc.health.v1.Health 由 lynx 注册用于健康检查，grpc.reflection.* 用于 server reflection，
+// 它们不是业务 API、不携带业务 authz 注解，由部署层网络策略保护。
+var authzExemptServicePrefixes = []string{
+	"grpc.health.v1.",
+	"grpc.reflection.",
+}
+
+// assertRegisteredMethodsHaveAuthz 断言每个已注册的 gRPC 方法都存在于某一类 access map
+// （public/apiKey/permission 之一）。漏配的方法不在任何 map 中，会在拦截器
+// "len(perms)==0 跳过"分支被任意有效凭证放行，因此启动期直接报错（fail-closed）。
+func assertRegisteredMethodsHaveAuthz(grpcSrv *grpc.Server, publicMethods, apiKeyMethods []string, permissionMethods map[string][]string) error {
+	covered := make(map[string]struct{}, len(publicMethods)+len(apiKeyMethods)+len(permissionMethods))
+	for _, m := range publicMethods {
+		covered[m] = struct{}{}
+	}
+	for _, m := range apiKeyMethods {
+		covered[m] = struct{}{}
+	}
+	for m := range permissionMethods {
+		covered[m] = struct{}{}
+	}
+
+	var missing []string
+	for serviceName, info := range grpcSrv.GetServiceInfo() {
+		exempt := false
+		for _, prefix := range authzExemptServicePrefixes {
+			if strings.HasPrefix(serviceName, prefix) {
+				exempt = true
+				break
+			}
+		}
+		if exempt {
+			continue
+		}
+		for _, m := range info.Methods {
+			fullMethod := "/" + serviceName + "/" + m.Name
+			if _, ok := covered[fullMethod]; !ok {
+				missing = append(missing, fullMethod)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("registered grpc methods missing authz annotation: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func collectMethodsByAccess(fileDescs ...protoreflect.FileDescriptor) (publicMethods []string, apiKeyMethods []string, permissionMethods map[string][]string, err error) {

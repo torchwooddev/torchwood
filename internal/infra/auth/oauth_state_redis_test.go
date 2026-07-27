@@ -10,6 +10,8 @@ import (
 	"github.com/deeploop-ai/graviton/internal/infra/auth"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestRedisOAuthStateStore(t *testing.T) {
@@ -32,14 +34,17 @@ func TestRedisOAuthStateStore(t *testing.T) {
 	}
 	require.NoError(t, store.Save(ctx, state, time.Minute))
 
-	got, err := store.Get(ctx, "state-1")
+	got, err := store.Consume(ctx, "state-1")
 	require.NoError(t, err)
 	require.Equal(t, "proj", got.ProjectID)
 	require.Equal(t, domainauth.ProviderGoogle, got.Provider)
 
-	require.NoError(t, store.Delete(ctx, "state-1"))
-	_, err = store.Get(ctx, "state-1")
+	// Consume is one-time: a replay (concurrent callback) must fail.
+	_, err = store.Consume(ctx, "state-1")
 	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Unauthenticated, st.Code())
 }
 
 func TestNewOAuthAuthenticator_Unsupported(t *testing.T) {

@@ -83,8 +83,14 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 		if principal.CredentialType != shared.CredentialTypeAPIKey && principal.ActorKind != shared.ActorKindAdmin {
 			return nil, status.Error(codes.Unauthenticated, "developer API requires x-api-key header or admin session")
 		}
-		if principal.CredentialType == shared.CredentialTypeAPIKey && !APIKeyScopeAllowed(info.FullMethod, principal.Permissions) {
-			return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
+		if principal.CredentialType == shared.CredentialTypeAPIKey {
+			// API key 凭证禁止调用 APIKeys 服务，防止泄露的 key 自铸新 key 造成永久提权。
+			if IsAPIKeysServiceMethod(info.FullMethod) {
+				return nil, status.Error(codes.PermissionDenied, "api keys cannot manage api keys")
+			}
+			if !APIKeyScopeAllowed(info.FullMethod, principal.Permissions) {
+				return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
+			}
 		}
 	}
 

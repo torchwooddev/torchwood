@@ -36,16 +36,12 @@ func newWeChatOAuth(provider, appID, appSecret, redirectURL string) (*weChatOAut
 	default:
 		return nil, fmt.Errorf("unsupported wechat oauth provider: %s", provider)
 	}
-	client := http.DefaultClient
-	if client == nil {
-		client = &http.Client{}
-	}
 	return &weChatOAuth{
 		appID:       appID,
 		appSecret:   appSecret,
 		redirectURL: redirectURL,
 		mode:        mode,
-		httpClient:  client,
+		httpClient:  httpClient,
 	}, nil
 }
 
@@ -132,12 +128,12 @@ func (w *weChatOAuth) fetchUserInfo(ctx context.Context, accessToken, openid str
 
 // ExchangeWeChatMiniProgramCode exchanges wx.login code for openid/unionid.
 func ExchangeWeChatMiniProgramCode(ctx context.Context, appID, appSecret, code string) (*domainauth.OAuthUserInfo, error) {
-	return exchangeWeChatMiniProgramCode(ctx, http.DefaultClient, appID, appSecret, code)
+	return exchangeWeChatMiniProgramCode(ctx, httpClient, appID, appSecret, code)
 }
 
-func exchangeWeChatMiniProgramCode(ctx context.Context, httpClient *http.Client, appID, appSecret, code string) (*domainauth.OAuthUserInfo, error) {
-	if httpClient == nil {
-		httpClient = http.DefaultClient
+func exchangeWeChatMiniProgramCode(ctx context.Context, client *http.Client, appID, appSecret, code string) (*domainauth.OAuthUserInfo, error) {
+	if client == nil {
+		client = httpClient
 	}
 	values := url.Values{}
 	values.Set("appid", appID)
@@ -148,7 +144,7 @@ func exchangeWeChatMiniProgramCode(ctx context.Context, httpClient *http.Client,
 	if err != nil {
 		return nil, err
 	}
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

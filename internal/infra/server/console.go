@@ -16,6 +16,7 @@ func NewConsoleHandler() (http.Handler, error) {
 	}
 	fileServer := http.FileServer(http.FS(dist))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setConsoleSecurityHeaders(w)
 		path := strings.TrimPrefix(r.URL.Path, "/console")
 		path = strings.TrimPrefix(path, "/")
 		if path != "" {
@@ -28,4 +29,15 @@ func NewConsoleHandler() (http.Handler, error) {
 		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)
 	}), nil
+}
+
+// setConsoleSecurityHeaders hardens the Admin Console SPA responses. The Vite
+// build emits no inline scripts, so script-src can stay 'self'; inline styles
+// come from shadcn/Tailwind runtime and need 'unsafe-inline'.
+func setConsoleSecurityHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
 }

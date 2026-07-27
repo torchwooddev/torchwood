@@ -20,8 +20,9 @@ type OAuthState struct {
 // OAuthStateStore persists OAuth2 state and PKCE verifiers until callback.
 type OAuthStateStore interface {
 	Save(ctx context.Context, state OAuthState, ttl time.Duration) error
-	Get(ctx context.Context, stateID string) (*OAuthState, error)
-	Delete(ctx context.Context, stateID string) error
+	// Consume atomically reads and deletes the state, enforcing one-time use
+	// so a callback cannot be replayed concurrently.
+	Consume(ctx context.Context, stateID string) (*OAuthState, error)
 }
 
 // OAuthUserInfo is normalized profile data from an OAuth2 provider.

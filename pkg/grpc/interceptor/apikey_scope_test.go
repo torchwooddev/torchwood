@@ -35,3 +35,17 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 		t.Fatal("unmapped service must fail closed even for wildcard scope")
 	}
 }
+
+func TestIsAPIKeysServiceMethod(t *testing.T) {
+	t.Parallel()
+
+	if !IsAPIKeysServiceMethod("/graviton.server.v1.APIKeysService/CreateAPIKey") {
+		t.Fatal("APIKeysService method should be detected")
+	}
+	if IsAPIKeysServiceMethod("/graviton.server.v1.UsersService/ListUsers") {
+		t.Fatal("UsersService method should not be detected")
+	}
+	if IsAPIKeysServiceMethod("malformed") {
+		t.Fatal("malformed method should not be detected")
+	}
+}

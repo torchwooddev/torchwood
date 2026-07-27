@@ -55,3 +55,14 @@ func apiKeyScopeResource(fullMethod string) string {
 		return ""
 	}
 }
+
+// IsAPIKeysServiceMethod reports whether fullMethod belongs to the APIKeys service.
+// API key 凭证不允许调用这些方法：泄露的 key 若能自铸新 key，等同于永久提权。
+// admin console session 不受此限制。
+func IsAPIKeysServiceMethod(fullMethod string) bool {
+	parts := strings.Split(fullMethod, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	return strings.Contains(parts[len(parts)-2], "APIKeys")
+}

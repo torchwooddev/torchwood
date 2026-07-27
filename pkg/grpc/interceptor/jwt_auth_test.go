@@ -90,3 +90,48 @@ func requirePermissionDenied(t *testing.T, err error) {
 		t.Fatalf("expected permission denied, got %v", err)
 	}
 }
+
+func TestAuthInterceptor_DeniesAPIKeyOnAPIKeysService(t *testing.T) {
+	t.Parallel()
+
+	ic, err := NewAuthInterceptor(stubValidator{principal: &shared.Principal{
+		ActorKind:      shared.ActorKindService,
+		CredentialType: shared.CredentialTypeAPIKey,
+		Roles:          []string{"keys"},
+		Permissions:    []string{"*"},
+	}}, nil, []string{"/graviton.server.v1.APIKeysService/CreateAPIKey"}, nil)
+	requireNoError(t, err)
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-api-key", "test-key"))
+	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
+		FullMethod: "/graviton.server.v1.APIKeysService/CreateAPIKey",
+	}, func(context.Context, any) (any, error) {
+		t.Fatal("handler should not run")
+		return nil, nil
+	})
+	requirePermissionDenied(t, err)
+}
+
+func TestAuthInterceptor_AllowsAdminSessionOnAPIKeysService(t *testing.T) {
+	t.Parallel()
+
+	ic, err := NewAuthInterceptor(stubValidator{principal: &shared.Principal{
+		ActorKind:      shared.ActorKindAdmin,
+		CredentialType: shared.CredentialTypeSession,
+		Roles:          []string{"admin"},
+	}}, nil, []string{"/graviton.server.v1.APIKeysService/CreateAPIKey"}, nil)
+	requireNoError(t, err)
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Session admin-token"))
+	called := false
+	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
+		FullMethod: "/graviton.server.v1.APIKeysService/CreateAPIKey",
+	}, func(context.Context, any) (any, error) {
+		called = true
+		return "ok", nil
+	})
+	requireNoError(t, err)
+	if !called {
+		t.Fatal("expected handler to run")
+	}
+}

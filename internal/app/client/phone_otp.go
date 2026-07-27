@@ -68,7 +68,7 @@ func (a *Account) CreatePhoneOTP(ctx context.Context, cmd CreatePhoneOTPCommand)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "otp generation failed")
 	}
-	challengeID, expireAt, err := a.otp.CreatePhoneChallenge(ctx, projectID, phone, infraauth.HashOTP(code))
+	challengeID, expireAt, err := a.otp.CreatePhoneChallenge(ctx, projectID, phone, code)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (a *Account) CreatePhoneOTPSession(ctx context.Context, cmd CreatePhoneOTPS
 		return nil, nil, "", err
 	}
 
-	if err := a.otp.VerifyPhoneChallenge(ctx, projectID, challengeID, phone, infraauth.HashOTP(otp)); err != nil {
+	if err := a.otp.VerifyPhoneChallenge(ctx, projectID, challengeID, phone, otp); err != nil {
 		return nil, nil, "", err
 	}
 

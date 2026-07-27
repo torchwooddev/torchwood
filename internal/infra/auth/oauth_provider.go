@@ -7,12 +7,17 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
 	"golang.org/x/oauth2"
 	githuboauth "golang.org/x/oauth2/github"
 	googleoauth "golang.org/x/oauth2/google"
 )
+
+// httpClient is shared by all outbound OAuth HTTP calls; the timeout keeps a
+// hanging provider from blocking login callbacks indefinitely.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 // NewOAuthAuthenticator builds a provider-specific OAuth2 client.
 func NewOAuthAuthenticator(provider, clientID, clientSecret, redirectURL string, scopes []string) (domainauth.OAuthAuthenticator, error) {
@@ -75,7 +80,7 @@ func (a *genericOAuthAuthenticator) fetchUserInfo(ctx context.Context, token *oa
 		return nil, err
 	}
 	token.SetAuthHeader(req)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +145,7 @@ func (a *githubOAuthAuthenticator) fetchGitHubUser(ctx context.Context, token *o
 	}
 	token.SetAuthHeader(req)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +183,7 @@ func (a *githubOAuthAuthenticator) fetchGitHubPrimaryEmail(ctx context.Context, 
 	}
 	token.SetAuthHeader(req)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}

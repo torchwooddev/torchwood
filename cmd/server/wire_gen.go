@@ -53,7 +53,7 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	oAuthProviderRepository := bunrepo.NewOAuthProviderRepository(database, appConfig)
 	userRoles := client.NewUserRoles(documentDB)
 	sessionService := auth.NewSessionService(appConfig, documentDB, userRoles)
-	redisOTPChallengeStore := auth.NewRedisOTPChallengeStore(redisClient)
+	redisOTPChallengeStore := auth.NewRedisOTPChallengeStore(redisClient, appConfig)
 	redisOAuthStateStore := auth.NewRedisOAuthStateStore(redisClient)
 	redisAccountTokenStore := auth.NewRedisAccountTokenStore(redisClient)
 	redisLoginThrottle := auth.NewRedisLoginThrottle(redisClient)

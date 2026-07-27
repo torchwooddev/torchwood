@@ -44,7 +44,7 @@ func NewValidator(
 		adminProjectRepo: adminProjectRepo,
 		adminRevokeStore: adminRevokeStore,
 		docDB:            docDB,
-		sessionCodec:     NewSessionCookieCodec(cfg.GetSecurity().GetJwt().GetSecret()),
+		sessionCodec:     NewSessionCookieCodec(string(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeSessionCookie))),
 	}
 }
 
@@ -57,14 +57,14 @@ func (v *Validator) ValidateCredential(ctx context.Context, raw string, credenti
 	case shared.CredentialTypeAPIKey:
 		return v.validateAPIKey(ctx, raw)
 	case shared.CredentialTypeToken:
-		claims, ok := jwtparser.Parse([]byte(v.cfg.GetSecurity().GetJwt().GetSecret()), raw)
+		claims, ok := v.parseJWT(raw)
 		if !ok {
 			return nil, status.Error(codes.Unauthenticated, "invalid or expired token")
 		}
 		return v.principalFromJWT(ctx, claims)
 	case shared.CredentialTypeSession:
 		// Try JWT first (console or token-style session).
-		if claims, ok := jwtparser.Parse([]byte(v.cfg.GetSecurity().GetJwt().GetSecret()), raw); ok {
+		if claims, ok := v.parseJWT(raw); ok {
 			return v.principalFromJWT(ctx, claims)
 		}
 		projectID, sessionID, err := v.sessionCodec.Verify(raw)
@@ -74,6 +74,17 @@ func (v *Validator) ValidateCredential(ctx context.Context, raw string, credenti
 		return v.principalFromSession(ctx, projectID, sessionID)
 	}
 	return nil, status.Error(codes.Unauthenticated, "unsupported credential type")
+}
+
+// parseJWT verifies a token against the purpose-derived sub-keys. A token only
+// verifies under the key it was signed with, so trying both domains is safe;
+// principalFromJWT then dispatches on the signed ActorKind claim.
+func (v *Validator) parseJWT(raw string) (*jwtparser.Claims, bool) {
+	secret := v.cfg.GetSecurity().GetJwt().GetSecret()
+	if claims, ok := jwtparser.Parse(jwtparser.DeriveKey(secret, jwtparser.PurposeAdminJWT), raw); ok {
+		return claims, true
+	}
+	return jwtparser.Parse(jwtparser.DeriveKey(secret, jwtparser.PurposeEndUserJWT), raw)
 }
 
 func (v *Validator) validateAPIKey(ctx context.Context, raw string) (*shared.Principal, error) {
@@ -161,7 +172,11 @@ func (v *Validator) principalFromSession(ctx context.Context, projectID, session
 	expireAtRaw, ok := sessionDoc.Data["expire_at"]
 	if ok {
 		expireAt, err := parseTime(expireAtRaw)
-		if err == nil && expireAt.Before(time.Now()) {
+		if err != nil {
+			// Fail closed: unparsable expiry is treated as expired.
+			return nil, status.Error(codes.Unauthenticated, "session expired")
+		}
+		if expireAt.Before(time.Now()) {
 			return nil, status.Error(codes.Unauthenticated, "session expired")
 		}
 	}
@@ -193,7 +208,11 @@ func (v *Validator) validateEndUserSession(ctx context.Context, projectID, sessi
 	}
 	if expireAtRaw, ok := sessionDoc.Data["expire_at"]; ok {
 		expireAt, err := parseTime(expireAtRaw)
-		if err == nil && expireAt.Before(time.Now()) {
+		if err != nil {
+			// Fail closed: unparsable expiry is treated as expired.
+			return status.Error(codes.Unauthenticated, "session expired")
+		}
+		if expireAt.Before(time.Now()) {
 			return status.Error(codes.Unauthenticated, "session expired")
 		}
 	}

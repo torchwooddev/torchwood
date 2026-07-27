@@ -257,11 +257,10 @@ func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2Code
 		return nil, status.Error(codes.InvalidArgument, "state is required")
 	}
 
-	oauthState, err := a.oauthState.Get(ctx, stateID)
+	oauthState, err := a.oauthState.Consume(ctx, stateID)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = a.oauthState.Delete(context.Background(), stateID) }()
 
 	if oauthState.Provider != provider {
 		return nil, status.Error(codes.Unauthenticated, "oauth provider mismatch")

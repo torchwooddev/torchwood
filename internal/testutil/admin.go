@@ -41,7 +41,7 @@ func CreateTestConsoleAdmin(ctx context.Context, db *clients.Database, role stri
 // SignConsoleAdminToken issues a console admin JWT compatible with auth.Validator.
 func SignConsoleAdminToken(cfg *config.AppConfig, admin *model.ConsoleAdmin) (string, error) {
 	now := time.Now()
-	return jwtparser.Generate([]byte(cfg.GetSecurity().GetJwt().GetSecret()), jwtparser.Claims{
+	return jwtparser.Generate(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		TokenID:   idgen.UUID().String(),
 		UserID:    admin.ID,
 		Username:  admin.Email,

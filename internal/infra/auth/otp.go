@@ -22,7 +22,9 @@ func GenerateOTP(digits int) (string, error) {
 	return fmt.Sprintf(format, n), nil
 }
 
-// HashOTP returns a SHA-256 hex digest of the raw OTP code.
+// HashOTP returns a SHA-256 hex digest of the given value.
+// 仅适用于高熵 secret（如 account token，256-bit）；低熵 OTP 验证码
+// 必须使用带密钥的哈希（见 RedisOTPChallengeStore 的 HMAC-SHA256）。
 func HashOTP(code string) string {
 	sum := sha256.Sum256([]byte(code))
 	return hex.EncodeToString(sum[:])

@@ -41,7 +41,7 @@ func NewTestAccountWithDeps(
 	var tokens domainauth.AccountTokenStore
 	var loginThrottle domainauth.LoginThrottle
 	if rdb != nil {
-		otp = infraauth.NewRedisOTPChallengeStore(rdb)
+		otp = infraauth.NewRedisOTPChallengeStore(rdb, cfg)
 		oauthState = infraauth.NewRedisOAuthStateStore(rdb)
 		tokens = infraauth.NewRedisAccountTokenStore(rdb)
 		loginThrottle = infraauth.NewRedisLoginThrottle(rdb)

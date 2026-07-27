@@ -169,7 +169,11 @@ func hashSecret(raw string) string {
 
 func signToken(t *testing.T, claims jwtparser.Claims) string {
 	t.Helper()
-	token, err := jwtparser.Generate([]byte(testJWTSecret), claims)
+	purpose := jwtparser.PurposeEndUserJWT
+	if claims.ActorKind == "admin" {
+		purpose = jwtparser.PurposeAdminJWT
+	}
+	token, err := jwtparser.Generate(jwtparser.DeriveKey(testJWTSecret, purpose), claims)
 	require.NoError(t, err)
 	return token
 }
@@ -348,4 +352,104 @@ func TestValidator_ValidateAdminProjectAccess(t *testing.T) {
 		ProjectID:       "proj-denied",
 		IsPlatformAdmin: true,
 	}))
+}
+
+func TestValidator_EndUserJWT_CorruptExpireAtFailsClosed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	projectID := idgen.UUID().String()
+	userID := idgen.UUID().String()
+	sessionID := idgen.UUID().String()
+	docDB := &stubDocDB{
+		users: map[string]map[string]map[string]any{
+			projectID: {userID: {"status": "active"}},
+		},
+		sessions: map[string]map[string]map[string]any{
+			projectID: {sessionID: {"user_id": userID, "expire_at": "not-a-timestamp"}},
+		},
+	}
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB)
+
+	token := signToken(t, jwtparser.Claims{
+		UserID:    userID,
+		ProjectID: projectID,
+		SessionID: sessionID,
+		ActorKind: "end_user",
+		TokenType: jwtparser.TokenTypeAccess,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	})
+	_, err := v.ValidateToken(ctx, token)
+	requireCode(t, err, codes.Unauthenticated)
+}
+
+func signSessionCookie(projectID, sessionID string) string {
+	codec := auth.NewSessionCookieCodec(string(jwtparser.DeriveKey(testJWTSecret, jwtparser.PurposeSessionCookie)))
+	return codec.Sign(projectID, sessionID)
+}
+
+func TestValidator_SessionCookie_Valid(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	projectID := idgen.UUID().String()
+	userID := idgen.UUID().String()
+	sessionID := idgen.UUID().String()
+	docDB := &stubDocDB{
+		users: map[string]map[string]map[string]any{
+			projectID: {userID: {"status": "active"}},
+		},
+		sessions: map[string]map[string]map[string]any{
+			projectID: {sessionID: {
+				"user_id":   userID,
+				"expire_at": time.Now().Add(time.Hour).Format(time.RFC3339Nano),
+			}},
+		},
+	}
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB)
+
+	p, err := v.ValidateCredential(ctx, signSessionCookie(projectID, sessionID), shared.CredentialTypeSession)
+	require.NoError(t, err)
+	require.Equal(t, shared.ActorKindEndUser, p.ActorKind)
+	require.Equal(t, sessionID, p.SessionID)
+}
+
+func TestValidator_SessionCookie_CorruptExpireAtFailsClosed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	projectID := idgen.UUID().String()
+	userID := idgen.UUID().String()
+	sessionID := idgen.UUID().String()
+	docDB := &stubDocDB{
+		users: map[string]map[string]map[string]any{
+			projectID: {userID: {"status": "active"}},
+		},
+		sessions: map[string]map[string]map[string]any{
+			// Unsupported value type must be treated as expired, not valid.
+			projectID: {sessionID: {"user_id": userID, "expire_at": 12345}},
+		},
+	}
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB)
+
+	_, err := v.ValidateCredential(ctx, signSessionCookie(projectID, sessionID), shared.CredentialTypeSession)
+	requireCode(t, err, codes.Unauthenticated)
+}
+
+func TestValidator_CrossPurposeTokenRejected(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@graviton.local", Role: "owner"}
+	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{})
+
+	// A token signed with the raw master secret must no longer validate.
+	rawToken, err := jwtparser.Generate([]byte(testJWTSecret), jwtparser.Claims{
+		UserID:    admin.ID,
+		ActorKind: "admin",
+		TokenType: jwtparser.TokenTypeAccess,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	})
+	require.NoError(t, err)
+	_, err = v.ValidateToken(ctx, rawToken)
+	requireCode(t, err, codes.Unauthenticated)
 }

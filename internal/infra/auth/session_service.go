@@ -34,7 +34,7 @@ func NewSessionService(
 	return &SessionService{
 		cfg:          cfg,
 		docDB:        docDB,
-		sessionCodec: NewSessionCookieCodec(cfg.GetSecurity().GetJwt().GetSecret()),
+		sessionCodec: NewSessionCookieCodec(string(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeSessionCookie))),
 		roles:        roles,
 	}
 }
@@ -93,7 +93,8 @@ func (s *SessionService) IssueTokens(ctx context.Context, projectID, userID, ema
 		ExpiresAt: now.Add(accessTTL).Unix(),
 		IssuedAt:  now.Unix(),
 	}
-	accessToken, err := jwtparser.Generate([]byte(s.cfg.GetSecurity().GetJwt().GetSecret()), accessClaims)
+	endUserKey := jwtparser.DeriveKey(s.cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeEndUserJWT)
+	accessToken, err := jwtparser.Generate(endUserKey, accessClaims)
 	if err != nil {
 		return nil, "", err
 	}
@@ -101,7 +102,7 @@ func (s *SessionService) IssueTokens(ctx context.Context, projectID, userID, ema
 	refreshClaims.TokenID = idgen.UUID().String()
 	refreshClaims.TokenType = jwtparser.TokenTypeRefresh
 	refreshClaims.ExpiresAt = now.Add(refreshTTL).Unix()
-	refreshToken, err := jwtparser.Generate([]byte(s.cfg.GetSecurity().GetJwt().GetSecret()), refreshClaims)
+	refreshToken, err := jwtparser.Generate(endUserKey, refreshClaims)
 	if err != nil {
 		return nil, "", err
 	}
@@ -126,7 +127,12 @@ func (s *SessionService) EnsureActiveSession(ctx context.Context, projectID, ses
 		return status.Error(codes.Unauthenticated, "invalid session")
 	}
 	if expireAtRaw, ok := sessionDoc.Data["expire_at"]; ok {
-		if expireAt, err := parseSessionTime(expireAtRaw); err == nil && expireAt.Before(time.Now()) {
+		expireAt, err := parseSessionTime(expireAtRaw)
+		if err != nil {
+			// Fail closed: unparsable expiry is treated as expired.
+			return status.Error(codes.Unauthenticated, "session expired")
+		}
+		if expireAt.Before(time.Now()) {
 			return status.Error(codes.Unauthenticated, "session expired")
 		}
 	}

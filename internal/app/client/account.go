@@ -308,7 +308,7 @@ func (a *Account) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*T
 	if cmd.RefreshToken == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "refresh_token is required")
 	}
-	claims, ok := jwtparser.Parse([]byte(a.cfg.GetSecurity().GetJwt().GetSecret()), cmd.RefreshToken)
+	claims, ok := jwtparser.Parse(jwtparser.DeriveKey(a.cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeEndUserJWT), cmd.RefreshToken)
 	if !ok {
 		return nil, "", status.Error(codes.Unauthenticated, "invalid refresh token")
 	}

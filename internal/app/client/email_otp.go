@@ -71,7 +71,7 @@ func (a *Account) CreateEmailOTP(ctx context.Context, cmd CreateEmailOTPCommand)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "otp generation failed")
 	}
-	challengeID, expireAt, err := a.otp.CreateEmailChallenge(ctx, projectID, email, infraauth.HashOTP(code))
+	challengeID, expireAt, err := a.otp.CreateEmailChallenge(ctx, projectID, email, code)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func (a *Account) CreateEmailOTPSession(ctx context.Context, cmd CreateEmailOTPS
 		return nil, nil, "", err
 	}
 
-	if err := a.otp.VerifyEmailChallenge(ctx, projectID, challengeID, email, infraauth.HashOTP(otp)); err != nil {
+	if err := a.otp.VerifyEmailChallenge(ctx, projectID, challengeID, email, otp); err != nil {
 		return nil, nil, "", err
 	}
 

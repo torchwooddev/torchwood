@@ -36,8 +36,10 @@ func (s *RedisOAuthStateStore) Save(ctx context.Context, state domainauth.OAuthS
 	return nil
 }
 
-func (s *RedisOAuthStateStore) Get(ctx context.Context, stateID string) (*domainauth.OAuthState, error) {
-	raw, err := s.rdb.Get(ctx, oauthStateKey(stateID)).Bytes()
+// Consume atomically fetches and deletes the state via GETDEL so a state can
+// only be redeemed once, closing the concurrent-callback replay window.
+func (s *RedisOAuthStateStore) Consume(ctx context.Context, stateID string) (*domainauth.OAuthState, error) {
+	raw, err := s.rdb.GetDel(ctx, oauthStateKey(stateID)).Bytes()
 	if err == redis.Nil {
 		return nil, status.Error(codes.Unauthenticated, "invalid or expired oauth state")
 	}
@@ -49,13 +51,6 @@ func (s *RedisOAuthStateStore) Get(ctx context.Context, stateID string) (*domain
 		return nil, status.Error(codes.Internal, "oauth state decode failed")
 	}
 	return &state, nil
-}
-
-func (s *RedisOAuthStateStore) Delete(ctx context.Context, stateID string) error {
-	if err := s.rdb.Del(ctx, oauthStateKey(stateID)).Err(); err != nil {
-		return status.Error(codes.Internal, "oauth state cleanup failed")
-	}
-	return nil
 }
 
 func oauthStateKey(stateID string) string {

@@ -72,7 +72,7 @@ func (a *Auth) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*Toke
 	if cmd.RefreshToken == "" {
 		return nil, status.Error(codes.InvalidArgument, "refresh_token is required")
 	}
-	claims, ok := jwtparser.Parse([]byte(a.cfg.GetSecurity().GetJwt().GetSecret()), cmd.RefreshToken)
+	claims, ok := jwtparser.Parse(jwtparser.DeriveKey(a.cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), cmd.RefreshToken)
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "invalid refresh token")
 	}
@@ -116,7 +116,7 @@ func (a *Auth) adminIDFromMetadata(ctx context.Context) string {
 	if !ok {
 		return ""
 	}
-	secret := []byte(a.cfg.GetSecurity().GetJwt().GetSecret())
+	secret := jwtparser.DeriveKey(a.cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT)
 	if raw := metadataValue(md, "authorization"); raw != "" {
 		if parts := strings.Fields(raw); len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
 			if claims, ok := jwtparser.ParseAllowExpired(secret, parts[1]); ok && claims.ActorKind == "admin" {
@@ -201,7 +201,8 @@ func (a *Auth) issueAdminTokens(adminID, email, role string) (*TokenPair, error)
 		ExpiresAt: now.Add(accessTTL).Unix(),
 		IssuedAt:  now.Unix(),
 	}
-	accessToken, err := jwtparser.Generate([]byte(a.cfg.GetSecurity().GetJwt().GetSecret()), accessClaims)
+	adminKey := jwtparser.DeriveKey(a.cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT)
+	accessToken, err := jwtparser.Generate(adminKey, accessClaims)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +210,7 @@ func (a *Auth) issueAdminTokens(adminID, email, role string) (*TokenPair, error)
 	refreshClaims.TokenID = idgen.UUID().String()
 	refreshClaims.TokenType = jwtparser.TokenTypeRefresh
 	refreshClaims.ExpiresAt = now.Add(refreshTTL).Unix()
-	refreshToken, err := jwtparser.Generate([]byte(a.cfg.GetSecurity().GetJwt().GetSecret()), refreshClaims)
+	refreshToken, err := jwtparser.Generate(adminKey, refreshClaims)
 	if err != nil {
 		return nil, err
 	}

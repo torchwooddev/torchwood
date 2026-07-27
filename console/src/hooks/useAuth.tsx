@@ -5,8 +5,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import { getAuthToken, clearAuthToken, getProjectID, setProjectID } from "@/api/client";
-import { login as apiLogin } from "@/api/auth";
+import { getAuthToken, getProjectID, setProjectID } from "@/api/client";
+import { login as apiLogin, logout as apiLogout } from "@/api/auth";
 
 interface AuthContextValue {
   token: string | null;
@@ -30,7 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    clearAuthToken();
+    // Fire-and-forget: apiLogout revokes the session server-side (best-effort)
+    // and clears stored tokens; clear local state immediately either way.
+    void apiLogout();
     setProjectID(null);
     setProjectIdState(null);
     setToken(null);

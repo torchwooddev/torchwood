@@ -72,7 +72,7 @@ func TestAuth_SignOut_ExpiredTokenStillRevokes(t *testing.T) {
 
 	// No principal in context (access token expired); the raw token is only
 	// available in the request metadata.
-	expiredToken, err := jwtparser.Generate([]byte(testConfig().GetSecurity().GetJwt().GetSecret()), jwtparser.Claims{
+	expiredToken, err := jwtparser.Generate(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		UserID:    "admin-9",
 		ActorKind: "admin",
 		TokenType: jwtparser.TokenTypeAccess,
@@ -116,7 +116,7 @@ func TestAuth_RefreshToken_RejectsRevokedAdmin(t *testing.T) {
 	store := newMemAdminRevokeStore()
 	require.NoError(t, store.RevokeBefore(ctx, "admin-1", time.Now(), time.Hour))
 
-	refreshToken, err := jwtparser.Generate([]byte(testConfig().GetSecurity().GetJwt().GetSecret()), jwtparser.Claims{
+	refreshToken, err := jwtparser.Generate(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		UserID:    "admin-1",
 		Username:  "admin@graviton.local",
 		ActorKind: "admin",
@@ -142,7 +142,7 @@ func TestAuth_ValidateCredential_ChecksRevokeStore(t *testing.T) {
 	require.NoError(t, store.RevokeBefore(ctx, "admin-1", time.Now(), time.Hour))
 
 	issuedAt := time.Now().Add(-2 * time.Hour).Unix()
-	token, err := jwtparser.Generate([]byte(testConfig().GetSecurity().GetJwt().GetSecret()), jwtparser.Claims{
+	token, err := jwtparser.Generate(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		UserID:    "admin-1",
 		ActorKind: "admin",
 		TokenType: jwtparser.TokenTypeAccess,
