@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
@@ -68,6 +69,8 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 	require.NotEmpty(t, tokens.AccessToken)
 
 	// Existing user path: second login with new challenge.
+	// 跳过 60s 的发送冷却（otpSendCooldown），否则第二次发送会被限流。
+	mr.FastForward(61 * time.Second)
 	mailer.Bodies = nil
 	challenge2, err := account.CreateEmailOTP(ctx, CreateEmailOTPCommand{
 		ProjectID: projectID,

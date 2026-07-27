@@ -139,8 +139,9 @@ func TestPermissions_KeysNotBypass(t *testing.T) {
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
+		// 不含 read 授权：在 documentSecurity OR 语义下 collection 级的 read:any
+		// 会对所有角色（含 keys）放行，无法检验 keys 不 bypass 文档权限。
 		{Type: "create", Role: "users"},
-		{Type: "read", Role: "any"},
 		{Type: "update", Role: "users"},
 		{Type: "delete", Role: "users"},
 	}, true))

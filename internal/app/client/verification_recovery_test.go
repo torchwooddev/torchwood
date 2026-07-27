@@ -46,7 +46,7 @@ func TestAccount_VerificationFlow(t *testing.T) {
 
 	user, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
-		Email:     "verify-me@graviton.local",
+		Email:     "verify-me@example.com",
 		Password:  "User@123",
 		Name:      "Verify Me",
 	})
@@ -61,7 +61,7 @@ func TestAccount_VerificationFlow(t *testing.T) {
 	})
 	challenge, err := account.CreateVerification(authCtx, CreateVerificationCommand{
 		ProjectID: projectID,
-		URL:       "http://localhost:5173/verify",
+		URL:       "http://localhost/verify",
 	})
 	require.NoError(t, err)
 	require.Equal(t, user.ID, challenge.UserID)
@@ -119,7 +119,7 @@ func TestAccount_RecoveryFlow(t *testing.T) {
 	require.NoError(t, account.CreateRecovery(ctx, CreateRecoveryCommand{
 		ProjectID: projectID,
 		Email:     user.Email,
-		URL:       "http://localhost:5173/recovery",
+		URL:       "http://localhost/recovery",
 	}))
 	require.Len(t, mailer.Bodies, 1)
 

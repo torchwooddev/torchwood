@@ -2,6 +2,7 @@ package bunrepo_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
@@ -83,5 +84,5 @@ func TestOAuthProviderRepository_CRUD(t *testing.T) {
 }
 
 func stringsHasEncPrefix(s string) bool {
-	return len(s) > 8 && s[:8] == "enc:v1:"
+	return strings.HasPrefix(s, "enc:v1:")
 }

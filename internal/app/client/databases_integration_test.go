@@ -44,7 +44,11 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "notes", "Notes", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
-	}, nil, nil, true))
+	}, nil, []databases.Permission{
+		// 只授予集合级 create，读/写/删由文档级权限（documentSecurity OR 逻辑）决定，
+		// 这样才能验证非属主被文档权限拒绝。
+		{Type: "create", Role: "users"},
+	}, true))
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
 		ProjectID: projectID,
