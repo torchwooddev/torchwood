@@ -24,18 +24,21 @@ type SessionService struct {
 	docDB        databases.DocumentDB
 	sessionCodec *SessionCookieCodec
 	roles        domainauth.UserRoleResolver
+	rotation     domainauth.RefreshRotationStore
 }
 
 func NewSessionService(
 	cfg *config.AppConfig,
 	docDB databases.DocumentDB,
 	roles domainauth.UserRoleResolver,
+	rotation domainauth.RefreshRotationStore,
 ) *SessionService {
 	return &SessionService{
 		cfg:          cfg,
 		docDB:        docDB,
 		sessionCodec: NewSessionCookieCodec(string(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeSessionCookie))),
 		roles:        roles,
+		rotation:     rotation,
 	}
 }
 
@@ -67,6 +70,10 @@ func (s *SessionService) CreateSessionAndTokens(ctx context.Context, projectID, 
 }
 
 func (s *SessionService) IssueTokens(ctx context.Context, projectID, userID, email, sessionID string) (*domainauth.TokenBundle, string, error) {
+	return s.IssueTokensWithRefreshID(ctx, projectID, userID, email, sessionID, idgen.UUID().String())
+}
+
+func (s *SessionService) IssueTokensWithRefreshID(ctx context.Context, projectID, userID, email, sessionID, refreshTokenID string) (*domainauth.TokenBundle, string, error) {
 	accessTTL := 15 * time.Minute
 	if d, err := time.ParseDuration(s.cfg.GetSecurity().GetJwt().GetAccessTtl()); err == nil {
 		accessTTL = d
@@ -99,7 +106,7 @@ func (s *SessionService) IssueTokens(ctx context.Context, projectID, userID, ema
 		return nil, "", err
 	}
 	refreshClaims := accessClaims
-	refreshClaims.TokenID = idgen.UUID().String()
+	refreshClaims.TokenID = refreshTokenID
 	refreshClaims.TokenType = jwtparser.TokenTypeRefresh
 	refreshClaims.ExpiresAt = now.Add(refreshTTL).Unix()
 	refreshToken, err := jwtparser.Generate(endUserKey, refreshClaims)
@@ -107,11 +114,18 @@ func (s *SessionService) IssueTokens(ctx context.Context, projectID, userID, ema
 		return nil, "", err
 	}
 
+	if s.rotation != nil {
+		if err := s.rotation.Register(ctx, domainauth.RefreshRotationKey(projectID, sessionID), refreshTokenID, refreshTTL); err != nil {
+			return nil, "", err
+		}
+	}
+
 	cookie := s.sessionCodec.Sign(projectID, sessionID)
 	return &domainauth.TokenBundle{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    accessClaims.ExpiresAt,
+		AccessToken:    accessToken,
+		RefreshToken:   refreshToken,
+		ExpiresAt:      accessClaims.ExpiresAt,
+		RefreshTokenID: refreshTokenID,
 	}, cookie, nil
 }
 

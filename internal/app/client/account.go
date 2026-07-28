@@ -35,6 +35,7 @@ type Account struct {
 	oauthState     domainauth.OAuthStateStore
 	tokens         domainauth.AccountTokenStore
 	loginThrottle  domainauth.LoginThrottle
+	rotation       domainauth.RefreshRotationStore
 	idGen          domainidgen.Generator
 	mailer         messaging.Mailer
 	sms            messaging.SMSSender
@@ -50,6 +51,7 @@ func NewAccount(
 	oauthState domainauth.OAuthStateStore,
 	tokens domainauth.AccountTokenStore,
 	loginThrottle domainauth.LoginThrottle,
+	rotation domainauth.RefreshRotationStore,
 	idGen domainidgen.Generator,
 	mailer messaging.Mailer,
 	sms messaging.SMSSender,
@@ -64,6 +66,7 @@ func NewAccount(
 		oauthState:     oauthState,
 		tokens:         tokens,
 		loginThrottle:  loginThrottle,
+		rotation:       rotation,
 		idGen:          idGen,
 		mailer:         mailer,
 		sms:            sms,
@@ -328,7 +331,30 @@ func (a *Account) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*T
 	if err := a.ensureUserCanAuthenticate(ctx, projectID, claims.UserID); err != nil {
 		return nil, "", err
 	}
-	return a.sessions.IssueTokens(ctx, projectID, claims.UserID, claims.Username, claims.SessionID)
+	if a.rotation == nil {
+		return a.sessions.IssueTokens(ctx, projectID, claims.UserID, claims.Username, claims.SessionID)
+	}
+
+	refreshTTL := 7 * 24 * time.Hour
+	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetRefreshTtl()); err == nil {
+		refreshTTL = d
+	}
+	rotationKey := domainauth.RefreshRotationKey(projectID, claims.SessionID)
+	newRefreshTokenID := idgen.UUID().String()
+	result, err := a.rotation.Rotate(ctx, rotationKey, claims.TokenID, newRefreshTokenID, refreshTTL)
+	if err != nil {
+		return nil, "", err
+	}
+	switch result {
+	case domainauth.RotateOK:
+		return a.sessions.IssueTokensWithRefreshID(ctx, projectID, claims.UserID, claims.Username, claims.SessionID, newRefreshTokenID)
+	case domainauth.RotateMismatch:
+		// 旧 refresh token 被再次使用：判定为重用，删除会话使该会话全部 token 立即失效。
+		_ = a.docDB.DeleteDocument(ctx, projectID, "default", "sessions", claims.SessionID, databases.SystemPrincipal)
+		return nil, "", status.Error(codes.Unauthenticated, "refresh token reuse detected")
+	default: // RotateMissing
+		return nil, "", status.Error(codes.Unauthenticated, "session expired")
+	}
 }
 
 func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (*User, error) {

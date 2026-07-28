@@ -2,6 +2,7 @@ package console_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,7 +58,7 @@ func TestAuth_SignOut_RevokesAdminTokens(t *testing.T) {
 		UserID:    "admin-1",
 	})
 	store := newMemAdminRevokeStore()
-	authUC := console.NewAuth(testConfig(), nil, store, nil)
+	authUC := console.NewAuth(testConfig(), nil, store, nil, nil)
 
 	require.NoError(t, authUC.SignOut(ctx))
 	revoked, err := store.RevokedBefore(ctx, "admin-1")
@@ -68,7 +69,7 @@ func TestAuth_SignOut_RevokesAdminTokens(t *testing.T) {
 func TestAuth_SignOut_ExpiredTokenStillRevokes(t *testing.T) {
 	t.Parallel()
 	store := newMemAdminRevokeStore()
-	authUC := console.NewAuth(testConfig(), nil, store, nil)
+	authUC := console.NewAuth(testConfig(), nil, store, nil, nil)
 
 	// No principal in context (access token expired); the raw token is only
 	// available in the request metadata.
@@ -91,7 +92,7 @@ func TestAuth_SignOut_ExpiredTokenStillRevokes(t *testing.T) {
 func TestAuth_SignOut_ExpiredTokenWrongSignatureIgnored(t *testing.T) {
 	t.Parallel()
 	store := newMemAdminRevokeStore()
-	authUC := console.NewAuth(testConfig(), nil, store, nil)
+	authUC := console.NewAuth(testConfig(), nil, store, nil, nil)
 
 	forgedToken, err := jwtparser.Generate([]byte("another-secret"), jwtparser.Claims{
 		UserID:    "admin-9",
@@ -127,7 +128,7 @@ func TestAuth_RefreshToken_RejectsRevokedAdmin(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	authUC := console.NewAuth(testConfig(), nil, store, nil)
+	authUC := console.NewAuth(testConfig(), nil, store, nil, nil)
 	_, err = authUC.RefreshToken(ctx, console.RefreshTokenCommand{RefreshToken: refreshToken})
 	require.Error(t, err)
 	st, ok := status.FromError(err)
@@ -161,4 +162,112 @@ func TestAuth_ValidateCredential_ChecksRevokeStore(t *testing.T) {
 	)
 	_, err = v.ValidateToken(ctx, token)
 	require.Error(t, err)
+}
+
+
+// memRotationStore is an in-memory domainauth.RefreshRotationStore for tests.
+type memRotationStore struct {
+	mu     sync.Mutex
+	values map[string]string
+}
+
+func newMemRotationStore() *memRotationStore {
+	return &memRotationStore{values: map[string]string{}}
+}
+
+func (s *memRotationStore) Register(_ context.Context, key, tokenID string, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values[key] = tokenID
+	return nil
+}
+
+func (s *memRotationStore) Rotate(_ context.Context, key, presentedTokenID, newTokenID string, _ time.Duration) (domainauth.RotateResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.values[key]
+	if !ok {
+		return domainauth.RotateMissing, nil
+	}
+	if cur != presentedTokenID {
+		return domainauth.RotateMismatch, nil
+	}
+	s.values[key] = newTokenID
+	return domainauth.RotateOK, nil
+}
+
+func (s *memRotationStore) current(key string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.values[key]
+}
+
+var _ domainauth.RefreshRotationStore = (*memRotationStore)(nil)
+
+func adminRefreshToken(t *testing.T, adminID, tokenID string) string {
+	t.Helper()
+	token, err := jwtparser.Generate(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
+		TokenID:   tokenID,
+		UserID:    adminID,
+		Username:  "admin@graviton.local",
+		ActorKind: "admin",
+		Roles:     []string{"admin"},
+		TokenType: jwtparser.TokenTypeRefresh,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	})
+	require.NoError(t, err)
+	return token
+}
+
+func TestAuth_RefreshToken_RotatesToken(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	revokeStore := newMemAdminRevokeStore()
+	rotation := newMemRotationStore()
+	key := domainauth.RefreshRotationKey("admin", "admin-1")
+	require.NoError(t, rotation.Register(ctx, key, "tid-old", time.Hour))
+
+	authUC := console.NewAuth(testConfig(), nil, revokeStore, nil, rotation)
+	pair, err := authUC.RefreshToken(ctx, console.RefreshTokenCommand{
+		RefreshToken: adminRefreshToken(t, "admin-1", "tid-old"),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, pair.AccessToken)
+	require.NotEmpty(t, pair.RefreshToken)
+	require.NotEmpty(t, pair.RefreshTokenID)
+	require.NotEqual(t, "tid-old", pair.RefreshTokenID)
+	require.Equal(t, pair.RefreshTokenID, rotation.current(key))
+
+	// No revocation happened on the happy path.
+	revoked, err := revokeStore.RevokedBefore(ctx, "admin-1")
+	require.NoError(t, err)
+	require.True(t, revoked.IsZero())
+}
+
+func TestAuth_RefreshToken_ReuseRevokesAllAdminTokens(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	revokeStore := newMemAdminRevokeStore()
+	rotation := newMemRotationStore()
+	key := domainauth.RefreshRotationKey("admin", "admin-1")
+	// The store holds the rotated id; the presented token carries the old one.
+	require.NoError(t, rotation.Register(ctx, key, "tid-new", time.Hour))
+
+	authUC := console.NewAuth(testConfig(), nil, revokeStore, nil, rotation)
+	_, err := authUC.RefreshToken(ctx, console.RefreshTokenCommand{
+		RefreshToken: adminRefreshToken(t, "admin-1", "tid-old"),
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Unauthenticated, st.Code())
+
+	// Reuse detection revokes every token issued for this admin so far.
+	revoked, err := revokeStore.RevokedBefore(ctx, "admin-1")
+	require.NoError(t, err)
+	require.False(t, revoked.IsZero())
+
+	// The stored rotation value was not overwritten by the attacker.
+	require.Equal(t, "tid-new", rotation.current(key))
 }

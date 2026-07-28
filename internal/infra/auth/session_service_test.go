@@ -24,7 +24,7 @@ func TestSessionService_RecordsClientInfo(t *testing.T) {
 
 	// Unit-level check: CreateSessionAndTokens reads ClientInfo from context.
 	// Full integration is covered by account integration tests.
-	svc := auth.NewSessionService(nil, nil, stubRoleResolver{})
+	svc := auth.NewSessionService(nil, nil, stubRoleResolver{}, nil)
 	require.NotNil(t, svc)
 
 	ctx := contexts.WithClientInfo(context.Background(), contexts.ClientInfo{
@@ -47,7 +47,7 @@ func TestSessionService_EnsureActiveSession_CorruptExpireAtFailsClosed(t *testin
 			},
 		},
 	}
-	svc := auth.NewSessionService(nil, docDB, nil)
+	svc := auth.NewSessionService(nil, docDB, nil, nil)
 
 	err := svc.EnsureActiveSession(ctx, "proj-1", "sess-bad", "user-1")
 	require.Error(t, err)

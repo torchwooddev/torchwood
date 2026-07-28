@@ -52,7 +52,8 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	projectsRepository := bunrepo.NewProjectRepository(database)
 	oAuthProviderRepository := bunrepo.NewOAuthProviderRepository(database, appConfig)
 	userRoles := client.NewUserRoles(documentDB)
-	sessionService := auth.NewSessionService(appConfig, documentDB, userRoles)
+	redisRefreshRotationStore := auth.NewRedisRefreshRotationStore(redisClient)
+	sessionService := auth.NewSessionService(appConfig, documentDB, userRoles, redisRefreshRotationStore)
 	redisOTPChallengeStore := auth.NewRedisOTPChallengeStore(redisClient, appConfig)
 	redisOAuthStateStore := auth.NewRedisOAuthStateStore(redisClient)
 	redisAccountTokenStore := auth.NewRedisAccountTokenStore(redisClient)
@@ -64,7 +65,7 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	}
 	mailerService := messaging.NewMailer(appConfig)
 	smsService := messaging.NewSMSService(appConfig)
-	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, service, mailerService, smsService)
+	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService)
 	accountService := clientgrpc.NewAccountService(account)
 	databases := client.NewDatabases(projectsRepository, documentDB)
 	databasesService := clientgrpc.NewDatabasesService(databases)
@@ -90,7 +91,7 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	servergrpcTeamsService := servergrpc.NewTeamsService(teams)
 	serverDatabases := server.NewDatabases(projectsRepository, documentDB)
 	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases)
-	consoleAuth := console.NewAuth(appConfig, consoleAdminRepository, redisAdminTokenRevokeStore, redisLoginThrottle)
+	consoleAuth := console.NewAuth(appConfig, consoleAdminRepository, redisAdminTokenRevokeStore, redisLoginThrottle, redisRefreshRotationStore)
 	authService := consolegrpc.NewAuthService(consoleAuth)
 	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, authService)
 	if err != nil {

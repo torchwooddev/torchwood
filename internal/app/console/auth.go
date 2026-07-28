@@ -23,10 +23,11 @@ type Auth struct {
 	adminRepo        projects.ConsoleAdminRepository
 	adminRevokeStore domainauth.AdminTokenRevokeStore
 	loginThrottle    domainauth.LoginThrottle
+	rotation         domainauth.RefreshRotationStore
 }
 
-func NewAuth(cfg *config.AppConfig, adminRepo projects.ConsoleAdminRepository, adminRevokeStore domainauth.AdminTokenRevokeStore, loginThrottle domainauth.LoginThrottle) *Auth {
-	return &Auth{cfg: cfg, adminRepo: adminRepo, adminRevokeStore: adminRevokeStore, loginThrottle: loginThrottle}
+func NewAuth(cfg *config.AppConfig, adminRepo projects.ConsoleAdminRepository, adminRevokeStore domainauth.AdminTokenRevokeStore, loginThrottle domainauth.LoginThrottle, rotation domainauth.RefreshRotationStore) *Auth {
+	return &Auth{cfg: cfg, adminRepo: adminRepo, adminRevokeStore: adminRevokeStore, loginThrottle: loginThrottle, rotation: rotation}
 }
 
 type SignInCommand struct {
@@ -42,6 +43,9 @@ type TokenPair struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresAt    int64
+	// RefreshTokenID is the jti of RefreshToken; used for rotation bookkeeping
+	// and never mapped to proto responses.
+	RefreshTokenID string
 }
 
 func (a *Auth) SignIn(ctx context.Context, cmd SignInCommand) (*TokenPair, error) {
@@ -65,7 +69,7 @@ func (a *Auth) SignIn(ctx context.Context, cmd SignInCommand) (*TokenPair, error
 		return invalidCredentials()
 	}
 	a.resetLoginThrottle(ctx, throttleEmail, clientInfo.IP)
-	return a.issueAdminTokens(admin.ID, admin.Email, admin.Role)
+	return a.issueAdminTokens(ctx, admin.ID, admin.Email, admin.Role)
 }
 
 func (a *Auth) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*TokenPair, error) {
@@ -82,7 +86,28 @@ func (a *Auth) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*Toke
 	if err := a.checkAdminTokenRevoked(ctx, claims); err != nil {
 		return nil, err
 	}
-	return a.issueAdminTokens(claims.UserID, claims.Username, firstRole(claims.Roles))
+	if a.rotation == nil {
+		return a.issueAdminTokens(ctx, claims.UserID, claims.Username, firstRole(claims.Roles))
+	}
+
+	refreshTTL := a.refreshTTL()
+	newRefreshTokenID := idgen.UUID().String()
+	result, err := a.rotation.Rotate(ctx, domainauth.RefreshRotationKey("admin", claims.UserID), claims.TokenID, newRefreshTokenID, refreshTTL)
+	if err != nil {
+		return nil, err
+	}
+	switch result {
+	case domainauth.RotateOK:
+		return a.issueAdminTokensWithRefreshID(ctx, claims.UserID, claims.Username, firstRole(claims.Roles), newRefreshTokenID)
+	case domainauth.RotateMismatch:
+		// 旧 refresh token 被再次使用：判定为重用，撤销该 admin 此前签发的全部 token。
+		if a.adminRevokeStore != nil {
+			_ = a.adminRevokeStore.RevokeBefore(ctx, claims.UserID, time.Now(), refreshTTL)
+		}
+		return nil, status.Error(codes.Unauthenticated, "refresh token reuse detected")
+	default: // RotateMissing
+		return nil, status.Error(codes.Unauthenticated, "session expired")
+	}
 }
 
 func (a *Auth) SignOut(ctx context.Context) error {
@@ -101,11 +126,15 @@ func (a *Auth) SignOut(ctx context.Context) error {
 	if adminID == "" {
 		return nil
 	}
+	return a.adminRevokeStore.RevokeBefore(ctx, adminID, time.Now(), a.refreshTTL())
+}
+
+func (a *Auth) refreshTTL() time.Duration {
 	refreshTTL := 7 * 24 * time.Hour
 	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetRefreshTtl()); err == nil {
 		refreshTTL = d
 	}
-	return a.adminRevokeStore.RevokeBefore(ctx, adminID, time.Now(), refreshTTL)
+	return refreshTTL
 }
 
 // adminIDFromMetadata extracts the admin id from the bearer token or console
@@ -181,15 +210,16 @@ func (a *Auth) checkAdminTokenRevoked(ctx context.Context, claims *jwtparser.Cla
 	return nil
 }
 
-func (a *Auth) issueAdminTokens(adminID, email, role string) (*TokenPair, error) {
+func (a *Auth) issueAdminTokens(ctx context.Context, adminID, email, role string) (*TokenPair, error) {
+	return a.issueAdminTokensWithRefreshID(ctx, adminID, email, role, idgen.UUID().String())
+}
+
+func (a *Auth) issueAdminTokensWithRefreshID(ctx context.Context, adminID, email, role, refreshTokenID string) (*TokenPair, error) {
 	accessTTL := 24 * time.Hour
 	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetAccessTtl()); err == nil {
 		accessTTL = d
 	}
-	refreshTTL := 7 * 24 * time.Hour
-	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetRefreshTtl()); err == nil {
-		refreshTTL = d
-	}
+	refreshTTL := a.refreshTTL()
 	now := time.Now()
 	accessClaims := jwtparser.Claims{
 		TokenID:   idgen.UUID().String(),
@@ -207,17 +237,23 @@ func (a *Auth) issueAdminTokens(adminID, email, role string) (*TokenPair, error)
 		return nil, err
 	}
 	refreshClaims := accessClaims
-	refreshClaims.TokenID = idgen.UUID().String()
+	refreshClaims.TokenID = refreshTokenID
 	refreshClaims.TokenType = jwtparser.TokenTypeRefresh
 	refreshClaims.ExpiresAt = now.Add(refreshTTL).Unix()
 	refreshToken, err := jwtparser.Generate(adminKey, refreshClaims)
 	if err != nil {
 		return nil, err
 	}
+	if a.rotation != nil {
+		if err := a.rotation.Register(ctx, domainauth.RefreshRotationKey("admin", adminID), refreshTokenID, refreshTTL); err != nil {
+			return nil, err
+		}
+	}
 	return &TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    accessClaims.ExpiresAt,
+		AccessToken:    accessToken,
+		RefreshToken:   refreshToken,
+		ExpiresAt:      accessClaims.ExpiresAt,
+		RefreshTokenID: refreshTokenID,
 	}, nil
 }
 

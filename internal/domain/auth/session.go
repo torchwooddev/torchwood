@@ -21,6 +21,9 @@ type TokenBundle struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresAt    int64
+	// RefreshTokenID is the jti of RefreshToken; used for rotation bookkeeping
+	// and never mapped to proto responses.
+	RefreshTokenID string
 }
 
 // UserRoleResolver loads JWT role claims for a user at token issuance time.
@@ -32,6 +35,9 @@ type UserRoleResolver interface {
 type SessionService interface {
 	CreateSessionAndTokens(ctx context.Context, projectID, userID, email, provider string) (*TokenBundle, string, error)
 	IssueTokens(ctx context.Context, projectID, userID, email, sessionID string) (*TokenBundle, string, error)
+	// IssueTokensWithRefreshID issues tokens with a caller-provided refresh token id
+	// (jti) so the rotation store and the issued token stay in sync.
+	IssueTokensWithRefreshID(ctx context.Context, projectID, userID, email, sessionID, refreshTokenID string) (*TokenBundle, string, error)
 	EnsureActiveSession(ctx context.Context, projectID, sessionID, userID string) error
 	// DeleteSessionsByUser removes every session of the user (e.g. after a password change).
 	DeleteSessionsByUser(ctx context.Context, projectID, userID string) error

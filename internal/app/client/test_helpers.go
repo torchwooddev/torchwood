@@ -35,7 +35,11 @@ func NewTestAccountWithDeps(
 	sms messaging.SMSSender,
 ) *Account {
 	roles := NewUserRoles(docDB)
-	sessions := infraauth.NewSessionService(cfg, docDB, roles)
+	var rotation domainauth.RefreshRotationStore
+	if rdb != nil {
+		rotation = infraauth.NewRedisRefreshRotationStore(rdb)
+	}
+	sessions := infraauth.NewSessionService(cfg, docDB, roles, rotation)
 	var otp domainauth.OTPChallengeStore
 	var oauthState domainauth.OAuthStateStore
 	var tokens domainauth.AccountTokenStore
@@ -52,7 +56,7 @@ func NewTestAccountWithDeps(
 	if sms == nil {
 		sms = inframessaging.NewSMSService(cfg)
 	}
-	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, nil, mailer, sms)
+	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms)
 }
 
 // CaptureMailer records sent messages for tests.
