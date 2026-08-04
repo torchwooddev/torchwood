@@ -39,6 +39,7 @@ type Account struct {
 	idGen          domainidgen.Generator
 	mailer         messaging.Mailer
 	sms            messaging.SMSSender
+	rateLimiter    domainauth.RateLimiter
 }
 
 func NewAccount(
@@ -55,6 +56,7 @@ func NewAccount(
 	idGen domainidgen.Generator,
 	mailer messaging.Mailer,
 	sms messaging.SMSSender,
+	rateLimiter domainauth.RateLimiter,
 ) *Account {
 	return &Account{
 		cfg:            cfg,
@@ -70,6 +72,7 @@ func NewAccount(
 		idGen:          idGen,
 		mailer:         mailer,
 		sms:            sms,
+		rateLimiter:    rateLimiter,
 	}
 }
 
@@ -129,8 +132,8 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 	if email == "" {
 		return nil, nil, "", status.Error(codes.InvalidArgument, "email is required")
 	}
-	if cmd.Password == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "password is required")
+	if err := validatePasswordStrength(cmd.Password); err != nil {
+		return nil, nil, "", err
 	}
 	project, err := a.projectRepo.GetProject(ctx, cmd.ProjectID)
 	if err != nil {
@@ -389,6 +392,9 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		updates["email_verified"] = false
 	}
 	if cmd.Password != "" {
+		if err := validatePasswordStrength(cmd.Password); err != nil {
+			return nil, err
+		}
 		if cmd.OldPassword == "" {
 			return nil, status.Error(codes.InvalidArgument, "old_password is required")
 		}

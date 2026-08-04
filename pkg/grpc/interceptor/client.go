@@ -2,7 +2,6 @@ package interceptor
 
 import (
 	"context"
-	"strings"
 
 	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
 	"google.golang.org/grpc"
@@ -11,29 +10,42 @@ import (
 
 // ClientInfoInterceptor extracts client IP and user agent from gRPC metadata
 // (populated by grpc-gateway from HTTP headers) into the request context.
-type ClientInfoInterceptor struct{}
+// X-Forwarded-For / X-Real-Ip 仅在直连 peer 命中可信代理网段时被采纳，
+// 否则一律使用 gRPC peer 地址，防止伪造来源绕过 IP 限流与审计。
+type ClientInfoInterceptor struct {
+	trusted *TrustedProxies
+}
 
-func NewClientInfoInterceptor() *ClientInfoInterceptor {
-	return &ClientInfoInterceptor{}
+func NewClientInfoInterceptor(trusted *TrustedProxies) *ClientInfoInterceptor {
+	return &ClientInfoInterceptor{trusted: trusted}
 }
 
 func (c *ClientInfoInterceptor) UnaryMiddleware(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		ctx = contexts.WithClientInfo(ctx, extractClientInfo(md))
+		ctx = contexts.WithClientInfo(ctx, c.extractClientInfo(ctx, md))
 	}
 	return handler(ctx, req)
 }
 
-func extractClientInfo(md metadata.MD) contexts.ClientInfo {
-	ip := firstMetadataValue(md, "x-forwarded-for")
-	if ip != "" {
-		if idx := strings.Index(ip, ","); idx > 0 {
-			ip = strings.TrimSpace(ip[:idx])
+func (c *ClientInfoInterceptor) extractClientInfo(ctx context.Context, md metadata.MD) contexts.ClientInfo {
+	xff := firstMetadataValue(md, "x-forwarded-for")
+	if xff == "" {
+		// grpc-gateway 默认会给非 IANA 永久头加 grpcgateway- 前缀。
+		xff = firstMetadataValue(md, "grpcgateway-x-forwarded-for")
+	}
+	realIP := firstMetadataValue(md, "x-real-ip")
+
+	var ip string
+	if peerIP := PeerIP(ctx); peerIP != "" {
+		ip = c.trusted.ResolveClientIP(peerIP, xff, realIP)
+	} else {
+		// 无 peer 信息（进程内调用/测试）时退化为直接取头部。
+		ip = FirstForwardedHop(xff)
+		if ip == "" {
+			ip = realIP
 		}
 	}
-	if ip == "" {
-		ip = firstMetadataValue(md, "x-real-ip")
-	}
+
 	ua := firstMetadataValue(md, "grpcgateway-user-agent")
 	if ua == "" {
 		ua = firstMetadataValue(md, "user-agent")

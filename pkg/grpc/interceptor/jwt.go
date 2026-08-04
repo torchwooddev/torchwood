@@ -3,6 +3,7 @@ package interceptor
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/deeploop-ai/graviton/internal/domain/shared"
@@ -25,6 +26,7 @@ type AuthInterceptor struct {
 	publicMethods     map[string]struct{}
 	apiKeyMethods     map[string]struct{}
 	permissionMethods map[string][]string
+	logger            *slog.Logger
 }
 
 func NewAuthInterceptor(validator Validator, publicMethods, apiKeyMethods []string, permissionMethods map[string][]string) (*AuthInterceptor, error) {
@@ -36,6 +38,7 @@ func NewAuthInterceptor(validator Validator, publicMethods, apiKeyMethods []stri
 		publicMethods:     make(map[string]struct{}),
 		apiKeyMethods:     make(map[string]struct{}),
 		permissionMethods: permissionMethods,
+		logger:            slog.Default(),
 	}
 	if i.permissionMethods == nil {
 		i.permissionMethods = map[string][]string{}
@@ -47,6 +50,27 @@ func NewAuthInterceptor(validator Validator, publicMethods, apiKeyMethods []stri
 		i.apiKeyMethods[m] = struct{}{}
 	}
 	return i, nil
+}
+
+// WithLogger 替换认证失败留痕所用的 logger（默认 slog.Default()），返回自身便于链式调用。
+func (i *AuthInterceptor) WithLogger(l *slog.Logger) *AuthInterceptor {
+	if l != nil {
+		i.logger = l
+	}
+	return i
+}
+
+// logAuthFailure 在认证/鉴权拒绝路径输出结构化告警日志，只记录方法名、
+// 拒绝原因类别与凭证类型，绝不记录 token 本体。
+func (i *AuthInterceptor) logAuthFailure(ctx context.Context, method, reason string, credentialType shared.CredentialType) {
+	ci := contexts.ClientInfoFrom(ctx)
+	i.logger.WarnContext(ctx, "grpc auth rejected",
+		slog.String("method", method),
+		slog.String("reason", reason),
+		slog.String("credential_type", string(credentialType)),
+		slog.String("ip", ci.IP),
+		slog.String("user_agent", ci.UserAgent),
+	)
 }
 
 func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
@@ -63,32 +87,39 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
+		i.logAuthFailure(ctx, info.FullMethod, "metadata_missing", "")
 		return nil, status.Error(codes.Unauthenticated, "metadata is not provided")
 	}
 
 	credentialType, token, err := extractCredential(md)
 	if err != nil {
+		i.logAuthFailure(ctx, info.FullMethod, "credential_missing", "")
 		return nil, status.Error(codes.Unauthenticated, "authentication credential is not provided")
 	}
 
 	principal, err := i.validator.ValidateCredential(ctx, token, credentialType)
 	if err != nil {
+		i.logAuthFailure(ctx, info.FullMethod, "credential_invalid", credentialType)
 		return nil, err
 	}
 	if principal == nil {
+		i.logAuthFailure(ctx, info.FullMethod, "credential_invalid", credentialType)
 		return nil, status.Error(codes.Unauthenticated, "invalid or expired credential")
 	}
 
 	if _, isAPIKeyMethod := i.apiKeyMethods[info.FullMethod]; isAPIKeyMethod {
 		if principal.CredentialType != shared.CredentialTypeAPIKey && principal.ActorKind != shared.ActorKindAdmin {
+			i.logAuthFailure(ctx, info.FullMethod, "credential_type_not_allowed", credentialType)
 			return nil, status.Error(codes.Unauthenticated, "developer API requires x-api-key header or admin session")
 		}
 		if principal.CredentialType == shared.CredentialTypeAPIKey {
 			// API key 凭证禁止调用 APIKeys 服务，防止泄露的 key 自铸新 key 造成永久提权。
 			if IsAPIKeysServiceMethod(info.FullMethod) {
+				i.logAuthFailure(ctx, info.FullMethod, "apikey_self_management_denied", credentialType)
 				return nil, status.Error(codes.PermissionDenied, "api keys cannot manage api keys")
 			}
 			if !APIKeyScopeAllowed(info.FullMethod, principal.Permissions) {
+				i.logAuthFailure(ctx, info.FullMethod, "apikey_scope_missing", credentialType)
 				return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
 			}
 		}
@@ -100,12 +131,14 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 			principal.ProjectID = projectID
 		}
 		if err := i.validator.ValidateAdminProjectAccess(ctx, principal); err != nil {
+			i.logAuthFailure(ctx, info.FullMethod, "admin_project_access_denied", credentialType)
 			return nil, err
 		}
 	}
 
 	if perms := i.permissionMethods[info.FullMethod]; len(perms) > 0 {
 		if !principal.HasAnyPermission(perms) {
+			i.logAuthFailure(ctx, info.FullMethod, "permission_denied", credentialType)
 			return nil, status.Error(codes.PermissionDenied, "missing required permission")
 		}
 	}
@@ -116,7 +149,7 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 
 func extractCredential(md metadata.MD) (shared.CredentialType, string, error) {
 	if raw := firstMetadataValue(md, "authorization"); raw != "" {
-		if credentialType, token, ok := parseAuthorizationHeader(raw); ok {
+		if credentialType, token, ok := ParseAuthorizationHeader(raw); ok {
 			return credentialType, token, nil
 		}
 	}
@@ -131,7 +164,9 @@ func extractCredential(md metadata.MD) (shared.CredentialType, string, error) {
 	return "", "", errors.New("no credential")
 }
 
-func parseAuthorizationHeader(raw string) (shared.CredentialType, string, bool) {
+// ParseAuthorizationHeader 解析 Authorization 头，支持 Bearer / Session / ApiKey 三种 scheme；
+// scheme 无法识别或格式不合法时返回 ok=false，调用方应拒绝而不是把整串当 token。
+func ParseAuthorizationHeader(raw string) (shared.CredentialType, string, bool) {
 	parts := strings.Fields(raw)
 	if len(parts) != 2 {
 		return "", "", false

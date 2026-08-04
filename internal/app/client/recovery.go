@@ -102,8 +102,8 @@ func (a *Account) UpdateRecovery(ctx context.Context, cmd UpdateRecoveryCommand)
 	if secret == "" {
 		return status.Error(codes.InvalidArgument, "secret is required")
 	}
-	if passwordRaw == "" {
-		return status.Error(codes.InvalidArgument, "password is required")
+	if err := validatePasswordStrength(passwordRaw); err != nil {
+		return err
 	}
 	if err := a.ensureProjectReady(ctx, projectID); err != nil {
 		return err

@@ -54,7 +54,11 @@ const queryClient = new QueryClient({
 });
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) {
+    // 正在用 refresh cookie 探测初始会话状态，避免闪现登录页。
+    return null;
+  }
   if (!isAuthenticated) {
     return <Navigate to="/console/login" replace />;
   }

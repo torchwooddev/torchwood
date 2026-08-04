@@ -34,6 +34,8 @@
 - MinIO 凭据请使用 `GRAVITON_STORAGE_S3_ACCESS_KEY_ID` 和 `GRAVITON_STORAGE_S3_SECRET_ACCESS_KEY`。
 - `cmd/server/main.go` 会通过 `godotenv` 尝试加载 `.env`，然后默认从 `./configs` 绑定配置。
 - 请使用 `configs/config.yaml.template` 作为基础模板，并将敏感信息保持在环境变量中。
+- 反向代理后需恢复客户端真实 IP 时设置 `security.trusted_proxies`（如 `GRAVITON_SECURITY_TRUSTED_PROXIES=127.0.0.1/32`）；默认不信任 X-Forwarded-For/X-Real-Ip，一律使用 gRPC peer 地址。
+- Console admin 会话走 `GRAVITON_session_console` HttpOnly cookie（SameSite=Lax，refresh cookie 限 `/v1/console/auth` 路径），前端不再用 localStorage 存 token。
 
 ## 数据库约定
 - 元数据静态表（projects、api_keys、document_*、console_admins）使用 bun + golang-migrate。

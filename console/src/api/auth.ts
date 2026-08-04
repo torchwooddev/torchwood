@@ -1,9 +1,4 @@
-import {
-  api,
-  setAuthToken,
-  setRefreshToken,
-  refreshAuthTokenSingleFlight,
-} from "./client";
+import { api, refreshAuthTokenSingleFlight } from "./client";
 import type { ApiRequestConfig } from "./client";
 
 export interface LoginInput {
@@ -11,35 +6,24 @@ export interface LoginInput {
   password: string;
 }
 
-export interface LoginResponse {
-  access_token: string;
-  expires_at: string;
-  refresh_token?: string;
+// login 成功后会话凭证由服务端通过 HttpOnly cookie 下发，响应体中的 token
+// 仅供直连 gRPC 客户端使用，浏览器端不保存。
+export async function login(input: LoginInput): Promise<void> {
+  await api.post("/console/auth/sign-in", input);
 }
 
-export async function login(input: LoginInput): Promise<string> {
-  const res = await api.post<LoginResponse>("/console/auth/sign-in", input);
-  setAuthToken(res.data.access_token);
-  if (res.data.refresh_token) {
-    setRefreshToken(res.data.refresh_token);
-  }
-  return res.data.access_token;
-}
-
-export async function refreshAuthToken(): Promise<string> {
+// refreshSession 用 refresh cookie 探测/续期会话，成功即处于已登录状态。
+export async function refreshSession(): Promise<void> {
   return refreshAuthTokenSingleFlight();
 }
 
-// logout revokes the admin token pair server-side (best-effort: local cleanup
-// proceeds even when the request fails), then clears local credentials.
+// logout revokes the admin token pair server-side and clears the session
+// cookies (best-effort: the call is skipped from the 401 retry flow).
 export async function logout(): Promise<void> {
   try {
     const config: ApiRequestConfig = { __skipAuthRetry: true };
     await api.post("/console/auth/sign-out", {}, config);
   } catch {
-    // Ignore: sign-out is best-effort, local cleanup must always run.
-  } finally {
-    setAuthToken(null);
-    setRefreshToken(null);
+    // Ignore: sign-out is best-effort.
   }
 }

@@ -2,6 +2,12 @@ import axios from "axios";
 import type { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
 import { toast } from "sonner";
 
+// 会话凭证由 GRAVITON_session_console / GRAVITON_console_refresh HttpOnly
+// cookie 携带，同源 XHR 自动附带，前端不再读写 token；一次性清理
+// localStorage 中迁移前残留的旧 token。
+localStorage.removeItem("GRAVITON_console_token");
+localStorage.removeItem("graviton_console_refresh_token");
+
 export const api = axios.create({
   baseURL: "/v1",
   headers: {
@@ -17,70 +23,25 @@ export interface ApiRequestConfig extends AxiosRequestConfig {
   __authRetried?: boolean;
 }
 
-const REFRESH_TOKEN_KEY = "graviton_console_refresh_token";
+// refreshAuthTokenSingleFlight refreshes the console session via the
+// HttpOnly refresh cookie (empty body; the server reads the cookie).
+// Concurrent callers share one in-flight request so a burst of 401s
+// triggers exactly one refresh. Uses bare axios to bypass the interceptors
+// (a 401 from refresh itself must not recurse).
+let refreshPromise: Promise<void> | null = null;
 
-export function setAuthToken(token: string | null) {
-  if (token) {
-    localStorage.setItem("GRAVITON_console_token", token);
-    authRedirecting = false;
-  } else {
-    localStorage.removeItem("GRAVITON_console_token");
-  }
-}
-
-export function clearAuthToken() {
-  localStorage.removeItem("GRAVITON_console_token");
-}
-
-export function getAuthToken(): string | null {
-  return localStorage.getItem("GRAVITON_console_token");
-}
-
-export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
-}
-
-export function setRefreshToken(token: string | null) {
-  if (token) {
-    localStorage.setItem(REFRESH_TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-  }
-}
-
-// refreshAuthTokenSingleFlight refreshes the console token pair using the
-// stored refresh token. Concurrent callers share one in-flight request so a
-// burst of 401s triggers exactly one refresh. Uses bare axios to bypass the
-// interceptors (a 401 from refresh itself must not recurse).
-let refreshPromise: Promise<string> | null = null;
-
-export function refreshAuthTokenSingleFlight(): Promise<string> {
+export function refreshAuthTokenSingleFlight(): Promise<void> {
   if (!refreshPromise) {
-    refreshPromise = doRefreshToken().finally(() => {
-      refreshPromise = null;
-    });
+    refreshPromise = axios
+      .post("/v1/console/auth/refresh")
+      .then(() => {
+        authRedirecting = false;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
   }
   return refreshPromise;
-}
-
-async function doRefreshToken(): Promise<string> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    throw new Error("no refresh token");
-  }
-  const res = await axios.post<{ access_token: string; refresh_token?: string }>(
-    "/v1/console/auth/refresh",
-    { refresh_token: refreshToken }
-  );
-  const accessToken = res.data?.access_token;
-  if (!accessToken) {
-    throw new Error("refresh response missing access_token");
-  }
-  setAuthToken(accessToken);
-  if (res.data?.refresh_token) {
-    setRefreshToken(res.data.refresh_token);
-  }
-  return accessToken;
 }
 
 export function setProjectID(projectID: string | null) {
@@ -96,10 +57,6 @@ export function getProjectID(): string | null {
 }
 
 api.interceptors.request.use((config) => {
-  const token = getAuthToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
   const projectID = getProjectID();
   if (projectID) {
     config.headers["X-Graviton-Project"] = projectID;
@@ -115,8 +72,6 @@ function forceReLogin() {
   }
   authRedirecting = true;
   toast.error("Session expired. Please sign in again.");
-  clearAuthToken();
-  setRefreshToken(null);
   setProjectID(null);
   window.location.href = "/console/login";
 }
@@ -147,7 +102,7 @@ api.interceptors.response.use(
         !config.__authRetried &&
         !isMissingProject
       ) {
-        // Access token expired: refresh the token pair once (single-flight)
+        // Access cookie expired: refresh the session once (single-flight)
         // and retry the original request; only give up if refresh fails.
         try {
           await refreshAuthTokenSingleFlight();

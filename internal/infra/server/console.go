@@ -34,6 +34,10 @@ func NewConsoleHandler() (http.Handler, error) {
 // setConsoleSecurityHeaders hardens the Admin Console SPA responses. The Vite
 // build emits no inline scripts, so script-src can stay 'self'; inline styles
 // come from shadcn/Tailwind runtime and need 'unsafe-inline'.
+//
+// CSRF 说明：console 会话凭证由 SameSite=Lax 的 HttpOnly cookie 携带（见
+// internal/api/consolegrpc/cookies.go），跨站 POST 不会附带 cookie；本服务
+// 变更类端点均为 POST，故该前提已构成 CSRF 防护，无需额外的 CSRF token。
 func setConsoleSecurityHeaders(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")

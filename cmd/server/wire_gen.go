@@ -65,7 +65,8 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	}
 	mailerService := messaging.NewMailer(appConfig)
 	smsService := messaging.NewSMSService(appConfig)
-	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService)
+	redisRateLimiter := auth.NewRedisRateLimiter(redisClient)
+	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter)
 	accountService := clientgrpc.NewAccountService(account)
 	databases := client.NewDatabases(projectsRepository, documentDB)
 	databasesService := clientgrpc.NewDatabasesService(databases)
@@ -98,8 +99,16 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	fileHandler := serverhttp.NewFileHandler(appConfig, validator, storageStorage)
-	oAuthHandler := serverhttp.NewOAuthHandler(account)
+	fileHandler, err := serverhttp.NewFileHandler(appConfig, validator, storageStorage)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	oAuthHandler, err := serverhttp.NewOAuthHandler(account, appConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, fileHandler, oAuthHandler)
 	if err != nil {
 		cleanup()

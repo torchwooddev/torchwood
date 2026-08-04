@@ -137,6 +137,28 @@ func (a *Auth) refreshTTL() time.Duration {
 	return refreshTTL
 }
 
+// AccessTTL returns the configured admin access token lifetime; used by the
+// transport layer for the session cookie Max-Age.
+func (a *Auth) AccessTTL() time.Duration {
+	accessTTL := 24 * time.Hour
+	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetAccessTtl()); err == nil {
+		accessTTL = d
+	}
+	return accessTTL
+}
+
+// RefreshTTL returns the configured admin refresh token lifetime; used by the
+// transport layer for the refresh cookie Max-Age.
+func (a *Auth) RefreshTTL() time.Duration {
+	return a.refreshTTL()
+}
+
+// SecureCookies reports whether console session cookies must carry the Secure
+// attribute; true only when the public HTTP endpoint is served over TLS.
+func (a *Auth) SecureCookies() bool {
+	return strings.HasPrefix(a.cfg.GetServer().GetHttp().GetPublicUrl(), "https://")
+}
+
 // adminIDFromMetadata extracts the admin id from the bearer token or console
 // session cookie in the request metadata, tolerating expired tokens while still
 // verifying the signature.

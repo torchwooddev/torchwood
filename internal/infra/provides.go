@@ -28,6 +28,7 @@ var ProviderSet = wire.NewSet(
 	auth.NewRedisAdminTokenRevokeStore,
 	auth.NewRedisLoginThrottle,
 	auth.NewRedisRefreshRotationStore,
+	auth.NewRedisRateLimiter,
 	wire.Bind(new(domainauth.SessionService), new(*auth.SessionService)),
 	wire.Bind(new(domainauth.OTPChallengeStore), new(*auth.RedisOTPChallengeStore)),
 	wire.Bind(new(domainauth.OAuthStateStore), new(*auth.RedisOAuthStateStore)),
@@ -35,6 +36,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(domainauth.AdminTokenRevokeStore), new(*auth.RedisAdminTokenRevokeStore)),
 	wire.Bind(new(domainauth.LoginThrottle), new(*auth.RedisLoginThrottle)),
 	wire.Bind(new(domainauth.RefreshRotationStore), new(*auth.RedisRefreshRotationStore)),
+	wire.Bind(new(domainauth.RateLimiter), new(*auth.RedisRateLimiter)),
 
 	infraidgen.ProviderSet,
 	wire.Bind(new(domainidgen.Generator), new(*infraidgen.Service)),

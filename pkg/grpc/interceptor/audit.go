@@ -30,13 +30,20 @@ func (a *AuditInterceptor) UnaryAuditMiddleware(ctx context.Context, req any, in
 		Status: auditStatus(err),
 	}
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		entry.IP = firstMetadataValue(md, "x-forwarded-for")
-		if entry.IP == "" {
-			entry.IP = firstMetadataValue(md, "x-real-ip")
-		}
-		entry.UserAgent = firstMetadataValue(md, "grpcgateway-user-agent")
-		if entry.UserAgent == "" {
-			entry.UserAgent = firstMetadataValue(md, "user-agent")
+		// 优先使用 ClientInfoInterceptor 写入的、经过 trusted-proxy 校验的 IP；
+		// 仅在链路中没有 ClientInfo（如测试直挂 audit）时退化为直接读头部。
+		if ci := contexts.ClientInfoFrom(ctx); ci.IP != "" || ci.UserAgent != "" {
+			entry.IP = ci.IP
+			entry.UserAgent = ci.UserAgent
+		} else {
+			entry.IP = FirstForwardedHop(firstMetadataValue(md, "x-forwarded-for"))
+			if entry.IP == "" {
+				entry.IP = firstMetadataValue(md, "x-real-ip")
+			}
+			entry.UserAgent = firstMetadataValue(md, "grpcgateway-user-agent")
+			if entry.UserAgent == "" {
+				entry.UserAgent = firstMetadataValue(md, "user-agent")
+			}
 		}
 	}
 	if p, ok := contexts.Principal(ctx); ok && p != nil {

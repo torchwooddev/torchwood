@@ -25,16 +25,23 @@ func (s *AuthService) SignIn(ctx context.Context, req *consolev1.SignInRequest) 
 	if err != nil {
 		return nil, err
 	}
+	setSessionCookies(ctx, s.auth, tokens)
 	return mapSignInResponse(tokens), nil
 }
 
 func (s *AuthService) RefreshToken(ctx context.Context, req *consolev1.RefreshTokenRequest) (*consolev1.SignInResponse, error) {
+	refreshToken := req.GetRefreshToken()
+	if refreshToken == "" {
+		// Cookie-only 浏览器流：refresh token 由 HttpOnly cookie 携带。
+		refreshToken = refreshTokenFromCookie(ctx)
+	}
 	tokens, err := s.auth.RefreshToken(ctx, console.RefreshTokenCommand{
-		RefreshToken: req.GetRefreshToken(),
+		RefreshToken: refreshToken,
 	})
 	if err != nil {
 		return nil, err
 	}
+	setSessionCookies(ctx, s.auth, tokens)
 	return mapSignInResponse(tokens), nil
 }
 
@@ -42,6 +49,7 @@ func (s *AuthService) SignOut(ctx context.Context, _ *consolev1.SignOutRequest) 
 	if err := s.auth.SignOut(ctx); err != nil {
 		return nil, err
 	}
+	clearSessionCookies(ctx, s.auth)
 	return &sharedv1.Empty{}, nil
 }
 

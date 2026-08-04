@@ -39,6 +39,7 @@ func NewGRPCGatewayServer(
 	mux := runtime.NewServeMux(
 		runtime.WithErrorHandler(HTTPErrorHandler),
 		runtime.WithIncomingHeaderMatcher(authIncomingHeaderMatcher),
+		runtime.WithOutgoingHeaderMatcher(authOutgoingHeaderMatcher),
 		runtime.WithMarshalerOption("*", NewCustomMarshaler()),
 		runtime.WithMarshalerOption("*/*", NewCustomMarshaler()),
 		runtime.WithMarshalerOption("application/json", NewCustomMarshaler()),
@@ -108,4 +109,16 @@ func authIncomingHeaderMatcher(key string) (string, bool) {
 	default:
 		return runtime.DefaultHeaderMatcher(key)
 	}
+}
+
+// authOutgoingHeaderMatcher 把 console auth handler 下发的 set-cookie metadata
+// 透传为 Set-Cookie 响应头（用于 HttpOnly 会话 cookie）。grpc-gateway v2.27.1
+// 的默认 defaultOutgoingHeaderMatcher 会给所有 metadata key 加
+// "Grpc-Metadata-" 前缀，不自定义 matcher 则 cookie 永远到不了浏览器；其余
+// key 保持默认行为不变。
+func authOutgoingHeaderMatcher(key string) (string, bool) {
+	if strings.EqualFold(key, "set-cookie") {
+		return "Set-Cookie", true
+	}
+	return runtime.MetadataHeaderPrefix + key, true
 }

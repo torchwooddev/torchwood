@@ -69,7 +69,11 @@ func NewGRPCServer(
 		return nil, err
 	}
 	auditInterceptor := interceptor.NewAuditInterceptor(auditRepo)
-	clientInfoInterceptor := interceptor.NewClientInfoInterceptor()
+	trustedProxies, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
+	if err != nil {
+		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
+	}
+	clientInfoInterceptor := interceptor.NewClientInfoInterceptor(trustedProxies)
 
 	srv := lynxgrpc.NewServer(
 		lynxgrpc.WithAddr(grpcCfg.GetAddr()),

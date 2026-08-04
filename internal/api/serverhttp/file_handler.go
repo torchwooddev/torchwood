@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,6 +26,8 @@ type FileHandler struct {
 	cfg       *config.AppConfig
 	validator *auth.Validator
 	storage   *storage.Storage
+	trusted   *interceptor.TrustedProxies
+	logger    *slog.Logger
 }
 
 // NewFileHandler creates a new file HTTP handler.
@@ -32,8 +35,46 @@ func NewFileHandler(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	storage *storage.Storage,
-) *FileHandler {
-	return &FileHandler{cfg: cfg, validator: validator, storage: storage}
+) (*FileHandler, error) {
+	trusted, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
+	if err != nil {
+		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
+	}
+	return &FileHandler{cfg: cfg, validator: validator, storage: storage, trusted: trusted, logger: slog.Default()}, nil
+}
+
+// clientIP 与 gRPC ClientInfoInterceptor 走同一 trusted-proxy 规则。
+func (h *FileHandler) clientIP(r *http.Request) string {
+	return h.trusted.ResolveClientIP(
+		interceptor.PeerIPFromAddr(r.RemoteAddr),
+		r.Header.Get("X-Forwarded-For"),
+		r.Header.Get("X-Real-Ip"),
+	)
+}
+
+// logOp 输出文件上传/下载的结构化访问日志（成功/失败各一条），不记录凭证。
+func (h *FileHandler) logOp(r *http.Request, op, bucketID, fileID string, principal *shared.Principal, err error) {
+	attrs := []any{
+		slog.String("op", op),
+		slog.String("bucket_id", bucketID),
+		slog.String("file_id", fileID),
+		slog.String("ip", h.clientIP(r)),
+	}
+	if principal != nil {
+		attrs = append(attrs,
+			slog.String("actor_id", string(principal.ActorID)),
+			slog.String("actor_kind", string(principal.ActorKind)),
+			slog.String("credential_type", string(principal.CredentialType)),
+			slog.String("project_id", principal.ProjectID),
+		)
+	}
+	if err != nil {
+		st, _ := status.FromError(err)
+		attrs = append(attrs, slog.String("error", st.Code().String()))
+		h.logger.Warn("file operation failed", attrs...)
+		return
+	}
+	h.logger.Info("file operation", attrs...)
 }
 
 // Register attaches the upload/download routes to the gateway mux.
@@ -48,17 +89,20 @@ const maxUploadBytes = 100 << 20 // 100 MiB
 
 func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
 	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
 	principal, err := h.authorize(r)
 	if err != nil {
+		h.logOp(r, "upload", bucketID, "", nil, err)
 		httpError(w, err)
 		return
 	}
 	projectID := h.projectID(r, principal)
 	if projectID == "" {
-		httpError(w, status.Error(codes.Unauthenticated, "missing project context"))
+		err := status.Error(codes.Unauthenticated, "missing project context")
+		h.logOp(r, "upload", bucketID, "", principal, err)
+		httpError(w, err)
 		return
 	}
-	bucketID := pathParams["bucketId"]
 	if bucketID == "" {
 		httpError(w, status.Error(codes.InvalidArgument, "missing bucket id"))
 		return
@@ -79,7 +123,7 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 			return
 		}
 		defer file.Close()
-		h.createFile(ctx, w, projectID, bucketID, file, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
+		h.createFile(ctx, w, r, projectID, bucketID, file, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
 		return
 	}
 
@@ -91,21 +135,23 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 	}
 	defer f.Close()
 
-	h.createFile(ctx, w, projectID, bucketID, f, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
+	h.createFile(ctx, w, r, projectID, bucketID, f, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
 }
 
-func (h *FileHandler) createFile(ctx context.Context, w http.ResponseWriter, projectID, bucketID string, r io.Reader, size int64, name, contentType string, principal *shared.Principal) {
+func (h *FileHandler) createFile(ctx context.Context, w http.ResponseWriter, r *http.Request, projectID, bucketID string, rd io.Reader, size int64, name, contentType string, principal *shared.Principal) {
 	file, err := h.storage.CreateFile(ctx, storage.CreateFileCommand{
 		ProjectID:   projectID,
 		OwnerUserID: principal.UserID,
 		BucketID:    bucketID,
 		Name:        name,
 		MimeType:    contentType,
-	}, r, size, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	}, rd, size, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
 	if err != nil {
+		h.logOp(r, "upload", bucketID, "", principal, err)
 		httpError(w, err)
 		return
 	}
+	h.logOp(r, "upload", bucketID, file.ID, principal, nil)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":         file.ID,
 		"bucket_id":  file.BucketID,
@@ -119,18 +165,21 @@ func (h *FileHandler) createFile(ctx context.Context, w http.ResponseWriter, pro
 
 func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
 	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
+	fileID := pathParams["fileId"]
 	principal, err := h.authorize(r)
 	if err != nil {
+		h.logOp(r, "download", bucketID, fileID, nil, err)
 		httpError(w, err)
 		return
 	}
 	projectID := h.projectID(r, principal)
 	if projectID == "" {
-		httpError(w, status.Error(codes.Unauthenticated, "missing project context"))
+		err := status.Error(codes.Unauthenticated, "missing project context")
+		h.logOp(r, "download", bucketID, fileID, principal, err)
+		httpError(w, err)
 		return
 	}
-	bucketID := pathParams["bucketId"]
-	fileID := pathParams["fileId"]
 	if bucketID == "" || fileID == "" {
 		httpError(w, status.Error(codes.InvalidArgument, "missing bucket or file id"))
 		return
@@ -138,10 +187,12 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 
 	file, reader, err := h.storage.GetFile(ctx, projectID, bucketID, fileID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
 	if err != nil {
+		h.logOp(r, "download", bucketID, fileID, principal, err)
 		httpError(w, err)
 		return
 	}
 	defer reader.Close()
+	h.logOp(r, "download", bucketID, fileID, principal, nil)
 
 	w.Header().Set("Content-Type", file.MimeType)
 	disposition := "attachment"
@@ -180,8 +231,13 @@ func (h *FileHandler) authenticate(r *http.Request) (*shared.Principal, error) {
 		return h.validator.ValidateCredential(ctx, key, shared.CredentialTypeAPIKey)
 	}
 	if authz := r.Header.Get("Authorization"); authz != "" {
-		token := strings.TrimPrefix(authz, "Bearer ")
-		return h.validator.ValidateToken(ctx, token)
+		// 与 gRPC 认证拦截器走同一解析逻辑：支持 Bearer / Session / ApiKey scheme，
+		// scheme 不识别时直接拒绝，而不是把整串当 token 校验。
+		credentialType, token, ok := interceptor.ParseAuthorizationHeader(authz)
+		if !ok {
+			return nil, status.Error(codes.Unauthenticated, "invalid authorization header")
+		}
+		return h.validator.ValidateCredential(ctx, token, credentialType)
 	}
 	for _, c := range r.Cookies() {
 		if strings.HasPrefix(c.Name, "GRAVITON_session_") {

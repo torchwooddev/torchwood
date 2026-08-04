@@ -6,17 +6,24 @@ import (
 	"strings"
 
 	"github.com/deeploop-ai/graviton/internal/app/client"
+	"github.com/deeploop-ai/graviton/internal/pkg/config"
 	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
+	"github.com/deeploop-ai/graviton/pkg/grpc/interceptor"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
 // OAuthHandler handles browser OAuth2 callback redirects.
 type OAuthHandler struct {
 	account *client.Account
+	trusted *interceptor.TrustedProxies
 }
 
-func NewOAuthHandler(account *client.Account) *OAuthHandler {
-	return &OAuthHandler{account: account}
+func NewOAuthHandler(account *client.Account, cfg *config.AppConfig) (*OAuthHandler, error) {
+	trusted, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
+	if err != nil {
+		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
+	}
+	return &OAuthHandler{account: account, trusted: trusted}, nil
 }
 
 func (h *OAuthHandler) Register(mux *runtime.ServeMux) {
@@ -33,7 +40,7 @@ func (h *OAuthHandler) callback(w http.ResponseWriter, r *http.Request, pathPara
 	}
 
 	ctx := contexts.WithClientInfo(r.Context(), contexts.ClientInfo{
-		IP:        clientIP(r),
+		IP:        h.clientIP(r),
 		UserAgent: r.UserAgent(),
 	})
 
@@ -60,15 +67,12 @@ func (h *OAuthHandler) callback(w http.ResponseWriter, r *http.Request, pathPara
 	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
 }
 
-func clientIP(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		if idx := strings.Index(forwarded, ","); idx > 0 {
-			return strings.TrimSpace(forwarded[:idx])
-		}
-		return strings.TrimSpace(forwarded)
-	}
-	if realIP := r.Header.Get("X-Real-Ip"); realIP != "" {
-		return realIP
-	}
-	return strings.TrimSpace(r.RemoteAddr)
+// clientIP 与 gRPC ClientInfoInterceptor 走同一 trusted-proxy 规则：
+// 仅当直连对端命中可信代理网段时才采纳 X-Forwarded-For 首跳，否则用对端地址。
+func (h *OAuthHandler) clientIP(r *http.Request) string {
+	return h.trusted.ResolveClientIP(
+		interceptor.PeerIPFromAddr(r.RemoteAddr),
+		r.Header.Get("X-Forwarded-For"),
+		r.Header.Get("X-Real-Ip"),
+	)
 }

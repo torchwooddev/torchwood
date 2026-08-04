@@ -22,6 +22,9 @@ security:
     refresh_ttl: "7d"
   api_key:
     header: "x-api-key"
+  # 可信代理网段（CIDR）。仅当直连 peer 命中时才采纳 X-Forwarded-For 首跳；
+  # 默认空 = 只信 peer 地址。grpc-gateway 与 gRPC 同进程部署时需包含 127.0.0.1/32 才能恢复客户端真实 IP。
+  trusted_proxies: []         # env: GRAVITON_SECURITY_TRUSTED_PROXIES（逗号分隔）
 
 data:
   database:
