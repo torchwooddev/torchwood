@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -110,7 +110,7 @@ func TestAccount_RecoveryFlow(t *testing.T) {
 
 	user, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
-		Email:     "recover-me@graviton.local",
+		Email:     "recover-me@torchwood.local",
 		Password:  "User@123",
 		Name:      "Recover Me",
 	})

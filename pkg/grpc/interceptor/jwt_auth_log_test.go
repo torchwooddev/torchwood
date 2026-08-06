@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -52,7 +52,7 @@ func TestAuthInterceptor_LogsCredentialMissing(t *testing.T) {
 		metadata.NewIncomingContext(context.Background(), metadata.MD{}),
 		contexts.ClientInfo{IP: "203.0.113.1", UserAgent: "agent/1.0"},
 	)
-	err = invokeAuth(ic, ctx, "/graviton.server.v1.UsersService/ListUsers")
+	err = invokeAuth(ic, ctx, "/torchwood.server.v1.UsersService/ListUsers")
 	if st, _ := status.FromError(err); st.Code() != codes.Unauthenticated {
 		t.Fatalf("expected unauthenticated, got %v", err)
 	}
@@ -60,7 +60,7 @@ func TestAuthInterceptor_LogsCredentialMissing(t *testing.T) {
 	out := buf.String()
 	for _, want := range []string{
 		"grpc auth rejected",
-		"method=/graviton.server.v1.UsersService/ListUsers",
+		"method=/torchwood.server.v1.UsersService/ListUsers",
 		"reason=credential_missing",
 		"ip=203.0.113.1",
 	} {
@@ -82,7 +82,7 @@ func TestAuthInterceptor_LogsInvalidCredential(t *testing.T) {
 		metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-api-key", "leaked-key")),
 		contexts.ClientInfo{IP: "198.51.100.9"},
 	)
-	_ = invokeAuth(ic, ctx, "/graviton.server.v1.UsersService/ListUsers")
+	_ = invokeAuth(ic, ctx, "/torchwood.server.v1.UsersService/ListUsers")
 
 	out := buf.String()
 	if !strings.Contains(out, "reason=credential_invalid") || !strings.Contains(out, "credential_type=api_key") {
@@ -103,12 +103,12 @@ func TestAuthInterceptor_LogsPermissionDenied(t *testing.T) {
 		CredentialType: shared.CredentialTypeAPIKey,
 		Roles:          []string{"keys"},
 		Permissions:    []string{"*"},
-	}}, nil, []string{"/graviton.server.v1.APIKeysService/CreateAPIKey"}, nil)
+	}}, nil, []string{"/torchwood.server.v1.APIKeysService/CreateAPIKey"}, nil)
 	requireNoError(t, err)
 	ic.WithLogger(captureLogger(&buf))
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-api-key", "k"))
-	_ = invokeAuth(ic, ctx, "/graviton.server.v1.APIKeysService/CreateAPIKey")
+	_ = invokeAuth(ic, ctx, "/torchwood.server.v1.APIKeysService/CreateAPIKey")
 
 	out := buf.String()
 	if !strings.Contains(out, "reason=apikey_self_management_denied") {
@@ -125,13 +125,13 @@ func TestAuthInterceptor_NoLogOnSuccess(t *testing.T) {
 		UserID:    "user-1",
 		Roles:     []string{"users"},
 	}}, nil, nil, map[string][]string{
-		"/graviton.client.v1.AccountService/Me": {"users"},
+		"/torchwood.client.v1.AccountService/Me": {"users"},
 	})
 	requireNoError(t, err)
 	ic.WithLogger(captureLogger(&buf))
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer token"))
-	if err := invokeAuth(ic, ctx, "/graviton.client.v1.AccountService/Me"); err != nil {
+	if err := invokeAuth(ic, ctx, "/torchwood.client.v1.AccountService/Me"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if buf.Len() != 0 {

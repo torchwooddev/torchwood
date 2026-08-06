@@ -8,7 +8,7 @@ package consolev1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,9 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ConsoleAuthService_SignIn_FullMethodName       = "/graviton.console.v1.ConsoleAuthService/SignIn"
-	ConsoleAuthService_RefreshToken_FullMethodName = "/graviton.console.v1.ConsoleAuthService/RefreshToken"
-	ConsoleAuthService_SignOut_FullMethodName      = "/graviton.console.v1.ConsoleAuthService/SignOut"
+	ConsoleAuthService_SignIn_FullMethodName       = "/torchwood.console.v1.ConsoleAuthService/SignIn"
+	ConsoleAuthService_RefreshToken_FullMethodName = "/torchwood.console.v1.ConsoleAuthService/RefreshToken"
+	ConsoleAuthService_SignOut_FullMethodName      = "/torchwood.console.v1.ConsoleAuthService/SignOut"
 )
 
 // ConsoleAuthServiceClient is the client API for ConsoleAuthService service.
@@ -177,7 +177,7 @@ func _ConsoleAuthService_SignOut_Handler(srv interface{}, ctx context.Context, d
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ConsoleAuthService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.console.v1.ConsoleAuthService",
+	ServiceName: "torchwood.console.v1.ConsoleAuthService",
 	HandlerType: (*ConsoleAuthServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

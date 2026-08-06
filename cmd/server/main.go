@@ -9,7 +9,7 @@ import (
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/contrib/zap"
 	"github.com/spf13/pflag"
-	config "github.com/deeploop-ai/graviton/internal/pkg/config"
+	config "github.com/torchwoodio/torchwood/internal/pkg/config"
 )
 
 var version string
@@ -18,7 +18,7 @@ func main() {
 	_ = godotenv.Load()
 
 	o := lynx.NewOptions(
-		lynx.WithName("Graviton"),
+		lynx.WithName("Torchwood"),
 		lynx.WithVersion(version),
 		lynx.WithSetFlagsFunc(func(f *pflag.FlagSet) {
 			f.String("config-dir", "./configs", "config file path")

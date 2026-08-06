@@ -3,7 +3,7 @@ package idgen_test
 import (
 	"testing"
 
-	"github.com/deeploop-ai/graviton/pkg/idgen"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
 	"github.com/stretchr/testify/require"
 )
 

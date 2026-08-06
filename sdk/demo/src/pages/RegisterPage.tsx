@@ -1,9 +1,9 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useGraviton } from "@/lib/graviton-context";
+import { useTorchwood } from "@/lib/torchwood-context";
 
 export function RegisterPage() {
-  const { client, setAuth, run } = useGraviton();
+  const { client, setAuth, run } = useTorchwood();
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -43,7 +43,7 @@ export function RegisterPage() {
         </div>
       ) : null}
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">昵称</span>
+        <span className="text-xs text-Torchwood-muted">昵称</span>
         <input
           className="field"
           value={name}
@@ -52,7 +52,7 @@ export function RegisterPage() {
         />
       </label>
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">邮箱</span>
+        <span className="text-xs text-Torchwood-muted">邮箱</span>
         <input
           className="field"
           type="email"
@@ -63,7 +63,7 @@ export function RegisterPage() {
         />
       </label>
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">密码</span>
+        <span className="text-xs text-Torchwood-muted">密码</span>
         <input
           className="field"
           type="password"
@@ -77,9 +77,9 @@ export function RegisterPage() {
       <button type="submit" className="btn-primary w-full" disabled={loading}>
         {loading ? "注册中…" : "创建账号"}
       </button>
-      <p className="text-center text-sm text-Graviton-muted">
+      <p className="text-center text-sm text-Torchwood-muted">
         已有账号？{" "}
-        <Link className="text-Graviton-accent hover:underline" to="/login">
+        <Link className="text-Torchwood-accent hover:underline" to="/login">
           登录
         </Link>
       </p>

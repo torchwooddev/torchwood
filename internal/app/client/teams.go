@@ -3,10 +3,10 @@ package client
 import (
 	"context"
 
-	"github.com/deeploop-ai/graviton/internal/app/server"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/teams"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/app/server"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/teams"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

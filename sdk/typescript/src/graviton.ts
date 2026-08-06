@@ -1,5 +1,5 @@
 import { AccountService, ClientDatabasesService, ClientTeamsService } from "./client/index.js";
-import type { GravitonConfig } from "./http.js";
+import type { TorchwoodConfig } from "./http.js";
 import { HttpTransport } from "./http.js";
 import {
   APIKeysService,
@@ -12,11 +12,11 @@ import {
   UsersService,
 } from "./server/index.js";
 
-export type { GravitonConfig } from "./http.js";
-export { GravitonError } from "./errors.js";
+export type { TorchwoodConfig } from "./http.js";
+export { TorchwoodError } from "./errors.js";
 export * from "./types.js";
 
-export class Graviton {
+export class Torchwood {
   readonly account: AccountService;
   readonly databases: ClientDatabasesService;
   readonly teams: ClientTeamsService;
@@ -34,7 +34,7 @@ export class Graviton {
 
   private readonly transport: HttpTransport;
 
-  constructor(config: GravitonConfig) {
+  constructor(config: TorchwoodConfig) {
     this.transport = new HttpTransport(config);
     this.account = new AccountService(this.transport);
     this.databases = new ClientDatabasesService(this.transport);
@@ -51,18 +51,18 @@ export class Graviton {
     };
   }
 
-  static create(config: GravitonConfig): Graviton {
-    return new Graviton(config);
+  static create(config: TorchwoodConfig): Torchwood {
+    return new Torchwood(config);
   }
 
   /** Server API + optional Client API with a project API key. */
-  static withApiKey(endpoint: string, projectId: string, apiKey: string): Graviton {
-    return new Graviton({ endpoint, projectId, apiKey });
+  static withApiKey(endpoint: string, projectId: string, apiKey: string): Torchwood {
+    return new Torchwood({ endpoint, projectId, apiKey });
   }
 
   /** Client API with an existing user access token. */
-  static withAccessToken(endpoint: string, projectId: string, accessToken: string): Graviton {
-    return new Graviton({ endpoint, projectId, accessToken });
+  static withAccessToken(endpoint: string, projectId: string, accessToken: string): Torchwood {
+    return new Torchwood({ endpoint, projectId, accessToken });
   }
 
   setAccessToken(token: string | undefined): void {

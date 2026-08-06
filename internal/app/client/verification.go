@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -64,7 +64,7 @@ func (a *Account) CreateVerification(ctx context.Context, cmd CreateVerification
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
 	email := normalizeEmail(stringValue(doc.Data["email"]))
-	if email == "" || strings.HasSuffix(email, "@graviton.local") {
+	if email == "" || strings.HasSuffix(email, "@torchwood.local") {
 		return nil, status.Error(codes.FailedPrecondition, "user email cannot be verified")
 	}
 	if boolValue(doc.Data["email_verified"]) {
@@ -81,7 +81,7 @@ func (a *Account) CreateVerification(ctx context.Context, cmd CreateVerification
 		return nil, err
 	}
 	link := buildAccountActionURL(cmd.URL, p.UserID, secret)
-	subject := "Verify your Graviton email"
+	subject := "Verify your Torchwood email"
 	body := fmt.Sprintf("Click the link below to verify your email address:\n\n%s\n\nThis link expires in 24 hours.", link)
 	if err := a.mailer.Send(ctx, email, subject, body); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to send verification email: %v", err)

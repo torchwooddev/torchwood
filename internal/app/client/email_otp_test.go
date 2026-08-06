@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -45,7 +45,7 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 
 	challenge, err := account.CreateEmailOTP(ctx, CreateEmailOTPCommand{
 		ProjectID: projectID,
-		Email:     "otp-user@graviton.local",
+		Email:     "otp-user@torchwood.local",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, challenge.ChallengeID)
@@ -58,13 +58,13 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 
 	user, tokens, _, err := account.CreateEmailOTPSession(ctx, CreateEmailOTPSessionCommand{
 		ProjectID:   projectID,
-		Email:       "otp-user@graviton.local",
+		Email:       "otp-user@torchwood.local",
 		ChallengeID: challenge.ChallengeID,
 		OTP:         code,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, user)
-	require.Equal(t, "otp-user@graviton.local", user.Email)
+	require.Equal(t, "otp-user@torchwood.local", user.Email)
 	require.True(t, user.EmailVerified)
 	require.NotEmpty(t, tokens.AccessToken)
 
@@ -74,7 +74,7 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 	mailer.Bodies = nil
 	challenge2, err := account.CreateEmailOTP(ctx, CreateEmailOTPCommand{
 		ProjectID: projectID,
-		Email:     "otp-user@graviton.local",
+		Email:     "otp-user@torchwood.local",
 	})
 	require.NoError(t, err)
 	matches = re.FindStringSubmatch(mailer.Bodies[0])
@@ -82,7 +82,7 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 
 	user2, tokens2, _, err := account.CreateEmailOTPSession(ctx, CreateEmailOTPSessionCommand{
 		ProjectID:   projectID,
-		Email:       "otp-user@graviton.local",
+		Email:       "otp-user@torchwood.local",
 		ChallengeID: challenge2.ChallengeID,
 		OTP:         matches[1],
 	})

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -58,7 +58,7 @@ func NewRedis(dataClients *DataClients) *redis.Client {
 func newDatabase(cfg *config.Database) (*Database, func(), error) {
 	source := strings.TrimSpace(cfg.GetSource())
 	if source == "" {
-		return nil, func() {}, fmt.Errorf("database source is empty: set data.database.source or GRAVITON_DATA_DATABASE_SOURCE")
+		return nil, func() {}, fmt.Errorf("database source is empty: set data.database.source or TORCHWOOD_DATA_DATABASE_SOURCE")
 	}
 	u, err := url.Parse(source)
 	if err != nil {

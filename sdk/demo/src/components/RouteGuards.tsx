@@ -1,8 +1,8 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { useGraviton } from "@/lib/graviton-context";
+import { useTorchwood } from "@/lib/torchwood-context";
 
 export function ProtectedRoute() {
-  const { auth } = useGraviton();
+  const { auth } = useTorchwood();
   if (!auth) {
     return <Navigate to="/login" replace />;
   }
@@ -10,7 +10,7 @@ export function ProtectedRoute() {
 }
 
 export function GuestRoute() {
-  const { auth } = useGraviton();
+  const { auth } = useTorchwood();
   if (auth) {
     return <Navigate to="/app" replace />;
   }

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/domain/storage"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/domain/storage"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -259,7 +259,7 @@ func (s *Storage) resolveProject(ctx context.Context, projectID string) (*projec
 func defaultBucketName(cfg *config.AppConfig) string {
 	b := cfg.GetStorage().GetS3().GetBucket()
 	if b == "" {
-		return "Graviton-files"
+		return "Torchwood-files"
 	}
 	return b
 }

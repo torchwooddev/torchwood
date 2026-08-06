@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	HealthService_Check_FullMethodName = "/graviton.server.v1.HealthService/Check"
+	HealthService_Check_FullMethodName = "/torchwood.server.v1.HealthService/Check"
 )
 
 // HealthServiceClient is the client API for HealthService service.
@@ -108,7 +108,7 @@ func _HealthService_Check_Handler(srv interface{}, ctx context.Context, dec func
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var HealthService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.HealthService",
+	ServiceName: "torchwood.server.v1.HealthService",
 	HandlerType: (*HealthServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

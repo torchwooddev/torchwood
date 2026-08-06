@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/deeploop-ai/graviton/internal/domain/idgen"
-	infraidgen "github.com/deeploop-ai/graviton/internal/infra/idgen"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	pkgidgen "github.com/deeploop-ai/graviton/pkg/idgen"
+	"github.com/torchwoodio/torchwood/internal/domain/idgen"
+	infraidgen "github.com/torchwoodio/torchwood/internal/infra/idgen"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	pkgidgen "github.com/torchwoodio/torchwood/pkg/idgen"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ func TestService_NewID_RandomRedisSet(t *testing.T) {
 			Random: &config.IdGen_Random{
 				Length:         8,
 				Charset:        "numeric",
-				RedisKeyPrefix: "Graviton:id:random",
+				RedisKeyPrefix: "Torchwood:id:random",
 				MaxRetries:     10,
 			},
 		},
@@ -44,7 +44,7 @@ func TestService_NewID_RandomRedisSet(t *testing.T) {
 	require.Len(t, id2, 8)
 	require.NotEqual(t, id1, id2)
 
-	setKey := "Graviton:id:random:proj-1:users"
+	setKey := "Torchwood:id:random:proj-1:users"
 	require.True(t, mr.Exists(setKey))
 	n, err := mr.SCard(setKey)
 	require.NoError(t, err)
@@ -76,7 +76,7 @@ func TestService_NewID_RandomRetriesOnCollision(t *testing.T) {
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	setKey := "Graviton:id:random:proj-1:users"
+	setKey := "Torchwood:id:random:proj-1:users"
 	require.NoError(t, rdb.SAdd(ctx, setKey, "11111111").Err())
 
 	cfg := &config.AppConfig{
@@ -84,7 +84,7 @@ func TestService_NewID_RandomRetriesOnCollision(t *testing.T) {
 			Random: &config.IdGen_Random{
 				Length:         8,
 				Charset:        "numeric",
-				RedisKeyPrefix: "Graviton:id:random",
+				RedisKeyPrefix: "Torchwood:id:random",
 				MaxRetries:     20,
 			},
 		},

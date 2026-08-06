@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useGraviton } from "@/lib/graviton-context";
+import { useTorchwood } from "@/lib/torchwood-context";
 import { PageHeader } from "@/components/Ui";
 
 const cards = [
@@ -25,27 +25,27 @@ const cards = [
     title: "Server API",
     path: "/app/server",
     desc: "Health / Projects / Users / Databases",
-    code: "Graviton.server.*",
+    code: "Torchwood.server.*",
   },
 ];
 
 export function HomePage() {
-  const { auth, settings } = useGraviton();
+  const { auth, settings } = useTorchwood();
 
   return (
     <div>
       <PageHeader
         title={`你好，${auth?.name || auth?.email}`}
-        description="这是 Graviton TypeScript SDK 的交互式演示站点。每个页面都会直接调用 SDK 并展示 JSON 响应。"
+        description="这是 Torchwood TypeScript SDK 的交互式演示站点。每个页面都会直接调用 SDK 并展示 JSON 响应。"
       />
 
-      <div className="mb-6 grid gap-3 rounded-xl border border-Graviton-border bg-Graviton-panel/60 p-4 text-sm md:grid-cols-2">
+      <div className="mb-6 grid gap-3 rounded-xl border border-Torchwood-border bg-Torchwood-panel/60 p-4 text-sm md:grid-cols-2">
         <div>
-          <div className="text-Graviton-muted">Endpoint</div>
+          <div className="text-Torchwood-muted">Endpoint</div>
           <div className="font-mono text-cyan-100">{settings.endpoint}</div>
         </div>
         <div>
-          <div className="text-Graviton-muted">Project</div>
+          <div className="text-Torchwood-muted">Project</div>
           <div className="font-mono text-cyan-100">{settings.projectId}</div>
         </div>
       </div>
@@ -55,11 +55,11 @@ export function HomePage() {
           <Link
             key={card.path}
             to={card.path}
-            className="panel block p-5 transition hover:border-Graviton-accent"
+            className="panel block p-5 transition hover:border-Torchwood-accent"
           >
-            <div className="font-mono text-xs text-Graviton-accent">{card.code}</div>
+            <div className="font-mono text-xs text-Torchwood-accent">{card.code}</div>
             <h3 className="mt-2 text-lg font-semibold text-white">{card.title}</h3>
-            <p className="mt-1 text-sm text-Graviton-muted">{card.desc}</p>
+            <p className="mt-1 text-sm text-Torchwood-muted">{card.desc}</p>
           </Link>
         ))}
       </div>

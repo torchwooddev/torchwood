@@ -3,11 +3,11 @@ package servergrpc
 import (
 	"context"
 
-	serverv1 "github.com/deeploop-ai/graviton/genproto/server/v1"
-	sharedv1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
-	appserver "github.com/deeploop-ai/graviton/internal/app/server"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/pkg/crud"
+	serverv1 "github.com/torchwoodio/torchwood/genproto/server/v1"
+	sharedv1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	appserver "github.com/torchwoodio/torchwood/internal/app/server"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/pkg/crud"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

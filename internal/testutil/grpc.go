@@ -3,22 +3,22 @@ package testutil
 import (
 	"context"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/infra/clients"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/pkg/grpc/interceptor"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/infra/clients"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/pkg/grpc/interceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 const (
-	MethodHealthCheck    = "/graviton.server.v1.HealthService/Check"
-	MethodListUsers      = "/graviton.server.v1.UsersService/ListUsers"
-	MethodAccountMe      = "/graviton.client.v1.AccountService/Me"
-	MethodAccountSignOut = "/graviton.client.v1.AccountService/SignOut"
+	MethodHealthCheck    = "/torchwood.server.v1.HealthService/Check"
+	MethodListUsers      = "/torchwood.server.v1.UsersService/ListUsers"
+	MethodAccountMe      = "/torchwood.client.v1.AccountService/Me"
+	MethodAccountSignOut = "/torchwood.client.v1.AccountService/SignOut"
 )
 
 // InterceptorEnv wires auth + audit interceptors the same way production does.

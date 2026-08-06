@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	sharedv1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	sharedv1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -35,7 +35,7 @@ func TestObservability_CORS(t *testing.T) {
 	corsCfg := &config.Http_Cors{
 		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Api-Key", "X-Graviton-Project"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Api-Key", "X-Torchwood-Project"},
 		AllowCredentials: true,
 		MaxAge:           86400,
 	}

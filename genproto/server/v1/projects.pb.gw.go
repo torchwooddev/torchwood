@@ -14,9 +14,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/deeploop-ai/graviton/genproto/shared/v1"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/utilities"
+	"github.com/torchwoodio/torchwood/genproto/shared/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/grpclog"
@@ -149,7 +149,7 @@ func RegisterProjectsServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.server.v1.ProjectsService/CreateProject", runtime.WithHTTPPathPattern("/v1/server/projects"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.ProjectsService/CreateProject", runtime.WithHTTPPathPattern("/v1/server/projects"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -169,7 +169,7 @@ func RegisterProjectsServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.server.v1.ProjectsService/ListProjects", runtime.WithHTTPPathPattern("/v1/server/projects"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.ProjectsService/ListProjects", runtime.WithHTTPPathPattern("/v1/server/projects"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -189,7 +189,7 @@ func RegisterProjectsServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.server.v1.ProjectsService/GetProject", runtime.WithHTTPPathPattern("/v1/server/projects/{id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.ProjectsService/GetProject", runtime.WithHTTPPathPattern("/v1/server/projects/{id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -247,7 +247,7 @@ func RegisterProjectsServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.server.v1.ProjectsService/CreateProject", runtime.WithHTTPPathPattern("/v1/server/projects"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.ProjectsService/CreateProject", runtime.WithHTTPPathPattern("/v1/server/projects"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -264,7 +264,7 @@ func RegisterProjectsServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.server.v1.ProjectsService/ListProjects", runtime.WithHTTPPathPattern("/v1/server/projects"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.ProjectsService/ListProjects", runtime.WithHTTPPathPattern("/v1/server/projects"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -281,7 +281,7 @@ func RegisterProjectsServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.server.v1.ProjectsService/GetProject", runtime.WithHTTPPathPattern("/v1/server/projects/{id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.ProjectsService/GetProject", runtime.WithHTTPPathPattern("/v1/server/projects/{id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return

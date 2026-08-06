@@ -9,10 +9,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/pkg/database"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
-	"github.com/deeploop-ai/graviton/pkg/password"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/pkg/database"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwoodio/torchwood/pkg/password"
 	"github.com/joho/godotenv"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -52,7 +52,7 @@ func main() {
 	}
 	admin := &model.ConsoleAdmin{
 		ID:           idgen.UUID().String(),
-		Email:        "admin@graviton.local",
+		Email:        "admin@torchwood.local",
 		PasswordHash: hash,
 		Role:         "owner",
 		CreatedAt:    time.Now(),
@@ -74,11 +74,11 @@ func main() {
 		os.Exit(1)
 	}
 	if exists {
-		fmt.Println("seeded project=default admin=admin@graviton.local api_key=(already exists, id=" + apiKeyID + ")")
+		fmt.Println("seeded project=default admin=admin@torchwood.local api_key=(already exists, id=" + apiKeyID + ")")
 		return
 	}
 
-	apiSecret := "Graviton-default-api-key-" + idgen.UUID().String()
+	apiSecret := "Torchwood-default-api-key-" + idgen.UUID().String()
 	apiHash := sha256.Sum256([]byte(apiSecret))
 	apiKey := &model.APIKey{
 		ID:         apiKeyID,
@@ -95,5 +95,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("seeded project=default admin=admin@graviton.local api_key=" + apiSecret)
+	fmt.Println("seeded project=default admin=admin@torchwood.local api_key=" + apiSecret)
 }

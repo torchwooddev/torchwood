@@ -5,8 +5,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/pkg/grpc/interceptor"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/pkg/grpc/interceptor"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -86,7 +86,7 @@ func loginThrottleKey(namespace, dimension, value string) string {
 	if value == "" {
 		return ""
 	}
-	return fmt.Sprintf("Graviton:login:fail:%s:%s:%s", namespace, dimension, value)
+	return fmt.Sprintf("Torchwood:login:fail:%s:%s:%s", namespace, dimension, value)
 }
 
 var _ domainauth.LoginThrottle = (*RedisLoginThrottle)(nil)

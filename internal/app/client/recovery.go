@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/pkg/password"
-	"github.com/deeploop-ai/graviton/pkg/query"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/pkg/password"
+	"github.com/torchwoodio/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -77,7 +77,7 @@ func (a *Account) CreateRecovery(ctx context.Context, cmd CreateRecoveryCommand)
 		return err
 	}
 	link := buildAccountActionURL(cmd.URL, userDoc.ID, secret)
-	subject := "Reset your Graviton password"
+	subject := "Reset your Torchwood password"
 	body := fmt.Sprintf("Click the link below to reset your password:\n\n%s\n\nThis link expires at %s.", link, expireAt.Format("2006-01-02 15:04 MST"))
 	if err := a.mailer.Send(ctx, email, subject, body); err != nil {
 		return status.Errorf(codes.Internal, "failed to send recovery email: %v", err)

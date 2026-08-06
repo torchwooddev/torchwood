@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { useGraviton } from "@/lib/graviton-context";
+import { useTorchwood } from "@/lib/torchwood-context";
 import { suffix } from "@/lib/storage";
 import { ErrorBanner, JsonPanel, MethodTag, PageHeader } from "@/components/Ui";
 
 export function TeamsPage() {
-  const { client, auth, setAuth, run, lastError } = useGraviton();
+  const { client, auth, setAuth, run, lastError } = useTorchwood();
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [teamName, setTeamName] = useState(`Web Team ${suffix()}`);
-  const [inviteEmail, setInviteEmail] = useState("invitee@graviton.local");
+  const [inviteEmail, setInviteEmail] = useState("invitee@torchwood.local");
   const [selectedTeamId, setSelectedTeamId] = useState("");
 
   async function exec(label: string, fn: () => Promise<unknown>) {
@@ -57,11 +57,11 @@ export function TeamsPage() {
 
       <div className="mb-4 grid gap-3 md:grid-cols-2">
         <label className="block space-y-1">
-          <span className="text-xs text-Graviton-muted">团队名称</span>
+          <span className="text-xs text-Torchwood-muted">团队名称</span>
           <input className="field" value={teamName} onChange={(e) => setTeamName(e.target.value)} />
         </label>
         <label className="block space-y-1">
-          <span className="text-xs text-Graviton-muted">teamId（邀请/列表用）</span>
+          <span className="text-xs text-Torchwood-muted">teamId（邀请/列表用）</span>
           <input
             className="field"
             value={selectedTeamId}
@@ -70,7 +70,7 @@ export function TeamsPage() {
           />
         </label>
         <label className="block space-y-1 md:col-span-2">
-          <span className="text-xs text-Graviton-muted">邀请邮箱</span>
+          <span className="text-xs text-Torchwood-muted">邀请邮箱</span>
           <input
             className="field"
             type="email"

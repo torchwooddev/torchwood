@@ -8,7 +8,7 @@ package serverv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,27 +20,27 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DatabasesService_CreateDatabase_FullMethodName      = "/graviton.server.v1.DatabasesService/CreateDatabase"
-	DatabasesService_ListDatabases_FullMethodName       = "/graviton.server.v1.DatabasesService/ListDatabases"
-	DatabasesService_GetDatabase_FullMethodName         = "/graviton.server.v1.DatabasesService/GetDatabase"
-	DatabasesService_DeleteDatabase_FullMethodName      = "/graviton.server.v1.DatabasesService/DeleteDatabase"
-	DatabasesService_CreateCollection_FullMethodName    = "/graviton.server.v1.DatabasesService/CreateCollection"
-	DatabasesService_ListCollections_FullMethodName     = "/graviton.server.v1.DatabasesService/ListCollections"
-	DatabasesService_GetCollection_FullMethodName       = "/graviton.server.v1.DatabasesService/GetCollection"
-	DatabasesService_DeleteCollection_FullMethodName    = "/graviton.server.v1.DatabasesService/DeleteCollection"
-	DatabasesService_UpdateCollection_FullMethodName    = "/graviton.server.v1.DatabasesService/UpdateCollection"
-	DatabasesService_CreateAttribute_FullMethodName     = "/graviton.server.v1.DatabasesService/CreateAttribute"
-	DatabasesService_DeleteAttribute_FullMethodName     = "/graviton.server.v1.DatabasesService/DeleteAttribute"
-	DatabasesService_CreateIndex_FullMethodName         = "/graviton.server.v1.DatabasesService/CreateIndex"
-	DatabasesService_DeleteIndex_FullMethodName         = "/graviton.server.v1.DatabasesService/DeleteIndex"
-	DatabasesService_CreateDocument_FullMethodName      = "/graviton.server.v1.DatabasesService/CreateDocument"
-	DatabasesService_ListDocuments_FullMethodName       = "/graviton.server.v1.DatabasesService/ListDocuments"
-	DatabasesService_GetDocument_FullMethodName         = "/graviton.server.v1.DatabasesService/GetDocument"
-	DatabasesService_UpdateDocument_FullMethodName      = "/graviton.server.v1.DatabasesService/UpdateDocument"
-	DatabasesService_DeleteDocument_FullMethodName      = "/graviton.server.v1.DatabasesService/DeleteDocument"
-	DatabasesService_CountDocuments_FullMethodName      = "/graviton.server.v1.DatabasesService/CountDocuments"
-	DatabasesService_BulkUpdateDocuments_FullMethodName = "/graviton.server.v1.DatabasesService/BulkUpdateDocuments"
-	DatabasesService_BulkDeleteDocuments_FullMethodName = "/graviton.server.v1.DatabasesService/BulkDeleteDocuments"
+	DatabasesService_CreateDatabase_FullMethodName      = "/torchwood.server.v1.DatabasesService/CreateDatabase"
+	DatabasesService_ListDatabases_FullMethodName       = "/torchwood.server.v1.DatabasesService/ListDatabases"
+	DatabasesService_GetDatabase_FullMethodName         = "/torchwood.server.v1.DatabasesService/GetDatabase"
+	DatabasesService_DeleteDatabase_FullMethodName      = "/torchwood.server.v1.DatabasesService/DeleteDatabase"
+	DatabasesService_CreateCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/CreateCollection"
+	DatabasesService_ListCollections_FullMethodName     = "/torchwood.server.v1.DatabasesService/ListCollections"
+	DatabasesService_GetCollection_FullMethodName       = "/torchwood.server.v1.DatabasesService/GetCollection"
+	DatabasesService_DeleteCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/DeleteCollection"
+	DatabasesService_UpdateCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/UpdateCollection"
+	DatabasesService_CreateAttribute_FullMethodName     = "/torchwood.server.v1.DatabasesService/CreateAttribute"
+	DatabasesService_DeleteAttribute_FullMethodName     = "/torchwood.server.v1.DatabasesService/DeleteAttribute"
+	DatabasesService_CreateIndex_FullMethodName         = "/torchwood.server.v1.DatabasesService/CreateIndex"
+	DatabasesService_DeleteIndex_FullMethodName         = "/torchwood.server.v1.DatabasesService/DeleteIndex"
+	DatabasesService_CreateDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/CreateDocument"
+	DatabasesService_ListDocuments_FullMethodName       = "/torchwood.server.v1.DatabasesService/ListDocuments"
+	DatabasesService_GetDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/GetDocument"
+	DatabasesService_UpdateDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/UpdateDocument"
+	DatabasesService_DeleteDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/DeleteDocument"
+	DatabasesService_CountDocuments_FullMethodName      = "/torchwood.server.v1.DatabasesService/CountDocuments"
+	DatabasesService_BulkUpdateDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
+	DatabasesService_BulkDeleteDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
 )
 
 // DatabasesServiceClient is the client API for DatabasesService service.
@@ -789,7 +789,7 @@ func _DatabasesService_BulkDeleteDocuments_Handler(srv interface{}, ctx context.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var DatabasesService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.DatabasesService",
+	ServiceName: "torchwood.server.v1.DatabasesService",
 	HandlerType: (*DatabasesServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

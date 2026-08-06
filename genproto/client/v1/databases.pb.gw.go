@@ -493,7 +493,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/CreateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CreateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -513,7 +513,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/ListDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/ListDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -533,7 +533,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/GetDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/GetDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -553,7 +553,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/UpdateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/UpdateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -573,7 +573,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/DeleteDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/DeleteDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -593,7 +593,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/count"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/count"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -651,7 +651,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/CreateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CreateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -668,7 +668,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/ListDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/ListDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -685,7 +685,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/GetDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/GetDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -702,7 +702,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/UpdateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/UpdateDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -719,7 +719,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/DeleteDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/DeleteDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -736,7 +736,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/graviton.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/count"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/count"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return

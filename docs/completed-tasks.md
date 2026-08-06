@@ -1,6 +1,6 @@
-# Graviton 已完成任务清单
+# Torchwood 已完成任务清单
 
-> 本文档汇总 Graviton P0 底座及已经落地实现的功能。
+> 本文档汇总 Torchwood P0 底座及已经落地实现的功能。
 > 最新更新：2026-06-20，对应提交 `11af6f8`。
 
 ---
@@ -9,7 +9,7 @@
 
 | 任务 | 状态 | 关键文件 |
 |------|------|----------|
-| 初始化 Go module | 完成 | `go.mod`（`github.com/deeploop-ai/graviton`，Go 1.25） |
+| 初始化 Go module | 完成 | `go.mod`（`github.com/torchwoodio/torchwood`，Go 1.25） |
 | 配置 Buf 与 protobuf 生成 | 完成 | `buf.yaml`、`buf.gen.yaml`、`genproto/` |
 | 定义 Task 工作流 | 完成 | `Taskfile.yml`：install-tools / up / down / migrate / generate-proto / generate-config / wire-all / generate-all / console-install / console-build / console-dev / dev-server / test / build |
 | 本地基础设施编排 | 完成 | `docker/local/docker-compose.yml`（PostgreSQL 5433、Redis 6380、MinIO 9000/9001） |
@@ -25,9 +25,9 @@
 |------|------|----------|
 | protobuf 配置 schema | 完成 | `internal/pkg/config/config.proto` |
 | 生成 Go config 类型 | 完成 | `internal/pkg/config/config.pb.go` |
-| 环境变量绑定 | 完成 | `internal/pkg/config/bind.go`：统一前缀 `GRAVITON_`，点号路径映射为下划线大写 |
+| 环境变量绑定 | 完成 | `internal/pkg/config/bind.go`：统一前缀 `TORCHWOOD_`，点号路径映射为下划线大写 |
 | 运行时加载 `.env` | 完成 | `cmd/server/main.go` 通过 `godotenv` 加载 `.env` 后绑定 `./configs` |
-| 关键环境变量 | 完成 | `GRAVITON_DATA_DATABASE_SOURCE`、`GRAVITON_SECURITY_JWT_SECRET`、`GRAVITON_STORAGE_S3_ENDPOINT`、`GRAVITON_STORAGE_S3_ACCESS_KEY_ID`、`GRAVITON_STORAGE_S3_SECRET_ACCESS_KEY` 等 |
+| 关键环境变量 | 完成 | `TORCHWOOD_DATA_DATABASE_SOURCE`、`TORCHWOOD_SECURITY_JWT_SECRET`、`TORCHWOOD_STORAGE_S3_ENDPOINT`、`TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID`、`TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY` 等 |
 
 配置分组：
 
@@ -113,7 +113,7 @@
 | Principal 上下文 | 完成 | `internal/pkg/contexts/principal.go` |
 | gRPC 认证拦截器 | 完成 | `pkg/grpc/interceptor/jwt.go` |
 | proto authz 注解 | 完成 | `proto/shared/v1/authz.proto` |
-| Console admin 调用 Server API | 完成 | 拦截器允许 admin token 访问 `ACCESS_API_KEY` 方法，需 `X-Graviton-Project` header |
+| Console admin 调用 Server API | 完成 | 拦截器允许 admin token 访问 `ACCESS_API_KEY` 方法，需 `X-Torchwood-Project` header |
 
 凭证类型：
 
@@ -283,7 +283,7 @@ EnsureSystemCollections
 
 | 任务 | 状态 | 关键文件 |
 |------|------|----------|
-| 默认数据 seed | 完成 | `cmd/seed/main.go`：创建 default project、console admin（`admin@graviton.local / Admin@123`）、默认 API Key |
+| 默认数据 seed | 完成 | `cmd/seed/main.go`：创建 default project、console admin（`admin@torchwood.local / Admin@123`）、默认 API Key |
 | 集成测试辅助 | 完成 | `internal/testutil/db.go` |
 | 查询 DSL 测试 | 完成 | `pkg/query/query_test.go` |
 | CRUD 工具测试 | 完成 | `pkg/crud/*_test.go` |

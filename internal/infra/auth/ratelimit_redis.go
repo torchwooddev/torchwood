@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,7 +24,7 @@ func (l *RedisRateLimiter) Allow(ctx context.Context, key string, limit int, win
 	if key == "" {
 		return nil
 	}
-	redisKey := "Graviton:ratelimit:" + key
+	redisKey := "Torchwood:ratelimit:" + key
 	count, err := l.rdb.Incr(ctx, redisKey).Result()
 	if err != nil {
 		return status.Error(codes.Internal, "rate limit check failed")

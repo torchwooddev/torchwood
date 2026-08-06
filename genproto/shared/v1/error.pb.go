@@ -109,7 +109,7 @@ type Error struct {
 	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
 	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
 	ErrorId       string                 `protobuf:"bytes,4,opt,name=error_id,json=errorId,proto3" json:"error_id,omitempty"`
-	ErrorCode     ErrorCode              `protobuf:"varint,5,opt,name=error_code,json=errorCode,proto3,enum=graviton.shared.v1.ErrorCode" json:"error_code,omitempty"`
+	ErrorCode     ErrorCode              `protobuf:"varint,5,opt,name=error_code,json=errorCode,proto3,enum=torchwood.shared.v1.ErrorCode" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -227,16 +227,16 @@ var File_shared_v1_error_proto protoreflect.FileDescriptor
 
 const file_shared_v1_error_proto_rawDesc = "" +
 	"\n" +
-	"\x15shared/v1/error.proto\x12\x12graviton.shared.v1\"\xa2\x01\n" +
+	"\x15shared/v1/error.proto\x12\x13torchwood.shared.v1\"\xa3\x01\n" +
 	"\x05Error\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12\x19\n" +
-	"\berror_id\x18\x04 \x01(\tR\aerrorId\x12<\n" +
+	"\berror_id\x18\x04 \x01(\tR\aerrorId\x12=\n" +
 	"\n" +
-	"error_code\x18\x05 \x01(\x0e2\x1d.graviton.shared.v1.ErrorCodeR\terrorCode\"@\n" +
-	"\rErrorResponse\x12/\n" +
-	"\x05error\x18\x01 \x01(\v2\x19.graviton.shared.v1.ErrorR\x05error*\xe1\x03\n" +
+	"error_code\x18\x05 \x01(\x0e2\x1e.torchwood.shared.v1.ErrorCodeR\terrorCode\"A\n" +
+	"\rErrorResponse\x120\n" +
+	"\x05error\x18\x01 \x01(\v2\x1a.torchwood.shared.v1.ErrorR\x05error*\xe1\x03\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aERROR_CODE_INVALID_REQUEST\x10\x01\x12!\n" +
@@ -252,7 +252,7 @@ const file_shared_v1_error_proto_rawDesc = "" +
 	"\x12\x1d\n" +
 	"\x19ERROR_CODE_INTERNAL_ERROR\x10\v\x12\"\n" +
 	"\x1eERROR_CODE_SERVICE_UNAVAILABLE\x10\f\x12\x16\n" +
-	"\x12ERROR_CODE_TIMEOUT\x10\rB=Z;github.com/deeploop-ai/graviton/genproto/shared/v1;sharedv1b\x06proto3"
+	"\x12ERROR_CODE_TIMEOUT\x10\rB>Z<github.com/torchwoodio/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_error_proto_rawDescOnce sync.Once
@@ -269,13 +269,13 @@ func file_shared_v1_error_proto_rawDescGZIP() []byte {
 var file_shared_v1_error_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_shared_v1_error_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_shared_v1_error_proto_goTypes = []any{
-	(ErrorCode)(0),        // 0: graviton.shared.v1.ErrorCode
-	(*Error)(nil),         // 1: graviton.shared.v1.Error
-	(*ErrorResponse)(nil), // 2: graviton.shared.v1.ErrorResponse
+	(ErrorCode)(0),        // 0: torchwood.shared.v1.ErrorCode
+	(*Error)(nil),         // 1: torchwood.shared.v1.Error
+	(*ErrorResponse)(nil), // 2: torchwood.shared.v1.ErrorResponse
 }
 var file_shared_v1_error_proto_depIdxs = []int32{
-	0, // 0: graviton.shared.v1.Error.error_code:type_name -> graviton.shared.v1.ErrorCode
-	1, // 1: graviton.shared.v1.ErrorResponse.error:type_name -> graviton.shared.v1.Error
+	0, // 0: torchwood.shared.v1.Error.error_code:type_name -> torchwood.shared.v1.ErrorCode
+	1, // 1: torchwood.shared.v1.ErrorResponse.error:type_name -> torchwood.shared.v1.Error
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name

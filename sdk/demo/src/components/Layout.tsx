@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useGraviton } from "@/lib/graviton-context";
+import { useTorchwood } from "@/lib/torchwood-context";
 
 const nav = [
   { to: "/app", label: "概览", end: true },
@@ -11,7 +11,7 @@ const nav = [
 ];
 
 export function AppLayout() {
-  const { auth, client, setAuth } = useGraviton();
+  const { auth, client, setAuth } = useTorchwood();
   const navigate = useNavigate();
 
   async function handleSignOut() {
@@ -26,11 +26,11 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen lg:flex">
-      <aside className="border-b border-Graviton-border bg-Graviton-panel/80 lg:w-64 lg:border-b-0 lg:border-r">
+      <aside className="border-b border-Torchwood-border bg-Torchwood-panel/80 lg:w-64 lg:border-b-0 lg:border-r">
         <div className="px-5 py-6">
-          <div className="text-xs uppercase tracking-[0.2em] text-Graviton-muted">Graviton</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-Torchwood-muted">Torchwood</div>
           <div className="mt-1 text-lg font-semibold text-white">SDK Playground</div>
-          <div className="mt-3 truncate text-xs text-Graviton-muted">{auth?.email}</div>
+          <div className="mt-3 truncate text-xs text-Torchwood-muted">{auth?.email}</div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-4 lg:flex-col lg:overflow-visible">
           {nav.map((item) => (
@@ -63,9 +63,9 @@ export function AuthLayout() {
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="text-xs uppercase tracking-[0.25em] text-Graviton-muted">Graviton SDK</div>
+          <div className="text-xs uppercase tracking-[0.25em] text-Torchwood-muted">Torchwood SDK</div>
           <h1 className="mt-2 text-3xl font-semibold text-white">Playground</h1>
-          <p className="mt-2 text-sm text-Graviton-muted">注册、登录并体验 Client / Server API</p>
+          <p className="mt-2 text-sm text-Torchwood-muted">注册、登录并体验 Client / Server API</p>
         </div>
         <Outlet />
       </div>

@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -760,15 +760,15 @@ var File_server_v1_teams_proto protoreflect.FileDescriptor
 
 const file_server_v1_teams_proto_rawDesc = "" +
 	"\n" +
-	"\x15server/v1/teams.proto\x12\x12graviton.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"I\n" +
+	"\x15server/v1/teams.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"I\n" +
 	"\x11CreateTeamRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\" \n" +
 	"\x0eGetTeamRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"}\n" +
-	"\x11ListTeamsResponse\x12.\n" +
-	"\x05teams\x18\x01 \x03(\v2\x18.graviton.server.v1.TeamR\x05teams\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"\xd8\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x7f\n" +
+	"\x11ListTeamsResponse\x12/\n" +
+	"\x05teams\x18\x01 \x03(\v2\x19.torchwood.server.v1.TeamR\x05teams\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xd8\x01\n" +
 	"\x04Team\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -810,10 +810,10 @@ const file_server_v1_teams_proto_rawDesc = "" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\"T\n" +
 	"\x14GetMembershipRequest\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12#\n" +
-	"\rmembership_id\x18\x02 \x01(\tR\fmembershipId\"\x95\x01\n" +
-	"\x17ListMembershipsResponse\x12@\n" +
-	"\vmemberships\x18\x01 \x03(\v2\x1e.graviton.server.v1.MembershipR\vmemberships\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"m\n" +
+	"\rmembership_id\x18\x02 \x01(\tR\fmembershipId\"\x97\x01\n" +
+	"\x17ListMembershipsResponse\x12A\n" +
+	"\vmemberships\x18\x01 \x03(\v2\x1f.torchwood.server.v1.MembershipR\vmemberships\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"m\n" +
 	"\x17UpdateMembershipRequest\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12#\n" +
 	"\rmembership_id\x18\x02 \x01(\tR\fmembershipId\x12\x14\n" +
@@ -821,20 +821,20 @@ const file_server_v1_teams_proto_rawDesc = "" +
 	"\x1dUpdateMembershipStatusRequest\x12\x17\n" +
 	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12#\n" +
 	"\rmembership_id\x18\x02 \x01(\tR\fmembershipId\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status2\x8a\v\n" +
-	"\fTeamsService\x12j\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status2\x9e\v\n" +
+	"\fTeamsService\x12l\n" +
 	"\n" +
-	"CreateTeam\x12%.graviton.server.v1.CreateTeamRequest\x1a\x18.graviton.server.v1.Team\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/server/teams\x12m\n" +
-	"\tListTeams\x12\x1f.graviton.shared.v1.ListRequest\x1a%.graviton.server.v1.ListTeamsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/server/teams\x12f\n" +
-	"\aGetTeam\x12\".graviton.server.v1.GetTeamRequest\x1a\x18.graviton.server.v1.Team\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/server/teams/{id}\x12j\n" +
+	"CreateTeam\x12&.torchwood.server.v1.CreateTeamRequest\x1a\x19.torchwood.server.v1.Team\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/server/teams\x12o\n" +
+	"\tListTeams\x12 .torchwood.shared.v1.ListRequest\x1a&.torchwood.server.v1.ListTeamsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/server/teams\x12h\n" +
+	"\aGetTeam\x12#.torchwood.server.v1.GetTeamRequest\x1a\x19.torchwood.server.v1.Team\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/server/teams/{id}\x12l\n" +
 	"\n" +
-	"DeleteTeam\x12\".graviton.server.v1.GetTeamRequest\x1a\x19.graviton.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/teams/{id}\x12\x92\x01\n" +
-	"\x10CreateMembership\x12+.graviton.server.v1.CreateMembershipRequest\x1a\x1e.graviton.server.v1.Membership\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/server/teams/{team_id}/memberships\x12\x9a\x01\n" +
-	"\x0fListMemberships\x12*.graviton.server.v1.ListMembershipsRequest\x1a+.graviton.server.v1.ListMembershipsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/server/teams/{team_id}/memberships\x12\x99\x01\n" +
-	"\rGetMembership\x12(.graviton.server.v1.GetMembershipRequest\x1a\x1e.graviton.server.v1.Membership\">\x82\xd3\xe4\x93\x028\x126/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xa2\x01\n" +
-	"\x10UpdateMembership\x12+.graviton.server.v1.UpdateMembershipRequest\x1a\x1e.graviton.server.v1.Membership\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xb5\x01\n" +
-	"\x16UpdateMembershipStatus\x121.graviton.server.v1.UpdateMembershipStatusRequest\x1a\x1e.graviton.server.v1.Membership\"H\x82\xd3\xe4\x93\x02B:\x01*2=/v1/server/teams/{team_id}/memberships/{membership_id}/status\x12\x97\x01\n" +
-	"\x10DeleteMembership\x12(.graviton.server.v1.GetMembershipRequest\x1a\x19.graviton.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/teams/{team_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B=Z;github.com/deeploop-ai/graviton/genproto/server/v1;serverv1b\x06proto3"
+	"DeleteTeam\x12#.torchwood.server.v1.GetTeamRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/teams/{id}\x12\x94\x01\n" +
+	"\x10CreateMembership\x12,.torchwood.server.v1.CreateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/server/teams/{team_id}/memberships\x12\x9c\x01\n" +
+	"\x0fListMemberships\x12+.torchwood.server.v1.ListMembershipsRequest\x1a,.torchwood.server.v1.ListMembershipsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/server/teams/{team_id}/memberships\x12\x9b\x01\n" +
+	"\rGetMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\">\x82\xd3\xe4\x93\x028\x126/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xa4\x01\n" +
+	"\x10UpdateMembership\x12,.torchwood.server.v1.UpdateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xb7\x01\n" +
+	"\x16UpdateMembershipStatus\x122.torchwood.server.v1.UpdateMembershipStatusRequest\x1a\x1f.torchwood.server.v1.Membership\"H\x82\xd3\xe4\x93\x02B:\x01*2=/v1/server/teams/{team_id}/memberships/{membership_id}/status\x12\x99\x01\n" +
+	"\x10DeleteMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/teams/{team_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_teams_proto_rawDescOnce sync.Once
@@ -850,53 +850,53 @@ func file_server_v1_teams_proto_rawDescGZIP() []byte {
 
 var file_server_v1_teams_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_server_v1_teams_proto_goTypes = []any{
-	(*CreateTeamRequest)(nil),             // 0: graviton.server.v1.CreateTeamRequest
-	(*GetTeamRequest)(nil),                // 1: graviton.server.v1.GetTeamRequest
-	(*ListTeamsResponse)(nil),             // 2: graviton.server.v1.ListTeamsResponse
-	(*Team)(nil),                          // 3: graviton.server.v1.Team
-	(*Membership)(nil),                    // 4: graviton.server.v1.Membership
-	(*CreateMembershipRequest)(nil),       // 5: graviton.server.v1.CreateMembershipRequest
-	(*ListMembershipsRequest)(nil),        // 6: graviton.server.v1.ListMembershipsRequest
-	(*GetMembershipRequest)(nil),          // 7: graviton.server.v1.GetMembershipRequest
-	(*ListMembershipsResponse)(nil),       // 8: graviton.server.v1.ListMembershipsResponse
-	(*UpdateMembershipRequest)(nil),       // 9: graviton.server.v1.UpdateMembershipRequest
-	(*UpdateMembershipStatusRequest)(nil), // 10: graviton.server.v1.UpdateMembershipStatusRequest
-	(*v1.ListResponseMeta)(nil),           // 11: graviton.shared.v1.ListResponseMeta
+	(*CreateTeamRequest)(nil),             // 0: torchwood.server.v1.CreateTeamRequest
+	(*GetTeamRequest)(nil),                // 1: torchwood.server.v1.GetTeamRequest
+	(*ListTeamsResponse)(nil),             // 2: torchwood.server.v1.ListTeamsResponse
+	(*Team)(nil),                          // 3: torchwood.server.v1.Team
+	(*Membership)(nil),                    // 4: torchwood.server.v1.Membership
+	(*CreateMembershipRequest)(nil),       // 5: torchwood.server.v1.CreateMembershipRequest
+	(*ListMembershipsRequest)(nil),        // 6: torchwood.server.v1.ListMembershipsRequest
+	(*GetMembershipRequest)(nil),          // 7: torchwood.server.v1.GetMembershipRequest
+	(*ListMembershipsResponse)(nil),       // 8: torchwood.server.v1.ListMembershipsResponse
+	(*UpdateMembershipRequest)(nil),       // 9: torchwood.server.v1.UpdateMembershipRequest
+	(*UpdateMembershipStatusRequest)(nil), // 10: torchwood.server.v1.UpdateMembershipStatusRequest
+	(*v1.ListResponseMeta)(nil),           // 11: torchwood.shared.v1.ListResponseMeta
 	(*timestamppb.Timestamp)(nil),         // 12: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),                // 13: graviton.shared.v1.ListRequest
-	(*v1.Empty)(nil),                      // 14: graviton.shared.v1.Empty
+	(*v1.ListRequest)(nil),                // 13: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),                      // 14: torchwood.shared.v1.Empty
 }
 var file_server_v1_teams_proto_depIdxs = []int32{
-	3,  // 0: graviton.server.v1.ListTeamsResponse.teams:type_name -> graviton.server.v1.Team
-	11, // 1: graviton.server.v1.ListTeamsResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	12, // 2: graviton.server.v1.Team.created_at:type_name -> google.protobuf.Timestamp
-	12, // 3: graviton.server.v1.Team.updated_at:type_name -> google.protobuf.Timestamp
-	12, // 4: graviton.server.v1.Membership.invited_at:type_name -> google.protobuf.Timestamp
-	12, // 5: graviton.server.v1.Membership.joined_at:type_name -> google.protobuf.Timestamp
-	12, // 6: graviton.server.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
-	12, // 7: graviton.server.v1.Membership.updated_at:type_name -> google.protobuf.Timestamp
-	4,  // 8: graviton.server.v1.ListMembershipsResponse.memberships:type_name -> graviton.server.v1.Membership
-	11, // 9: graviton.server.v1.ListMembershipsResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	0,  // 10: graviton.server.v1.TeamsService.CreateTeam:input_type -> graviton.server.v1.CreateTeamRequest
-	13, // 11: graviton.server.v1.TeamsService.ListTeams:input_type -> graviton.shared.v1.ListRequest
-	1,  // 12: graviton.server.v1.TeamsService.GetTeam:input_type -> graviton.server.v1.GetTeamRequest
-	1,  // 13: graviton.server.v1.TeamsService.DeleteTeam:input_type -> graviton.server.v1.GetTeamRequest
-	5,  // 14: graviton.server.v1.TeamsService.CreateMembership:input_type -> graviton.server.v1.CreateMembershipRequest
-	6,  // 15: graviton.server.v1.TeamsService.ListMemberships:input_type -> graviton.server.v1.ListMembershipsRequest
-	7,  // 16: graviton.server.v1.TeamsService.GetMembership:input_type -> graviton.server.v1.GetMembershipRequest
-	9,  // 17: graviton.server.v1.TeamsService.UpdateMembership:input_type -> graviton.server.v1.UpdateMembershipRequest
-	10, // 18: graviton.server.v1.TeamsService.UpdateMembershipStatus:input_type -> graviton.server.v1.UpdateMembershipStatusRequest
-	7,  // 19: graviton.server.v1.TeamsService.DeleteMembership:input_type -> graviton.server.v1.GetMembershipRequest
-	3,  // 20: graviton.server.v1.TeamsService.CreateTeam:output_type -> graviton.server.v1.Team
-	2,  // 21: graviton.server.v1.TeamsService.ListTeams:output_type -> graviton.server.v1.ListTeamsResponse
-	3,  // 22: graviton.server.v1.TeamsService.GetTeam:output_type -> graviton.server.v1.Team
-	14, // 23: graviton.server.v1.TeamsService.DeleteTeam:output_type -> graviton.shared.v1.Empty
-	4,  // 24: graviton.server.v1.TeamsService.CreateMembership:output_type -> graviton.server.v1.Membership
-	8,  // 25: graviton.server.v1.TeamsService.ListMemberships:output_type -> graviton.server.v1.ListMembershipsResponse
-	4,  // 26: graviton.server.v1.TeamsService.GetMembership:output_type -> graviton.server.v1.Membership
-	4,  // 27: graviton.server.v1.TeamsService.UpdateMembership:output_type -> graviton.server.v1.Membership
-	4,  // 28: graviton.server.v1.TeamsService.UpdateMembershipStatus:output_type -> graviton.server.v1.Membership
-	14, // 29: graviton.server.v1.TeamsService.DeleteMembership:output_type -> graviton.shared.v1.Empty
+	3,  // 0: torchwood.server.v1.ListTeamsResponse.teams:type_name -> torchwood.server.v1.Team
+	11, // 1: torchwood.server.v1.ListTeamsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	12, // 2: torchwood.server.v1.Team.created_at:type_name -> google.protobuf.Timestamp
+	12, // 3: torchwood.server.v1.Team.updated_at:type_name -> google.protobuf.Timestamp
+	12, // 4: torchwood.server.v1.Membership.invited_at:type_name -> google.protobuf.Timestamp
+	12, // 5: torchwood.server.v1.Membership.joined_at:type_name -> google.protobuf.Timestamp
+	12, // 6: torchwood.server.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
+	12, // 7: torchwood.server.v1.Membership.updated_at:type_name -> google.protobuf.Timestamp
+	4,  // 8: torchwood.server.v1.ListMembershipsResponse.memberships:type_name -> torchwood.server.v1.Membership
+	11, // 9: torchwood.server.v1.ListMembershipsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	0,  // 10: torchwood.server.v1.TeamsService.CreateTeam:input_type -> torchwood.server.v1.CreateTeamRequest
+	13, // 11: torchwood.server.v1.TeamsService.ListTeams:input_type -> torchwood.shared.v1.ListRequest
+	1,  // 12: torchwood.server.v1.TeamsService.GetTeam:input_type -> torchwood.server.v1.GetTeamRequest
+	1,  // 13: torchwood.server.v1.TeamsService.DeleteTeam:input_type -> torchwood.server.v1.GetTeamRequest
+	5,  // 14: torchwood.server.v1.TeamsService.CreateMembership:input_type -> torchwood.server.v1.CreateMembershipRequest
+	6,  // 15: torchwood.server.v1.TeamsService.ListMemberships:input_type -> torchwood.server.v1.ListMembershipsRequest
+	7,  // 16: torchwood.server.v1.TeamsService.GetMembership:input_type -> torchwood.server.v1.GetMembershipRequest
+	9,  // 17: torchwood.server.v1.TeamsService.UpdateMembership:input_type -> torchwood.server.v1.UpdateMembershipRequest
+	10, // 18: torchwood.server.v1.TeamsService.UpdateMembershipStatus:input_type -> torchwood.server.v1.UpdateMembershipStatusRequest
+	7,  // 19: torchwood.server.v1.TeamsService.DeleteMembership:input_type -> torchwood.server.v1.GetMembershipRequest
+	3,  // 20: torchwood.server.v1.TeamsService.CreateTeam:output_type -> torchwood.server.v1.Team
+	2,  // 21: torchwood.server.v1.TeamsService.ListTeams:output_type -> torchwood.server.v1.ListTeamsResponse
+	3,  // 22: torchwood.server.v1.TeamsService.GetTeam:output_type -> torchwood.server.v1.Team
+	14, // 23: torchwood.server.v1.TeamsService.DeleteTeam:output_type -> torchwood.shared.v1.Empty
+	4,  // 24: torchwood.server.v1.TeamsService.CreateMembership:output_type -> torchwood.server.v1.Membership
+	8,  // 25: torchwood.server.v1.TeamsService.ListMemberships:output_type -> torchwood.server.v1.ListMembershipsResponse
+	4,  // 26: torchwood.server.v1.TeamsService.GetMembership:output_type -> torchwood.server.v1.Membership
+	4,  // 27: torchwood.server.v1.TeamsService.UpdateMembership:output_type -> torchwood.server.v1.Membership
+	4,  // 28: torchwood.server.v1.TeamsService.UpdateMembershipStatus:output_type -> torchwood.server.v1.Membership
+	14, // 29: torchwood.server.v1.TeamsService.DeleteMembership:output_type -> torchwood.shared.v1.Empty
 	20, // [20:30] is the sub-list for method output_type
 	10, // [10:20] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name

@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/internal/app/console"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/pkg/jwtparser"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/internal/app/console"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/pkg/jwtparser"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -119,7 +119,7 @@ func TestAuth_RefreshToken_RejectsRevokedAdmin(t *testing.T) {
 
 	refreshToken, err := jwtparser.Generate(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		UserID:    "admin-1",
-		Username:  "admin@graviton.local",
+		Username:  "admin@torchwood.local",
 		ActorKind: "admin",
 		Roles:     []string{"admin"},
 		TokenType: jwtparser.TokenTypeRefresh,
@@ -209,7 +209,7 @@ func adminRefreshToken(t *testing.T, adminID, tokenID string) string {
 	token, err := jwtparser.Generate(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		TokenID:   tokenID,
 		UserID:    adminID,
-		Username:  "admin@graviton.local",
+		Username:  "admin@torchwood.local",
 		ActorKind: "admin",
 		Roles:     []string{"admin"},
 		TokenType: jwtparser.TokenTypeRefresh,

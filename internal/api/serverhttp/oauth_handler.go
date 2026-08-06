@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/app/client"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/pkg/grpc/interceptor"
+	"github.com/torchwoodio/torchwood/internal/app/client"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/pkg/grpc/interceptor"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
@@ -56,7 +56,7 @@ func (h *OAuthHandler) callback(w http.ResponseWriter, r *http.Request, pathPara
 
 	if result.SessionCookie != "" && result.User != nil {
 		http.SetCookie(w, &http.Cookie{
-			Name:     fmt.Sprintf("GRAVITON_session_%s", result.ProjectID),
+			Name:     fmt.Sprintf("TORCHWOOD_session_%s", result.ProjectID),
 			Value:    result.SessionCookie,
 			Path:     "/",
 			HttpOnly: true,

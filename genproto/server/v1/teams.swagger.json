@@ -23,7 +23,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1ListTeamsResponse"
+              "$ref": "#/definitions/torchwoodserverv1ListTeamsResponse"
             }
           },
           "default": {
@@ -80,7 +80,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1Team"
+              "$ref": "#/definitions/torchwoodserverv1Team"
             }
           },
           "default": {
@@ -96,7 +96,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1CreateTeamRequest"
+              "$ref": "#/definitions/torchwoodserverv1CreateTeamRequest"
             }
           }
         ],
@@ -112,7 +112,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1Team"
+              "$ref": "#/definitions/torchwoodserverv1Team"
             }
           },
           "default": {
@@ -170,7 +170,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1ListMembershipsResponse"
+              "$ref": "#/definitions/torchwoodserverv1ListMembershipsResponse"
             }
           },
           "default": {
@@ -221,7 +221,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1Membership"
+              "$ref": "#/definitions/torchwoodserverv1Membership"
             }
           },
           "default": {
@@ -243,7 +243,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1TeamsServiceCreateMembershipBody"
+              "$ref": "#/definitions/torchwoodserverv1TeamsServiceCreateMembershipBody"
             }
           }
         ],
@@ -259,7 +259,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1Membership"
+              "$ref": "#/definitions/torchwoodserverv1Membership"
             }
           },
           "default": {
@@ -327,7 +327,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1Membership"
+              "$ref": "#/definitions/torchwoodserverv1Membership"
             }
           },
           "default": {
@@ -371,7 +371,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1Membership"
+              "$ref": "#/definitions/torchwoodserverv1Membership"
             }
           },
           "default": {
@@ -399,7 +399,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonserverv1TeamsServiceUpdateMembershipStatusBody"
+              "$ref": "#/definitions/torchwoodserverv1TeamsServiceUpdateMembershipStatusBody"
             }
           }
         ],
@@ -421,7 +421,35 @@
         }
       }
     },
-    "gravitonserverv1CreateTeamRequest": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "torchwoodserverv1CreateTeamRequest": {
       "type": "object",
       "properties": {
         "name": {
@@ -435,14 +463,14 @@
         }
       }
     },
-    "gravitonserverv1ListMembershipsResponse": {
+    "torchwoodserverv1ListMembershipsResponse": {
       "type": "object",
       "properties": {
         "memberships": {
           "type": "array",
           "items": {
             "type": "object",
-            "$ref": "#/definitions/gravitonserverv1Membership"
+            "$ref": "#/definitions/torchwoodserverv1Membership"
           }
         },
         "meta": {
@@ -450,14 +478,14 @@
         }
       }
     },
-    "gravitonserverv1ListTeamsResponse": {
+    "torchwoodserverv1ListTeamsResponse": {
       "type": "object",
       "properties": {
         "teams": {
           "type": "array",
           "items": {
             "type": "object",
-            "$ref": "#/definitions/gravitonserverv1Team"
+            "$ref": "#/definitions/torchwoodserverv1Team"
           }
         },
         "meta": {
@@ -465,7 +493,7 @@
         }
       }
     },
-    "gravitonserverv1Membership": {
+    "torchwoodserverv1Membership": {
       "type": "object",
       "properties": {
         "id": {
@@ -510,7 +538,7 @@
         }
       }
     },
-    "gravitonserverv1Team": {
+    "torchwoodserverv1Team": {
       "type": "object",
       "properties": {
         "id": {
@@ -539,7 +567,7 @@
         }
       }
     },
-    "gravitonserverv1TeamsServiceCreateMembershipBody": {
+    "torchwoodserverv1TeamsServiceCreateMembershipBody": {
       "type": "object",
       "properties": {
         "userId": {
@@ -562,39 +590,11 @@
         }
       }
     },
-    "gravitonserverv1TeamsServiceUpdateMembershipStatusBody": {
+    "torchwoodserverv1TeamsServiceUpdateMembershipStatusBody": {
       "type": "object",
       "properties": {
         "status": {
           "type": "string"
-        }
-      }
-    },
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": {}
-    },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
-          }
         }
       }
     },

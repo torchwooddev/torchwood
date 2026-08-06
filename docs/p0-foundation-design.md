@@ -1,7 +1,7 @@
 # P0 底座详细设计（Appwrite Go + PostgreSQL 迁移）
 
 > 本文档在 `tech-decision.md` 已确认选型基础上，给出 P0 底座的详细设计。已通过 `docs/p0-design-review.md` 评审并确认关键决策。  
-> 源码目标目录：`D:\\Codes\\qiulin\\Graviton`
+> 源码目标目录：`D:\\Codes\\qiulin\\Torchwood`
 
 ---
 
@@ -23,7 +23,7 @@ P0 不是完整业务实现，而是搭建可支撑 P1 核心模块持续迭代�
 ## 2. 目录结构
 
 ```text
-D:\\Codes\\qiulin\\Graviton
+D:\\Codes\\qiulin\\Torchwood
 ├── cmd/
 │   ├── server/
 │   │   ├── main.go
@@ -89,7 +89,7 @@ D:\\Codes\\qiulin\\Graviton
 ## 3. 模块路径
 
 ```go
-module github.com/deeploop-ai/graviton
+module github.com/torchwoodio/torchwood
 ```
 
 ---
@@ -116,7 +116,7 @@ server:
 
 security:
   jwt:
-    secret: ""          # env: GRAVITON_SECURITY_JWT_SECRET
+    secret: ""          # env: TORCHWOOD_SECURITY_JWT_SECRET
     access_ttl: "15m"
     refresh_ttl: "7d"
   api_key:
@@ -124,10 +124,10 @@ security:
 
 data:
   database:
-    source: ""          # env: GRAVITON_DATA_DATABASE_SOURCE (postgres)
+    source: ""          # env: TORCHWOOD_DATA_DATABASE_SOURCE (postgres)
   redis:
     addr: "localhost:6379"
-    password: ""        # env: GRAVITON_DATA_REDIS_PASSWORD
+    password: ""        # env: TORCHWOOD_DATA_REDIS_PASSWORD
     db: 0
 
 storage:
@@ -135,7 +135,7 @@ storage:
   s3:
     endpoint: ""        # env
     region: "us-east-1"
-    bucket: "Graviton-storage"
+    bucket: "Torchwood-storage"
     access_key: ""      # env
     secret_key: ""      # env
   local:
@@ -145,8 +145,8 @@ functions:
   executor: "docker"
   docker:
     host: "unix:///var/run/docker.sock"
-    network: "Graviton-functions"
-    registry: "Graviton-funcs"
+    network: "Torchwood-functions"
+    registry: "Torchwood-funcs"
 
 telemetry:
   enabled: false
@@ -155,13 +155,13 @@ telemetry:
 
 ### 4.2 环境变量
 
-统一前缀 `GRAVITON_`。敏感项必须走环境变量：
+统一前缀 `TORCHWOOD_`。敏感项必须走环境变量：
 
-- `GRAVITON_SECURITY_JWT_SECRET`
-- `GRAVITON_DATA_DATABASE_SOURCE`
-- `GRAVITON_DATA_REDIS_PASSWORD`
-- `GRAVITON_STORAGE_S3_ACCESS_KEY`
-- `GRAVITON_STORAGE_S3_SECRET_KEY`
+- `TORCHWOOD_SECURITY_JWT_SECRET`
+- `TORCHWOOD_DATA_DATABASE_SOURCE`
+- `TORCHWOOD_DATA_REDIS_PASSWORD`
+- `TORCHWOOD_STORAGE_S3_ACCESS_KEY`
+- `TORCHWOOD_STORAGE_S3_SECRET_KEY`
 
 ---
 
@@ -385,9 +385,9 @@ type Query struct {
 当 project `my-project`（internal_id=1）下创建 database `db1` 和 collection `posts` 后：
 
 ```sql
-CREATE SCHEMA IF NOT EXISTS "GRAVITON_1_db1";
+CREATE SCHEMA IF NOT EXISTS "TORCHWOOD_1_db1";
 
-CREATE TABLE "GRAVITON_1_db1"."posts" (
+CREATE TABLE "TORCHWOOD_1_db1"."posts" (
     _id          TEXT PRIMARY KEY,
     _tenant      BIGINT NOT NULL DEFAULT 1,
     _created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -405,7 +405,7 @@ CREATE TABLE "GRAVITON_1_db1"."posts" (
 每个 schema 下有一张统一权限表：
 
 ```sql
-CREATE TABLE "GRAVITON_1_db1"."_perms" (
+CREATE TABLE "TORCHWOOD_1_db1"."_perms" (
     _id         BIGSERIAL PRIMARY KEY,
     _tenant     BIGINT NOT NULL,
     _collection TEXT NOT NULL,
@@ -424,10 +424,10 @@ CREATE INDEX idx_perms_role ON _perms(_tenant, _collection, _type, _permission);
 读取文档时，先计算当前请求的角色集合 `roles`，再生成 `_perms` 过滤：
 
 ```sql
-SELECT d.* FROM "GRAVITON_1_db1"."posts" d
+SELECT d.* FROM "TORCHWOOD_1_db1"."posts" d
 WHERE d._tenant = 1
   AND EXISTS (
-    SELECT 1 FROM "GRAVITON_1_db1"."_perms" p
+    SELECT 1 FROM "TORCHWOOD_1_db1"."_perms" p
     WHERE p._collection = 'posts'
       AND p._document = d._id
       AND p._type = 'read'
@@ -476,11 +476,11 @@ P0 先实现：
 
 | 方式 | 场景 | 实现 |
 |------|------|------|
-| Session cookie | 浏览器 / Client SDK | `GRAVITON_session_<project_id>` 存 signed session id，服务端查 `sessions` 动态集合 |
+| Session cookie | 浏览器 / Client SDK | `TORCHWOOD_session_<project_id>` 存 signed session id，服务端查 `sessions` 动态集合 |
 | JWT access token | Client SDK / 浏览器 | `authorization: Bearer <jwt>` |
-| JWT refresh token | 刷新 access token | `GRAVITON_refresh_<project_id>` httpOnly cookie 或 body |
+| JWT refresh token | 刷新 access token | `TORCHWOOD_refresh_<project_id>` httpOnly cookie 或 body |
 | API key | 服务端 SDK / 自动化 | `x-api-key: <key>` |
-| Console cookie | Console 管理员 | `GRAVITON_session_console` 存 signed console admin id |
+| Console cookie | Console 管理员 | `TORCHWOOD_session_console` 存 signed console admin id |
 
 ### 7.2 Token 分类
 
@@ -552,7 +552,7 @@ label:{label}
   - 访问 users/sessions 等系统集合时，通过 `_perms` 过滤；app 层再补一层业务校验（如只能改自己的 user）。
 - **admin / console**：
   - console admin 角色为 `owner`/`admin`/`developer`。
-  - 对 Server API 的管理员访问，auth interceptor 识别 `GRAVITON_session_console` 后构造 admin principal；动态文档层对 admin 跳过 `_perms`。
+  - 对 Server API 的管理员访问，auth interceptor 识别 `TORCHWOOD_session_console` 后构造 admin principal；动态文档层对 admin 跳过 `_perms`。
 
 ### 7.7 Console 管理员登录与权限
 
@@ -560,16 +560,16 @@ label:{label}
 
 1. 静态 `console_admins` 表预置初始管理员（安装时创建）。
 2. Console 登录：`POST /v1/console/auth/sign-in`，email + password 校验 `console_admins`。
-3. 成功后写入 cookie `GRAVITON_session_console` = signed admin id。
+3. 成功后写入 cookie `TORCHWOOD_session_console` = signed admin id。
 4. Console admin 默认是全局 owner，可调所有 project。
 5. P1 将 console admin 迁移到 console project 的动态 users，并引入 organization/team 邀请机制。
 
 ### 7.8 Session Cookie
 
-- cookie 名：`GRAVITON_session_<project_id>`。
+- cookie 名：`TORCHWOOD_session_<project_id>`。
 - cookie 值：signed session id（HMAC-SHA256，密钥 = `security.jwt.secret`）。
 - 服务端按 session id 查 `sessions` 动态集合，验证 `expire_at`。
-- 刷新机制：通过 `GRAVITON_refresh_<project_id>` cookie 换发新的 session cookie。
+- 刷新机制：通过 `TORCHWOOD_refresh_<project_id>` cookie 换发新的 session cookie。
 
 ---
 
@@ -738,7 +738,7 @@ P0 仅实现端口和 Docker 适配器桩。
 - 动态文档用 `_tenant` 列隔离；`tenant` 值 = `projects.internal_id`。
 - 每个 project 创建时：
   1. 写入 `projects` 表。
-  2. 创建默认 database schema（`GRAVITON_<internal_id>_default`）。
+  2. 创建默认 database schema（`TORCHWOOD_<internal_id>_default`）。
   3. 创建系统 collections：users、sessions、files、buckets（P0 至少 users/sessions）。
 
 ---
@@ -748,7 +748,7 @@ P0 仅实现端口和 Docker 适配器桩。
 ### 11.1 Sign Up
 
 1. `POST /v1/account/sign-up` → grpc-gateway → `AccountService.SignUp`。
-2. 读取 `X-Graviton-Project` 或 cookie 中的 project_id。
+2. 读取 `X-Torchwood-Project` 或 cookie 中的 project_id。
 3. 若 project 未初始化系统集合，调用 `CreateCollection` 创建 users/sessions。
 4. app 层校验 email 唯一、密码强度。
 5. domain/users：密码哈希（Argon2）。

@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	consolev1 "github.com/deeploop-ai/graviton/genproto/console/v1"
-	"github.com/deeploop-ai/graviton/internal/app/console"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/pkg/jwtparser"
-	"github.com/deeploop-ai/graviton/pkg/password"
+	consolev1 "github.com/torchwoodio/torchwood/genproto/console/v1"
+	"github.com/torchwoodio/torchwood/internal/app/console"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/pkg/jwtparser"
+	"github.com/torchwoodio/torchwood/pkg/password"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -78,7 +78,7 @@ func newSignInService(t *testing.T, cfg *config.AppConfig) *AuthService {
 	require.NoError(t, err)
 	repo := &stubAdminRepo{admin: &projects.ConsoleAdmin{
 		ID:           "admin-1",
-		Email:        "admin@graviton.local",
+		Email:        "admin@torchwood.local",
 		PasswordHash: hash,
 		Role:         "admin",
 	}}
@@ -103,19 +103,19 @@ func TestSignIn_IssuesSessionCookies(t *testing.T) {
 	ctx, stream := testCtx(t)
 
 	_, err := svc.SignIn(ctx, &consolev1.SignInRequest{
-		Email:    "admin@graviton.local",
+		Email:    "admin@torchwood.local",
 		Password: "Admin@123",
 	})
 	require.NoError(t, err)
 
-	access := findCookie(t, stream, "GRAVITON_session_console")
+	access := findCookie(t, stream, "TORCHWOOD_session_console")
 	require.Contains(t, access, "Path=/")
 	require.Contains(t, access, "HttpOnly")
 	require.Contains(t, access, "SameSite=Lax")
 	require.Contains(t, access, "Max-Age=86400")
 	require.NotContains(t, access, "Secure")
 
-	refresh := findCookie(t, stream, "GRAVITON_console_refresh")
+	refresh := findCookie(t, stream, "TORCHWOOD_console_refresh")
 	require.Contains(t, refresh, "Path=/v1/console/auth")
 	require.Contains(t, refresh, "HttpOnly")
 	require.Contains(t, refresh, "SameSite=Lax")
@@ -129,13 +129,13 @@ func TestSignIn_SecureCookiesOnTLS(t *testing.T) {
 	ctx, stream := testCtx(t)
 
 	_, err := svc.SignIn(ctx, &consolev1.SignInRequest{
-		Email:    "admin@graviton.local",
+		Email:    "admin@torchwood.local",
 		Password: "Admin@123",
 	})
 	require.NoError(t, err)
 
-	require.Contains(t, findCookie(t, stream, "GRAVITON_session_console"), "Secure")
-	require.Contains(t, findCookie(t, stream, "GRAVITON_console_refresh"), "Secure")
+	require.Contains(t, findCookie(t, stream, "TORCHWOOD_session_console"), "Secure")
+	require.Contains(t, findCookie(t, stream, "TORCHWOOD_console_refresh"), "Secure")
 }
 
 func adminRefreshToken(t *testing.T, cfg *config.AppConfig) string {
@@ -143,7 +143,7 @@ func adminRefreshToken(t *testing.T, cfg *config.AppConfig) string {
 	token, err := jwtparser.Generate(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		TokenID:   "tid-1",
 		UserID:    "admin-1",
-		Username:  "admin@graviton.local",
+		Username:  "admin@torchwood.local",
 		ActorKind: "admin",
 		Roles:     []string{"admin"},
 		TokenType: jwtparser.TokenTypeRefresh,
@@ -161,15 +161,15 @@ func TestRefreshToken_ReadsCookieWhenBodyEmpty(t *testing.T) {
 	ctx, stream := testCtx(t)
 	refresh := adminRefreshToken(t, cfg)
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
-		"cookie", "other=1; GRAVITON_console_refresh="+refresh,
+		"cookie", "other=1; TORCHWOOD_console_refresh="+refresh,
 	))
 
 	res, err := svc.RefreshToken(ctx, &consolev1.RefreshTokenRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, res.GetAccessToken())
 	// 刷新成功后重新下发两个 cookie（rotation 后的新 refresh token）。
-	findCookie(t, stream, "GRAVITON_session_console")
-	findCookie(t, stream, "GRAVITON_console_refresh")
+	findCookie(t, stream, "TORCHWOOD_session_console")
+	findCookie(t, stream, "TORCHWOOD_console_refresh")
 }
 
 func TestRefreshToken_BodyTakesPrecedenceOverCookie(t *testing.T) {
@@ -178,7 +178,7 @@ func TestRefreshToken_BodyTakesPrecedenceOverCookie(t *testing.T) {
 	svc := NewAuthService(console.NewAuth(cfg, nil, nil, nil, nil))
 	ctx, _ := testCtx(t)
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
-		"cookie", "GRAVITON_console_refresh=forged-token",
+		"cookie", "TORCHWOOD_console_refresh=forged-token",
 	))
 
 	res, err := svc.RefreshToken(ctx, &consolev1.RefreshTokenRequest{
@@ -196,11 +196,11 @@ func TestSignOut_ClearsSessionCookies(t *testing.T) {
 	_, err := svc.SignOut(ctx, &consolev1.SignOutRequest{})
 	require.NoError(t, err)
 
-	access := findCookie(t, stream, "GRAVITON_session_console")
+	access := findCookie(t, stream, "TORCHWOOD_session_console")
 	require.Contains(t, access, "Max-Age=0")
 	require.Contains(t, access, "Path=/")
 
-	refresh := findCookie(t, stream, "GRAVITON_console_refresh")
+	refresh := findCookie(t, stream, "TORCHWOOD_console_refresh")
 	require.Contains(t, refresh, "Max-Age=0")
 	require.Contains(t, refresh, "Path=/v1/console/auth")
 }

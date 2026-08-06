@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useGraviton } from "@/lib/graviton-context";
+import { useTorchwood } from "@/lib/torchwood-context";
 
 type LoginTab = "password" | "email_otp" | "phone_otp" | "oauth" | "wechat";
 
@@ -26,15 +26,15 @@ export function LoginPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 border-b border-Graviton-border pb-3">
+      <div className="flex flex-wrap gap-2 border-b border-Torchwood-border pb-3">
         {TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
               tab === item.id
-                ? "bg-Graviton-accent text-slate-950"
-                : "bg-Graviton-panel text-Graviton-muted hover:text-white"
+                ? "bg-Torchwood-accent text-slate-950"
+                : "bg-Torchwood-panel text-Torchwood-muted hover:text-white"
             }`}
             onClick={() => setTab(item.id)}
           >
@@ -49,9 +49,9 @@ export function LoginPage() {
       {tab === "oauth" ? <OAuthLoginPanel /> : null}
       {tab === "wechat" ? <WeChatMiniProgramForm /> : null}
 
-      <p className="text-center text-sm text-Graviton-muted">
+      <p className="text-center text-sm text-Torchwood-muted">
         还没有账号？{" "}
-        <Link className="text-Graviton-accent hover:underline" to="/register">
+        <Link className="text-Torchwood-accent hover:underline" to="/register">
           注册
         </Link>
       </p>
@@ -60,7 +60,7 @@ export function LoginPage() {
 }
 
 function useSignInSuccess() {
-  const { setAuth } = useGraviton();
+  const { setAuth } = useTorchwood();
   const navigate = useNavigate();
   return (res: { account: { id: string; email: string; name: string }; tokens: { access_token: string; refresh_token: string } }) => {
     setAuth({
@@ -84,7 +84,7 @@ function ErrorBox({ error }: { error: string | null }) {
 }
 
 function PasswordLoginForm() {
-  const { client, run } = useGraviton();
+  const { client, run } = useTorchwood();
   const onSuccess = useSignInSuccess();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -109,11 +109,11 @@ function PasswordLoginForm() {
     <form className="space-y-4" onSubmit={onSubmit}>
       <ErrorBox error={error} />
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">邮箱</span>
+        <span className="text-xs text-Torchwood-muted">邮箱</span>
         <input className="field" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">密码</span>
+        <span className="text-xs text-Torchwood-muted">密码</span>
         <input className="field" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
       <button type="submit" className="btn-primary w-full" disabled={loading}>
@@ -124,7 +124,7 @@ function PasswordLoginForm() {
 }
 
 function EmailOTPLoginForm() {
-  const { client, run } = useGraviton();
+  const { client, run } = useTorchwood();
   const onSuccess = useSignInSuccess();
   const [email, setEmail] = useState("");
   const [challengeId, setChallengeId] = useState("");
@@ -167,7 +167,7 @@ function EmailOTPLoginForm() {
     <form className="space-y-4" onSubmit={onSubmit}>
       <ErrorBox error={error} />
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">邮箱</span>
+        <span className="text-xs text-Torchwood-muted">邮箱</span>
         <input className="field" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </label>
       {!sent ? (
@@ -177,7 +177,7 @@ function EmailOTPLoginForm() {
       ) : (
         <>
           <label className="block space-y-1">
-            <span className="text-xs text-Graviton-muted">验证码</span>
+            <span className="text-xs text-Torchwood-muted">验证码</span>
             <input className="field" required value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="6 位数字" />
           </label>
           <button type="submit" className="btn-primary w-full" disabled={loading}>
@@ -190,7 +190,7 @@ function EmailOTPLoginForm() {
 }
 
 function PhoneOTPLoginForm() {
-  const { client, run } = useGraviton();
+  const { client, run } = useTorchwood();
   const onSuccess = useSignInSuccess();
   const [phone, setPhone] = useState("+8613800138000");
   const [challengeId, setChallengeId] = useState("");
@@ -232,9 +232,9 @@ function PhoneOTPLoginForm() {
   return (
     <form className="space-y-4" onSubmit={onSubmit}>
       <ErrorBox error={error} />
-      <p className="text-xs text-Graviton-muted">需配置 Twilio 或开启 dev_log_sms 查看日志中的验证码。</p>
+      <p className="text-xs text-Torchwood-muted">需配置 Twilio 或开启 dev_log_sms 查看日志中的验证码。</p>
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">手机号（E.164）</span>
+        <span className="text-xs text-Torchwood-muted">手机号（E.164）</span>
         <input className="field" required value={phone} onChange={(e) => setPhone(e.target.value)} />
       </label>
       {!sent ? (
@@ -244,7 +244,7 @@ function PhoneOTPLoginForm() {
       ) : (
         <>
           <label className="block space-y-1">
-            <span className="text-xs text-Graviton-muted">验证码</span>
+            <span className="text-xs text-Torchwood-muted">验证码</span>
             <input className="field" required value={otp} onChange={(e) => setOtp(e.target.value)} />
           </label>
           <button type="submit" className="btn-primary w-full" disabled={loading}>
@@ -257,7 +257,7 @@ function PhoneOTPLoginForm() {
 }
 
 function OAuthLoginPanel() {
-  const { client, run } = useGraviton();
+  const { client, run } = useTorchwood();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -287,7 +287,7 @@ function OAuthLoginPanel() {
   return (
     <div className="space-y-3">
       <ErrorBox error={error} />
-      <p className="text-xs text-Graviton-muted">
+      <p className="text-xs text-Torchwood-muted">
         请先在 Console Settings 配置 OAuth Provider，并将回调地址注册到对应平台。
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -312,7 +312,7 @@ function OAuthLoginPanel() {
 }
 
 function WeChatMiniProgramForm() {
-  const { client, run } = useGraviton();
+  const { client, run } = useTorchwood();
   const onSuccess = useSignInSuccess();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -335,11 +335,11 @@ function WeChatMiniProgramForm() {
   return (
     <form className="space-y-4" onSubmit={onSubmit}>
       <ErrorBox error={error} />
-      <p className="text-xs text-Graviton-muted">
+      <p className="text-xs text-Torchwood-muted">
         开发调试：粘贴 wx.login 返回的 code。需配置 wechat_miniprogram OAuth Provider。
       </p>
       <label className="block space-y-1">
-        <span className="text-xs text-Graviton-muted">wx.login code</span>
+        <span className="text-xs text-Torchwood-muted">wx.login code</span>
         <input className="field" required value={code} onChange={(e) => setCode(e.target.value)} />
       </label>
       <button type="submit" className="btn-primary w-full" disabled={loading}>
@@ -350,7 +350,7 @@ function WeChatMiniProgramForm() {
 }
 
 export function OAuthCallbackPage() {
-  const { setAuth } = useGraviton();
+  const { setAuth } = useTorchwood();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
@@ -377,7 +377,7 @@ export function OAuthCallbackPage() {
   }, [navigate, setAuth]);
 
   return (
-    <div className="panel p-6 text-center text-sm text-Graviton-muted">
+    <div className="panel p-6 text-center text-sm text-Torchwood-muted">
       {error ?? "OAuth 登录处理中…"}
     </div>
   );

@@ -215,7 +215,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1RefreshTokenRequest"
+              "$ref": "#/definitions/torchwoodclientv1RefreshTokenRequest"
             }
           }
         ],
@@ -281,7 +281,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignInResponse"
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
             }
           },
           "default": {
@@ -345,7 +345,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignInResponse"
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
             }
           },
           "default": {
@@ -511,7 +511,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignInResponse"
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
             }
           },
           "default": {
@@ -581,7 +581,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignInResponse"
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
             }
           },
           "default": {
@@ -613,7 +613,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignInResponse"
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
             }
           },
           "default": {
@@ -675,7 +675,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignInResponse"
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
             }
           },
           "default": {
@@ -691,7 +691,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignInRequest"
+              "$ref": "#/definitions/torchwoodclientv1SignInRequest"
             }
           }
         ],
@@ -723,7 +723,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1SignOutRequest"
+              "$ref": "#/definitions/torchwoodclientv1SignOutRequest"
             }
           }
         ],
@@ -862,50 +862,6 @@
         }
       }
     },
-    "gravitonclientv1RefreshTokenRequest": {
-      "type": "object",
-      "properties": {
-        "projectId": {
-          "type": "string"
-        },
-        "refreshToken": {
-          "type": "string"
-        }
-      }
-    },
-    "gravitonclientv1SignInRequest": {
-      "type": "object",
-      "properties": {
-        "email": {
-          "type": "string"
-        },
-        "password": {
-          "type": "string"
-        },
-        "projectId": {
-          "type": "string"
-        }
-      }
-    },
-    "gravitonclientv1SignInResponse": {
-      "type": "object",
-      "properties": {
-        "account": {
-          "$ref": "#/definitions/v1Account"
-        },
-        "tokens": {
-          "$ref": "#/definitions/v1TokenBundle"
-        }
-      }
-    },
-    "gravitonclientv1SignOutRequest": {
-      "type": "object",
-      "properties": {
-        "projectId": {
-          "type": "string"
-        }
-      }
-    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -939,6 +895,50 @@
             "type": "object",
             "$ref": "#/definitions/protobufAny"
           }
+        }
+      }
+    },
+    "torchwoodclientv1RefreshTokenRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "refreshToken": {
+          "type": "string"
+        }
+      }
+    },
+    "torchwoodclientv1SignInRequest": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        }
+      }
+    },
+    "torchwoodclientv1SignInResponse": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "$ref": "#/definitions/v1Account"
+        },
+        "tokens": {
+          "$ref": "#/definitions/v1TokenBundle"
+        }
+      }
+    },
+    "torchwoodclientv1SignOutRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
         }
       }
     },

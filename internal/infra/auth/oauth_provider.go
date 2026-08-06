@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"golang.org/x/oauth2"
 	githuboauth "golang.org/x/oauth2/github"
 	googleoauth "golang.org/x/oauth2/google"

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

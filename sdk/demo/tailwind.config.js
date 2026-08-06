@@ -8,7 +8,7 @@ export default {
         mono: ["JetBrains Mono", "monospace"],
       },
       colors: {
-        Graviton: {
+        Torchwood: {
           bg: "#0b1220",
           panel: "#111827",
           card: "#151f33",

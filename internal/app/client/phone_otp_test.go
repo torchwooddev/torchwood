@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +67,6 @@ func TestAccount_PhoneOTPLogin(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, tokens.AccessToken)
-	require.Equal(t, "phone_8613900000001@graviton.local", user.Email)
+	require.Equal(t, "phone_8613900000001@torchwood.local", user.Email)
 	require.NotEmpty(t, user.ID)
 }

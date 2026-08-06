@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
-	"github.com/deeploop-ai/graviton/pkg/query"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwoodio/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

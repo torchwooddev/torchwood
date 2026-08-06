@@ -1,12 +1,12 @@
 package app
 
 import (
-	"github.com/deeploop-ai/graviton/internal/app/client"
-	"github.com/deeploop-ai/graviton/internal/app/console"
-	"github.com/deeploop-ai/graviton/internal/app/functions"
-	"github.com/deeploop-ai/graviton/internal/app/server"
-	"github.com/deeploop-ai/graviton/internal/app/storage"
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/app/client"
+	"github.com/torchwoodio/torchwood/internal/app/console"
+	"github.com/torchwoodio/torchwood/internal/app/functions"
+	"github.com/torchwoodio/torchwood/internal/app/server"
+	"github.com/torchwoodio/torchwood/internal/app/storage"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"github.com/google/wire"
 )
 

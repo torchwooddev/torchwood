@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useGraviton } from "@/lib/graviton-context";
+import { useTorchwood } from "@/lib/torchwood-context";
 import { suffix } from "@/lib/storage";
 import { ErrorBanner, JsonPanel, MethodTag, PageHeader } from "@/components/Ui";
 
@@ -15,7 +15,7 @@ type StepResult = { step: string; ok: boolean; data?: unknown; error?: string };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="mb-6 rounded-xl border border-Graviton-border bg-Graviton-panel/40 p-4">
+    <section className="mb-6 rounded-xl border border-Torchwood-border bg-Torchwood-panel/40 p-4">
       <h3 className="mb-3 text-sm font-medium text-slate-200">{title}</h3>
       <div className="flex flex-wrap gap-2">{children}</div>
     </section>
@@ -41,7 +41,7 @@ function ActionButton({
 }
 
 export function DatabasesPage() {
-  const { client, settings, updateSettings, serverClient, run, lastError } = useGraviton();
+  const { client, settings, updateSettings, serverClient, run, lastError } = useTorchwood();
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("SDK demo document");
@@ -71,34 +71,34 @@ export function DatabasesPage() {
   async function bootstrapEnv() {
     setLoading(true);
     try {
-      const Graviton = serverClient();
+      const Torchwood = serverClient();
       const newDbId = `sdk_db_${suffix()}`;
       const newCollId = "posts";
       const data = await run(async () => {
-        await Graviton.server.databases.createDatabase({
+        await Torchwood.server.databases.createDatabase({
           id: newDbId,
           name: `SDK DB ${suffix()}`,
         });
-        await Graviton.server.databases.createCollection(newDbId, {
+        await Torchwood.server.databases.createCollection(newDbId, {
           id: newCollId,
           name: "Posts",
           permissions: [...DEFAULT_COLL_PERMS],
         });
-        await Graviton.server.databases.createAttribute(newDbId, newCollId, {
+        await Torchwood.server.databases.createAttribute(newDbId, newCollId, {
           key: "title",
           type: "string",
           size: 256,
         });
-        await Graviton.server.databases.createAttribute(newDbId, newCollId, {
+        await Torchwood.server.databases.createAttribute(newDbId, newCollId, {
           key: "views",
           type: "integer",
         });
-        const index = await Graviton.server.databases.createIndex(newDbId, newCollId, {
+        const index = await Torchwood.server.databases.createIndex(newDbId, newCollId, {
           id: "idx_title",
           type: "key",
           attributes: ["title"],
         });
-        const doc = await Graviton.server.databases.createDocument(newDbId, newCollId, {
+        const doc = await Torchwood.server.databases.createDocument(newDbId, newCollId, {
           data: { title: "Seed document", views: 0 },
         });
         return {
@@ -132,7 +132,7 @@ export function DatabasesPage() {
   async function runFullVerification() {
     setLoading(true);
     const steps: StepResult[] = [];
-    const Graviton = serverClient();
+    const Torchwood = serverClient();
 
     async function step(name: string, fn: () => Promise<unknown>) {
       try {
@@ -155,45 +155,45 @@ export function DatabasesPage() {
 
     try {
       await step("server.createDatabase", () =>
-        Graviton.server.databases.createDatabase({ id: testDbId, name: "Verify DB" })
+        Torchwood.server.databases.createDatabase({ id: testDbId, name: "Verify DB" })
       );
-      await step("server.getDatabase", () => Graviton.server.databases.getDatabase(testDbId));
-      await step("server.listDatabases", () => Graviton.server.databases.listDatabases({ page_size: 5 }));
+      await step("server.getDatabase", () => Torchwood.server.databases.getDatabase(testDbId));
+      await step("server.listDatabases", () => Torchwood.server.databases.listDatabases({ page_size: 5 }));
 
       await step("server.createCollection", () =>
-        Graviton.server.databases.createCollection(testDbId, {
+        Torchwood.server.databases.createCollection(testDbId, {
           id: testCollId,
           name: "Items",
           permissions: [...DEFAULT_COLL_PERMS],
         })
       );
       await step("server.listCollections", () =>
-        Graviton.server.databases.listCollections(testDbId)
+        Torchwood.server.databases.listCollections(testDbId)
       );
       await step("server.getCollection", () =>
-        Graviton.server.databases.getCollection(testDbId, testCollId)
+        Torchwood.server.databases.getCollection(testDbId, testCollId)
       );
       await step("server.updateCollection", () =>
-        Graviton.server.databases.updateCollection(testDbId, testCollId, {
+        Torchwood.server.databases.updateCollection(testDbId, testCollId, {
           name: "Items Updated",
         })
       );
 
       await step("server.createAttribute(title)", () =>
-        Graviton.server.databases.createAttribute(testDbId, testCollId, {
+        Torchwood.server.databases.createAttribute(testDbId, testCollId, {
           key: "title",
           type: "string",
           size: 128,
         })
       );
       await step("server.createAttribute(views)", () =>
-        Graviton.server.databases.createAttribute(testDbId, testCollId, {
+        Torchwood.server.databases.createAttribute(testDbId, testCollId, {
           key: "views",
           type: "integer",
         })
       );
       const index = (await step("server.createIndex", () =>
-        Graviton.server.databases.createIndex(testDbId, testCollId, {
+        Torchwood.server.databases.createIndex(testDbId, testCollId, {
           id: testIndexId,
           type: "key",
           attributes: ["views"],
@@ -202,26 +202,26 @@ export function DatabasesPage() {
       )) as { id: string };
 
       const serverDoc = (await step("server.createDocument", () =>
-        Graviton.server.databases.createDocument(testDbId, testCollId, {
+        Torchwood.server.databases.createDocument(testDbId, testCollId, {
           data: { title: "Server doc", views: 1 },
         })
       )) as { id: string };
       serverDocId = serverDoc.id;
 
       await step("server.listDocuments", () =>
-        Graviton.server.databases.listDocuments(testDbId, testCollId)
+        Torchwood.server.databases.listDocuments(testDbId, testCollId)
       );
       await step("server.getDocument", () =>
-        Graviton.server.databases.getDocument(testDbId, testCollId, serverDocId)
+        Torchwood.server.databases.getDocument(testDbId, testCollId, serverDocId)
       );
       await step("server.updateDocument", () =>
-        Graviton.server.databases.updateDocument(testDbId, testCollId, serverDocId, {
+        Torchwood.server.databases.updateDocument(testDbId, testCollId, serverDocId, {
           data: { title: "Server doc updated" },
           increment: { views: 2 },
         })
       );
       await step("server.countDocuments", () =>
-        Graviton.server.databases.countDocuments(testDbId, testCollId)
+        Torchwood.server.databases.countDocuments(testDbId, testCollId)
       );
 
       const clientDoc = (await step("client.createDocument", () =>
@@ -255,33 +255,33 @@ export function DatabasesPage() {
       );
 
       await step("server.bulkUpdateDocuments", () =>
-        Graviton.server.databases.bulkUpdateDocuments(testDbId, testCollId, {
+        Torchwood.server.databases.bulkUpdateDocuments(testDbId, testCollId, {
           document_ids: [extraDocId],
           data: { title: "Bulk updated" },
         })
       );
       await step("server.bulkDeleteDocuments", () =>
-        Graviton.server.databases.bulkDeleteDocuments(testDbId, testCollId, [extraDocId])
+        Torchwood.server.databases.bulkDeleteDocuments(testDbId, testCollId, [extraDocId])
       );
 
       await step("client.deleteDocument", () =>
         client.databases.deleteDocument(testDbId, testCollId, clientDocId)
       );
       await step("server.deleteDocument", () =>
-        Graviton.server.databases.deleteDocument(testDbId, testCollId, serverDocId)
+        Torchwood.server.databases.deleteDocument(testDbId, testCollId, serverDocId)
       );
 
       await step("server.deleteAttribute(views)", () =>
-        Graviton.server.databases.deleteAttribute(testDbId, testCollId, "views")
+        Torchwood.server.databases.deleteAttribute(testDbId, testCollId, "views")
       );
       await step("server.deleteIndex", () =>
-        Graviton.server.databases.deleteIndex(testDbId, testCollId, index.id)
+        Torchwood.server.databases.deleteIndex(testDbId, testCollId, index.id)
       );
       await step("server.deleteCollection", () =>
-        Graviton.server.databases.deleteCollection(testDbId, testCollId)
+        Torchwood.server.databases.deleteCollection(testDbId, testCollId)
       );
       await step("server.deleteDatabase", () =>
-        Graviton.server.databases.deleteDatabase(testDbId)
+        Torchwood.server.databases.deleteDatabase(testDbId)
       );
 
       setResult({
@@ -326,28 +326,28 @@ export function DatabasesPage() {
       {!hasApiKey ? (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
           Server API 需要 API Key。请先到{" "}
-          <Link className="text-Graviton-accent underline" to="/app/settings">
+          <Link className="text-Torchwood-accent underline" to="/app/settings">
             设置
           </Link>{" "}
           填写。
         </div>
       ) : null}
 
-      <div className="mb-4 grid gap-3 rounded-xl border border-Graviton-border bg-Graviton-panel/50 p-4 text-sm md:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-3 rounded-xl border border-Torchwood-border bg-Torchwood-panel/50 p-4 text-sm md:grid-cols-2 lg:grid-cols-4">
         <div>
-          <div className="text-Graviton-muted">databaseId</div>
+          <div className="text-Torchwood-muted">databaseId</div>
           <div className="truncate font-mono text-cyan-100">{dbId || "（未初始化）"}</div>
         </div>
         <div>
-          <div className="text-Graviton-muted">collectionId</div>
+          <div className="text-Torchwood-muted">collectionId</div>
           <div className="font-mono text-cyan-100">{collId}</div>
         </div>
         <div>
-          <div className="text-Graviton-muted">documentId</div>
+          <div className="text-Torchwood-muted">documentId</div>
           <div className="truncate font-mono text-cyan-100">{docId || "—"}</div>
         </div>
         <div>
-          <div className="text-Graviton-muted">indexId</div>
+          <div className="text-Torchwood-muted">indexId</div>
           <div className="font-mono text-cyan-100">{indexId || "—"}</div>
         </div>
       </div>
@@ -365,11 +365,11 @@ export function DatabasesPage() {
 
       <div className="mb-4 grid gap-3 md:grid-cols-2">
         <label className="block space-y-1">
-          <span className="text-xs text-Graviton-muted">data.title</span>
+          <span className="text-xs text-Torchwood-muted">data.title</span>
           <input className="field" value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
         <label className="block space-y-1">
-          <span className="text-xs text-Graviton-muted">data.views</span>
+          <span className="text-xs text-Torchwood-muted">data.views</span>
           <input
             className="field"
             type="number"

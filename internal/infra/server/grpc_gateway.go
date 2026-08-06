@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	clientv1 "github.com/deeploop-ai/graviton/genproto/client/v1"
-	consolev1 "github.com/deeploop-ai/graviton/genproto/console/v1"
-	serverv1 "github.com/deeploop-ai/graviton/genproto/server/v1"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/api/serverhttp"
+	clientv1 "github.com/torchwoodio/torchwood/genproto/client/v1"
+	consolev1 "github.com/torchwoodio/torchwood/genproto/console/v1"
+	serverv1 "github.com/torchwoodio/torchwood/genproto/server/v1"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/api/serverhttp"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/lynx-go/lynx"
 	lynxhttp "github.com/lynx-go/lynx/server/http"
@@ -104,7 +104,7 @@ func portFromAddr(addr string) string {
 
 func authIncomingHeaderMatcher(key string) (string, bool) {
 	switch strings.ToLower(key) {
-	case "authorization", "cookie", "x-api-key", "x-graviton-project", "x-request-id":
+	case "authorization", "cookie", "x-api-key", "x-torchwood-project", "x-request-id":
 		return strings.ToLower(key), true
 	default:
 		return runtime.DefaultHeaderMatcher(key)

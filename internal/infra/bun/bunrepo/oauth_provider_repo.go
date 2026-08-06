@@ -6,11 +6,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/infra/clients"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/pkg/secretbox"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/infra/clients"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/pkg/secretbox"
 )
 
 type oauthProviderRepo struct {

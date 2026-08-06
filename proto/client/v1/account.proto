@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package graviton.client.v1;
+package torchwood.client.v1;
 
-option go_package = "github.com/deeploop-ai/graviton/genproto/client/v1;clientv1";
+option go_package = "github.com/torchwoodio/torchwood/genproto/client/v1;clientv1";
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
@@ -11,131 +11,131 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 service AccountService {
-  option (graviton.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
 
   rpc SignUp(SignUpRequest) returns (SignUpResponse) {
     option (google.api.http) = { post: "/v1/account/sign-up", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc SignIn(SignInRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sign-in", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc SignOut(SignOutRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { post: "/v1/account/sign-out", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {
     option (google.api.http) = { post: "/v1/account/refresh", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc Me(MeRequest) returns (Account) {
     option (google.api.http) = { get: "/v1/account/me" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc UpdateAccount(UpdateAccountRequest) returns (Account) {
     option (google.api.http) = { patch: "/v1/account", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
     option (google.api.http) = { get: "/v1/account/sessions" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc DeleteSession(DeleteSessionRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/account/sessions/{session_id}" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc DeleteSessions(DeleteSessionsRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/account/sessions" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc GetPrefs(GetPrefsRequest) returns (GetPrefsResponse) {
     option (google.api.http) = { get: "/v1/account/prefs" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc UpdatePrefs(UpdatePrefsRequest) returns (GetPrefsResponse) {
     option (google.api.http) = { put: "/v1/account/prefs", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc CreateEmailOTP(CreateEmailOTPRequest) returns (ChallengeResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/email-otp", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreateEmailOTPSession(CreateEmailOTPSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/email-otp/verify", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreateOAuth2Session(CreateOAuth2SessionRequest) returns (CreateOAuth2SessionResponse) {
     option (google.api.http) = { get: "/v1/account/sessions/oauth2/{provider}" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreateOAuth2TokenSession(CreateOAuth2TokenSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/oauth2/{provider}/token", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreatePhoneOTP(CreatePhoneOTPRequest) returns (ChallengeResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/phone-otp", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreatePhoneOTPSession(CreatePhoneOTPSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/phone-otp/verify", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreateWeChatMiniProgramSession(CreateWeChatMiniProgramSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/wechat/miniprogram", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreateAnonymousSession(CreateAnonymousSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/anonymous", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreateOAuth2LinkSession(CreateOAuth2LinkSessionRequest) returns (CreateOAuth2SessionResponse) {
     option (google.api.http) = { get: "/v1/account/sessions/oauth2/{provider}/link" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc CreateOAuth2LinkTokenSession(CreateOAuth2LinkTokenSessionRequest) returns (Account) {
     option (google.api.http) = { post: "/v1/account/sessions/oauth2/{provider}/link/token", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc CreateVerification(CreateVerificationRequest) returns (CreateVerificationResponse) {
     option (google.api.http) = { post: "/v1/account/verification", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
 
   rpc UpdateVerification(UpdateVerificationRequest) returns (Account) {
     option (google.api.http) = { put: "/v1/account/verification", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc CreateRecovery(CreateRecoveryRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { post: "/v1/account/recovery", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc UpdateRecovery(UpdateRecoveryRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { put: "/v1/account/recovery", body: "*" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 }
 

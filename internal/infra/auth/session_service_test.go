@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -29,11 +29,11 @@ func TestSessionService_RecordsClientInfo(t *testing.T) {
 
 	ctx := contexts.WithClientInfo(context.Background(), contexts.ClientInfo{
 		IP:        "203.0.113.10",
-		UserAgent: "GravitonTest/1.0",
+		UserAgent: "TorchwoodTest/1.0",
 	})
 	info := contexts.ClientInfoFrom(ctx)
 	require.Equal(t, "203.0.113.10", info.IP)
-	require.Equal(t, "GravitonTest/1.0", info.UserAgent)
+	require.Equal(t, "TorchwoodTest/1.0", info.UserAgent)
 }
 
 func TestSessionService_EnsureActiveSession_CorruptExpireAtFailsClosed(t *testing.T) {

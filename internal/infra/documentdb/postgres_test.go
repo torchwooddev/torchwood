@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -100,7 +100,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 
 	created, err := docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
 		Data: map[string]any{
-			"email": "perm@graviton.local",
+			"email": "perm@torchwood.local",
 			"name":  "Permission Test",
 		},
 	}, []databases.Permission{
@@ -134,7 +134,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	// Get with permission succeeds.
 	got, err := docDB.GetDocument(ctx, projectID, "default", "users", created.ID, databases.Principal{Roles: []string{"user:alice"}})
 	require.NoError(t, err)
-	require.Equal(t, "perm@graviton.local", got.Data["email"])
+	require.Equal(t, "perm@torchwood.local", got.Data["email"])
 }
 
 func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {

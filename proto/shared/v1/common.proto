@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package graviton.shared.v1;
+package torchwood.shared.v1;
 
-option go_package = "github.com/deeploop-ai/graviton/genproto/shared/v1;sharedv1";
+option go_package = "github.com/torchwoodio/torchwood/genproto/shared/v1;sharedv1";
 
 message ListRequest {
   int32 page_size = 1;

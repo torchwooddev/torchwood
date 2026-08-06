@@ -1,7 +1,7 @@
 package messaging
 
 import (
-	domainmessaging "github.com/deeploop-ai/graviton/internal/domain/messaging"
+	domainmessaging "github.com/torchwoodio/torchwood/internal/domain/messaging"
 	"github.com/google/wire"
 )
 

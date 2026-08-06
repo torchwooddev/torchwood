@@ -1,6 +1,6 @@
-# Graviton TypeScript SDK
+# Torchwood TypeScript SDK
 
-`@graviton/sdk` 封装 Graviton **Client API**（用户 JWT）与 **Server API**（API Key + `X-Graviton-Project`），是 Graviton **AI/Agent-Native** 能力的前端集成层 —— 便于 LLM Agent、自动化脚本与 MCP Tool Server 以类型安全的方式调用后端。
+`@torchwood/sdk` 封装 Torchwood **Client API**（用户 JWT）与 **Server API**（API Key + `X-Torchwood-Project`），是 Torchwood **AI/Agent-Native** 能力的前端集成层 —— 便于 LLM Agent、自动化脚本与 MCP Tool Server 以类型安全的方式调用后端。
 
 ## Agent / 自动化集成要点
 
@@ -11,13 +11,13 @@
 | Agent 工具 schema 来源 | **OpenAPI** | `task generate-proto` 后在 `genproto/**/*.swagger.json` 获取 |
 | 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入 seed 输出的 API Key |
 
-典型 Agent 工作流：用 scoped API Key 实例化 `Graviton.withApiKey()` → 读取 OpenAPI 或 SDK 类型 → 调用 Server Databases/Users/Storage API → 将结构化响应回传给 LLM。
+典型 Agent 工作流：用 scoped API Key 实例化 `Torchwood.withApiKey()` → 读取 OpenAPI 或 SDK 类型 → 调用 Server Databases/Users/Storage API → 将结构化响应回传给 LLM。
 
 ## 目录
 
 | 路径 | 说明 |
 |------|------|
-| `typescript/` | SDK 包 `@graviton/sdk` |
+| `typescript/` | SDK 包 `@torchwood/sdk` |
 | `demo/` | Web 演示站点（注册/登录 + SDK 功能演示） |
 
 ## 快速开始
@@ -27,7 +27,7 @@
 task sdk-install
 task sdk-build
 
-# 启动本地 Graviton（另开终端）
+# 启动本地 Torchwood（另开终端）
 task up
 task migrate
 go run ./cmd/seed   # 记下输出的 api_key
@@ -57,14 +57,14 @@ Server API 相关功能需在设置页填写 `go run ./cmd/seed` 输出的 API K
 ## SDK 用法
 
 ```typescript
-import { Graviton } from "@graviton/sdk";
+import { Torchwood } from "@torchwood/sdk";
 
 // Server API
-const admin = Graviton.withApiKey("http://localhost:9080", "default", apiKey);
+const admin = Torchwood.withApiKey("http://localhost:9080", "default", apiKey);
 await admin.server.health.check();
 
 // Client API（注册后自动保存 access token）
-const client = Graviton.create({ endpoint: "http://localhost:9080", projectId: "default" });
+const client = Torchwood.create({ endpoint: "http://localhost:9080", projectId: "default" });
 await client.account.signUp({ email: "u@example.com", password: "Pass@123", name: "User" });
 await client.databases.createDocument("app", "notes", { data: { title: "Hi" } });
 ```

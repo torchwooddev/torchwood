@@ -57,7 +57,7 @@ export function Layout() {
       <main className="flex-1 overflow-auto">
         <div className="flex items-center justify-between border-b bg-card px-4 py-3 md:hidden">
           <Link to="/console" className="text-lg font-bold tracking-tight">
-            Graviton Console
+            Torchwood Console
           </Link>
           <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)}>
             <Menu className="h-5 w-5" />
@@ -82,7 +82,7 @@ function SidebarContent({
     <>
       <div className="flex items-center justify-between p-6 border-b">
         <Link to="/console" className="text-xl font-bold tracking-tight">
-          Graviton Console
+          Torchwood Console
         </Link>
         <Button variant="ghost" size="icon" className="md:hidden" onClick={onNavigate}>
           <X className="h-5 w-5" />

@@ -1,8 +1,8 @@
-# Graviton
+# Torchwood
 
 **English** | [简体中文](README_ZH.md)
 
-Graviton is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (BaaS) platform built with Go, PostgreSQL, and gRPC/grpc-gateway. It provides user authentication, a dynamic document database, file storage, function execution, and an Admin Console — with APIs and tooling designed for LLM agents, automation, and MCP tool servers from day one.
+Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (BaaS) platform built with Go, PostgreSQL, and gRPC/grpc-gateway. It provides user authentication, a dynamic document database, file storage, function execution, and an Admin Console — with APIs and tooling designed for LLM agents, automation, and MCP tool servers from day one.
 
 ## Features
 
@@ -66,12 +66,12 @@ cp .env.example .env
 Key variables:
 
 ```env
-GRAVITON_DATA_DATABASE_SOURCE=postgres://graviton:graviton@127.0.0.1:5433/graviton?sslmode=disable
-GRAVITON_DATA_REDIS_ADDR=127.0.0.1:6380
-GRAVITON_SECURITY_JWT_SECRET=change-me-in-production
-GRAVITON_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
-GRAVITON_STORAGE_S3_ACCESS_KEY_ID=minioadmin
-GRAVITON_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
+TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5433/torchwood?sslmode=disable
+TORCHWOOD_DATA_REDIS_ADDR=127.0.0.1:6380
+TORCHWOOD_SECURITY_JWT_SECRET=change-me-in-production
+TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
+TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
+TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 ```
 
 ### 3. Run database migrations
@@ -96,7 +96,7 @@ task generate-all
 go run ./cmd/seed
 ```
 
-Default admin: `admin@graviton.local / Admin@123`.
+Default admin: `admin@torchwood.local / Admin@123`.
 
 ### 5. Build and run
 
@@ -113,7 +113,7 @@ task dev-server
 
 Endpoints:
 
-- Admin Console: `http://graviton.local:9099/console/`
+- Admin Console: `http://torchwood.local:9099/console/`
 - HTTP/gRPC-gateway API: `http://127.0.0.1:9099/v1/...`
 - Metrics: `http://127.0.0.1:9100/metrics`
 
@@ -205,7 +205,7 @@ task build             # build full binary (includes console)
 - **Clean Architecture / DDD**: domain defines ports, infra provides implementations, app orchestrates use cases, api handles transport.
 - **AI / Agent-Native API design**: protobuf is the single source of truth; `buf generate` produces gRPC stubs, grpc-gateway handlers, and OpenAPI specs under `genproto/`. The **Server API** (`/v1/server/*`) is scoped for programmatic and agent access via API Keys; the **Client API** (`/v1/account/*`, `/v1/databases/*`, etc.) serves end-user flows. See [`sdk/README.md`](sdk/README.md) for the TypeScript SDK.
 - **Dynamic document database**: each database maps to a PostgreSQL schema; collections are real tables; `_tenant` isolates projects; `_perms` implements role-based document permissions.
-- **Authentication**: end-user JWT, session cookies, API Keys, and console admin JWT. API Keys do not bypass `_perms`—they participate as the `keys` role; admins can target a project via the `X-Graviton-Project` header.
+- **Authentication**: end-user JWT, session cookies, API Keys, and console admin JWT. API Keys do not bypass `_perms`—they participate as the `keys` role; admins can target a project via the `X-Torchwood-Project` header.
 - **REST API**: gRPC methods are exposed as JSON REST via grpc-gateway; file upload/download uses custom HTTP handlers.
 - **Console**: the React SPA is embedded into the Go binary via `//go:embed dist` and served at `/console/`.
 
@@ -221,11 +221,11 @@ Integration tests include:
 - `internal/infra/documentdb/postgres_test.go`
 - `internal/app/client/account_test.go`
 
-Tests automatically create and drop the `GRAVITON_test` database.
+Tests automatically create and drop the `TORCHWOOD_test` database.
 
 ## TypeScript SDK
 
-See [`sdk/README.md`](sdk/README.md) for the `@graviton/sdk` package and web demo.
+See [`sdk/README.md`](sdk/README.md) for the `@torchwood/sdk` package and web demo.
 
 ```bash
 task sdk-install

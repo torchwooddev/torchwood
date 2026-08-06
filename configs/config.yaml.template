@@ -7,9 +7,9 @@ server:
     timeout: "60s"
     public_url: "http://localhost:9099"
     cors:
-      allow_origins: ["http://graviton.local:9099"]  # set explicit origins; "*" is rejected when allow_credentials=true
+      allow_origins: ["http://torchwood.local:9099"]  # set explicit origins; "*" is rejected when allow_credentials=true
       allow_methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-      allow_headers: ["Content-Type", "Authorization", "X-Api-Key", "X-Graviton-Project", "X-Request-Id", "X-Correlation-Id"]
+      allow_headers: ["Content-Type", "Authorization", "X-Api-Key", "X-Torchwood-Project", "X-Request-Id", "X-Correlation-Id"]
       allow_credentials: true
       max_age: 3600
   metrics:
@@ -17,18 +17,18 @@ server:
 
 security:
   jwt:
-    secret: ""              # env: GRAVITON_SECURITY_JWT_SECRET
+    secret: ""              # env: TORCHWOOD_SECURITY_JWT_SECRET
     access_ttl: "15m"
     refresh_ttl: "7d"
   api_key:
     header: "x-api-key"
   # 可信代理网段（CIDR）。仅当直连 peer 命中时才采纳 X-Forwarded-For 首跳；
   # 默认空 = 只信 peer 地址。grpc-gateway 与 gRPC 同进程部署时需包含 127.0.0.1/32 才能恢复客户端真实 IP。
-  trusted_proxies: []         # env: GRAVITON_SECURITY_TRUSTED_PROXIES（逗号分隔）
+  trusted_proxies: []         # env: TORCHWOOD_SECURITY_TRUSTED_PROXIES（逗号分隔）
 
 data:
   database:
-    source: ""              # env: GRAVITON_DATA_DATABASE_SOURCE
+    source: ""              # env: TORCHWOOD_DATA_DATABASE_SOURCE
     debug: true
     pool:
       max_idle_conns: 4
@@ -37,17 +37,17 @@ data:
       conn_max_idle_time: "30m"
   redis:
     addr: "127.0.0.1:6379"
-    password: ""            # env: GRAVITON_DATA_REDIS_PASSWORD
+    password: ""            # env: TORCHWOOD_DATA_REDIS_PASSWORD
     db: 0
 
 storage:
   provider: "s3"            # or "minio" / "local"
   s3:
-    endpoint: ""            # env: GRAVITON_STORAGE_S3_ENDPOINT
+    endpoint: ""            # env: TORCHWOOD_STORAGE_S3_ENDPOINT
     region: "us-east-1"
-    bucket: "Graviton-storage"
-    access_key_id: ""       # env: GRAVITON_STORAGE_S3_ACCESS_KEY
-    secret_access_key: ""   # env: GRAVITON_STORAGE_S3_SECRET_KEY
+    bucket: "Torchwood-storage"
+    access_key_id: ""       # env: TORCHWOOD_STORAGE_S3_ACCESS_KEY
+    secret_access_key: ""   # env: TORCHWOOD_STORAGE_S3_SECRET_KEY
   local:
     path: "./data/files"
 
@@ -55,29 +55,29 @@ functions:
   executor: "docker"
   docker:
     host: "unix:///var/run/docker.sock"
-    network: "Graviton-functions"
-    registry: "Graviton-funcs"
+    network: "Torchwood-functions"
+    registry: "Torchwood-funcs"
 
 telemetry:
   enabled: false
   otlp_endpoint: ""
-  service_name: "Graviton"
+  service_name: "Torchwood"
 
 messaging:
   smtp:
-    host: ""                # env: GRAVITON_MESSAGING_SMTP_HOST
+    host: ""                # env: TORCHWOOD_MESSAGING_SMTP_HOST
     port: 587
     username: ""
-    password: ""            # env: GRAVITON_MESSAGING_SMTP_PASSWORD
-    from: "noreply@graviton.local"
+    password: ""            # env: TORCHWOOD_MESSAGING_SMTP_PASSWORD
+    from: "noreply@torchwood.local"
     use_tls: true
   dev_log_otp: true         # log OTP to stdout when SMTP host is empty (dev only)
   dev_log_sms: true         # log SMS OTP to stdout when SMS provider is empty (dev only)
   sms:
     provider: ""            # twilio
     twilio:
-      account_sid: ""       # env: GRAVITON_MESSAGING_SMS_TWILIO_ACCOUNT_SID
-      auth_token: ""        # env: GRAVITON_MESSAGING_SMS_TWILIO_AUTH_TOKEN
+      account_sid: ""       # env: TORCHWOOD_MESSAGING_SMS_TWILIO_ACCOUNT_SID
+      auth_token: ""        # env: TORCHWOOD_MESSAGING_SMS_TWILIO_AUTH_TOKEN
       from: ""
 
 idgen:
@@ -85,12 +85,12 @@ idgen:
   random:
     length: 10
     charset: numeric        # numeric | alphanumeric
-    redis_key_prefix: Graviton:id:random
+    redis_key_prefix: Torchwood:id:random
     max_retries: 10
   snowflake:
-    node_id: 0                # env: GRAVITON_IDGEN_SNOWFLAKE_NODE_ID
+    node_id: 0                # env: TORCHWOOD_IDGEN_SNOWFLAKE_NODE_ID
   sequence:
-    redis_key_prefix: Graviton:seq
+    redis_key_prefix: Torchwood:seq
   resources:
     users: uuid
     sessions: uuid

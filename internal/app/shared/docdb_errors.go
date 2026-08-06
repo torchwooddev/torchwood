@@ -3,7 +3,7 @@ package shared
 import (
 	"errors"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

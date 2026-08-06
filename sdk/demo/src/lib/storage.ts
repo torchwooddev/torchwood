@@ -16,12 +16,12 @@ export interface AuthState {
   userId: string;
 }
 
-const SETTINGS_KEY = "Graviton-demo-settings";
-const AUTH_KEY = "Graviton-demo-auth";
+const SETTINGS_KEY = "Torchwood-demo-settings";
+const AUTH_KEY = "Torchwood-demo-auth";
 
 const defaultSettings = (): AppSettings => ({
-  endpoint: import.meta.env.VITE_GRAVITON_ENDPOINT || "http://localhost:9080",
-  projectId: import.meta.env.VITE_GRAVITON_PROJECT_ID || "default",
+  endpoint: import.meta.env.VITE_TORCHWOOD_ENDPOINT || "http://localhost:9080",
+  projectId: import.meta.env.VITE_TORCHWOOD_PROJECT_ID || "default",
   apiKey: "",
   demoDbId: "",
   demoCollId: "posts",

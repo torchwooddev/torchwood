@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,12 +41,12 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	}, nil, nil, true))
 
 	created, err := uc.CreateDocument(ctx, projectID, dbID, collID, "", map[string]any{
-		"title": "Hello Graviton",
+		"title": "Hello Torchwood",
 		"views": 1,
 	}, databases.DefaultCollectionPermissions(), principal)
 	require.NoError(t, err)
 	require.NotEmpty(t, created.ID)
-	require.Equal(t, "Hello Graviton", created.Data["title"])
+	require.Equal(t, "Hello Torchwood", created.Data["title"])
 
 	got, err := uc.GetDocument(ctx, projectID, dbID, collID, created.ID, principal)
 	require.NoError(t, err)
@@ -59,13 +59,13 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, float64(99), updated.Data["views"])
 
 	list, total, _, err := uc.ListDocuments(ctx, projectID, dbID, collID, databases.Query{
-		Queries: []string{`equal("title","Hello Graviton")`, `orderDesc("$createdAt")`},
+		Queries: []string{`equal("title","Hello Torchwood")`, `orderDesc("$createdAt")`},
 	}, principal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 
-	count, err := uc.CountDocuments(ctx, projectID, dbID, collID, []string{`equal("title","Hello Graviton")`}, principal)
+	count, err := uc.CountDocuments(ctx, projectID, dbID, collID, []string{`equal("title","Hello Torchwood")`}, principal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 

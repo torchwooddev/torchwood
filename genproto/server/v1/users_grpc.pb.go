@@ -8,7 +8,7 @@ package serverv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,10 +20,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	UsersService_ListUsers_FullMethodName  = "/graviton.server.v1.UsersService/ListUsers"
-	UsersService_GetUser_FullMethodName    = "/graviton.server.v1.UsersService/GetUser"
-	UsersService_UpdateUser_FullMethodName = "/graviton.server.v1.UsersService/UpdateUser"
-	UsersService_DeleteUser_FullMethodName = "/graviton.server.v1.UsersService/DeleteUser"
+	UsersService_ListUsers_FullMethodName  = "/torchwood.server.v1.UsersService/ListUsers"
+	UsersService_GetUser_FullMethodName    = "/torchwood.server.v1.UsersService/GetUser"
+	UsersService_UpdateUser_FullMethodName = "/torchwood.server.v1.UsersService/UpdateUser"
+	UsersService_DeleteUser_FullMethodName = "/torchwood.server.v1.UsersService/DeleteUser"
 )
 
 // UsersServiceClient is the client API for UsersService service.
@@ -211,7 +211,7 @@ func _UsersService_DeleteUser_Handler(srv interface{}, ctx context.Context, dec 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var UsersService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.UsersService",
+	ServiceName: "torchwood.server.v1.UsersService",
 	HandlerType: (*UsersServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

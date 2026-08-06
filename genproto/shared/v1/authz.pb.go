@@ -79,7 +79,7 @@ func (AccessLevel) EnumDescriptor() ([]byte, []int) {
 
 type MethodAuth struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Access        AccessLevel            `protobuf:"varint,1,opt,name=access,proto3,enum=graviton.shared.v1.AccessLevel" json:"access,omitempty"`
+	Access        AccessLevel            `protobuf:"varint,1,opt,name=access,proto3,enum=torchwood.shared.v1.AccessLevel" json:"access,omitempty"`
 	Permissions   []string               `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -131,7 +131,7 @@ func (x *MethodAuth) GetPermissions() []string {
 
 type ServiceAuth struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DefaultAccess AccessLevel            `protobuf:"varint,1,opt,name=default_access,json=defaultAccess,proto3,enum=graviton.shared.v1.AccessLevel" json:"default_access,omitempty"`
+	DefaultAccess AccessLevel            `protobuf:"varint,1,opt,name=default_access,json=defaultAccess,proto3,enum=torchwood.shared.v1.AccessLevel" json:"default_access,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -178,7 +178,7 @@ var file_shared_v1_authz_proto_extTypes = []protoimpl.ExtensionInfo{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*MethodAuth)(nil),
 		Field:         52001,
-		Name:          "graviton.shared.v1.method_auth",
+		Name:          "torchwood.shared.v1.method_auth",
 		Tag:           "bytes,52001,opt,name=method_auth",
 		Filename:      "shared/v1/authz.proto",
 	},
@@ -186,7 +186,7 @@ var file_shared_v1_authz_proto_extTypes = []protoimpl.ExtensionInfo{
 		ExtendedType:  (*descriptorpb.ServiceOptions)(nil),
 		ExtensionType: (*ServiceAuth)(nil),
 		Field:         52002,
-		Name:          "graviton.shared.v1.service_auth",
+		Name:          "torchwood.shared.v1.service_auth",
 		Tag:           "bytes,52002,opt,name=service_auth",
 		Filename:      "shared/v1/authz.proto",
 	},
@@ -194,13 +194,13 @@ var file_shared_v1_authz_proto_extTypes = []protoimpl.ExtensionInfo{
 
 // Extension fields to descriptorpb.MethodOptions.
 var (
-	// optional graviton.shared.v1.MethodAuth method_auth = 52001;
+	// optional torchwood.shared.v1.MethodAuth method_auth = 52001;
 	E_MethodAuth = &file_shared_v1_authz_proto_extTypes[0]
 )
 
 // Extension fields to descriptorpb.ServiceOptions.
 var (
-	// optional graviton.shared.v1.ServiceAuth service_auth = 52002;
+	// optional torchwood.shared.v1.ServiceAuth service_auth = 52002;
 	E_ServiceAuth = &file_shared_v1_authz_proto_extTypes[1]
 )
 
@@ -208,22 +208,22 @@ var File_shared_v1_authz_proto protoreflect.FileDescriptor
 
 const file_shared_v1_authz_proto_rawDesc = "" +
 	"\n" +
-	"\x15shared/v1/authz.proto\x12\x12graviton.shared.v1\x1a google/protobuf/descriptor.proto\"g\n" +
+	"\x15shared/v1/authz.proto\x12\x13torchwood.shared.v1\x1a google/protobuf/descriptor.proto\"h\n" +
 	"\n" +
-	"MethodAuth\x127\n" +
-	"\x06access\x18\x01 \x01(\x0e2\x1f.graviton.shared.v1.AccessLevelR\x06access\x12 \n" +
-	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"U\n" +
-	"\vServiceAuth\x12F\n" +
-	"\x0edefault_access\x18\x01 \x01(\x0e2\x1f.graviton.shared.v1.AccessLevelR\rdefaultAccess*\x83\x01\n" +
+	"MethodAuth\x128\n" +
+	"\x06access\x18\x01 \x01(\x0e2 .torchwood.shared.v1.AccessLevelR\x06access\x12 \n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"V\n" +
+	"\vServiceAuth\x12G\n" +
+	"\x0edefault_access\x18\x01 \x01(\x0e2 .torchwood.shared.v1.AccessLevelR\rdefaultAccess*\x83\x01\n" +
 	"\vAccessLevel\x12\x1c\n" +
 	"\x18ACCESS_LEVEL_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rACCESS_PUBLIC\x10\x01\x12\x18\n" +
 	"\x14ACCESS_AUTHENTICATED\x10\x02\x12\x15\n" +
 	"\x11ACCESS_PERMISSION\x10\x03\x12\x12\n" +
-	"\x0eACCESS_API_KEY\x10\x04:a\n" +
-	"\vmethod_auth\x12\x1e.google.protobuf.MethodOptions\x18\xa1\x96\x03 \x01(\v2\x1e.graviton.shared.v1.MethodAuthR\n" +
-	"methodAuth:e\n" +
-	"\fservice_auth\x12\x1f.google.protobuf.ServiceOptions\x18\xa2\x96\x03 \x01(\v2\x1f.graviton.shared.v1.ServiceAuthR\vserviceAuthB=Z;github.com/deeploop-ai/graviton/genproto/shared/v1;sharedv1b\x06proto3"
+	"\x0eACCESS_API_KEY\x10\x04:b\n" +
+	"\vmethod_auth\x12\x1e.google.protobuf.MethodOptions\x18\xa1\x96\x03 \x01(\v2\x1f.torchwood.shared.v1.MethodAuthR\n" +
+	"methodAuth:f\n" +
+	"\fservice_auth\x12\x1f.google.protobuf.ServiceOptions\x18\xa2\x96\x03 \x01(\v2 .torchwood.shared.v1.ServiceAuthR\vserviceAuthB>Z<github.com/torchwoodio/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_authz_proto_rawDescOnce sync.Once
@@ -240,19 +240,19 @@ func file_shared_v1_authz_proto_rawDescGZIP() []byte {
 var file_shared_v1_authz_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_shared_v1_authz_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_shared_v1_authz_proto_goTypes = []any{
-	(AccessLevel)(0),                    // 0: graviton.shared.v1.AccessLevel
-	(*MethodAuth)(nil),                  // 1: graviton.shared.v1.MethodAuth
-	(*ServiceAuth)(nil),                 // 2: graviton.shared.v1.ServiceAuth
+	(AccessLevel)(0),                    // 0: torchwood.shared.v1.AccessLevel
+	(*MethodAuth)(nil),                  // 1: torchwood.shared.v1.MethodAuth
+	(*ServiceAuth)(nil),                 // 2: torchwood.shared.v1.ServiceAuth
 	(*descriptorpb.MethodOptions)(nil),  // 3: google.protobuf.MethodOptions
 	(*descriptorpb.ServiceOptions)(nil), // 4: google.protobuf.ServiceOptions
 }
 var file_shared_v1_authz_proto_depIdxs = []int32{
-	0, // 0: graviton.shared.v1.MethodAuth.access:type_name -> graviton.shared.v1.AccessLevel
-	0, // 1: graviton.shared.v1.ServiceAuth.default_access:type_name -> graviton.shared.v1.AccessLevel
-	3, // 2: graviton.shared.v1.method_auth:extendee -> google.protobuf.MethodOptions
-	4, // 3: graviton.shared.v1.service_auth:extendee -> google.protobuf.ServiceOptions
-	1, // 4: graviton.shared.v1.method_auth:type_name -> graviton.shared.v1.MethodAuth
-	2, // 5: graviton.shared.v1.service_auth:type_name -> graviton.shared.v1.ServiceAuth
+	0, // 0: torchwood.shared.v1.MethodAuth.access:type_name -> torchwood.shared.v1.AccessLevel
+	0, // 1: torchwood.shared.v1.ServiceAuth.default_access:type_name -> torchwood.shared.v1.AccessLevel
+	3, // 2: torchwood.shared.v1.method_auth:extendee -> google.protobuf.MethodOptions
+	4, // 3: torchwood.shared.v1.service_auth:extendee -> google.protobuf.ServiceOptions
+	1, // 4: torchwood.shared.v1.method_auth:type_name -> torchwood.shared.v1.MethodAuth
+	2, // 5: torchwood.shared.v1.service_auth:type_name -> torchwood.shared.v1.ServiceAuth
 	6, // [6:6] is the sub-list for method output_type
 	6, // [6:6] is the sub-list for method input_type
 	4, // [4:6] is the sub-list for extension type_name

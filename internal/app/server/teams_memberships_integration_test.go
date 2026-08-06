@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/domain/teams"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/domain/teams"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,7 +32,7 @@ func TestTeams_Memberships(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	uc := NewTeams(projectRepo, docDB)
 	ownerID := "owner-user-id"
-	ownerEmail := "owner@graviton.local"
+	ownerEmail := "owner@torchwood.local"
 	principal := databases.Principal{Roles: []string{"users", "user:" + ownerID}}
 	team, ownerMembership, err := uc.CreateTeamWithOwner(ctx, projectID, "Engineering", ownerID, ownerEmail, principal)
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestTeams_Memberships(t *testing.T) {
 	_, err = docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
 		ID: memberUserID,
 		Data: map[string]any{
-			"email":         "member@graviton.local",
+			"email":         "member@torchwood.local",
 			"password_hash": "hash",
 			"name":          "Member User",
 			"status":        "active",
@@ -56,7 +56,7 @@ func TestTeams_Memberships(t *testing.T) {
 
 	invite, err := uc.CreateMembership(ctx, projectID, CreateMembershipCommand{
 		TeamID: team.ID,
-		Email:  "member@graviton.local",
+		Email:  "member@torchwood.local",
 		Name:   "Member User",
 		Roles:  []string{teams.RoleMember},
 	}, ownerRoles)
@@ -68,7 +68,7 @@ func TestTeams_Memberships(t *testing.T) {
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
 		ProjectID: projectID,
 		UserID:    memberUserID,
-		Email:     "member@graviton.local",
+		Email:     "member@torchwood.local",
 		Roles:     memberRoles.Roles,
 	})
 

@@ -8,7 +8,7 @@ package serverv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,10 +20,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	APIKeysService_CreateAPIKey_FullMethodName = "/graviton.server.v1.APIKeysService/CreateAPIKey"
-	APIKeysService_ListAPIKeys_FullMethodName  = "/graviton.server.v1.APIKeysService/ListAPIKeys"
-	APIKeysService_GetAPIKey_FullMethodName    = "/graviton.server.v1.APIKeysService/GetAPIKey"
-	APIKeysService_DeleteAPIKey_FullMethodName = "/graviton.server.v1.APIKeysService/DeleteAPIKey"
+	APIKeysService_CreateAPIKey_FullMethodName = "/torchwood.server.v1.APIKeysService/CreateAPIKey"
+	APIKeysService_ListAPIKeys_FullMethodName  = "/torchwood.server.v1.APIKeysService/ListAPIKeys"
+	APIKeysService_GetAPIKey_FullMethodName    = "/torchwood.server.v1.APIKeysService/GetAPIKey"
+	APIKeysService_DeleteAPIKey_FullMethodName = "/torchwood.server.v1.APIKeysService/DeleteAPIKey"
 )
 
 // APIKeysServiceClient is the client API for APIKeysService service.
@@ -211,7 +211,7 @@ func _APIKeysService_DeleteAPIKey_Handler(srv interface{}, ctx context.Context, 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var APIKeysService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.APIKeysService",
+	ServiceName: "torchwood.server.v1.APIKeysService",
 	HandlerType: (*APIKeysServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

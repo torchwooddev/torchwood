@@ -6,18 +6,18 @@ import (
 )
 
 // SourceFromEnv resolves the Postgres DSN from environment variables.
-// It prefers GRAVITON_DATA_DATABASE_SOURCE and falls back to POSTGRES_* compose vars.
+// It prefers TORCHWOOD_DATA_DATABASE_SOURCE and falls back to POSTGRES_* compose vars.
 func SourceFromEnv() string {
-	if dsn := os.Getenv("GRAVITON_DATA_DATABASE_SOURCE"); dsn != "" {
+	if dsn := os.Getenv("TORCHWOOD_DATA_DATABASE_SOURCE"); dsn != "" {
 		return dsn
 	}
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		envOr("POSTGRES_USER", "graviton"),
-		envOr("POSTGRES_PASSWORD", "graviton"),
+		envOr("POSTGRES_USER", "torchwood"),
+		envOr("POSTGRES_PASSWORD", "torchwood"),
 		envOr("POSTGRES_HOST", "127.0.0.1"),
 		envOr("POSTGRES_PORT", "5432"),
-		envOr("POSTGRES_DB", "graviton"),
+		envOr("POSTGRES_DB", "torchwood"),
 	)
 }
 

@@ -11,7 +11,7 @@ export function JsonPanel({
 }) {
   return (
     <div className="panel overflow-hidden">
-      <div className="border-b border-Graviton-border px-4 py-3 text-sm font-medium text-slate-200">
+      <div className="border-b border-Torchwood-border px-4 py-3 text-sm font-medium text-slate-200">
         {title}
       </div>
       <pre className="max-h-[420px] overflow-auto p-4 font-mono text-xs leading-relaxed text-cyan-100/90">
@@ -36,7 +36,7 @@ export function PageHeader({
     <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">{title}</h1>
-        <p className="mt-1 max-w-2xl text-sm text-Graviton-muted">{description}</p>
+        <p className="mt-1 max-w-2xl text-sm text-Torchwood-muted">{description}</p>
       </div>
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
     </div>
@@ -54,7 +54,7 @@ export function ErrorBanner({ message }: { message: string | null }) {
 
 export function MethodTag({ method }: { method: string }) {
   return (
-    <span className="rounded bg-Graviton-panel px-2 py-0.5 font-mono text-[11px] text-Graviton-accent">
+    <span className="rounded bg-Torchwood-panel px-2 py-0.5 font-mono text-[11px] text-Torchwood-accent">
       {method}
     </span>
   );

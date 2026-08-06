@@ -8,7 +8,7 @@ package clientv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,31 +20,31 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AccountService_SignUp_FullMethodName                         = "/graviton.client.v1.AccountService/SignUp"
-	AccountService_SignIn_FullMethodName                         = "/graviton.client.v1.AccountService/SignIn"
-	AccountService_SignOut_FullMethodName                        = "/graviton.client.v1.AccountService/SignOut"
-	AccountService_RefreshToken_FullMethodName                   = "/graviton.client.v1.AccountService/RefreshToken"
-	AccountService_Me_FullMethodName                             = "/graviton.client.v1.AccountService/Me"
-	AccountService_UpdateAccount_FullMethodName                  = "/graviton.client.v1.AccountService/UpdateAccount"
-	AccountService_ListSessions_FullMethodName                   = "/graviton.client.v1.AccountService/ListSessions"
-	AccountService_DeleteSession_FullMethodName                  = "/graviton.client.v1.AccountService/DeleteSession"
-	AccountService_DeleteSessions_FullMethodName                 = "/graviton.client.v1.AccountService/DeleteSessions"
-	AccountService_GetPrefs_FullMethodName                       = "/graviton.client.v1.AccountService/GetPrefs"
-	AccountService_UpdatePrefs_FullMethodName                    = "/graviton.client.v1.AccountService/UpdatePrefs"
-	AccountService_CreateEmailOTP_FullMethodName                 = "/graviton.client.v1.AccountService/CreateEmailOTP"
-	AccountService_CreateEmailOTPSession_FullMethodName          = "/graviton.client.v1.AccountService/CreateEmailOTPSession"
-	AccountService_CreateOAuth2Session_FullMethodName            = "/graviton.client.v1.AccountService/CreateOAuth2Session"
-	AccountService_CreateOAuth2TokenSession_FullMethodName       = "/graviton.client.v1.AccountService/CreateOAuth2TokenSession"
-	AccountService_CreatePhoneOTP_FullMethodName                 = "/graviton.client.v1.AccountService/CreatePhoneOTP"
-	AccountService_CreatePhoneOTPSession_FullMethodName          = "/graviton.client.v1.AccountService/CreatePhoneOTPSession"
-	AccountService_CreateWeChatMiniProgramSession_FullMethodName = "/graviton.client.v1.AccountService/CreateWeChatMiniProgramSession"
-	AccountService_CreateAnonymousSession_FullMethodName         = "/graviton.client.v1.AccountService/CreateAnonymousSession"
-	AccountService_CreateOAuth2LinkSession_FullMethodName        = "/graviton.client.v1.AccountService/CreateOAuth2LinkSession"
-	AccountService_CreateOAuth2LinkTokenSession_FullMethodName   = "/graviton.client.v1.AccountService/CreateOAuth2LinkTokenSession"
-	AccountService_CreateVerification_FullMethodName             = "/graviton.client.v1.AccountService/CreateVerification"
-	AccountService_UpdateVerification_FullMethodName             = "/graviton.client.v1.AccountService/UpdateVerification"
-	AccountService_CreateRecovery_FullMethodName                 = "/graviton.client.v1.AccountService/CreateRecovery"
-	AccountService_UpdateRecovery_FullMethodName                 = "/graviton.client.v1.AccountService/UpdateRecovery"
+	AccountService_SignUp_FullMethodName                         = "/torchwood.client.v1.AccountService/SignUp"
+	AccountService_SignIn_FullMethodName                         = "/torchwood.client.v1.AccountService/SignIn"
+	AccountService_SignOut_FullMethodName                        = "/torchwood.client.v1.AccountService/SignOut"
+	AccountService_RefreshToken_FullMethodName                   = "/torchwood.client.v1.AccountService/RefreshToken"
+	AccountService_Me_FullMethodName                             = "/torchwood.client.v1.AccountService/Me"
+	AccountService_UpdateAccount_FullMethodName                  = "/torchwood.client.v1.AccountService/UpdateAccount"
+	AccountService_ListSessions_FullMethodName                   = "/torchwood.client.v1.AccountService/ListSessions"
+	AccountService_DeleteSession_FullMethodName                  = "/torchwood.client.v1.AccountService/DeleteSession"
+	AccountService_DeleteSessions_FullMethodName                 = "/torchwood.client.v1.AccountService/DeleteSessions"
+	AccountService_GetPrefs_FullMethodName                       = "/torchwood.client.v1.AccountService/GetPrefs"
+	AccountService_UpdatePrefs_FullMethodName                    = "/torchwood.client.v1.AccountService/UpdatePrefs"
+	AccountService_CreateEmailOTP_FullMethodName                 = "/torchwood.client.v1.AccountService/CreateEmailOTP"
+	AccountService_CreateEmailOTPSession_FullMethodName          = "/torchwood.client.v1.AccountService/CreateEmailOTPSession"
+	AccountService_CreateOAuth2Session_FullMethodName            = "/torchwood.client.v1.AccountService/CreateOAuth2Session"
+	AccountService_CreateOAuth2TokenSession_FullMethodName       = "/torchwood.client.v1.AccountService/CreateOAuth2TokenSession"
+	AccountService_CreatePhoneOTP_FullMethodName                 = "/torchwood.client.v1.AccountService/CreatePhoneOTP"
+	AccountService_CreatePhoneOTPSession_FullMethodName          = "/torchwood.client.v1.AccountService/CreatePhoneOTPSession"
+	AccountService_CreateWeChatMiniProgramSession_FullMethodName = "/torchwood.client.v1.AccountService/CreateWeChatMiniProgramSession"
+	AccountService_CreateAnonymousSession_FullMethodName         = "/torchwood.client.v1.AccountService/CreateAnonymousSession"
+	AccountService_CreateOAuth2LinkSession_FullMethodName        = "/torchwood.client.v1.AccountService/CreateOAuth2LinkSession"
+	AccountService_CreateOAuth2LinkTokenSession_FullMethodName   = "/torchwood.client.v1.AccountService/CreateOAuth2LinkTokenSession"
+	AccountService_CreateVerification_FullMethodName             = "/torchwood.client.v1.AccountService/CreateVerification"
+	AccountService_UpdateVerification_FullMethodName             = "/torchwood.client.v1.AccountService/UpdateVerification"
+	AccountService_CreateRecovery_FullMethodName                 = "/torchwood.client.v1.AccountService/CreateRecovery"
+	AccountService_UpdateRecovery_FullMethodName                 = "/torchwood.client.v1.AccountService/UpdateRecovery"
 )
 
 // AccountServiceClient is the client API for AccountService service.
@@ -925,7 +925,7 @@ func _AccountService_UpdateRecovery_Handler(srv interface{}, ctx context.Context
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var AccountService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.client.v1.AccountService",
+	ServiceName: "torchwood.client.v1.AccountService",
 	HandlerType: (*AccountServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

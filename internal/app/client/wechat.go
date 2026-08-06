@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/users"
-	infraauth "github.com/deeploop-ai/graviton/internal/infra/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/users"
+	infraauth "github.com/torchwoodio/torchwood/internal/infra/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -136,7 +136,7 @@ func (a *Account) findWeChatIdentity(ctx context.Context, projectID, uid string)
 
 func wechatPlaceholderEmail(provider, uid string) string {
 	safe := strings.NewReplacer("+", "", "@", "", ":", "_").Replace(uid)
-	return fmt.Sprintf("wechat_%s_%s@graviton.local", provider, safe)
+	return fmt.Sprintf("wechat_%s_%s@torchwood.local", provider, safe)
 }
 
 func usesWeChatPKCE(provider string) bool {

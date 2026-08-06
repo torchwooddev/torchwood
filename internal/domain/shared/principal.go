@@ -1,6 +1,6 @@
 package shared
 
-import "github.com/deeploop-ai/graviton/pkg/idgen"
+import "github.com/torchwoodio/torchwood/pkg/idgen"
 
 type ActorKind string
 

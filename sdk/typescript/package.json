@@ -1,7 +1,7 @@
 {
-  "name": "@graviton/sdk",
+  "name": "@torchwood/sdk",
   "version": "0.1.0",
-  "description": "Graviton Client API and Server API TypeScript SDK",
+  "description": "Torchwood Client API and Server API TypeScript SDK",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

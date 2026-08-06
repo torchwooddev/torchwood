@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	domainidgen "github.com/deeploop-ai/graviton/internal/domain/idgen"
-	pkgidgen "github.com/deeploop-ai/graviton/pkg/idgen"
+	domainidgen "github.com/torchwoodio/torchwood/internal/domain/idgen"
+	pkgidgen "github.com/torchwoodio/torchwood/pkg/idgen"
 )
 
 func (s *Service) nextRandom(ctx context.Context, projectID string, resource domainidgen.Resource) (string, error) {

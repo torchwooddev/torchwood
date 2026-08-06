@@ -8,7 +8,7 @@ package serverv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,9 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OAuthProvidersService_ListOAuthProviders_FullMethodName  = "/graviton.server.v1.OAuthProvidersService/ListOAuthProviders"
-	OAuthProvidersService_UpsertOAuthProvider_FullMethodName = "/graviton.server.v1.OAuthProvidersService/UpsertOAuthProvider"
-	OAuthProvidersService_DeleteOAuthProvider_FullMethodName = "/graviton.server.v1.OAuthProvidersService/DeleteOAuthProvider"
+	OAuthProvidersService_ListOAuthProviders_FullMethodName  = "/torchwood.server.v1.OAuthProvidersService/ListOAuthProviders"
+	OAuthProvidersService_UpsertOAuthProvider_FullMethodName = "/torchwood.server.v1.OAuthProvidersService/UpsertOAuthProvider"
+	OAuthProvidersService_DeleteOAuthProvider_FullMethodName = "/torchwood.server.v1.OAuthProvidersService/DeleteOAuthProvider"
 )
 
 // OAuthProvidersServiceClient is the client API for OAuthProvidersService service.
@@ -177,7 +177,7 @@ func _OAuthProvidersService_DeleteOAuthProvider_Handler(srv interface{}, ctx con
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var OAuthProvidersService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.OAuthProvidersService",
+	ServiceName: "torchwood.server.v1.OAuthProvidersService",
 	HandlerType: (*OAuthProvidersServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

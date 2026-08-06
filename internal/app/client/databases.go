@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/deeploop-ai/graviton/internal/app/shared"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/app/shared"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

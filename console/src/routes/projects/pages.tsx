@@ -57,7 +57,7 @@ export function ProjectsListPage() {
   return (
     <ResourceListPage
       title="Projects"
-      description="管理 Graviton 项目"
+      description="管理 Torchwood 项目"
       searchPlaceholder="搜索项目名称或 ID..."
       isLoading={isLoading}
       items={projects}

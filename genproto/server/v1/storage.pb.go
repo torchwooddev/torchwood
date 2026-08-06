@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -608,15 +608,15 @@ var File_server_v1_storage_proto protoreflect.FileDescriptor
 
 const file_server_v1_storage_proto_rawDesc = "" +
 	"\n" +
-	"\x17server/v1/storage.proto\x12\x12graviton.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"K\n" +
+	"\x17server/v1/storage.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"K\n" +
 	"\x13CreateBucketRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"\"\n" +
 	"\x10GetBucketRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x85\x01\n" +
-	"\x13ListBucketsResponse\x124\n" +
-	"\abuckets\x18\x01 \x03(\v2\x1a.graviton.server.v1.BucketR\abuckets\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"\xc4\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x87\x01\n" +
+	"\x13ListBucketsResponse\x125\n" +
+	"\abuckets\x18\x01 \x03(\v2\x1b.torchwood.server.v1.BucketR\abuckets\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xc4\x01\n" +
 	"\x06Bucket\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -624,13 +624,13 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa5\x02\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa6\x02\n" +
 	"\x11CreateFileRequest\x12\x1b\n" +
 	"\tbucket_id\x18\x01 \x01(\tR\bbucketId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
 	"\tmime_type\x18\x03 \x01(\tR\bmimeType\x12\x12\n" +
-	"\x04data\x18\x04 \x01(\fR\x04data\x12O\n" +
-	"\bmetadata\x18\x05 \x03(\v23.graviton.server.v1.CreateFileRequest.MetadataEntryR\bmetadata\x12 \n" +
+	"\x04data\x18\x04 \x01(\fR\x04data\x12P\n" +
+	"\bmetadata\x18\x05 \x03(\v24.torchwood.server.v1.CreateFileRequest.MetadataEntryR\bmetadata\x12 \n" +
 	"\vpermissions\x18\x06 \x03(\tR\vpermissions\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
@@ -643,35 +643,35 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\"F\n" +
 	"\x0eGetFileRequest\x12\x1b\n" +
 	"\tbucket_id\x18\x01 \x01(\tR\bbucketId\x12\x17\n" +
-	"\afile_id\x18\x02 \x01(\tR\x06fileId\"}\n" +
-	"\x11ListFilesResponse\x12.\n" +
-	"\x05files\x18\x01 \x03(\v2\x18.graviton.server.v1.FileR\x05files\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"\xef\x02\n" +
+	"\afile_id\x18\x02 \x01(\tR\x06fileId\"\x7f\n" +
+	"\x11ListFilesResponse\x12/\n" +
+	"\x05files\x18\x01 \x03(\v2\x19.torchwood.server.v1.FileR\x05files\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xf0\x02\n" +
 	"\x04File\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tbucket_id\x18\x02 \x01(\tR\bbucketId\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1b\n" +
 	"\tmime_type\x18\x04 \x01(\tR\bmimeType\x12\x12\n" +
-	"\x04size\x18\x05 \x01(\x03R\x04size\x12B\n" +
-	"\bmetadata\x18\x06 \x03(\v2&.graviton.server.v1.File.MetadataEntryR\bmetadata\x129\n" +
+	"\x04size\x18\x05 \x01(\x03R\x04size\x12C\n" +
+	"\bmetadata\x18\x06 \x03(\v2'.torchwood.server.v1.File.MetadataEntryR\bmetadata\x129\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xb5\b\n" +
-	"\x0eStorageService\x12z\n" +
-	"\fCreateBucket\x12'.graviton.server.v1.CreateBucketRequest\x1a\x1a.graviton.server.v1.Bucket\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/server/storage/buckets\x12{\n" +
-	"\vListBuckets\x12\x1f.graviton.shared.v1.ListRequest\x1a'.graviton.server.v1.ListBucketsResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/storage/buckets\x12v\n" +
-	"\tGetBucket\x12$.graviton.server.v1.GetBucketRequest\x1a\x1a.graviton.server.v1.Bucket\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/server/storage/buckets/{id}\x12x\n" +
-	"\fDeleteBucket\x12$.graviton.server.v1.GetBucketRequest\x1a\x19.graviton.shared.v1.Empty\"'\x82\xd3\xe4\x93\x02!*\x1f/v1/server/storage/buckets/{id}\x12\x86\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xc5\b\n" +
+	"\x0eStorageService\x12|\n" +
+	"\fCreateBucket\x12(.torchwood.server.v1.CreateBucketRequest\x1a\x1b.torchwood.server.v1.Bucket\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/server/storage/buckets\x12}\n" +
+	"\vListBuckets\x12 .torchwood.shared.v1.ListRequest\x1a(.torchwood.server.v1.ListBucketsResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/storage/buckets\x12x\n" +
+	"\tGetBucket\x12%.torchwood.server.v1.GetBucketRequest\x1a\x1b.torchwood.server.v1.Bucket\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/server/storage/buckets/{id}\x12z\n" +
+	"\fDeleteBucket\x12%.torchwood.server.v1.GetBucketRequest\x1a\x1a.torchwood.shared.v1.Empty\"'\x82\xd3\xe4\x93\x02!*\x1f/v1/server/storage/buckets/{id}\x12\x88\x01\n" +
 	"\n" +
-	"CreateFile\x12%.graviton.server.v1.CreateFileRequest\x1a\x18.graviton.server.v1.File\"7\x82\xd3\xe4\x93\x021:\x01*\",/v1/server/storage/buckets/{bucket_id}/files\x12\x8e\x01\n" +
-	"\tListFiles\x12$.graviton.server.v1.ListFilesRequest\x1a%.graviton.server.v1.ListFilesResponse\"4\x82\xd3\xe4\x93\x02.\x12,/v1/server/storage/buckets/{bucket_id}/files\x12\x87\x01\n" +
-	"\aGetFile\x12\".graviton.server.v1.GetFileRequest\x1a\x18.graviton.server.v1.File\">\x82\xd3\xe4\x93\x028\x126/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\x8b\x01\n" +
+	"CreateFile\x12&.torchwood.server.v1.CreateFileRequest\x1a\x19.torchwood.server.v1.File\"7\x82\xd3\xe4\x93\x021:\x01*\",/v1/server/storage/buckets/{bucket_id}/files\x12\x90\x01\n" +
+	"\tListFiles\x12%.torchwood.server.v1.ListFilesRequest\x1a&.torchwood.server.v1.ListFilesResponse\"4\x82\xd3\xe4\x93\x02.\x12,/v1/server/storage/buckets/{bucket_id}/files\x12\x89\x01\n" +
+	"\aGetFile\x12#.torchwood.server.v1.GetFileRequest\x1a\x19.torchwood.server.v1.File\">\x82\xd3\xe4\x93\x028\x126/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\x8d\x01\n" +
 	"\n" +
-	"DeleteFile\x12\".graviton.server.v1.GetFileRequest\x1a\x19.graviton.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x1a\x06\x92\xb2\x19\x02\b\x04B=Z;github.com/deeploop-ai/graviton/genproto/server/v1;serverv1b\x06proto3"
+	"DeleteFile\x12#.torchwood.server.v1.GetFileRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_storage_proto_rawDescOnce sync.Once
@@ -687,49 +687,49 @@ func file_server_v1_storage_proto_rawDescGZIP() []byte {
 
 var file_server_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_server_v1_storage_proto_goTypes = []any{
-	(*CreateBucketRequest)(nil),   // 0: graviton.server.v1.CreateBucketRequest
-	(*GetBucketRequest)(nil),      // 1: graviton.server.v1.GetBucketRequest
-	(*ListBucketsResponse)(nil),   // 2: graviton.server.v1.ListBucketsResponse
-	(*Bucket)(nil),                // 3: graviton.server.v1.Bucket
-	(*CreateFileRequest)(nil),     // 4: graviton.server.v1.CreateFileRequest
-	(*ListFilesRequest)(nil),      // 5: graviton.server.v1.ListFilesRequest
-	(*GetFileRequest)(nil),        // 6: graviton.server.v1.GetFileRequest
-	(*ListFilesResponse)(nil),     // 7: graviton.server.v1.ListFilesResponse
-	(*File)(nil),                  // 8: graviton.server.v1.File
-	nil,                           // 9: graviton.server.v1.CreateFileRequest.MetadataEntry
-	nil,                           // 10: graviton.server.v1.File.MetadataEntry
-	(*v1.ListResponseMeta)(nil),   // 11: graviton.shared.v1.ListResponseMeta
+	(*CreateBucketRequest)(nil),   // 0: torchwood.server.v1.CreateBucketRequest
+	(*GetBucketRequest)(nil),      // 1: torchwood.server.v1.GetBucketRequest
+	(*ListBucketsResponse)(nil),   // 2: torchwood.server.v1.ListBucketsResponse
+	(*Bucket)(nil),                // 3: torchwood.server.v1.Bucket
+	(*CreateFileRequest)(nil),     // 4: torchwood.server.v1.CreateFileRequest
+	(*ListFilesRequest)(nil),      // 5: torchwood.server.v1.ListFilesRequest
+	(*GetFileRequest)(nil),        // 6: torchwood.server.v1.GetFileRequest
+	(*ListFilesResponse)(nil),     // 7: torchwood.server.v1.ListFilesResponse
+	(*File)(nil),                  // 8: torchwood.server.v1.File
+	nil,                           // 9: torchwood.server.v1.CreateFileRequest.MetadataEntry
+	nil,                           // 10: torchwood.server.v1.File.MetadataEntry
+	(*v1.ListResponseMeta)(nil),   // 11: torchwood.shared.v1.ListResponseMeta
 	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),        // 13: graviton.shared.v1.ListRequest
-	(*v1.Empty)(nil),              // 14: graviton.shared.v1.Empty
+	(*v1.ListRequest)(nil),        // 13: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),              // 14: torchwood.shared.v1.Empty
 }
 var file_server_v1_storage_proto_depIdxs = []int32{
-	3,  // 0: graviton.server.v1.ListBucketsResponse.buckets:type_name -> graviton.server.v1.Bucket
-	11, // 1: graviton.server.v1.ListBucketsResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	12, // 2: graviton.server.v1.Bucket.created_at:type_name -> google.protobuf.Timestamp
-	12, // 3: graviton.server.v1.Bucket.updated_at:type_name -> google.protobuf.Timestamp
-	9,  // 4: graviton.server.v1.CreateFileRequest.metadata:type_name -> graviton.server.v1.CreateFileRequest.MetadataEntry
-	8,  // 5: graviton.server.v1.ListFilesResponse.files:type_name -> graviton.server.v1.File
-	11, // 6: graviton.server.v1.ListFilesResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	10, // 7: graviton.server.v1.File.metadata:type_name -> graviton.server.v1.File.MetadataEntry
-	12, // 8: graviton.server.v1.File.created_at:type_name -> google.protobuf.Timestamp
-	12, // 9: graviton.server.v1.File.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 10: graviton.server.v1.StorageService.CreateBucket:input_type -> graviton.server.v1.CreateBucketRequest
-	13, // 11: graviton.server.v1.StorageService.ListBuckets:input_type -> graviton.shared.v1.ListRequest
-	1,  // 12: graviton.server.v1.StorageService.GetBucket:input_type -> graviton.server.v1.GetBucketRequest
-	1,  // 13: graviton.server.v1.StorageService.DeleteBucket:input_type -> graviton.server.v1.GetBucketRequest
-	4,  // 14: graviton.server.v1.StorageService.CreateFile:input_type -> graviton.server.v1.CreateFileRequest
-	5,  // 15: graviton.server.v1.StorageService.ListFiles:input_type -> graviton.server.v1.ListFilesRequest
-	6,  // 16: graviton.server.v1.StorageService.GetFile:input_type -> graviton.server.v1.GetFileRequest
-	6,  // 17: graviton.server.v1.StorageService.DeleteFile:input_type -> graviton.server.v1.GetFileRequest
-	3,  // 18: graviton.server.v1.StorageService.CreateBucket:output_type -> graviton.server.v1.Bucket
-	2,  // 19: graviton.server.v1.StorageService.ListBuckets:output_type -> graviton.server.v1.ListBucketsResponse
-	3,  // 20: graviton.server.v1.StorageService.GetBucket:output_type -> graviton.server.v1.Bucket
-	14, // 21: graviton.server.v1.StorageService.DeleteBucket:output_type -> graviton.shared.v1.Empty
-	8,  // 22: graviton.server.v1.StorageService.CreateFile:output_type -> graviton.server.v1.File
-	7,  // 23: graviton.server.v1.StorageService.ListFiles:output_type -> graviton.server.v1.ListFilesResponse
-	8,  // 24: graviton.server.v1.StorageService.GetFile:output_type -> graviton.server.v1.File
-	14, // 25: graviton.server.v1.StorageService.DeleteFile:output_type -> graviton.shared.v1.Empty
+	3,  // 0: torchwood.server.v1.ListBucketsResponse.buckets:type_name -> torchwood.server.v1.Bucket
+	11, // 1: torchwood.server.v1.ListBucketsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	12, // 2: torchwood.server.v1.Bucket.created_at:type_name -> google.protobuf.Timestamp
+	12, // 3: torchwood.server.v1.Bucket.updated_at:type_name -> google.protobuf.Timestamp
+	9,  // 4: torchwood.server.v1.CreateFileRequest.metadata:type_name -> torchwood.server.v1.CreateFileRequest.MetadataEntry
+	8,  // 5: torchwood.server.v1.ListFilesResponse.files:type_name -> torchwood.server.v1.File
+	11, // 6: torchwood.server.v1.ListFilesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	10, // 7: torchwood.server.v1.File.metadata:type_name -> torchwood.server.v1.File.MetadataEntry
+	12, // 8: torchwood.server.v1.File.created_at:type_name -> google.protobuf.Timestamp
+	12, // 9: torchwood.server.v1.File.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 10: torchwood.server.v1.StorageService.CreateBucket:input_type -> torchwood.server.v1.CreateBucketRequest
+	13, // 11: torchwood.server.v1.StorageService.ListBuckets:input_type -> torchwood.shared.v1.ListRequest
+	1,  // 12: torchwood.server.v1.StorageService.GetBucket:input_type -> torchwood.server.v1.GetBucketRequest
+	1,  // 13: torchwood.server.v1.StorageService.DeleteBucket:input_type -> torchwood.server.v1.GetBucketRequest
+	4,  // 14: torchwood.server.v1.StorageService.CreateFile:input_type -> torchwood.server.v1.CreateFileRequest
+	5,  // 15: torchwood.server.v1.StorageService.ListFiles:input_type -> torchwood.server.v1.ListFilesRequest
+	6,  // 16: torchwood.server.v1.StorageService.GetFile:input_type -> torchwood.server.v1.GetFileRequest
+	6,  // 17: torchwood.server.v1.StorageService.DeleteFile:input_type -> torchwood.server.v1.GetFileRequest
+	3,  // 18: torchwood.server.v1.StorageService.CreateBucket:output_type -> torchwood.server.v1.Bucket
+	2,  // 19: torchwood.server.v1.StorageService.ListBuckets:output_type -> torchwood.server.v1.ListBucketsResponse
+	3,  // 20: torchwood.server.v1.StorageService.GetBucket:output_type -> torchwood.server.v1.Bucket
+	14, // 21: torchwood.server.v1.StorageService.DeleteBucket:output_type -> torchwood.shared.v1.Empty
+	8,  // 22: torchwood.server.v1.StorageService.CreateFile:output_type -> torchwood.server.v1.File
+	7,  // 23: torchwood.server.v1.StorageService.ListFiles:output_type -> torchwood.server.v1.ListFilesResponse
+	8,  // 24: torchwood.server.v1.StorageService.GetFile:output_type -> torchwood.server.v1.File
+	14, // 25: torchwood.server.v1.StorageService.DeleteFile:output_type -> torchwood.shared.v1.Empty
 	18, // [18:26] is the sub-list for method output_type
 	10, // [10:18] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name

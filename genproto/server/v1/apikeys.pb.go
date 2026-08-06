@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -328,18 +328,18 @@ var File_server_v1_apikeys_proto protoreflect.FileDescriptor
 
 const file_server_v1_apikeys_proto_rawDesc = "" +
 	"\n" +
-	"\x17server/v1/apikeys.proto\x12\x12graviton.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"^\n" +
+	"\x17server/v1/apikeys.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"^\n" +
 	"\x13CreateAPIKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12\x1b\n" +
 	"\texpire_at\x18\x03 \x01(\x03R\bexpireAt\"\"\n" +
 	"\x10GetAPIKeyRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x86\x01\n" +
-	"\x13ListAPIKeysResponse\x125\n" +
-	"\bapi_keys\x18\x01 \x03(\v2\x1a.graviton.server.v1.APIKeyR\aapiKeys\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"_\n" +
-	"\x10APIKeyWithSecret\x123\n" +
-	"\aapi_key\x18\x01 \x01(\v2\x1a.graviton.server.v1.APIKeyR\x06apiKey\x12\x16\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x88\x01\n" +
+	"\x13ListAPIKeysResponse\x126\n" +
+	"\bapi_keys\x18\x01 \x03(\v2\x1b.torchwood.server.v1.APIKeyR\aapiKeys\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"`\n" +
+	"\x10APIKeyWithSecret\x124\n" +
+	"\aapi_key\x18\x01 \x01(\v2\x1b.torchwood.server.v1.APIKeyR\x06apiKey\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\"\x8d\x02\n" +
 	"\x06APIKey\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -350,12 +350,12 @@ const file_server_v1_apikeys_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xf1\x03\n" +
-	"\x0eAPIKeysService\x12}\n" +
-	"\fCreateAPIKey\x12'.graviton.server.v1.CreateAPIKeyRequest\x1a$.graviton.server.v1.APIKeyWithSecret\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/server/api-keys\x12t\n" +
-	"\vListAPIKeys\x12\x1f.graviton.shared.v1.ListRequest\x1a'.graviton.server.v1.ListAPIKeysResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/server/api-keys\x12o\n" +
-	"\tGetAPIKey\x12$.graviton.server.v1.GetAPIKeyRequest\x1a\x1a.graviton.server.v1.APIKey\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/api-keys/{id}\x12q\n" +
-	"\fDeleteAPIKey\x12$.graviton.server.v1.GetAPIKeyRequest\x1a\x19.graviton.shared.v1.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/api-keys/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B=Z;github.com/deeploop-ai/graviton/genproto/server/v1;serverv1b\x06proto3"
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xf9\x03\n" +
+	"\x0eAPIKeysService\x12\x7f\n" +
+	"\fCreateAPIKey\x12(.torchwood.server.v1.CreateAPIKeyRequest\x1a%.torchwood.server.v1.APIKeyWithSecret\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/server/api-keys\x12v\n" +
+	"\vListAPIKeys\x12 .torchwood.shared.v1.ListRequest\x1a(.torchwood.server.v1.ListAPIKeysResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/server/api-keys\x12q\n" +
+	"\tGetAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1b.torchwood.server.v1.APIKey\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/api-keys/{id}\x12s\n" +
+	"\fDeleteAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1a.torchwood.shared.v1.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/api-keys/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_apikeys_proto_rawDescOnce sync.Once
@@ -371,31 +371,31 @@ func file_server_v1_apikeys_proto_rawDescGZIP() []byte {
 
 var file_server_v1_apikeys_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_server_v1_apikeys_proto_goTypes = []any{
-	(*CreateAPIKeyRequest)(nil),   // 0: graviton.server.v1.CreateAPIKeyRequest
-	(*GetAPIKeyRequest)(nil),      // 1: graviton.server.v1.GetAPIKeyRequest
-	(*ListAPIKeysResponse)(nil),   // 2: graviton.server.v1.ListAPIKeysResponse
-	(*APIKeyWithSecret)(nil),      // 3: graviton.server.v1.APIKeyWithSecret
-	(*APIKey)(nil),                // 4: graviton.server.v1.APIKey
-	(*v1.ListResponseMeta)(nil),   // 5: graviton.shared.v1.ListResponseMeta
+	(*CreateAPIKeyRequest)(nil),   // 0: torchwood.server.v1.CreateAPIKeyRequest
+	(*GetAPIKeyRequest)(nil),      // 1: torchwood.server.v1.GetAPIKeyRequest
+	(*ListAPIKeysResponse)(nil),   // 2: torchwood.server.v1.ListAPIKeysResponse
+	(*APIKeyWithSecret)(nil),      // 3: torchwood.server.v1.APIKeyWithSecret
+	(*APIKey)(nil),                // 4: torchwood.server.v1.APIKey
+	(*v1.ListResponseMeta)(nil),   // 5: torchwood.shared.v1.ListResponseMeta
 	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),        // 7: graviton.shared.v1.ListRequest
-	(*v1.Empty)(nil),              // 8: graviton.shared.v1.Empty
+	(*v1.ListRequest)(nil),        // 7: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),              // 8: torchwood.shared.v1.Empty
 }
 var file_server_v1_apikeys_proto_depIdxs = []int32{
-	4,  // 0: graviton.server.v1.ListAPIKeysResponse.api_keys:type_name -> graviton.server.v1.APIKey
-	5,  // 1: graviton.server.v1.ListAPIKeysResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	4,  // 2: graviton.server.v1.APIKeyWithSecret.api_key:type_name -> graviton.server.v1.APIKey
-	6,  // 3: graviton.server.v1.APIKey.expire_at:type_name -> google.protobuf.Timestamp
-	6,  // 4: graviton.server.v1.APIKey.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 5: graviton.server.v1.APIKey.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: graviton.server.v1.APIKeysService.CreateAPIKey:input_type -> graviton.server.v1.CreateAPIKeyRequest
-	7,  // 7: graviton.server.v1.APIKeysService.ListAPIKeys:input_type -> graviton.shared.v1.ListRequest
-	1,  // 8: graviton.server.v1.APIKeysService.GetAPIKey:input_type -> graviton.server.v1.GetAPIKeyRequest
-	1,  // 9: graviton.server.v1.APIKeysService.DeleteAPIKey:input_type -> graviton.server.v1.GetAPIKeyRequest
-	3,  // 10: graviton.server.v1.APIKeysService.CreateAPIKey:output_type -> graviton.server.v1.APIKeyWithSecret
-	2,  // 11: graviton.server.v1.APIKeysService.ListAPIKeys:output_type -> graviton.server.v1.ListAPIKeysResponse
-	4,  // 12: graviton.server.v1.APIKeysService.GetAPIKey:output_type -> graviton.server.v1.APIKey
-	8,  // 13: graviton.server.v1.APIKeysService.DeleteAPIKey:output_type -> graviton.shared.v1.Empty
+	4,  // 0: torchwood.server.v1.ListAPIKeysResponse.api_keys:type_name -> torchwood.server.v1.APIKey
+	5,  // 1: torchwood.server.v1.ListAPIKeysResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	4,  // 2: torchwood.server.v1.APIKeyWithSecret.api_key:type_name -> torchwood.server.v1.APIKey
+	6,  // 3: torchwood.server.v1.APIKey.expire_at:type_name -> google.protobuf.Timestamp
+	6,  // 4: torchwood.server.v1.APIKey.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 5: torchwood.server.v1.APIKey.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: torchwood.server.v1.APIKeysService.CreateAPIKey:input_type -> torchwood.server.v1.CreateAPIKeyRequest
+	7,  // 7: torchwood.server.v1.APIKeysService.ListAPIKeys:input_type -> torchwood.shared.v1.ListRequest
+	1,  // 8: torchwood.server.v1.APIKeysService.GetAPIKey:input_type -> torchwood.server.v1.GetAPIKeyRequest
+	1,  // 9: torchwood.server.v1.APIKeysService.DeleteAPIKey:input_type -> torchwood.server.v1.GetAPIKeyRequest
+	3,  // 10: torchwood.server.v1.APIKeysService.CreateAPIKey:output_type -> torchwood.server.v1.APIKeyWithSecret
+	2,  // 11: torchwood.server.v1.APIKeysService.ListAPIKeys:output_type -> torchwood.server.v1.ListAPIKeysResponse
+	4,  // 12: torchwood.server.v1.APIKeysService.GetAPIKey:output_type -> torchwood.server.v1.APIKey
+	8,  // 13: torchwood.server.v1.APIKeysService.DeleteAPIKey:output_type -> torchwood.shared.v1.Empty
 	10, // [10:14] is the sub-list for method output_type
 	6,  // [6:10] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name

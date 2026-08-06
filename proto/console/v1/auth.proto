@@ -1,15 +1,15 @@
 syntax = "proto3";
 
-package graviton.console.v1;
+package torchwood.console.v1;
 
-option go_package = "github.com/deeploop-ai/graviton/genproto/console/v1;consolev1";
+option go_package = "github.com/torchwoodio/torchwood/genproto/console/v1;consolev1";
 
 import "google/api/annotations.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 service ConsoleAuthService {
-  option (graviton.shared.v1.service_auth) = { default_access: ACCESS_PUBLIC };
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_PUBLIC };
 
   rpc SignIn(SignInRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/console/auth/sign-in", body: "*" };

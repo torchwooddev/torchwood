@@ -4,7 +4,7 @@ import "testing"
 
 func TestAPIKeyScopeAllowed(t *testing.T) {
 	t.Parallel()
-	method := "/graviton.server.v1.UsersService/ListUsers"
+	method := "/torchwood.server.v1.UsersService/ListUsers"
 
 	if APIKeyScopeAllowed(method, nil) {
 		t.Fatal("empty scopes should deny resource-scoped methods")
@@ -22,7 +22,7 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 		t.Fatal("unrelated scope should deny")
 	}
 
-	oauthMethod := "/graviton.server.v1.OAuthProvidersService/ListOAuthProviders"
+	oauthMethod := "/torchwood.server.v1.OAuthProvidersService/ListOAuthProviders"
 	if APIKeyScopeAllowed(oauthMethod, nil) {
 		t.Fatal("empty scopes should deny oauth providers method")
 	}
@@ -30,7 +30,7 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 		t.Fatal("projects scope should allow oauth providers method")
 	}
 
-	unmapped := "/graviton.server.v1.SomeFutureService/DoSomething"
+	unmapped := "/torchwood.server.v1.SomeFutureService/DoSomething"
 	if APIKeyScopeAllowed(unmapped, []string{"*"}) {
 		t.Fatal("unmapped service must fail closed even for wildcard scope")
 	}
@@ -39,10 +39,10 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 func TestIsAPIKeysServiceMethod(t *testing.T) {
 	t.Parallel()
 
-	if !IsAPIKeysServiceMethod("/graviton.server.v1.APIKeysService/CreateAPIKey") {
+	if !IsAPIKeysServiceMethod("/torchwood.server.v1.APIKeysService/CreateAPIKey") {
 		t.Fatal("APIKeysService method should be detected")
 	}
-	if IsAPIKeysServiceMethod("/graviton.server.v1.UsersService/ListUsers") {
+	if IsAPIKeysServiceMethod("/torchwood.server.v1.UsersService/ListUsers") {
 		t.Fatal("UsersService method should not be detected")
 	}
 	if IsAPIKeysServiceMethod("malformed") {

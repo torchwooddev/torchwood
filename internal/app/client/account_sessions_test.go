@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -34,7 +34,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	account := NewTestAccount(cfg, projectRepo, docDB)
 	user, tokens, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
-		Email:     "sessions@graviton.local",
+		Email:     "sessions@torchwood.local",
 		Password:  "User@123456",
 		Name:      "Sessions User",
 	})
@@ -42,7 +42,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 
 	_, tokens2, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
-		Email:     "sessions@graviton.local",
+		Email:     "sessions@torchwood.local",
 		Password:  "User@123456",
 	})
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 
 	_, newTokens, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
-		Email:     "sessions@graviton.local",
+		Email:     "sessions@torchwood.local",
 		Password:  "NewPass@123",
 	})
 	require.NoError(t, err)

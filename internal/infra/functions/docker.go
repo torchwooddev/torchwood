@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/deeploop-ai/graviton/internal/domain/functions"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/domain/functions"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 )
 
 // dockerExecutor is a Docker-based functions executor (P0 stub).

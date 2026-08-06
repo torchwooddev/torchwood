@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/domain/teams"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
-	"github.com/deeploop-ai/graviton/pkg/query"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/domain/teams"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwoodio/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

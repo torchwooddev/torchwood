@@ -15,15 +15,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/app/console"
+	"github.com/torchwoodio/torchwood/internal/app/console"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 const (
 	// sessionCookieName 与 pkg/grpc/interceptor 的 parseSessionCookie 约定一致。
-	sessionCookieName = "GRAVITON_session_console"
-	refreshCookieName = "GRAVITON_console_refresh"
+	sessionCookieName = "TORCHWOOD_session_console"
+	refreshCookieName = "TORCHWOOD_console_refresh"
 	// refreshCookiePath 把 refresh cookie 限制为只发向 console auth 端点。
 	refreshCookiePath = "/v1/console/auth"
 )
@@ -63,7 +63,7 @@ func newCookie(name, value, path string, maxAgeSeconds int, secure bool) string 
 }
 
 // refreshTokenFromCookie 支持 cookie-only 浏览器流：RefreshToken 请求体为空时
-// 从 cookie metadata 中取 GRAVITON_console_refresh。
+// 从 cookie metadata 中取 TORCHWOOD_console_refresh。
 func refreshTokenFromCookie(ctx context.Context) string {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {

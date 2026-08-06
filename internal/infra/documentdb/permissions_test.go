@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 

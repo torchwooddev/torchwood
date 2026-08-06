@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -285,17 +285,17 @@ var File_server_v1_users_proto protoreflect.FileDescriptor
 
 const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
-	"\x15server/v1/users.proto\x12\x12graviton.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\" \n" +
+	"\x15server/v1/users.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\" \n" +
 	"\x0eGetUserRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x9b\x01\n" +
 	"\x11UpdateUserRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12/\n" +
 	"\x06labels\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06labels\x12-\n" +
-	"\x05prefs\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"}\n" +
-	"\x11ListUsersResponse\x12.\n" +
-	"\x05users\x18\x01 \x03(\v2\x18.graviton.server.v1.UserR\x05users\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"\xf5\x01\n" +
+	"\x05prefs\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"\x7f\n" +
+	"\x11ListUsersResponse\x12/\n" +
+	"\x05users\x18\x01 \x03(\v2\x19.torchwood.server.v1.UserR\x05users\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xf5\x01\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x12\n" +
@@ -305,14 +305,14 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xca\x03\n" +
-	"\fUsersService\x12m\n" +
-	"\tListUsers\x12\x1f.graviton.shared.v1.ListRequest\x1a%.graviton.server.v1.ListUsersResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/server/users\x12f\n" +
-	"\aGetUser\x12\".graviton.server.v1.GetUserRequest\x1a\x18.graviton.server.v1.User\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/server/users/{id}\x12o\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xd2\x03\n" +
+	"\fUsersService\x12o\n" +
+	"\tListUsers\x12 .torchwood.shared.v1.ListRequest\x1a&.torchwood.server.v1.ListUsersResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/server/users\x12h\n" +
+	"\aGetUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x19.torchwood.server.v1.User\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/server/users/{id}\x12q\n" +
 	"\n" +
-	"UpdateUser\x12%.graviton.server.v1.UpdateUserRequest\x1a\x18.graviton.server.v1.User\" \x82\xd3\xe4\x93\x02\x1a:\x01*2\x15/v1/server/users/{id}\x12j\n" +
+	"UpdateUser\x12&.torchwood.server.v1.UpdateUserRequest\x1a\x19.torchwood.server.v1.User\" \x82\xd3\xe4\x93\x02\x1a:\x01*2\x15/v1/server/users/{id}\x12l\n" +
 	"\n" +
-	"DeleteUser\x12\".graviton.server.v1.GetUserRequest\x1a\x19.graviton.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B=Z;github.com/deeploop-ai/graviton/genproto/server/v1;serverv1b\x06proto3"
+	"DeleteUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_users_proto_rawDescOnce sync.Once
@@ -328,31 +328,31 @@ func file_server_v1_users_proto_rawDescGZIP() []byte {
 
 var file_server_v1_users_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_server_v1_users_proto_goTypes = []any{
-	(*GetUserRequest)(nil),        // 0: graviton.server.v1.GetUserRequest
-	(*UpdateUserRequest)(nil),     // 1: graviton.server.v1.UpdateUserRequest
-	(*ListUsersResponse)(nil),     // 2: graviton.server.v1.ListUsersResponse
-	(*User)(nil),                  // 3: graviton.server.v1.User
+	(*GetUserRequest)(nil),        // 0: torchwood.server.v1.GetUserRequest
+	(*UpdateUserRequest)(nil),     // 1: torchwood.server.v1.UpdateUserRequest
+	(*ListUsersResponse)(nil),     // 2: torchwood.server.v1.ListUsersResponse
+	(*User)(nil),                  // 3: torchwood.server.v1.User
 	(*structpb.Struct)(nil),       // 4: google.protobuf.Struct
-	(*v1.ListResponseMeta)(nil),   // 5: graviton.shared.v1.ListResponseMeta
+	(*v1.ListResponseMeta)(nil),   // 5: torchwood.shared.v1.ListResponseMeta
 	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),        // 7: graviton.shared.v1.ListRequest
-	(*v1.Empty)(nil),              // 8: graviton.shared.v1.Empty
+	(*v1.ListRequest)(nil),        // 7: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),              // 8: torchwood.shared.v1.Empty
 }
 var file_server_v1_users_proto_depIdxs = []int32{
-	4,  // 0: graviton.server.v1.UpdateUserRequest.labels:type_name -> google.protobuf.Struct
-	4,  // 1: graviton.server.v1.UpdateUserRequest.prefs:type_name -> google.protobuf.Struct
-	3,  // 2: graviton.server.v1.ListUsersResponse.users:type_name -> graviton.server.v1.User
-	5,  // 3: graviton.server.v1.ListUsersResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	6,  // 4: graviton.server.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 5: graviton.server.v1.User.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 6: graviton.server.v1.UsersService.ListUsers:input_type -> graviton.shared.v1.ListRequest
-	0,  // 7: graviton.server.v1.UsersService.GetUser:input_type -> graviton.server.v1.GetUserRequest
-	1,  // 8: graviton.server.v1.UsersService.UpdateUser:input_type -> graviton.server.v1.UpdateUserRequest
-	0,  // 9: graviton.server.v1.UsersService.DeleteUser:input_type -> graviton.server.v1.GetUserRequest
-	2,  // 10: graviton.server.v1.UsersService.ListUsers:output_type -> graviton.server.v1.ListUsersResponse
-	3,  // 11: graviton.server.v1.UsersService.GetUser:output_type -> graviton.server.v1.User
-	3,  // 12: graviton.server.v1.UsersService.UpdateUser:output_type -> graviton.server.v1.User
-	8,  // 13: graviton.server.v1.UsersService.DeleteUser:output_type -> graviton.shared.v1.Empty
+	4,  // 0: torchwood.server.v1.UpdateUserRequest.labels:type_name -> google.protobuf.Struct
+	4,  // 1: torchwood.server.v1.UpdateUserRequest.prefs:type_name -> google.protobuf.Struct
+	3,  // 2: torchwood.server.v1.ListUsersResponse.users:type_name -> torchwood.server.v1.User
+	5,  // 3: torchwood.server.v1.ListUsersResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	6,  // 4: torchwood.server.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 5: torchwood.server.v1.User.updated_at:type_name -> google.protobuf.Timestamp
+	7,  // 6: torchwood.server.v1.UsersService.ListUsers:input_type -> torchwood.shared.v1.ListRequest
+	0,  // 7: torchwood.server.v1.UsersService.GetUser:input_type -> torchwood.server.v1.GetUserRequest
+	1,  // 8: torchwood.server.v1.UsersService.UpdateUser:input_type -> torchwood.server.v1.UpdateUserRequest
+	0,  // 9: torchwood.server.v1.UsersService.DeleteUser:input_type -> torchwood.server.v1.GetUserRequest
+	2,  // 10: torchwood.server.v1.UsersService.ListUsers:output_type -> torchwood.server.v1.ListUsersResponse
+	3,  // 11: torchwood.server.v1.UsersService.GetUser:output_type -> torchwood.server.v1.User
+	3,  // 12: torchwood.server.v1.UsersService.UpdateUser:output_type -> torchwood.server.v1.User
+	8,  // 13: torchwood.server.v1.UsersService.DeleteUser:output_type -> torchwood.shared.v1.Empty
 	10, // [10:14] is the sub-list for method output_type
 	6,  // [6:10] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name

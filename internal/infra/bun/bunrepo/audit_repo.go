@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/domain/audit"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/infra/clients"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
+	"github.com/torchwoodio/torchwood/internal/domain/audit"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/infra/clients"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
 )
 
 type auditRepo struct {

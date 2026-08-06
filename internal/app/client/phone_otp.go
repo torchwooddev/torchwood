@@ -7,13 +7,13 @@ import (
 	"regexp"
 	"strings"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/users"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	infraauth "github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/pkg/query"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/users"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	infraauth "github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -73,7 +73,7 @@ func (a *Account) CreatePhoneOTP(ctx context.Context, cmd CreatePhoneOTPCommand)
 		return nil, err
 	}
 
-	body := fmt.Sprintf("Your Graviton sign-in code is: %s. It expires in 5 minutes.", code)
+	body := fmt.Sprintf("Your Torchwood sign-in code is: %s. It expires in 5 minutes.", code)
 	if err := a.sms.Send(ctx, phone, body); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to send otp sms: %v", err)
 	}
@@ -210,5 +210,5 @@ func normalizePhone(raw string) (string, error) {
 
 func phonePlaceholderEmail(phone string) string {
 	safe := strings.TrimPrefix(phone, "+")
-	return fmt.Sprintf("phone_%s@graviton.local", safe)
+	return fmt.Sprintf("phone_%s@torchwood.local", safe)
 }

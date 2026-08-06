@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,7 +26,7 @@ const (
 )
 
 // otpHMACKeyNamespace 为 OTP 哈希密钥加命名空间前缀，避免与其它 HMAC 用途混用同一密钥。
-const otpHMACKeyNamespace = "graviton-otp:"
+const otpHMACKeyNamespace = "torchwood-otp:"
 
 // otpVerifyScript 原子完成"读取 challenge -> 校验归属 -> 校验尝试次数 -> 比对验证码 ->
 // 成功删除 / 失败递增尝试次数"，避免 GET-改-SET 竞态导致正确验证码被并发重放签发多个会话。
@@ -73,7 +73,7 @@ func (s *RedisOTPChallengeStore) hashCode(code string) string {
 }
 
 func (s *RedisOTPChallengeStore) CheckSendRateLimit(ctx context.Context, projectID, target, ip string) error {
-	sendKey := fmt.Sprintf("Graviton:otp:send:%s:%s", projectID, target)
+	sendKey := fmt.Sprintf("Torchwood:otp:send:%s:%s", projectID, target)
 	ok, err := s.rdb.SetNX(ctx, sendKey, "1", otpSendCooldown).Result()
 	if err != nil {
 		return status.Error(codes.Internal, "otp rate limit check failed")
@@ -85,7 +85,7 @@ func (s *RedisOTPChallengeStore) CheckSendRateLimit(ctx context.Context, project
 	if ip == "" {
 		return nil
 	}
-	ipKey := fmt.Sprintf("Graviton:otp:ip:%s:%s", projectID, ip)
+	ipKey := fmt.Sprintf("Torchwood:otp:ip:%s:%s", projectID, ip)
 	count, err := s.rdb.Incr(ctx, ipKey).Result()
 	if err != nil {
 		return status.Error(codes.Internal, "otp ip rate limit check failed")
@@ -161,7 +161,7 @@ func (s *RedisOTPChallengeStore) verifyChallenge(ctx context.Context, projectID,
 }
 
 func challengeKey(challengeID string) string {
-	return "Graviton:otp:ch:" + challengeID
+	return "Torchwood:otp:ch:" + challengeID
 }
 
 func newChallengeID() string {

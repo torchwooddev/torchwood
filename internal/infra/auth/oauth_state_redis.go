@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -54,5 +54,5 @@ func (s *RedisOAuthStateStore) Consume(ctx context.Context, stateID string) (*do
 }
 
 func oauthStateKey(stateID string) string {
-	return "Graviton:oauth:state:" + stateID
+	return "Torchwood:oauth:state:" + stateID
 }

@@ -8,7 +8,7 @@ package serverv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,14 +20,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StorageService_CreateBucket_FullMethodName = "/graviton.server.v1.StorageService/CreateBucket"
-	StorageService_ListBuckets_FullMethodName  = "/graviton.server.v1.StorageService/ListBuckets"
-	StorageService_GetBucket_FullMethodName    = "/graviton.server.v1.StorageService/GetBucket"
-	StorageService_DeleteBucket_FullMethodName = "/graviton.server.v1.StorageService/DeleteBucket"
-	StorageService_CreateFile_FullMethodName   = "/graviton.server.v1.StorageService/CreateFile"
-	StorageService_ListFiles_FullMethodName    = "/graviton.server.v1.StorageService/ListFiles"
-	StorageService_GetFile_FullMethodName      = "/graviton.server.v1.StorageService/GetFile"
-	StorageService_DeleteFile_FullMethodName   = "/graviton.server.v1.StorageService/DeleteFile"
+	StorageService_CreateBucket_FullMethodName = "/torchwood.server.v1.StorageService/CreateBucket"
+	StorageService_ListBuckets_FullMethodName  = "/torchwood.server.v1.StorageService/ListBuckets"
+	StorageService_GetBucket_FullMethodName    = "/torchwood.server.v1.StorageService/GetBucket"
+	StorageService_DeleteBucket_FullMethodName = "/torchwood.server.v1.StorageService/DeleteBucket"
+	StorageService_CreateFile_FullMethodName   = "/torchwood.server.v1.StorageService/CreateFile"
+	StorageService_ListFiles_FullMethodName    = "/torchwood.server.v1.StorageService/ListFiles"
+	StorageService_GetFile_FullMethodName      = "/torchwood.server.v1.StorageService/GetFile"
+	StorageService_DeleteFile_FullMethodName   = "/torchwood.server.v1.StorageService/DeleteFile"
 )
 
 // StorageServiceClient is the client API for StorageService service.
@@ -347,7 +347,7 @@ func _StorageService_DeleteFile_Handler(srv interface{}, ctx context.Context, de
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var StorageService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.StorageService",
+	ServiceName: "torchwood.server.v1.StorageService",
 	HandlerType: (*StorageServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

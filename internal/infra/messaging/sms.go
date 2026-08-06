@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 )
 
 // SMSService delivers outbound SMS using Twilio or development logging.
@@ -42,7 +42,7 @@ func (s *SMSService) Send(ctx context.Context, to, body string) error {
 		if !s.devLogSMS {
 			return fmt.Errorf("sms provider is not configured")
 		}
-		fmt.Printf("[Graviton-dev-sms] to=%s body=%q\n", to, body)
+		fmt.Printf("[Torchwood-dev-sms] to=%s body=%q\n", to, body)
 		return nil
 	}
 }

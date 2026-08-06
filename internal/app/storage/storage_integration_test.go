@@ -6,11 +6,11 @@ import (
 	"io"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,7 +42,7 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, bucket.ID)
 
-	content := []byte("Graviton storage acceptance")
+	content := []byte("Torchwood storage acceptance")
 	file, err := uc.CreateFile(ctx, CreateFileCommand{
 		ProjectID: projectID,
 		BucketID:  bucket.ID,

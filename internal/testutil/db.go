@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/infra/clients"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/infra/clients"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
@@ -25,18 +25,18 @@ var testDBSeq atomic.Uint64
 
 // TestDSN returns the DSN for integration tests.
 func TestDSN() string {
-	if dsn := os.Getenv("GRAVITON_TEST_DATABASE_SOURCE"); dsn != "" {
+	if dsn := os.Getenv("TORCHWOOD_TEST_DATABASE_SOURCE"); dsn != "" {
 		return dsn
 	}
-	return "postgres://graviton:graviton@127.0.0.1:5433/GRAVITON_test?sslmode=disable"
+	return "postgres://torchwood:torchwood@127.0.0.1:5433/TORCHWOOD_test?sslmode=disable"
 }
 
 // AdminDSN returns a DSN to the postgres maintenance database.
 func AdminDSN() string {
-	if dsn := os.Getenv("GRAVITON_TEST_ADMIN_DATABASE_SOURCE"); dsn != "" {
+	if dsn := os.Getenv("TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE"); dsn != "" {
 		return dsn
 	}
-	return "postgres://graviton:graviton@127.0.0.1:5433/postgres?sslmode=disable"
+	return "postgres://torchwood:torchwood@127.0.0.1:5433/postgres?sslmode=disable"
 }
 
 // SetupTestDB creates a fresh test database, runs migrations, and returns a bun DB client.
@@ -90,7 +90,7 @@ func testDBPrefix() string {
 	dsn := TestDSN()
 	u, err := url.Parse(dsn)
 	if err != nil || u.Path == "" || u.Path == "/" {
-		return "GRAVITON_test"
+		return "TORCHWOOD_test"
 	}
 	return strings.TrimPrefix(u.Path, "/")
 }

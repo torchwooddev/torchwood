@@ -35,5 +35,5 @@ type RefreshRotationStore interface {
 // RefreshRotationKey builds the rotation store key for a scope
 // (e.g. projectID + sessionID, or "admin" + adminID).
 func RefreshRotationKey(parts ...string) string {
-	return "Graviton:refresh:" + strings.Join(parts, ":")
+	return "Torchwood:refresh:" + strings.Join(parts, ":")
 }

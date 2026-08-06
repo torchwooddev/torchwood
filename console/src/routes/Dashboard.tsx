@@ -54,7 +54,7 @@ export function Dashboard() {
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        description="Overview of your Graviton workspace. Switch the active project from the sidebar."
+        description="Overview of your Torchwood workspace. Switch the active project from the sidebar."
       />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

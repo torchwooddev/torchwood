@@ -11,7 +11,7 @@ const (
 	ProviderWeChatApp         = "wechat_app"
 )
 
-// Identity links a third-party account to an Graviton user.
+// Identity links a third-party account to an Torchwood user.
 type Identity struct {
 	ID            string
 	UserID        string

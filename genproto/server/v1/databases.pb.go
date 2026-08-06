@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1849,15 +1849,15 @@ var File_server_v1_databases_proto protoreflect.FileDescriptor
 
 const file_server_v1_databases_proto_rawDesc = "" +
 	"\n" +
-	"\x19server/v1/databases.proto\x12\x12graviton.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\";\n" +
+	"\x19server/v1/databases.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\";\n" +
 	"\x15CreateDatabaseRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"$\n" +
 	"\x12GetDatabaseRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x8d\x01\n" +
-	"\x15ListDatabasesResponse\x12:\n" +
-	"\tdatabases\x18\x01 \x03(\v2\x1c.graviton.server.v1.DatabaseR\tdatabases\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"\xa4\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x8f\x01\n" +
+	"\x15ListDatabasesResponse\x12;\n" +
+	"\tdatabases\x18\x01 \x03(\v2\x1d.torchwood.server.v1.DatabaseR\tdatabases\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xa4\x01\n" +
 	"\bDatabase\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
@@ -1883,34 +1883,34 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x14GetCollectionRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\"\xc7\x02\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\"\xc8\x02\n" +
 	"\x17UpdateCollectionRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12L\n" +
-	"\vpermissions\x18\x04 \x01(\v2%.graviton.server.v1.PermissionsUpdateH\x00R\vpermissions\x88\x01\x01\x120\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12M\n" +
+	"\vpermissions\x18\x04 \x01(\v2&.torchwood.server.v1.PermissionsUpdateH\x00R\vpermissions\x88\x01\x01\x120\n" +
 	"\x11document_security\x18\x05 \x01(\bH\x01R\x10documentSecurity\x88\x01\x01\x12\x1f\n" +
 	"\bdisabled\x18\x06 \x01(\bH\x02R\bdisabled\x88\x01\x01B\x0e\n" +
 	"\f_permissionsB\x14\n" +
 	"\x12_document_securityB\v\n" +
 	"\t_disabled\"+\n" +
 	"\x11PermissionsUpdate\x12\x16\n" +
-	"\x06values\x18\x01 \x03(\tR\x06values\"\x95\x01\n" +
-	"\x17ListCollectionsResponse\x12@\n" +
-	"\vcollections\x18\x01 \x03(\v2\x1e.graviton.server.v1.CollectionR\vcollections\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"\xa6\x03\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values\"\x97\x01\n" +
+	"\x17ListCollectionsResponse\x12A\n" +
+	"\vcollections\x18\x01 \x03(\v2\x1f.torchwood.server.v1.CollectionR\vcollections\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xa8\x03\n" +
 	"\n" +
 	"Collection\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vdatabase_id\x18\x02 \x01(\tR\n" +
 	"databaseId\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
-	"\vpermissions\x18\x04 \x03(\tR\vpermissions\x12=\n" +
+	"\vpermissions\x18\x04 \x03(\tR\vpermissions\x12>\n" +
 	"\n" +
-	"attributes\x18\x05 \x03(\v2\x1d.graviton.server.v1.AttributeR\n" +
-	"attributes\x123\n" +
-	"\aindexes\x18\x06 \x03(\v2\x19.graviton.server.v1.IndexR\aindexes\x129\n" +
+	"attributes\x18\x05 \x03(\v2\x1e.torchwood.server.v1.AttributeR\n" +
+	"attributes\x124\n" +
+	"\aindexes\x18\x06 \x03(\v2\x1a.torchwood.server.v1.IndexR\aindexes\x129\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
@@ -1978,7 +1978,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
 	"documentId\x12+\n" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
-	"\vpermissions\x18\x05 \x03(\tR\vpermissions\"\xe3\x02\n" +
+	"\vpermissions\x18\x05 \x03(\tR\vpermissions\"\xe4\x02\n" +
 	"\x15UpdateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -1986,8 +1986,8 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
 	"documentId\x12+\n" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
-	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12V\n" +
-	"\tincrement\x18\x06 \x03(\v28.graviton.server.v1.UpdateDocumentRequest.IncrementEntryR\tincrement\x1a<\n" +
+	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12W\n" +
+	"\tincrement\x18\x06 \x03(\v29.torchwood.server.v1.UpdateDocumentRequest.IncrementEntryR\tincrement\x1a<\n" +
 	"\x0eIncrementEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\"{\n" +
@@ -2004,10 +2004,10 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\aqueries\x18\x03 \x03(\tR\aqueries\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\tR\tpageToken\"\x8d\x01\n" +
-	"\x15ListDocumentsResponse\x12:\n" +
-	"\tdocuments\x18\x01 \x03(\v2\x1c.graviton.server.v1.DocumentR\tdocuments\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\".\n" +
+	"page_token\x18\x05 \x01(\tR\tpageToken\"\x8f\x01\n" +
+	"\x15ListDocumentsResponse\x12;\n" +
+	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.server.v1.DocumentR\tdocuments\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\".\n" +
 	"\x16CountDocumentsResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x03R\x05count\"\xd4\x01\n" +
 	"\x1aBulkUpdateDocumentsRequest\x12\x1f\n" +
@@ -2023,29 +2023,29 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12!\n" +
 	"\fdocument_ids\x18\x03 \x03(\tR\vdocumentIds\"3\n" +
 	"\x15BulkDocumentsResponse\x12\x1a\n" +
-	"\baffected\x18\x01 \x01(\x03R\baffected2\xea\x1b\n" +
-	"\x10DatabasesService\x12z\n" +
-	"\x0eCreateDatabase\x12).graviton.server.v1.CreateDatabaseRequest\x1a\x1c.graviton.server.v1.Database\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/server/databases\x12y\n" +
-	"\rListDatabases\x12\x1f.graviton.shared.v1.ListRequest\x1a).graviton.server.v1.ListDatabasesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/server/databases\x12v\n" +
-	"\vGetDatabase\x12&.graviton.server.v1.GetDatabaseRequest\x1a\x1c.graviton.server.v1.Database\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/server/databases/{id}\x12v\n" +
-	"\x0eDeleteDatabase\x12&.graviton.server.v1.GetDatabaseRequest\x1a\x19.graviton.shared.v1.Empty\"!\x82\xd3\xe4\x93\x02\x1b*\x19/v1/server/databases/{id}\x12\x9a\x01\n" +
-	"\x10CreateCollection\x12+.graviton.server.v1.CreateCollectionRequest\x1a\x1e.graviton.server.v1.Collection\"9\x82\xd3\xe4\x93\x023:\x01*\"./v1/server/databases/{database_id}/collections\x12\xa2\x01\n" +
-	"\x0fListCollections\x12*.graviton.server.v1.ListCollectionsRequest\x1a+.graviton.server.v1.ListCollectionsResponse\"6\x82\xd3\xe4\x93\x020\x12./v1/server/databases/{database_id}/collections\x12\xa1\x01\n" +
-	"\rGetCollection\x12(.graviton.server.v1.GetCollectionRequest\x1a\x1e.graviton.server.v1.Collection\"F\x82\xd3\xe4\x93\x02@\x12>/v1/server/databases/{database_id}/collections/{collection_id}\x12\x9f\x01\n" +
-	"\x10DeleteCollection\x12(.graviton.server.v1.GetCollectionRequest\x1a\x19.graviton.shared.v1.Empty\"F\x82\xd3\xe4\x93\x02@*>/v1/server/databases/{database_id}/collections/{collection_id}\x12\xaa\x01\n" +
-	"\x10UpdateCollection\x12+.graviton.server.v1.UpdateCollectionRequest\x1a\x1e.graviton.server.v1.Collection\"I\x82\xd3\xe4\x93\x02C:\x01*2>/v1/server/databases/{database_id}/collections/{collection_id}\x12\xb2\x01\n" +
-	"\x0fCreateAttribute\x12*.graviton.server.v1.CreateAttributeRequest\x1a\x1d.graviton.server.v1.Attribute\"T\x82\xd3\xe4\x93\x02N:\x01*\"I/v1/server/databases/{database_id}/collections/{collection_id}/attributes\x12\xb1\x01\n" +
-	"\x0fDeleteAttribute\x12*.graviton.server.v1.DeleteAttributeRequest\x1a\x19.graviton.shared.v1.Empty\"W\x82\xd3\xe4\x93\x02Q*O/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}\x12\xa3\x01\n" +
-	"\vCreateIndex\x12&.graviton.server.v1.CreateIndexRequest\x1a\x19.graviton.server.v1.Index\"Q\x82\xd3\xe4\x93\x02K:\x01*\"F/v1/server/databases/{database_id}/collections/{collection_id}/indexes\x12\xab\x01\n" +
-	"\vDeleteIndex\x12&.graviton.server.v1.DeleteIndexRequest\x1a\x19.graviton.shared.v1.Empty\"Y\x82\xd3\xe4\x93\x02S*Q/v1/server/databases/{database_id}/collections/{collection_id}/indexes/{index_id}\x12\xae\x01\n" +
-	"\x0eCreateDocument\x12).graviton.server.v1.CreateDocumentRequest\x1a\x1c.graviton.server.v1.Document\"S\x82\xd3\xe4\x93\x02M:\x01*\"H/v1/server/databases/{database_id}/collections/{collection_id}/documents\x12\xb6\x01\n" +
-	"\rListDocuments\x12(.graviton.server.v1.ListDocumentsRequest\x1a).graviton.server.v1.ListDocumentsResponse\"P\x82\xd3\xe4\x93\x02J\x12H/v1/server/databases/{database_id}/collections/{collection_id}/documents\x12\xb3\x01\n" +
-	"\vGetDocument\x12&.graviton.server.v1.GetDocumentRequest\x1a\x1c.graviton.server.v1.Document\"^\x82\xd3\xe4\x93\x02X\x12V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xbc\x01\n" +
-	"\x0eUpdateDocument\x12).graviton.server.v1.UpdateDocumentRequest\x1a\x1c.graviton.server.v1.Document\"a\x82\xd3\xe4\x93\x02[:\x01*2V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb3\x01\n" +
-	"\x0eDeleteDocument\x12&.graviton.server.v1.GetDocumentRequest\x1a\x19.graviton.shared.v1.Empty\"^\x82\xd3\xe4\x93\x02X*V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xbe\x01\n" +
-	"\x0eCountDocuments\x12(.graviton.server.v1.ListDocumentsRequest\x1a*.graviton.server.v1.CountDocumentsResponse\"V\x82\xd3\xe4\x93\x02P\x12N/v1/server/databases/{database_id}/collections/{collection_id}/documents/count\x12\xca\x01\n" +
-	"\x13BulkUpdateDocuments\x12..graviton.server.v1.BulkUpdateDocumentsRequest\x1a).graviton.server.v1.BulkDocumentsResponse\"X\x82\xd3\xe4\x93\x02R:\x01*2M/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk\x12\xd1\x01\n" +
-	"\x13BulkDeleteDocuments\x12..graviton.server.v1.BulkDeleteDocumentsRequest\x1a).graviton.server.v1.BulkDocumentsResponse\"_\x82\xd3\xe4\x93\x02Y:\x01*\"T/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete\x1a\x06\x92\xb2\x19\x02\b\x04B=Z;github.com/deeploop-ai/graviton/genproto/server/v1;serverv1b\x06proto3"
+	"\baffected\x18\x01 \x01(\x03R\baffected2\x94\x1c\n" +
+	"\x10DatabasesService\x12|\n" +
+	"\x0eCreateDatabase\x12*.torchwood.server.v1.CreateDatabaseRequest\x1a\x1d.torchwood.server.v1.Database\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/server/databases\x12{\n" +
+	"\rListDatabases\x12 .torchwood.shared.v1.ListRequest\x1a*.torchwood.server.v1.ListDatabasesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/server/databases\x12x\n" +
+	"\vGetDatabase\x12'.torchwood.server.v1.GetDatabaseRequest\x1a\x1d.torchwood.server.v1.Database\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/server/databases/{id}\x12x\n" +
+	"\x0eDeleteDatabase\x12'.torchwood.server.v1.GetDatabaseRequest\x1a\x1a.torchwood.shared.v1.Empty\"!\x82\xd3\xe4\x93\x02\x1b*\x19/v1/server/databases/{id}\x12\x9c\x01\n" +
+	"\x10CreateCollection\x12,.torchwood.server.v1.CreateCollectionRequest\x1a\x1f.torchwood.server.v1.Collection\"9\x82\xd3\xe4\x93\x023:\x01*\"./v1/server/databases/{database_id}/collections\x12\xa4\x01\n" +
+	"\x0fListCollections\x12+.torchwood.server.v1.ListCollectionsRequest\x1a,.torchwood.server.v1.ListCollectionsResponse\"6\x82\xd3\xe4\x93\x020\x12./v1/server/databases/{database_id}/collections\x12\xa3\x01\n" +
+	"\rGetCollection\x12).torchwood.server.v1.GetCollectionRequest\x1a\x1f.torchwood.server.v1.Collection\"F\x82\xd3\xe4\x93\x02@\x12>/v1/server/databases/{database_id}/collections/{collection_id}\x12\xa1\x01\n" +
+	"\x10DeleteCollection\x12).torchwood.server.v1.GetCollectionRequest\x1a\x1a.torchwood.shared.v1.Empty\"F\x82\xd3\xe4\x93\x02@*>/v1/server/databases/{database_id}/collections/{collection_id}\x12\xac\x01\n" +
+	"\x10UpdateCollection\x12,.torchwood.server.v1.UpdateCollectionRequest\x1a\x1f.torchwood.server.v1.Collection\"I\x82\xd3\xe4\x93\x02C:\x01*2>/v1/server/databases/{database_id}/collections/{collection_id}\x12\xb4\x01\n" +
+	"\x0fCreateAttribute\x12+.torchwood.server.v1.CreateAttributeRequest\x1a\x1e.torchwood.server.v1.Attribute\"T\x82\xd3\xe4\x93\x02N:\x01*\"I/v1/server/databases/{database_id}/collections/{collection_id}/attributes\x12\xb3\x01\n" +
+	"\x0fDeleteAttribute\x12+.torchwood.server.v1.DeleteAttributeRequest\x1a\x1a.torchwood.shared.v1.Empty\"W\x82\xd3\xe4\x93\x02Q*O/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}\x12\xa5\x01\n" +
+	"\vCreateIndex\x12'.torchwood.server.v1.CreateIndexRequest\x1a\x1a.torchwood.server.v1.Index\"Q\x82\xd3\xe4\x93\x02K:\x01*\"F/v1/server/databases/{database_id}/collections/{collection_id}/indexes\x12\xad\x01\n" +
+	"\vDeleteIndex\x12'.torchwood.server.v1.DeleteIndexRequest\x1a\x1a.torchwood.shared.v1.Empty\"Y\x82\xd3\xe4\x93\x02S*Q/v1/server/databases/{database_id}/collections/{collection_id}/indexes/{index_id}\x12\xb0\x01\n" +
+	"\x0eCreateDocument\x12*.torchwood.server.v1.CreateDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"S\x82\xd3\xe4\x93\x02M:\x01*\"H/v1/server/databases/{database_id}/collections/{collection_id}/documents\x12\xb8\x01\n" +
+	"\rListDocuments\x12).torchwood.server.v1.ListDocumentsRequest\x1a*.torchwood.server.v1.ListDocumentsResponse\"P\x82\xd3\xe4\x93\x02J\x12H/v1/server/databases/{database_id}/collections/{collection_id}/documents\x12\xb5\x01\n" +
+	"\vGetDocument\x12'.torchwood.server.v1.GetDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"^\x82\xd3\xe4\x93\x02X\x12V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xbe\x01\n" +
+	"\x0eUpdateDocument\x12*.torchwood.server.v1.UpdateDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"a\x82\xd3\xe4\x93\x02[:\x01*2V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb5\x01\n" +
+	"\x0eDeleteDocument\x12'.torchwood.server.v1.GetDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"^\x82\xd3\xe4\x93\x02X*V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xc0\x01\n" +
+	"\x0eCountDocuments\x12).torchwood.server.v1.ListDocumentsRequest\x1a+.torchwood.server.v1.CountDocumentsResponse\"V\x82\xd3\xe4\x93\x02P\x12N/v1/server/databases/{database_id}/collections/{collection_id}/documents/count\x12\xcc\x01\n" +
+	"\x13BulkUpdateDocuments\x12/.torchwood.server.v1.BulkUpdateDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"X\x82\xd3\xe4\x93\x02R:\x01*2M/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk\x12\xd3\x01\n" +
+	"\x13BulkDeleteDocuments\x12/.torchwood.server.v1.BulkDeleteDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"_\x82\xd3\xe4\x93\x02Y:\x01*\"T/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_databases_proto_rawDescOnce sync.Once
@@ -2061,103 +2061,103 @@ func file_server_v1_databases_proto_rawDescGZIP() []byte {
 
 var file_server_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_server_v1_databases_proto_goTypes = []any{
-	(*CreateDatabaseRequest)(nil),      // 0: graviton.server.v1.CreateDatabaseRequest
-	(*GetDatabaseRequest)(nil),         // 1: graviton.server.v1.GetDatabaseRequest
-	(*ListDatabasesResponse)(nil),      // 2: graviton.server.v1.ListDatabasesResponse
-	(*Database)(nil),                   // 3: graviton.server.v1.Database
-	(*CreateCollectionRequest)(nil),    // 4: graviton.server.v1.CreateCollectionRequest
-	(*ListCollectionsRequest)(nil),     // 5: graviton.server.v1.ListCollectionsRequest
-	(*GetCollectionRequest)(nil),       // 6: graviton.server.v1.GetCollectionRequest
-	(*UpdateCollectionRequest)(nil),    // 7: graviton.server.v1.UpdateCollectionRequest
-	(*PermissionsUpdate)(nil),          // 8: graviton.server.v1.PermissionsUpdate
-	(*ListCollectionsResponse)(nil),    // 9: graviton.server.v1.ListCollectionsResponse
-	(*Collection)(nil),                 // 10: graviton.server.v1.Collection
-	(*CreateAttributeRequest)(nil),     // 11: graviton.server.v1.CreateAttributeRequest
-	(*DeleteAttributeRequest)(nil),     // 12: graviton.server.v1.DeleteAttributeRequest
-	(*Attribute)(nil),                  // 13: graviton.server.v1.Attribute
-	(*CreateIndexRequest)(nil),         // 14: graviton.server.v1.CreateIndexRequest
-	(*DeleteIndexRequest)(nil),         // 15: graviton.server.v1.DeleteIndexRequest
-	(*Index)(nil),                      // 16: graviton.server.v1.Index
-	(*Document)(nil),                   // 17: graviton.server.v1.Document
-	(*CreateDocumentRequest)(nil),      // 18: graviton.server.v1.CreateDocumentRequest
-	(*UpdateDocumentRequest)(nil),      // 19: graviton.server.v1.UpdateDocumentRequest
-	(*GetDocumentRequest)(nil),         // 20: graviton.server.v1.GetDocumentRequest
-	(*ListDocumentsRequest)(nil),       // 21: graviton.server.v1.ListDocumentsRequest
-	(*ListDocumentsResponse)(nil),      // 22: graviton.server.v1.ListDocumentsResponse
-	(*CountDocumentsResponse)(nil),     // 23: graviton.server.v1.CountDocumentsResponse
-	(*BulkUpdateDocumentsRequest)(nil), // 24: graviton.server.v1.BulkUpdateDocumentsRequest
-	(*BulkDeleteDocumentsRequest)(nil), // 25: graviton.server.v1.BulkDeleteDocumentsRequest
-	(*BulkDocumentsResponse)(nil),      // 26: graviton.server.v1.BulkDocumentsResponse
-	nil,                                // 27: graviton.server.v1.UpdateDocumentRequest.IncrementEntry
-	(*v1.ListResponseMeta)(nil),        // 28: graviton.shared.v1.ListResponseMeta
+	(*CreateDatabaseRequest)(nil),      // 0: torchwood.server.v1.CreateDatabaseRequest
+	(*GetDatabaseRequest)(nil),         // 1: torchwood.server.v1.GetDatabaseRequest
+	(*ListDatabasesResponse)(nil),      // 2: torchwood.server.v1.ListDatabasesResponse
+	(*Database)(nil),                   // 3: torchwood.server.v1.Database
+	(*CreateCollectionRequest)(nil),    // 4: torchwood.server.v1.CreateCollectionRequest
+	(*ListCollectionsRequest)(nil),     // 5: torchwood.server.v1.ListCollectionsRequest
+	(*GetCollectionRequest)(nil),       // 6: torchwood.server.v1.GetCollectionRequest
+	(*UpdateCollectionRequest)(nil),    // 7: torchwood.server.v1.UpdateCollectionRequest
+	(*PermissionsUpdate)(nil),          // 8: torchwood.server.v1.PermissionsUpdate
+	(*ListCollectionsResponse)(nil),    // 9: torchwood.server.v1.ListCollectionsResponse
+	(*Collection)(nil),                 // 10: torchwood.server.v1.Collection
+	(*CreateAttributeRequest)(nil),     // 11: torchwood.server.v1.CreateAttributeRequest
+	(*DeleteAttributeRequest)(nil),     // 12: torchwood.server.v1.DeleteAttributeRequest
+	(*Attribute)(nil),                  // 13: torchwood.server.v1.Attribute
+	(*CreateIndexRequest)(nil),         // 14: torchwood.server.v1.CreateIndexRequest
+	(*DeleteIndexRequest)(nil),         // 15: torchwood.server.v1.DeleteIndexRequest
+	(*Index)(nil),                      // 16: torchwood.server.v1.Index
+	(*Document)(nil),                   // 17: torchwood.server.v1.Document
+	(*CreateDocumentRequest)(nil),      // 18: torchwood.server.v1.CreateDocumentRequest
+	(*UpdateDocumentRequest)(nil),      // 19: torchwood.server.v1.UpdateDocumentRequest
+	(*GetDocumentRequest)(nil),         // 20: torchwood.server.v1.GetDocumentRequest
+	(*ListDocumentsRequest)(nil),       // 21: torchwood.server.v1.ListDocumentsRequest
+	(*ListDocumentsResponse)(nil),      // 22: torchwood.server.v1.ListDocumentsResponse
+	(*CountDocumentsResponse)(nil),     // 23: torchwood.server.v1.CountDocumentsResponse
+	(*BulkUpdateDocumentsRequest)(nil), // 24: torchwood.server.v1.BulkUpdateDocumentsRequest
+	(*BulkDeleteDocumentsRequest)(nil), // 25: torchwood.server.v1.BulkDeleteDocumentsRequest
+	(*BulkDocumentsResponse)(nil),      // 26: torchwood.server.v1.BulkDocumentsResponse
+	nil,                                // 27: torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
+	(*v1.ListResponseMeta)(nil),        // 28: torchwood.shared.v1.ListResponseMeta
 	(*timestamppb.Timestamp)(nil),      // 29: google.protobuf.Timestamp
 	(*structpb.Struct)(nil),            // 30: google.protobuf.Struct
-	(*v1.ListRequest)(nil),             // 31: graviton.shared.v1.ListRequest
-	(*v1.Empty)(nil),                   // 32: graviton.shared.v1.Empty
+	(*v1.ListRequest)(nil),             // 31: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),                   // 32: torchwood.shared.v1.Empty
 }
 var file_server_v1_databases_proto_depIdxs = []int32{
-	3,  // 0: graviton.server.v1.ListDatabasesResponse.databases:type_name -> graviton.server.v1.Database
-	28, // 1: graviton.server.v1.ListDatabasesResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	29, // 2: graviton.server.v1.Database.created_at:type_name -> google.protobuf.Timestamp
-	29, // 3: graviton.server.v1.Database.updated_at:type_name -> google.protobuf.Timestamp
-	8,  // 4: graviton.server.v1.UpdateCollectionRequest.permissions:type_name -> graviton.server.v1.PermissionsUpdate
-	10, // 5: graviton.server.v1.ListCollectionsResponse.collections:type_name -> graviton.server.v1.Collection
-	28, // 6: graviton.server.v1.ListCollectionsResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	13, // 7: graviton.server.v1.Collection.attributes:type_name -> graviton.server.v1.Attribute
-	16, // 8: graviton.server.v1.Collection.indexes:type_name -> graviton.server.v1.Index
-	29, // 9: graviton.server.v1.Collection.created_at:type_name -> google.protobuf.Timestamp
-	29, // 10: graviton.server.v1.Collection.updated_at:type_name -> google.protobuf.Timestamp
-	30, // 11: graviton.server.v1.Document.data:type_name -> google.protobuf.Struct
-	29, // 12: graviton.server.v1.Document.created_at:type_name -> google.protobuf.Timestamp
-	29, // 13: graviton.server.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
-	30, // 14: graviton.server.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
-	30, // 15: graviton.server.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
-	27, // 16: graviton.server.v1.UpdateDocumentRequest.increment:type_name -> graviton.server.v1.UpdateDocumentRequest.IncrementEntry
-	17, // 17: graviton.server.v1.ListDocumentsResponse.documents:type_name -> graviton.server.v1.Document
-	28, // 18: graviton.server.v1.ListDocumentsResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	30, // 19: graviton.server.v1.BulkUpdateDocumentsRequest.data:type_name -> google.protobuf.Struct
-	0,  // 20: graviton.server.v1.DatabasesService.CreateDatabase:input_type -> graviton.server.v1.CreateDatabaseRequest
-	31, // 21: graviton.server.v1.DatabasesService.ListDatabases:input_type -> graviton.shared.v1.ListRequest
-	1,  // 22: graviton.server.v1.DatabasesService.GetDatabase:input_type -> graviton.server.v1.GetDatabaseRequest
-	1,  // 23: graviton.server.v1.DatabasesService.DeleteDatabase:input_type -> graviton.server.v1.GetDatabaseRequest
-	4,  // 24: graviton.server.v1.DatabasesService.CreateCollection:input_type -> graviton.server.v1.CreateCollectionRequest
-	5,  // 25: graviton.server.v1.DatabasesService.ListCollections:input_type -> graviton.server.v1.ListCollectionsRequest
-	6,  // 26: graviton.server.v1.DatabasesService.GetCollection:input_type -> graviton.server.v1.GetCollectionRequest
-	6,  // 27: graviton.server.v1.DatabasesService.DeleteCollection:input_type -> graviton.server.v1.GetCollectionRequest
-	7,  // 28: graviton.server.v1.DatabasesService.UpdateCollection:input_type -> graviton.server.v1.UpdateCollectionRequest
-	11, // 29: graviton.server.v1.DatabasesService.CreateAttribute:input_type -> graviton.server.v1.CreateAttributeRequest
-	12, // 30: graviton.server.v1.DatabasesService.DeleteAttribute:input_type -> graviton.server.v1.DeleteAttributeRequest
-	14, // 31: graviton.server.v1.DatabasesService.CreateIndex:input_type -> graviton.server.v1.CreateIndexRequest
-	15, // 32: graviton.server.v1.DatabasesService.DeleteIndex:input_type -> graviton.server.v1.DeleteIndexRequest
-	18, // 33: graviton.server.v1.DatabasesService.CreateDocument:input_type -> graviton.server.v1.CreateDocumentRequest
-	21, // 34: graviton.server.v1.DatabasesService.ListDocuments:input_type -> graviton.server.v1.ListDocumentsRequest
-	20, // 35: graviton.server.v1.DatabasesService.GetDocument:input_type -> graviton.server.v1.GetDocumentRequest
-	19, // 36: graviton.server.v1.DatabasesService.UpdateDocument:input_type -> graviton.server.v1.UpdateDocumentRequest
-	20, // 37: graviton.server.v1.DatabasesService.DeleteDocument:input_type -> graviton.server.v1.GetDocumentRequest
-	21, // 38: graviton.server.v1.DatabasesService.CountDocuments:input_type -> graviton.server.v1.ListDocumentsRequest
-	24, // 39: graviton.server.v1.DatabasesService.BulkUpdateDocuments:input_type -> graviton.server.v1.BulkUpdateDocumentsRequest
-	25, // 40: graviton.server.v1.DatabasesService.BulkDeleteDocuments:input_type -> graviton.server.v1.BulkDeleteDocumentsRequest
-	3,  // 41: graviton.server.v1.DatabasesService.CreateDatabase:output_type -> graviton.server.v1.Database
-	2,  // 42: graviton.server.v1.DatabasesService.ListDatabases:output_type -> graviton.server.v1.ListDatabasesResponse
-	3,  // 43: graviton.server.v1.DatabasesService.GetDatabase:output_type -> graviton.server.v1.Database
-	32, // 44: graviton.server.v1.DatabasesService.DeleteDatabase:output_type -> graviton.shared.v1.Empty
-	10, // 45: graviton.server.v1.DatabasesService.CreateCollection:output_type -> graviton.server.v1.Collection
-	9,  // 46: graviton.server.v1.DatabasesService.ListCollections:output_type -> graviton.server.v1.ListCollectionsResponse
-	10, // 47: graviton.server.v1.DatabasesService.GetCollection:output_type -> graviton.server.v1.Collection
-	32, // 48: graviton.server.v1.DatabasesService.DeleteCollection:output_type -> graviton.shared.v1.Empty
-	10, // 49: graviton.server.v1.DatabasesService.UpdateCollection:output_type -> graviton.server.v1.Collection
-	13, // 50: graviton.server.v1.DatabasesService.CreateAttribute:output_type -> graviton.server.v1.Attribute
-	32, // 51: graviton.server.v1.DatabasesService.DeleteAttribute:output_type -> graviton.shared.v1.Empty
-	16, // 52: graviton.server.v1.DatabasesService.CreateIndex:output_type -> graviton.server.v1.Index
-	32, // 53: graviton.server.v1.DatabasesService.DeleteIndex:output_type -> graviton.shared.v1.Empty
-	17, // 54: graviton.server.v1.DatabasesService.CreateDocument:output_type -> graviton.server.v1.Document
-	22, // 55: graviton.server.v1.DatabasesService.ListDocuments:output_type -> graviton.server.v1.ListDocumentsResponse
-	17, // 56: graviton.server.v1.DatabasesService.GetDocument:output_type -> graviton.server.v1.Document
-	17, // 57: graviton.server.v1.DatabasesService.UpdateDocument:output_type -> graviton.server.v1.Document
-	32, // 58: graviton.server.v1.DatabasesService.DeleteDocument:output_type -> graviton.shared.v1.Empty
-	23, // 59: graviton.server.v1.DatabasesService.CountDocuments:output_type -> graviton.server.v1.CountDocumentsResponse
-	26, // 60: graviton.server.v1.DatabasesService.BulkUpdateDocuments:output_type -> graviton.server.v1.BulkDocumentsResponse
-	26, // 61: graviton.server.v1.DatabasesService.BulkDeleteDocuments:output_type -> graviton.server.v1.BulkDocumentsResponse
+	3,  // 0: torchwood.server.v1.ListDatabasesResponse.databases:type_name -> torchwood.server.v1.Database
+	28, // 1: torchwood.server.v1.ListDatabasesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	29, // 2: torchwood.server.v1.Database.created_at:type_name -> google.protobuf.Timestamp
+	29, // 3: torchwood.server.v1.Database.updated_at:type_name -> google.protobuf.Timestamp
+	8,  // 4: torchwood.server.v1.UpdateCollectionRequest.permissions:type_name -> torchwood.server.v1.PermissionsUpdate
+	10, // 5: torchwood.server.v1.ListCollectionsResponse.collections:type_name -> torchwood.server.v1.Collection
+	28, // 6: torchwood.server.v1.ListCollectionsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	13, // 7: torchwood.server.v1.Collection.attributes:type_name -> torchwood.server.v1.Attribute
+	16, // 8: torchwood.server.v1.Collection.indexes:type_name -> torchwood.server.v1.Index
+	29, // 9: torchwood.server.v1.Collection.created_at:type_name -> google.protobuf.Timestamp
+	29, // 10: torchwood.server.v1.Collection.updated_at:type_name -> google.protobuf.Timestamp
+	30, // 11: torchwood.server.v1.Document.data:type_name -> google.protobuf.Struct
+	29, // 12: torchwood.server.v1.Document.created_at:type_name -> google.protobuf.Timestamp
+	29, // 13: torchwood.server.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
+	30, // 14: torchwood.server.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
+	30, // 15: torchwood.server.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
+	27, // 16: torchwood.server.v1.UpdateDocumentRequest.increment:type_name -> torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
+	17, // 17: torchwood.server.v1.ListDocumentsResponse.documents:type_name -> torchwood.server.v1.Document
+	28, // 18: torchwood.server.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	30, // 19: torchwood.server.v1.BulkUpdateDocumentsRequest.data:type_name -> google.protobuf.Struct
+	0,  // 20: torchwood.server.v1.DatabasesService.CreateDatabase:input_type -> torchwood.server.v1.CreateDatabaseRequest
+	31, // 21: torchwood.server.v1.DatabasesService.ListDatabases:input_type -> torchwood.shared.v1.ListRequest
+	1,  // 22: torchwood.server.v1.DatabasesService.GetDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
+	1,  // 23: torchwood.server.v1.DatabasesService.DeleteDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
+	4,  // 24: torchwood.server.v1.DatabasesService.CreateCollection:input_type -> torchwood.server.v1.CreateCollectionRequest
+	5,  // 25: torchwood.server.v1.DatabasesService.ListCollections:input_type -> torchwood.server.v1.ListCollectionsRequest
+	6,  // 26: torchwood.server.v1.DatabasesService.GetCollection:input_type -> torchwood.server.v1.GetCollectionRequest
+	6,  // 27: torchwood.server.v1.DatabasesService.DeleteCollection:input_type -> torchwood.server.v1.GetCollectionRequest
+	7,  // 28: torchwood.server.v1.DatabasesService.UpdateCollection:input_type -> torchwood.server.v1.UpdateCollectionRequest
+	11, // 29: torchwood.server.v1.DatabasesService.CreateAttribute:input_type -> torchwood.server.v1.CreateAttributeRequest
+	12, // 30: torchwood.server.v1.DatabasesService.DeleteAttribute:input_type -> torchwood.server.v1.DeleteAttributeRequest
+	14, // 31: torchwood.server.v1.DatabasesService.CreateIndex:input_type -> torchwood.server.v1.CreateIndexRequest
+	15, // 32: torchwood.server.v1.DatabasesService.DeleteIndex:input_type -> torchwood.server.v1.DeleteIndexRequest
+	18, // 33: torchwood.server.v1.DatabasesService.CreateDocument:input_type -> torchwood.server.v1.CreateDocumentRequest
+	21, // 34: torchwood.server.v1.DatabasesService.ListDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
+	20, // 35: torchwood.server.v1.DatabasesService.GetDocument:input_type -> torchwood.server.v1.GetDocumentRequest
+	19, // 36: torchwood.server.v1.DatabasesService.UpdateDocument:input_type -> torchwood.server.v1.UpdateDocumentRequest
+	20, // 37: torchwood.server.v1.DatabasesService.DeleteDocument:input_type -> torchwood.server.v1.GetDocumentRequest
+	21, // 38: torchwood.server.v1.DatabasesService.CountDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
+	24, // 39: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:input_type -> torchwood.server.v1.BulkUpdateDocumentsRequest
+	25, // 40: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:input_type -> torchwood.server.v1.BulkDeleteDocumentsRequest
+	3,  // 41: torchwood.server.v1.DatabasesService.CreateDatabase:output_type -> torchwood.server.v1.Database
+	2,  // 42: torchwood.server.v1.DatabasesService.ListDatabases:output_type -> torchwood.server.v1.ListDatabasesResponse
+	3,  // 43: torchwood.server.v1.DatabasesService.GetDatabase:output_type -> torchwood.server.v1.Database
+	32, // 44: torchwood.server.v1.DatabasesService.DeleteDatabase:output_type -> torchwood.shared.v1.Empty
+	10, // 45: torchwood.server.v1.DatabasesService.CreateCollection:output_type -> torchwood.server.v1.Collection
+	9,  // 46: torchwood.server.v1.DatabasesService.ListCollections:output_type -> torchwood.server.v1.ListCollectionsResponse
+	10, // 47: torchwood.server.v1.DatabasesService.GetCollection:output_type -> torchwood.server.v1.Collection
+	32, // 48: torchwood.server.v1.DatabasesService.DeleteCollection:output_type -> torchwood.shared.v1.Empty
+	10, // 49: torchwood.server.v1.DatabasesService.UpdateCollection:output_type -> torchwood.server.v1.Collection
+	13, // 50: torchwood.server.v1.DatabasesService.CreateAttribute:output_type -> torchwood.server.v1.Attribute
+	32, // 51: torchwood.server.v1.DatabasesService.DeleteAttribute:output_type -> torchwood.shared.v1.Empty
+	16, // 52: torchwood.server.v1.DatabasesService.CreateIndex:output_type -> torchwood.server.v1.Index
+	32, // 53: torchwood.server.v1.DatabasesService.DeleteIndex:output_type -> torchwood.shared.v1.Empty
+	17, // 54: torchwood.server.v1.DatabasesService.CreateDocument:output_type -> torchwood.server.v1.Document
+	22, // 55: torchwood.server.v1.DatabasesService.ListDocuments:output_type -> torchwood.server.v1.ListDocumentsResponse
+	17, // 56: torchwood.server.v1.DatabasesService.GetDocument:output_type -> torchwood.server.v1.Document
+	17, // 57: torchwood.server.v1.DatabasesService.UpdateDocument:output_type -> torchwood.server.v1.Document
+	32, // 58: torchwood.server.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
+	23, // 59: torchwood.server.v1.DatabasesService.CountDocuments:output_type -> torchwood.server.v1.CountDocumentsResponse
+	26, // 60: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
+	26, // 61: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
 	41, // [41:62] is the sub-list for method output_type
 	20, // [20:41] is the sub-list for method input_type
 	20, // [20:20] is the sub-list for extension type_name

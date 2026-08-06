@@ -23,7 +23,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1ListDocumentsResponse"
+              "$ref": "#/definitions/torchwoodclientv1ListDocumentsResponse"
             }
           },
           "default": {
@@ -86,7 +86,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1Document"
+              "$ref": "#/definitions/torchwoodclientv1Document"
             }
           },
           "default": {
@@ -114,7 +114,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1DatabasesServiceCreateDocumentBody"
+              "$ref": "#/definitions/torchwoodclientv1DatabasesServiceCreateDocumentBody"
             }
           }
         ],
@@ -130,7 +130,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1CountDocumentsResponse"
+              "$ref": "#/definitions/torchwoodclientv1CountDocumentsResponse"
             }
           },
           "default": {
@@ -195,7 +195,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1Document"
+              "$ref": "#/definitions/torchwoodclientv1Document"
             }
           },
           "default": {
@@ -287,7 +287,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1Document"
+              "$ref": "#/definitions/torchwoodclientv1Document"
             }
           },
           "default": {
@@ -321,7 +321,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/gravitonclientv1DatabasesServiceUpdateDocumentBody"
+              "$ref": "#/definitions/torchwoodclientv1DatabasesServiceUpdateDocumentBody"
             }
           }
         ],
@@ -332,93 +332,6 @@
     }
   },
   "definitions": {
-    "gravitonclientv1CountDocumentsResponse": {
-      "type": "object",
-      "properties": {
-        "count": {
-          "type": "string",
-          "format": "int64"
-        }
-      }
-    },
-    "gravitonclientv1DatabasesServiceCreateDocumentBody": {
-      "type": "object",
-      "properties": {
-        "documentId": {
-          "type": "string"
-        },
-        "data": {
-          "type": "object"
-        },
-        "permissions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "gravitonclientv1DatabasesServiceUpdateDocumentBody": {
-      "type": "object",
-      "properties": {
-        "data": {
-          "type": "object"
-        },
-        "permissions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "increment": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "format": "int64"
-          }
-        }
-      }
-    },
-    "gravitonclientv1Document": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "data": {
-          "type": "object"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "permissions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "gravitonclientv1ListDocumentsResponse": {
-      "type": "object",
-      "properties": {
-        "documents": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/gravitonclientv1Document"
-          }
-        },
-        "meta": {
-          "$ref": "#/definitions/v1ListResponseMeta"
-        }
-      }
-    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -452,6 +365,93 @@
             "type": "object",
             "$ref": "#/definitions/protobufAny"
           }
+        }
+      }
+    },
+    "torchwoodclientv1CountDocumentsResponse": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "string",
+          "format": "int64"
+        }
+      }
+    },
+    "torchwoodclientv1DatabasesServiceCreateDocumentBody": {
+      "type": "object",
+      "properties": {
+        "documentId": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "torchwoodclientv1DatabasesServiceUpdateDocumentBody": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "increment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "format": "int64"
+          }
+        }
+      }
+    },
+    "torchwoodclientv1Document": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "torchwoodclientv1ListDocumentsResponse": {
+      "type": "object",
+      "properties": {
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodclientv1Document"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
         }
       }
     },

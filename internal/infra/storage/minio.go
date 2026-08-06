@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/domain/storage"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/domain/storage"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -44,7 +44,7 @@ func NewMinioObjectStore(cfg *config.AppConfig) (storage.ObjectStore, error) {
 
 	bucket := s.GetBucket()
 	if bucket == "" {
-		bucket = "Graviton-files"
+		bucket = "Torchwood-files"
 	}
 
 	return &minioObjectStore{client: client, bucket: bucket}, nil
@@ -96,7 +96,7 @@ func (m *minioObjectStore) bucketName() string {
 	if m.bucket != "" {
 		return m.bucket
 	}
-	return "Graviton-files"
+	return "Torchwood-files"
 }
 
 // DefaultBucket returns the configured default bucket name.

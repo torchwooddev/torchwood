@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listProjects } from "@/api/projects";
 import { useAuth } from "@/hooks/useAuth";
 
-/** Ensures admin console requests have X-Graviton-Project before project-scoped APIs run. */
+/** Ensures admin console requests have X-Torchwood-Project before project-scoped APIs run. */
 export function ProjectBootstrap() {
   const { projectId, selectProject } = useAuth();
 

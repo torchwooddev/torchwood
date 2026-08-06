@@ -7,7 +7,7 @@
 package consolev1
 
 import (
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -219,7 +219,7 @@ var File_console_v1_auth_proto protoreflect.FileDescriptor
 
 const file_console_v1_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x15console/v1/auth.proto\x12\x13graviton.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
+	"\x15console/v1/auth.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
 	"\rSignInRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"w\n" +
@@ -230,11 +230,11 @@ const file_console_v1_auth_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x03 \x01(\tR\frefreshToken\":\n" +
 	"\x13RefreshTokenRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"\x10\n" +
-	"\x0eSignOutRequest2\x8a\x03\n" +
-	"\x12ConsoleAuthService\x12v\n" +
-	"\x06SignIn\x12\".graviton.console.v1.SignInRequest\x1a#.graviton.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-in\x12\x82\x01\n" +
-	"\fRefreshToken\x12(.graviton.console.v1.RefreshTokenRequest\x1a#.graviton.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/refresh\x12o\n" +
-	"\aSignOut\x12#.graviton.console.v1.SignOutRequest\x1a\x19.graviton.shared.v1.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/console/auth/sign-out\x1a\x06\x92\xb2\x19\x02\b\x01B?Z=github.com/deeploop-ai/graviton/genproto/console/v1;consolev1b\x06proto3"
+	"\x0eSignOutRequest2\x90\x03\n" +
+	"\x12ConsoleAuthService\x12x\n" +
+	"\x06SignIn\x12#.torchwood.console.v1.SignInRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-in\x12\x84\x01\n" +
+	"\fRefreshToken\x12).torchwood.console.v1.RefreshTokenRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/refresh\x12q\n" +
+	"\aSignOut\x12$.torchwood.console.v1.SignOutRequest\x1a\x1a.torchwood.shared.v1.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/console/auth/sign-out\x1a\x06\x92\xb2\x19\x02\b\x01B@Z>github.com/torchwoodio/torchwood/genproto/console/v1;consolev1b\x06proto3"
 
 var (
 	file_console_v1_auth_proto_rawDescOnce sync.Once
@@ -250,19 +250,19 @@ func file_console_v1_auth_proto_rawDescGZIP() []byte {
 
 var file_console_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_console_v1_auth_proto_goTypes = []any{
-	(*SignInRequest)(nil),       // 0: graviton.console.v1.SignInRequest
-	(*SignInResponse)(nil),      // 1: graviton.console.v1.SignInResponse
-	(*RefreshTokenRequest)(nil), // 2: graviton.console.v1.RefreshTokenRequest
-	(*SignOutRequest)(nil),      // 3: graviton.console.v1.SignOutRequest
-	(*v1.Empty)(nil),            // 4: graviton.shared.v1.Empty
+	(*SignInRequest)(nil),       // 0: torchwood.console.v1.SignInRequest
+	(*SignInResponse)(nil),      // 1: torchwood.console.v1.SignInResponse
+	(*RefreshTokenRequest)(nil), // 2: torchwood.console.v1.RefreshTokenRequest
+	(*SignOutRequest)(nil),      // 3: torchwood.console.v1.SignOutRequest
+	(*v1.Empty)(nil),            // 4: torchwood.shared.v1.Empty
 }
 var file_console_v1_auth_proto_depIdxs = []int32{
-	0, // 0: graviton.console.v1.ConsoleAuthService.SignIn:input_type -> graviton.console.v1.SignInRequest
-	2, // 1: graviton.console.v1.ConsoleAuthService.RefreshToken:input_type -> graviton.console.v1.RefreshTokenRequest
-	3, // 2: graviton.console.v1.ConsoleAuthService.SignOut:input_type -> graviton.console.v1.SignOutRequest
-	1, // 3: graviton.console.v1.ConsoleAuthService.SignIn:output_type -> graviton.console.v1.SignInResponse
-	1, // 4: graviton.console.v1.ConsoleAuthService.RefreshToken:output_type -> graviton.console.v1.SignInResponse
-	4, // 5: graviton.console.v1.ConsoleAuthService.SignOut:output_type -> graviton.shared.v1.Empty
+	0, // 0: torchwood.console.v1.ConsoleAuthService.SignIn:input_type -> torchwood.console.v1.SignInRequest
+	2, // 1: torchwood.console.v1.ConsoleAuthService.RefreshToken:input_type -> torchwood.console.v1.RefreshTokenRequest
+	3, // 2: torchwood.console.v1.ConsoleAuthService.SignOut:input_type -> torchwood.console.v1.SignOutRequest
+	1, // 3: torchwood.console.v1.ConsoleAuthService.SignIn:output_type -> torchwood.console.v1.SignInResponse
+	1, // 4: torchwood.console.v1.ConsoleAuthService.RefreshToken:output_type -> torchwood.console.v1.SignInResponse
+	4, // 5: torchwood.console.v1.ConsoleAuthService.SignOut:output_type -> torchwood.shared.v1.Empty
 	3, // [3:6] is the sub-list for method output_type
 	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name

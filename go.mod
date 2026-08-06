@@ -1,4 +1,4 @@
-module github.com/deeploop-ai/graviton
+module github.com/torchwoodio/torchwood
 
 go 1.25.0
 

@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package graviton.client.v1;
+package torchwood.client.v1;
 
-option go_package = "github.com/deeploop-ai/graviton/genproto/client/v1;clientv1";
+option go_package = "github.com/torchwoodio/torchwood/genproto/client/v1;clientv1";
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
@@ -10,7 +10,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 service TeamsService {
-  option (graviton.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
 
   rpc CreateTeam(CreateTeamRequest) returns (Team) {
     option (google.api.http) = { post: "/v1/teams", body: "*" };

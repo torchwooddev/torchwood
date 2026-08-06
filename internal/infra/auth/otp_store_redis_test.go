@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"

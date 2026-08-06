@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -127,7 +127,7 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 
 	// Allow admin console sessions to target a specific project via header.
 	if principal.ActorKind == shared.ActorKindAdmin {
-		if projectID := firstMetadataValue(md, "X-Graviton-Project"); projectID != "" {
+		if projectID := firstMetadataValue(md, "X-Torchwood-Project"); projectID != "" {
 			principal.ProjectID = projectID
 		}
 		if err := i.validator.ValidateAdminProjectAccess(ctx, principal); err != nil {
@@ -188,11 +188,11 @@ func parseSessionCookie(raw string) (projectID, token string, ok bool) {
 		if !found || value == "" {
 			continue
 		}
-		if name == "GRAVITON_session_console" {
+		if name == "TORCHWOOD_session_console" {
 			return "console", value, true
 		}
-		if strings.HasPrefix(name, "GRAVITON_session_") {
-			return strings.TrimPrefix(name, "GRAVITON_session_"), value, true
+		if strings.HasPrefix(name, "TORCHWOOD_session_") {
+			return strings.TrimPrefix(name, "TORCHWOOD_session_"), value, true
 		}
 	}
 	return "", "", false

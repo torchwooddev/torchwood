@@ -38,7 +38,7 @@ tasks:
   migrate:
     dir: '{{.USER_WORKING_DIR}}'
     vars:
-      MIGRATE_DSN: '{{if .GRAVITON_DATA_DATABASE_SOURCE}}{{.GRAVITON_DATA_DATABASE_SOURCE}}{{else}}postgres://{{default "graviton" .POSTGRES_USER}}:{{default "graviton" .POSTGRES_PASSWORD}}@{{default "127.0.0.1" .POSTGRES_HOST}}:{{default "5432" .POSTGRES_PORT}}/{{default "graviton" .POSTGRES_DB}}?sslmode=disable{{end}}'
+      MIGRATE_DSN: '{{if .TORCHWOOD_DATA_DATABASE_SOURCE}}{{.TORCHWOOD_DATA_DATABASE_SOURCE}}{{else}}postgres://{{default "torchwood" .POSTGRES_USER}}:{{default "torchwood" .POSTGRES_PASSWORD}}@{{default "127.0.0.1" .POSTGRES_HOST}}:{{default "5432" .POSTGRES_PORT}}/{{default "torchwood" .POSTGRES_DB}}?sslmode=disable{{end}}'
     cmds:
       - migrate -path ./db/migrations -database "{{.MIGRATE_DSN}}" up
 
@@ -128,4 +128,4 @@ tasks:
       VERSION: 1.0.0
       TIMESTAMP:
         sh: '{{if eq .OS "Windows_NT"}}powershell -NoProfile -Command Get-Date -Format "yyyyMMddHHmmss"{{else}}date +%Y%m%d%H%M%S{{end}}'
-      DOCKER_IMAGE: 'graviton:{{.VERSION}}-{{.GIT_VERSION}}-{{.TIMESTAMP}}'
+      DOCKER_IMAGE: 'torchwood:{{.VERSION}}-{{.GIT_VERSION}}-{{.TIMESTAMP}}'

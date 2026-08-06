@@ -10,13 +10,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/app/client"
-	appstorage "github.com/deeploop-ai/graviton/internal/app/storage"
-	"github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	"github.com/torchwoodio/torchwood/internal/app/client"
+	appstorage "github.com/torchwoodio/torchwood/internal/app/storage"
+	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/stretchr/testify/require"
 )
@@ -184,7 +184,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 
 	_, tokens, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectA,
-		Email:     "storage-http@graviton.local",
+		Email:     "storage-http@torchwood.local",
 		Password:  "User@123456",
 		Name:      "Storage HTTP",
 	})
@@ -249,7 +249,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	require.NotEmpty(t, created.ID)
 
-	// Forged X-Graviton-Project must not grant access to another project's bucket.
+	// Forged X-Torchwood-Project must not grant access to another project's bucket.
 	bodyB := &bytes.Buffer{}
 	writerB := multipart.NewWriter(bodyB)
 	partB, err := writerB.CreateFormFile("file", "blocked.txt")
@@ -262,7 +262,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	require.NoError(t, err)
 	reqB.Header.Set("Content-Type", writerB.FormDataContentType())
 	reqB.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
-	reqB.Header.Set("X-Graviton-Project", projectB)
+	reqB.Header.Set("X-Torchwood-Project", projectB)
 	respB, err := http.DefaultClient.Do(reqB)
 	require.NoError(t, err)
 	respB.Body.Close()
@@ -404,7 +404,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-Graviton-Project", otherProjectID)
+	req.Header.Set("X-Torchwood-Project", otherProjectID)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

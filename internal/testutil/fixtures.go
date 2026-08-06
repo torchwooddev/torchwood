@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/infra/clients"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/infra/clients"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
 )
 
 // CreateTestAPIKey inserts an API key and returns its raw secret plus a cleanup func.

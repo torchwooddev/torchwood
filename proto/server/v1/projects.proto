@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package graviton.server.v1;
+package torchwood.server.v1;
 
-option go_package = "github.com/deeploop-ai/graviton/genproto/server/v1;serverv1";
+option go_package = "github.com/torchwoodio/torchwood/genproto/server/v1;serverv1";
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
@@ -10,7 +10,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 service ProjectsService {
-  option (graviton.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
 
   rpc CreateProject(CreateProjectRequest) returns (Project) {
     option (google.api.http) = { post: "/v1/server/projects", body: "*" };

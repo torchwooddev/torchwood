@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply min-h-screen bg-Graviton-bg text-slate-100 antialiased;
+    @apply min-h-screen bg-Torchwood-bg text-slate-100 antialiased;
     background-image:
       radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.08), transparent 35%),
       radial-gradient(circle at 80% 10%, rgba(56, 189, 248, 0.06), transparent 30%);
@@ -19,11 +19,11 @@
 
 @layer components {
   .panel {
-    @apply rounded-xl border border-Graviton-border bg-Graviton-card shadow-glow;
+    @apply rounded-xl border border-Torchwood-border bg-Torchwood-card shadow-glow;
   }
 
   .field {
-    @apply w-full rounded-lg border border-Graviton-border bg-Graviton-panel px-3 py-2 text-sm text-slate-100 placeholder:text-Graviton-muted focus:border-Graviton-accent focus:ring-1 focus:ring-Graviton-accent;
+    @apply w-full rounded-lg border border-Torchwood-border bg-Torchwood-panel px-3 py-2 text-sm text-slate-100 placeholder:text-Torchwood-muted focus:border-Torchwood-accent focus:ring-1 focus:ring-Torchwood-accent;
   }
 
   .btn {
@@ -31,11 +31,11 @@
   }
 
   .btn-primary {
-    @apply btn bg-Graviton-accent text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply btn bg-Torchwood-accent text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-secondary {
-    @apply btn border border-Graviton-border bg-Graviton-panel text-slate-100 hover:border-Graviton-accent hover:text-Graviton-accent disabled:cursor-not-allowed disabled:opacity-50;
+    @apply btn border border-Torchwood-border bg-Torchwood-panel text-slate-100 hover:border-Torchwood-accent hover:text-Torchwood-accent disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-danger {
@@ -43,10 +43,10 @@
   }
 
   .nav-link {
-    @apply flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-Graviton-muted transition hover:bg-Graviton-panel hover:text-slate-100;
+    @apply flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-Torchwood-muted transition hover:bg-Torchwood-panel hover:text-slate-100;
   }
 
   .nav-link-active {
-    @apply nav-link bg-Graviton-panel text-Graviton-accent;
+    @apply nav-link bg-Torchwood-panel text-Torchwood-accent;
   }
 }

@@ -1,6 +1,6 @@
 # P0 设计方案回顾与偏差确认
 
-> 基于对 `D:\Codes\baas\appwrite` 和 `D:\\Codes\\qiulin\\Gravitonwork` 的二次 review，列出当前 P0 设计与两者的对齐点、偏差点、以及需要进一步确认/补充的事项。
+> 基于对 `D:\Codes\baas\appwrite` 和 `D:\\Codes\\qiulin\\Torchwoodwork` 的二次 review，列出当前 P0 设计与两者的对齐点、偏差点、以及需要进一步确认/补充的事项。
 
 ---
 
@@ -10,7 +10,7 @@
 |------|-----------|--------------------------|------|
 | 核心框架 | Lynx | fleetwork 已深度使用 | 沿用 |
 | DI | Wire + 分层 ProviderSet | fleetwork 标准 | 沿用 |
-| 配置 | protobuf config + `GRAVITON_` 环境变量 | fleetwork 标准 | 沿用 |
+| 配置 | protobuf config + `TORCHWOOD_` 环境变量 | fleetwork 标准 | 沿用 |
 | 静态表 ORM | bun + `db/migrations/*.sql` (golang-migrate) | fleetwork 标准 | 沿用 |
 | 列表查询 | `pkg/crud` + field mappings + `ExecuteListQuery` | fleetwork 标准 | 沿用 |
 | gRPC 服务注册 + 拦截器 | OTel → metrics → auth → protovalidate | fleetwork 标准 | 沿用 |
@@ -40,7 +40,7 @@
 
 **建议补充**
 
-1. 明确 P0 cookie 格式：`GRAVITON_session_{project_id}` 存 signed session id；服务端用 `sessions` 表验证。
+1. 明确 P0 cookie 格式：`TORCHWOOD_session_{project_id}` 存 signed session id；服务端用 `sessions` 表验证。
 2. 定义 `TokenKind` 枚举或 JWT `aud` claim，避免不同用途 token 混用。
 3. 在 `sessions` 表中保留 `provider`, `user_agent`, `ip`, `country`, `factors`, `expire_at`, `created_at` 等字段。
 

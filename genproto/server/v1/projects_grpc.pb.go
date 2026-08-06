@@ -8,7 +8,7 @@ package serverv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,9 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProjectsService_CreateProject_FullMethodName = "/graviton.server.v1.ProjectsService/CreateProject"
-	ProjectsService_ListProjects_FullMethodName  = "/graviton.server.v1.ProjectsService/ListProjects"
-	ProjectsService_GetProject_FullMethodName    = "/graviton.server.v1.ProjectsService/GetProject"
+	ProjectsService_CreateProject_FullMethodName = "/torchwood.server.v1.ProjectsService/CreateProject"
+	ProjectsService_ListProjects_FullMethodName  = "/torchwood.server.v1.ProjectsService/ListProjects"
+	ProjectsService_GetProject_FullMethodName    = "/torchwood.server.v1.ProjectsService/GetProject"
 )
 
 // ProjectsServiceClient is the client API for ProjectsService service.
@@ -177,7 +177,7 @@ func _ProjectsService_GetProject_Handler(srv interface{}, ctx context.Context, d
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ProjectsService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.ProjectsService",
+	ServiceName: "torchwood.server.v1.ProjectsService",
 	HandlerType: (*ProjectsServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

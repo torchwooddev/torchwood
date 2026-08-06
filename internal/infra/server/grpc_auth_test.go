@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	clientv1 "github.com/deeploop-ai/graviton/genproto/client/v1"
+	clientv1 "github.com/torchwoodio/torchwood/genproto/client/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
@@ -15,7 +15,7 @@ func TestCollectMethodsByAccess_AuthenticatedRequiresUsersRole(t *testing.T) {
 	_, _, permissionMethods, err := collectMethodsByAccess(clientv1.File_client_v1_teams_proto)
 	require.NoError(t, err)
 
-	fullMethod := "/graviton.client.v1.TeamsService/CreateTeam"
+	fullMethod := "/torchwood.client.v1.TeamsService/CreateTeam"
 	perms, ok := permissionMethods[fullMethod]
 	require.True(t, ok, "TeamsService methods should require users permission")
 	require.Equal(t, []string{"users"}, perms)
@@ -27,8 +27,8 @@ func TestCollectMethodsByAccess_AccountPublicMethods(t *testing.T) {
 	publicMethods, _, permissionMethods, err := collectMethodsByAccess(clientv1.File_client_v1_account_proto)
 	require.NoError(t, err)
 
-	require.Contains(t, publicMethods, "/graviton.client.v1.AccountService/SignIn")
-	require.Equal(t, []string{"users"}, permissionMethods["/graviton.client.v1.AccountService/Me"])
+	require.Contains(t, publicMethods, "/torchwood.client.v1.AccountService/SignIn")
+	require.Equal(t, []string{"users"}, permissionMethods["/torchwood.client.v1.AccountService/Me"])
 }
 
 // fakeUnaryHandler 满足 grpc.MethodDesc 的 Handler 签名，仅用于注册测试服务。
@@ -52,20 +52,20 @@ func TestAssertRegisteredMethodsHaveAuthz(t *testing.T) {
 
 	t.Run("all methods covered", func(t *testing.T) {
 		t.Parallel()
-		srv := newServerWithServices("graviton.test.v1.PublicService", "graviton.test.v1.KeyService", "graviton.test.v1.PermService")
+		srv := newServerWithServices("torchwood.test.v1.PublicService", "torchwood.test.v1.KeyService", "torchwood.test.v1.PermService")
 		err := assertRegisteredMethodsHaveAuthz(srv,
-			[]string{"/graviton.test.v1.PublicService/DoThing"},
-			[]string{"/graviton.test.v1.KeyService/DoThing"},
-			map[string][]string{"/graviton.test.v1.PermService/DoThing": {"users"}})
+			[]string{"/torchwood.test.v1.PublicService/DoThing"},
+			[]string{"/torchwood.test.v1.KeyService/DoThing"},
+			map[string][]string{"/torchwood.test.v1.PermService/DoThing": {"users"}})
 		require.NoError(t, err)
 	})
 
 	t.Run("unannotated method fails closed", func(t *testing.T) {
 		t.Parallel()
-		srv := newServerWithServices("graviton.test.v1.UnannotatedService")
+		srv := newServerWithServices("torchwood.test.v1.UnannotatedService")
 		err := assertRegisteredMethodsHaveAuthz(srv, nil, nil, nil)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "/graviton.test.v1.UnannotatedService/DoThing")
+		require.Contains(t, err.Error(), "/torchwood.test.v1.UnannotatedService/DoThing")
 	})
 
 	t.Run("framework services are exempt", func(t *testing.T) {

@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -292,10 +292,10 @@ var File_server_v1_oauth_providers_proto protoreflect.FileDescriptor
 
 const file_server_v1_oauth_providers_proto_rawDesc = "" +
 	"\n" +
-	"\x1fserver/v1/oauth_providers.proto\x12\x12graviton.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xa2\x01\n" +
-	"\x1aListOAuthProvidersResponse\x12J\n" +
-	"\x0foauth_providers\x18\x01 \x03(\v2!.graviton.server.v1.OAuthProviderR\x0eoauthProviders\x128\n" +
-	"\x04meta\x18\x02 \x01(\v2$.graviton.shared.v1.ListResponseMetaR\x04meta\"\xac\x01\n" +
+	"\x1fserver/v1/oauth_providers.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xa4\x01\n" +
+	"\x1aListOAuthProvidersResponse\x12K\n" +
+	"\x0foauth_providers\x18\x01 \x03(\v2\".torchwood.server.v1.OAuthProviderR\x0eoauthProviders\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xac\x01\n" +
 	"\x1aUpsertOAuthProviderRequest\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\x12\x1b\n" +
@@ -313,11 +313,11 @@ const file_server_v1_oauth_providers_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xda\x03\n" +
-	"\x15OAuthProvidersService\x12\x89\x01\n" +
-	"\x12ListOAuthProviders\x12\x1f.graviton.shared.v1.ListRequest\x1a..graviton.server.v1.ListOAuthProvidersResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/oauth-providers\x12\x9a\x01\n" +
-	"\x13UpsertOAuthProvider\x12..graviton.server.v1.UpsertOAuthProviderRequest\x1a!.graviton.server.v1.OAuthProvider\"0\x82\xd3\xe4\x93\x02*:\x01*\x1a%/v1/server/oauth-providers/{provider}\x12\x8f\x01\n" +
-	"\x13DeleteOAuthProvider\x12..graviton.server.v1.DeleteOAuthProviderRequest\x1a\x19.graviton.shared.v1.Empty\"-\x82\xd3\xe4\x93\x02'*%/v1/server/oauth-providers/{provider}\x1a\x06\x92\xb2\x19\x02\b\x04B=Z;github.com/deeploop-ai/graviton/genproto/server/v1;serverv1b\x06proto3"
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xe0\x03\n" +
+	"\x15OAuthProvidersService\x12\x8b\x01\n" +
+	"\x12ListOAuthProviders\x12 .torchwood.shared.v1.ListRequest\x1a/.torchwood.server.v1.ListOAuthProvidersResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/oauth-providers\x12\x9c\x01\n" +
+	"\x13UpsertOAuthProvider\x12/.torchwood.server.v1.UpsertOAuthProviderRequest\x1a\".torchwood.server.v1.OAuthProvider\"0\x82\xd3\xe4\x93\x02*:\x01*\x1a%/v1/server/oauth-providers/{provider}\x12\x91\x01\n" +
+	"\x13DeleteOAuthProvider\x12/.torchwood.server.v1.DeleteOAuthProviderRequest\x1a\x1a.torchwood.shared.v1.Empty\"-\x82\xd3\xe4\x93\x02'*%/v1/server/oauth-providers/{provider}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_oauth_providers_proto_rawDescOnce sync.Once
@@ -333,26 +333,26 @@ func file_server_v1_oauth_providers_proto_rawDescGZIP() []byte {
 
 var file_server_v1_oauth_providers_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_server_v1_oauth_providers_proto_goTypes = []any{
-	(*ListOAuthProvidersResponse)(nil), // 0: graviton.server.v1.ListOAuthProvidersResponse
-	(*UpsertOAuthProviderRequest)(nil), // 1: graviton.server.v1.UpsertOAuthProviderRequest
-	(*DeleteOAuthProviderRequest)(nil), // 2: graviton.server.v1.DeleteOAuthProviderRequest
-	(*OAuthProvider)(nil),              // 3: graviton.server.v1.OAuthProvider
-	(*v1.ListResponseMeta)(nil),        // 4: graviton.shared.v1.ListResponseMeta
+	(*ListOAuthProvidersResponse)(nil), // 0: torchwood.server.v1.ListOAuthProvidersResponse
+	(*UpsertOAuthProviderRequest)(nil), // 1: torchwood.server.v1.UpsertOAuthProviderRequest
+	(*DeleteOAuthProviderRequest)(nil), // 2: torchwood.server.v1.DeleteOAuthProviderRequest
+	(*OAuthProvider)(nil),              // 3: torchwood.server.v1.OAuthProvider
+	(*v1.ListResponseMeta)(nil),        // 4: torchwood.shared.v1.ListResponseMeta
 	(*timestamppb.Timestamp)(nil),      // 5: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),             // 6: graviton.shared.v1.ListRequest
-	(*v1.Empty)(nil),                   // 7: graviton.shared.v1.Empty
+	(*v1.ListRequest)(nil),             // 6: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),                   // 7: torchwood.shared.v1.Empty
 }
 var file_server_v1_oauth_providers_proto_depIdxs = []int32{
-	3, // 0: graviton.server.v1.ListOAuthProvidersResponse.oauth_providers:type_name -> graviton.server.v1.OAuthProvider
-	4, // 1: graviton.server.v1.ListOAuthProvidersResponse.meta:type_name -> graviton.shared.v1.ListResponseMeta
-	5, // 2: graviton.server.v1.OAuthProvider.created_at:type_name -> google.protobuf.Timestamp
-	5, // 3: graviton.server.v1.OAuthProvider.updated_at:type_name -> google.protobuf.Timestamp
-	6, // 4: graviton.server.v1.OAuthProvidersService.ListOAuthProviders:input_type -> graviton.shared.v1.ListRequest
-	1, // 5: graviton.server.v1.OAuthProvidersService.UpsertOAuthProvider:input_type -> graviton.server.v1.UpsertOAuthProviderRequest
-	2, // 6: graviton.server.v1.OAuthProvidersService.DeleteOAuthProvider:input_type -> graviton.server.v1.DeleteOAuthProviderRequest
-	0, // 7: graviton.server.v1.OAuthProvidersService.ListOAuthProviders:output_type -> graviton.server.v1.ListOAuthProvidersResponse
-	3, // 8: graviton.server.v1.OAuthProvidersService.UpsertOAuthProvider:output_type -> graviton.server.v1.OAuthProvider
-	7, // 9: graviton.server.v1.OAuthProvidersService.DeleteOAuthProvider:output_type -> graviton.shared.v1.Empty
+	3, // 0: torchwood.server.v1.ListOAuthProvidersResponse.oauth_providers:type_name -> torchwood.server.v1.OAuthProvider
+	4, // 1: torchwood.server.v1.ListOAuthProvidersResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	5, // 2: torchwood.server.v1.OAuthProvider.created_at:type_name -> google.protobuf.Timestamp
+	5, // 3: torchwood.server.v1.OAuthProvider.updated_at:type_name -> google.protobuf.Timestamp
+	6, // 4: torchwood.server.v1.OAuthProvidersService.ListOAuthProviders:input_type -> torchwood.shared.v1.ListRequest
+	1, // 5: torchwood.server.v1.OAuthProvidersService.UpsertOAuthProvider:input_type -> torchwood.server.v1.UpsertOAuthProviderRequest
+	2, // 6: torchwood.server.v1.OAuthProvidersService.DeleteOAuthProvider:input_type -> torchwood.server.v1.DeleteOAuthProviderRequest
+	0, // 7: torchwood.server.v1.OAuthProvidersService.ListOAuthProviders:output_type -> torchwood.server.v1.ListOAuthProvidersResponse
+	3, // 8: torchwood.server.v1.OAuthProvidersService.UpsertOAuthProvider:output_type -> torchwood.server.v1.OAuthProvider
+	7, // 9: torchwood.server.v1.OAuthProvidersService.DeleteOAuthProvider:output_type -> torchwood.shared.v1.Empty
 	7, // [7:10] is the sub-list for method output_type
 	4, // [4:7] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name

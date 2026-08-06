@@ -1,4 +1,4 @@
-# Graviton P0 人工验收清单
+# Torchwood P0 人工验收清单
 
 > 基于 `docs/completed-tasks.md` 及近期提交整理。
 > 对应提交：`11af6f8`（P1 Sprint 1：Account 会话、Document CRUD、Teams Memberships、Console Teams）。
@@ -26,7 +26,7 @@
 | # | 验收项 | 操作步骤 | 预期结果 | 通过  |
 |---|--------|----------|----------|-----|
 | 0.1 | 基础设施启动 | `task up` | Postgres / Redis / MinIO 容器健康 | [x] |
-| 0.2 | 环境变量 | 复制 `.env.example` → `.env`，设置 `GRAVITON_SECURITY_JWT_SECRET` 等非空值 | 服务可读取配置 | [x] |
+| 0.2 | 环境变量 | 复制 `.env.example` → `.env`，设置 `TORCHWOOD_SECURITY_JWT_SECRET` 等非空值 | 服务可读取配置 | [x] |
 | 0.3 | 数据库迁移 | `task migrate` | `000001`、`000002` 迁移成功；存在 `audit_logs`、`console_admin_projects` 表 | [x] |
 | 0.4 | 种子数据 | `go run ./cmd/seed`（或项目文档约定方式） | 输出含 `default` 项目、admin 账号、API Key secret | [x] |
 | 0.5 | Console 构建 | `task console-build`（若验收嵌入版 Console） | `console/dist/` 生成且无报错 | [x] |
@@ -38,7 +38,7 @@
 ```
 API Key Secret: _______________________
 Project ID: default
-Console Admin: admin@graviton.local / Admin@123
+Console Admin: admin@torchwood.local / Admin@123
 ```
 
 ---
@@ -82,7 +82,7 @@ Console Admin: admin@graviton.local / Admin@123
 ```bash
 curl -s -X POST http://localhost:8088/v1/account/sign-up \
   -H "Content-Type: application/json" \
-  -d '{"project_id":"default","email":"qa@graviton.local","password":"Qa@123456","name":"QA User"}'
+  -d '{"project_id":"default","email":"qa@torchwood.local","password":"Qa@123456","name":"QA User"}'
 ```
 
 **示例（Refresh）：**
@@ -100,7 +100,7 @@ curl -s -X POST http://localhost:8088/v1/account/refresh \
 | # | 验收项 | 操作步骤 | 预期结果 | 通过  |
 |---|--------|----------|----------|-----|
 | 3.1 | 页面可访问 | 浏览器打开 `/console/` | SPA 加载，显示登录页 | [x] |
-| 3.2 | 管理员登录 | `admin@graviton.local` / `Admin@123` | 进入 Dashboard，无报错 toast | [x] |
+| 3.2 | 管理员登录 | `admin@torchwood.local` / `Admin@123` | 进入 Dashboard，无报错 toast | [x] |
 | 3.3 | 错误凭据 | 错误密码登录 | 提示错误，停留在登录页 | [x] |
 | 3.4 | Projects 页 | 导航至 Projects | 列表展示项目（含 `default`） | [x] |
 | 3.5 | API Keys 页 | 导航至 Api Keys | 可列表；创建后**仅一次**显示 secret | [x] |
@@ -116,7 +116,7 @@ curl -s -X POST http://localhost:8088/v1/account/refresh \
 ```bash
 curl -s -X POST http://localhost:8088/v1/console/auth/sign-in \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@graviton.local","password":"Admin@123"}'
+  -d '{"email":"admin@torchwood.local","password":"Admin@123"}'
 ```
 
 ---
@@ -126,7 +126,7 @@ curl -s -X POST http://localhost:8088/v1/console/auth/sign-in \
 **认证方式（二选一）：**
 
 - `X-Api-Key: <project_api_key_secret>`
-- Console JWT：`Authorization: Bearer <admin_token>` + `X-Graviton-Project: default`
+- Console JWT：`Authorization: Bearer <admin_token>` + `X-Torchwood-Project: default`
 
 | # | 验收项 | 路径 / 方法 | 预期结果 | 通过  |
 |---|--------|-------------|----------|-----|
@@ -165,7 +165,7 @@ curl -s -X POST http://localhost:8088/v1/console/auth/sign-in \
 | 5.2 | 下载 | `GET .../files/{fileId}/download`，带合法凭证 | 文件内容与上传一致 | [x] |
 | 5.3 | 内联查看 | `GET .../files/{fileId}/view` | Content-Type 正确，可预览 | [x] |
 | 5.4 | API Key 上传 | 使用 `X-Api-Key` 认证上传 | 文件归属 API Key 对应项目 | [x] |
-| 5.5 | JWT 上传 | 使用用户 `Bearer` token（**不带**伪造的 `X-Graviton-Project`） | 仅能操作 token 内嵌 project 的资源 | [x] |
+| 5.5 | JWT 上传 | 使用用户 `Bearer` token（**不带**伪造的 `X-Torchwood-Project`） | 仅能操作 token 内嵌 project 的资源 | [x] |
 
 **示例：**
 
@@ -184,11 +184,11 @@ curl -s -X POST "http://localhost:8088/v1/storage/buckets/<BUCKET_ID>/files" \
 | 6.1 | API Key 跨项目 IDOR | 用项目 A 的 API Key 调 `GET /v1/server/api-keys/{项目B的keyId}` | `NotFound` 或拒绝，不能读到 B 的 key | [x] |
 | 6.2 | API Key Scope | 创建 scopes 仅含 `storage` 的 key，调用 `GET /v1/server/users` | `PermissionDenied` | [x] |
 | 6.3 | API Key Scope 放行 | scopes 含 `users` 的 key 调 Users 列表 | 成功 | [x] |
-| 6.4 | 伪造项目 Header（HTTP 文件） | 用户 JWT + `X-Graviton-Project: <其他项目>` 上传/下载 | **不应**访问到其他项目文件 | [x] |
+| 6.4 | 伪造项目 Header（HTTP 文件） | 用户 JWT + `X-Torchwood-Project: <其他项目>` 上传/下载 | **不应**访问到其他项目文件 | [x] |
 | 6.5 | 登出吊销 | SignOut 后使用旧 access token 调 Me | 失败 | [x] |
 | 6.6 | Refresh 绑定 Session | SignOut 后使用旧 refresh_token | 失败 | [x] |
-| 6.7 | Console Viewer 权限 | 创建 `role=viewer` 的 admin（无 `console_admin_projects` 记录），带 `X-Graviton-Project` 调 Server API | `PermissionDenied`（无项目归属） | [x] |
-| 6.8 | Console Owner 放行 | `role=owner` 的 admin 带 `X-Graviton-Project: default` | 可正常访问 Server API | [x] |
+| 6.7 | Console Viewer 权限 | 创建 `role=viewer` 的 admin（无 `console_admin_projects` 记录），带 `X-Torchwood-Project` 调 Server API | `PermissionDenied`（无项目归属） | [x] |
+| 6.8 | Console Owner 放行 | `role=owner` 的 admin 带 `X-Torchwood-Project: default` | 可正常访问 Server API | [x] |
 | 6.9 | Viewer 授权后 | 在 `console_admin_projects` 插入 viewer 与 default 关联后重试 | 可访问该项目 | [x] |
 
 **Viewer 授权 SQL 示例：**
@@ -206,7 +206,7 @@ VALUES ('<viewer-admin-uuid>', 'default');
 |---|--------|----------|----------|------|
 | 7.1 | 写入记录 | 调用任意需认证的 gRPC 方法（如 `GET /v1/server/users`） | `audit_logs` 表新增一行 | [x] |
 | 7.2 | 字段完整性 | 查询最新记录 | 含 `action`（full method）、`status`（success/错误码）、`actor_id`、`actor_kind` | [x] |
-| 7.3 | 项目关联 | 带 `X-Graviton-Project` 的 Admin 请求 | `project_id` 为 header 中项目 | [x] |
+| 7.3 | 项目关联 | 带 `X-Torchwood-Project` 的 Admin 请求 | `project_id` 为 header 中项目 | [x] |
 | 7.4 | 公开接口 | 调用 `GET /v1/health` | 可不写审计或写匿名记录（按实现）；**不应**导致请求失败 | [x] |
 
 **查询示例：**
@@ -239,7 +239,7 @@ LIMIT 10;
 | # | 验收项 | 操作步骤 | 预期结果 | 通过 |
 |---|--------|----------|----------|------|
 | 9.1 | 系统集合 | Client 注册后查 Users 列表 | `users` 文档存在 | [x] |
-| 9.2 | 查询过滤 | `GET /v1/server/users?queries=equal("email","qa@graviton.local")`（参数格式以 gateway 为准） | 仅返回匹配用户 | [x] |
+| 9.2 | 查询过滤 | `GET /v1/server/users?queries=equal("email","qa@torchwood.local")`（参数格式以 gateway 为准） | 仅返回匹配用户 | [x] |
 | 9.3 | 自定义库 | 创建 app 库 + posts 集合 + attribute | 元数据与 schema 一致 | [x] |
 | 9.4 | 列表权限 | 非 admin 角色列表用户（若可模拟） | 仅返回有 `_perms` 的文档 | [x] |
 
@@ -257,7 +257,7 @@ LIMIT 10;
 
 ## 11. Client Document API（P1）
 
-**认证**：`Authorization: Bearer <user_access_token>`（Client 用户 JWT，无需 `X-Graviton-Project`）。
+**认证**：`Authorization: Bearer <user_access_token>`（Client 用户 JWT，无需 `X-Torchwood-Project`）。
 
 | # | 验收项 | 路径 / 方法 | 预期结果 | 通过 |
 |---|--------|-------------|----------|------|
@@ -336,7 +336,7 @@ curl -s "$BASE/v1/server/users" -H "X-Api-Key: $API_KEY"
 export ADMIN_TOKEN=<console-jwt>
 curl -s "$BASE/v1/server/users" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "X-Graviton-Project: $PROJECT"
+  -H "X-Torchwood-Project: $PROJECT"
 ```
 
 ## 附录 B：相关文档

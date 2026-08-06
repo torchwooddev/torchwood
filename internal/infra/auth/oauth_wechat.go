@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 )
 
 // weChatAPIBase is overridable in tests to point at httptest servers.

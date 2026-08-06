@@ -3,7 +3,7 @@ package servergrpc
 import (
 	"context"
 
-	serverv1 "github.com/deeploop-ai/graviton/genproto/server/v1"
+	serverv1 "github.com/torchwoodio/torchwood/genproto/server/v1"
 )
 
 type HealthService struct {

@@ -1,6 +1,6 @@
 # 技术选型决策（Appwrite Go + PostgreSQL 迁移）
 
-> 本文档基于 `D:\\Codes\\qiulin\\Gravitonwork` 现有工程实践，对 Lynx、Wire、bun、grpc-gateway + gRPC、DDD/Clean 架构进行可行性评估，并给出推荐选型。
+> 本文档基于 `D:\\Codes\\qiulin\\Torchwoodwork` 现有工程实践，对 Lynx、Wire、bun、grpc-gateway + gRPC、DDD/Clean 架构进行可行性评估，并给出推荐选型。
 
 ## 1. 选型结论（一句话版）
 

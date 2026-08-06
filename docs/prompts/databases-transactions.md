@@ -1,14 +1,14 @@
-# Graviton Databases Transactions 实现 Prompt
+# Torchwood Databases Transactions 实现 Prompt
 
 > 将本文件整体复制到新 Cursor session 作为实现任务说明。  
-> 仓库路径：`D:/Codes/qiulin/Graviton`  
+> 仓库路径：`D:/Codes/qiulin/Torchwood`  
 > Appwrite 参考：`D:/Codes/baas/appwrite`（`Transactions` HTTP 模块 + `utopia-php/database` 事务权限）
 
 ---
 
 ## 背景
 
-Graviton 已完成 Databases 权限 P0/P1（`documentSecurity` OR 逻辑、`_perms` 表、guests 公开读等）。**尚未实现** Appwrite 风格的 **Database Transactions**：在单个事务内批量创建/更新/删除文档，提交前全部校验权限，提交后原子生效。
+Torchwood 已完成 Databases 权限 P0/P1（`documentSecurity` OR 逻辑、`_perms` 表、guests 公开读等）。**尚未实现** Appwrite 风格的 **Database Transactions**：在单个事务内批量创建/更新/删除文档，提交前全部校验权限，提交后原子生效。
 
 当前架构：
 - 元数据：`document_databases` / `document_collections`（bun + migrate）
@@ -50,7 +50,7 @@ Graviton 已完成 Databases 权限 P0/P1（`documentSecurity` OR 逻辑、`_per
 
 ---
 
-## Graviton 建议设计
+## Torchwood 建议设计
 
 ### 1. 存储
 

@@ -10,12 +10,12 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/app/storage"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/pkg/grpc/interceptor"
+	"github.com/torchwoodio/torchwood/internal/app/storage"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/pkg/grpc/interceptor"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -215,7 +215,7 @@ func (h *FileHandler) authorize(r *http.Request) (*shared.Principal, error) {
 		return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
 	}
 	if principal.ActorKind == shared.ActorKindAdmin {
-		if projectID := strings.TrimSpace(r.Header.Get("X-Graviton-Project")); projectID != "" {
+		if projectID := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); projectID != "" {
 			principal.ProjectID = projectID
 		}
 		if err := h.validator.ValidateAdminProjectAccess(ctx, principal); err != nil {
@@ -240,7 +240,7 @@ func (h *FileHandler) authenticate(r *http.Request) (*shared.Principal, error) {
 		return h.validator.ValidateCredential(ctx, token, credentialType)
 	}
 	for _, c := range r.Cookies() {
-		if strings.HasPrefix(c.Name, "GRAVITON_session_") {
+		if strings.HasPrefix(c.Name, "TORCHWOOD_session_") {
 			return h.validator.ValidateCredential(ctx, c.Value, shared.CredentialTypeSession)
 		}
 	}
@@ -256,7 +256,7 @@ func (h *FileHandler) projectID(r *http.Request, p *shared.Principal) string {
 		return p.ProjectID
 	case shared.CredentialTypeToken, shared.CredentialTypeSession:
 		if p.ActorKind == shared.ActorKindAdmin {
-			if pid := strings.TrimSpace(r.Header.Get("X-Graviton-Project")); pid != "" {
+			if pid := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); pid != "" {
 				return pid
 			}
 		}

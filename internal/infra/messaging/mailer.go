@@ -8,7 +8,7 @@ import (
 	"net/smtp"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 )
 
 // MailerService delivers outbound email using SMTP or development logging.
@@ -43,7 +43,7 @@ func (m *MailerService) Send(ctx context.Context, to, subject, body string) erro
 	if !m.devLogOTP {
 		return fmt.Errorf("smtp is not configured")
 	}
-	fmt.Printf("[Graviton-dev-mailer] to=%s subject=%q body=%q\n", to, subject, body)
+	fmt.Printf("[Torchwood-dev-mailer] to=%s subject=%q body=%q\n", to, subject, body)
 	return nil
 }
 
@@ -107,7 +107,7 @@ func smtpFrom(cfg *config.Messaging_SMTP) string {
 	if from := strings.TrimSpace(cfg.GetFrom()); from != "" {
 		return from
 	}
-	return "noreply@graviton.local"
+	return "noreply@torchwood.local"
 }
 
 func buildMessage(from, to, subject, body string) []byte {

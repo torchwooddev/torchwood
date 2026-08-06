@@ -1,10 +1,10 @@
 package api
 
 import (
-	"github.com/deeploop-ai/graviton/internal/api/clientgrpc"
-	"github.com/deeploop-ai/graviton/internal/api/consolegrpc"
-	"github.com/deeploop-ai/graviton/internal/api/servergrpc"
-	"github.com/deeploop-ai/graviton/internal/api/serverhttp"
+	"github.com/torchwoodio/torchwood/internal/api/clientgrpc"
+	"github.com/torchwoodio/torchwood/internal/api/consolegrpc"
+	"github.com/torchwoodio/torchwood/internal/api/servergrpc"
+	"github.com/torchwoodio/torchwood/internal/api/serverhttp"
 	"github.com/google/wire"
 )
 

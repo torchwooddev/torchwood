@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package graviton.client.v1;
+package torchwood.client.v1;
 
-option go_package = "github.com/deeploop-ai/graviton/genproto/client/v1;clientv1";
+option go_package = "github.com/torchwoodio/torchwood/genproto/client/v1;clientv1";
 
 import "google/api/annotations.proto";
 import "google/protobuf/struct.proto";
@@ -11,7 +11,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 service DatabasesService {
-  option (graviton.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
 
   rpc CreateDocument(CreateDocumentRequest) returns (Document) {
     option (google.api.http) = { post: "/v1/databases/{database_id}/collections/{collection_id}/documents", body: "*" };
@@ -19,12 +19,12 @@ service DatabasesService {
 
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse) {
     option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc GetDocument(GetDocumentRequest) returns (Document) {
     option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 
   rpc UpdateDocument(UpdateDocumentRequest) returns (Document) {
@@ -37,7 +37,7 @@ service DatabasesService {
 
   rpc CountDocuments(ListDocumentsRequest) returns (CountDocumentsResponse) {
     option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents/count" };
-    option (graviton.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
 }
 

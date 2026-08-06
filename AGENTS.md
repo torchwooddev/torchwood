@@ -2,12 +2,12 @@
 
 ## 总体说明
 - 本仓库使用 Lynx + Clean Architecture：`internal/api`（传输层）、`internal/app`（用例层）、`internal/domain`（领域与端口）、`internal/infra`（适配器层）。
-- Graviton 产品定位包含 **AI/Agent-Native**：Protobuf + OpenAPI 定义可机器读取的 API；Server API 通过 scoped API Key 供 Agent/自动化调用；详见 `docs/roadmap.md` §0 与 `sdk/README.md`。
+- Torchwood 产品定位包含 **AI/Agent-Native**：Protobuf + OpenAPI 定义可机器读取的 API；Server API 通过 scoped API Key 供 Agent/自动化调用；详见 `docs/roadmap.md` §0 与 `sdk/README.md`。
 - 运行时组合通过 Wire 注入：`cmd/server/provides.go` -> `cmd/server/wire_gen.go`。
 - 服务器组件由 `cmd/server/provides.go` 启动，包含 gRPC、grpc-gateway、独立 HTTP handler、metrics、Admin Console SPA。
 - gRPC/API Proto 定义在 `proto/client`、`proto/server`、`proto/console`、`proto/shared`，生成代码位于 `genproto/`。
 - 典型调用链：gRPC handler -> app use-case -> domain repo port -> infra adapter（bun 或 documentdb）。
-- 认证中间件位于 `pkg/grpc/interceptor` 中，使用 Principal 注入；API_KEY 方法同时允许 admin console session（需带 `X-Graviton-Project` header）。
+- 认证中间件位于 `pkg/grpc/interceptor` 中，使用 Principal 注入；API_KEY 方法同时允许 admin console session（需带 `X-Torchwood-Project` header）。
 
 ## 项目结构补充
 - `console/`：React + Vite + TanStack Query + shadcn/ui 管理后台前端，通过 `console/embed.go` 嵌入 Go 二进制。
@@ -30,12 +30,12 @@
 
 ## 配置与环境约定
 - 配置 schema 由 `internal/pkg/config/config.proto` 定义，运行时绑定位于 `internal/pkg/config/bind.go`。
-- 环境变量覆盖前缀为 `GRAVITON_`；键名会从点号路径映射而来，例如 `data.database.source` -> `GRAVITON_DATA_DATABASE_SOURCE`。
-- MinIO 凭据请使用 `GRAVITON_STORAGE_S3_ACCESS_KEY_ID` 和 `GRAVITON_STORAGE_S3_SECRET_ACCESS_KEY`。
+- 环境变量覆盖前缀为 `TORCHWOOD_`；键名会从点号路径映射而来，例如 `data.database.source` -> `TORCHWOOD_DATA_DATABASE_SOURCE`。
+- MinIO 凭据请使用 `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` 和 `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY`。
 - `cmd/server/main.go` 会通过 `godotenv` 尝试加载 `.env`，然后默认从 `./configs` 绑定配置。
 - 请使用 `configs/config.yaml.template` 作为基础模板，并将敏感信息保持在环境变量中。
-- 反向代理后需恢复客户端真实 IP 时设置 `security.trusted_proxies`（如 `GRAVITON_SECURITY_TRUSTED_PROXIES=127.0.0.1/32`）；默认不信任 X-Forwarded-For/X-Real-Ip，一律使用 gRPC peer 地址。
-- Console admin 会话走 `GRAVITON_session_console` HttpOnly cookie（SameSite=Lax，refresh cookie 限 `/v1/console/auth` 路径），前端不再用 localStorage 存 token。
+- 反向代理后需恢复客户端真实 IP 时设置 `security.trusted_proxies`（如 `TORCHWOOD_SECURITY_TRUSTED_PROXIES=127.0.0.1/32`）；默认不信任 X-Forwarded-For/X-Real-Ip，一律使用 gRPC peer 地址。
+- Console admin 会话走 `TORCHWOOD_session_console` HttpOnly cookie（SameSite=Lax，refresh cookie 限 `/v1/console/auth` 路径），前端不再用 localStorage 存 token。
 
 ## 数据库约定
 - 元数据静态表（projects、api_keys、document_*、console_admins）使用 bun + golang-migrate。

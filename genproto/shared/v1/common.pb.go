@@ -205,7 +205,7 @@ var File_shared_v1_common_proto protoreflect.FileDescriptor
 
 const file_shared_v1_common_proto_rawDesc = "" +
 	"\n" +
-	"\x16shared/v1/common.proto\x12\x12graviton.shared.v1\"\x96\x01\n" +
+	"\x16shared/v1/common.proto\x12\x13torchwood.shared.v1\"\x96\x01\n" +
 	"\vListRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -219,7 +219,7 @@ const file_shared_v1_common_proto_rawDesc = "" +
 	"\x0fprev_page_token\x18\x03 \x01(\tR\rprevPageToken\x12\x1f\n" +
 	"\vtotal_count\x18\x04 \x01(\x05R\n" +
 	"totalCount\"\a\n" +
-	"\x05EmptyB=Z;github.com/deeploop-ai/graviton/genproto/shared/v1;sharedv1b\x06proto3"
+	"\x05EmptyB>Z<github.com/torchwoodio/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_common_proto_rawDescOnce sync.Once
@@ -235,9 +235,9 @@ func file_shared_v1_common_proto_rawDescGZIP() []byte {
 
 var file_shared_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_shared_v1_common_proto_goTypes = []any{
-	(*ListRequest)(nil),      // 0: graviton.shared.v1.ListRequest
-	(*ListResponseMeta)(nil), // 1: graviton.shared.v1.ListResponseMeta
-	(*Empty)(nil),            // 2: graviton.shared.v1.Empty
+	(*ListRequest)(nil),      // 0: torchwood.shared.v1.ListRequest
+	(*ListResponseMeta)(nil), // 1: torchwood.shared.v1.ListResponseMeta
+	(*Empty)(nil),            // 2: torchwood.shared.v1.Empty
 }
 var file_shared_v1_common_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type

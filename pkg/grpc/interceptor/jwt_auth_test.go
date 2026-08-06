@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -36,13 +36,13 @@ func TestAuthInterceptor_RejectsAPIKeyOnUsersPermissionMethod(t *testing.T) {
 		Roles:          []string{"keys"},
 		Permissions:    []string{"projects.read"},
 	}}, nil, nil, map[string][]string{
-		"/graviton.client.v1.TeamsService/CreateTeam": {"users"},
+		"/torchwood.client.v1.TeamsService/CreateTeam": {"users"},
 	})
 	requireNoError(t, err)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-api-key", "test-key"))
 	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
-		FullMethod: "/graviton.client.v1.TeamsService/CreateTeam",
+		FullMethod: "/torchwood.client.v1.TeamsService/CreateTeam",
 	}, func(context.Context, any) (any, error) {
 		t.Fatal("handler should not run")
 		return nil, nil
@@ -58,14 +58,14 @@ func TestAuthInterceptor_AllowsEndUserOnUsersPermissionMethod(t *testing.T) {
 		UserID:    "user-1",
 		Roles:     []string{"users", "user:user-1"},
 	}}, nil, nil, map[string][]string{
-		"/graviton.client.v1.TeamsService/CreateTeam": {"users"},
+		"/torchwood.client.v1.TeamsService/CreateTeam": {"users"},
 	})
 	requireNoError(t, err)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer token"))
 	called := false
 	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
-		FullMethod: "/graviton.client.v1.TeamsService/CreateTeam",
+		FullMethod: "/torchwood.client.v1.TeamsService/CreateTeam",
 	}, func(context.Context, any) (any, error) {
 		called = true
 		return "ok", nil
@@ -99,12 +99,12 @@ func TestAuthInterceptor_DeniesAPIKeyOnAPIKeysService(t *testing.T) {
 		CredentialType: shared.CredentialTypeAPIKey,
 		Roles:          []string{"keys"},
 		Permissions:    []string{"*"},
-	}}, nil, []string{"/graviton.server.v1.APIKeysService/CreateAPIKey"}, nil)
+	}}, nil, []string{"/torchwood.server.v1.APIKeysService/CreateAPIKey"}, nil)
 	requireNoError(t, err)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-api-key", "test-key"))
 	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
-		FullMethod: "/graviton.server.v1.APIKeysService/CreateAPIKey",
+		FullMethod: "/torchwood.server.v1.APIKeysService/CreateAPIKey",
 	}, func(context.Context, any) (any, error) {
 		t.Fatal("handler should not run")
 		return nil, nil
@@ -119,13 +119,13 @@ func TestAuthInterceptor_AllowsAdminSessionOnAPIKeysService(t *testing.T) {
 		ActorKind:      shared.ActorKindAdmin,
 		CredentialType: shared.CredentialTypeSession,
 		Roles:          []string{"admin"},
-	}}, nil, []string{"/graviton.server.v1.APIKeysService/CreateAPIKey"}, nil)
+	}}, nil, []string{"/torchwood.server.v1.APIKeysService/CreateAPIKey"}, nil)
 	requireNoError(t, err)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Session admin-token"))
 	called := false
 	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
-		FullMethod: "/graviton.server.v1.APIKeysService/CreateAPIKey",
+		FullMethod: "/torchwood.server.v1.APIKeysService/CreateAPIKey",
 	}, func(context.Context, any) (any, error) {
 		called = true
 		return "ok", nil

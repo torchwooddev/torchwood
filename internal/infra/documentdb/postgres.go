@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/model"
-	"github.com/deeploop-ai/graviton/internal/infra/clients"
-	"github.com/deeploop-ai/graviton/pkg/crud"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
-	"github.com/deeploop-ai/graviton/pkg/query"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
+	"github.com/torchwoodio/torchwood/internal/infra/clients"
+	"github.com/torchwoodio/torchwood/pkg/crud"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwoodio/torchwood/pkg/query"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
@@ -652,7 +652,7 @@ func quoteIdent(name string) string {
 }
 
 func schemaName(internalID int64, databaseID string) string {
-	return fmt.Sprintf("GRAVITON_%d_%s", internalID, databaseID)
+	return fmt.Sprintf("TORCHWOOD_%d_%s", internalID, databaseID)
 }
 
 func tableName(schema, collectionID string) string {
@@ -1061,9 +1061,9 @@ func isUniqueViolation(err error) bool {
 }
 
 func schemaDatabaseID(schema string) string {
-	// schema = "GRAVITON_<n>_<dbID>"; we need the dbID which follows the second "_".
-	// But internalID is numeric, so split on "GRAVITON_" prefix then on first "_".
-	rest := strings.TrimPrefix(schema, "GRAVITON_")
+	// schema = "TORCHWOOD_<n>_<dbID>"; we need the dbID which follows the second "_".
+	// But internalID is numeric, so split on "TORCHWOOD_" prefix then on first "_".
+	rest := strings.TrimPrefix(schema, "TORCHWOOD_")
 	idx := strings.IndexByte(rest, '_')
 	if idx < 0 {
 		return ""

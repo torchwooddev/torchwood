@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/testutil"
-	"github.com/deeploop-ai/graviton/pkg/jwtparser"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/testutil"
+	"github.com/torchwoodio/torchwood/pkg/jwtparser"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -65,7 +65,7 @@ func parseRefreshClaims(t *testing.T, cfgSecret, token string) *jwtparser.Claims
 
 func TestAccount_RefreshToken_RotationAndReuseDetection(t *testing.T) {
 	ctx, account, docDB, projectID := setupRefreshRotationAccount(t)
-	tokens := signUpForRefresh(t, ctx, account, projectID, "rotation@graviton.local")
+	tokens := signUpForRefresh(t, ctx, account, projectID, "rotation@torchwood.local")
 
 	// First refresh rotates the token.
 	newTokens, _, err := account.RefreshToken(ctx, RefreshTokenCommand{
@@ -101,7 +101,7 @@ func TestAccount_RefreshToken_RotationAndReuseDetection(t *testing.T) {
 
 func TestAccount_RefreshToken_ConcurrentRefreshSingleWinner(t *testing.T) {
 	ctx, account, _, projectID := setupRefreshRotationAccount(t)
-	tokens := signUpForRefresh(t, ctx, account, projectID, "concurrent@graviton.local")
+	tokens := signUpForRefresh(t, ctx, account, projectID, "concurrent@torchwood.local")
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex

@@ -1,13 +1,13 @@
-# Graviton 开发路线图
+# Torchwood 开发路线图
 
-> 本文档基于已完成 P0 底座，规划 Graviton 的短期、中期、长期开发方向。
+> 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
 > 最新更新：2026-07-01（补充 AI/Agent-Native 战略与 P1 Sprint 1 部分落地，见 `docs/completed-tasks.md`）。
 
 ---
 
 ## 0. AI / Agent-Native 战略（贯穿各阶段）
 
-Graviton 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定位：后端不仅服务人类用户，也原生支持 LLM Agent、自动化脚本与 MCP Tool Server 以可预测、可授权的方式调用。
+Torchwood 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定位：后端不仅服务人类用户，也原生支持 LLM Agent、自动化脚本与 MCP Tool Server 以可预测、可授权的方式调用。
 
 ### 已具备（P0 / P1 部分）
 
@@ -24,7 +24,7 @@ Graviton 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定�
 
 | 任务 | 说明 | 目标阶段 |
 |------|------|----------|
-| MCP Server | 暴露 Graviton Server API 为 MCP Tools（Users/Databases/Storage 等） | P1 |
+| MCP Server | 暴露 Torchwood Server API 为 MCP Tools（Users/Databases/Storage 等） | P1 |
 | OpenAPI 聚合与 Tool Schema | 合并各服务 Swagger，导出 Agent 可用的 operation 清单 | P1 |
 | Agent 专用 API Key 模板 | Console 一键创建「只读 Agent」「文档读写 Agent」等预设 scope | P1 |
 | Functions Tool 运行时 | Agent 触发函数作为 Tool 执行，返回结构化 JSON | P1 |
@@ -53,7 +53,7 @@ Graviton 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定�
 
 ## 2. 短期（Short-term，未来 1-2 个月）
 
-**目标**：让 Graviton 达到可用的 MVP 状态，支持一个典型应用从注册、项目管理、数据库、文件存储到函数执行的完整闭环。
+**目标**：让 Torchwood 达到可用的 MVP 状态，支持一个典型应用从注册、项目管理、数据库、文件存储到函数执行的完整闭环。
 
 ### 2.1 Client Account / Auth（最高优先级）
 

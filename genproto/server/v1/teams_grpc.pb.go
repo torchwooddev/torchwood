@@ -8,7 +8,7 @@ package serverv1
 
 import (
 	context "context"
-	v1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
+	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,16 +20,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TeamsService_CreateTeam_FullMethodName             = "/graviton.server.v1.TeamsService/CreateTeam"
-	TeamsService_ListTeams_FullMethodName              = "/graviton.server.v1.TeamsService/ListTeams"
-	TeamsService_GetTeam_FullMethodName                = "/graviton.server.v1.TeamsService/GetTeam"
-	TeamsService_DeleteTeam_FullMethodName             = "/graviton.server.v1.TeamsService/DeleteTeam"
-	TeamsService_CreateMembership_FullMethodName       = "/graviton.server.v1.TeamsService/CreateMembership"
-	TeamsService_ListMemberships_FullMethodName        = "/graviton.server.v1.TeamsService/ListMemberships"
-	TeamsService_GetMembership_FullMethodName          = "/graviton.server.v1.TeamsService/GetMembership"
-	TeamsService_UpdateMembership_FullMethodName       = "/graviton.server.v1.TeamsService/UpdateMembership"
-	TeamsService_UpdateMembershipStatus_FullMethodName = "/graviton.server.v1.TeamsService/UpdateMembershipStatus"
-	TeamsService_DeleteMembership_FullMethodName       = "/graviton.server.v1.TeamsService/DeleteMembership"
+	TeamsService_CreateTeam_FullMethodName             = "/torchwood.server.v1.TeamsService/CreateTeam"
+	TeamsService_ListTeams_FullMethodName              = "/torchwood.server.v1.TeamsService/ListTeams"
+	TeamsService_GetTeam_FullMethodName                = "/torchwood.server.v1.TeamsService/GetTeam"
+	TeamsService_DeleteTeam_FullMethodName             = "/torchwood.server.v1.TeamsService/DeleteTeam"
+	TeamsService_CreateMembership_FullMethodName       = "/torchwood.server.v1.TeamsService/CreateMembership"
+	TeamsService_ListMemberships_FullMethodName        = "/torchwood.server.v1.TeamsService/ListMemberships"
+	TeamsService_GetMembership_FullMethodName          = "/torchwood.server.v1.TeamsService/GetMembership"
+	TeamsService_UpdateMembership_FullMethodName       = "/torchwood.server.v1.TeamsService/UpdateMembership"
+	TeamsService_UpdateMembershipStatus_FullMethodName = "/torchwood.server.v1.TeamsService/UpdateMembershipStatus"
+	TeamsService_DeleteMembership_FullMethodName       = "/torchwood.server.v1.TeamsService/DeleteMembership"
 )
 
 // TeamsServiceClient is the client API for TeamsService service.
@@ -415,7 +415,7 @@ func _TeamsService_DeleteMembership_Handler(srv interface{}, ctx context.Context
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var TeamsService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "graviton.server.v1.TeamsService",
+	ServiceName: "torchwood.server.v1.TeamsService",
 	HandlerType: (*TeamsServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,7 +56,7 @@ func (s *RedisAdminTokenRevokeStore) RevokedBefore(ctx context.Context, adminID 
 }
 
 func adminTokenRevokeKey(adminID string) string {
-	return fmt.Sprintf("Graviton:admin:revoked:%s", adminID)
+	return fmt.Sprintf("Torchwood:admin:revoked:%s", adminID)
 }
 
 var _ domainauth.AdminTokenRevokeStore = (*RedisAdminTokenRevokeStore)(nil)

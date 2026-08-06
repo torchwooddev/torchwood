@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/teams"
-	"github.com/deeploop-ai/graviton/pkg/query"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/teams"
+	"github.com/torchwoodio/torchwood/pkg/query"
 )
 
 // UserRoles resolves JWT role claims for a user from document collections.

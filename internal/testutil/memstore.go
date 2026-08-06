@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	domainstorage "github.com/deeploop-ai/graviton/internal/domain/storage"
+	domainstorage "github.com/torchwoodio/torchwood/internal/domain/storage"
 )
 
 // MemObjectStore is an in-memory ObjectStore for integration tests.

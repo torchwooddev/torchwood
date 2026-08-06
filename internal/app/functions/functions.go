@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deeploop-ai/graviton/internal/domain/functions"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/domain/functions"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 )
 
 type Functions struct {
@@ -67,7 +67,7 @@ func sanitizeEnv(env map[string]string) map[string]string {
 func (f *Functions) RuntimeImage(runtime string) string {
 	registry := f.cfg.GetFunctions().GetDocker().GetRegistry()
 	if registry == "" {
-		registry = "Graviton"
+		registry = "Torchwood"
 	}
 	return fmt.Sprintf("%s/runtime-%s:latest", registry, runtime)
 }

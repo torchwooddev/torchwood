@@ -5,14 +5,14 @@ import (
 	"strings"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/internal/pkg/contexts"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
-	"github.com/deeploop-ai/graviton/pkg/jwtparser"
-	"github.com/deeploop-ai/graviton/pkg/password"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwoodio/torchwood/pkg/jwtparser"
+	"github.com/torchwoodio/torchwood/pkg/password"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -178,7 +178,7 @@ func (a *Auth) adminIDFromMetadata(ctx context.Context) string {
 	if raw := metadataValue(md, "cookie"); raw != "" {
 		for _, part := range strings.Split(raw, ";") {
 			name, value, found := strings.Cut(strings.TrimSpace(part), "=")
-			if !found || value == "" || name != "GRAVITON_session_console" {
+			if !found || value == "" || name != "TORCHWOOD_session_console" {
 				continue
 			}
 			if claims, ok := jwtparser.ParseAllowExpired(secret, value); ok && claims.ActorKind == "admin" {

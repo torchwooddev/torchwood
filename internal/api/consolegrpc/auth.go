@@ -3,9 +3,9 @@ package consolegrpc
 import (
 	"context"
 
-	consolev1 "github.com/deeploop-ai/graviton/genproto/console/v1"
-	sharedv1 "github.com/deeploop-ai/graviton/genproto/shared/v1"
-	"github.com/deeploop-ai/graviton/internal/app/console"
+	consolev1 "github.com/torchwoodio/torchwood/genproto/console/v1"
+	sharedv1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	"github.com/torchwoodio/torchwood/internal/app/console"
 )
 
 type AuthService struct {

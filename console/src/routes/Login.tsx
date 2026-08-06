@@ -37,7 +37,7 @@ export function Login() {
     <div className="flex h-screen items-center justify-center bg-muted/40">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Graviton Console</CardTitle>
+          <CardTitle>Torchwood Console</CardTitle>
           <CardDescription>Sign in with your admin account</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 	"github.com/lynx-go/lynx"
 	lynxhttp "github.com/lynx-go/lynx/server/http"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -107,7 +107,7 @@ func (s *RedisAccountTokenStore) verifyToken(ctx context.Context, projectID, use
 }
 
 func accountTokenKey(purpose, projectID, userID string) string {
-	return fmt.Sprintf("Graviton:account:token:%s:%s:%s", purpose, projectID, userID)
+	return fmt.Sprintf("Torchwood:account:token:%s:%s:%s", purpose, projectID, userID)
 }
 
 func generateAccountTokenSecret() (string, error) {

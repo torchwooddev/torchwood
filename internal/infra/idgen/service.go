@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	domainidgen "github.com/deeploop-ai/graviton/internal/domain/idgen"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	pkgidgen "github.com/deeploop-ai/graviton/pkg/idgen"
+	domainidgen "github.com/torchwoodio/torchwood/internal/domain/idgen"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	pkgidgen "github.com/torchwoodio/torchwood/pkg/idgen"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -31,9 +31,9 @@ func NewService(cfg *config.AppConfig, rdb *redis.Client, projectRepo projects.R
 	nodeID := int64(0)
 	randomLen := int32(10)
 	randomCharset := pkgidgen.RandomCharsetNumeric
-	randomPrefix := "Graviton:id:random"
+	randomPrefix := "Torchwood:id:random"
 	randomMaxRetries := int32(10)
-	seqPrefix := "Graviton:seq"
+	seqPrefix := "Torchwood:seq"
 	defaultStrategy := pkgidgen.StrategyUUID
 	resourceUsers := ""
 	resourceSessions := ""

@@ -2,11 +2,11 @@ import axios from "axios";
 import type { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
 import { toast } from "sonner";
 
-// 会话凭证由 GRAVITON_session_console / GRAVITON_console_refresh HttpOnly
+// 会话凭证由 TORCHWOOD_session_console / TORCHWOOD_console_refresh HttpOnly
 // cookie 携带，同源 XHR 自动附带，前端不再读写 token；一次性清理
 // localStorage 中迁移前残留的旧 token。
-localStorage.removeItem("GRAVITON_console_token");
-localStorage.removeItem("graviton_console_refresh_token");
+localStorage.removeItem("TORCHWOOD_console_token");
+localStorage.removeItem("torchwood_console_refresh_token");
 
 export const api = axios.create({
   baseURL: "/v1",
@@ -46,20 +46,20 @@ export function refreshAuthTokenSingleFlight(): Promise<void> {
 
 export function setProjectID(projectID: string | null) {
   if (projectID) {
-    localStorage.setItem("GRAVITON_console_project", projectID);
+    localStorage.setItem("TORCHWOOD_console_project", projectID);
   } else {
-    localStorage.removeItem("GRAVITON_console_project");
+    localStorage.removeItem("TORCHWOOD_console_project");
   }
 }
 
 export function getProjectID(): string | null {
-  return localStorage.getItem("GRAVITON_console_project");
+  return localStorage.getItem("TORCHWOOD_console_project");
 }
 
 api.interceptors.request.use((config) => {
   const projectID = getProjectID();
   if (projectID) {
-    config.headers["X-Graviton-Project"] = projectID;
+    config.headers["X-Torchwood-Project"] = projectID;
   }
   return config;
 });

@@ -3,7 +3,7 @@ package server
 import (
 	"testing"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
 	"github.com/stretchr/testify/require"
 )
 

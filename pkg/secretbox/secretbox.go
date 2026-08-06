@@ -14,7 +14,7 @@ import (
 const prefix = "enc:v1:"
 
 func deriveKey(secret string) []byte {
-	sum := sha256.Sum256([]byte("graviton-secretbox:" + secret))
+	sum := sha256.Sum256([]byte("torchwood-secretbox:" + secret))
 	return sum[:]
 }
 

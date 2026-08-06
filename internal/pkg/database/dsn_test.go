@@ -5,7 +5,7 @@ import (
 )
 
 func TestSourceFromEnv(t *testing.T) {
-	t.Setenv("GRAVITON_DATA_DATABASE_SOURCE", "")
+	t.Setenv("TORCHWOOD_DATA_DATABASE_SOURCE", "")
 	t.Setenv("POSTGRES_USER", "user")
 	t.Setenv("POSTGRES_PASSWORD", "pass")
 	t.Setenv("POSTGRES_HOST", "db.local")
@@ -20,11 +20,11 @@ func TestSourceFromEnv(t *testing.T) {
 }
 
 func TestSourceFromEnvPrefersFleetDSN(t *testing.T) {
-	t.Setenv("GRAVITON_DATA_DATABASE_SOURCE", "postgres://graviton:graviton@127.0.0.1 :5433/graviton?sslmode=disable")
+	t.Setenv("TORCHWOOD_DATA_DATABASE_SOURCE", "postgres://torchwood:torchwood@127.0.0.1 :5433/torchwood?sslmode=disable")
 	t.Setenv("POSTGRES_PORT", "9999")
 
 	got := SourceFromEnv()
-	want := "postgres://graviton:graviton@127.0.0.1 :5433/graviton?sslmode=disable"
+	want := "postgres://torchwood:torchwood@127.0.0.1 :5433/torchwood?sslmode=disable"
 	if got != want {
 		t.Fatalf("SourceFromEnv() = %q, want %q", got, want)
 	}

@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/infra/bun/bunrepo"
-	"github.com/deeploop-ai/graviton/internal/infra/documentdb"
-	"github.com/deeploop-ai/graviton/internal/testutil"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
+	"github.com/torchwoodio/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -32,7 +32,7 @@ func TestResolveOAuthUser_RejectsExistingEmailWithoutIdentity(t *testing.T) {
 
 	_, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
-		Email:     "existing@graviton.local",
+		Email:     "existing@torchwood.local",
 		Password:  "User@123",
 		Name:      "Existing",
 	})
@@ -40,7 +40,7 @@ func TestResolveOAuthUser_RejectsExistingEmailWithoutIdentity(t *testing.T) {
 
 	_, err = account.resolveOAuthUser(ctx, projectID, domainauth.ProviderGoogle, &domainauth.OAuthUserInfo{
 		ProviderUID: "google-123",
-		Email:       "existing@graviton.local",
+		Email:       "existing@torchwood.local",
 		Name:        "OAuth User",
 	})
 	require.Error(t, err)

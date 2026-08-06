@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	domainauth "github.com/deeploop-ai/graviton/internal/domain/auth"
-	"github.com/deeploop-ai/graviton/internal/domain/databases"
-	"github.com/deeploop-ai/graviton/internal/domain/projects"
-	"github.com/deeploop-ai/graviton/internal/domain/shared"
-	"github.com/deeploop-ai/graviton/internal/infra/auth"
-	"github.com/deeploop-ai/graviton/internal/pkg/config"
-	"github.com/deeploop-ai/graviton/pkg/idgen"
-	"github.com/deeploop-ai/graviton/pkg/jwtparser"
+	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwoodio/torchwood/pkg/jwtparser"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -189,7 +189,7 @@ func requireCode(t *testing.T, err error, want codes.Code) {
 func TestValidator_ValidateAPIKey(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	secret := "graviton-test-api-key"
+	secret := "torchwood-test-api-key"
 	key := &projects.APIKey{
 		ID:        "key-1",
 		ProjectID: "proj-1",
@@ -215,7 +215,7 @@ func TestValidator_ValidateAdminJWT(t *testing.T) {
 	ctx := context.Background()
 	admin := &projects.ConsoleAdmin{
 		ID:    "admin-1",
-		Email: "admin@graviton.local",
+		Email: "admin@torchwood.local",
 		Role:  "member",
 	}
 	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
@@ -240,7 +240,7 @@ func TestValidator_ValidateAdminJWT_RejectsRefreshToken(t *testing.T) {
 	ctx := context.Background()
 	admin := &projects.ConsoleAdmin{
 		ID:    "admin-1",
-		Email: "admin@graviton.local",
+		Email: "admin@torchwood.local",
 		Role:  "owner",
 	}
 	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
@@ -262,7 +262,7 @@ func TestValidator_ValidateAdminJWT_Revoked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	issuedAt := time.Now().Add(-time.Hour).Unix()
-	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@graviton.local", Role: "owner"}
+	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
 	revokeStore := newMemAdminRevokeStore()
 	require.NoError(t, revokeStore.RevokeBefore(ctx, admin.ID, time.Now(), time.Hour))
 
@@ -437,7 +437,7 @@ func TestValidator_SessionCookie_CorruptExpireAtFailsClosed(t *testing.T) {
 func TestValidator_CrossPurposeTokenRejected(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@graviton.local", Role: "owner"}
+	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
 	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
 	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{})
 
