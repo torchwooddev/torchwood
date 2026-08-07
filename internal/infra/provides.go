@@ -51,5 +51,4 @@ var ProviderSet = wire.NewSet(
 	server.NewGRPCServer,
 	server.NewGRPCGatewayServer,
 	server.NewMetricsServer,
-	server.NewHealthCheckFunc,
 )

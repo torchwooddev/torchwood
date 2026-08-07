@@ -26,15 +26,14 @@ var ProviderSet = wire.NewSet(
 
 	NewComponents,
 	NewComponentBuilders,
-	NewComponentBuilderSetFunc,
 	NewOnStarts,
 	NewOnStops,
 	NewAppConfig,
 )
 
-func NewAppConfig(app lynx.Lynx) (*config.AppConfig, error) {
+func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	var c config.AppConfig
-	if err := app.Config().Unmarshal(&c, lynx.TagNameJSON); err != nil {
+	if err := config.UnmarshalConfig(app.Config(), &c); err != nil {
 		return nil, err
 	}
 	if secret := c.GetSecurity().GetJwt().GetSecret(); secret == "" {
@@ -47,28 +46,22 @@ func NewComponents(
 	grpcServer *lynxgrpc.Server,
 	gatewayServer *server.GRPCGatewayServer,
 	metricsServer *server.MetricsServer,
-) []lynx.Component {
-	return []lynx.Component{
+) []lynx.Service {
+	return []lynx.Service{
 		grpcServer,
 		gatewayServer,
 		metricsServer,
 	}
 }
 
-func NewComponentBuilders() []lynx.ComponentBuilder {
+func NewComponentBuilders() []lynx.ServiceFactory {
 	return nil
 }
 
-func NewComponentBuilderSetFunc() lynx.ComponentBuilderSetFunc {
-	return func() lynx.ComponentBuilderSet {
-		return nil
-	}
+func NewOnStarts() boot.OnStartHooks {
+	return boot.OnStartHooks{}
 }
 
-func NewOnStarts() lynx.OnStartHooks {
-	return lynx.OnStartHooks{}
-}
-
-func NewOnStops() lynx.OnStopHooks {
-	return lynx.OnStopHooks{}
+func NewOnStops() boot.OnStopHooks {
+	return boot.OnStopHooks{}
 }

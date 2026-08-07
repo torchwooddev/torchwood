@@ -29,7 +29,7 @@ import (
 
 // Injectors from wire.go:
 
-func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
+func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	onStartHooks := NewOnStarts()
 	onStopHooks := NewOnStops()
 	appConfig, err := NewAppConfig(app)
@@ -121,8 +121,7 @@ func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
 	}
 	v := NewComponents(grpcServer, grpcGatewayServer, metricsServer)
 	v2 := NewComponentBuilders()
-	componentBuilderSetFunc := NewComponentBuilderSetFunc()
-	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2, componentBuilderSetFunc)
+	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {
 		cleanup()
 	}, nil

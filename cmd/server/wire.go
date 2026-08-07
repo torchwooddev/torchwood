@@ -9,6 +9,6 @@ import (
 	"github.com/lynx-go/lynx/boot"
 )
 
-func wireBootstrap(app lynx.Lynx) (*boot.Bootstrap, func(), error) {
+func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	panic(wire.Build(ProviderSet))
 }

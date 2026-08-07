@@ -26,7 +26,7 @@ import (
 )
 
 func NewGRPCServer(
-	app lynx.Lynx,
+	app lynx.App,
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	auditRepo audit.Repository,

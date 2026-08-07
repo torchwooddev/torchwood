@@ -25,7 +25,7 @@ type GRPCGatewayServer struct {
 }
 
 func NewGRPCGatewayServer(
-	app lynx.Lynx,
+	app lynx.App,
 	cfg *config.AppConfig,
 	fileHandler *serverhttp.FileHandler,
 	oauthHandler *serverhttp.OAuthHandler,
