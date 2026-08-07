@@ -61,17 +61,17 @@ tasks:
   console-install:
     dir: '{{.USER_WORKING_DIR}}/console'
     cmds:
-      - npm install
+      - pnpm install
 
   console-build:
     dir: '{{.USER_WORKING_DIR}}/console'
     cmds:
-      - npm run build
+      - pnpm run build
 
   console-dev:
     dir: '{{.USER_WORKING_DIR}}/console'
     cmds:
-      - npm run dev
+      - pnpm run dev
 
   sdk-install:
     dir: '{{.USER_WORKING_DIR}}/sdk/typescript'
