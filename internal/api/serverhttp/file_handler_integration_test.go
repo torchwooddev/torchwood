@@ -12,6 +12,8 @@ import (
 	"net/textproto"
 	"testing"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -19,8 +21,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/stretchr/testify/require"
 )
 
 type storageHTTPFixture struct {
@@ -54,6 +54,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 		bunrepo.NewConsoleAdminProjectRepository(db),
 		nil,
 		docDB,
+		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC)
 	require.NoError(t, err)
@@ -275,6 +276,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 		bunrepo.NewConsoleAdminProjectRepository(db),
 		nil,
 		docDB,
+		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC)
 	require.NoError(t, err)
@@ -377,6 +379,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 		bunrepo.NewConsoleAdminProjectRepository(db),
 		nil,
 		docDB,
+		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC)
 	require.NoError(t, err)
@@ -438,6 +441,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 		bunrepo.NewConsoleAdminProjectRepository(db),
 		nil,
 		docDB,
+		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC)
 	require.NoError(t, err)

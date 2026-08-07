@@ -238,9 +238,16 @@ func (h *FileHandler) authorize(r *http.Request) (*shared.Principal, error) {
 	if err != nil {
 		return nil, err
 	}
-	if principal.CredentialType == shared.CredentialTypeAPIKey &&
-		!interceptor.APIKeyScopeAllowed(interceptor.StorageServiceCreateFile, principal.Permissions) {
-		return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
+	if principal.CredentialType == shared.CredentialTypeAPIKey {
+		// upload 用 CreateFile scope；download 用 GetFile scope，
+		// 避免 storage.read 只读 scope 的 key 越权上传。
+		check := interceptor.StorageServiceCreateFile
+		if r.Method == http.MethodGet {
+			check = interceptor.StorageServiceGetFile
+		}
+		if !interceptor.APIKeyScopeAllowed(check, principal.Permissions) {
+			return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
+		}
 	}
 	if principal.ActorKind == shared.ActorKindAdmin {
 		if projectID := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); projectID != "" {

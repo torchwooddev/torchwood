@@ -55,6 +55,9 @@ type postgresDocumentDB struct {
 	// in-process caches keyed by projectID; safe for concurrent use.
 	internalIDCache sync.Map // projectID -> int64
 	bootstrapCache  sync.Map // projectID -> struct{} (system collections ensured)
+	// keysPermsCleaned 标记已完成"keys 角色系统集合写权限收窄"清理的项目
+	// （安全评审 C1 第 3 层 / M2 存量迁移）；进程重启后重复执行 DELETE/UPDATE 幂等无害。
+	keysPermsCleaned sync.Map // projectID -> struct{}
 }
 
 func NewPostgresDocumentDB(db *clients.Database) databases.DocumentDB {
@@ -419,6 +422,14 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 		return doc, err
 	}
 	schema := schemaName(internalID, databaseID)
+	// 非 System 且非文档 owner（user:<id> 匹配）时，禁止写入写保护系统集合（纵深防御，
+	// 与 CreateDocument/DeleteDocument 对齐，安全评审 C1 第 2 层）。
+	// owner 例外：end-user 自助路径（UpdateAccount/UpdatePrefs）以 user:<id> 角色更新自己的 users 文档。
+	if !principal.IsSystem() &&
+		!principal.HasRole(fmt.Sprintf("user:%s", doc.ID)) &&
+		isWriteProtectedSystemCollection(collectionID) {
+		return doc, ErrPermissionDenied
+	}
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "read", principal); err != nil {
 		return doc, err
 	}
@@ -658,7 +669,33 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 			return fmt.Errorf("create system collection %s: %w", spec.id, err)
 		}
 	}
+	// 存量项目 keys 写权限收窄（安全评审 C1 第 3 层 / M2 存量迁移）：幂等清理
+	// users/sessions/identities 的 update:keys/delete:keys（文档级 _perms +
+	// 集合级 document_collections.permissions 元数据），进程内仅执行一次。
+	if _, ok := p.keysPermsCleaned.Load(projectID); !ok {
+		if err := p.cleanupKeysWritePerms(ctx, schema); err != nil {
+			return err
+		}
+		p.keysPermsCleaned.Store(projectID, struct{}{})
+	}
 	p.bootstrapCache.Store(projectID, struct{}{})
+	return nil
+}
+
+// cleanupKeysWritePerms 移除 keys 角色对系统敏感集合（users/sessions/identities）的
+// update/delete 权限，只作用于这三个集合；teams/memberships 的 keys 管理权限是
+// 合法语义，保留不动。幂等：无匹配行时均为空操作。
+func (p *postgresDocumentDB) cleanupKeysWritePerms(ctx context.Context, schema string) error {
+	del := fmt.Sprintf(`DELETE FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection IN ('users','sessions','identities')`, permsTableName(schema))
+	if _, err := p.conn(ctx).ExecContext(ctx, del); err != nil {
+		return fmt.Errorf("cleanup keys perms: %w", err)
+	}
+	upd := `UPDATE document_collections
+		SET permissions = ARRAY(SELECT x FROM unnest(permissions) AS x WHERE x NOT IN ('update:keys','delete:keys'))
+		WHERE database_id = 'default' AND id IN ('users','sessions','identities') AND permissions IS NOT NULL`
+	if _, err := p.conn(ctx).ExecContext(ctx, upd); err != nil {
+		return fmt.Errorf("cleanup keys collection perms: %w", err)
+	}
 	return nil
 }
 

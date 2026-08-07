@@ -170,15 +170,15 @@ func (s *SessionService) DeleteSessionsByUser(ctx context.Context, projectID, us
 }
 
 func sessionPermissions(userID string) []databases.Permission {
+	// sessions 集合的 keys 只读；update/delete 仅限 owner（user:<id>）与 admin
+	// （安全评审 C1 第 3 层 / M2：任意 scope 的 API key 不得改删会话）。
 	return []databases.Permission{
 		{Type: "read", Role: fmt.Sprintf("user:%s", userID)},
 		{Type: "read", Role: "keys"},
 		{Type: "read", Role: "admin"},
 		{Type: "update", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "update", Role: "keys"},
 		{Type: "update", Role: "admin"},
 		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "keys"},
 		{Type: "delete", Role: "admin"},
 	}
 }

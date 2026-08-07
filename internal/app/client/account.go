@@ -7,8 +7,8 @@ import (
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
 	"github.com/torchwooddev/torchwood/internal/domain/messaging"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
@@ -184,10 +184,8 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 		{Type: "read", Role: "keys"},
 		{Type: "read", Role: "admin"},
 		{Type: "update", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "update", Role: "keys"},
 		{Type: "update", Role: "admin"},
 		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "keys"},
 		{Type: "delete", Role: "admin"},
 	}
 	if _, err := a.docDB.CreateDocument(ctx, project.ID, "default", "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {

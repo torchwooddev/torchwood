@@ -183,6 +183,9 @@ func collectMethodsByAccess(fileDescs ...protoreflect.FileDescriptor) (publicMet
 					}
 					permissionMethods[fullMethod] = perms
 				case sharedv1.AccessLevel_ACCESS_PERMISSION:
+					if len(perms) == 0 {
+						return nil, nil, nil, fmt.Errorf("access_permission method %s/%s requires explicit permissions", service.FullName(), method.Name())
+					}
 					permissionMethods[fullMethod] = perms
 				}
 			}

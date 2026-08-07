@@ -19,6 +19,9 @@ import (
 // hanging provider from blocking login callbacks indefinitely.
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
+// gitHubAPIBase 供测试覆盖为 httptest server（与 wechat 的 weChatAPIBase 模式一致）。
+var gitHubAPIBase = "https://api.github.com"
+
 // NewOAuthAuthenticator builds a provider-specific OAuth2 client.
 func NewOAuthAuthenticator(provider, clientID, clientSecret, redirectURL string, scopes []string) (domainauth.OAuthAuthenticator, error) {
 	switch strings.ToLower(provider) {
@@ -102,6 +105,11 @@ func (a *genericOAuthAuthenticator) fetchUserInfo(ctx context.Context, token *oa
 	if email, ok := raw["email"].(string); ok {
 		info.Email = strings.ToLower(strings.TrimSpace(email))
 	}
+	// Google /oauth2/v2/userinfo 自带 email_verified 字段，直接透传，
+	// 由 resolveOAuthUser 强制校验未验证邮箱（安全评审 M8）。
+	if verified, ok := raw["email_verified"].(bool); ok {
+		info.EmailVerified = verified
+	}
 	if name, ok := raw["name"].(string); ok {
 		info.Name = name
 	}
@@ -135,11 +143,14 @@ func (a *githubOAuthAuthenticator) Exchange(ctx context.Context, code, pkceVerif
 		}
 		info.Email = email
 	}
+	// GitHub 邮箱要么来自 public profile，要么由 fetchGitHubPrimaryEmail 强制
+	// verified 过滤后取得，email 非空即视为已验证（安全评审 M8）。
+	info.EmailVerified = info.Email != ""
 	return info, nil
 }
 
 func (a *githubOAuthAuthenticator) fetchGitHubUser(ctx context.Context, token *oauth2.Token) (*domainauth.OAuthUserInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gitHubAPIBase+"/user", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +188,7 @@ func (a *githubOAuthAuthenticator) fetchGitHubUser(ctx context.Context, token *o
 }
 
 func (a *githubOAuthAuthenticator) fetchGitHubPrimaryEmail(ctx context.Context, token *oauth2.Token) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user/emails", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gitHubAPIBase+"/user/emails", nil)
 	if err != nil {
 		return "", err
 	}

@@ -58,7 +58,6 @@ func (a *Account) createIdentity(ctx context.Context, projectID, userID string, 
 		{Type: "read", Role: "keys"},
 		{Type: "read", Role: "admin"},
 		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "keys"},
 		{Type: "delete", Role: "admin"},
 	}
 	_, err := a.docDB.CreateDocument(ctx, projectID, "default", "identities", doc, perms, databases.SystemPrincipal)
@@ -70,10 +69,10 @@ func mapIdentityDoc(doc *databases.Document) *domainauth.Identity {
 		return nil
 	}
 	identity := &domainauth.Identity{
-		ID:          doc.ID,
-		UserID:      stringValue(doc.Data["user_id"]),
-		Provider:    stringValue(doc.Data["provider"]),
-		ProviderUID: stringValue(doc.Data["provider_uid"]),
+		ID:            doc.ID,
+		UserID:        stringValue(doc.Data["user_id"]),
+		Provider:      stringValue(doc.Data["provider"]),
+		ProviderUID:   stringValue(doc.Data["provider_uid"]),
 		ProviderEmail: stringValue(doc.Data["provider_email"]),
 	}
 	if raw, ok := doc.Data["provider_data"].(map[string]any); ok {
@@ -91,6 +90,11 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 	}
 	if strings.TrimSpace(info.Email) == "" {
 		return nil, fmt.Errorf("oauth provider did not return an email address")
+	}
+	// 邮箱未经验证一律拒绝（微信系在 resolveWeChatUser 分流，不受影响）；
+	// 未验证邮箱可能被他人注册同名账号，必须走邮箱验证/链接流程（安全评审 M8）。
+	if !info.EmailVerified {
+		return nil, status.Error(codes.FailedPrecondition, "oauth email is not verified")
 	}
 	info.Email = normalizeEmail(info.Email)
 	identity, err := a.findIdentity(ctx, projectID, provider, info.ProviderUID)

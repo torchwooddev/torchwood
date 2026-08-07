@@ -5,6 +5,9 @@ import "strings"
 // StorageServiceCreateFile is the gRPC method used for HTTP storage scope checks.
 const StorageServiceCreateFile = "/torchwood.server.v1.StorageService/CreateFile"
 
+// StorageServiceGetFile is the gRPC method used for HTTP storage read scope checks.
+const StorageServiceGetFile = "/torchwood.server.v1.StorageService/GetFile"
+
 // APIKeyScopeAllowed reports whether scopes grant access to the given gRPC method.
 func APIKeyScopeAllowed(fullMethod string, scopes []string) bool {
 	resource := apiKeyScopeResource(fullMethod)

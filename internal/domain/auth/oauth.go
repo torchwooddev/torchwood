@@ -31,9 +31,12 @@ type OAuthUserInfo struct {
 	UnionID     string
 	OpenID      string
 	Email       string
-	Name        string
-	AvatarURL   string
-	Raw         map[string]any
+	// EmailVerified 表示 provider 已确认邮箱归属；resolveOAuthUser 对带 Email 但
+	// 未验证的 profile 一律拒绝，防止未验证邮箱占号（安全评审 M8）。
+	EmailVerified bool
+	Name          string
+	AvatarURL     string
+	Raw           map[string]any
 }
 
 // OAuthAuthenticator builds authorize URLs and exchanges authorization codes.

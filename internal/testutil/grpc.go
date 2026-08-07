@@ -23,10 +23,10 @@ const (
 
 // InterceptorEnv wires auth + audit interceptors the same way production does.
 type InterceptorEnv struct {
-	DB       *clients.Database
+	DB        *clients.Database
 	Validator *auth.Validator
-	Auth     *interceptor.AuthInterceptor
-	Audit    *interceptor.AuditInterceptor
+	Auth      *interceptor.AuthInterceptor
+	Audit     *interceptor.AuditInterceptor
 }
 
 func NewInterceptorEnv(db *clients.Database, cfg *config.AppConfig, docDB databases.DocumentDB) (*InterceptorEnv, error) {
@@ -37,6 +37,7 @@ func NewInterceptorEnv(db *clients.Database, cfg *config.AppConfig, docDB databa
 		bunrepo.NewConsoleAdminProjectRepository(db),
 		nil,
 		docDB,
+		nil,
 	)
 	authIC, err := interceptor.NewAuthInterceptor(
 		validator,

@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/app/console"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
-	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -159,11 +159,11 @@ func TestAuth_ValidateCredential_ChecksRevokeStore(t *testing.T) {
 		nil,
 		store,
 		nil,
+		nil,
 	)
 	_, err = v.ValidateToken(ctx, token)
 	require.Error(t, err)
 }
-
 
 // memRotationStore is an in-memory domainauth.RefreshRotationStore for tests.
 type memRotationStore struct {

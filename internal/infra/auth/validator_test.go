@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
@@ -15,7 +16,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -134,7 +134,9 @@ func (d *stubDocDB) UpdateCollection(context.Context, string, string, string, da
 func (d *stubDocDB) CreateAttribute(context.Context, string, string, string, databases.Attribute) error {
 	return nil
 }
-func (d *stubDocDB) DeleteAttribute(context.Context, string, string, string, string) error { return nil }
+func (d *stubDocDB) DeleteAttribute(context.Context, string, string, string, string) error {
+	return nil
+}
 func (d *stubDocDB) CreateIndex(context.Context, string, string, string, databases.Index) error {
 	return nil
 }
@@ -197,7 +199,7 @@ func TestValidator_ValidateAPIKey(t *testing.T) {
 		Enabled:   true,
 	}
 	repo := &stubAPIKeyRepo{keys: map[string]*projects.APIKey{hashSecret(secret): key}}
-	v := auth.NewValidator(testValidatorConfig(), repo, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, &stubDocDB{})
+	v := auth.NewValidator(testValidatorConfig(), repo, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 
 	p, err := v.ValidateCredential(ctx, secret, shared.CredentialTypeAPIKey)
 	require.NoError(t, err)
@@ -219,7 +221,7 @@ func TestValidator_ValidateAdminJWT(t *testing.T) {
 		Role:  "member",
 	}
 	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{})
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 
 	token := signToken(t, jwtparser.Claims{
 		UserID:    admin.ID,
@@ -244,7 +246,7 @@ func TestValidator_ValidateAdminJWT_RejectsRefreshToken(t *testing.T) {
 		Role:  "owner",
 	}
 	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{})
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 
 	token := signToken(t, jwtparser.Claims{
 		UserID:    admin.ID,
@@ -273,6 +275,7 @@ func TestValidator_ValidateAdminJWT_Revoked(t *testing.T) {
 		&stubAdminProjectRepo{},
 		revokeStore,
 		&stubDocDB{},
+		nil,
 	)
 	token := signToken(t, jwtparser.Claims{
 		UserID:    admin.ID,
@@ -295,7 +298,7 @@ func TestValidator_ValidateEndUserJWT(t *testing.T) {
 			projectID: {userID: {"status": "active"}},
 		},
 	}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB)
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB, nil)
 
 	token := signToken(t, jwtparser.Claims{
 		UserID:    userID,
@@ -322,7 +325,7 @@ func TestValidator_ValidateEndUserJWT_RejectsRefreshToken(t *testing.T) {
 		IssuedAt:  time.Now().Unix(),
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
 	})
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, &stubDocDB{})
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 	_, err := v.ValidateToken(ctx, token)
 	requireCode(t, err, codes.Unauthenticated)
 }
@@ -333,7 +336,7 @@ func TestValidator_ValidateAdminProjectAccess(t *testing.T) {
 	repo := &stubAdminProjectRepo{access: map[string]map[string]struct{}{
 		"admin-1": {"proj-allowed": {}},
 	}}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, repo, nil, &stubDocDB{})
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, repo, nil, &stubDocDB{}, nil)
 
 	require.NoError(t, v.ValidateAdminProjectAccess(ctx, &shared.Principal{
 		ActorKind:       shared.ActorKindAdmin,
@@ -368,7 +371,7 @@ func TestValidator_EndUserJWT_CorruptExpireAtFailsClosed(t *testing.T) {
 			projectID: {sessionID: {"user_id": userID, "expire_at": "not-a-timestamp"}},
 		},
 	}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB)
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB, nil)
 
 	token := signToken(t, jwtparser.Claims{
 		UserID:    userID,
@@ -405,7 +408,7 @@ func TestValidator_SessionCookie_Valid(t *testing.T) {
 			}},
 		},
 	}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB)
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB, nil)
 
 	p, err := v.ValidateCredential(ctx, signSessionCookie(projectID, sessionID), shared.CredentialTypeSession)
 	require.NoError(t, err)
@@ -428,7 +431,7 @@ func TestValidator_SessionCookie_CorruptExpireAtFailsClosed(t *testing.T) {
 			projectID: {sessionID: {"user_id": userID, "expire_at": 12345}},
 		},
 	}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB)
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB, nil)
 
 	_, err := v.ValidateCredential(ctx, signSessionCookie(projectID, sessionID), shared.CredentialTypeSession)
 	requireCode(t, err, codes.Unauthenticated)
@@ -439,7 +442,7 @@ func TestValidator_CrossPurposeTokenRejected(t *testing.T) {
 	ctx := context.Background()
 	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
 	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{})
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 
 	// A token signed with the raw master secret must no longer validate.
 	rawToken, err := jwtparser.Generate([]byte(testJWTSecret), jwtparser.Claims{

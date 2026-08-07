@@ -66,6 +66,10 @@ func (p *Principal) HasPermission(perm string) bool {
 	return p.HasRole(perm) || p.HasScope(perm)
 }
 
+// HasAnyPermission 报告主体现有角色/scope 是否命中任一权限。
+// 空列表恒返回 true（fail-open），该行为依赖调用点的守门约束：
+// 所有 ACCESS_PERMISSION 方法都在 server 启动期（collectMethodsByAccess）
+// 强制要求显式非空 permissions，未经守门的直接调用需自行判空把关。
 func (p *Principal) HasAnyPermission(perms []string) bool {
 	if len(perms) == 0 {
 		return true

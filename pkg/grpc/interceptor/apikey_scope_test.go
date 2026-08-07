@@ -40,6 +40,29 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	if APIKeyScopeAllowed(unmapped, []string{"*"}) {
 		t.Fatal("unmapped service must fail closed even for wildcard scope")
 	}
+
+	createMethod := "/torchwood.server.v1.StorageService/CreateFile"
+	getMethod := "/torchwood.server.v1.StorageService/GetFile"
+	if !APIKeyScopeAllowed(createMethod, []string{"storage.write"}) {
+		t.Fatal("storage.write scope should allow upload")
+	}
+	if !APIKeyScopeAllowed(getMethod, []string{"storage.read"}) {
+		t.Fatal("storage.read scope should allow download")
+	}
+	// 注意前缀匹配语义：storage.read 也命中 storage. 前缀，对 CreateFile 同样放行；
+	// 因此 HTTP 层需要按请求方法区分 GetFile/CreateFile，供未来细粒度 scope 落地方便。
+	if !APIKeyScopeAllowed(createMethod, []string{"storage.read"}) {
+		t.Fatal("storage.read scope matches storage prefix and should allow upload per prefix rule")
+	}
+	if APIKeyScopeAllowed(getMethod, []string{"users"}) {
+		t.Fatal("unrelated scope should deny download")
+	}
+	if !APIKeyScopeAllowed(createMethod, []string{"storage"}) {
+		t.Fatal("resource scope should allow upload")
+	}
+	if !APIKeyScopeAllowed(getMethod, []string{"storage"}) {
+		t.Fatal("resource scope should allow download")
+	}
 }
 
 func TestIsAPIKeysServiceMethod(t *testing.T) {

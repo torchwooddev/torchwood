@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
@@ -20,13 +20,14 @@ import (
 )
 
 type Validator struct {
-	cfg               *config.AppConfig
-	apiKeyRepo        projects.APIKeyRepository
-	adminRepo         projects.ConsoleAdminRepository
-	adminProjectRepo  projects.ConsoleAdminProjectRepository
-	adminRevokeStore  domainauth.AdminTokenRevokeStore
-	docDB             databases.DocumentDB
-	sessionCodec      *SessionCookieCodec
+	cfg              *config.AppConfig
+	apiKeyRepo       projects.APIKeyRepository
+	adminRepo        projects.ConsoleAdminRepository
+	adminProjectRepo projects.ConsoleAdminProjectRepository
+	adminRevokeStore domainauth.AdminTokenRevokeStore
+	docDB            databases.DocumentDB
+	roleResolver     domainauth.UserRoleResolver
+	sessionCodec     *SessionCookieCodec
 }
 
 func NewValidator(
@@ -36,6 +37,7 @@ func NewValidator(
 	adminProjectRepo projects.ConsoleAdminProjectRepository,
 	adminRevokeStore domainauth.AdminTokenRevokeStore,
 	docDB databases.DocumentDB,
+	roleResolver domainauth.UserRoleResolver,
 ) *Validator {
 	return &Validator{
 		cfg:              cfg,
@@ -44,6 +46,7 @@ func NewValidator(
 		adminProjectRepo: adminProjectRepo,
 		adminRevokeStore: adminRevokeStore,
 		docDB:            docDB,
+		roleResolver:     roleResolver,
 		sessionCodec:     NewSessionCookieCodec(string(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeSessionCookie))),
 	}
 }
@@ -138,7 +141,7 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 		}, nil
 	default:
 		if claims.SessionID != "" && claims.ProjectID != "" {
-			if err := v.validateEndUserSession(ctx, claims.ProjectID, claims.SessionID); err != nil {
+			if err := v.validateEndUserSession(ctx, claims.ProjectID, claims.SessionID, claims.UserID); err != nil {
 				return nil, err
 			}
 		}
@@ -146,6 +149,10 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 			return nil, status.Error(codes.Unauthenticated, "invalid token type")
 		}
 		if err := v.ensureUserCanAuthenticate(ctx, claims.ProjectID, claims.UserID); err != nil {
+			return nil, err
+		}
+		roles, err := v.resolveEndUserRoles(ctx, claims.ProjectID, claims.UserID)
+		if err != nil {
 			return nil, err
 		}
 		return &shared.Principal{
@@ -156,7 +163,7 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 			UserID:         claims.UserID,
 			SessionID:      claims.SessionID,
 			Email:          claims.Username,
-			Roles:          append([]string{"users", fmt.Sprintf("user:%s", claims.UserID)}, claims.Roles...),
+			Roles:          roles,
 		}, nil
 	}
 }
@@ -187,6 +194,10 @@ func (v *Validator) principalFromSession(ctx context.Context, projectID, session
 	if err := v.ensureUserCanAuthenticate(ctx, projectID, userID); err != nil {
 		return nil, err
 	}
+	roles, err := v.resolveEndUserRoles(ctx, projectID, userID)
+	if err != nil {
+		return nil, err
+	}
 	return &shared.Principal{
 		ActorID:        idgen.ID(userID),
 		ActorKind:      shared.ActorKindEndUser,
@@ -194,17 +205,20 @@ func (v *Validator) principalFromSession(ctx context.Context, projectID, session
 		ProjectID:      projectID,
 		UserID:         userID,
 		SessionID:      sessionID,
-		Roles:          []string{"users", fmt.Sprintf("user:%s", userID)},
+		Roles:          roles,
 	}, nil
 }
 
-func (v *Validator) validateEndUserSession(ctx context.Context, projectID, sessionID string) error {
+func (v *Validator) validateEndUserSession(ctx context.Context, projectID, sessionID, userID string) error {
 	sessionDoc, err := v.docDB.GetDocument(ctx, projectID, "default", "sessions", sessionID, databases.SystemPrincipal)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "session lookup failed")
 	}
 	if sessionDoc == nil {
 		return status.Error(codes.Unauthenticated, "session not found or revoked")
+	}
+	if uid, _ := sessionDoc.Data["user_id"].(string); uid != userID {
+		return status.Error(codes.Unauthenticated, "invalid session")
 	}
 	if expireAtRaw, ok := sessionDoc.Data["expire_at"]; ok {
 		expireAt, err := parseTime(expireAtRaw)
@@ -217,6 +231,19 @@ func (v *Validator) validateEndUserSession(ctx context.Context, projectID, sessi
 		}
 	}
 	return nil
+}
+
+// resolveEndUserRoles 实时解析用户角色；解析失败按拒绝处理（fail-closed），
+// 避免 JWT claims 中的旧角色残留。
+func (v *Validator) resolveEndUserRoles(ctx context.Context, projectID, userID string) ([]string, error) {
+	if v.roleResolver == nil {
+		return []string{"users", fmt.Sprintf("user:%s", userID)}, nil
+	}
+	resolved, err := v.roleResolver.LoadUserRoles(ctx, projectID, userID)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "role resolution failed")
+	}
+	return resolved, nil
 }
 
 func (v *Validator) ensureUserCanAuthenticate(ctx context.Context, projectID, userID string) error {

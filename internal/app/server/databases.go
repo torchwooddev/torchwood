@@ -15,6 +15,24 @@ import (
 
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
+// serverSystemCollections 是 Server Databases API 禁止直接读写的系统集合。
+// 系统集合只能经专用服务（Users/Teams/Storage/Auth）访问，防止 databases scope
+// 的 API key 直接操纵认证/团队/存储数据（安全评审 C1）。
+var serverSystemCollections = map[string]struct{}{
+	"users":       {},
+	"sessions":    {},
+	"identities":  {},
+	"teams":       {},
+	"memberships": {},
+	"buckets":     {},
+	"files":       {},
+}
+
+func isServerSystemCollection(collectionID string) bool {
+	_, ok := serverSystemCollections[collectionID]
+	return ok
+}
+
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
@@ -60,6 +78,11 @@ func (d *Databases) GetDatabase(ctx context.Context, projectID, databaseID strin
 }
 
 func (d *Databases) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
+	// "default" 库承载全部系统集合，删除会破坏"项目存在 ⇒ schema 存在"不变式
+	// （安全评审 M6 配套），禁止删除。
+	if databaseID == "default" {
+		return status.Error(codes.InvalidArgument, "default database cannot be deleted")
+	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
@@ -190,6 +213,11 @@ func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID,
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
+	}
+	// 禁止直接读写系统集合，先于 GetCollection 拦截（避免泄露集合存在性，
+	// 安全评审 C1 第 1 层）。
+	if isServerSystemCollection(collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)
 	if err != nil {

@@ -198,15 +198,15 @@ func emailLocalPart(email string) string {
 }
 
 func userDocumentPermissions(userID string) []databases.Permission {
+	// users 文档的 keys 收窄为只读：UsersService 已改 SystemPrincipal 调 docDB，
+	// end-user 自助路径走 user:<id> owner 权限（安全评审 C1 第 3 层）。
 	return []databases.Permission{
 		{Type: "read", Role: fmt.Sprintf("user:%s", userID)},
 		{Type: "read", Role: "keys"},
 		{Type: "read", Role: "admin"},
 		{Type: "update", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "update", Role: "keys"},
 		{Type: "update", Role: "admin"},
 		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "keys"},
 		{Type: "delete", Role: "admin"},
 	}
 }

@@ -209,7 +209,7 @@ func (a *Account) HandleOAuth2Callback(ctx context.Context, provider, code, stat
 		return &OAuth2CallbackResult{
 			SuccessURL:  successURL,
 			FailureURL:  failureURL,
-			RedirectURL: appendQuery(failureURL, "error", status.Convert(err).Message()),
+			RedirectURL: appendQuery(failureURL, "error", "oauth_failed"),
 		}, err
 	}
 	redirect := appendOAuthSPAFragment(result.SuccessURL, result.User.ID, result.Tokens)

@@ -56,6 +56,12 @@ func ExpandPermissionRoles(roles []string) []string {
 	return out
 }
 
+// syntheticRoles 由 ExpandPermissionRoles 无条件注入、不构成授予凭据的角色。
+// "any" 的写类授予一律拒绝；read 类授予保留（文档公开读取是集合级显式行为）。
+var syntheticRoles = map[string]struct{}{
+	"any": {},
+}
+
 // CollectionAllows reports whether the collection-level permission list grants
 // the given operation type to any of the provided roles.
 // "write" on a permission expands to create, update, and delete.
@@ -152,6 +158,12 @@ func ValidateGrantablePermissions(grantor Principal, perms []Permission, privile
 	expanded := ExpandPermissionRoles(grantor.Roles)
 	for _, p := range perms {
 		if p.Type == "create" {
+			continue
+		}
+		if _, synthetic := syntheticRoles[p.Role]; synthetic {
+			if p.Type != "read" {
+				return fmt.Errorf("cannot grant %q for role %q", p.Type, p.Role)
+			}
 			continue
 		}
 		if !roleHeld(expanded, p.Role) {
