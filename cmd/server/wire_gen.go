@@ -71,7 +71,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	databases := client.NewDatabases(projectsRepository, documentDB)
 	databasesService := clientgrpc.NewDatabasesService(databases)
 	teams := server.NewTeams(projectsRepository, documentDB)
-	clientTeams := client.NewTeams(teams)
+	clientTeams := client.NewTeams(teams, documentDB)
 	teamsService := clientgrpc.NewTeamsService(clientTeams)
 	healthService := servergrpc.NewHealthService()
 	projects := server.NewProjects(projectsRepository, documentDB, database)

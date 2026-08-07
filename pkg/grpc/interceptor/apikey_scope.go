@@ -35,21 +35,28 @@ func apiKeyScopeResource(fullMethod string) string {
 	if len(parts) < 2 {
 		return ""
 	}
+	// fullMethod 形如 /package.Service/Method，取最后一个点段作为服务短名做精确匹配，
+	// 避免子串匹配把 OAuthProviders 误归入 projects scope。
 	svc := parts[len(parts)-2]
-	switch {
-	case strings.Contains(svc, "Projects"), strings.Contains(svc, "OAuthProviders"):
+	if i := strings.LastIndex(svc, "."); i >= 0 {
+		svc = svc[i+1:]
+	}
+	switch strings.TrimSuffix(svc, "Service") {
+	case "Projects":
 		return "projects"
-	case strings.Contains(svc, "APIKeys"):
+	case "OAuthProviders":
+		return "oauthproviders"
+	case "APIKeys":
 		return "apikeys"
-	case strings.Contains(svc, "Users"):
+	case "Users":
 		return "users"
-	case strings.Contains(svc, "Teams"):
+	case "Teams":
 		return "teams"
-	case strings.Contains(svc, "Storage"):
+	case "Storage":
 		return "storage"
-	case strings.Contains(svc, "Databases"):
+	case "Databases":
 		return "databases"
-	case strings.Contains(svc, "Health"):
+	case "Health":
 		return "health"
 	default:
 		return ""

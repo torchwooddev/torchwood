@@ -353,6 +353,50 @@ func (t *Teams) ListAcceptedTeamRoles(ctx context.Context, projectID, userID str
 	return out, nil
 }
 
+// AcceptedTeamRoleLabels 返回用户在各团队中已接受 membership 的原始角色标签（如 owner/member），
+// key 为 team_id。
+func (t *Teams) AcceptedTeamRoleLabels(ctx context.Context, projectID, userID string) (map[string][]string, error) {
+	if userID == "" {
+		return nil, nil
+	}
+	list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+		Queries: []string{
+			query.BuildEqual("user_id", userID),
+			query.BuildEqual("status", teams.StatusAccepted),
+		},
+	}, databases.SystemPrincipal)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]string, len(list.Documents))
+	for _, doc := range list.Documents {
+		teamID, _ := doc.Data["team_id"].(string)
+		if teamID == "" {
+			continue
+		}
+		out[teamID] = membershipRoleLabels(doc.Data["roles"])
+	}
+	return out, nil
+}
+
+// membershipRoleLabels 将 membership 的 roles 字段（JSONB 反序列化后可能是 []any 或 []string）转换为 []string。
+func membershipRoleLabels(raw any) []string {
+	switch v := raw.(type) {
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		return v
+	default:
+		return nil
+	}
+}
+
 func (t *Teams) getMembershipDoc(ctx context.Context, projectID, teamID, membershipID string, principal databases.Principal) (*databases.Document, error) {
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err

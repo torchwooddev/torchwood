@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"testing"
 
 	"github.com/torchwooddev/torchwood/internal/app/client"
@@ -83,15 +85,25 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	}
 }
 
-func (f *storageHTTPFixture) upload(content []byte, headers map[string]string) (string, int) {
+func (f *storageHTTPFixture) upload(content []byte, headers map[string]string, contentType string) (string, string, int) {
 	f.t.Helper()
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", "test.txt")
-	require.NoError(f.t, err)
-	_, err = part.Write(content)
-	require.NoError(f.t, err)
+	if contentType == "" {
+		part, err := writer.CreateFormFile("file", "test.txt")
+		require.NoError(f.t, err)
+		_, err = part.Write(content)
+		require.NoError(f.t, err)
+	} else {
+		part, err := writer.CreatePart(textproto.MIMEHeader{
+			"Content-Disposition": {fmt.Sprintf(`form-data; name="file"; filename="test.txt"`)},
+			"Content-Type":        {contentType},
+		})
+		require.NoError(f.t, err)
+		_, err = part.Write(content)
+		require.NoError(f.t, err)
+	}
 	require.NoError(f.t, writer.Close())
 
 	req, err := http.NewRequest(http.MethodPost, f.server.URL+"/v1/storage/buckets/"+f.bucketID+"/files", body)
@@ -106,12 +118,13 @@ func (f *storageHTTPFixture) upload(content []byte, headers map[string]string) (
 	defer resp.Body.Close()
 
 	var payload struct {
-		ID string `json:"id"`
+		ID       string `json:"id"`
+		MimeType string `json:"mime_type"`
 	}
 	if resp.StatusCode == http.StatusCreated {
 		require.NoError(f.t, json.NewDecoder(resp.Body).Decode(&payload))
 	}
-	return payload.ID, resp.StatusCode
+	return payload.ID, payload.MimeType, resp.StatusCode
 }
 
 func (f *storageHTTPFixture) download(path string, headers map[string]string) (int, []byte, http.Header) {
@@ -142,21 +155,75 @@ func TestFileHandler_Acceptance(t *testing.T) {
 	content := []byte("multipart acceptance payload")
 	headers := map[string]string{"X-Api-Key": fix.apiSecret}
 
-	fileID, status := fix.upload(content, headers)
+	fileID, mimeType, status := fix.upload(content, headers, "text/plain")
 	require.Equal(t, http.StatusCreated, status)
 	require.NotEmpty(t, fileID)
+	require.Equal(t, "text/plain", mimeType)
 
 	downloadPath := "/v1/storage/buckets/" + fix.bucketID + "/files/" + fileID + "/download"
-	code, got, _ := fix.download(downloadPath, headers)
+	code, got, respHeaders := fix.download(downloadPath, headers)
 	require.Equal(t, http.StatusOK, code)
 	require.Equal(t, content, got)
+	// 下载/查看端点统一加固：禁 MIME 嗅探 + 沙箱 CSP。
+	require.Equal(t, "nosniff", respHeaders.Get("X-Content-Type-Options"))
+	require.Contains(t, respHeaders.Get("Content-Security-Policy"), "sandbox")
 
 	viewPath := "/v1/storage/buckets/" + fix.bucketID + "/files/" + fileID + "/view"
 	code, gotView, respHeaders := fix.download(viewPath, headers)
 	require.Equal(t, http.StatusOK, code)
 	require.Equal(t, content, gotView)
 	require.NotEmpty(t, respHeaders.Get("Content-Type"))
+	// text/plain 在白名单内，/view 保持 inline。
 	require.Contains(t, respHeaders.Get("Content-Disposition"), "inline")
+	require.Equal(t, "nosniff", respHeaders.Get("X-Content-Type-Options"))
+	require.Contains(t, respHeaders.Get("Content-Security-Policy"), "sandbox")
+}
+
+// TestFileHandler_DangerousMimeHardening covers P0-2: 危险 MIME 上传时被归一化为
+// application/octet-stream，SVG 即使白名单内也强制按附件下载，杜绝存储型同源 XSS。
+func TestFileHandler_DangerousMimeHardening(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	fix := setupStorageHTTPFixture(t)
+	headers := map[string]string{"X-Api-Key": fix.apiSecret}
+
+	// text/html（带参数）上传后强制改判为 octet-stream，/view 不再 inline。
+	htmlID, mimeType, status := fix.upload([]byte("<script>alert(1)</script>"), headers, "text/html; charset=utf-8")
+	require.Equal(t, http.StatusCreated, status)
+	require.NotEmpty(t, htmlID)
+	require.Equal(t, "application/octet-stream", mimeType)
+
+	viewPath := "/v1/storage/buckets/" + fix.bucketID + "/files/" + htmlID + "/view"
+	code, _, respHeaders := fix.download(viewPath, headers)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "application/octet-stream", respHeaders.Get("Content-Type"))
+	require.Contains(t, respHeaders.Get("Content-Disposition"), "attachment")
+	require.NotContains(t, respHeaders.Get("Content-Disposition"), "inline")
+
+	// SVG 可内嵌脚本：即使 MIME 未归一化，/view 也强制降级为附件下载。
+	svgID, svgMime, status := fix.upload([]byte(`<svg onload="alert(1)"/>`), headers, "image/svg+xml")
+	require.Equal(t, http.StatusCreated, status)
+	require.Equal(t, "image/svg+xml", svgMime)
+
+	svgViewPath := "/v1/storage/buckets/" + fix.bucketID + "/files/" + svgID + "/view"
+	code, _, svgHeaders := fix.download(svgViewPath, headers)
+	require.Equal(t, http.StatusOK, code)
+	require.Contains(t, svgHeaders.Get("Content-Disposition"), "attachment")
+	require.NotContains(t, svgHeaders.Get("Content-Disposition"), "inline")
+	require.Equal(t, "nosniff", svgHeaders.Get("X-Content-Type-Options"))
+	require.Contains(t, svgHeaders.Get("Content-Security-Policy"), "sandbox")
+
+	// 白名单图片（image/png）在 /view 仍可 inline。
+	pngID, pngMime, status := fix.upload([]byte("fake-png"), headers, "image/png")
+	require.Equal(t, http.StatusCreated, status)
+	require.Equal(t, "image/png", pngMime)
+
+	pngViewPath := "/v1/storage/buckets/" + fix.bucketID + "/files/" + pngID + "/view"
+	code, _, pngHeaders := fix.download(pngViewPath, headers)
+	require.Equal(t, http.StatusOK, code)
+	require.Contains(t, pngHeaders.Get("Content-Disposition"), "inline")
 }
 
 // TestFileHandler_UserJWTProjectScope covers manual checklist §5.5:
@@ -330,14 +397,14 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 		db.Close()
 	})
 
-	_, status := (&storageHTTPFixture{
+	_, _, status := (&storageHTTPFixture{
 		t:         t,
 		projectID: projectID,
 		apiSecret: apiSecret,
 		handler:   handler,
 		server:    server,
 		bucketID:  bucket.ID,
-	}).upload([]byte("blocked"), map[string]string{"X-Api-Key": apiSecret})
+	}).upload([]byte("blocked"), map[string]string{"X-Api-Key": apiSecret}, "")
 	require.Equal(t, http.StatusForbidden, status)
 }
 

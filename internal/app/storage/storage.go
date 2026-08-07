@@ -129,6 +129,7 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 }
 
 func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content io.Reader, size int64, principal databases.Principal) (*storage.File, error) {
+	cmd.MimeType = normalizeMimeType(cmd.MimeType)
 	if cmd.BucketID == "" {
 		return nil, status.Error(codes.InvalidArgument, "bucket_id is required")
 	}
@@ -254,6 +255,22 @@ func (s *Storage) resolveProject(ctx context.Context, projectID string) (*projec
 		return nil, status.Error(codes.NotFound, "project not found")
 	}
 	return p, nil
+}
+
+// normalizeMimeType 归一化客户端声明的 Content-Type：
+// 空值与可执行/危险类型（含带参数的，取分号前 base 判断）一律改判为 application/octet-stream，
+// 防止存储型 XSS 经 /view 端点内联执行。
+func normalizeMimeType(mime string) string {
+	base := strings.Split(mime, ";")[0]
+	switch base {
+	case "text/html", "application/xhtml+xml", "application/javascript",
+		"text/javascript", "application/xml", "text/xml":
+		return "application/octet-stream"
+	}
+	if base == "" {
+		return "application/octet-stream"
+	}
+	return mime
 }
 
 func defaultBucketName(cfg *config.AppConfig) string {

@@ -21,6 +21,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// inlineSafeMimeTypes 是可安全同源内联展示的 MIME 白名单，不含任何可执行脚本类型。
+// image/svg+xml 可内嵌脚本，虽列入名单，但实际判断时强制降级为附件下载（见 inlineSafeMime）。
+var inlineSafeMimeTypes = map[string]struct{}{
+	"image/png":       {},
+	"image/jpeg":      {},
+	"image/gif":       {},
+	"image/webp":      {},
+	"image/avif":      {},
+	"image/svg+xml":   {},
+	"text/plain":      {},
+	"application/pdf": {},
+}
+
 // FileHandler provides HTTP multipart upload/download for storage.
 type FileHandler struct {
 	cfg       *config.AppConfig
@@ -196,12 +209,27 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 
 	w.Header().Set("Content-Type", file.MimeType)
 	disposition := "attachment"
-	if !strings.HasSuffix(r.URL.Path, "/download") {
+	if !strings.HasSuffix(r.URL.Path, "/download") && inlineSafeMime(file.MimeType) {
 		disposition = "inline"
 	}
 	w.Header().Set("Content-Disposition", contentDispositionHeader(disposition, file.Name))
+	// 响应加固：禁止浏览器 MIME 嗅探，并把同源输出限制在沙箱内，杜绝存储型 XSS。
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
+}
+
+// inlineSafeMime 判断文件 MIME 是否可安全以 inline 方式展示：
+// 视频/音频（无脚本执行面）与白名单类型可以内联；SVG 可内嵌脚本，一律按附件下载。
+func inlineSafeMime(mime string) bool {
+	if mime == "image/svg+xml" {
+		return false
+	}
+	if _, ok := inlineSafeMimeTypes[mime]; ok {
+		return true
+	}
+	return strings.HasPrefix(mime, "video/") || strings.HasPrefix(mime, "audio/")
 }
 
 func (h *FileHandler) authorize(r *http.Request) (*shared.Principal, error) {

@@ -12,6 +12,23 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// clientSystemCollections 是客户端 Databases API 禁止读写访问的系统集合，
+// 防止客户端通过任意 database_id/collection_id 直接操作认证相关数据。
+var clientSystemCollections = map[string]struct{}{
+	"users":        {},
+	"sessions":     {},
+	"identities":   {},
+	"teams":        {},
+	"memberships":  {},
+	"buckets":      {},
+	"files":        {},
+}
+
+func isClientSystemCollection(collectionID string) bool {
+	_, ok := clientSystemCollections[collectionID]
+	return ok
+}
+
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
@@ -90,6 +107,10 @@ func (d *Databases) ensureCollectionForRead(ctx context.Context, projectID, data
 }
 
 func (d *Databases) ensureCollectionForProject(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) (string, databases.Principal, error) {
+	// 客户端 API 禁止访问系统集合，直接拒绝（先于 GetCollection，避免泄露集合存在性）。
+	if isClientSystemCollection(collectionID) {
+		return "", databases.Principal{}, shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
 	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return "", databases.Principal{}, err
@@ -171,6 +192,15 @@ func (d *Databases) GetDocument(ctx context.Context, projectID, databaseID, coll
 	return doc, nil
 }
 
+// clientDocumentUpdateProtectedFields 是客户端 UpdateDocument 中禁止修改的敏感字段，
+// 用户只能通过认证用例（ChangePassword/VerifyEmail 等）间接修改这些字段。
+var clientDocumentUpdateProtectedFields = map[string]struct{}{
+	"password_hash":  {},
+	"email_verified": {},
+	"labels":         {},
+	"status":         {},
+}
+
 func (d *Databases) UpdateDocument(
 	ctx context.Context,
 	databaseID, collectionID, documentID string,
@@ -190,8 +220,19 @@ func (d *Databases) UpdateDocument(
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
+	// 过滤敏感字段，客户端无法通过 UpdateDocument 直接修改认证/状态相关数据。
+	filtered := make(map[string]any, len(data))
+	for k, v := range data {
+		if _, ok := clientDocumentUpdateProtectedFields[k]; ok {
+			continue
+		}
+		filtered[k] = v
+	}
+	if len(filtered) == 0 && len(perms) == 0 && len(increment) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied")
+	}
 	updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
-		Document:    databases.Document{ID: documentID, Data: data},
+		Document:    databases.Document{ID: documentID, Data: filtered},
 		Permissions: perms,
 		Increment:   increment,
 	}, principal)

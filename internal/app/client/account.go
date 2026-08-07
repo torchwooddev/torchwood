@@ -307,7 +307,7 @@ func (a *Account) SignOut(ctx context.Context) error {
 	if !ok || p.SessionID == "" {
 		return nil
 	}
-	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", p.SessionID, databases.Principal{Roles: p.Roles})
+	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", p.SessionID, databases.SystemPrincipal)
 }
 
 func (a *Account) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*TokenBundle, string, error) {
@@ -534,7 +534,7 @@ func (a *Account) deleteUserSession(ctx context.Context, p *shared.Principal, se
 	if uid, _ := doc.Data["user_id"].(string); uid != p.UserID {
 		return status.Error(codes.PermissionDenied, "cannot delete another user's session")
 	}
-	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", sessionID, databases.Principal{Roles: p.Roles})
+	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", sessionID, databases.SystemPrincipal)
 }
 
 func (a *Account) requireUser(ctx context.Context) (*shared.Principal, error) {

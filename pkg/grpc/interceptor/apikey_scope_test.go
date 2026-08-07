@@ -26,8 +26,14 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	if APIKeyScopeAllowed(oauthMethod, nil) {
 		t.Fatal("empty scopes should deny oauth providers method")
 	}
-	if !APIKeyScopeAllowed(oauthMethod, []string{"projects"}) {
-		t.Fatal("projects scope should allow oauth providers method")
+	if APIKeyScopeAllowed(oauthMethod, []string{"projects"}) {
+		t.Fatal("projects scope must NOT allow oauth providers method (client_secret isolation)")
+	}
+	if !APIKeyScopeAllowed(oauthMethod, []string{"oauthproviders"}) {
+		t.Fatal("oauthproviders scope should allow oauth providers method")
+	}
+	if !APIKeyScopeAllowed(oauthMethod, []string{"oauthproviders.read"}) {
+		t.Fatal("prefixed oauthproviders scope should allow oauth providers method")
 	}
 
 	unmapped := "/torchwood.server.v1.SomeFutureService/DoSomething"

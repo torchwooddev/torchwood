@@ -14,8 +14,9 @@ import (
 
 // OAuthHandler handles browser OAuth2 callback redirects.
 type OAuthHandler struct {
-	account *client.Account
-	trusted *interceptor.TrustedProxies
+	account       *client.Account
+	trusted       *interceptor.TrustedProxies
+	secureCookies bool
 }
 
 func NewOAuthHandler(account *client.Account, cfg *config.AppConfig) (*OAuthHandler, error) {
@@ -23,7 +24,13 @@ func NewOAuthHandler(account *client.Account, cfg *config.AppConfig) (*OAuthHand
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
-	return &OAuthHandler{account: account, trusted: trusted}, nil
+	// 与 console 会话 cookie 一致：以 public_url 是否 https 决定 Secure 标志。
+	// 反向代理 TLS 终结部署下 r.TLS 恒为 nil，不能依赖该字段判断。
+	return &OAuthHandler{
+		account:       account,
+		trusted:       trusted,
+		secureCookies: strings.HasPrefix(cfg.GetServer().GetHttp().GetPublicUrl(), "https://"),
+	}, nil
 }
 
 func (h *OAuthHandler) Register(mux *runtime.ServeMux) {
@@ -60,7 +67,7 @@ func (h *OAuthHandler) callback(w http.ResponseWriter, r *http.Request, pathPara
 			Value:    result.SessionCookie,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   r.TLS != nil,
+			Secure:   h.secureCookies,
 			SameSite: http.SameSiteLaxMode,
 		})
 	}

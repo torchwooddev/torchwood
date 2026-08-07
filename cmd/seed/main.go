@@ -85,7 +85,7 @@ func main() {
 		ProjectID:  "default",
 		Name:       "Default API Key",
 		SecretHash: hex.EncodeToString(apiHash[:]),
-		Scopes:     []string{"projects.read", "users.read", "users.write", "storage.read", "storage.write", "databases.read", "databases.write", "teams.read", "teams.write"},
+		Scopes:     []string{"projects.read", "oauthproviders", "users.read", "users.write", "storage.read", "storage.write", "databases.read", "databases.write", "teams.read", "teams.write"},
 		Enabled:    true,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),

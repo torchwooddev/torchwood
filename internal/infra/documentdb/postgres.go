@@ -34,6 +34,19 @@ var ErrPermissionDenied = databases.ErrPermissionDenied
 var safeNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 var docIDRe = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,64}$`)
 
+// systemCollectionsWriteProtected 是禁止非系统主体直接写入的系统集合（纵深防御，
+// 正常情况下客户端 API 已在用例层拦截）。
+var systemCollectionsWriteProtected = map[string]struct{}{
+	"users":      {},
+	"sessions":   {},
+	"identities": {},
+}
+
+func isWriteProtectedSystemCollection(collectionID string) bool {
+	_, ok := systemCollectionsWriteProtected[collectionID]
+	return ok
+}
+
 const maxQueryLimit = 100
 
 type postgresDocumentDB struct {
@@ -328,6 +341,9 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 
 	// Check collection-level "create" permission before inserting.
 	if !principal.IsSystem() {
+		if isWriteProtectedSystemCollection(collectionID) {
+			return doc, ErrPermissionDenied
+		}
 		coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
 		if err != nil {
 			return doc, err
@@ -454,6 +470,9 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
+	if !principal.IsSystem() && isWriteProtectedSystemCollection(collectionID) {
+		return ErrPermissionDenied
+	}
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "delete", principal); err != nil {
 		return err
 	}

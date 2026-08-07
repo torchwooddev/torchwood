@@ -31,7 +31,7 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 				{ID: "users_phone", Type: "key", Attributes: []string{"phone"}},
 			},
 			permissions: []databases.Permission{
-				{Type: "create", Role: "any"},
+				{Type: "create", Role: "keys"},
 				{Type: "read", Role: "user:{id}"},
 				{Type: "read", Role: "keys"},
 				{Type: "read", Role: "admin"},
