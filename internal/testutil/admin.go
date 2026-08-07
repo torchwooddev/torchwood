@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
-	"github.com/torchwoodio/torchwood/internal/infra/clients"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
-	"github.com/torchwoodio/torchwood/pkg/idgen"
-	"github.com/torchwoodio/torchwood/pkg/jwtparser"
-	"github.com/torchwoodio/torchwood/pkg/password"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/jwtparser"
+	"github.com/torchwooddev/torchwood/pkg/password"
 )
 
 // CreateTestConsoleAdmin inserts a console admin and returns the model plus cleanup.

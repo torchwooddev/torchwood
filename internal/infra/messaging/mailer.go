@@ -8,7 +8,7 @@ import (
 	"net/smtp"
 	"strings"
 
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 // MailerService delivers outbound email using SMTP or development logging.

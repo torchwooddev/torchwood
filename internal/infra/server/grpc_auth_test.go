@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	clientv1 "github.com/torchwoodio/torchwood/genproto/client/v1"
+	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )

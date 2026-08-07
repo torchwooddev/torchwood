@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -312,7 +312,7 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
 	"UpdateUser\x12&.torchwood.server.v1.UpdateUserRequest\x1a\x19.torchwood.server.v1.User\" \x82\xd3\xe4\x93\x02\x1a:\x01*2\x15/v1/server/users/{id}\x12l\n" +
 	"\n" +
-	"DeleteUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"DeleteUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_users_proto_rawDescOnce sync.Once

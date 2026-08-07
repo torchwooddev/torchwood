@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/torchwoodio/torchwood/internal/app/shared"
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/app/shared"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

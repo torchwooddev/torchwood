@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 

@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
-	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
-	"github.com/torchwoodio/torchwood/internal/testutil"
-	"github.com/torchwoodio/torchwood/pkg/secretbox"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/secretbox"
 	"github.com/stretchr/testify/require"
 )
 

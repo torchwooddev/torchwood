@@ -1,10 +1,10 @@
 package api
 
 import (
-	"github.com/torchwoodio/torchwood/internal/api/clientgrpc"
-	"github.com/torchwoodio/torchwood/internal/api/consolegrpc"
-	"github.com/torchwoodio/torchwood/internal/api/servergrpc"
-	"github.com/torchwoodio/torchwood/internal/api/serverhttp"
+	"github.com/torchwooddev/torchwood/internal/api/clientgrpc"
+	"github.com/torchwooddev/torchwood/internal/api/consolegrpc"
+	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
+	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
 	"github.com/google/wire"
 )
 

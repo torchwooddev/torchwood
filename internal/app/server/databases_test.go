@@ -3,7 +3,7 @@ package server
 import (
 	"testing"
 
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

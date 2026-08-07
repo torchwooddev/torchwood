@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
-	"github.com/torchwoodio/torchwood/internal/infra/clients"
-	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 // CreateTestAPIKey inserts an API key and returns its raw secret plus a cleanup func.

@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/torchwoodio/torchwood/internal/domain/storage"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/domain/storage"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )

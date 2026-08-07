@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/torchwoodio/torchwood/internal/infra/server"
+	"github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/stretchr/testify/require"
 )
 

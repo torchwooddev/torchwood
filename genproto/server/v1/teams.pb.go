@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -834,7 +834,7 @@ const file_server_v1_teams_proto_rawDesc = "" +
 	"\rGetMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\">\x82\xd3\xe4\x93\x028\x126/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xa4\x01\n" +
 	"\x10UpdateMembership\x12,.torchwood.server.v1.UpdateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xb7\x01\n" +
 	"\x16UpdateMembershipStatus\x122.torchwood.server.v1.UpdateMembershipStatusRequest\x1a\x1f.torchwood.server.v1.Membership\"H\x82\xd3\xe4\x93\x02B:\x01*2=/v1/server/teams/{team_id}/memberships/{membership_id}/status\x12\x99\x01\n" +
-	"\x10DeleteMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/teams/{team_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x10DeleteMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/teams/{team_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_teams_proto_rawDescOnce sync.Once

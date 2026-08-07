@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/torchwoodio/torchwood/internal/domain/functions"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/domain/functions"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 type Functions struct {

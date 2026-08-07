@@ -1,6 +1,6 @@
 package documentdb
 
-import "github.com/torchwoodio/torchwood/internal/domain/databases"
+import "github.com/torchwooddev/torchwood/internal/domain/databases"
 
 type systemCollectionSpec struct {
 	id          string

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"

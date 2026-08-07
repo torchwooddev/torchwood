@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/domain/users"
-	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

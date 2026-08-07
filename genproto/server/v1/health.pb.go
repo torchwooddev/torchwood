@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	_ "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	_ "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -113,7 +113,7 @@ const file_server_v1_health_proto_rawDesc = "" +
 	"\x06status\x18\x01 \x01(\tR\x06status2\x87\x01\n" +
 	"\rHealthService\x12n\n" +
 	"\x05Check\x12'.torchwood.server.v1.HealthCheckRequest\x1a(.torchwood.server.v1.HealthCheckResponse\"\x12\x82\xd3\xe4\x93\x02\f\x12\n" +
-	"/v1/health\x1a\x06\x92\xb2\x19\x02\b\x01B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"/v1/health\x1a\x06\x92\xb2\x19\x02\b\x01B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_health_proto_rawDescOnce sync.Once

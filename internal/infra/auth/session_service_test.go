@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
-	"github.com/torchwoodio/torchwood/internal/infra/auth"
-	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/infra/auth"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

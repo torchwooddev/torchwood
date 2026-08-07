@@ -1,12 +1,12 @@
 package app
 
 import (
-	"github.com/torchwoodio/torchwood/internal/app/client"
-	"github.com/torchwoodio/torchwood/internal/app/console"
-	"github.com/torchwoodio/torchwood/internal/app/functions"
-	"github.com/torchwoodio/torchwood/internal/app/server"
-	"github.com/torchwoodio/torchwood/internal/app/storage"
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/app/client"
+	"github.com/torchwooddev/torchwood/internal/app/console"
+	"github.com/torchwooddev/torchwood/internal/app/functions"
+	"github.com/torchwooddev/torchwood/internal/app/server"
+	"github.com/torchwooddev/torchwood/internal/app/storage"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/google/wire"
 )
 

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
-	"github.com/torchwoodio/torchwood/internal/domain/users"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

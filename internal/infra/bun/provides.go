@@ -1,7 +1,7 @@
 package bun
 
 import (
-	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/google/wire"
 )
 

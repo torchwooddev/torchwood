@@ -3,7 +3,7 @@ package idgen_test
 import (
 	"testing"
 
-	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/stretchr/testify/require"
 )
 

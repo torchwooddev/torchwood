@@ -89,7 +89,7 @@ D:\\Codes\\qiulin\\Torchwood
 ## 3. 模块路径
 
 ```go
-module github.com/torchwoodio/torchwood
+module github.com/torchwooddev/torchwood
 ```
 
 ---

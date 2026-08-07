@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
-	"github.com/torchwoodio/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )

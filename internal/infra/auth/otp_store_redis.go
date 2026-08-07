@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
-	"github.com/torchwoodio/torchwood/pkg/idgen"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

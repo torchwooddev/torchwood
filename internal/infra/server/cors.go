@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 func CORSMiddleware(cfg *config.Http_Cors) func(http.Handler) http.Handler {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/torchwoodio/torchwood/internal/domain/audit"
-	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
-	"github.com/torchwoodio/torchwood/internal/infra/clients"
-	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/internal/domain/audit"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 type auditRepo struct {

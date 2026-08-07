@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
-	"github.com/torchwoodio/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

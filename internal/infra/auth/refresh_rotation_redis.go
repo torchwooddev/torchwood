@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

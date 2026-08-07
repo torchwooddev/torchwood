@@ -7,7 +7,7 @@
 package serverv1
 
 import (
-	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -317,7 +317,7 @@ const file_server_v1_oauth_providers_proto_rawDesc = "" +
 	"\x15OAuthProvidersService\x12\x8b\x01\n" +
 	"\x12ListOAuthProviders\x12 .torchwood.shared.v1.ListRequest\x1a/.torchwood.server.v1.ListOAuthProvidersResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/oauth-providers\x12\x9c\x01\n" +
 	"\x13UpsertOAuthProvider\x12/.torchwood.server.v1.UpsertOAuthProviderRequest\x1a\".torchwood.server.v1.OAuthProvider\"0\x82\xd3\xe4\x93\x02*:\x01*\x1a%/v1/server/oauth-providers/{provider}\x12\x91\x01\n" +
-	"\x13DeleteOAuthProvider\x12/.torchwood.server.v1.DeleteOAuthProviderRequest\x1a\x1a.torchwood.shared.v1.Empty\"-\x82\xd3\xe4\x93\x02'*%/v1/server/oauth-providers/{provider}\x1a\x06\x92\xb2\x19\x02\b\x04B>Z<github.com/torchwoodio/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x13DeleteOAuthProvider\x12/.torchwood.server.v1.DeleteOAuthProviderRequest\x1a\x1a.torchwood.shared.v1.Empty\"-\x82\xd3\xe4\x93\x02'*%/v1/server/oauth-providers/{provider}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_oauth_providers_proto_rawDescOnce sync.Once

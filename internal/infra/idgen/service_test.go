@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/torchwoodio/torchwood/internal/domain/idgen"
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
-	infraidgen "github.com/torchwoodio/torchwood/internal/infra/idgen"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/domain/idgen"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )

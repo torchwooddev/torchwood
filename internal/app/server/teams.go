@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
-	"github.com/torchwoodio/torchwood/internal/domain/teams"
-	"github.com/torchwoodio/torchwood/pkg/idgen"
-	"github.com/torchwoodio/torchwood/pkg/query"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/teams"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

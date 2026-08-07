@@ -3,7 +3,7 @@ package shared
 import (
 	"errors"
 
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

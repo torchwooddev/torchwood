@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
-	"github.com/torchwoodio/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwoodio/torchwood/internal/infra/bun/model"
-	"github.com/torchwoodio/torchwood/internal/infra/documentdb"
-	"github.com/torchwoodio/torchwood/internal/testutil"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 

@@ -1,4 +1,4 @@
-module github.com/torchwoodio/torchwood
+module github.com/torchwooddev/torchwood
 
 go 1.26.5
 

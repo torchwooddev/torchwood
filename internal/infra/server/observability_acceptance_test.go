@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	sharedv1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"

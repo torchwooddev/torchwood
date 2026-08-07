@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/torchwoodio/torchwood/internal/app/client"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
-	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
-	"github.com/torchwoodio/torchwood/pkg/grpc/interceptor"
+	"github.com/torchwooddev/torchwood/internal/app/client"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 

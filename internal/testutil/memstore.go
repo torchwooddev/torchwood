@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	domainstorage "github.com/torchwoodio/torchwood/internal/domain/storage"
+	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 )
 
 // MemObjectStore is an in-memory ObjectStore for integration tests.

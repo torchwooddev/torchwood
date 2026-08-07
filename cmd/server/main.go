@@ -8,7 +8,7 @@ import (
 	"github.com/lynx-go/lynx"
 	lynxzap "github.com/lynx-go/lynx/contrib/zap"
 	"github.com/spf13/pflag"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 var version string

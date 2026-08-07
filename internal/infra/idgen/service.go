@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	domainidgen "github.com/torchwoodio/torchwood/internal/domain/idgen"
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
-	pkgidgen "github.com/torchwoodio/torchwood/pkg/idgen"
+	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	pkgidgen "github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/redis/go-redis/v9"
 )
 

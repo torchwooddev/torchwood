@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/domain/users"
-	infraauth "github.com/torchwoodio/torchwood/internal/infra/auth"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
+	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

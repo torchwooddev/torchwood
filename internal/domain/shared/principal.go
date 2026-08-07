@@ -1,6 +1,6 @@
 package shared
 
-import "github.com/torchwoodio/torchwood/pkg/idgen"
+import "github.com/torchwooddev/torchwood/pkg/idgen"
 
 type ActorKind string
 

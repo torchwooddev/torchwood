@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	domainidgen "github.com/torchwoodio/torchwood/internal/domain/idgen"
-	pkgidgen "github.com/torchwoodio/torchwood/pkg/idgen"
+	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
+	pkgidgen "github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 func (s *Service) nextRandom(ctx context.Context, projectID string, resource domainidgen.Resource) (string, error) {

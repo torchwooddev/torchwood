@@ -223,7 +223,7 @@ const file_shared_v1_authz_proto_rawDesc = "" +
 	"\x0eACCESS_API_KEY\x10\x04:b\n" +
 	"\vmethod_auth\x12\x1e.google.protobuf.MethodOptions\x18\xa1\x96\x03 \x01(\v2\x1f.torchwood.shared.v1.MethodAuthR\n" +
 	"methodAuth:f\n" +
-	"\fservice_auth\x12\x1f.google.protobuf.ServiceOptions\x18\xa2\x96\x03 \x01(\v2 .torchwood.shared.v1.ServiceAuthR\vserviceAuthB>Z<github.com/torchwoodio/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
+	"\fservice_auth\x12\x1f.google.protobuf.ServiceOptions\x18\xa2\x96\x03 \x01(\v2 .torchwood.shared.v1.ServiceAuthR\vserviceAuthB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_authz_proto_rawDescOnce sync.Once

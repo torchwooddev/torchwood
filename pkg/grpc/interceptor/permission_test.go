@@ -3,7 +3,7 @@ package interceptor
 import (
 	"testing"
 
-	"github.com/torchwoodio/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 )
 
 func TestPrincipalHasAnyPermission(t *testing.T) {

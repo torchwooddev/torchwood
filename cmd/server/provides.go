@@ -3,12 +3,12 @@ package main
 import (
 	"errors"
 
-	"github.com/torchwoodio/torchwood/internal/api"
-	"github.com/torchwoodio/torchwood/internal/app"
-	"github.com/torchwoodio/torchwood/internal/domain"
-	"github.com/torchwoodio/torchwood/internal/infra"
-	"github.com/torchwoodio/torchwood/internal/infra/server"
-	config "github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/api"
+	"github.com/torchwooddev/torchwood/internal/app"
+	"github.com/torchwooddev/torchwood/internal/domain"
+	"github.com/torchwooddev/torchwood/internal/infra"
+	"github.com/torchwooddev/torchwood/internal/infra/server"
+	config "github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/google/wire"
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"

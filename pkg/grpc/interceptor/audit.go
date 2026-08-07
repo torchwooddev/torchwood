@@ -3,8 +3,8 @@ package interceptor
 import (
 	"context"
 
-	"github.com/torchwoodio/torchwood/internal/domain/audit"
-	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/internal/domain/audit"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

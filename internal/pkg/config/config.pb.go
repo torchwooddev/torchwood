@@ -1836,7 +1836,7 @@ const file_config_proto_rawDesc = "" +
 	"\tResources\x12\x14\n" +
 	"\x05users\x18\x01 \x01(\tR\x05users\x12\x1a\n" +
 	"\bsessions\x18\x02 \x01(\tR\bsessions\x12\x1c\n" +
-	"\tdocuments\x18\x03 \x01(\tR\tdocumentsB6Z4github.com/torchwoodio/torchwood/internal/pkg/configb\x06proto3"
+	"\tdocuments\x18\x03 \x01(\tR\tdocumentsB7Z5github.com/torchwooddev/torchwood/internal/pkg/configb\x06proto3"
 
 var (
 	file_config_proto_rawDescOnce sync.Once

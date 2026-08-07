@@ -3,7 +3,7 @@ package server
 import (
 	"testing"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/stretchr/testify/require"
 )
 

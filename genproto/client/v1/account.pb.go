@@ -7,7 +7,7 @@
 package clientv1
 
 import (
-	v1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
+	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -2249,7 +2249,7 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"\x12CreateVerification\x12..torchwood.client.v1.CreateVerificationRequest\x1a/.torchwood.client.v1.CreateVerificationResponse\"0\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/account/verification\x12\x8d\x01\n" +
 	"\x12UpdateVerification\x12..torchwood.client.v1.UpdateVerificationRequest\x1a\x1c.torchwood.client.v1.Account\")\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/account/verification\x12\x7f\n" +
 	"\x0eCreateRecovery\x12*.torchwood.client.v1.CreateRecoveryRequest\x1a\x1a.torchwood.shared.v1.Empty\"%\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/account/recovery\x12\x7f\n" +
-	"\x0eUpdateRecovery\x12*.torchwood.client.v1.UpdateRecoveryRequest\x1a\x1a.torchwood.shared.v1.Empty\"%\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x19:\x01*\x1a\x14/v1/account/recovery\x1a\x06\x92\xb2\x19\x02\b\x02B>Z<github.com/torchwoodio/torchwood/genproto/client/v1;clientv1b\x06proto3"
+	"\x0eUpdateRecovery\x12*.torchwood.client.v1.UpdateRecoveryRequest\x1a\x1a.torchwood.shared.v1.Empty\"%\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x19:\x01*\x1a\x14/v1/account/recovery\x1a\x06\x92\xb2\x19\x02\b\x02B?Z=github.com/torchwooddev/torchwood/genproto/client/v1;clientv1b\x06proto3"
 
 var (
 	file_client_v1_account_proto_rawDescOnce sync.Once

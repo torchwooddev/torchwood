@@ -3,13 +3,13 @@ package client
 import (
 	"context"
 
-	domainauth "github.com/torchwoodio/torchwood/internal/domain/auth"
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/domain/messaging"
-	"github.com/torchwoodio/torchwood/internal/domain/projects"
-	infraauth "github.com/torchwoodio/torchwood/internal/infra/auth"
-	inframessaging "github.com/torchwoodio/torchwood/internal/infra/messaging"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/messaging"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
+	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/redis/go-redis/v9"
 )
 

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/torchwoodio/torchwood/internal/infra/auth"
+	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"

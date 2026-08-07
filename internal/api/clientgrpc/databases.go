@@ -3,11 +3,11 @@ package clientgrpc
 import (
 	"context"
 
-	clientv1 "github.com/torchwoodio/torchwood/genproto/client/v1"
-	sharedv1 "github.com/torchwoodio/torchwood/genproto/shared/v1"
-	"github.com/torchwoodio/torchwood/internal/app/client"
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/pkg/contexts"
+	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
+	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+	"github.com/torchwooddev/torchwood/internal/app/client"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"

@@ -1,7 +1,7 @@
 package messaging
 
 import (
-	domainmessaging "github.com/torchwoodio/torchwood/internal/domain/messaging"
+	domainmessaging "github.com/torchwooddev/torchwood/internal/domain/messaging"
 	"github.com/google/wire"
 )
 

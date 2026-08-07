@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/torchwoodio/torchwood/internal/domain/functions"
-	"github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/domain/functions"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 // dockerExecutor is a Docker-based functions executor (P0 stub).

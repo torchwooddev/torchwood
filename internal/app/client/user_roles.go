@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/torchwoodio/torchwood/internal/domain/databases"
-	"github.com/torchwoodio/torchwood/internal/domain/teams"
-	"github.com/torchwoodio/torchwood/pkg/query"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/teams"
+	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
 // UserRoles resolves JWT role claims for a user from document collections.
