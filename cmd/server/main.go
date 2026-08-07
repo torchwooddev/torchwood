@@ -8,7 +8,7 @@ import (
 	"github.com/lynx-go/lynx"
 	lynxzap "github.com/lynx-go/lynx/contrib/zap"
 	"github.com/spf13/pflag"
-	config "github.com/torchwoodio/torchwood/internal/pkg/config"
+	"github.com/torchwoodio/torchwood/internal/pkg/config"
 )
 
 var version string
@@ -16,7 +16,7 @@ var version string
 func main() {
 	_ = godotenv.Load()
 
-	cli := lynx.NewRunner(func(app lynx.App) error {
+	runner := lynx.NewRunner(func(app lynx.App) error {
 		app.SetLogger(lynxzap.MustNewLogger(app))
 
 		bootstrap, cleanup, err := wireBootstrap(app)
@@ -39,5 +39,5 @@ func main() {
 		lynx.WithBindConfigFunc(config.NewBindConfigFunc()),
 		lynx.WithShutdownTimeout(30*time.Second),
 	)
-	cli.Run()
+	runner.Run()
 }
