@@ -1235,6 +1235,9 @@
         },
         "disabled": {
           "type": "boolean"
+        },
+        "isSystem": {
+          "type": "boolean"
         }
       }
     },

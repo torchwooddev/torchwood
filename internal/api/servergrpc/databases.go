@@ -176,7 +176,7 @@ func (s *DatabasesService) UpdateCollection(ctx context.Context, req *serverv1.U
 		v := req.GetDisabled()
 		patch.Disabled = &v
 	}
-	if err := s.databases.UpdateCollection(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), patch); err != nil {
+	if err := s.databases.UpdateCollection(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), patch, dbPrincipal(ctx)); err != nil {
 		return nil, err
 	}
 	col, err := s.databases.GetCollection(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId())
@@ -454,6 +454,7 @@ func mapCollection(c *databases.Collection) *serverv1.Collection {
 		Name:             c.Name,
 		DocumentSecurity: c.DocumentSecurity,
 		Disabled:         c.Disabled,
+		IsSystem:         c.IsSystem,
 		CreatedAt:        timestamppb.New(c.CreatedAt),
 		UpdatedAt:        timestamppb.New(c.UpdatedAt),
 	}

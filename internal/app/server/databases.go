@@ -15,22 +15,12 @@ import (
 
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// serverSystemCollections 是 Server Databases API 禁止直接读写的系统集合。
-// 系统集合只能经专用服务（Users/Teams/Storage/Auth）访问，防止 databases scope
-// 的 API key 直接操纵认证/团队/存储数据（安全评审 C1）。
-var serverSystemCollections = map[string]struct{}{
-	"users":       {},
-	"sessions":    {},
-	"identities":  {},
-	"teams":       {},
-	"memberships": {},
-	"buckets":     {},
-	"files":       {},
-}
-
-func isServerSystemCollection(collectionID string) bool {
-	_, ok := serverSystemCollections[collectionID]
-	return ok
+// serverSensitiveCollectionFields 是高敏系统集合（users/sessions/identities）
+// 经 Server Databases API 读取时的脱敏字段清单；专用 API 不公开这些字段。
+var serverSensitiveCollectionFields = map[string][]string{
+	"users":      {"password_hash", "phone", "phone_verified", "labels", "prefs"},
+	"sessions":   {"secret_hash", "factors", "user_agent", "ip", "country"},
+	"identities": {"provider_data", "provider_uid"},
 }
 
 type Databases struct {
@@ -102,6 +92,9 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
 	if len(perms) == 0 {
 		perms = databases.DefaultCollectionPermissions()
 	}
@@ -126,10 +119,13 @@ func (d *Databases) DeleteCollection(ctx context.Context, projectID, databaseID,
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
 	return d.docDB.DeleteCollection(ctx, projectID, databaseID, collectionID)
 }
 
-func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch databases.CollectionPatch) error {
+func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch databases.CollectionPatch, principal databases.Principal) error {
 	if err := d.ValidateIdentifier(databaseID); err != nil {
 		return status.Error(codes.InvalidArgument, "database_id is required")
 	}
@@ -138,6 +134,14 @@ func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID,
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
+	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
+	if patch.Permissions != nil {
+		if err := databases.ValidateGrantablePermissions(principal, *patch.Permissions, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
 	}
 	return d.docDB.UpdateCollection(ctx, projectID, databaseID, collectionID, patch)
 }
@@ -159,6 +163,9 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
 	return d.docDB.CreateAttribute(ctx, projectID, databaseID, collectionID, attr)
 }
 
@@ -175,6 +182,9 @@ func (d *Databases) CreateIndex(ctx context.Context, projectID, databaseID, coll
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
 	return d.docDB.CreateIndex(ctx, projectID, databaseID, collectionID, idx)
 }
 
@@ -187,6 +197,9 @@ func (d *Databases) DeleteAttribute(ctx context.Context, projectID, databaseID, 
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
+	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	return d.docDB.DeleteAttribute(ctx, projectID, databaseID, collectionID, key)
 }
@@ -201,6 +214,9 @@ func (d *Databases) DeleteIndex(ctx context.Context, projectID, databaseID, coll
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
 	return d.docDB.DeleteIndex(ctx, projectID, databaseID, collectionID, indexID)
 }
 
@@ -214,9 +230,9 @@ func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID,
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
-	// 禁止直接读写系统集合，先于 GetCollection 拦截（避免泄露集合存在性，
-	// 安全评审 C1 第 1 层）。
-	if isServerSystemCollection(collectionID) {
+	// 禁止直接写入系统集合（仅限 default 库），先于 GetCollection 拦截
+	// （避免泄露集合存在性，安全评审 C1 第 1 层）。
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)
@@ -230,6 +246,53 @@ func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID,
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	return nil
+}
+
+// ensureReadableCollection 是文档读路径（List/Get/Count）的集合校验：
+// teams/memberships/buckets/files 放行（docDB 权限过滤兜底）；
+// users/sessions/identities 仅 PlatformAdmin 可读，其余主体直接拒绝。
+func (d *Databases) ensureReadableCollection(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) error {
+	if err := d.ValidateIdentifier(databaseID); err != nil {
+		return status.Error(codes.InvalidArgument, "database_id is required")
+	}
+	if err := d.ValidateIdentifier(collectionID); err != nil {
+		return status.Error(codes.InvalidArgument, "collection_id is required")
+	}
+	if _, err := d.resolveProject(ctx, projectID); err != nil {
+		return err
+	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		if databases.IsSensitiveSystemCollectionID(collectionID) && !principal.PlatformAdmin {
+			return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+		}
+		return nil
+	}
+	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return err
+	}
+	if col == nil {
+		return status.Error(codes.NotFound, "collection not found")
+	}
+	if col.Disabled && !principal.IsSystem() && !principal.PlatformAdmin {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
+	return nil
+}
+
+// redactSensitiveCollectionData 剔除 default 库高敏系统集合文档中的敏感字段
+// （专用 API 不公开的字段），空 data 允许；自定义库同名集合不受影响。
+func redactSensitiveCollectionData(projectID, databaseID, collectionID string, doc *databases.Document) {
+	if !databases.IsSystemCollection(projectID, databaseID, collectionID) || !databases.IsSensitiveSystemCollectionID(collectionID) {
+		return
+	}
+	fields, ok := serverSensitiveCollectionFields[collectionID]
+	if !ok || doc == nil || len(doc.Data) == 0 {
+		return
+	}
+	for _, f := range fields {
+		delete(doc.Data, f)
+	}
 }
 
 func (d *Databases) CreateDocument(
@@ -269,12 +332,15 @@ func (d *Databases) ListDocuments(
 	q databases.Query,
 	principal databases.Principal,
 ) ([]databases.Document, int64, string, error) {
-	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
+	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, 0, "", err
 	}
 	list, err := d.docDB.ListDocuments(ctx, projectID, databaseID, collectionID, q, principal)
 	if err != nil {
 		return nil, 0, "", shared.MapDocumentDBError(err)
+	}
+	for i := range list.Documents {
+		redactSensitiveCollectionData(projectID, databaseID, collectionID, &list.Documents[i])
 	}
 	return list.Documents, list.TotalCount, list.NextPageToken, nil
 }
@@ -284,7 +350,7 @@ func (d *Databases) GetDocument(
 	projectID, databaseID, collectionID, documentID string,
 	principal databases.Principal,
 ) (*databases.Document, error) {
-	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
+	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
 	doc, err := d.docDB.GetDocument(ctx, projectID, databaseID, collectionID, documentID, principal)
@@ -294,6 +360,7 @@ func (d *Databases) GetDocument(
 	if doc == nil {
 		return nil, status.Error(codes.NotFound, "document not found")
 	}
+	redactSensitiveCollectionData(projectID, databaseID, collectionID, doc)
 	return doc, nil
 }
 
@@ -386,7 +453,7 @@ func (d *Databases) CountDocuments(
 	queries []string,
 	principal databases.Principal,
 ) (int64, error) {
-	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
+	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return 0, err
 	}
 	count, err := d.docDB.CountDocuments(ctx, projectID, databaseID, collectionID, queries, principal)

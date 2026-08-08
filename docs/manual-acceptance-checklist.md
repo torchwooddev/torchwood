@@ -242,6 +242,11 @@ LIMIT 10;
 | 9.2 | 查询过滤 | `GET /v1/server/users?queries=equal("email","qa@torchwood.local")`（参数格式以 gateway 为准） | 仅返回匹配用户 | [x] |
 | 9.3 | 自定义库 | 创建 app 库 + posts 集合 + attribute | 元数据与 schema 一致 | [x] |
 | 9.4 | 列表权限 | 非 admin 角色列表用户（若可模拟） | 仅返回有 `_perms` 的文档 | [x] |
+| 9.5 | 系统集合标记 | `GET /v1/server/databases/default/collections/users` | `is_system=true`；自定义库同名集合 `is_system=false` | [ ] |
+| 9.6 | 系统集合只读（Server） | 以 databases scope API key 对 `default` 库系统集合执行 UpdateCollection/DeleteCollection/CreateAttribute/DeleteAttribute/CreateIndex/DeleteIndex/CreateCollection | 全部 `PermissionDenied` | [ ] |
+| 9.7 | 系统集合文档写 | 以 API key 对 `default` 库系统集合 Create/Update/Delete/Bulk 文档 | 全部 `PermissionDenied` | [ ] |
+| 9.8 | 系统集合文档读 | 以 keys 主体读 teams/buckets/files；读 users | teams 等放行；users `PermissionDenied`；Console 会话可读 users 且无 `password_hash`/`phone` 等敏感字段 | [ ] |
+| 9.9 | 客户端读放行 | 匿名读 teams/buckets（read:any） | 放行；users/sessions/identities 读/写全拒 | [ ] |
 
 ---
 

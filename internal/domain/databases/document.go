@@ -68,6 +68,7 @@ type Collection struct {
 	Name             string
 	DocumentSecurity bool
 	Disabled         bool
+	IsSystem         bool
 	Permissions      []Permission
 	Attributes       []Attribute
 	Indexes          []Index

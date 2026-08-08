@@ -12,23 +12,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// clientSystemCollections 是客户端 Databases API 禁止读写访问的系统集合，
-// 防止客户端通过任意 database_id/collection_id 直接操作认证相关数据。
-var clientSystemCollections = map[string]struct{}{
-	"users":        {},
-	"sessions":     {},
-	"identities":   {},
-	"teams":        {},
-	"memberships":  {},
-	"buckets":      {},
-	"files":        {},
-}
-
-func isClientSystemCollection(collectionID string) bool {
-	_, ok := clientSystemCollections[collectionID]
-	return ok
-}
-
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
@@ -95,7 +78,7 @@ func (d *Databases) ensureCollection(ctx context.Context, databaseID, collection
 	if err != nil {
 		return "", databases.Principal{}, err
 	}
-	return d.ensureCollectionForProject(ctx, project.ID, databaseID, collectionID, principal)
+	return d.ensureCollectionForProject(ctx, project.ID, databaseID, collectionID, principal, false)
 }
 
 func (d *Databases) ensureCollectionForRead(ctx context.Context, projectID, databaseID, collectionID string) (string, databases.Principal, error) {
@@ -103,12 +86,14 @@ func (d *Databases) ensureCollectionForRead(ctx context.Context, projectID, data
 	if err != nil {
 		return "", databases.Principal{}, err
 	}
-	return d.ensureCollectionForProject(ctx, pid, databaseID, collectionID, principal)
+	return d.ensureCollectionForProject(ctx, pid, databaseID, collectionID, principal, true)
 }
 
-func (d *Databases) ensureCollectionForProject(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) (string, databases.Principal, error) {
-	// 客户端 API 禁止访问系统集合，直接拒绝（先于 GetCollection，避免泄露集合存在性）。
-	if isClientSystemCollection(collectionID) {
+func (d *Databases) ensureCollectionForProject(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal, readOnly bool) (string, databases.Principal, error) {
+	// 系统集合仅限 default 库判定；写路径拒绝全部系统集合，
+	// 读路径仅拒绝高敏系统集合（users/sessions/identities，有 Account 专用 API）。
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) &&
+		(!readOnly || databases.IsSensitiveSystemCollectionID(collectionID)) {
 		return "", databases.Principal{}, shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)

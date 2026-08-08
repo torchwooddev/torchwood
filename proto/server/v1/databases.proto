@@ -168,6 +168,7 @@ message Collection {
   google.protobuf.Timestamp updated_at = 8;
   bool document_security = 9;
   bool disabled = 10;
+  bool is_system = 11;
 }
 
 message CreateAttributeRequest {

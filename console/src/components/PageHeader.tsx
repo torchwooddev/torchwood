@@ -21,7 +21,7 @@ function segmentLabel(segment: string, prevSegment?: string): string {
   return segment;
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {
+export function PageHeader({ title, description, actions }: { title: React.ReactNode; description?: string; actions?: React.ReactNode }) {
   const location = useLocation();
   const segments = location.pathname.replace("/console", "").split("/").filter(Boolean);
 

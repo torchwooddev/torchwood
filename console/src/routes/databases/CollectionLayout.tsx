@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { getDatabase, getCollection, deleteCollection } from "@/api/databases";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DeleteButton, DetailSkeleton, NotFound } from "@/components/resource/shared";
 import { cn } from "@/lib/utils";
 
@@ -57,10 +58,17 @@ export function CollectionLayout() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={collection.name}
+        title={
+          <span className="inline-flex items-center gap-2">
+            {collection.name}
+            {collection.is_system && <Badge variant="secondary">系统</Badge>}
+          </span>
+        }
         description={database ? `${database.name} · ${collection.id}` : collection.id}
         actions={
-          <DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />
+          collection.is_system ? undefined : (
+            <DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />
+          )
         }
       />
 

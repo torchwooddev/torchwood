@@ -96,9 +96,11 @@ const STRING_LIKE_TYPES = new Set(["string", "email", "url"]);
 function AttributeList({
   attributes,
   onAdd,
+  disabled,
 }: {
   attributes: Attribute[];
   onAdd: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Card className="flex flex-col">
@@ -107,7 +109,7 @@ function AttributeList({
           <CardTitle className="text-base">Attributes</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">定义文档字段类型与约束</p>
         </div>
-        <Button size="sm" onClick={onAdd}>
+        <Button size="sm" onClick={onAdd} disabled={disabled}>
           <Plus className="mr-2 h-4 w-4" />
           添加
         </Button>
@@ -117,9 +119,11 @@ function AttributeList({
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center">
             <ListTree className="mb-3 h-8 w-8 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">暂无字段定义</p>
-            <Button size="sm" variant="outline" className="mt-4" onClick={onAdd}>
-              添加第一个 Attribute
-            </Button>
+            {!disabled && (
+              <Button size="sm" variant="outline" className="mt-4" onClick={onAdd}>
+                添加第一个 Attribute
+              </Button>
+            )}
           </div>
         ) : (
           <Table>
@@ -164,10 +168,12 @@ function IndexList({
   indexes,
   onAdd,
   canAdd,
+  disabled,
 }: {
   indexes: Collection["indexes"];
   onAdd: () => void;
   canAdd: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Card className="flex flex-col">
@@ -176,13 +182,13 @@ function IndexList({
           <CardTitle className="text-base">Indexes</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">为查询性能创建索引</p>
         </div>
-        <Button size="sm" onClick={onAdd} disabled={!canAdd}>
+        <Button size="sm" onClick={onAdd} disabled={!canAdd || disabled}>
           <Plus className="mr-2 h-4 w-4" />
           添加
         </Button>
       </CardHeader>
       <CardContent className="flex-1">
-        {!canAdd && (
+        {!canAdd && !disabled && (
           <p className="mb-4 rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
             请先添加至少一个 Attribute，再创建 Index。
           </p>
@@ -191,9 +197,9 @@ function IndexList({
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center">
             <Hash className="mb-3 h-8 w-8 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              {canAdd ? "暂无索引" : "添加 Attribute 后可创建索引"}
+              {disabled ? "暂无索引" : canAdd ? "暂无索引" : "添加 Attribute 后可创建索引"}
             </p>
-            {canAdd && (
+            {canAdd && !disabled && (
               <Button size="sm" variant="outline" className="mt-4" onClick={onAdd}>
                 添加第一个 Index
               </Button>
@@ -664,7 +670,12 @@ export function DatabaseDetailPage() {
       key: "id",
       header: "ID",
       className: "font-mono text-xs max-w-[140px] truncate",
-      cell: (c) => c.id,
+      cell: (c) => (
+        <span className="flex items-center gap-2">
+          <span className="truncate">{c.id}</span>
+          {c.is_system && <Badge variant="secondary">系统</Badge>}
+        </span>
+      ),
     },
     { key: "name", header: "名称", cell: (c) => c.name },
     {
@@ -687,8 +698,13 @@ export function DatabaseDetailPage() {
   const handleBulkDeleteColl = async (selected: Collection[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((c) => deleteCollection(dbId!, c.id)));
-      toast.success(`已删除 ${selected.length} 个 Collection`);
+      const deletable = selected.filter((c) => !c.is_system);
+      if (deletable.length === 0) {
+        clear();
+        return;
+      }
+      await Promise.all(deletable.map((c) => deleteCollection(dbId!, c.id)));
+      toast.success(`已删除 ${deletable.length} 个 Collection`);
       queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
       clear();
     } finally {
@@ -729,6 +745,7 @@ export function DatabaseDetailPage() {
         items={collections}
         columns={collColumns}
         getSearchText={getCollSearchText}
+        isRowSelectable={(c) => !c.is_system}
         detailPath={(c) => `/console/databases/${dbId}/collections/${c.id}`}
         toolbarActions={
           <Button asChild>
@@ -740,17 +757,19 @@ export function DatabaseDetailPage() {
         }
         selectionActions={(selected, clear) => (
           <BulkDeleteButton
-            count={selected.length}
+            count={selected.filter((c) => !c.is_system).length}
             loading={bulkDeleting}
             onConfirm={() => handleBulkDeleteColl(selected, clear)}
           />
         )}
-        rowActions={(c) => (
-          <RowDeleteButton
-            onConfirm={() => removeColl.mutate(c.id)}
-            loading={removeColl.isPending}
-          />
-        )}
+        rowActions={(c) =>
+          c.is_system ? null : (
+            <RowDeleteButton
+              onConfirm={() => removeColl.mutate(c.id)}
+              loading={removeColl.isPending}
+            />
+          )
+        }
         emptyTitle="暂无 Collection"
         emptyDescription="在此 Database 中创建 Collection"
         emptyAction={
@@ -861,6 +880,8 @@ export function CollectionDetailPage() {
   if (isLoading) return <DetailSkeleton />;
   if (!collection) return null;
 
+  const readonly = collection.is_system;
+
   return (
     <>
       <div className="space-y-6">
@@ -890,7 +911,7 @@ export function CollectionDetailPage() {
                 集合级权限；无文档级权限的文档将回退到此规则
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setPermDialogOpen(true)}>
+            <Button size="sm" variant="outline" onClick={() => setPermDialogOpen(true)} disabled={readonly}>
               <Settings2 className="mr-1 h-4 w-4" />
               编辑
             </Button>
@@ -916,11 +937,13 @@ export function CollectionDetailPage() {
           <AttributeList
             attributes={collection.attributes}
             onAdd={() => setAttrDialogOpen(true)}
+            disabled={readonly}
           />
           <IndexList
             indexes={collection.indexes}
             canAdd={collection.attributes.length > 0}
             onAdd={() => setIndexDialogOpen(true)}
+            disabled={readonly}
           />
         </div>
       </div>
@@ -967,10 +990,12 @@ function DocumentListSection({
   dbId,
   collId,
   attributes,
+  readonly,
 }: {
   dbId: string;
   collId: string;
   attributes: Attribute[];
+  readonly?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -1027,37 +1052,47 @@ function DocumentListSection({
       columns={columns}
       getSearchText={getSearchText}
       toolbarActions={
-        <Button asChild size="sm">
-          <Link to={`/console/databases/${dbId}/collections/${collId}/documents/new`}>
-            <Plus className="mr-2 h-4 w-4" />
-            新建 Document
-          </Link>
-        </Button>
+        readonly ? undefined : (
+          <Button asChild size="sm">
+            <Link to={`/console/databases/${dbId}/collections/${collId}/documents/new`}>
+              <Plus className="mr-2 h-4 w-4" />
+              新建 Document
+            </Link>
+          </Button>
+        )
       }
-      selectionActions={(selected, clear) => (
-        <BulkDeleteButton
-          count={selected.length}
-          loading={bulkDeleting}
-          onConfirm={() => handleBulkDelete(selected, clear)}
-        />
-      )}
+      selectionActions={
+        readonly
+          ? undefined
+          : (selected, clear) => (
+              <BulkDeleteButton
+                count={selected.length}
+                loading={bulkDeleting}
+                onConfirm={() => handleBulkDelete(selected, clear)}
+              />
+            )
+      }
       detailPath={(d) =>
         `/console/databases/${dbId}/collections/${collId}/documents/${d.id}`
       }
-      rowActions={(d) => (
-        <RowDeleteButton
-          onConfirm={() => remove.mutate(d.id)}
-          loading={remove.isPending}
-        />
-      )}
+      rowActions={(d) =>
+        readonly ? null : (
+          <RowDeleteButton
+            onConfirm={() => remove.mutate(d.id)}
+            loading={remove.isPending}
+          />
+        )
+      }
       emptyTitle="暂无 Document"
-      emptyDescription="在此 Collection 中创建第一条文档记录"
+      emptyDescription={readonly ? undefined : "在此 Collection 中创建第一条文档记录"}
       emptyAction={
-        <Button asChild size="sm">
-          <Link to={`/console/databases/${dbId}/collections/${collId}/documents/new`}>
-            新建 Document
-          </Link>
-        </Button>
+        readonly ? undefined : (
+          <Button asChild size="sm">
+            <Link to={`/console/databases/${dbId}/collections/${collId}/documents/new`}>
+              新建 Document
+            </Link>
+          </Button>
+        )
       }
     />
   );
@@ -1079,6 +1114,7 @@ export function DocumentsListPage() {
       dbId={dbId}
       collId={collId}
       attributes={collection.attributes}
+      readonly={collection.is_system}
     />
   );
 }
@@ -1282,7 +1318,11 @@ export function DocumentDetailPage() {
       description={`ID: ${document.id}`}
       backTo={documentsPath}
       backLabel="返回文档列表"
-      actions={<DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />}
+      actions={
+        collection.is_system ? null : (
+          <DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />
+        )
+      }
     >
       <DetailGrid
         items={[

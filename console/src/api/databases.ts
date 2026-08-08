@@ -30,6 +30,7 @@ export interface Collection {
   permissions: string[];
   document_security?: boolean;
   disabled?: boolean;
+  is_system: boolean;
   attributes: Attribute[];
   indexes: Index[];
   created_at: string;
@@ -58,6 +59,7 @@ function normalizeCollection(collection: Collection): Collection {
     permissions: collection.permissions ?? [],
     attributes: collection.attributes ?? [],
     indexes: (collection.indexes ?? []).map(normalizeIndex),
+    is_system: collection.is_system ?? false,
   };
 }
 

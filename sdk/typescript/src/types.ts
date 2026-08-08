@@ -129,6 +129,7 @@ export interface Collection {
   indexes: Index[];
   document_security?: boolean;
   disabled?: boolean;
+  is_system?: boolean;
   created_at: string;
   updated_at: string;
 }

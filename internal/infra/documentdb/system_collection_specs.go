@@ -3,17 +3,17 @@ package documentdb
 import "github.com/torchwooddev/torchwood/internal/domain/databases"
 
 type systemCollectionSpec struct {
-	id          string
 	name        string
 	attrs       []databases.Attribute
 	indexes     []databases.Index
 	permissions []databases.Permission
 }
 
-func systemCollectionSpecs(projectID string) []systemCollectionSpec {
-	return []systemCollectionSpec{
-		{
-			id:   "users",
+// systemCollectionSpecs 返回按系统集合 ID 索引的 spec 映射；
+// 名单以 domain 常量为单一事实来源（本文件仅定义 attrs/indexes/权限）。
+func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
+	specs := map[string]systemCollectionSpec{
+		"users": {
 			name: "users",
 			attrs: []databases.Attribute{
 				{ID: "users_email", Key: "email", Type: "email", Size: 320},
@@ -41,8 +41,7 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 				{Type: "delete", Role: "admin"},
 			},
 		},
-		{
-			id:   "sessions",
+		"sessions": {
 			name: "sessions",
 			attrs: []databases.Attribute{
 				{ID: "sessions_user_id", Key: "user_id", Type: "string", Size: 64},
@@ -70,8 +69,7 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 				{Type: "delete", Role: "admin"},
 			},
 		},
-		{
-			id:   "identities",
+		"identities": {
 			name: "identities",
 			attrs: []databases.Attribute{
 				{ID: "identities_user_id", Key: "user_id", Type: "string", Size: 64, Required: true},
@@ -96,8 +94,7 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 				{Type: "delete", Role: "admin"},
 			},
 		},
-		{
-			id:   "buckets",
+		"buckets": {
 			name: "buckets",
 			attrs: []databases.Attribute{
 				{ID: "buckets_name", Key: "name", Type: "string", Size: 256},
@@ -118,8 +115,7 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 				{Type: "delete", Role: "admin"},
 			},
 		},
-		{
-			id:   "files",
+		"files": {
 			name: "files",
 			attrs: []databases.Attribute{
 				{ID: "files_bucket_id", Key: "bucket_id", Type: "string", Size: 64},
@@ -147,8 +143,7 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 				{Type: "delete", Role: "admin"},
 			},
 		},
-		{
-			id:   "teams",
+		"teams": {
 			name: "teams",
 			attrs: []databases.Attribute{
 				{ID: "teams_name", Key: "name", Type: "string", Size: 256},
@@ -173,8 +168,7 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 				{Type: "delete", Role: "admin"},
 			},
 		},
-		{
-			id:   "memberships",
+		"memberships": {
 			name: "memberships",
 			attrs: []databases.Attribute{
 				{ID: "memberships_team_id", Key: "team_id", Type: "string", Size: 64, Required: true},
@@ -210,4 +204,5 @@ func systemCollectionSpecs(projectID string) []systemCollectionSpec {
 			},
 		},
 	}
+	return specs
 }

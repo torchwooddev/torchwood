@@ -35,14 +35,18 @@ var safeNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 var docIDRe = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,64}$`)
 
 // systemCollectionsWriteProtected 是禁止非系统主体直接写入的系统集合（纵深防御，
-// 正常情况下客户端 API 已在用例层拦截）。
+// 正常情况下客户端 API 已在用例层拦截）。仅对 default 库生效，
+// 自定义数据库中的同名集合不受影响。
 var systemCollectionsWriteProtected = map[string]struct{}{
 	"users":      {},
 	"sessions":   {},
 	"identities": {},
 }
 
-func isWriteProtectedSystemCollection(collectionID string) bool {
+func isWriteProtectedSystemCollection(databaseID, collectionID string) bool {
+	if databaseID != "default" {
+		return false
+	}
 	_, ok := systemCollectionsWriteProtected[collectionID]
 	return ok
 }
@@ -344,7 +348,7 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 
 	// Check collection-level "create" permission before inserting.
 	if !principal.IsSystem() {
-		if isWriteProtectedSystemCollection(collectionID) {
+		if isWriteProtectedSystemCollection(databaseID, collectionID) {
 			return doc, ErrPermissionDenied
 		}
 		coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
@@ -427,7 +431,7 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 	// owner 例外：end-user 自助路径（UpdateAccount/UpdatePrefs）以 user:<id> 角色更新自己的 users 文档。
 	if !principal.IsSystem() &&
 		!principal.HasRole(fmt.Sprintf("user:%s", doc.ID)) &&
-		isWriteProtectedSystemCollection(collectionID) {
+		isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return doc, ErrPermissionDenied
 	}
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "read", principal); err != nil {
@@ -481,7 +485,7 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
-	if !principal.IsSystem() && isWriteProtectedSystemCollection(collectionID) {
+	if !principal.IsSystem() && isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return ErrPermissionDenied
 	}
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "delete", principal); err != nil {
@@ -657,16 +661,17 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		}
 	}
 
-	for _, spec := range systemCollectionSpecs(projectID) {
-		coll, err := p.GetCollection(ctx, projectID, dbID, spec.id)
+	for _, id := range databases.SystemCollectionIDs {
+		spec := systemCollectionSpecs(projectID)[id]
+		coll, err := p.GetCollection(ctx, projectID, dbID, id)
 		if err != nil {
 			return err
 		}
 		if coll != nil {
 			continue
 		}
-		if err := p.CreateCollection(ctx, projectID, dbID, spec.id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
-			return fmt.Errorf("create system collection %s: %w", spec.id, err)
+		if err := p.CreateCollection(ctx, projectID, dbID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
+			return fmt.Errorf("create system collection %s: %w", id, err)
 		}
 	}
 	// 存量项目 keys 写权限收窄（安全评审 C1 第 3 层 / M2 存量迁移）：幂等清理
@@ -906,6 +911,7 @@ func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, proje
 		ProjectID:        projectID,
 		Name:             name,
 		DocumentSecurity: documentSecurity,
+		IsSystem:         databases.IsSystemCollection(projectID, databaseID, collectionID),
 		Permissions:      permStrings,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
@@ -974,6 +980,7 @@ func mapCollectionRow(m *model.DocumentCollection, attrs []model.DocumentAttribu
 		Name:             m.Name,
 		DocumentSecurity: m.DocumentSecurity,
 		Disabled:         m.Disabled,
+		IsSystem:         m.IsSystem,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}

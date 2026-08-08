@@ -20,6 +20,7 @@ interface ResourceListPageProps<T extends { id: string }> {
   toolbarActions?: React.ReactNode;
   selectionActions?: (selected: T[], clear: () => void) => React.ReactNode;
   filters?: React.ReactNode;
+  isRowSelectable?: (item: T) => boolean;
   detailPath?: (item: T) => string;
   editPath?: (item: T) => string;
   rowActions?: (item: T) => React.ReactNode;
@@ -40,6 +41,7 @@ export function ResourceListPage<T extends { id: string }>({
   toolbarActions,
   selectionActions,
   filters,
+  isRowSelectable,
   detailPath,
   editPath,
   rowActions,
@@ -104,6 +106,7 @@ export function ResourceListPage<T extends { id: string }>({
                 isSelected={selection.isSelected}
                 onToggle={selection.toggle}
                 onToggleAll={selection.toggleAll}
+                isRowSelectable={isRowSelectable}
                 detailPath={detailPath}
                 editPath={editPath}
                 rowActions={rowActions}

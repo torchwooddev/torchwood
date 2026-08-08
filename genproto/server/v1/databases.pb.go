@@ -629,6 +629,7 @@ type Collection struct {
 	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	DocumentSecurity bool                   `protobuf:"varint,9,opt,name=document_security,json=documentSecurity,proto3" json:"document_security,omitempty"`
 	Disabled         bool                   `protobuf:"varint,10,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	IsSystem         bool                   `protobuf:"varint,11,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -729,6 +730,13 @@ func (x *Collection) GetDocumentSecurity() bool {
 func (x *Collection) GetDisabled() bool {
 	if x != nil {
 		return x.Disabled
+	}
+	return false
+}
+
+func (x *Collection) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
 	}
 	return false
 }
@@ -1899,7 +1907,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x06values\x18\x01 \x03(\tR\x06values\"\x97\x01\n" +
 	"\x17ListCollectionsResponse\x12A\n" +
 	"\vcollections\x18\x01 \x03(\v2\x1f.torchwood.server.v1.CollectionR\vcollections\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xa8\x03\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xc5\x03\n" +
 	"\n" +
 	"Collection\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
@@ -1917,7 +1925,8 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12+\n" +
 	"\x11document_security\x18\t \x01(\bR\x10documentSecurity\x12\x1a\n" +
 	"\bdisabled\x18\n" +
-	" \x01(\bR\bdisabled\"\xef\x01\n" +
+	" \x01(\bR\bdisabled\x12\x1b\n" +
+	"\tis_system\x18\v \x01(\bR\bisSystem\"\xef\x01\n" +
 	"\x16CreateAttributeRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
