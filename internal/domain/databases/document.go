@@ -42,6 +42,18 @@ type Query struct {
 	PageToken string
 }
 
+// ListQuery carries pagination parameters for collection listing.
+type ListQuery struct {
+	PageSize  int32
+	PageToken string
+}
+
+// ListMeta reports pagination metadata for collection listing.
+type ListMeta struct {
+	TotalCount    int64
+	NextPageToken string
+}
+
 type CollectionPatch struct {
 	Name             string
 	Permissions      *[]Permission

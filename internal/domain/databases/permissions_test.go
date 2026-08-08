@@ -75,6 +75,68 @@ func TestParsePermissionStrings_WriteExpands(t *testing.T) {
 	}
 }
 
+func TestExpandPermissionTemplates_UserPlaceholder(t *testing.T) {
+	perms := []Permission{{Type: "read", Role: "user:{id}"}}
+	roles := []string{"users", "user:alice", "team:t1"}
+	out := ExpandPermissionTemplates(perms, roles)
+	if len(out) != 1 || out[0].Type != "read" || out[0].Role != "user:alice" {
+		t.Fatalf("expected read:user:alice, got %+v", out)
+	}
+}
+
+func TestExpandPermissionTemplates_TeamPlaceholder(t *testing.T) {
+	perms := []Permission{{Type: "update", Role: "team:{id}"}}
+	roles := []string{"users", "user:alice", "team:t1"}
+	out := ExpandPermissionTemplates(perms, roles)
+	if len(out) != 1 || out[0].Type != "update" || out[0].Role != "team:t1" {
+		t.Fatalf("expected update:team:t1, got %+v", out)
+	}
+}
+
+func TestExpandPermissionTemplates_NoMatchKeepsOriginal(t *testing.T) {
+	perms := []Permission{{Type: "read", Role: "user:{id}"}, {Type: "read", Role: "any"}}
+	roles := []string{"users", "keys"}
+	out := ExpandPermissionTemplates(perms, roles)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 perms, got %d", len(out))
+	}
+	if out[0].Role != "user:{id}" || out[1].Role != "any" {
+		t.Fatalf("expected placeholders preserved, got %+v", out)
+	}
+}
+
+func TestExpandPermissionTemplates_MultipleTemplates(t *testing.T) {
+	perms := []Permission{
+		{Type: "read", Role: "user:{id}"},
+		{Type: "read", Role: "team:{id}"},
+		{Type: "update", Role: "user:{id}"},
+		{Type: "delete", Role: "team:{id}"},
+	}
+	roles := []string{"user:alice", "team:t2"}
+	out := ExpandPermissionTemplates(perms, roles)
+	want := []Permission{
+		{Type: "read", Role: "user:alice"},
+		{Type: "read", Role: "team:t2"},
+		{Type: "update", Role: "user:alice"},
+		{Type: "delete", Role: "team:t2"},
+	}
+	if len(out) != len(want) {
+		t.Fatalf("expected %d perms, got %d", len(want), len(out))
+	}
+	for i := range want {
+		if out[i] != want[i] {
+			t.Fatalf("perm %d: expected %+v, got %+v", i, want[i], out[i])
+		}
+	}
+}
+
+func TestExpandPermissionTemplates_EmptyPermsUnchanged(t *testing.T) {
+	roles := []string{"user:alice", "team:t1"}
+	if out := ExpandPermissionTemplates(nil, roles); out != nil {
+		t.Fatalf("nil input should stay nil, got %+v", out)
+	}
+}
+
 func contains(items []string, target string) bool {
 	for _, item := range items {
 		if item == target {

@@ -12,7 +12,7 @@ type DocumentDB interface {
 	// Collection
 	CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []Attribute, idxs []Index, perms []Permission, documentSecurity bool) error
 	GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*Collection, error)
-	ListCollections(ctx context.Context, projectID, databaseID string) ([]Collection, error)
+	ListCollections(ctx context.Context, projectID, databaseID string, q ListQuery) ([]Collection, ListMeta, error)
 	DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error
 	UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch CollectionPatch) error
 

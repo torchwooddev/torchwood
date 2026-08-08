@@ -149,6 +149,49 @@ func ParsePermissionStrings(items []string) ([]Permission, error) {
 	return out, nil
 }
 
+// ExpandPermissionTemplates replaces the Appwrite-style placeholders
+// "user:{id}" and "team:{id}" in permission roles with the caller's first
+// matching concrete role (e.g. "user:<uuid>"), preserving original entries
+// when no matching role is held. The expanded set is used for grant
+// validation and persistence, mirroring Appwrite's create/update semantics.
+func ExpandPermissionTemplates(perms []Permission, roles []string) []Permission {
+	if len(perms) == 0 {
+		return perms
+	}
+	firstUser, firstTeam := firstPrefixedRole(roles, "user:"), firstPrefixedRole(roles, "team:")
+	if firstUser == "" && firstTeam == "" {
+		return perms
+	}
+	out := make([]Permission, len(perms))
+	for i, p := range perms {
+		switch p.Role {
+		case "user:{id}":
+			if firstUser != "" {
+				out[i] = Permission{Type: p.Type, Role: firstUser}
+				continue
+			}
+		case "team:{id}":
+			if firstTeam != "" {
+				out[i] = Permission{Type: p.Type, Role: firstTeam}
+				continue
+			}
+		}
+		out[i] = p
+	}
+	return out
+}
+
+// firstPrefixedRole returns the first role with the given prefix, without the
+// prefix, or "" when none is held.
+func firstPrefixedRole(roles []string, prefix string) string {
+	for _, r := range roles {
+		if strings.HasPrefix(r, prefix) {
+			return r
+		}
+	}
+	return ""
+}
+
 // ValidateGrantablePermissions ensures the grantor may assign the given roles.
 // Privileged callers (API key via keys role with scopes, platform admin) skip checks.
 func ValidateGrantablePermissions(grantor Principal, perms []Permission, privileged bool) error {

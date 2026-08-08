@@ -25,8 +25,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// ErrDuplicateKey is returned when a unique constraint violation occurs.
-var ErrDuplicateKey = errors.New("duplicate key")
+// ErrDuplicateKey re-exports the domain duplicate-key error.
+var ErrDuplicateKey = databases.ErrDuplicateKey
 
 // ErrPermissionDenied re-exports the domain permission error.
 var ErrPermissionDenied = databases.ErrPermissionDenied
@@ -180,16 +180,41 @@ func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, datab
 	return p.mapCollection(ctx, m)
 }
 
-func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, databaseID string) ([]databases.Collection, error) {
-	var ms []model.DocumentCollection
-	err := p.db.NewSelect().Model(&ms).
-		Where("project_id = ? AND database_id = ?", projectID, databaseID).
-		Order("created_at DESC").Scan(ctx)
+func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, databaseID string, q databases.ListQuery) ([]databases.Collection, databases.ListMeta, error) {
+	pageSize := int(q.PageSize)
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > maxQueryLimit {
+		pageSize = maxQueryLimit
+	}
+	offset := 0
+	if q.PageToken != "" {
+		off, err := crud.DecodePageToken(q.PageToken)
+		if err != nil {
+			return nil, databases.ListMeta{}, err
+		}
+		offset = off
+	}
+
+	var total int64
+	count, err := p.db.NewSelect().Model((*model.DocumentCollection)(nil)).
+		Where("project_id = ? AND database_id = ?", projectID, databaseID).Count(ctx)
 	if err != nil {
-		return nil, err
+		return nil, databases.ListMeta{}, err
+	}
+	total = int64(count)
+
+	var ms []model.DocumentCollection
+	err = p.db.NewSelect().Model(&ms).
+		Where("project_id = ? AND database_id = ?", projectID, databaseID).
+		Order("created_at DESC").
+		Limit(pageSize).Offset(offset).Scan(ctx)
+	if err != nil {
+		return nil, databases.ListMeta{}, err
 	}
 	if len(ms) == 0 {
-		return []databases.Collection{}, nil
+		return []databases.Collection{}, databases.ListMeta{TotalCount: total}, nil
 	}
 
 	collectionIDs := make([]string, 0, len(ms))
@@ -202,7 +227,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Where("collection_id IN (?)", bun.In(collectionIDs)).
 		Scan(ctx); err != nil {
-		return nil, err
+		return nil, databases.ListMeta{}, err
 	}
 	attrsByColl := make(map[string][]model.DocumentAttribute, len(ms))
 	for i := range allAttrs {
@@ -214,7 +239,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Where("collection_id IN (?)", bun.In(collectionIDs)).
 		Scan(ctx); err != nil {
-		return nil, err
+		return nil, databases.ListMeta{}, err
 	}
 	idxsByColl := make(map[string][]model.DocumentIndex, len(ms))
 	for i := range allIdxs {
@@ -225,11 +250,15 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 	for i := range ms {
 		c, err := mapCollectionRow(&ms[i], attrsByColl[ms[i].ID], idxsByColl[ms[i].ID])
 		if err != nil {
-			return nil, err
+			return nil, databases.ListMeta{}, err
 		}
 		out[i] = *c
 	}
-	return out, nil
+	meta := databases.ListMeta{TotalCount: total}
+	if offset+len(ms) < int(total) {
+		meta.NextPageToken = crud.EncodePageToken(offset + len(ms))
+	}
+	return out, meta, nil
 }
 
 func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
@@ -238,6 +267,9 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
+	if _, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
+		return err
+	}
 	if _, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, collectionID))); err != nil {
 		return err
 	}
@@ -364,6 +396,16 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 	}
 
 	columns, placeholders, args := buildInsertParts(doc)
+	createdBy := userIDFromPrincipal(principal)
+	if createdBy != "" {
+		if columns != "" {
+			columns += ", "
+			placeholders += ", "
+		}
+		columns += quoteIdent("_created_by") + ", " + quoteIdent("_updated_by")
+		placeholders += "?, ?"
+		args = append(args, createdBy, createdBy)
+	}
 	args = append([]any{doc.ID}, args...)
 	allPlaceholders := "?"
 	if columns != "" {
@@ -441,7 +483,7 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 		return doc, err
 	}
 	tbl := tableName(schema, collectionID)
-	setParts, args := buildUpdateParts(doc)
+	setParts, args := buildUpdateParts(doc, userIDFromPrincipal(principal))
 	incParts, incArgs := buildIncrementParts(update.Increment)
 	setParts = append(setParts, incParts...)
 	args = append(args, incArgs...)
@@ -550,6 +592,55 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		}
 	}
 
+	cursor := ""
+	cursorKind := ""
+	if parsed.CursorAfter != "" {
+		cursor, cursorKind = parsed.CursorAfter, "after"
+	} else if parsed.CursorBefore != "" {
+		cursor, cursorKind = parsed.CursorBefore, "before"
+	}
+	if cursor != "" {
+		// cursor 与 offset 同时传时 cursor 优先，offset 恒 0
+		offset = 0
+		// 排序键与方向：仅取 Orders[0]，无显式排序则默认 _created_at DESC
+		sortField := "_created_at"
+		sortDir := "DESC"
+		if len(parsed.Orders) > 0 {
+			sortField = mapQueryField(parsed.Orders[0].Attribute)
+			if parsed.Orders[0].Desc {
+				sortDir = "DESC"
+			} else {
+				sortDir = "ASC"
+			}
+		}
+		// 排序字段必须显式校验（不能沿用 ORDER 路径的静默跳过）
+		if !safeNameRe.MatchString(sortField) {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", parsed.Orders[0].Attribute))
+		}
+		if err := validateDocID(cursor); err != nil {
+			return nil, err
+		}
+		var cursorValue any
+		err := p.db.DB.QueryRowContext(ctx,
+			fmt.Sprintf(`SELECT %s FROM %s WHERE _id = ? AND _tenant = ?`, quoteIdent(sortField), tbl),
+			cursor, internalID,
+		).Scan(&cursorValue)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, status.Error(codes.InvalidArgument, "cursor document not found")
+			}
+			return nil, err
+		}
+		op := ">"
+		if (sortDir == "ASC" && cursorKind == "before") || (sortDir == "DESC" && cursorKind == "after") {
+			op = "<"
+		}
+		whereParts = append(whereParts, fmt.Sprintf(`(d.%s, d._id) %s (?, ?)`, quoteIdent(sortField), op))
+		args = append(args, cursorValue, cursor)
+		// cursor 模式下 ORDER BY 必须与谓词同构
+		orderSQL = fmt.Sprintf(`ORDER BY d.%s %s, d._id %s`, quoteIdent(sortField), sortDir, sortDir)
+	}
+
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
 	var total int64
 	if err := p.db.DB.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -575,6 +666,20 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	if len(parsed.Selects) > 0 {
+		selected := make(map[string]struct{}, len(parsed.Selects))
+		for _, s := range parsed.Selects {
+			selected[mapQueryField(s)] = struct{}{}
+		}
+		for i := range docs {
+			for k := range docs[i].Data {
+				if _, ok := selected[k]; !ok {
+					delete(docs[i].Data, k)
+				}
+			}
+		}
 	}
 
 	next := ""
@@ -1049,7 +1154,7 @@ func buildInsertParts(doc databases.Document) (columns string, placeholders stri
 	var cols []string
 	var phs []string
 	for k, v := range doc.Data {
-		if !safeNameRe.MatchString(k) {
+		if !safeNameRe.MatchString(k) || strings.HasPrefix(k, "_") {
 			continue
 		}
 		cols = append(cols, quoteIdent(k))
@@ -1059,7 +1164,7 @@ func buildInsertParts(doc databases.Document) (columns string, placeholders stri
 	return strings.Join(cols, ", "), strings.Join(phs, ", "), args
 }
 
-func buildUpdateParts(doc databases.Document) (setParts []string, args []any) {
+func buildUpdateParts(doc databases.Document, updatedBy string) (setParts []string, args []any) {
 	for k, v := range doc.Data {
 		if !safeNameRe.MatchString(k) || strings.HasPrefix(k, "_") {
 			continue
@@ -1072,7 +1177,22 @@ func buildUpdateParts(doc databases.Document) (setParts []string, args []any) {
 	}
 	setParts = append(setParts, "_updated_at = ?")
 	args = append(args, time.Now())
+	if updatedBy != "" {
+		setParts = append(setParts, quoteIdent("_updated_by")+" = ?")
+		args = append(args, updatedBy)
+	}
 	return setParts, args
+}
+
+// userIDFromPrincipal extracts the first "user:"-prefixed role ID from the
+// principal's roles, or "" when no user role is held.
+func userIDFromPrincipal(p databases.Principal) string {
+	for _, r := range p.Roles {
+		if strings.HasPrefix(r, "user:") {
+			return strings.TrimPrefix(r, "user:")
+		}
+	}
+	return ""
 }
 
 func scanDocumentJSON(scanner interface{ Scan(dest ...any) error }) (*databases.Document, error) {
@@ -1171,16 +1291,22 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 				conds = append(conds, fmt.Sprintf("%s = ?", col))
 				args = append(args, f.Values[0])
 			} else {
-				conds = append(conds, fmt.Sprintf("%s = ANY(?::text[])", col))
-				args = append(args, pgTextArray(f.Values))
+				phs := strings.TrimSuffix(strings.Repeat("?, ", len(f.Values)), ", ")
+				conds = append(conds, fmt.Sprintf("%s IN (%s)", col, phs))
+				for _, v := range f.Values {
+					args = append(args, v)
+				}
 			}
 		case "notEqual":
 			if len(f.Values) == 1 {
 				conds = append(conds, fmt.Sprintf("%s != ?", col))
 				args = append(args, f.Values[0])
 			} else {
-				conds = append(conds, fmt.Sprintf("%s != ALL(?::text[])", col))
-				args = append(args, pgTextArray(f.Values))
+				phs := strings.TrimSuffix(strings.Repeat("?, ", len(f.Values)), ", ")
+				conds = append(conds, fmt.Sprintf("%s NOT IN (%s)", col, phs))
+				for _, v := range f.Values {
+					args = append(args, v)
+				}
 			}
 		case "lessThan":
 			conds = append(conds, fmt.Sprintf("%s < ?", col))

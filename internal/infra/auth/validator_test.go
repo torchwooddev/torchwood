@@ -124,8 +124,8 @@ func (d *stubDocDB) CreateCollection(context.Context, string, string, string, st
 func (d *stubDocDB) GetCollection(context.Context, string, string, string) (*databases.Collection, error) {
 	return nil, nil
 }
-func (d *stubDocDB) ListCollections(context.Context, string, string) ([]databases.Collection, error) {
-	return nil, nil
+func (d *stubDocDB) ListCollections(context.Context, string, string, databases.ListQuery) ([]databases.Collection, databases.ListMeta, error) {
+	return nil, databases.ListMeta{}, nil
 }
 func (d *stubDocDB) DeleteCollection(context.Context, string, string, string) error { return nil }
 func (d *stubDocDB) UpdateCollection(context.Context, string, string, string, databases.CollectionPatch) error {

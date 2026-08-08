@@ -118,7 +118,10 @@ func (s *DatabasesService) ListCollections(ctx context.Context, req *serverv1.Li
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	cols, err := s.databases.ListCollections(ctx, projectID, req.GetDatabaseId())
+	cols, total, next, err := s.databases.ListCollections(ctx, projectID, req.GetDatabaseId(), databases.ListQuery{
+		PageSize:  req.GetPageSize(),
+		PageToken: req.GetPageToken(),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +129,10 @@ func (s *DatabasesService) ListCollections(ctx context.Context, req *serverv1.Li
 	for i := range cols {
 		out[i] = mapCollection(&cols[i])
 	}
-	return &serverv1.ListCollectionsResponse{Collections: out, Meta: &sharedv1.ListResponseMeta{}}, nil
+	return &serverv1.ListCollectionsResponse{
+		Collections: out,
+		Meta:        &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
+	}, nil
 }
 
 func (s *DatabasesService) GetCollection(ctx context.Context, req *serverv1.GetCollectionRequest) (*serverv1.Collection, error) {
@@ -272,7 +278,7 @@ func (s *DatabasesService) CreateDocument(ctx context.Context, req *serverv1.Cre
 	if req.GetData() != nil {
 		data = req.GetData().AsMap()
 	}
-	perms, err := databases.ParsePermissionStrings(req.GetPermissions())
+	perms, err := parseOptionalPermissions(req.GetPermissions())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -297,7 +303,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	docs, total, _, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), databases.Query{
+	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -315,7 +321,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	}
 	return &serverv1.ListDocumentsResponse{
 		Documents: out,
-		Meta:      &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total)},
+		Meta:      &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 
@@ -336,13 +342,9 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	var perms []databases.Permission
-	if len(req.GetPermissions()) > 0 {
-		var err error
-		perms, err = databases.ParsePermissionStrings(req.GetPermissions())
-		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
+	perms, err := parseOptionalPermissions(req.GetPermissions())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	doc, err := s.databases.UpdateDocument(
 		ctx,
@@ -366,13 +368,9 @@ func (s *DatabasesService) BulkUpdateDocuments(ctx context.Context, req *serverv
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	var perms []databases.Permission
-	if len(req.GetPermissions()) > 0 {
-		var err error
-		perms, err = databases.ParsePermissionStrings(req.GetPermissions())
-		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
+	perms, err := parseOptionalPermissions(req.GetPermissions())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	n, err := s.databases.BulkUpdateDocuments(
 		ctx,
@@ -515,4 +513,14 @@ func updateData(s *structpb.Struct) map[string]any {
 		return map[string]any{}
 	}
 	return s.AsMap()
+}
+
+// parseOptionalPermissions parses explicit permission strings into Permission
+// values. An empty list yields nil (no document-level permissions), unlike
+// ParsePermissionStrings which expands to DefaultCollectionPermissions.
+func parseOptionalPermissions(items []string) ([]databases.Permission, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	return databases.ParsePermissionStrings(items)
 }

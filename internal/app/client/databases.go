@@ -126,6 +126,7 @@ func (d *Databases) CreateDocument(
 	if len(perms) == 0 {
 		perms = ownerDocumentPermissions(p.UserID)
 	}
+	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
 	if err := databases.ValidateGrantablePermissions(principal, perms, false); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -201,6 +202,7 @@ func (d *Databases) UpdateDocument(
 		return nil, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
 	}
 	if len(perms) > 0 {
+		perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
 		if err := databases.ValidateGrantablePermissions(principal, perms, false); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}

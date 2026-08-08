@@ -44,6 +44,12 @@ func (d *Databases) resolveProject(ctx context.Context, projectID string) (*proj
 }
 
 func (d *Databases) CreateDatabase(ctx context.Context, projectID, id, name string) error {
+	if err := d.ValidateIdentifier(id); err != nil {
+		return status.Error(codes.InvalidArgument, "id is required")
+	}
+	if id == "default" {
+		return status.Error(codes.InvalidArgument, "default database cannot be created")
+	}
 	if name == "" {
 		return status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -101,11 +107,15 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	return d.docDB.CreateCollection(ctx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
 }
 
-func (d *Databases) ListCollections(ctx context.Context, projectID, databaseID string) ([]databases.Collection, error) {
+func (d *Databases) ListCollections(ctx context.Context, projectID, databaseID string, q databases.ListQuery) ([]databases.Collection, int64, string, error) {
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
-		return nil, err
+		return nil, 0, "", err
 	}
-	return d.docDB.ListCollections(ctx, projectID, databaseID)
+	cols, meta, err := d.docDB.ListCollections(ctx, projectID, databaseID, q)
+	if err != nil {
+		return nil, 0, "", shared.MapDocumentDBError(err)
+	}
+	return cols, meta.TotalCount, meta.NextPageToken, nil
 }
 
 func (d *Databases) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
@@ -308,6 +318,7 @@ func (d *Databases) CreateDocument(
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")
 	}
+	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
 	if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -379,6 +390,7 @@ func (d *Databases) UpdateDocument(
 		return nil, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
 	}
 	if len(perms) > 0 {
+		perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
 		if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
@@ -412,6 +424,7 @@ func (d *Databases) BulkUpdateDocuments(
 		return 0, status.Error(codes.InvalidArgument, "document_ids is required")
 	}
 	if len(perms) > 0 {
+		perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
 		if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
 			return 0, status.Error(codes.InvalidArgument, err.Error())
 		}

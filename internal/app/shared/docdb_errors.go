@@ -16,5 +16,8 @@ func MapDocumentDBError(err error) error {
 	if errors.Is(err, databases.ErrPermissionDenied) {
 		return status.Error(codes.PermissionDenied, "permission denied")
 	}
+	if errors.Is(err, databases.ErrDuplicateKey) {
+		return status.Error(codes.AlreadyExists, "duplicate key")
+	}
 	return err
 }
