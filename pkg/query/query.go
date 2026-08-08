@@ -128,6 +128,9 @@ func Parse(raw string) (*Query, error) {
 		if err != nil {
 			return nil, fmt.Errorf("limit must be an integer")
 		}
+		if n < 0 {
+			return nil, fmt.Errorf("limit must be non-negative")
+		}
 		return &Query{Limit: n}, nil
 
 	case "offset":
@@ -137,6 +140,9 @@ func Parse(raw string) (*Query, error) {
 		n, err := strconv.Atoi(args[0])
 		if err != nil {
 			return nil, fmt.Errorf("offset must be an integer")
+		}
+		if n < 0 {
+			return nil, fmt.Errorf("offset must be non-negative")
 		}
 		return &Query{Offset: n}, nil
 

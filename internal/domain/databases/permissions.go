@@ -80,9 +80,13 @@ func CollectionAllows(perms []Permission, permType string, roles []string) bool 
 	return false
 }
 
-// AllowsDocumentAccess implements Appwrite-style documentSecurity semantics:
+// AllowsDocumentAccess implements Appwrite-style documentSecurity semantics (B1):
 //   - documentSecurity=false: only collection permissions apply
-//   - documentSecurity=true: collection OR document permissions (when document has _perms)
+//   - documentSecurity=true:
+//     - document has no _perms rows (docHasPerms=false): collection permissions apply
+//     - document has _perms rows:
+//       - system collections (D1 豁免): collection OR document permissions
+//       - user collections: document permissions override collection permissions
 func AllowsDocumentAccess(coll *Collection, docPerms []Permission, docHasPerms bool, permType string, roles []string) bool {
 	if coll == nil {
 		return false
@@ -95,7 +99,13 @@ func AllowsDocumentAccess(coll *Collection, docPerms []Permission, docHasPerms b
 	if !docHasPerms {
 		return collOK
 	}
-	return collOK || CollectionAllows(docPerms, permType, expanded)
+	if coll.IsSystem {
+		// D1 豁免：系统集合保持 OR 语义，保证显式 permissions（不含 read:any）的
+		// 系统集合文档仍由集合级兜底（匿名读 teams/buckets 依赖此行为）。
+		return collOK || CollectionAllows(docPerms, permType, expanded)
+	}
+	// 用户集合：文档权限覆盖集合权限（Appwrite 语义，"私有文档"生效）。
+	return CollectionAllows(docPerms, permType, expanded)
 }
 
 // ListAccessDenied reports whether list/count should be rejected outright.
@@ -111,12 +121,20 @@ func ListAccessDenied(coll *Collection, roles []string) bool {
 }
 
 // SkipDocumentPermissionFilter reports whether list/count can skip per-document
-// permission SQL when the caller has collection-level read access.
+// permission SQL. 仅当（系统集合且集合级有 read）或（!DocumentSecurity 且集合级
+// 有 read）时跳过；用户集合 documentSecurity=true 一律逐文档过滤（B1）。
 func SkipDocumentPermissionFilter(coll *Collection, roles []string) bool {
 	if coll == nil {
 		return false
 	}
-	return CollectionAllows(coll.Permissions, "read", ExpandPermissionRoles(roles))
+	collRead := CollectionAllows(coll.Permissions, "read", ExpandPermissionRoles(roles))
+	if !collRead {
+		return false
+	}
+	if coll.IsSystem {
+		return true // D1 豁免
+	}
+	return !coll.DocumentSecurity
 }
 
 // FormatPermissionString renders a permission as type:role.

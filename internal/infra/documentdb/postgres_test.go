@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/driver/pgdriver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -478,6 +481,367 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// TestListDocuments_PaginationGuards (A1): page_size 负数回退默认页大小；
+// DSL limit(-1) 在解析期报错（fail-fast）；offset 超上限 → InvalidArgument。
+func TestListDocuments_PaginationGuards(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "n", Key: "n", Type: "integer"},
+	}, nil, nil, true))
+
+	for i := 0; i < 3; i++ {
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+			Data: map[string]any{"n": i},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+
+	// page_size=-1 → 回退默认页大小 50，3 条全部返回。
+	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize: -1,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list.Documents, 3)
+
+	// DSL limit(-1) → 解析期 fail-fast 报错（不产生 LIMIT -1）。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		Queries: []string{`limit(-1)`},
+	}, databases.SystemPrincipal)
+	require.Error(t, err)
+
+	// DSL offset(-1) → 解析期 fail-fast 报错。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		Queries: []string{`offset(-1)`},
+	}, databases.SystemPrincipal)
+	require.Error(t, err)
+
+	// offset 超上限 → InvalidArgument（List 与 Count 一致）。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		Queries: []string{`offset(10001)`},
+	}, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", []string{`offset(10001)`}, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// TestListDocuments_InputLimits (A2): queries 条数、单条长度、equal 多值个数
+// 超上限均报 InvalidArgument；正常调用不受影响。
+func TestListDocuments_InputLimits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	// 101 条 queries → InvalidArgument。
+	queries := make([]string, maxQueryCount+1)
+	for i := range queries {
+		queries[i] = `limit(1)`
+	}
+	_, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: queries}, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", queries, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 超长查询串 → InvalidArgument。
+	long := `equal("title","` + strings.Repeat("a", maxQueryStringLen) + `")`
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: []string{long}}, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 1001 个 equal 值 → InvalidArgument（查询串长度在上限内，命中值数限制）。
+	values := strings.Repeat(`"a",`, maxFilterValues) + `"a"`
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("title",[` + values + `])`},
+	}, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 正常查询不受影响。
+	list, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("title","hello")`, `limit(10)`},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list.Documents, 0)
+}
+
+// TestEnsureSystemCollections_Idempotent (A3): 重复调用 EnsureSystemCollections
+// （含全新实例、无进程内缓存）必须幂等成功。
+func TestEnsureSystemCollections_Idempotent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	fresh := NewPostgresDocumentDB(db)
+	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
+	coll, err := fresh.GetCollection(ctx, projectID, "default", "users")
+	require.NoError(t, err)
+	require.NotNil(t, coll)
+}
+
+// TestCreateCollectionMetadata_IdempotentSystemRow (A3): 系统集合元数据集合行已存在时
+// 重复 createCollectionMetadata 幂等成功（DO NOTHING + 行数判断），子表插入被跳过。
+func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+
+	spec := systemCollectionSpecs(projectID)["users"]
+	p := &postgresDocumentDB{db: db}
+	err := p.createCollectionMetadata(ctx, projectID, "default", "users", spec.name, spec.attrs, spec.indexes, spec.permissions, true)
+	require.NoError(t, err)
+}
+
+// TestCreateCollectionMetadata_DuplicateUserCollection (A3): 用户集合建同名同 ID
+// 集合，第二次经 DO NOTHING 行数判断返回 ErrDuplicateKey，MapDocumentDBError 后为
+// AlreadyExists（既有映射，不依赖 A6 新增）。
+func TestCreateCollectionMetadata_DuplicateUserCollection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "notes", "Notes", nil, nil, nil, true))
+
+	err := docDB.CreateCollection(ctx, projectID, "app", "notes", "Notes", nil, nil, nil, true)
+	require.ErrorIs(t, err, ErrDuplicateKey)
+	require.Equal(t, codes.AlreadyExists, status.Code(shared.MapDocumentDBError(err)))
+}
+
+// TestBulkUpdateDocuments_RollbackOnFailure (A4): Bulk 事务化——第 2 条为不存在的
+// 文档 ID（UpdateDocument 尾随 GetDocument 返回 nil → error）时整体回滚，
+// 第 1 条的更新不得生效。
+func TestBulkUpdateDocuments_RollbackOnFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	doc1, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+		Data: map[string]any{"title": "original"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	n, err := docDB.BulkUpdateDocuments(ctx, projectID, "app", "docs",
+		[]string{doc1.ID, "missing-id"},
+		map[string]any{"title": "changed"}, nil, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, int64(0), n)
+
+	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", doc1.ID, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, "original", got.Data["title"])
+}
+
+// TestListDocuments_SystemPathRawPGError (A6/A7): SystemPrincipal（信任路径，跳过
+// 白名单）查询未声明列 → adapter 直调返回原始 PG 错误（映射在 app 层生效），
+// 错误链可 errors.As 到 *pgdriver.Error。
+func TestListDocuments_SystemPathRawPGError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+
+	_, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+		Queries: []string{`equal("nonexistent_col","x")`},
+	}, databases.SystemPrincipal)
+	require.Error(t, err)
+	// pgdriver@v1.2.18 readError 返回 Error 值（非指针），与 isUniqueViolation 一致用值断言。
+	var pgErr pgdriver.Error
+	require.True(t, errors.As(err, &pgErr), "error chain must reach pgdriver.Error: %v", err)
+	require.Equal(t, "42703", pgErr.Field('C'))
+}
+
+// TestListDocuments_QueryFieldWhitelist (A7): 非 System 路径查询字段白名单
+// （未声明列/非法 order → InvalidArgument）；search 需 fulltext 索引列
+// （无索引集合 → InvalidArgument，files.name → 可用）。
+func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	bob := databases.Principal{Roles: []string{"user:bob"}}
+
+	// 非 System 查询未声明列 → InvalidArgument。
+	_, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("nonexistent","x")`},
+	}, bob)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 非 System 查询未声明列（Count）→ InvalidArgument。
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", []string{`equal("nonexistent","x")`}, bob)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// order 非法字段 → InvalidArgument（不再静默跳过）。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`orderDesc("bad field")`},
+	}, bob)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// search 对无 fulltext 索引的集合 → InvalidArgument。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`search("title","hello")`},
+	}, bob)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// search 命中 fulltext 索引列（files.name_fulltext）→ 可用。
+	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
+	_, err = docDB.ListDocuments(ctx, projectID, "default", "files", databases.Query{
+		Queries: []string{`search("name","hello")`},
+	}, keysPrincipal)
+	require.NoError(t, err)
+
+	// 合法字段（声明 attr + 系统列）不受影响。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("title","x")`, `orderAsc("$id")`, `limit(5)`},
+	}, bob)
+	require.NoError(t, err)
+}
+
+// TestListDocuments_SensitiveFieldBlacklist (A7): default 库系统集合的凭据/令牌类列
+// （users.password_hash 等）禁止作为过滤条件 → InvalidArgument；自定义库同名集合不受影响。
+func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+
+	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
+
+	// users（default 库系统集合）：password_hash 禁止过滤。
+	_, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+		Queries: []string{`equal("password_hash","x")`},
+	}, keysPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// sessions.secret_hash / identities.provider_data 同样禁止。
+	_, err = docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+		Queries: []string{`equal("secret_hash","x")`},
+	}, keysPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, err = docDB.ListDocuments(ctx, projectID, "default", "identities", databases.Query{
+		Queries: []string{`equal("provider_data","x")`},
+	}, keysPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 非敏感声明列（email）可查。
+	_, err = docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+		Queries: []string{`equal("email","x@y.z")`},
+	}, keysPrincipal)
+	require.NoError(t, err)
+
+	// 自定义库同名集合不受黑名单影响（可建同名集合，白名单外字段仅按 attrs 校验）。
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "users", "Users", []databases.Attribute{
+		{ID: "password_hash", Key: "password_hash", Type: "string", Size: 512},
+	}, nil, nil, true))
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "users", databases.Query{
+		Queries: []string{`equal("password_hash","x")`},
+	}, keysPrincipal)
+	require.NoError(t, err)
 }
 
 // TestCreateDocument_AuditColumns (#12): _created_by/_updated_by are filled

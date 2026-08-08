@@ -15,6 +15,9 @@ import (
 
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
+// maxBulkOperations 是 Bulk 写入单次条数上限（A4）。
+const maxBulkOperations = 1000
+
 // serverSensitiveCollectionFields 是高敏系统集合（users/sessions/identities）
 // 经 Server Databases API 读取时的脱敏字段清单；专用 API 不公开这些字段。
 var serverSensitiveCollectionFields = map[string][]string{
@@ -423,6 +426,9 @@ func (d *Databases) BulkUpdateDocuments(
 	if len(documentIDs) == 0 {
 		return 0, status.Error(codes.InvalidArgument, "document_ids is required")
 	}
+	if len(documentIDs) > maxBulkOperations {
+		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("document_ids exceeds maximum of %d", maxBulkOperations))
+	}
 	if len(perms) > 0 {
 		perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
 		if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
@@ -444,6 +450,9 @@ func (d *Databases) BulkDeleteDocuments(
 	}
 	if len(documentIDs) == 0 {
 		return 0, status.Error(codes.InvalidArgument, "document_ids is required")
+	}
+	if len(documentIDs) > maxBulkOperations {
+		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("document_ids exceeds maximum of %d", maxBulkOperations))
 	}
 	n, err := d.docDB.BulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
 	return n, shared.MapDocumentDBError(err)

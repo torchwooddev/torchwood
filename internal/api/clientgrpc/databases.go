@@ -25,6 +25,10 @@ func NewDatabasesService(databases *client.Databases) *DatabasesService {
 }
 
 func (s *DatabasesService) CreateDocument(ctx context.Context, req *clientv1.CreateDocumentRequest) (*clientv1.Document, error) {
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
+	if req.GetDocumentId() != "" {
+		ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
+	}
 	data := map[string]any{}
 	if req.GetData() != nil {
 		data = req.GetData().AsMap()
@@ -45,6 +49,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *clientv1.List
 	if err != nil {
 		return nil, err
 	}
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
 	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
@@ -72,6 +77,7 @@ func (s *DatabasesService) GetDocument(ctx context.Context, req *clientv1.GetDoc
 	if err != nil {
 		return nil, err
 	}
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
 	doc, err := s.databases.GetDocument(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId())
 	if err != nil {
 		return nil, err
@@ -80,6 +86,7 @@ func (s *DatabasesService) GetDocument(ctx context.Context, req *clientv1.GetDoc
 }
 
 func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.UpdateDocumentRequest) (*clientv1.Document, error) {
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
 	perms, err := parseOptionalPermissions(req.GetPermissions())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -100,6 +107,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.Upd
 }
 
 func (s *DatabasesService) DeleteDocument(ctx context.Context, req *clientv1.GetDocumentRequest) (*sharedv1.Empty, error) {
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
 	if err := s.databases.DeleteDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()); err != nil {
 		return nil, err
 	}
@@ -111,6 +119,7 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *clientv1.Lis
 	if err != nil {
 		return nil, err
 	}
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
 	count, err := s.databases.CountDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetQueries())
 	if err != nil {
 		return nil, err

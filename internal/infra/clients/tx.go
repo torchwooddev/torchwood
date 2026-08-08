@@ -21,6 +21,12 @@ func (d *Database) Conn(ctx context.Context) bun.IDB {
 	return d.DB
 }
 
+// InTx reports whether ctx carries an active transaction (see WithTx).
+func InTx(ctx context.Context) bool {
+	_, ok := ctx.Value(txContextKey{}).(bun.Tx)
+	return ok
+}
+
 // RunInTx runs fn inside a database transaction.
 func (d *Database) RunInTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	return d.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {

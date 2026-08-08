@@ -31,11 +31,26 @@ func (s *DatabasesService) projectID(ctx context.Context) string {
 	return p.ProjectID
 }
 
+// auditResource* 构建审计资源路径（A8）：ResourceID 形如
+// databases/{db}、databases/{db}/collections/{coll}、…/documents/{doc}。
+func auditDatabaseResource(databaseID string) string {
+	return "databases/" + databaseID
+}
+
+func auditCollectionResource(databaseID, collectionID string) string {
+	return "databases/" + databaseID + "/collections/" + collectionID
+}
+
+func auditDocumentResource(databaseID, collectionID, documentID string) string {
+	return "databases/" + databaseID + "/collections/" + collectionID + "/documents/" + documentID
+}
+
 func (s *DatabasesService) CreateDatabase(ctx context.Context, req *serverv1.CreateDatabaseRequest) (*serverv1.Database, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditDatabaseResource(req.GetId()))
 	if req.GetId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
@@ -50,6 +65,7 @@ func (s *DatabasesService) ListDatabases(ctx context.Context, _ *sharedv1.ListRe
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, "databases")
 	cols, err := s.databases.ListDatabases(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -66,6 +82,7 @@ func (s *DatabasesService) GetDatabase(ctx context.Context, req *serverv1.GetDat
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditDatabaseResource(req.GetId()))
 	col, err := s.databases.GetDatabase(ctx, projectID, req.GetId())
 	if err != nil {
 		return nil, err
@@ -81,6 +98,7 @@ func (s *DatabasesService) DeleteDatabase(ctx context.Context, req *serverv1.Get
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditDatabaseResource(req.GetId()))
 	if err := s.databases.DeleteDatabase(ctx, projectID, req.GetId()); err != nil {
 		return nil, err
 	}
@@ -92,6 +110,7 @@ func (s *DatabasesService) CreateCollection(ctx context.Context, req *serverv1.C
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetId()))
 	perms, err := databases.ParsePermissionStrings(req.GetPermissions())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -118,6 +137,7 @@ func (s *DatabasesService) ListCollections(ctx context.Context, req *serverv1.Li
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections")
 	cols, total, next, err := s.databases.ListCollections(ctx, projectID, req.GetDatabaseId(), databases.ListQuery{
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -140,6 +160,7 @@ func (s *DatabasesService) GetCollection(ctx context.Context, req *serverv1.GetC
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	col, err := s.databases.GetCollection(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId())
 	if err != nil {
 		return nil, err
@@ -155,6 +176,7 @@ func (s *DatabasesService) DeleteCollection(ctx context.Context, req *serverv1.G
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	if err := s.databases.DeleteCollection(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId()); err != nil {
 		return nil, err
 	}
@@ -166,6 +188,7 @@ func (s *DatabasesService) UpdateCollection(ctx context.Context, req *serverv1.U
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	patch := databases.CollectionPatch{Name: req.GetName()}
 	if req.Permissions != nil {
 		perms, err := databases.ParsePermissionStrings(req.GetPermissions().GetValues())
@@ -200,6 +223,7 @@ func (s *DatabasesService) CreateAttribute(ctx context.Context, req *serverv1.Cr
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	attr := databases.Attribute{
 		ID:       req.GetKey(),
 		Key:      req.GetKey(),
@@ -230,6 +254,7 @@ func (s *DatabasesService) CreateIndex(ctx context.Context, req *serverv1.Create
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	idx := databases.Index{
 		ID:         req.GetId(),
 		Type:       req.GetType(),
@@ -252,6 +277,7 @@ func (s *DatabasesService) DeleteAttribute(ctx context.Context, req *serverv1.De
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	if err := s.databases.DeleteAttribute(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetKey()); err != nil {
 		return nil, err
 	}
@@ -263,6 +289,7 @@ func (s *DatabasesService) DeleteIndex(ctx context.Context, req *serverv1.Delete
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	if err := s.databases.DeleteIndex(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetIndexId()); err != nil {
 		return nil, err
 	}
@@ -273,6 +300,10 @@ func (s *DatabasesService) CreateDocument(ctx context.Context, req *serverv1.Cre
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
+	if req.GetDocumentId() != "" {
+		ctx = contexts.WithAuditResource(ctx, auditDocumentResource(req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()))
 	}
 	data := map[string]any{}
 	if req.GetData() != nil {
@@ -303,6 +334,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
@@ -330,6 +362,7 @@ func (s *DatabasesService) GetDocument(ctx context.Context, req *serverv1.GetDoc
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditDocumentResource(req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()))
 	doc, err := s.databases.GetDocument(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
@@ -342,6 +375,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditDocumentResource(req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()))
 	perms, err := parseOptionalPermissions(req.GetPermissions())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -368,6 +402,7 @@ func (s *DatabasesService) BulkUpdateDocuments(ctx context.Context, req *serverv
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	perms, err := parseOptionalPermissions(req.GetPermissions())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -393,6 +428,7 @@ func (s *DatabasesService) BulkDeleteDocuments(ctx context.Context, req *serverv
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	n, err := s.databases.BulkDeleteDocuments(
 		ctx,
 		projectID,
@@ -412,6 +448,7 @@ func (s *DatabasesService) DeleteDocument(ctx context.Context, req *serverv1.Get
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditDocumentResource(req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()))
 	if err := s.databases.DeleteDocument(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), dbPrincipal(ctx)); err != nil {
 		return nil, err
 	}
@@ -423,6 +460,7 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.Lis
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	count, err := s.databases.CountDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetQueries(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err

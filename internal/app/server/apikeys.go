@@ -8,9 +8,16 @@ import (
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+// API key scope 上限（B2）：每项 ≤64 字符、最多 32 项。
+const (
+	maxAPIKeyScopes      = 32
+	maxAPIKeyScopeLength = 64
 )
 
 type APIKeys struct {
@@ -34,6 +41,14 @@ func (a *APIKeys) Create(ctx context.Context, cmd CreateAPIKeyCommand) (*project
 	}
 	if len(cmd.Scopes) == 0 {
 		return nil, "", status.Error(codes.InvalidArgument, "scopes is required (use \"*\" for all scopes)")
+	}
+	if len(cmd.Scopes) > maxAPIKeyScopes {
+		return nil, "", status.Errorf(codes.InvalidArgument, "scopes exceeds maximum of %d", maxAPIKeyScopes)
+	}
+	for _, s := range cmd.Scopes {
+		if len(s) > maxAPIKeyScopeLength || !interceptor.ValidAPIKeyScope(s) {
+			return nil, "", status.Errorf(codes.InvalidArgument, "invalid scope %q (allowed: * | all | <resource> | <resource>.read | <resource>.write)", s)
+		}
 	}
 	id := idgen.UUID().String()
 	secret := idgen.UUID().String() + idgen.UUID().String()

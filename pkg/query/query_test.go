@@ -78,3 +78,21 @@ func TestParseMany(t *testing.T) {
 	require.Equal(t, 10, q.Limit)
 	require.Equal(t, 20, q.Offset)
 }
+
+// TestParse_NegativeLimitOffset (A1): 解析期 fail-fast，负数 limit/offset 直接报错，
+// 防止透传到 PG 变成 LIMIT -1（全表返回）。
+func TestParse_NegativeLimitOffset(t *testing.T) {
+	for _, raw := range []string{`limit(-1)`, `limit(-100)`, `offset(-1)`, `offset(-999)`} {
+		t.Run(raw, func(t *testing.T) {
+			_, err := Parse(raw)
+			require.Error(t, err)
+		})
+	}
+	// 正值不受影响。
+	q, err := Parse(`limit(0)`)
+	require.NoError(t, err)
+	require.Equal(t, 0, q.Limit)
+	q, err = Parse(`offset(0)`)
+	require.NoError(t, err)
+	require.Equal(t, 0, q.Offset)
+}

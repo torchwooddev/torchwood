@@ -13,6 +13,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestClientDatabases_DocumentCRUD(t *testing.T) {
@@ -142,6 +144,97 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 
 	_, err = clientUC.GetDocument(ctx, projectID, "app", "private", created.ID)
 	require.Error(t, err)
+}
+
+// TestClientDatabases_PrivateDocumentEnforced (B1): 用户集合 documentSecurity=true
+// 下"私有文档"（ownerDocumentPermissions：read/update/delete:user:<id>）文档级优先：
+// 匿名读拒、匿名列表不可见、他用户改删拒、owner 可读写删。
+// 集合级配 read:any —— 旧 OR 语义下私有文档会全公开，本测试验证文档级覆盖。
+func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	projectRepo := bunrepo.NewProjectRepository(db)
+	account := NewTestAccount(testConfig(), projectRepo, docDB)
+	user, _, _, err := account.SignUp(ctx, SignUpCommand{
+		ProjectID: projectID,
+		Email:     "private-doc@torchwood.local",
+		Password:  "User@123456",
+		Name:      "Private Doc Owner",
+	})
+	require.NoError(t, err)
+
+	serverUC := appserver.NewDatabases(projectRepo, docDB)
+	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "notes", "Notes", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, []databases.Permission{
+		// 集合级 read:any：B1 下被文档级权限覆盖（旧 OR 语义下私有文档全公开）。
+		{Type: "read", Role: "any"},
+		{Type: "create", Role: "users"},
+	}, true))
+
+	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    user.ID,
+		Roles:     []string{"users", "user:" + user.ID},
+	})
+	clientUC := NewDatabases(projectRepo, docDB)
+
+	created, err := clientUC.CreateDocument(userCtx, "app", "notes", "", map[string]any{
+		"title": "Private note",
+	}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, created.ID)
+	require.Len(t, created.Permissions, 3)
+
+	// 匿名：GetDocument 拒绝，列表不可见。
+	_, err = clientUC.GetDocument(ctx, projectID, "app", "notes", created.ID)
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "anonymous read of private doc should be denied")
+
+	anonList, anonTotal, _, err := clientUC.ListDocuments(ctx, projectID, "app", "notes", databases.Query{})
+	require.NoError(t, err)
+	require.Zero(t, anonTotal)
+	require.Empty(t, anonList)
+
+	// 他用户：读/改/删均拒绝。
+	otherCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    "other-user",
+		Roles:     []string{"users", "user:other-user"},
+	})
+	_, err = clientUC.GetDocument(otherCtx, projectID, "app", "notes", created.ID)
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user read should be denied")
+
+	_, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil)
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user update should be denied")
+
+	err = clientUC.DeleteDocument(otherCtx, "app", "notes", created.ID)
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user delete should be denied")
+
+	// owner：读/改/删均放行。
+	got, err := clientUC.GetDocument(userCtx, projectID, "app", "notes", created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Private note", got.Data["title"])
+
+	updated, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
+		"title": "Updated note",
+	}, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, "Updated note", updated.Data["title"])
+
+	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID))
 }
 
 func testConfig() *config.AppConfig {

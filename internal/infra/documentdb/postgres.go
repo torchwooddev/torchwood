@@ -53,6 +53,14 @@ func isWriteProtectedSystemCollection(databaseID, collectionID string) bool {
 
 const maxQueryLimit = 100
 
+// maxQueryOffset 是 offset 深翻页上限，超过则拒绝（防 10^9 量级 offset 拖慢查询）。
+const maxQueryOffset = 10000
+
+// A2 输入上限：queries 条数 / 单条查询串长度 / equal 多值个数。
+const maxQueryCount = 100
+const maxQueryStringLen = 4096
+const maxFilterValues = 1000
+
 type postgresDocumentDB struct {
 	db *clients.Database
 
@@ -413,7 +421,7 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 		columns = ", " + columns
 	}
 	sql := fmt.Sprintf(`INSERT INTO %s (_id%s) VALUES (%s)`, tbl, columns, allPlaceholders)
-	if _, err := p.db.DB.ExecContext(ctx, sql, args...); err != nil {
+	if _, err := p.conn(ctx).ExecContext(ctx, sql, args...); err != nil {
 		if isUniqueViolation(err) {
 			return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 		}
@@ -441,7 +449,7 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 		return nil, err
 	}
 	schema := schemaName(internalID, databaseID)
-	row := p.db.DB.QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, collectionID)), docID, internalID)
+	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, collectionID)), docID, internalID)
 	doc, err := scanDocumentJSON(row)
 	if err != nil {
 		return nil, err
@@ -476,9 +484,9 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 		isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return doc, ErrPermissionDenied
 	}
-	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "read", principal); err != nil {
-		return doc, err
-	}
+	// D3：UpdateDocument 仅检查 update 权限，不再强制 read 预检
+	// （对齐 Appwrite/Supabase：update 策略独立于 select 策略；B1 文档级优先下
+	// "仅持 update 权限"的文档对持权者可用）。
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "update", principal); err != nil {
 		return doc, err
 	}
@@ -493,7 +501,7 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 	if len(setParts) > 0 {
 		args = append(args, doc.ID, internalID)
 		sql := fmt.Sprintf(`UPDATE %s SET %s WHERE _id = ? AND _tenant = ?`, tbl, strings.Join(setParts, ", "))
-		if _, err := p.db.DB.ExecContext(ctx, sql, args...); err != nil {
+		if _, err := p.conn(ctx).ExecContext(ctx, sql, args...); err != nil {
 			if isUniqueViolation(err) {
 				return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 			}
@@ -508,7 +516,10 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 			return doc, err
 		}
 	}
-	updated, err := p.GetDocument(ctx, projectID, databaseID, collectionID, doc.ID, principal)
+	// D5：尾随读回用 SystemPrincipal（与 CreateDocument 一致）——B1 下把文档权限
+	// 改成不含自己 read 的集合后数据已提交，若仍以调用方 principal 读回会返回
+	// PermissionDenied（半完成状态）。
+	updated, err := p.GetDocument(ctx, projectID, databaseID, collectionID, doc.ID, databases.SystemPrincipal)
 	if err != nil {
 		return doc, err
 	}
@@ -536,13 +547,16 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 	if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
 		return err
 	}
-	_, err = p.db.DB.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, collectionID)), docID, internalID)
+	_, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, collectionID)), docID, internalID)
 	return err
 }
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateQueryInput(q.Queries); err != nil {
 		return nil, err
 	}
 	parsed, err := query.ParseMany(q.Queries)
@@ -553,16 +567,36 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	schema := schemaName(internalID, databaseID)
 	tbl := tableName(schema, collectionID)
 
+	// 非 System 路径显式获取集合一次（coll==nil → NotFound，行为从 403 收紧为 404），
+	// 复用给权限过滤与字段白名单校验；System 信任路径零额外查询（跳过白名单）。
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	var coll *databases.Collection
+	if !principal.IsSystem() {
+		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			return nil, err
+		}
+		if coll == nil {
+			return nil, status.Error(codes.NotFound, "collection not found")
+		}
+	}
+
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
 	if !principal.IsSystem() {
-		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, principal)
+		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
 			return nil, err
 		}
 		if permWhere != "" {
 			whereParts = append(whereParts, permWhere)
 			args = append(args, permArgs...)
+		}
+	}
+
+	if coll != nil {
+		if err := validateQueryFields(parsed, coll, collectionID, isSystem); err != nil {
+			return nil, err
 		}
 	}
 
@@ -579,7 +613,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if limit == 0 {
 		limit = int(q.PageSize)
 	}
-	if limit == 0 {
+	if limit <= 0 {
 		limit = 50
 	}
 	if limit > maxQueryLimit {
@@ -590,6 +624,9 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		if off, err := crud.DecodePageToken(q.PageToken); err == nil {
 			offset = int(off)
 		}
+	}
+	if offset > maxQueryOffset {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
 	}
 
 	cursor := ""
@@ -621,7 +658,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 			return nil, err
 		}
 		var cursorValue any
-		err := p.db.DB.QueryRowContext(ctx,
+		err := p.conn(ctx).QueryRowContext(ctx,
 			fmt.Sprintf(`SELECT %s FROM %s WHERE _id = ? AND _tenant = ?`, quoteIdent(sortField), tbl),
 			cursor, internalID,
 		).Scan(&cursorValue)
@@ -643,14 +680,14 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
 	var total int64
-	if err := p.db.DB.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+	if err := p.conn(ctx).QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 		return nil, err
 	}
 
 	querySQL := fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE %s %s LIMIT ? OFFSET ?`, tbl, strings.Join(whereParts, " AND "), orderSQL)
 	args = append(args, limit, offset)
 
-	rows, err := p.db.DB.QueryContext(ctx, querySQL, args...)
+	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -698,23 +735,46 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	if err != nil {
 		return 0, err
 	}
+	if err := validateQueryInput(queries); err != nil {
+		return 0, err
+	}
 	parsed, err := query.ParseMany(queries)
 	if err != nil {
 		return 0, fmt.Errorf("invalid query: %w", err)
 	}
+	if parsed.Offset > maxQueryOffset {
+		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
+	}
 	schema := schemaName(internalID, databaseID)
 	tbl := tableName(schema, collectionID)
+
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	var coll *databases.Collection
+	if !principal.IsSystem() {
+		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			return 0, err
+		}
+		if coll == nil {
+			return 0, status.Error(codes.NotFound, "collection not found")
+		}
+	}
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
 	if !principal.IsSystem() {
-		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, principal)
+		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
 			return 0, err
 		}
 		if permWhere != "" {
 			whereParts = append(whereParts, permWhere)
 			args = append(args, permArgs...)
+		}
+	}
+	if coll != nil {
+		if err := validateQueryFields(parsed, coll, collectionID, isSystem); err != nil {
+			return 0, err
 		}
 	}
 	filterWhere, filterArgs, _, err := buildAppwriteQuery(parsed)
@@ -728,7 +788,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 
 	var total int64
 	sql := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
-	err = p.db.DB.QueryRowContext(ctx, sql, args...).Scan(&total)
+	err = p.conn(ctx).QueryRowContext(ctx, sql, args...).Scan(&total)
 	return total, err
 }
 
@@ -760,7 +820,7 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		}
 		if !exists {
 			m := &model.DocumentDatabase{ID: dbID, ProjectID: projectID, Name: "default", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-			if _, err := p.conn(ctx).NewInsert().Model(m).Exec(ctx); err != nil {
+			if _, err := p.conn(ctx).NewInsert().Model(m).On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx); err != nil {
 				return err
 			}
 		}
@@ -1021,8 +1081,21 @@ func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, proje
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
-	if _, err := p.conn(ctx).NewInsert().Model(coll).Exec(ctx); err != nil {
+	res, err := p.conn(ctx).NewInsert().Model(coll).On("CONFLICT (project_id, database_id, id) DO NOTHING").Exec(ctx)
+	if err != nil {
 		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// 集合行已存在：系统集合视为幂等成功（并发首请求 23505 防护，极端竞态下
+		// 子表缺失属人工可修复场景）；用户集合返回 ErrDuplicateKey（→ AlreadyExists）。
+		if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+			return nil
+		}
+		return ErrDuplicateKey
 	}
 	for _, attr := range attrs {
 		m := &model.DocumentAttribute{
@@ -1138,12 +1211,12 @@ func (p *postgresDocumentDB) setPermissions(ctx context.Context, schema, collect
 		args = append(args, tenant, collectionID, documentID, perm.Type, perm.Role)
 	}
 	sql := base + strings.Join(vals, ", ") + " ON CONFLICT DO NOTHING"
-	_, err := p.db.DB.ExecContext(ctx, sql, args...)
+	_, err := p.conn(ctx).ExecContext(ctx, sql, args...)
 	return err
 }
 
 func (p *postgresDocumentDB) clearPermissions(ctx context.Context, schema, collectionID, documentID string, tenant int64) error {
-	_, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ? AND _document = ?`, permsTableName(schema)), tenant, collectionID, documentID)
+	_, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ? AND _document = ?`, permsTableName(schema)), tenant, collectionID, documentID)
 	return err
 }
 
@@ -1276,6 +1349,91 @@ func mapQueryField(field string) string {
 	return field
 }
 
+// systemQueryFields 是查询白名单中的系统列（含 $ 别名映射后的内部名）。
+var systemQueryFields = []string{"_id", "_created_at", "_updated_at"}
+
+// sensitiveQueryFields 是 default 库系统集合中禁止作为查询过滤/排序条件的
+// 凭据/令牌类列（任何角色不得探测）；仅按 databases.IsSystemCollection 限定，
+// 自定义库同名集合不受影响。phone 等 PII 管理列按 D4 决策保留可查。
+var sensitiveQueryFields = map[string]map[string]struct{}{
+	"users":      {"password_hash": {}, "prefs": {}, "labels": {}},
+	"sessions":   {"secret_hash": {}},
+	"identities": {"provider_data": {}},
+}
+
+// validateQueryFields 校验非 System 查询路径（A7）：Filters/Orders/Selects 字段
+// 白名单（系统列 + 声明 attrs）、敏感列黑名单、search 的 fulltext 索引约束。
+// SystemPrincipal 路径不调用本函数（信任内部调用，零额外元数据查询）。
+func validateQueryFields(parsed *query.Query, coll *databases.Collection, collectionID string, isSystem bool) error {
+	allowed := make(map[string]struct{}, len(systemQueryFields)+len(coll.Attributes))
+	for _, f := range systemQueryFields {
+		allowed[f] = struct{}{}
+	}
+	for _, attr := range coll.Attributes {
+		allowed[attr.Key] = struct{}{}
+	}
+	fulltextAttrs := map[string]struct{}{}
+	for _, idx := range coll.Indexes {
+		if strings.ToLower(idx.Type) == "fulltext" {
+			for _, a := range idx.Attributes {
+				fulltextAttrs[a] = struct{}{}
+			}
+		}
+	}
+
+	checkField := func(name string) error {
+		field := mapQueryField(name)
+		if _, ok := allowed[field]; !ok {
+			return status.Error(codes.InvalidArgument, fmt.Sprintf("invalid query field: %s", name))
+		}
+		if isSystem {
+			if sensitive, ok := sensitiveQueryFields[collectionID]; ok {
+				if _, blocked := sensitive[field]; blocked {
+					return status.Error(codes.InvalidArgument, fmt.Sprintf("field is not queryable: %s", name))
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, f := range parsed.Filters {
+		if err := checkField(f.Attribute); err != nil {
+			return err
+		}
+		if f.Op == "search" {
+			field := mapQueryField(f.Attribute)
+			if _, ok := fulltextAttrs[field]; !ok {
+				return status.Error(codes.InvalidArgument, fmt.Sprintf("search requires a fulltext index on: %s", f.Attribute))
+			}
+		}
+	}
+	for _, o := range parsed.Orders {
+		if err := checkField(o.Attribute); err != nil {
+			return err
+		}
+	}
+	for _, s := range parsed.Selects {
+		if err := checkField(s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateQueryInput 校验 List/Count 的 queries 输入上限（A2）：条数、
+// 单条长度；超限直接 InvalidArgument，防止超大 IN 参数击穿 PG 参数上限。
+func validateQueryInput(queries []string) error {
+	if len(queries) > maxQueryCount {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("queries count exceeds maximum of %d", maxQueryCount))
+	}
+	for _, raw := range queries {
+		if len(raw) > maxQueryStringLen {
+			return status.Error(codes.InvalidArgument, fmt.Sprintf("query string exceeds maximum length of %d", maxQueryStringLen))
+		}
+	}
+	return nil
+}
+
 func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 	var conds []string
 	var args []any
@@ -1287,6 +1445,9 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 		col := "d." + quoteIdent(field)
 		switch f.Op {
 		case "equal":
+			if len(f.Values) > maxFilterValues {
+				return "", nil, "", status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
+			}
 			if len(f.Values) == 1 {
 				conds = append(conds, fmt.Sprintf("%s = ?", col))
 				args = append(args, f.Values[0])
@@ -1298,6 +1459,9 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 				}
 			}
 		case "notEqual":
+			if len(f.Values) > maxFilterValues {
+				return "", nil, "", status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
+			}
 			if len(f.Values) == 1 {
 				conds = append(conds, fmt.Sprintf("%s != ?", col))
 				args = append(args, f.Values[0])
@@ -1353,7 +1517,7 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 		for _, o := range parsed.Orders {
 			field := mapQueryField(o.Attribute)
 			if !safeNameRe.MatchString(field) {
-				continue
+				return "", nil, "", status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", o.Attribute))
 			}
 			dir := "ASC"
 			if o.Desc {

@@ -20,6 +20,9 @@ func NewAuditInterceptor(repo audit.Repository) *AuditInterceptor {
 }
 
 func (a *AuditInterceptor) UnaryAuditMiddleware(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	// 预置审计资源可变持有者：handler 内的 WithAuditResource 原地写入后，
+	// 本中间件在 handler 返回后仍能读取（context 值不可变，需共享可变槽）。
+	ctx = contexts.WithAuditResourceHolder(ctx)
 	resp, err := handler(ctx, req)
 	if a.repo == nil {
 		return resp, err

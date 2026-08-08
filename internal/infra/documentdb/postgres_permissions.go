@@ -7,6 +7,7 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 )
 
 func (p *postgresDocumentDB) ensureCollectionAccessible(coll *databases.Collection, principal databases.Principal) error {
@@ -29,7 +30,7 @@ func (p *postgresDocumentDB) getCollectionForAccess(ctx context.Context, project
 
 func (p *postgresDocumentDB) getDocumentPermissions(ctx context.Context, schema, collectionID, docID string, tenant int64) ([]databases.Permission, bool, error) {
 	permsTable := permsTableName(schema)
-	rows, err := p.db.DB.QueryContext(ctx,
+	rows, err := p.conn(ctx).QueryContext(ctx,
 		fmt.Sprintf(`SELECT _type, _permission FROM %s WHERE _tenant = ? AND _collection = ? AND _document = ?`, permsTable),
 		tenant, collectionID, docID,
 	)
@@ -82,14 +83,11 @@ func (p *postgresDocumentDB) checkDocumentPermission(
 func (p *postgresDocumentDB) listPermissionFilter(
 	ctx context.Context,
 	projectID, databaseID, collectionID, schema string,
+	coll *databases.Collection,
 	principal databases.Principal,
 ) (where string, args []any, err error) {
 	if principal.IsSystem() {
 		return "", nil, nil
-	}
-	coll, err := p.getCollectionForAccess(ctx, projectID, databaseID, collectionID)
-	if err != nil {
-		return "", nil, err
 	}
 	if err := p.ensureCollectionAccessible(coll, principal); err != nil {
 		return "", nil, err
@@ -103,8 +101,20 @@ func (p *postgresDocumentDB) listPermissionFilter(
 
 	expanded := databases.ExpandPermissionRoles(principal.Roles)
 	permsTable := permsTableName(schema)
+	// 用户集合 documentSecurity=true 且集合级有 read（系统集合+集合级 read 已在上方
+	// Skip 分支返回）：文档有 _perms 必须匹配读权限，无 _perms 由集合级 read 兜底
+	// （与 AllowsDocumentAccess 的 docHasPerms=false → collOK 一致，B1）。
+	// 两个子查询均关联 p._tenant = d._tenant（A5）。
+	if databases.CollectionAllows(coll.Permissions, "read", expanded) && coll.DocumentSecurity {
+		where = fmt.Sprintf(
+			`(EXISTS (SELECT 1 FROM %s p WHERE p._tenant = d._tenant AND p._collection = ? AND p._document = d._id AND p._type = 'read' AND p._permission = ANY(?::text[])) OR NOT EXISTS (SELECT 1 FROM %s p2 WHERE p2._tenant = d._tenant AND p2._collection = ? AND p2._document = d._id))`,
+			permsTable, permsTable,
+		)
+		args = []any{collectionID, pgTextArray(expanded), collectionID}
+		return where, args, nil
+	}
 	where = fmt.Sprintf(
-		`EXISTS (SELECT 1 FROM %s p WHERE p._collection = ? AND p._document = d._id AND p._type = 'read' AND p._permission = ANY(?::text[]))`,
+		`EXISTS (SELECT 1 FROM %s p WHERE p._tenant = d._tenant AND p._collection = ? AND p._document = d._id AND p._type = 'read' AND p._permission = ANY(?::text[]))`,
 		permsTable,
 	)
 	args = []any{collectionID, pgTextArray(expanded)}
@@ -145,6 +155,30 @@ func (p *postgresDocumentDB) BulkUpdateDocuments(
 	if len(documentIDs) == 0 {
 		return 0, nil
 	}
+	// 已在外层事务中（上层 RunInTx）时不嵌套，直接复用外层事务；
+	// 否则整体包在单个事务里，中途失败整体回滚（行为从"部分成功"收紧为"原子"）。
+	if clients.InTx(ctx) {
+		return p.bulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, perms, principal)
+	}
+	var affected int64
+	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		n, err := p.bulkUpdateDocuments(txCtx, projectID, databaseID, collectionID, documentIDs, data, perms, principal)
+		affected = n
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	return affected, nil
+}
+
+func (p *postgresDocumentDB) bulkUpdateDocuments(
+	ctx context.Context,
+	projectID, databaseID, collectionID string,
+	documentIDs []string,
+	data map[string]any,
+	perms []databases.Permission,
+	principal databases.Principal,
+) (int64, error) {
 	var affected int64
 	for _, docID := range documentIDs {
 		update := databases.DocumentUpdate{
@@ -168,6 +202,26 @@ func (p *postgresDocumentDB) BulkDeleteDocuments(
 	if len(documentIDs) == 0 {
 		return 0, nil
 	}
+	if clients.InTx(ctx) {
+		return p.bulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
+	}
+	var affected int64
+	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		n, err := p.bulkDeleteDocuments(txCtx, projectID, databaseID, collectionID, documentIDs, principal)
+		affected = n
+		return err
+	}); err != nil {
+		return 0, err
+	}
+	return affected, nil
+}
+
+func (p *postgresDocumentDB) bulkDeleteDocuments(
+	ctx context.Context,
+	projectID, databaseID, collectionID string,
+	documentIDs []string,
+	principal databases.Principal,
+) (int64, error) {
 	var affected int64
 	for _, docID := range documentIDs {
 		if err := p.DeleteDocument(ctx, projectID, databaseID, collectionID, docID, principal); err != nil {
@@ -187,7 +241,7 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		return fmt.Errorf("invalid attribute key: %s", key)
 	}
 	schema := schemaName(internalID, databaseID)
-	if _, err := p.db.DB.ExecContext(ctx,
+	if _, err := p.conn(ctx).ExecContext(ctx,
 		fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, collectionID), quoteIdent(key)),
 	); err != nil {
 		return err
@@ -205,7 +259,7 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 	}
 	schema := schemaName(internalID, databaseID)
 	idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, indexID))
-	if _, err := p.db.DB.ExecContext(ctx,
+	if _, err := p.conn(ctx).ExecContext(ctx,
 		fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
 	); err != nil {
 		return err

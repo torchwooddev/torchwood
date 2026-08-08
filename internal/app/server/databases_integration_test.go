@@ -11,6 +11,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestDatabases_AcceptanceChain covers manual checklist §4.14–4.18:
@@ -242,7 +244,11 @@ func TestDatabases_ListCollections_Pagination(t *testing.T) {
 }
 
 // TestDatabases_CreateDocument_PermissionTemplates (#2a): user:{id}/team:{id}
-// 模板在权限校验前替换为调用者真实角色并落库。
+// 模板在权限校验前替换为调用者真实角色并落库（B1 重写）：
+// 场景 1 — 文档权限含 update:user:alice，alice/持有 user:alice 的调用者可更新权限
+// （文档级优先下模板展开为 update:user:alice，update 检查命中）；
+// 场景 2 — 文档权限仅含 read（无 update），更新权限应被拒（B1 文档级优先：
+// "仅 read 权限即改权限" 不再被集合级 update 兜底放行）。
 func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -270,14 +276,18 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	}, true))
 
 	userPrincipal := databases.Principal{Roles: []string{"users", "user:alice"}}
-	perms, err := databases.ParsePermissionStrings([]string{"read:user:{id}"})
+	perms, err := databases.ParsePermissionStrings([]string{"read:user:{id}", "update:user:{id}"})
 	require.NoError(t, err)
 	created, err := uc.CreateDocument(ctx, projectID, "app", "docs", "", map[string]any{"title": "t"}, perms, userPrincipal)
 	require.NoError(t, err)
-	require.Len(t, created.Permissions, 1)
+	require.Len(t, created.Permissions, 2)
 	require.Equal(t, "read", created.Permissions[0].Type)
 	require.Equal(t, "user:alice", created.Permissions[0].Role)
+	require.Equal(t, "update", created.Permissions[1].Type)
+	require.Equal(t, "user:alice", created.Permissions[1].Role)
 
+	// 场景 1：文档权限含 update:user:alice → 持有 user:alice 的调用者可更新权限
+	// （模板 team:{id} 展开为 team:t1）。
 	teamPrincipal := databases.Principal{Roles: []string{"users", "user:alice", "team:t1"}}
 	upPerms, err := databases.ParsePermissionStrings([]string{"update:team:{id}"})
 	require.NoError(t, err)
@@ -286,6 +296,89 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	require.Len(t, updated.Permissions, 1)
 	require.Equal(t, "update", updated.Permissions[0].Type)
 	require.Equal(t, "team:t1", updated.Permissions[0].Role)
+
+	// 场景 2：文档权限仅含 read（无 update）→ 更新权限被拒（B1 文档级优先，
+	// 集合级 update:user:alice 不再兜底；grantable 校验使用 alice 持有的角色）。
+	readOnly, err := uc.CreateDocument(ctx, projectID, "app", "docs", "", map[string]any{"title": "ro"}, []databases.Permission{
+		{Type: "read", Role: "user:alice"},
+	}, userPrincipal)
+	require.NoError(t, err)
+	ownUpPerms, err := databases.ParsePermissionStrings([]string{"update:user:{id}"})
+	require.NoError(t, err)
+	_, err = uc.UpdateDocument(ctx, projectID, "app", "docs", readOnly.ID, nil, ownUpPerms, nil, userPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+// TestDatabases_BulkDocuments_MaxOperations (A4): app 层 Bulk 条数超上限
+// （maxBulkOperations+1）→ InvalidArgument，不触达 docDB。
+func TestDatabases_BulkDocuments_MaxOperations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
+
+	ids := make([]string, maxBulkOperations+1)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("doc-%04d", i)
+	}
+	_, err := uc.BulkUpdateDocuments(ctx, projectID, "app", "docs", ids, map[string]any{"title": "x"}, nil, principal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	_, err = uc.BulkDeleteDocuments(ctx, projectID, "app", "docs", ids, principal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// TestDatabases_CreateDocument_TypeMismatch (A6): 写入类型不匹配（string 写入
+// BIGINT 列）→ PG 22P02 → app 层 MapDocumentDBError 映射为 InvalidArgument。
+func TestDatabases_CreateDocument_TypeMismatch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "views", Key: "views", Type: "integer"},
+	}, nil, nil, true))
+
+	_, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"views": "abc"}, nil, principal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 合法写入不受影响。
+	created, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"views": 42}, nil, principal)
+	require.NoError(t, err)
+	require.NotEmpty(t, created.ID)
 }
 
 func docIDsOf(docs []databases.Document) []string {

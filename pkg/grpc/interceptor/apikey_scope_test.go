@@ -12,11 +12,17 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	if !APIKeyScopeAllowed(method, []string{"*"}) {
 		t.Fatal("wildcard scope should allow")
 	}
+	if !APIKeyScopeAllowed(method, []string{"all"}) {
+		t.Fatal("all scope should allow")
+	}
 	if !APIKeyScopeAllowed(method, []string{"users"}) {
-		t.Fatal("matching resource scope should allow")
+		t.Fatal("matching bare resource scope should allow")
 	}
 	if !APIKeyScopeAllowed(method, []string{"users.read"}) {
-		t.Fatal("prefixed resource scope should allow")
+		t.Fatal("read scope should allow read method")
+	}
+	if APIKeyScopeAllowed(method, []string{"users.write"}) {
+		t.Fatal("write scope must NOT allow read method")
 	}
 	if APIKeyScopeAllowed(method, []string{"storage"}) {
 		t.Fatal("unrelated scope should deny")
@@ -33,12 +39,15 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 		t.Fatal("oauthproviders scope should allow oauth providers method")
 	}
 	if !APIKeyScopeAllowed(oauthMethod, []string{"oauthproviders.read"}) {
-		t.Fatal("prefixed oauthproviders scope should allow oauth providers method")
+		t.Fatal("read scope should allow oauth providers method")
 	}
 
 	unmapped := "/torchwood.server.v1.SomeFutureService/DoSomething"
 	if APIKeyScopeAllowed(unmapped, []string{"*"}) {
 		t.Fatal("unmapped service must fail closed even for wildcard scope")
+	}
+	if APIKeyScopeAllowed(unmapped, []string{"all"}) {
+		t.Fatal("unmapped service must fail closed even for all scope")
 	}
 
 	createMethod := "/torchwood.server.v1.StorageService/CreateFile"
@@ -49,19 +58,92 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	if !APIKeyScopeAllowed(getMethod, []string{"storage.read"}) {
 		t.Fatal("storage.read scope should allow download")
 	}
-	// 注意前缀匹配语义：storage.read 也命中 storage. 前缀，对 CreateFile 同样放行；
-	// 因此 HTTP 层需要按请求方法区分 GetFile/CreateFile，供未来细粒度 scope 落地方便。
-	if !APIKeyScopeAllowed(createMethod, []string{"storage.read"}) {
-		t.Fatal("storage.read scope matches storage prefix and should allow upload per prefix rule")
+	// B2 精确匹配：storage.read 不再因前缀匹配放行写方法（原前缀语义在此收紧）。
+	if APIKeyScopeAllowed(createMethod, []string{"storage.read"}) {
+		t.Fatal("storage.read scope must NOT allow upload")
+	}
+	if APIKeyScopeAllowed(getMethod, []string{"storage.write"}) {
+		t.Fatal("storage.write scope must NOT allow download")
 	}
 	if APIKeyScopeAllowed(getMethod, []string{"users"}) {
 		t.Fatal("unrelated scope should deny download")
 	}
 	if !APIKeyScopeAllowed(createMethod, []string{"storage"}) {
-		t.Fatal("resource scope should allow upload")
+		t.Fatal("bare resource scope should allow upload")
 	}
 	if !APIKeyScopeAllowed(getMethod, []string{"storage"}) {
-		t.Fatal("resource scope should allow download")
+		t.Fatal("bare resource scope should allow download")
+	}
+
+	// Databases：方法级 read/write 细分（B2）。
+	listDocs := "/torchwood.server.v1.DatabasesService/ListDocuments"
+	getDoc := "/torchwood.server.v1.DatabasesService/GetDocument"
+	countDocs := "/torchwood.server.v1.DatabasesService/CountDocuments"
+	deleteDB := "/torchwood.server.v1.DatabasesService/DeleteDatabase"
+	createDoc := "/torchwood.server.v1.DatabasesService/CreateDocument"
+	bulkUpdate := "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
+	if !APIKeyScopeAllowed(listDocs, []string{"databases.read"}) {
+		t.Fatal("databases.read should allow ListDocuments")
+	}
+	if !APIKeyScopeAllowed(getDoc, []string{"databases.read"}) {
+		t.Fatal("databases.read should allow GetDocument")
+	}
+	if !APIKeyScopeAllowed(countDocs, []string{"databases.read"}) {
+		t.Fatal("databases.read should allow CountDocuments")
+	}
+	if APIKeyScopeAllowed(deleteDB, []string{"databases.read"}) {
+		t.Fatal("databases.read must NOT allow DeleteDatabase")
+	}
+	if APIKeyScopeAllowed(createDoc, []string{"databases.read"}) {
+		t.Fatal("databases.read must NOT allow CreateDocument")
+	}
+	if APIKeyScopeAllowed(bulkUpdate, []string{"databases.read"}) {
+		t.Fatal("databases.read must NOT allow BulkUpdateDocuments")
+	}
+	if !APIKeyScopeAllowed(deleteDB, []string{"databases.write"}) {
+		t.Fatal("databases.write should allow DeleteDatabase")
+	}
+	if !APIKeyScopeAllowed(createDoc, []string{"databases.write"}) {
+		t.Fatal("databases.write should allow CreateDocument")
+	}
+	if !APIKeyScopeAllowed(bulkUpdate, []string{"databases.write"}) {
+		t.Fatal("databases.write should allow BulkUpdateDocuments")
+	}
+	if APIKeyScopeAllowed(listDocs, []string{"databases.write"}) {
+		t.Fatal("databases.write must NOT allow ListDocuments")
+	}
+	// 裸 databases scope 全放行。
+	if !APIKeyScopeAllowed(listDocs, []string{"databases"}) {
+		t.Fatal("bare databases scope should allow read methods")
+	}
+	if !APIKeyScopeAllowed(deleteDB, []string{"databases"}) {
+		t.Fatal("bare databases scope should allow write methods")
+	}
+}
+
+func TestValidAPIKeyScope(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range []string{
+		"*", "all",
+		"databases", "users", "teams", "storage", "projects", "oauthproviders", "apikeys",
+		"databases.read", "databases.write",
+		"storage.read", "storage.write",
+		"users.read", "users.write",
+		"teams.read", "teams.write",
+		"projects.read", "projects.write",
+		"oauthproviders.read", "oauthproviders.write",
+		"apikeys.read", "apikeys.write",
+	} {
+		if !ValidAPIKeyScope(s) {
+			t.Fatalf("scope %q should be valid", s)
+		}
+	}
+
+	for _, s := range []string{"", "foo", "health", "health.read", "databases.delete", "databases.read.extra", "any", "users.read.write"} {
+		if ValidAPIKeyScope(s) {
+			t.Fatalf("scope %q should be invalid", s)
+		}
 	}
 }
 
