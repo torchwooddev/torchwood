@@ -1,0 +1,352 @@
+# Torchwood TypeScript SDK 指南
+
+> 本文档基于 `sdk/` 目录源码（`@torchwood/sdk` v0.1.0）编写，符号、方法与签名以
+> `sdk/typescript/src/` 为准。目标读者：应用开发者、LLM Agent / 自动化脚本集成方。
+> 关联：`docs/roadmap.md` §0（AI/Agent-Native 战略）、`sdk/README.md`。
+
+---
+
+## 1. SDK 定位
+
+`@torchwood/sdk` 是 Torchwood 的官方 TypeScript 客户端，封装 **Client API**（终端用户，
+JWT 鉴权）与 **Server API**（管理面，API Key + `X-Torchwood-Project` 鉴权），是
+Torchwood **AI/Agent-Native** 能力的前端集成层 —— 便于 LLM Agent、自动化脚本与
+MCP Tool Server 以类型安全的方式调用后端。
+
+| 场景 | 推荐方式 | 说明 |
+|------|----------|------|
+| 管理面自动化（建用户、管文档、Storage） | **Server API** + API Key | 在 Console 或通过 `POST /v1/server/api-keys` 创建带 scope 的 Key |
+| 终端用户身份流（注册/登录/会话） | **Client API** + JWT | SDK 自动持久化 access token（内存态，`setAccessToken` 可覆盖） |
+| Agent 工具 schema 来源 | **OpenAPI** | `task generate-proto` 后在 `genproto/**/*.swagger.json` 获取 |
+| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入 `go run ./cmd/seed` 输出的 API Key |
+
+典型 Agent 工作流：用 scoped API Key 实例化 `Torchwood.withApiKey()` → 读取 OpenAPI
+或 SDK 类型 → 调用 Server Databases/Users/Storage API → 将结构化响应回传给 LLM。
+
+---
+
+## 2. 包结构与构建
+
+### 2.1 目录布局
+
+| 路径 | 说明 |
+|------|------|
+| `sdk/typescript/` | SDK 包 `@torchwood/sdk` |
+| `sdk/typescript/src/client/` | Client API 服务（Account / Databases / Teams） |
+| `sdk/typescript/src/server/` | Server API 服务（Health / Projects / Users / Teams / Databases / APIKeys / OAuthProviders / Storage） |
+| `sdk/typescript/src/graviton.ts` | `Torchwood` 门面类与静态工厂 |
+| `sdk/typescript/src/http.ts` | `HttpTransport` 传输层与 `TorchwoodConfig` 配置类型 |
+| `sdk/typescript/src/types.ts` | 手写 API 数据类型（Account、Document、User 等） |
+| `sdk/typescript/src/errors.ts` | `TorchwoodError` 异常类型 |
+| `sdk/demo/` | Web 演示站点（Vite，端口 5174） |
+
+### 2.2 包元信息
+
+- 名称：`@torchwood/sdk`，版本 `0.1.0`，license MIT，`engines.node >= 18`。
+- 模块格式：ESM（`"type": "module"`），`main` / `types` 指向 `dist/index.js` /
+  `dist/index.d.ts`，`exports` 仅暴露根入口 `.`。
+- 构建工具：仅依赖 `typescript`（devDependency），`npm run build` 即 `tsc -p tsconfig.json`
+  （ES2022 / NodeNext，输出到 `dist/`，含 `.d.ts` 声明与 sourcemap）。**SDK 不依赖
+  运行时第三方包**，HTTP 走全局 `fetch`（可在 `TorchwoodConfig.fetch` 注入自定义实现）。
+
+### 2.3 安装与构建
+
+```bash
+# 安装 SDK 与 demo 依赖并编译 SDK
+task sdk-install          # sdk/typescript 与 sdk/demo 各执行 npm install
+task sdk-build            # cd sdk/typescript && npm run build（tsc）
+
+# 在应用项目中引入（本地路径或发布后从 npm 安装）
+npm install @torchwood/sdk
+```
+
+若 `sdk/demo` 通过 `"@torchwood/sdk": "file:../typescript"` 本地引用，修改 SDK 源码后
+需重新执行 `task sdk-build` 再启动 demo（`task sdk-demo` 自带该依赖）。
+
+---
+
+## 3. 入口：`Torchwood` 类
+
+根入口导出：
+
+```typescript
+import { Torchwood, TorchwoodError } from "@torchwood/sdk";
+import type { TorchwoodConfig } from "@torchwood/sdk";
+```
+
+> 说明：`src/client/` 与 `src/server/` 各 Service 类（如 `AccountService`、
+> `ServerDatabasesService`）在包内导出，但 npm `exports` 只暴露根入口 `.`，
+> 常规使用一律通过 `Torchwood` 实例的属性访问。
+
+### 3.1 配置类型
+
+```typescript
+interface TorchwoodConfig {
+  endpoint: string;       // 例如 http://localhost:9080（grpc-gateway HTTP 地址）
+  projectId: string;      // 例如 "default"
+  apiKey?: string;        // Server API 使用（X-Api-Key）
+  accessToken?: string;   // Client API 使用（Authorization: Bearer）
+  fetch?: typeof fetch;   // 可选，注入自定义 fetch
+}
+```
+
+### 3.2 构造与静态工厂
+
+| 成员 | 签名 | 说明 |
+|------|------|------|
+| 构造器 | `new Torchwood(config)` | 直接构造 |
+| 静态工厂 | `Torchwood.create(config)` | 等价于构造器 |
+| 静态工厂 | `Torchwood.withApiKey(endpoint, projectId, apiKey)` | **Server API**（可同时用于 Client API），后续请求自动携带 `X-Api-Key` 与 `X-Torchwood-Project` 头 |
+| 静态工厂 | `Torchwood.withAccessToken(endpoint, projectId, accessToken)` | 携带已有用户 access token 的 Client API |
+| 方法 | `setAccessToken(token?)` | 设置/清除 access token |
+| 方法 | `getAccessToken()` | 读取当前 access token |
+| 方法 | `getProjectId()` | 读取 project id |
+
+### 3.3 实例属性（服务分组）
+
+```typescript
+const tw = Torchwood.withApiKey("http://localhost:9080", "default", apiKey);
+
+tw.account;              // Client: 注册/登录/会话/偏好（AccountService）
+tw.databases;            // Client: 文档 CRUD + count（ClientDatabasesService）
+tw.teams;                // Client: 我的团队与成员（ClientTeamsService）
+
+tw.server.health;        // Server: 健康检查
+tw.server.projects;      // Server: 项目
+tw.server.users;         // Server: 用户
+tw.server.teams;         // Server: 团队与成员
+tw.server.databases;     // Server: 库/集合/属性/索引/文档/Bulk
+tw.server.apiKeys;       // Server: API Key 管理
+tw.server.oauthProviders;// Server: OAuth Provider 配置
+tw.server.storage;       // Server: Bucket / File
+```
+
+### 3.4 基础用法示例
+
+```typescript
+import { Torchwood } from "@torchwood/sdk";
+
+// Server API：健康检查（无需鉴权）
+const admin = Torchwood.withApiKey("http://localhost:9080", "default", apiKey);
+const { status } = await admin.server.health.check();   // { status: "ok" }
+
+// Client API：注册（成功后自动保存 access token）
+const client = Torchwood.create({ endpoint: "http://localhost:9080", projectId: "default" });
+await client.account.signUp({ email: "u@example.com", password: "Pass@123", name: "User" });
+
+// Client API：写文档
+const doc = await client.databases.createDocument("app", "notes", {
+  data: { title: "Hi" },
+  permissions: ["read:any", "update:users"],
+});
+
+// 读取 access token / 换 token
+client.setAccessToken(await client.account.refresh(refreshToken).then(t => t.access_token));
+```
+
+---
+
+## 4. Client API（终端用户，JWT）
+
+所有 Client 请求默认 `auth: "user"`：存在 access token 时携带
+`Authorization: Bearer <token>`。注册/登录/刷新类方法成功后自动
+`setAccessToken`。
+
+### 4.1 Account（`tw.account`）
+
+| 方法 | 请求 | 说明 |
+|------|------|------|
+| `signUp({email, password, name})` | `POST /v1/account/sign-up` | 注册（`auth: "none"`），自动保存 token |
+| `signIn({email, password})` | `POST /v1/account/sign-in` | 登录，自动保存 token |
+| `signOut()` | `POST /v1/account/sign-out` | 登出，清除 token |
+| `refresh(refreshToken)` | `POST /v1/account/refresh` | 刷新 access token，自动保存 |
+| `me()` | `GET /v1/account/me` | 当前账号信息 |
+| `updateAccount({name?, email?, password?, old_password?})` | `PATCH /v1/account` | 更新资料 |
+| `listSessions()` / `deleteSession(id)` / `deleteSessions(keepCurrent?)` | `GET/DELETE /v1/account/sessions` | 会话管理 |
+| `getPrefs()` / `updatePrefs(prefs)` | `GET/PUT /v1/account/prefs` | 用户偏好 JSON |
+| `createOAuth2Session({provider, success, failure})` | `GET /v1/account/sessions/oauth2/{provider}` | OAuth2 跳转 URL（`{redirect_url}`） |
+| `createOAuth2TokenSession({provider, code, state, ...})` | `POST .../oauth2/{provider}/token` | OAuth2 回调换 token，自动保存 |
+| `createEmailOTP({email})` / `createEmailOTPSession({email, challenge_id, otp})` | `POST /v1/account/sessions/email-otp(+/verify)` | 邮箱验证码登录，后者自动保存 token |
+| `createPhoneOTP({phone})` / `createPhoneOTPSession({phone, challenge_id, otp})` | `POST /v1/account/sessions/phone-otp(+/verify)` | 短信验证码登录，后者自动保存 token |
+| `createWeChatMiniProgramSession({code})` | `POST /v1/account/sessions/wechat/miniprogram` | 微信小程序登录，自动保存 token |
+
+### 4.2 Databases 文档（`tw.databases`）
+
+签名统一为 `(databaseId, collectionId, ...)`：
+
+| 方法 | 说明 |
+|------|------|
+| `createDocument(databaseId, collectionId, {document_id?, data, permissions?})` | 创建文档 |
+| `listDocuments(databaseId, collectionId, params?)` | 列表，返回 `{documents, meta?}` |
+| `getDocument(databaseId, collectionId, documentId)` | 获取单个文档 |
+| `updateDocument(databaseId, collectionId, documentId, {data?, permissions?, increment?})` | 更新（支持字段增量 `increment`） |
+| `deleteDocument(databaseId, collectionId, documentId)` | 删除文档 |
+| `countDocuments(databaseId, collectionId, params?)` | 计数，返回 `number` |
+
+### 4.3 Teams（`tw.teams`）
+
+| 方法 | 说明 |
+|------|------|
+| `createTeam(name)` / `listTeams(params?)` / `getTeam(id)` / `deleteTeam(id)` | 团队 CRUD |
+| `createMembership(teamId, {email, name?, roles?})` | 创建成员/邀请 |
+| `listMemberships(teamId)` | 成员列表 |
+| `updateMembershipStatus(teamId, membershipId, "accepted" \| "rejected")` | 接受/拒绝邀请 |
+| `deleteMembership(teamId, membershipId)` | 删除成员 |
+
+---
+
+## 5. Server API（管理面，API Key）
+
+Server 请求统一 `auth: "apiKey"`，携带 `X-Api-Key: <key>` 与
+`X-Torchwood-Project: <projectId>` 头；未配置 apiKey 时抛出
+`TorchwoodError`（status 0，提示 "API key is required"）。
+
+### 5.1 Health / Projects / Users / APIKeys / OAuthProviders
+
+```typescript
+await tw.server.health.check();                       // { status: "ok" }
+
+tw.server.projects.list(params?)                      // Project[]
+tw.server.projects.get(id)
+tw.server.projects.create({ id, name })
+
+tw.server.users.create({ email, password, name?, status?, labels?, prefs? })
+tw.server.users.list(params?)                         // User[]
+tw.server.users.get(id)
+tw.server.users.update(id, { name?, email?, status?, email_verified?, labels?, prefs? })
+tw.server.users.updatePassword(id, password)
+tw.server.users.delete(id)
+tw.server.users.listSessions(id)                      // Session[]
+tw.server.users.deleteSession(id, sessionId)
+tw.server.users.createToken(id)                       // 模拟登录，返回 TokenBundle
+
+tw.server.apiKeys.list()                              // APIKey[]
+tw.server.apiKeys.get(id)
+tw.server.apiKeys.create({ name, scopes? })           // { api_key, secret }（secret 仅返回一次）
+tw.server.apiKeys.delete(id)
+
+tw.server.oauthProviders.list()                       // OAuthProvider[]
+tw.server.oauthProviders.upsert({ provider, enabled, client_id, client_secret?, scopes? })
+tw.server.oauthProviders.delete(provider)
+```
+
+### 5.2 Server Teams（`tw.server.teams`）
+
+| 方法 | 说明 |
+|------|------|
+| `create({name, permissions?})` / `list(params?)` / `get(id)` / `delete(id)` | 团队 CRUD |
+| `createMembership(teamId, {email? \| user_id?, name?, roles?, status?})` | 创建成员（支持直接按 user_id 添加） |
+| `listMemberships(teamId, params?)` / `getMembership(teamId, membershipId)` | 成员查询 |
+| `updateMembership(teamId, membershipId, roles)` | 更新角色 |
+| `updateMembershipStatus(teamId, membershipId, status)` | 更新状态（invited/accepted/rejected） |
+| `deleteMembership(teamId, membershipId)` | 删除成员 |
+
+### 5.3 Server Databases（`tw.server.databases`）
+
+| 分组 | 方法 |
+|------|------|
+| 数据库 | `createDatabase({id, name})`、`listDatabases(params?)`、`getDatabase(id)`、`deleteDatabase(id)` |
+| 集合 | `createCollection(databaseId, {id, name, permissions?, document_security?})`、`listCollections`、`getCollection`、`updateCollection(databaseId, collectionId, {name?, permissions?, document_security?, disabled?})`、`deleteCollection` |
+| 属性 | `createAttribute(databaseId, collectionId, {key, type, size?, required?, array?, default_value?})`、`deleteAttribute(databaseId, collectionId, key)` |
+| 索引 | `createIndex(databaseId, collectionId, {id, type, attributes, orders?})`、`deleteIndex(databaseId, collectionId, indexId)` |
+| 文档 | `createDocument` / `listDocuments` / `getDocument` / `updateDocument`（支持 `increment`）/ `deleteDocument` / `countDocuments`（与 Client 版同名同签名，均带 `auth: "apiKey"`） |
+| 批量 | `bulkUpdateDocuments(databaseId, collectionId, {document_ids, data?, permissions?})`、`bulkDeleteDocuments(databaseId, collectionId, documentIds)`，返回 `{affected}` |
+
+### 5.4 Server Storage（`tw.server.storage`）
+
+| 方法 | 说明 |
+|------|------|
+| `createBucket({name, permissions?})` / `listBuckets(params?)` / `getBucket(id)` / `deleteBucket(id)` | Bucket 管理 |
+| `listFiles(bucketId, params?)` / `getFile(bucketId, fileId)` / `deleteFile(bucketId, fileId)` | 文件管理 |
+| `uploadFile(bucketId, file: Blob, filename)` | 上传（FormData multipart，`POST /v1/storage/buckets/{id}/files`） |
+
+```typescript
+// Agent 上传文件示例
+const file = new Blob([jsonText], { type: "application/json" });
+const uploaded = await tw.server.storage.uploadFile("bucket-id", file, "export.json");
+```
+
+---
+
+## 6. 鉴权与传输机制
+
+`HttpTransport.request(method, path, {auth?, query?, body?})` 支持三种鉴权模式：
+
+| auth | 行为 |
+|------|------|
+| `"apiKey"` | 必须配置 `apiKey`；发送 `X-Api-Key` + `X-Torchwood-Project` |
+| `"user"`（默认） | 有 access token 时发送 `Authorization: Bearer <token>`；未配置则匿名发送 |
+| `"none"` | 不携带任何鉴权头（如 sign-up、health） |
+
+- 传输层基于全局 `fetch`，JSON 序列化/反序列化；query 参数支持数组重复展开
+  （`queries[]` 透传 Appwrite 风格查询 DSL，如 `equal("tag","hot")`）。
+- 204 / 空响应体返回 `undefined`；非 2xx 一律抛 `TorchwoodError`。
+
+---
+
+## 7. 错误处理与类型
+
+### 7.1 `TorchwoodError`
+
+```typescript
+class TorchwoodError extends Error {
+  readonly status: number;   // HTTP 状态码；未配置 API Key 等客户端错误为 0
+  readonly code?: string;    // 服务端 error.code（可选）
+  readonly body?: unknown;   // 完整响应体（可选）
+}
+```
+
+错误体按 `{ error: { message, code } }` 信封解析，`message` 兜底为 `res.statusText`。
+SDK 无内置重试/刷新逻辑——Agent 集成方可自行 catch 后刷新 token 或换 Key 重试。
+
+```typescript
+import { TorchwoodError } from "@torchwood/sdk";
+try {
+  await tw.server.users.list();
+} catch (err) {
+  if (err instanceof TorchwoodError) {
+    console.log(err.status, err.code, err.message);   // 401 PermissionDenied ...
+  }
+}
+```
+
+### 7.2 类型说明（如实说明）
+
+SDK 类型为**手写维护**（`src/types.ts`），并非由 proto 自动生成：`Account`、`Document`、
+`User`、`Team`、`Membership`、`Project`、`APIKey`、`Database`、`Collection`、
+`Attribute`、`Index`、`Bucket`、`FileItem`、`TokenBundle`、`Session`、`ListMeta`、
+`ListParams`、`BulkDocumentsResponse`、`UpdateDocumentInput` 等接口与 HTTP JSON
+响应一一对应（snake_case 字段，与 proto JSON 映射一致）。若服务端字段演进，需同步
+更新 `types.ts`；Agent 集成建议以 `genproto/**/*.swagger.json` 为 schema 权威来源，
+SDK 类型仅作便捷参考。
+
+---
+
+## 8. Demo 应用（`sdk/demo/`）
+
+Vite + React 19 + react-router-dom 7 + Tailwind 的演示站点，**默认端口 5174**：
+
+```bash
+task sdk-demo        # 自动先跑 sdk-build，然后 vite dev（http://localhost:5174）
+```
+
+启动前确认本地后端已就绪（`task up` + `task migrate` + `go run ./cmd/seed` +
+`task dev-server`），复制 `sdk/demo/.env.example` 为 `.env` 可覆盖默认值：
+
+```dotenv
+VITE_TORCHWOOD_ENDPOINT=http://localhost:9080
+VITE_TORCHWOOD_PROJECT_ID=default
+```
+
+| 页面 | 演示能力 |
+|------|----------|
+| `/register` `/login` | Client Account：注册/登录（`signUp` / `signIn`） |
+| `/login/oauth/callback` | OAuth2 回调处理（`createOAuth2TokenSession`） |
+| `/app/account` | `me` / prefs / sessions / refresh |
+| `/app/databases` | Server + Client Databases 全功能验证：一键初始化演示环境（建库/集合/属性/索引/种子文档）、单按钮逐项调用、**全量验证**（30 余步端到端：CRUD、increment、Bulk、清理） |
+| `/app/teams` | 建队、刷新 Token、邀请成员 |
+| `/app/server` | `health.check` / `projects.list` / `users.list` / `teams.create` / `databases.listDatabases` |
+| `/app/settings` | Endpoint、Project ID、API Key 配置（本地持久化） |
+
+Server API 页面需要先在设置页填入 `go run ./cmd/seed` 输出的 API Key；设置与登录态
+保存在 localStorage（`Torchwood-demo-settings` / `Torchwood-demo-auth`）。
