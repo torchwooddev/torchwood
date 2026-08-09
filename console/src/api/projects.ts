@@ -31,3 +31,11 @@ export async function createProject(input: {
   const res = await api.post<Project>("/server/projects", input);
   return res.data;
 }
+
+export async function updateProject(
+  id: string,
+  input: { name?: string; description?: string }
+): Promise<Project> {
+  const res = await api.patch<Project>(`/server/projects/${id}`, input);
+  return res.data;
+}

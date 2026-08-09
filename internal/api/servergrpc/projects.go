@@ -7,6 +7,7 @@ import (
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -65,6 +66,22 @@ func (s *ProjectsService) GetProject(ctx context.Context, req *serverv1.GetProje
 	}
 	if p == nil {
 		return nil, nil
+	}
+	return mapProject(p), nil
+}
+
+func (s *ProjectsService) UpdateProject(ctx context.Context, req *serverv1.UpdateProjectRequest) (*serverv1.Project, error) {
+	ctx = contexts.WithAuditResource(ctx, req.GetId())
+	cmd := appserver.UpdateProjectCommand{ProjectID: req.GetId()}
+	if req.Name != nil {
+		cmd.Name = req.Name
+	}
+	if req.Description != nil {
+		cmd.Description = req.Description
+	}
+	p, err := s.projects.UpdateProject(ctx, cmd)
+	if err != nil {
+		return nil, err
 	}
 	return mapProject(p), nil
 }

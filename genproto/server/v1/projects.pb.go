@@ -24,6 +24,66 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type UpdateProjectRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"` // 空值不修改（proto3 optional 表达 presence）
+	Description   *string                `protobuf:"bytes,3,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateProjectRequest) Reset() {
+	*x = UpdateProjectRequest{}
+	mi := &file_server_v1_projects_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateProjectRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateProjectRequest) ProtoMessage() {}
+
+func (x *UpdateProjectRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_projects_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateProjectRequest.ProtoReflect.Descriptor instead.
+func (*UpdateProjectRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_projects_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *UpdateProjectRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateProjectRequest) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *UpdateProjectRequest) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
+}
+
 type CreateProjectRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -34,7 +94,7 @@ type CreateProjectRequest struct {
 
 func (x *CreateProjectRequest) Reset() {
 	*x = CreateProjectRequest{}
-	mi := &file_server_v1_projects_proto_msgTypes[0]
+	mi := &file_server_v1_projects_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +106,7 @@ func (x *CreateProjectRequest) String() string {
 func (*CreateProjectRequest) ProtoMessage() {}
 
 func (x *CreateProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_projects_proto_msgTypes[0]
+	mi := &file_server_v1_projects_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +119,7 @@ func (x *CreateProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProjectRequest.ProtoReflect.Descriptor instead.
 func (*CreateProjectRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_projects_proto_rawDescGZIP(), []int{0}
+	return file_server_v1_projects_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CreateProjectRequest) GetName() string {
@@ -85,7 +145,7 @@ type GetProjectRequest struct {
 
 func (x *GetProjectRequest) Reset() {
 	*x = GetProjectRequest{}
-	mi := &file_server_v1_projects_proto_msgTypes[1]
+	mi := &file_server_v1_projects_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -97,7 +157,7 @@ func (x *GetProjectRequest) String() string {
 func (*GetProjectRequest) ProtoMessage() {}
 
 func (x *GetProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_projects_proto_msgTypes[1]
+	mi := &file_server_v1_projects_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -110,7 +170,7 @@ func (x *GetProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProjectRequest.ProtoReflect.Descriptor instead.
 func (*GetProjectRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_projects_proto_rawDescGZIP(), []int{1}
+	return file_server_v1_projects_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetProjectRequest) GetId() string {
@@ -130,7 +190,7 @@ type ListProjectsResponse struct {
 
 func (x *ListProjectsResponse) Reset() {
 	*x = ListProjectsResponse{}
-	mi := &file_server_v1_projects_proto_msgTypes[2]
+	mi := &file_server_v1_projects_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -142,7 +202,7 @@ func (x *ListProjectsResponse) String() string {
 func (*ListProjectsResponse) ProtoMessage() {}
 
 func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_projects_proto_msgTypes[2]
+	mi := &file_server_v1_projects_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -155,7 +215,7 @@ func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListProjectsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_projects_proto_rawDescGZIP(), []int{2}
+	return file_server_v1_projects_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListProjectsResponse) GetProjects() []*Project {
@@ -186,7 +246,7 @@ type Project struct {
 
 func (x *Project) Reset() {
 	*x = Project{}
-	mi := &file_server_v1_projects_proto_msgTypes[3]
+	mi := &file_server_v1_projects_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -198,7 +258,7 @@ func (x *Project) String() string {
 func (*Project) ProtoMessage() {}
 
 func (x *Project) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_projects_proto_msgTypes[3]
+	mi := &file_server_v1_projects_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -211,7 +271,7 @@ func (x *Project) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Project.ProtoReflect.Descriptor instead.
 func (*Project) Descriptor() ([]byte, []int) {
-	return file_server_v1_projects_proto_rawDescGZIP(), []int{3}
+	return file_server_v1_projects_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Project) GetId() string {
@@ -260,7 +320,13 @@ var File_server_v1_projects_proto protoreflect.FileDescriptor
 
 const file_server_v1_projects_proto_rawDesc = "" +
 	"\n" +
-	"\x18server/v1/projects.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"L\n" +
+	"\x18server/v1/projects.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\x7f\n" +
+	"\x14UpdateProjectRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x88\x01\x01\x12%\n" +
+	"\vdescription\x18\x03 \x01(\tH\x01R\vdescription\x88\x01\x01B\a\n" +
+	"\x05_nameB\x0e\n" +
+	"\f_description\"L\n" +
 	"\x14CreateProjectRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\"#\n" +
@@ -277,12 +343,13 @@ const file_server_v1_projects_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\x83\x03\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\x82\x04\n" +
 	"\x0fProjectsService\x12x\n" +
 	"\rCreateProject\x12).torchwood.server.v1.CreateProjectRequest\x1a\x1c.torchwood.server.v1.Project\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/server/projects\x12x\n" +
 	"\fListProjects\x12 .torchwood.shared.v1.ListRequest\x1a).torchwood.server.v1.ListProjectsResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/server/projects\x12t\n" +
 	"\n" +
-	"GetProject\x12&.torchwood.server.v1.GetProjectRequest\x1a\x1c.torchwood.server.v1.Project\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/projects/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"GetProject\x12&.torchwood.server.v1.GetProjectRequest\x1a\x1c.torchwood.server.v1.Project\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/projects/{id}\x12}\n" +
+	"\rUpdateProject\x12).torchwood.server.v1.UpdateProjectRequest\x1a\x1c.torchwood.server.v1.Project\"#\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/server/projects/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_projects_proto_rawDescOnce sync.Once
@@ -296,29 +363,32 @@ func file_server_v1_projects_proto_rawDescGZIP() []byte {
 	return file_server_v1_projects_proto_rawDescData
 }
 
-var file_server_v1_projects_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_server_v1_projects_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_server_v1_projects_proto_goTypes = []any{
-	(*CreateProjectRequest)(nil),  // 0: torchwood.server.v1.CreateProjectRequest
-	(*GetProjectRequest)(nil),     // 1: torchwood.server.v1.GetProjectRequest
-	(*ListProjectsResponse)(nil),  // 2: torchwood.server.v1.ListProjectsResponse
-	(*Project)(nil),               // 3: torchwood.server.v1.Project
-	(*v1.ListResponseMeta)(nil),   // 4: torchwood.shared.v1.ListResponseMeta
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),        // 6: torchwood.shared.v1.ListRequest
+	(*UpdateProjectRequest)(nil),  // 0: torchwood.server.v1.UpdateProjectRequest
+	(*CreateProjectRequest)(nil),  // 1: torchwood.server.v1.CreateProjectRequest
+	(*GetProjectRequest)(nil),     // 2: torchwood.server.v1.GetProjectRequest
+	(*ListProjectsResponse)(nil),  // 3: torchwood.server.v1.ListProjectsResponse
+	(*Project)(nil),               // 4: torchwood.server.v1.Project
+	(*v1.ListResponseMeta)(nil),   // 5: torchwood.shared.v1.ListResponseMeta
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*v1.ListRequest)(nil),        // 7: torchwood.shared.v1.ListRequest
 }
 var file_server_v1_projects_proto_depIdxs = []int32{
-	3, // 0: torchwood.server.v1.ListProjectsResponse.projects:type_name -> torchwood.server.v1.Project
-	4, // 1: torchwood.server.v1.ListProjectsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	5, // 2: torchwood.server.v1.Project.created_at:type_name -> google.protobuf.Timestamp
-	5, // 3: torchwood.server.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
-	0, // 4: torchwood.server.v1.ProjectsService.CreateProject:input_type -> torchwood.server.v1.CreateProjectRequest
-	6, // 5: torchwood.server.v1.ProjectsService.ListProjects:input_type -> torchwood.shared.v1.ListRequest
-	1, // 6: torchwood.server.v1.ProjectsService.GetProject:input_type -> torchwood.server.v1.GetProjectRequest
-	3, // 7: torchwood.server.v1.ProjectsService.CreateProject:output_type -> torchwood.server.v1.Project
-	2, // 8: torchwood.server.v1.ProjectsService.ListProjects:output_type -> torchwood.server.v1.ListProjectsResponse
-	3, // 9: torchwood.server.v1.ProjectsService.GetProject:output_type -> torchwood.server.v1.Project
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
+	4, // 0: torchwood.server.v1.ListProjectsResponse.projects:type_name -> torchwood.server.v1.Project
+	5, // 1: torchwood.server.v1.ListProjectsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	6, // 2: torchwood.server.v1.Project.created_at:type_name -> google.protobuf.Timestamp
+	6, // 3: torchwood.server.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
+	1, // 4: torchwood.server.v1.ProjectsService.CreateProject:input_type -> torchwood.server.v1.CreateProjectRequest
+	7, // 5: torchwood.server.v1.ProjectsService.ListProjects:input_type -> torchwood.shared.v1.ListRequest
+	2, // 6: torchwood.server.v1.ProjectsService.GetProject:input_type -> torchwood.server.v1.GetProjectRequest
+	0, // 7: torchwood.server.v1.ProjectsService.UpdateProject:input_type -> torchwood.server.v1.UpdateProjectRequest
+	4, // 8: torchwood.server.v1.ProjectsService.CreateProject:output_type -> torchwood.server.v1.Project
+	3, // 9: torchwood.server.v1.ProjectsService.ListProjects:output_type -> torchwood.server.v1.ListProjectsResponse
+	4, // 10: torchwood.server.v1.ProjectsService.GetProject:output_type -> torchwood.server.v1.Project
+	4, // 11: torchwood.server.v1.ProjectsService.UpdateProject:output_type -> torchwood.server.v1.Project
+	8, // [8:12] is the sub-list for method output_type
+	4, // [4:8] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name
@@ -329,13 +399,14 @@ func file_server_v1_projects_proto_init() {
 	if File_server_v1_projects_proto != nil {
 		return
 	}
+	file_server_v1_projects_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_projects_proto_rawDesc), len(file_server_v1_projects_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

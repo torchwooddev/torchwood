@@ -133,10 +133,58 @@
         "tags": [
           "ProjectsService"
         ]
+      },
+      "patch": {
+        "operationId": "ProjectsService_UpdateProject",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Project"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ProjectsServiceUpdateProjectBody"
+            }
+          }
+        ],
+        "tags": [
+          "ProjectsService"
+        ]
       }
     }
   },
   "definitions": {
+    "ProjectsServiceUpdateProjectBody": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "空值不修改（proto3 optional 表达 presence）"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
     "protobufAny": {
       "type": "object",
       "properties": {

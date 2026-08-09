@@ -78,6 +78,7 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.ProjectsService/CreateProject": {"projects", "write"},
 	"/torchwood.server.v1.ProjectsService/ListProjects":  {"projects", "read"},
 	"/torchwood.server.v1.ProjectsService/GetProject":    {"projects", "read"},
+	"/torchwood.server.v1.ProjectsService/UpdateProject": {"projects", "write"},
 	// OAuthProvidersService
 	"/torchwood.server.v1.OAuthProvidersService/ListOAuthProviders":  {"oauthproviders", "read"},
 	"/torchwood.server.v1.OAuthProvidersService/UpsertOAuthProvider": {"oauthproviders", "write"},

@@ -23,6 +23,7 @@ const (
 	ProjectsService_CreateProject_FullMethodName = "/torchwood.server.v1.ProjectsService/CreateProject"
 	ProjectsService_ListProjects_FullMethodName  = "/torchwood.server.v1.ProjectsService/ListProjects"
 	ProjectsService_GetProject_FullMethodName    = "/torchwood.server.v1.ProjectsService/GetProject"
+	ProjectsService_UpdateProject_FullMethodName = "/torchwood.server.v1.ProjectsService/UpdateProject"
 )
 
 // ProjectsServiceClient is the client API for ProjectsService service.
@@ -32,6 +33,7 @@ type ProjectsServiceClient interface {
 	CreateProject(ctx context.Context, in *CreateProjectRequest, opts ...grpc.CallOption) (*Project, error)
 	ListProjects(ctx context.Context, in *v1.ListRequest, opts ...grpc.CallOption) (*ListProjectsResponse, error)
 	GetProject(ctx context.Context, in *GetProjectRequest, opts ...grpc.CallOption) (*Project, error)
+	UpdateProject(ctx context.Context, in *UpdateProjectRequest, opts ...grpc.CallOption) (*Project, error)
 }
 
 type projectsServiceClient struct {
@@ -72,6 +74,16 @@ func (c *projectsServiceClient) GetProject(ctx context.Context, in *GetProjectRe
 	return out, nil
 }
 
+func (c *projectsServiceClient) UpdateProject(ctx context.Context, in *UpdateProjectRequest, opts ...grpc.CallOption) (*Project, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Project)
+	err := c.cc.Invoke(ctx, ProjectsService_UpdateProject_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProjectsServiceServer is the server API for ProjectsService service.
 // All implementations must embed UnimplementedProjectsServiceServer
 // for forward compatibility.
@@ -79,6 +91,7 @@ type ProjectsServiceServer interface {
 	CreateProject(context.Context, *CreateProjectRequest) (*Project, error)
 	ListProjects(context.Context, *v1.ListRequest) (*ListProjectsResponse, error)
 	GetProject(context.Context, *GetProjectRequest) (*Project, error)
+	UpdateProject(context.Context, *UpdateProjectRequest) (*Project, error)
 	mustEmbedUnimplementedProjectsServiceServer()
 }
 
@@ -97,6 +110,9 @@ func (UnimplementedProjectsServiceServer) ListProjects(context.Context, *v1.List
 }
 func (UnimplementedProjectsServiceServer) GetProject(context.Context, *GetProjectRequest) (*Project, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetProject not implemented")
+}
+func (UnimplementedProjectsServiceServer) UpdateProject(context.Context, *UpdateProjectRequest) (*Project, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateProject not implemented")
 }
 func (UnimplementedProjectsServiceServer) mustEmbedUnimplementedProjectsServiceServer() {}
 func (UnimplementedProjectsServiceServer) testEmbeddedByValue()                         {}
@@ -173,6 +189,24 @@ func _ProjectsService_GetProject_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProjectsService_UpdateProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectsServiceServer).UpdateProject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectsService_UpdateProject_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectsServiceServer).UpdateProject(ctx, req.(*UpdateProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProjectsService_ServiceDesc is the grpc.ServiceDesc for ProjectsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -191,6 +225,10 @@ var ProjectsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProject",
 			Handler:    _ProjectsService_GetProject_Handler,
+		},
+		{
+			MethodName: "UpdateProject",
+			Handler:    _ProjectsService_UpdateProject_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

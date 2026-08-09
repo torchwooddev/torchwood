@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-09（Storage 交付：preview 缩略图、公开 bucket 匿名读、HMAC File Token、文件/bucket 元数据更新、Usage 统计，见 §2.5）。
+> 最新更新：2026-08-09（Settings 交付：项目基本信息编辑 `PATCH /v1/server/projects/{id}`、Console「项目」Tab；OAuth Providers 配置与 Messaging 只读说明已在 Settings 页面可用）。
 
 ---
 
@@ -218,7 +218,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | Attributes / Indexes 管理 | 在 collection 详情中增删属性与索引（含 Attribute/Index 行内删除） | Databases 子页面 | ✅ 完成 |
 | Teams Memberships | 管理团队邀请与成员 | `console/src/routes/teams/` | ✅ 完成 |
 | Functions 管理 | Functions / Deployments / Executions 页面 | 新增 `Functions.tsx` | 待办 |
-| Settings 占位 | 项目基本信息、OAuth、SMTP（只读或简单表单） | 新增 `Settings.tsx` | 待办 |
+| Settings 页面 | 项目基本信息编辑（`PATCH /v1/server/projects/{id}`）、OAuth Providers 配置、SMTP 只读说明 | `console/src/routes/settings/pages.tsx` | ✅ 完成 |
 | 侧边栏菜单分组 | Dashboard 置顶；Develop（API Keys/Databases/Storage）、Auth（Users/Teams）、System（Projects/Admins/Settings）分组 | `console/src/components/Layout.tsx` | ✅ 完成 |
 
 **验收标准**：
@@ -297,6 +297,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | Policies | 密码策略、会话策略、用户限制等 | `/v1/server/projects/{id}/policies` |
 | Variables | 项目级环境变量 | `/v1/server/projects/{id}/variables` |
 | Mock phone numbers | 测试手机号 | `/v1/server/projects/{id}/mock-phones` |
+| DeleteProject RPC | 删除项目（repo 层已有；需级联清理动态 schema 与 admin_projects，成本高，独立排期） | `DELETE /v1/server/projects/{id}` |
 
 ---
 
@@ -419,7 +420,8 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [ ] Functions 可上传代码、构建、同步/异步执行。
 - [x] Admin Console 覆盖 Database 文档编辑、Teams 页面。
 - [x] Admin Console 覆盖系统管理员管理（Admins 页面，owner 权限保护）。
-- [ ] Admin Console 覆盖 Functions、Settings 页面。
+- [ ] Admin Console 覆盖 Functions 页面。
+- [x] Admin Console 覆盖 Settings 页面（项目基本信息编辑、OAuth Providers、Messaging 只读说明）。
 - [x] CI 绿，集成测试覆盖核心流程。
 
 ### M2：P2 生产就绪（中期结束）

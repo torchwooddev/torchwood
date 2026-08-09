@@ -23,6 +23,16 @@ service ProjectsService {
   rpc GetProject(GetProjectRequest) returns (Project) {
     option (google.api.http) = { get: "/v1/server/projects/{id}" };
   }
+
+  rpc UpdateProject(UpdateProjectRequest) returns (Project) {
+    option (google.api.http) = { patch: "/v1/server/projects/{id}", body: "*" };
+  }
+}
+
+message UpdateProjectRequest {
+  string id = 1;
+  optional string name = 2;         // 空值不修改（proto3 optional 表达 presence）
+  optional string description = 3;
 }
 
 message CreateProjectRequest {

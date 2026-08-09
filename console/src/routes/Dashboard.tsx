@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { Settings as SettingsIcon } from "lucide-react";
 import { listProjects } from "@/api/projects";
 import { listAPIKeys } from "@/api/apiKeys";
 import { listUsers } from "@/api/users";
@@ -7,6 +9,7 @@ import { listDatabases } from "@/api/databases";
 import { listTeams } from "@/api/teams";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -55,6 +58,14 @@ export function Dashboard() {
       <PageHeader
         title="Dashboard"
         description="Overview of your Torchwood workspace. Switch the active project from the sidebar."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/console/settings">
+              <SettingsIcon className="h-4 w-4 mr-2" />
+              设置
+            </Link>
+          </Button>
+        }
       />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

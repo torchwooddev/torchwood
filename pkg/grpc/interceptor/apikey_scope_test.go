@@ -119,6 +119,27 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	if !APIKeyScopeAllowed(deleteDB, []string{"databases"}) {
 		t.Fatal("bare databases scope should allow write methods")
 	}
+
+	// Projects：UpdateProject 需要 projects.write（B2）。
+	updateProject := "/torchwood.server.v1.ProjectsService/UpdateProject"
+	if !APIKeyScopeAllowed(updateProject, []string{"projects.write"}) {
+		t.Fatal("projects.write scope should allow UpdateProject")
+	}
+	if !APIKeyScopeAllowed(updateProject, []string{"projects"}) {
+		t.Fatal("bare projects scope should allow UpdateProject")
+	}
+	if !APIKeyScopeAllowed(updateProject, []string{"*"}) {
+		t.Fatal("wildcard scope should allow UpdateProject")
+	}
+	if !APIKeyScopeAllowed(updateProject, []string{"all"}) {
+		t.Fatal("all scope should allow UpdateProject")
+	}
+	if APIKeyScopeAllowed(updateProject, []string{"projects.read"}) {
+		t.Fatal("projects.read scope must NOT allow UpdateProject")
+	}
+	if APIKeyScopeAllowed(updateProject, []string{"users"}) {
+		t.Fatal("unrelated scope must NOT allow UpdateProject")
+	}
 }
 
 func TestValidAPIKeyScope(t *testing.T) {

@@ -9,6 +9,7 @@ const routeNames: Record<string, string> = {
   storage: "Storage",
   databases: "Databases",
   functions: "Functions",
+  settings: "Settings",
   new: "新建",
   edit: "编辑",
   collections: "Collections",

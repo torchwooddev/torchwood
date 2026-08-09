@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
@@ -11,6 +11,8 @@ import {
   upsertOAuthProvider,
   type OAuthProvider,
 } from "@/api/oauthProviders";
+import { getProject, updateProject } from "@/api/projects";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -23,22 +25,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DetailGrid,
+  DetailSkeleton,
+  FormField,
+} from "@/components/resource/shared";
 
-type SettingsTab = "oauth" | "messaging";
+type SettingsTab = "project" | "oauth" | "messaging";
 
 export function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("oauth");
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          当前选中项目的认证与消息配置
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="当前项目的配置与管理"
+      />
 
       <div className="flex gap-2 border-b pb-2">
+        <Button
+          variant={tab === "project" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setTab("project")}
+        >
+          项目
+        </Button>
         <Button
           variant={tab === "oauth" ? "default" : "ghost"}
           size="sm"
@@ -55,7 +67,98 @@ export function SettingsPage() {
         </Button>
       </div>
 
-      {tab === "oauth" ? <OAuthProvidersPanel /> : <MessagingPanel />}
+      {tab === "project" ? (
+        <ProjectInfoPanel />
+      ) : tab === "oauth" ? (
+        <OAuthProvidersPanel />
+      ) : (
+        <MessagingPanel />
+      )}
+    </div>
+  );
+}
+
+function ProjectInfoPanel() {
+  const { projectId } = useAuth();
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  const { data: project, isLoading } = useQuery({
+    queryKey: ["projects", projectId],
+    queryFn: () => getProject(projectId!),
+    enabled: !!projectId,
+  });
+
+  const update = useMutation({
+    mutationFn: ({
+      id,
+      ...input
+    }: { id: string; name: string; description: string }) =>
+      updateProject(id, input),
+    onSuccess: () => {
+      toast.success("项目信息已保存");
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+
+  useEffect(() => {
+    if (project) {
+      setName(project.name);
+      setDescription(project.description ?? "");
+    }
+  }, [project]);
+
+  if (!projectId) {
+    return (
+      <p className="text-sm text-muted-foreground">请先在侧边栏选择一个项目。</p>
+    );
+  }
+
+  if (isLoading) return <DetailSkeleton />;
+  if (!project) {
+    return <p className="text-sm text-muted-foreground">项目不存在或已被删除。</p>;
+  }
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    update.mutate({ id: project.id, name, description });
+  };
+
+  return (
+    <div className="space-y-6">
+      <DetailGrid
+        items={[
+          { label: "ID", value: project.id, mono: true },
+          { label: "名称", value: project.name },
+          { label: "描述", value: project.description || "—" },
+          { label: "状态", value: project.status },
+          { label: "创建时间", value: new Date(project.created_at).toLocaleString() },
+          { label: "更新时间", value: new Date(project.updated_at).toLocaleString() },
+        ]}
+      />
+      <form className="space-y-4 rounded-lg border p-6" onSubmit={onSubmit}>
+        <h3 className="text-sm font-medium">编辑基本信息</h3>
+        <FormField
+          id="project_name"
+          label="名称"
+          value={name}
+          onChange={setName}
+          required
+          placeholder="项目名称"
+        />
+        <FormField
+          id="project_description"
+          label="描述"
+          value={description}
+          onChange={setDescription}
+          placeholder="可选描述"
+        />
+        <Button type="submit" disabled={update.isPending}>
+          {update.isPending ? "保存中…" : "保存"}
+        </Button>
+      </form>
     </div>
   );
 }

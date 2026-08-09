@@ -22,6 +22,10 @@ import (
 // （与安全评审 M7 / P2-9 的标识符约束合并）。
 var projectIDRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 
+// maxProjectDescriptionLen 是项目 description 的长度上限，
+// CreateProject 与 UpdateProject 两侧一致约束（口径 a）。
+const maxProjectDescriptionLen = 512
+
 type Projects struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
@@ -49,6 +53,9 @@ func (s *Projects) CreateProject(ctx context.Context, cmd CreateProjectCommand) 
 	}
 	if cmd.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+	if len(cmd.Description) > maxProjectDescriptionLen {
+		return nil, status.Error(codes.InvalidArgument, "description must be at most 512 characters")
 	}
 	id := strings.ToLower(strings.ReplaceAll(cmd.Name, " ", "-"))
 	id = strings.Trim(id, "-")
@@ -130,4 +137,69 @@ func (s *Projects) GetProject(ctx context.Context, id string) (*projects.Project
 		return nil, status.Error(codes.NotFound, "project not found")
 	}
 	return s.projectRepo.GetProject(ctx, id)
+}
+
+type UpdateProjectCommand struct {
+	ProjectID   string // 目标项目 id
+	Name        *string
+	Description *string
+	// 无 Principal 字段：use-case 内从 contexts.Principal(ctx) 取
+	// （与 CreateProject/GetProject/ListProjects 的仓库模式一致）。
+}
+
+func (s *Projects) UpdateProject(ctx context.Context, cmd UpdateProjectCommand) (*projects.Project, error) {
+	if cmd.ProjectID == "" {
+		return nil, status.Error(codes.InvalidArgument, "project id is required")
+	}
+	// "nothing to update" 前置检查放在取数之前（对齐 storage.UpdateFile 先例），
+	// 避免"项目不存在 + 全空请求"返回 NotFound 的语义歧义。
+	if cmd.Name == nil && cmd.Description == nil {
+		return nil, status.Error(codes.InvalidArgument, "nothing to update")
+	}
+	principal, ok := contexts.Principal(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+	// 越权保护：非平台 admin 仅能更新其绑定项目，越权返回 NotFound（防枚举，
+	// 与 GetProject 语义一致）。
+	if !principal.IsPlatformAdmin && (principal.ProjectID == "" || principal.ProjectID != cmd.ProjectID) {
+		return nil, status.Error(codes.NotFound, "project not found")
+	}
+	project, err := s.projectRepo.GetProject(ctx, cmd.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, status.Error(codes.NotFound, "project not found")
+	}
+	if cmd.Name != nil {
+		// 编辑场景对空白名拒绝（有意收紧，严格于 CreateProject 的空名回落默认 id）。
+		name := strings.TrimSpace(*cmd.Name)
+		if name == "" {
+			return nil, status.Error(codes.InvalidArgument, "name is required")
+		}
+		if name != project.Name {
+			// 撞名查重：name 唯一索引存在，不查重会命中 DB unique violation → 500。
+			existing, err := s.projectRepo.GetProjectByName(ctx, name)
+			if err != nil {
+				return nil, err
+			}
+			if existing != nil {
+				return nil, status.Error(codes.InvalidArgument, "project name already exists")
+			}
+		}
+		project.Name = name
+	}
+	if cmd.Description != nil {
+		if len(*cmd.Description) > maxProjectDescriptionLen {
+			return nil, status.Error(codes.InvalidArgument, "description must be at most 512 characters")
+		}
+		project.Description = *cmd.Description
+	}
+	// repo 的 UpdateProject 是全列覆盖写，不置当前时间则 updated_at 永远停滞。
+	project.UpdatedAt = time.Now()
+	if err := s.projectRepo.UpdateProject(ctx, project); err != nil {
+		return nil, err
+	}
+	return project, nil
 }
