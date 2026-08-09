@@ -1,5 +1,10 @@
 # Appwrite 核心功能迁移清单（Go + PostgreSQL）
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：迁移清单 P0/P1 核心模块（Account/Users/Teams/Databases/Storage/Functions/Health/Project settings 等）已落地，P2/P3 规划已由 `docs/roadmap.md` 接管；本文档为迁移立项时的全景清单，属历史资料。
+> 后续信息源：`docs/roadmap.md`、`docs/tech-decision.md`。
+
 > 本文档用于评审：列出 Appwrite 中需要迁移到 Go + PostgreSQL 的功能模块及其详细功能点。  
 > 源码根目录：`D:\Codes\baas\appwrite`
 

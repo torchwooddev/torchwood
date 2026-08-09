@@ -1,5 +1,10 @@
 # P0 设计方案回顾与偏差确认
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：一次性设计评审文档，评审结论已全部实施（系统资源走动态文档 + `_perms`、schema-per-database、P0 能力子集等），P0/P1 已建成。
+> 后续信息源：`docs/tech-decision.md`（选型决策）、`AGENTS.md`、代码本身。
+
 > 基于对 `D:\Codes\baas\appwrite` 和 `D:\\Codes\\qiulin\\Torchwoodwork` 的二次 review，列出当前 P0 设计与两者的对齐点、偏差点、以及需要进一步确认/补充的事项。
 
 ---

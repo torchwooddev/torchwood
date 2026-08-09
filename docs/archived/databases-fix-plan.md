@@ -1,5 +1,10 @@
 # Databases 子系统修复方案（Databases Fix Plan）
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：v1.1 全部 11 项 P0 修复均已实现并通过全量测试（26 包全绿），本文档为历史实施记录，内容已被代码吸收。
+> 后续信息源：`internal/infra/documentdb/`、`internal/app/server/databases.go`、`internal/api/servergrpc/databases.go` 及其测试。
+
 > 状态：`v1.1 已实现`（2026-08-08：独立审查确认 → 子代理两阶段实现完成 → `go build ./...` 通过、全量 `go test ./...` 26 包全绿）
 > 适用范围：Databases / Collections / Documents 三层功能缺口修复
 > 本文档是实现的唯一依据；实现完成后回填实际变更与验收结果。

@@ -1,5 +1,11 @@
 # Torchwood 权限系统专项评审与完整修复方案
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：主体已实施完成并通过全量验证——C1（系统集合隔离三层修复 + UsersService 改 SystemPrincipal）、H1（synthetic 角色授予约束）、H2/M3（角色实时解析）、H3、M1、M4、M6、M7、M9、M10 及 M2（keys 写权限收窄，migration 000008）均已落地。
+> 截止归档仍**待办**的项：M5（`security.database.default_public_read` 默认公开读开关）、L2（`DeleteFile` 不校验 bucket 归属）、L4（文档权限明细信息泄露）、L5（`IsAPIKeysServiceMethod` 子串匹配）、L7（admin 调 Server API 缺 `X-Torchwood-Project` 头时错误信息不明确）、L9（`parseRawPermissions`/`splitPermission` 静默丢弃非法格式）。
+> 后续信息源：代码实现与测试（`internal/domain/databases/permissions.go`、`internal/infra/auth`、`internal/infra/documentdb`）、`docs/roadmap.md`。
+
 > 审查日期：2026-08-07（两轮深度评审 + 独立审查）
 > 范围：认证链路（API Key / JWT / Session Cookie）、授权链路（proto authz 注解 → 拦截器 → 文档 ACL → 用例层 ownership）、Server/Client/Console 三套 API 的权限边界、动态文档层 `_perms` 模型、OAuth/OTP 认证流、HTTP 网关与存储端点
 > 状态：**C1/H1/H2/H3/M1/M3/M4/M6/M7/M8/M9/M10 及 keys 权限收窄已由子代理实施完成并通过全量验证（2026-08-07）；M2/M5 与 L 系列低危项待办**

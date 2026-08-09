@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-07-01（补充 AI/Agent-Native 战略与 P1 Sprint 1 部分落地，见 `docs/completed-tasks.md`）。
+> 最新更新：2026-07-01（补充 AI/Agent-Native 战略与 P1 Sprint 1 部分落地，见 `docs/archived/completed-tasks.md`）。
 
 ---
 
@@ -453,8 +453,9 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ## 7. 参考
 
-- `docs/appwrite-go-migration-modules.md`：Appwrite 功能迁移全景。
-- `docs/p0-foundation-design.md`：P0 底座设计。
-- `docs/completed-tasks.md`：已完成任务清单。
+- `docs/archived/appwrite-go-migration-modules.md`：Appwrite 功能迁移全景（已归档）。
+- `docs/archived/p0-foundation-design.md`：P0 底座设计（已归档）。
+- `docs/archived/completed-tasks.md`：已完成任务清单（已归档）。
+- `docs/tech-decision.md`：技术选型决策。
 - `README.md`：快速开始。
 - `AGENTS.md`：开发约定。

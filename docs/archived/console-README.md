@@ -1,5 +1,10 @@
 # React + TypeScript + Vite
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：本文件是 Vite 脚手架自带的模板 README（内容仅为 ESLint 配置说明），与 Torchwood Console 项目无关，属初始化残留。
+> 后续信息源：`README.md`（项目总览）、`console/src/`（Console 前端代码）。
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

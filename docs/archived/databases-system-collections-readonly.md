@@ -1,5 +1,10 @@
 # Databases 系统集合只读化设计（RFC）
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：RFC 已实现——migration `000009_document_collections_is_system`（含存量回填）、domain 层系统集合名单常量（`internal/domain/databases/system_collections.go`）、读写分流与 PlatformAdmin 分级脱敏、schema 级写拦截、Console 只读态均已落地并有测试覆盖（`system_collections_readonly_test.go` 等）。
+> 后续信息源：`internal/domain/databases/system_collections.go`、`internal/app/server/databases.go`、`internal/app/client/databases.go` 及其测试。
+
 > 状态：已修订（v2，独立审查通过后定稿）
 > 目标版本：当前 main（3e701d2）
 > 审查记录：docs 评审 agent 已实际核对全部引用；修订项见 §8 变更日志

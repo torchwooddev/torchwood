@@ -1,6 +1,6 @@
 # Torchwood P0 人工验收清单
 
-> 基于 `docs/completed-tasks.md` 及近期提交整理。
+> 基于 `docs/archived/completed-tasks.md` 及近期提交整理。
 > 对应提交：`11af6f8`（P1 Sprint 1：Account 会话、Document CRUD、Teams Memberships、Console Teams）。
 >
 > **用法**：逐项执行操作，在 `[ ]` 中打 `x` 标记通过；未通过项在「备注」列记录现象与复现步骤。
@@ -288,7 +288,7 @@ LIMIT 10;
 
 ## 13. 已知不在本次验收范围
 
-以下能力在 `docs/completed-tasks.md` §13 中标记为**未实现或占位**，验收时**不应**作为通过标准：
+以下能力在 `docs/archived/completed-tasks.md` §13 中标记为**未实现或占位**，验收时**不应**作为通过标准：
 
 - [ ] 密码重置、邮箱验证、OAuth、MFA、匿名登录
 - [ ] Server 侧创建用户、sessions/tokens 管理、impersonation
@@ -346,8 +346,8 @@ curl -s "$BASE/v1/server/users" \
 
 ## 附录 B：相关文档
 
-- [已完成任务清单](./completed-tasks.md)
-- [P0 底座设计](./p0-foundation-design.md)
+- [已完成任务清单（已归档）](./archived/completed-tasks.md)
+- [P0 底座设计（已归档）](./archived/p0-foundation-design.md)
 - [路线图](./roadmap.md)
 - [README 快速开始](../README.md)
 

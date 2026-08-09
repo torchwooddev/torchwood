@@ -1,5 +1,10 @@
 # Databases 安全审查修复方案（Databases Security Fix Plan）
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：Phase A（A1-A8）与 Phase B（B1/B2）均已实现并通过全量回归，本文档为历史实施记录，内容已被代码吸收（`pkg/grpc/interceptor/apikey_scope.go` 重写、B1 文档级优先语义、migration 000004/000007/000008 等）。
+> 后续信息源：`internal/domain/databases/permissions.go`、`internal/infra/documentdb/`、`pkg/grpc/interceptor/apikey_scope.go` 及其测试。
+
 > 状态：`v1.2 已确认`（2026-08-08：v1.1 复核落实 6 个方案级问题；v1.2 修订复核新发现问题 A–E，审查确认后可进入实现）
 > 实施状态：**已实现**（Phase A 于 2026-08-08 完成；Phase B（B1/B2）于 2026-08-08 完成，实施记录见 §9）
 > 适用范围：Databases / Collections / Documents 子系统的安全与健壮性修复

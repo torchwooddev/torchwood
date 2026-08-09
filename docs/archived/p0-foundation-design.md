@@ -1,5 +1,10 @@
 # P0 底座详细设计（Appwrite Go + PostgreSQL 迁移）
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：P0 底座已建成并远超该阶段（动态文档层、认证、三套 API、Console 均已实现），本文档为历史设计，接口签名与目录结构与当前代码已有差异。
+> 后续信息源：`AGENTS.md`（架构约定）、`docs/roadmap.md`（当前规划）、代码本身。
+
 > 本文档在 `tech-decision.md` 已确认选型基础上，给出 P0 底座的详细设计。已通过 `docs/p0-design-review.md` 评审并确认关键决策。  
 > 源码目标目录：`D:\\Codes\\qiulin\\Torchwood`
 

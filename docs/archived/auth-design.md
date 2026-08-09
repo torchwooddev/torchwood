@@ -1,5 +1,10 @@
 # Client 认证体系设计
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：Phase 0-5（SessionService/Email OTP/OAuth2/SMS OTP/微信）已全部实现，本文档为认证体系的历史设计记录，已无待办项。
+> 后续信息源：`proto/client/v1/account.proto`、`internal/app/client/`（account.go、email_otp.go、phone_otp.go、oauth2.go、wechat.go、identity.go）、`internal/infra/auth/`。
+
 > 最新更新：2026-06-30  
 > 状态：Phase 5（Demo + Console Settings）已完成
 

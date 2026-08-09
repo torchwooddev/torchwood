@@ -237,10 +237,8 @@ task sdk-demo   # 演示站点 http://localhost:5174
 ## 设计文档
 
 - `docs/roadmap.md`：开发路线图（含 AI/Agent-Native 战略）
-- `docs/appwrite-go-migration-modules.md`：模块迁移清单
 - `docs/tech-decision.md`：技术栈决策
-- `docs/p0-foundation-design.md`：P0 详细设计
-- `docs/p0-design-review.md`：设计评审与关键决策确认
+- `docs/archived/`：已归档的历史设计文档（P0 设计、迁移清单、安全评审、修复方案）
 
 ## 许可证
 

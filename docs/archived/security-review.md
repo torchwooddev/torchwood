@@ -1,5 +1,11 @@
 # Torchwood 安全审查报告与修复方案
 
+> [!WARNING] 已作废归档（ARCHIVED）
+> 归档日期：2026-08-09
+> 归档原因：状态「待修复」已不成立——P0-1/P0-2/P0-3、P1-1~P1-3 均已修复落地（系统集合黑名单与 docDB 写保护、inline MIME 白名单 + nosniff、Teams 成员/owner 校验 + 邀请接受邮箱验证、migration 000007/000008、`oauthproviders` 独立 scope）；且本文档与 `security-review-permissions.md` 存在结论冲突（P0-1 关于 Server API 不受影响的结论不成立），已被后者取代。
+> 截止归档仍**未修复**的项：P1-4 gRPC TLS 配置支持（默认绑定地址已按建议改为 `127.0.0.1:8088`，TLS 证书配置未实现）；P1-5 改邮箱无验证流程（`UpdateAccount` 仍直接落 email + 置 `email_verified=false`，无 `pending_email` 流程）。
+> 后续信息源：`docs/security-review-permissions.md`（已归档）中的实施记录、`docs/roadmap.md`。
+
 > 审查日期：2026-08-07
 > 审查范围：Client / Server / Console 三套 API 的划分、认证与授权链路、文档权限模型、Storage、Teams、SDK、Console UI
 > 状态：待修复（修复顺序见文末）

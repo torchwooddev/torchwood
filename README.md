@@ -236,10 +236,8 @@ task sdk-demo   # demo at http://localhost:5174
 ## Design Documents
 
 - `docs/roadmap.md` — development roadmap (includes AI/Agent-Native strategy)
-- `docs/appwrite-go-migration-modules.md` — module migration checklist
 - `docs/tech-decision.md` — technology decisions
-- `docs/p0-foundation-design.md` — P0 detailed design
-- `docs/p0-design-review.md` — design review and key decisions
+- `docs/archived/` — archived design docs (P0 design, migration checklist, security reviews, fix plans)
 
 ## License
 
