@@ -353,7 +353,7 @@ curl -s "$BASE/v1/server/users" \
 
 ## 附录 C：自动化验收测试
 
-§6.7–§10.3 可通过集成测试自动验证（需本地 Postgres，`5433` 端口可连）：
+§6.7–§10.3 可通过集成测试自动验证（需本地 Postgres，端口由 `TORCHWOOD_TEST_DATABASE_SOURCE` / `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` 环境变量指定，`task test` 会自动从 `.env` 加载）：
 
 ```bash
 # P0 验收（§6.7–§9.4）

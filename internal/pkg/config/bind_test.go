@@ -156,6 +156,7 @@ func TestConfigureViperEnvBinding(t *testing.T) {
 	f.String("log-level", "info", "log level")
 
 	t.Setenv("TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID", "env-access-key")
+	t.Setenv("TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY", "")
 	t.Setenv("TORCHWOOD_SERVER_GRPC_ADDR", ":10001")
 	t.Setenv("TORCHWOOD_SECURITY_TRUSTED_PROXIES", "10.0.0.0/8,192.168.0.0/16")
 
@@ -176,6 +177,7 @@ func TestConfigureViperEnvBindingUnmarshal(t *testing.T) {
 
 	t.Setenv("TORCHWOOD_SERVER_GRPC_ADDR", ":10001")
 	t.Setenv("TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID", "env-access-key")
+	t.Setenv("TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY", "env-secret")
 	t.Setenv("TORCHWOOD_SECURITY_TRUSTED_PROXIES", "10.0.0.0/8,192.168.0.0/16")
 
 	require.NoError(t, ConfigureViper(f, lynx.NewViperConfig(v)))
@@ -184,7 +186,7 @@ func TestConfigureViperEnvBindingUnmarshal(t *testing.T) {
 	require.NoError(t, UnmarshalConfig(lynx.NewViperConfig(v), &out))
 	require.Equal(t, ":10001", out.GetServer().GetGrpc().GetAddr())
 	require.Equal(t, "env-access-key", out.GetStorage().GetS3().GetAccessKeyId())
-	require.Equal(t, "minioadmin", out.GetStorage().GetS3().GetSecretAccessKey())
+	require.Equal(t, "env-secret", out.GetStorage().GetS3().GetSecretAccessKey())
 	require.Equal(t, []string{"10.0.0.0/8", "192.168.0.0/16"}, out.GetSecurity().GetTrustedProxies())
 }
 

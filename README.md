@@ -53,7 +53,7 @@ Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (Baa
 task up
 ```
 
-This starts PostgreSQL (5433), Redis (6380), and MinIO (9000/9001).
+This starts PostgreSQL (5432), Redis (6379), and MinIO (9000/9001). Ports are configurable via the `POSTGRES_PORT`, `REDIS_PORT`, `MINIO_API_PORT`, and `MINIO_CONSOLE_PORT` variables in `.env`.
 
 ### 2. Configure environment variables
 
@@ -66,8 +66,8 @@ cp .env.example .env
 Key variables:
 
 ```env
-TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5433/torchwood?sslmode=disable
-TORCHWOOD_DATA_REDIS_ADDR=127.0.0.1:6380
+TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
+TORCHWOOD_DATA_REDIS_ADDR=127.0.0.1:6379
 TORCHWOOD_SECURITY_JWT_SECRET=change-me-in-production
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
 TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
@@ -222,6 +222,13 @@ Integration tests include:
 - `internal/app/client/account_test.go`
 
 Tests automatically create and drop the `TORCHWOOD_test` database.
+
+The test database DSNs are read from the `TORCHWOOD_TEST_DATABASE_SOURCE` and `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` environment variables (defined in `.env.example`); `task test` loads them from `.env` automatically. When running `go test` directly, export them first:
+
+```bash
+# go test ./...               # fails fast without the variables
+task test                     # loads .env and runs everything
+```
 
 ## TypeScript SDK
 

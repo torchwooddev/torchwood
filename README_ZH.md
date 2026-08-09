@@ -53,7 +53,7 @@ Torchwood 是一个受 Appwrite 启发、**AI/Agent-Native** 的后端即服务�
 task up
 ```
 
-这会启动 PostgreSQL（5433）、Redis（6380）和 MinIO（9000/9001）。
+这会启动 PostgreSQL（5432）、Redis（6379）和 MinIO（9000/9001）。端口可通过 `.env` 中的 `POSTGRES_PORT`、`REDIS_PORT`、`MINIO_API_PORT`、`MINIO_CONSOLE_PORT` 变量调整。
 
 ### 2. 配置环境变量
 
@@ -66,8 +66,8 @@ cp .env.example .env
 关键变量：
 
 ```env
-TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5433/torchwood?sslmode=disable
-TORCHWOOD_DATA_REDIS_ADDR=127.0.0.1:6380
+TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
+TORCHWOOD_DATA_REDIS_ADDR=127.0.0.1:6379
 TORCHWOOD_SECURITY_JWT_SECRET=change-me-in-production
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
 TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
@@ -223,6 +223,13 @@ task test
 - `internal/app/client/account_test.go`
 
 测试会自动创建并销毁 `TORCHWOOD_test` 数据库。
+
+测试数据库 DSN 从 `TORCHWOOD_TEST_DATABASE_SOURCE` 与 `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` 环境变量读取（已包含在 `.env.example` 中）；`task test` 会自动从 `.env` 加载。直接运行 `go test` 时需先导出：
+
+```bash
+# go test ./...               # 未设置变量时快速失败
+task test                     # 加载 .env 后运行全部测试
+```
 
 ## TypeScript SDK
 

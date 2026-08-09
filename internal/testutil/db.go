@@ -23,20 +23,18 @@ import (
 
 var testDBSeq atomic.Uint64
 
-// TestDSN returns the DSN for integration tests.
+// TestDSN returns the DSN for integration tests, read from the
+// TORCHWOOD_TEST_DATABASE_SOURCE environment variable. There is no
+// hard-coded fallback: ports are owned by the local compose/.env setup,
+// so a missing variable fails fast in SetupTestDB.
 func TestDSN() string {
-	if dsn := os.Getenv("TORCHWOOD_TEST_DATABASE_SOURCE"); dsn != "" {
-		return dsn
-	}
-	return "postgres://torchwood:torchwood@127.0.0.1:5433/TORCHWOOD_test?sslmode=disable"
+	return os.Getenv("TORCHWOOD_TEST_DATABASE_SOURCE")
 }
 
-// AdminDSN returns a DSN to the postgres maintenance database.
+// AdminDSN returns a DSN to the postgres maintenance database, read from the
+// TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE environment variable.
 func AdminDSN() string {
-	if dsn := os.Getenv("TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE"); dsn != "" {
-		return dsn
-	}
-	return "postgres://torchwood:torchwood@127.0.0.1:5433/postgres?sslmode=disable"
+	return os.Getenv("TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE")
 }
 
 // SetupTestDB creates a fresh test database, runs migrations, and returns a bun DB client.
@@ -44,6 +42,12 @@ func SetupTestDB(t *testing.T) *clients.Database {
 	t.Helper()
 	adminDSN := AdminDSN()
 	baseDSN := TestDSN()
+	if adminDSN == "" {
+		t.Fatal("TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE is not set (run via `task test`, which loads .env, or export it manually)")
+	}
+	if baseDSN == "" {
+		t.Fatal("TORCHWOOD_TEST_DATABASE_SOURCE is not set (run via `task test`, which loads .env, or export it manually)")
+	}
 	dbName := uniqueTestDBName()
 
 	testDSN, err := replaceDatabaseName(baseDSN, dbName)
