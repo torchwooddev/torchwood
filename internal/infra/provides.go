@@ -11,6 +11,7 @@ import (
 	infrafunctions "github.com/torchwooddev/torchwood/internal/infra/functions"
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
+	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 )
@@ -47,6 +48,7 @@ var ProviderSet = wire.NewSet(
 	documentdb.ProviderSet,
 	infrastorage.ProviderSet,
 	infrafunctions.ProviderSet,
+	infraqueue.ProviderSet,
 
 	server.NewGRPCServer,
 	server.NewGRPCGatewayServer,

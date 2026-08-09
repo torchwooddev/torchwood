@@ -10,11 +10,11 @@ const StorageServiceGetFile = "/torchwood.server.v1.StorageService/GetFile"
 
 // apiKeyScopeRule 是单个 gRPC 方法对应的 scope 资源名与读写方向（B2）。
 type apiKeyScopeRule struct {
-	resource string // scope 资源名（databases/users/teams/storage/projects/oauthproviders/apikeys）
+	resource string // scope 资源名（databases/users/teams/storage/projects/oauthproviders/apikeys/functions）
 	op       string // "read" 或 "write"
 }
 
-// apiKeyScopeRules 显式映射全部 7 个 ACCESS_API_KEY 服务的方法（Health 是
+// apiKeyScopeRules 显式映射全部 8 个 ACCESS_API_KEY 服务的方法（Health 是
 // ACCESS_PUBLIC，不映射）。读方法 = List/Get/Count 类，其余一律 write。
 // 新增 ACCESS_API_KEY 方法必须在此登记，否则 APIKeyScopeAllowed 对其 fail-closed。
 var apiKeyScopeRules = map[string]apiKeyScopeRule{
@@ -87,6 +87,23 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.APIKeysService/ListAPIKeys":  {"apikeys", "read"},
 	"/torchwood.server.v1.APIKeysService/GetAPIKey":    {"apikeys", "read"},
 	"/torchwood.server.v1.APIKeysService/DeleteAPIKey": {"apikeys", "write"},
+	// FunctionsService
+	"/torchwood.server.v1.FunctionsService/ListRuntimes":       {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/ListSpecifications": {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/CreateFunction":     {"functions", "write"},
+	"/torchwood.server.v1.FunctionsService/ListFunctions":      {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/GetFunction":        {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/UpdateFunction":     {"functions", "write"},
+	"/torchwood.server.v1.FunctionsService/DeleteFunction":     {"functions", "write"},
+	"/torchwood.server.v1.FunctionsService/CreateDeployment":   {"functions", "write"},
+	"/torchwood.server.v1.FunctionsService/ListDeployments":    {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/GetDeployment":      {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/DeleteDeployment":   {"functions", "write"},
+	"/torchwood.server.v1.FunctionsService/SetVariables":       {"functions", "write"},
+	"/torchwood.server.v1.FunctionsService/GetVariables":       {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/CreateExecution":    {"functions", "write"},
+	"/torchwood.server.v1.FunctionsService/ListExecutions":     {"functions", "read"},
+	"/torchwood.server.v1.FunctionsService/GetExecution":       {"functions", "read"},
 }
 
 // validAPIKeyScopes 是 API key scope 允许的格式全集：{*, all, 裸资源名,

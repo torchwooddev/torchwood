@@ -15,14 +15,17 @@ import (
 	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
+	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/infra/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/messaging"
+	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
 )
@@ -92,11 +95,16 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	servergrpcTeamsService := servergrpc.NewTeamsService(teams)
 	serverDatabases := server.NewDatabases(projectsRepository, documentDB)
 	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases)
+	executor := functions.NewDockerExecutor(appConfig)
+	functionRepo := bunrepo.NewFunctionRepository(database)
+	sharedQueue := queue.NewRedisQueue(redisClient)
+	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
+	functionsService := servergrpc.NewFunctionsService(functionsFunctions)
 	consoleAuth := console.NewAuth(appConfig, consoleAdminRepository, redisAdminTokenRevokeStore, redisLoginThrottle, redisRefreshRotationStore)
 	authService := consolegrpc.NewAuthService(consoleAuth)
 	admins := console.NewAdmins(consoleAdminRepository)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, authService, adminsService)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -111,7 +119,12 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, fileHandler, oAuthHandler)
+	functionsHandler, err := serverhttp.NewFunctionsHandler(appConfig, validator, functionsFunctions)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, fileHandler, oAuthHandler, functionsHandler)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

@@ -41,6 +41,7 @@ func NewGRPCServer(
 	oauthProviders *servergrpc.OAuthProvidersService,
 	teams *servergrpc.TeamsService,
 	databases *servergrpc.DatabasesService,
+	functions *servergrpc.FunctionsService,
 	consoleAuth *consolegrpc.AuthService,
 	consoleAdmins *consolegrpc.AdminsService,
 ) (*lynxgrpc.Server, error) {
@@ -59,6 +60,7 @@ func NewGRPCServer(
 		serverv1.File_server_v1_oauth_providers_proto,
 		serverv1.File_server_v1_teams_proto,
 		serverv1.File_server_v1_databases_proto,
+		serverv1.File_server_v1_functions_proto,
 		consolev1.File_console_v1_auth_proto,
 		consolev1.File_console_v1_admins_proto,
 	)
@@ -86,6 +88,8 @@ func NewGRPCServer(
 			authInterceptor.UnaryAuthMiddleware,
 			auditInterceptor.UnaryAuditMiddleware,
 		),
+		// 允许 ≤1MiB 的 deployment 代码包走 gRPC（base64 膨胀后约 1.33x）。
+		lynxgrpc.WithServerOptions(grpc.MaxRecvMsgSize(8<<20)),
 	)
 	grpcSrv := srv.GetServer()
 
@@ -100,6 +104,7 @@ func NewGRPCServer(
 	serverv1.RegisterOAuthProvidersServiceServer(grpcSrv, oauthProviders)
 	serverv1.RegisterTeamsServiceServer(grpcSrv, teams)
 	serverv1.RegisterDatabasesServiceServer(grpcSrv, databases)
+	serverv1.RegisterFunctionsServiceServer(grpcSrv, functions)
 	consolev1.RegisterConsoleAuthServiceServer(grpcSrv, consoleAuth)
 	consolev1.RegisterConsoleAdminsServiceServer(grpcSrv, consoleAdmins)
 

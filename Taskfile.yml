@@ -48,9 +48,16 @@ tasks:
       - go mod tidy
       - go run -mod=mod github.com/google/wire/cmd/wire
 
+  wire-worker:
+    dir: '{{.USER_WORKING_DIR}}/cmd/worker'
+    cmds:
+      - go mod tidy
+      - go run -mod=mod github.com/google/wire/cmd/wire
+
   wire-all:
     cmds:
       - task: wire-server
+      - task: wire-worker
 
   generate-all:
     cmds:
@@ -103,12 +110,18 @@ tasks:
     cmds:
       - go run ./cmd/server
 
+  worker:
+    dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - go run ./cmd/worker
+
   build:
     dir: '{{.USER_WORKING_DIR}}'
     deps:
       - console-build
     cmds:
       - go build -ldflags "-X main.Version={{.VERSION}}" -o ./bin/ ./cmd/server
+      - go build -ldflags "-X main.Version={{.VERSION}}" -o ./bin/ ./cmd/worker
     vars:
       VERSION:
         sh: git describe --tags --always

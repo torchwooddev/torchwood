@@ -6,16 +6,20 @@ import (
 	"strings"
 
 	"github.com/torchwooddev/torchwood/internal/domain/functions"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
+// Functions 是 Functions 服务的 use-case 聚合。
 type Functions struct {
 	cfg      *config.AppConfig
 	executor functions.Executor
+	repo     functions.FunctionRepo
+	queue    shared.Queue
 }
 
-func NewFunctions(cfg *config.AppConfig, executor functions.Executor) *Functions {
-	return &Functions{cfg: cfg, executor: executor}
+func NewFunctions(cfg *config.AppConfig, executor functions.Executor, repo functions.FunctionRepo, queue shared.Queue) *Functions {
+	return &Functions{cfg: cfg, executor: executor, repo: repo, queue: queue}
 }
 
 type ExecuteCommand struct {
@@ -67,7 +71,7 @@ func sanitizeEnv(env map[string]string) map[string]string {
 func (f *Functions) RuntimeImage(runtime string) string {
 	registry := f.cfg.GetFunctions().GetDocker().GetRegistry()
 	if registry == "" {
-		registry = "Torchwood"
+		registry = "torchwood-funcs"
 	}
 	return fmt.Sprintf("%s/runtime-%s:latest", registry, runtime)
 }

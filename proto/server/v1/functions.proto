@@ -1,0 +1,205 @@
+syntax = "proto3";
+
+package torchwood.server.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// FunctionsService manages functions, their code deployments, variables
+// and executions. Deployments are zip code packages built into Docker
+// images; executions run the built image synchronously or asynchronously
+// via a worker queue.
+service FunctionsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
+
+  rpc ListRuntimes(shared.v1.Empty) returns (ListRuntimesResponse) {
+    option (google.api.http) = { get: "/v1/server/functions/runtimes" };
+  }
+  rpc ListSpecifications(shared.v1.Empty) returns (ListSpecificationsResponse) {
+    option (google.api.http) = { get: "/v1/server/functions/specifications" };
+  }
+  rpc CreateFunction(CreateFunctionRequest) returns (Function) {
+    option (google.api.http) = { post: "/v1/server/functions", body: "*" };
+  }
+  rpc ListFunctions(shared.v1.ListRequest) returns (ListFunctionsResponse) {
+    option (google.api.http) = { get: "/v1/server/functions" };
+  }
+  rpc GetFunction(GetFunctionRequest) returns (Function) {
+    option (google.api.http) = { get: "/v1/server/functions/{function_id}" };
+  }
+  rpc UpdateFunction(UpdateFunctionRequest) returns (Function) {
+    option (google.api.http) = { patch: "/v1/server/functions/{function_id}", body: "*" };
+  }
+  rpc DeleteFunction(GetFunctionRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/server/functions/{function_id}" };
+  }
+  rpc CreateDeployment(CreateDeploymentRequest) returns (Deployment) {
+    option (google.api.http) = { post: "/v1/server/functions/{function_id}/deployments", body: "*" };
+  }
+  rpc ListDeployments(GetFunctionRequest) returns (ListDeploymentsResponse) {
+    option (google.api.http) = { get: "/v1/server/functions/{function_id}/deployments" };
+  }
+  rpc GetDeployment(GetDeploymentRequest) returns (Deployment) {
+    option (google.api.http) = { get: "/v1/server/functions/{function_id}/deployments/{deployment_id}" };
+  }
+  rpc DeleteDeployment(GetDeploymentRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/server/functions/{function_id}/deployments/{deployment_id}" };
+  }
+  rpc SetVariables(SetVariablesRequest) returns (Variables) {
+    option (google.api.http) = { put: "/v1/server/functions/{function_id}/variables", body: "*" };
+  }
+  rpc GetVariables(GetFunctionRequest) returns (Variables) {
+    option (google.api.http) = { get: "/v1/server/functions/{function_id}/variables" };
+  }
+  rpc CreateExecution(CreateExecutionRequest) returns (Execution) {
+    option (google.api.http) = { post: "/v1/server/functions/{function_id}/executions", body: "*" };
+  }
+  rpc ListExecutions(GetFunctionRequest) returns (ListExecutionsResponse) {
+    option (google.api.http) = { get: "/v1/server/functions/{function_id}/executions" };
+  }
+  rpc GetExecution(GetExecutionRequest) returns (Execution) {
+    option (google.api.http) = { get: "/v1/server/functions/{function_id}/executions/{execution_id}" };
+  }
+}
+
+message Function {
+  string id = 1;
+  string project_id = 2;
+  string name = 3;
+  string runtime = 4;
+  string entrypoint = 5;
+  int32 timeout_seconds = 6;
+  string spec = 7;
+  bool enabled = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message RuntimeInfo {
+  string id = 1;
+  string name = 2;
+  string entrypoint = 3;
+}
+
+message SpecificationInfo {
+  string id = 1;
+  string cpu = 2;
+  string memory = 3;
+}
+
+message Deployment {
+  string id = 1;
+  string function_id = 2;
+  int64 size = 3;
+  string status = 4;
+  string error = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message Variables {
+  repeated Variable variables = 1;
+}
+
+message Variable {
+  string key = 1;
+  string value = 2;
+}
+
+message Execution {
+  string id = 1;
+  string function_id = 2;
+  string deployment_id = 3;
+  string status = 4;
+  string response = 5;
+  string stdout = 6;
+  string stderr = 7;
+  int32 status_code = 8;
+  int64 duration_ms = 9;
+  string error = 10;
+  bool response_truncated = 11;
+  bool stdout_truncated = 12;
+  bool stderr_truncated = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message CreateFunctionRequest {
+  string id = 1;
+  string name = 2;
+  string runtime = 3;
+  string entrypoint = 4;
+  optional int32 timeout_seconds = 5;
+  optional string spec = 6;
+  optional bool enabled = 7;
+}
+
+message UpdateFunctionRequest {
+  string function_id = 1;
+  optional string name = 2;
+  optional string entrypoint = 3;
+  optional int32 timeout_seconds = 4;
+  optional string spec = 5;
+  optional bool enabled = 6;
+}
+
+message GetFunctionRequest {
+  string function_id = 1;
+}
+
+// code 为 zip 代码包，≤1MiB 走此通道；更大的包走 multipart 上传
+// （POST /v1/server/functions/{function_id}/deployments/code）。
+message CreateDeploymentRequest {
+  string function_id = 1;
+  bytes code = 2;
+}
+
+message GetDeploymentRequest {
+  string function_id = 1;
+  string deployment_id = 2;
+}
+
+message CreateExecutionRequest {
+  string function_id = 1;
+  optional string deployment_id = 2; // 缺省用最新 ready deployment
+  string data = 3;
+  optional bool async = 4;
+}
+
+message GetExecutionRequest {
+  string function_id = 1;
+  string execution_id = 2;
+}
+
+// SetVariablesRequest 全量替换函数环境变量。
+message SetVariablesRequest {
+  string function_id = 1;
+  repeated Variable variables = 2;
+}
+
+message ListRuntimesResponse {
+  repeated RuntimeInfo runtimes = 1;
+}
+
+message ListSpecificationsResponse {
+  repeated SpecificationInfo specifications = 1;
+}
+
+message ListFunctionsResponse {
+  repeated Function functions = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+// MVP 不分页。
+message ListDeploymentsResponse {
+  repeated Deployment deployments = 1;
+}
+
+// MVP 不分页（返回最近 100 条）。
+message ListExecutionsResponse {
+  repeated Execution executions = 1;
+}

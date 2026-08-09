@@ -30,6 +30,7 @@ jobs:
     env:
       TORCHWOOD_TEST_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/TORCHWOOD_test?sslmode=disable
       TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/postgres?sslmode=disable
+      TORCHWOOD_RUN_DOCKER_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +42,9 @@ jobs:
       - uses: arduino/setup-task@v2
         with:
           version: 3.x
+
+      - name: Pre-pull function runtime base images
+        run: docker pull node:18-alpine && docker pull python:3.11-alpine
 
       - name: Format check (gofmt)
         run: test -z "$(gofmt -l .)"

@@ -11,14 +11,27 @@ import (
 )
 
 type mockExecutor struct {
-	calls  []domainfunctions.Execution
-	result *domainfunctions.ExecutionResult
-	err    error
+	calls    []domainfunctions.Execution
+	result   *domainfunctions.ExecutionResult
+	err      error
+	builds   int
+	buildErr error
+	removes  int
 }
 
 func (m *mockExecutor) Execute(_ context.Context, exec domainfunctions.Execution) (*domainfunctions.ExecutionResult, error) {
 	m.calls = append(m.calls, exec)
 	return m.result, m.err
+}
+
+func (m *mockExecutor) Build(_ context.Context, _, _, _ string) error {
+	m.builds++
+	return m.buildErr
+}
+
+func (m *mockExecutor) RemoveImage(_ context.Context, _, _ string) error {
+	m.removes++
+	return nil
 }
 
 func newMockExecutor(result *domainfunctions.ExecutionResult, err error) *mockExecutor {
@@ -31,7 +44,7 @@ func TestExecute_DelegatesWithDefaults(t *testing.T) {
 		Stdout:     "hello",
 		Response:   `{"ok":true}`,
 	}, nil)
-	uc := NewFunctions(&config.AppConfig{}, executor)
+	uc := NewFunctions(&config.AppConfig{}, executor, nil, nil)
 
 	res, err := uc.Execute(context.Background(), ExecuteCommand{
 		FunctionID: "fn_1",
@@ -54,7 +67,7 @@ func TestExecute_DelegatesWithDefaults(t *testing.T) {
 
 func TestExecute_PassesThroughExplicitFields(t *testing.T) {
 	executor := newMockExecutor(nil, errors.New("boom"))
-	uc := NewFunctions(&config.AppConfig{}, executor)
+	uc := NewFunctions(&config.AppConfig{}, executor, nil, nil)
 
 	_, err := uc.Execute(context.Background(), ExecuteCommand{
 		FunctionID: "fn_2",
@@ -87,8 +100,8 @@ func TestSanitizeEnv(t *testing.T) {
 
 func TestRuntimeImage(t *testing.T) {
 	cfg := &config.AppConfig{}
-	uc := NewFunctions(cfg, newMockExecutor(nil, nil))
-	require.Equal(t, "Torchwood/runtime-node-18.0:latest", uc.RuntimeImage("node-18.0"), "default registry is Torchwood")
+	uc := NewFunctions(cfg, newMockExecutor(nil, nil), nil, nil)
+	require.Equal(t, "torchwood-funcs/runtime-node-18.0:latest", uc.RuntimeImage("node-18.0"), "default registry is torchwood-funcs")
 
 	cfg.Functions = &config.Functions{
 		Docker: &config.Functions_Docker{Registry: "ghcr.io/torchwood"},

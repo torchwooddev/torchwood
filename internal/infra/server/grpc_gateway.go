@@ -29,6 +29,7 @@ func NewGRPCGatewayServer(
 	cfg *config.AppConfig,
 	fileHandler *serverhttp.FileHandler,
 	oauthHandler *serverhttp.OAuthHandler,
+	functionsHandler *serverhttp.FunctionsHandler,
 ) (*GRPCGatewayServer, error) {
 	httpCfg := cfg.GetServer().GetHttp()
 	timeout := parseDuration(httpCfg.GetTimeout(), 60*time.Second)
@@ -60,6 +61,7 @@ func NewGRPCGatewayServer(
 		serverv1.RegisterOAuthProvidersServiceHandlerFromEndpoint,
 		serverv1.RegisterTeamsServiceHandlerFromEndpoint,
 		serverv1.RegisterDatabasesServiceHandlerFromEndpoint,
+		serverv1.RegisterFunctionsServiceHandlerFromEndpoint,
 		consolev1.RegisterConsoleAuthServiceHandlerFromEndpoint,
 		consolev1.RegisterConsoleAdminsServiceHandlerFromEndpoint,
 	}
@@ -72,6 +74,7 @@ func NewGRPCGatewayServer(
 	// Custom HTTP handlers for file upload/download and OAuth callbacks.
 	fileHandler.Register(mux)
 	oauthHandler.Register(mux)
+	functionsHandler.Register(mux)
 
 	handler := http.Handler(mux)
 

@@ -56,8 +56,8 @@ functions:
   executor: "docker"
   docker:
     host: "unix:///var/run/docker.sock"
-    network: "Torchwood-functions"
-    registry: "Torchwood-funcs"
+    network: "torchwood-functions"   # 不存在时执行器启动自动 create
+    registry: "torchwood-funcs"      # 必须小写（docker build -t 校验）
 
 telemetry:
   enabled: false

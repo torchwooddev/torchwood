@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ProjectBootstrap } from "@/components/ProjectBootstrap";
 import { ProjectSelector } from "@/components/ProjectSelector";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Key, Users, Database, HardDrive, LogOut, Menu, X, UsersRound, Settings, ShieldCheck, FolderKanban } from "lucide-react";
+import { LayoutDashboard, Key, Users, Database, HardDrive, LogOut, Menu, X, UsersRound, Settings, ShieldCheck, FolderKanban, FunctionSquare } from "lucide-react";
 
 const navSections = [
   {
@@ -16,6 +16,7 @@ const navSections = [
       { to: "/console/api-keys", label: "API Keys", icon: Key },
       { to: "/console/databases", label: "Databases", icon: Database },
       { to: "/console/storage", label: "Storage", icon: HardDrive },
+      { to: "/console/functions", label: "Functions", icon: FunctionSquare },
     ],
   },
   {

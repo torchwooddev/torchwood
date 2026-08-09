@@ -28,6 +28,10 @@ import {
   FileDetailPage,
 } from "@/routes/storage/pages";
 import {
+  FunctionsListPage,
+  FunctionDetailPage,
+} from "@/routes/functions/pages";
+import {
   TeamsListPage,
   TeamNewPage,
   TeamDetailPage,
@@ -106,6 +110,9 @@ function AppRoutes() {
         <Route path="storage/new" element={<BucketNewPage />} />
         <Route path="storage/:bucketId" element={<BucketDetailPage />} />
         <Route path="storage/:bucketId/files/:fileId" element={<FileDetailPage />} />
+
+        <Route path="functions" element={<FunctionsListPage />} />
+        <Route path="functions/:functionId" element={<FunctionDetailPage />} />
 
         <Route path="databases" element={<DatabasesListPage />} />
         <Route path="databases/new" element={<DatabaseNewPage />} />
