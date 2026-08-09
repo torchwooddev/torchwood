@@ -153,7 +153,7 @@ func TestP0_Section8_AccessPermission(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := client.NewTestAccount(cfg, projectRepo, docDB)
-	_, tokens, _, err := account.SignUp(ctx, client.SignUpCommand{
+	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectID,
 		Email:     "access-perm@torchwood.local",
 		Password:  "User@123456",
@@ -219,7 +219,7 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 	usersUC := appserver.NewUsers(projectRepo, docDB, infrAuth.NewSessionService(cfg, docDB, client.NewUserRoles(docDB), nil))
 
 	const email = "dsl-query@torchwood.local"
-	signedUp, _, _, err := account.SignUp(ctx, client.SignUpCommand{
+	signedUp, _, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectID,
 		Email:     email,
 		Password:  "User@123456",

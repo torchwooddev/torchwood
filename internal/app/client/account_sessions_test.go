@@ -32,7 +32,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	account := NewTestAccount(cfg, projectRepo, docDB)
-	user, tokens, _, err := account.SignUp(ctx, SignUpCommand{
+	user, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "sessions@torchwood.local",
 		Password:  "User@123456",
@@ -40,7 +40,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, tokens2, _, err := account.SignIn(ctx, SignInCommand{
+	_, tokens2, _, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
 		Email:     "sessions@torchwood.local",
 		Password:  "User@123456",
@@ -107,7 +107,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, newTokens, _, err := account.SignIn(ctx, SignInCommand{
+	_, newTokens, _, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
 		Email:     "sessions@torchwood.local",
 		Password:  "NewPass@123",

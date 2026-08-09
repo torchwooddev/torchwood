@@ -30,7 +30,7 @@ func TestResolveOAuthUser_RejectsExistingEmailWithoutIdentity(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db)
 	account := NewTestAccount(cfg, projectRepo, docDB)
 
-	_, _, _, err := account.SignUp(ctx, SignUpCommand{
+	_, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "existing@torchwood.local",
 		Password:  "User@123",

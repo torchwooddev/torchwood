@@ -25,6 +25,7 @@ func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
 				{ID: "users_phone_verified", Key: "phone_verified", Type: "boolean", Default: false},
 				{ID: "users_labels", Key: "labels", Type: "json"},
 				{ID: "users_prefs", Key: "prefs", Type: "json"},
+				{ID: "users_factors", Key: "factors", Type: "json"},
 			},
 			indexes: []databases.Index{
 				{ID: "users_email_unique", Type: "unique", Attributes: []string{"email"}},

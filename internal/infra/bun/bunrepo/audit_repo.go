@@ -50,3 +50,40 @@ func (r *auditRepo) Insert(ctx context.Context, entry *audit.Entry) error {
 	_, err := r.db.NewInsert().Model(m).Exec(ctx)
 	return err
 }
+
+const auditListMaxLimit = 100
+
+func (r *auditRepo) ListByActor(ctx context.Context, projectID, actorID string, limit int) ([]audit.Entry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > auditListMaxLimit {
+		limit = auditListMaxLimit
+	}
+	var rows []model.AuditLog
+	if err := r.db.NewSelect().Model(&rows).
+		Where("al.project_id = ? AND al.actor_id = ?", projectID, actorID).
+		Order("al.created_at DESC").
+		Limit(limit).
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+	out := make([]audit.Entry, 0, len(rows))
+	for i := range rows {
+		row := &rows[i]
+		out = append(out, audit.Entry{
+			ID:         row.ID,
+			ProjectID:  row.ProjectID,
+			ActorID:    row.ActorID,
+			ActorKind:  row.ActorKind,
+			Action:     row.Action,
+			ResourceID: row.ResourceID,
+			Status:     row.Status,
+			IP:         row.IP,
+			UserAgent:  row.UserAgent,
+			Metadata:   row.Metadata,
+			CreatedAt:  row.CreatedAt,
+		})
+	}
+	return out, nil
+}

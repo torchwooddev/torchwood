@@ -44,7 +44,7 @@ func TestAccount_VerificationFlow(t *testing.T) {
 	mailer := &CaptureMailer{}
 	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, rdb, mailer)
 
-	user, _, _, err := account.SignUp(ctx, SignUpCommand{
+	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "verify-me@example.com",
 		Password:  "User@123",
@@ -108,7 +108,7 @@ func TestAccount_RecoveryFlow(t *testing.T) {
 	mailer := &CaptureMailer{}
 	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, rdb, mailer)
 
-	user, _, _, err := account.SignUp(ctx, SignUpCommand{
+	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "recover-me@torchwood.local",
 		Password:  "User@123",
@@ -134,7 +134,7 @@ func TestAccount_RecoveryFlow(t *testing.T) {
 		Password:  "NewPass@456",
 	}))
 
-	_, _, _, err = account.SignIn(ctx, SignInCommand{
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
 		Email:     user.Email,
 		Password:  "NewPass@456",

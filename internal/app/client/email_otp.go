@@ -85,48 +85,48 @@ func (a *Account) CreateEmailOTP(ctx context.Context, cmd CreateEmailOTPCommand)
 	return &Challenge{ChallengeID: challengeID, ExpireAt: expireAt}, nil
 }
 
-func (a *Account) CreateEmailOTPSession(ctx context.Context, cmd CreateEmailOTPSessionCommand) (*User, *TokenBundle, string, error) {
+func (a *Account) CreateEmailOTPSession(ctx context.Context, cmd CreateEmailOTPSessionCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	if a.otp == nil {
-		return nil, nil, "", status.Error(codes.Unimplemented, "email otp is not configured")
+		return nil, nil, "", nil, status.Error(codes.Unimplemented, "email otp is not configured")
 	}
 	projectID := strings.TrimSpace(cmd.ProjectID)
 	email := normalizeEmail(cmd.Email)
 	challengeID := strings.TrimSpace(cmd.ChallengeID)
 	otp := strings.TrimSpace(cmd.OTP)
 	if projectID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "project_id is required")
 	}
 	if email == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "email is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "email is required")
 	}
 	if challengeID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "challenge_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "challenge_id is required")
 	}
 	if otp == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "otp is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "otp is required")
 	}
 
 	project, err := a.projectRepo.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if project == nil {
-		return nil, nil, "", status.Error(codes.NotFound, "project not found")
+		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
 	}
 	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	if err := a.otp.VerifyEmailChallenge(ctx, projectID, challengeID, email, otp); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	user, err := a.findOrCreateUserByEmail(ctx, projectID, email, true)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if !users.CanAuthenticate(user.Status) {
-		return nil, nil, "", status.Error(codes.Unauthenticated, "user account is not active")
+		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	return a.finishSignInWithProvider(ctx, projectID, user, domainauth.ProviderEmailOTP)
 }
@@ -178,12 +178,20 @@ func (a *Account) findOrCreateUserByEmail(ctx context.Context, projectID, email 
 	return mapUserDoc(&userDoc), nil
 }
 
-func (a *Account) finishSignInWithProvider(ctx context.Context, projectID string, user *User, provider string) (*User, *TokenBundle, string, error) {
+func (a *Account) finishSignInWithProvider(ctx context.Context, projectID string, user *User, provider string) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
+	// MFA 登录钩子：用户存在 verified 因子时不直接签发会话，返回挑战信息。
+	challenge, err := a.mfaSignInChallenge(ctx, projectID, user)
+	if err != nil {
+		return nil, nil, "", nil, err
+	}
+	if challenge != nil {
+		return user, nil, "", challenge, nil
+	}
 	tokens, cookie, err := a.sessions.CreateSessionAndTokens(ctx, projectID, user.ID, user.Email, provider)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
-	return user, tokens, cookie, nil
+	return user, tokens, cookie, nil, nil
 }
 
 func normalizeEmail(email string) string {

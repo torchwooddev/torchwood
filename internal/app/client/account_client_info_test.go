@@ -34,7 +34,7 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db)
 	account := NewTestAccount(cfg, projectRepo, docDB)
 
-	_, _, _, err := account.SignUp(ctx, SignUpCommand{
+	_, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "client-info@torchwood.local",
 		Password:  "User@123",
@@ -42,7 +42,7 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, _, _, err = account.SignIn(ctx, SignInCommand{
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
 		Email:     "client-info@torchwood.local",
 		Password:  "User@123",

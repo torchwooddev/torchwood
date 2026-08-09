@@ -137,6 +137,55 @@ service AccountService {
     option (google.api.http) = { put: "/v1/account/recovery", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
   }
+
+  // MFA
+  rpc ListFactors(ListFactorsRequest) returns (ListFactorsResponse) {
+    option (google.api.http) = { get: "/v1/account/mfa" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+  }
+
+  rpc CreateTOTPFactor(CreateTOTPFactorRequest) returns (TOTPFactor) {
+    option (google.api.http) = { post: "/v1/account/mfa/totp", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+  }
+
+  rpc VerifyTOTPFactor(VerifyTOTPFactorRequest) returns (Factor) {
+    option (google.api.http) = { put: "/v1/account/mfa/totp", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+  }
+
+  rpc DeleteFactor(DeleteFactorRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/account/mfa/{factor_id}" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+  }
+
+  rpc CreateMFASession(CreateMFASessionRequest) returns (SignInResponse) {
+    option (google.api.http) = { post: "/v1/account/mfa/challenge", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+  }
+
+  // 一次性 JWT
+  rpc CreateJWT(CreateJWTRequest) returns (CreateJWTResponse) {
+    option (google.api.http) = { post: "/v1/account/jwt", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+  }
+
+  // Magic URL
+  rpc CreateMagicURLSession(CreateMagicURLSessionRequest) returns (ChallengeResponse) {
+    option (google.api.http) = { post: "/v1/account/sessions/magic-url", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+  }
+
+  rpc UpdateMagicURLSession(UpdateMagicURLSessionRequest) returns (SignInResponse) {
+    option (google.api.http) = { put: "/v1/account/sessions/magic-url", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+  }
+
+  // 账号日志
+  rpc ListLogs(ListLogsRequest) returns (ListLogsResponse) {
+    option (google.api.http) = { get: "/v1/account/logs" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+  }
 }
 
 message SignUpRequest {
@@ -179,11 +228,17 @@ message TokenBundle {
 message SignUpResponse {
   Account account = 1;
   TokenBundle tokens = 2;
+  bool mfa_required = 3;        // 用户有 verified 因子且未完成挑战时 true
+  string challenge_token = 4;   // mfa_required 时返回（5min 一次性）
+  repeated Factor factors = 5;  // mfa_required 时返回（不含 secret）
 }
 
 message SignInResponse {
   Account account = 1;
   TokenBundle tokens = 2;
+  bool mfa_required = 3;        // 用户有 verified 因子且未完成挑战时 true
+  string challenge_token = 4;   // mfa_required 时返回（5min 一次性）
+  repeated Factor factors = 5;  // mfa_required 时返回（不含 secret）
 }
 
 message RefreshTokenRequest {
@@ -336,4 +391,81 @@ message UpdateRecoveryRequest {
   string user_id = 2;
   string secret = 3;
   string password = 4;
+}
+
+// ---- MFA ----
+message Factor {
+  string id = 1;
+  string type = 2;      // totp
+  string status = 3;    // pending / verified
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message ListFactorsRequest {}
+
+message ListFactorsResponse {
+  repeated Factor factors = 1;
+}
+
+message CreateTOTPFactorRequest {}
+
+message TOTPFactor {
+  Factor factor = 1;
+  string secret = 2;        // 仅创建响应返回明文 secret
+  string otpauth_url = 3;   // otpauth://totp/{issuer}:{email}?secret=...&issuer=...
+}
+
+message VerifyTOTPFactorRequest {
+  string factor_id = 1;
+  string code = 2;
+}
+
+message DeleteFactorRequest {
+  string factor_id = 1;
+}
+
+message CreateMFASessionRequest {
+  string project_id = 1;
+  string challenge_token = 2;
+  string factor_id = 3;
+  string code = 4;
+}
+
+// ---- JWT ----
+message CreateJWTRequest {}
+
+message CreateJWTResponse {
+  string token = 1;
+}
+
+// ---- Magic URL ----
+message CreateMagicURLSessionRequest {
+  string project_id = 1;
+  string email = 2;
+  string url = 3;   // 登录成功后的回调地址（白名单校验）
+}
+
+message UpdateMagicURLSessionRequest {
+  string project_id = 1;
+  string user_id = 2;
+  string secret = 3;
+}
+
+// ---- Logs ----
+message ListLogsRequest {
+  int32 limit = 1;
+}
+
+message LogEntry {
+  string id = 1;
+  string action = 2;        // gRPC 方法名（如 /torchwood.client.v1.AccountService/SignIn）
+  string status = 3;
+  string resource_id = 4;
+  string ip = 5;
+  string user_agent = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListLogsResponse {
+  repeated LogEntry logs = 1;
 }

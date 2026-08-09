@@ -65,16 +65,16 @@ Client API 是终端用户直接使用的能力。Sprint 1 已补齐会话与 pr
 | 会话列表与删除 | 列出当前用户所有会话，可单独或全部删除 | `GET/DELETE /v1/account/sessions` | ✅ 完成 |
 | 更新账号资料 | 修改 name | `PATCH /v1/account` | ✅ 完成（email/password 待扩展） |
 | 账号偏好 | 读写用户级 `prefs` JSON | `GET/PATCH /v1/account/prefs` | ✅ 完成 |
-| 匿名登录 | 创建无密码匿名用户 | `POST /v1/account/sessions/anonymous` | 待办 |
+| 匿名登录 | 创建无密码匿名用户 | `POST /v1/account/sessions/anonymous` | ✅ 完成 |
 | Email OTP | 发送邮箱验证码 + 验证登录 | `POST /v1/account/sessions/email-otp` | ✅ 完成 |
 | Phone OTP | 发送短信验证码 + 验证登录 | `POST /v1/account/sessions/phone-otp` | ✅ 完成 |
-| Magic URL | 创建确认链接 + 确认登录 | `POST/PUT /v1/account/sessions/magic-url` | 待办 |
-| 邮箱验证 | 发送验证邮件 + 确认 | `POST/PUT /v1/account/verification` | 待办 |
-| 密码找回 | 创建找回链接 + 重置密码 | `POST/PUT /v1/account/recovery` | 待办 |
-| JWT 签发 | 用当前会话换取一次性 JWT | `POST /v1/account/jwt` | 待办 |
+| Magic URL | 创建确认链接 + 确认登录 | `POST/PUT /v1/account/sessions/magic-url` | ✅ 完成 |
+| 邮箱验证 | 发送验证邮件 + 确认 | `POST/PUT /v1/account/verification` | ✅ 完成 |
+| 密码找回 | 创建找回链接 + 重置密码 | `POST/PUT /v1/account/recovery` | ✅ 完成 |
+| JWT 签发 | 用当前会话换取一次性 JWT | `POST /v1/account/jwt` | ✅ 完成 |
 | OAuth2（占位） | Google / GitHub 授权与回调 | `/v1/account/sessions/oauth2/*` | ✅ 完成 |
-| MFA（占位） | factors 列表、TOTP 创建/验证/删除 | `/v1/account/mfa/*` | 待办 |
-| 账号日志 | 列出最近登录/操作记录 | `GET /v1/account/logs` | 待办 |
+| MFA（占位） | factors 列表、TOTP 创建/验证/删除 + 登录二次验证 | `/v1/account/mfa/*` | ✅ 完成 |
+| 账号日志 | 列出最近登录/操作记录 | `GET /v1/account/logs` | ✅ 完成 |
 
 **验收标准**：
 
@@ -410,7 +410,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 ### M1：P1 MVP 可用（短期结束）
 
 - [x] Client Account 核心会话与 prefs（Refresh / Sessions / UpdateAccount / Prefs）。
-- [ ] Client Account 完整能力（密码重置、OAuth、MFA 等）。
+- [x] Client Account 完整能力（密码重置、邮箱验证、OAuth、MFA、Magic URL、JWT、账号日志、匿名登录）。
 - [x] Server Teams / Memberships 管理可用。
 - [x] Server Users 创建与会话/令牌管理。
 - [x] Databases Documents CRUD、Client API 权限可用。

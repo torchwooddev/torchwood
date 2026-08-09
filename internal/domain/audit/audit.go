@@ -21,4 +21,6 @@ type Entry struct {
 
 type Repository interface {
 	Insert(ctx context.Context, entry *Entry) error
+	// ListByActor 返回某项目下指定 actor 的日志（created_at DESC，limit ≤ 100）。
+	ListByActor(ctx context.Context, projectID, actorID string, limit int) ([]Entry, error)
 }

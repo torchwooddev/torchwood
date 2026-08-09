@@ -48,6 +48,71 @@
         ]
       }
     },
+    "/v1/account/jwt": {
+      "post": {
+        "summary": "一次性 JWT",
+        "operationId": "AccountService_CreateJWT",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateJWTResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateJWTRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      }
+    },
+    "/v1/account/logs": {
+      "get": {
+        "summary": "账号日志",
+        "operationId": "AccountService_ListLogs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListLogsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      }
+    },
     "/v1/account/me": {
       "get": {
         "operationId": "AccountService_Me",
@@ -70,6 +135,153 @@
             "name": "projectId",
             "in": "query",
             "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      }
+    },
+    "/v1/account/mfa": {
+      "get": {
+        "summary": "MFA",
+        "operationId": "AccountService_ListFactors",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListFactorsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "AccountService"
+        ]
+      }
+    },
+    "/v1/account/mfa/challenge": {
+      "post": {
+        "operationId": "AccountService_CreateMFASession",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateMFASessionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      }
+    },
+    "/v1/account/mfa/totp": {
+      "post": {
+        "operationId": "AccountService_CreateTOTPFactor",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1TOTPFactor"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateTOTPFactorRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      },
+      "put": {
+        "operationId": "AccountService_VerifyTOTPFactor",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Factor"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1VerifyTOTPFactorRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      }
+    },
+    "/v1/account/mfa/{factorId}": {
+      "delete": {
+        "operationId": "AccountService_DeleteFactor",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Empty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "factorId",
+            "in": "path",
+            "required": true,
             "type": "string"
           }
         ],
@@ -362,6 +574,69 @@
             "required": true,
             "schema": {
               "$ref": "#/definitions/v1CreateEmailOTPSessionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      }
+    },
+    "/v1/account/sessions/magic-url": {
+      "post": {
+        "summary": "Magic URL",
+        "operationId": "AccountService_CreateMagicURLSession",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ChallengeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateMagicURLSessionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ]
+      },
+      "put": {
+        "operationId": "AccountService_UpdateMagicURLSession",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1SignInResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateMagicURLSessionRequest"
             }
           }
         ],
@@ -962,6 +1237,22 @@
         },
         "tokens": {
           "$ref": "#/definitions/torchwoodclientv1TokenBundle"
+        },
+        "mfaRequired": {
+          "type": "boolean",
+          "title": "用户有 verified 因子且未完成挑战时 true"
+        },
+        "challengeToken": {
+          "type": "string",
+          "title": "mfa_required 时返回（5min 一次性）"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Factor"
+          },
+          "title": "mfa_required 时返回（不含 secret）"
         }
       }
     },
@@ -1064,6 +1355,51 @@
         }
       }
     },
+    "v1CreateJWTRequest": {
+      "type": "object",
+      "title": "---- JWT ----"
+    },
+    "v1CreateJWTResponse": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        }
+      }
+    },
+    "v1CreateMFASessionRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "challengeToken": {
+          "type": "string"
+        },
+        "factorId": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        }
+      }
+    },
+    "v1CreateMagicURLSessionRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "title": "登录成功后的回调地址（白名单校验）"
+        }
+      },
+      "title": "---- Magic URL ----"
+    },
     "v1CreateOAuth2SessionResponse": {
       "type": "object",
       "properties": {
@@ -1114,6 +1450,9 @@
         }
       }
     },
+    "v1CreateTOTPFactorRequest": {
+      "type": "object"
+    },
     "v1CreateVerificationRequest": {
       "type": "object",
       "properties": {
@@ -1151,11 +1490,56 @@
     "v1Empty": {
       "type": "object"
     },
+    "v1Factor": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "title": "totp"
+        },
+        "status": {
+          "type": "string",
+          "title": "pending / verified"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "title": "---- MFA ----"
+    },
     "v1GetPrefsResponse": {
       "type": "object",
       "properties": {
         "prefs": {
           "type": "object"
+        }
+      }
+    },
+    "v1ListFactorsResponse": {
+      "type": "object",
+      "properties": {
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Factor"
+          }
+        }
+      }
+    },
+    "v1ListLogsResponse": {
+      "type": "object",
+      "properties": {
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1LogEntry"
+          }
         }
       }
     },
@@ -1168,6 +1552,34 @@
             "type": "object",
             "$ref": "#/definitions/torchwoodclientv1Session"
           }
+        }
+      }
+    },
+    "v1LogEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "title": "gRPC 方法名（如 /torchwood.client.v1.AccountService/SignIn）"
+        },
+        "status": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "userAgent": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },
@@ -1204,6 +1616,38 @@
         },
         "tokens": {
           "$ref": "#/definitions/torchwoodclientv1TokenBundle"
+        },
+        "mfaRequired": {
+          "type": "boolean",
+          "title": "用户有 verified 因子且未完成挑战时 true"
+        },
+        "challengeToken": {
+          "type": "string",
+          "title": "mfa_required 时返回（5min 一次性）"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Factor"
+          },
+          "title": "mfa_required 时返回（不含 secret）"
+        }
+      }
+    },
+    "v1TOTPFactor": {
+      "type": "object",
+      "properties": {
+        "factor": {
+          "$ref": "#/definitions/v1Factor"
+        },
+        "secret": {
+          "type": "string",
+          "title": "仅创建响应返回明文 secret"
+        },
+        "otpauthUrl": {
+          "type": "string",
+          "description": "otpauth://totp/{issuer}:{email}?secret=...\u0026issuer=..."
         }
       }
     },
@@ -1220,6 +1664,20 @@
           "type": "string"
         },
         "oldPassword": {
+          "type": "string"
+        }
+      }
+    },
+    "v1UpdateMagicURLSessionRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "secret": {
           "type": "string"
         }
       }
@@ -1259,6 +1717,17 @@
           "type": "string"
         },
         "secret": {
+          "type": "string"
+        }
+      }
+    },
+    "v1VerifyTOTPFactorRequest": {
+      "type": "object",
+      "properties": {
+        "factorId": {
+          "type": "string"
+        },
+        "code": {
           "type": "string"
         }
       }

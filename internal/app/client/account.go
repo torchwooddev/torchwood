@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
@@ -40,6 +41,10 @@ type Account struct {
 	mailer         messaging.Mailer
 	sms            messaging.SMSSender
 	rateLimiter    domainauth.RateLimiter
+	roles          domainauth.UserRoleResolver
+	mfa            domainauth.MFAService
+	mfaChallenges  domainauth.MFAChallengeStore
+	auditRepo      audit.Repository
 }
 
 func NewAccount(
@@ -57,6 +62,10 @@ func NewAccount(
 	mailer messaging.Mailer,
 	sms messaging.SMSSender,
 	rateLimiter domainauth.RateLimiter,
+	roles domainauth.UserRoleResolver,
+	mfa domainauth.MFAService,
+	mfaChallenges domainauth.MFAChallengeStore,
+	auditRepo audit.Repository,
 ) *Account {
 	return &Account{
 		cfg:            cfg,
@@ -73,6 +82,10 @@ func NewAccount(
 		mailer:         mailer,
 		sms:            sms,
 		rateLimiter:    rateLimiter,
+		roles:          roles,
+		mfa:            mfa,
+		mfaChallenges:  mfaChallenges,
+		auditRepo:      auditRepo,
 	}
 }
 
@@ -124,26 +137,26 @@ type UpdateAccountCommand struct {
 	OldPassword string
 }
 
-func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenBundle, string, error) {
+func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	if cmd.ProjectID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "project_id is required")
 	}
 	email := normalizeEmail(cmd.Email)
 	if email == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "email is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "email is required")
 	}
 	if err := validatePasswordStrength(cmd.Password); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	project, err := a.projectRepo.GetProject(ctx, cmd.ProjectID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if project == nil {
-		return nil, nil, "", status.Error(codes.NotFound, "project not found")
+		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
 	}
 	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", fmt.Errorf("ensure system collections: %w", err)
+		return nil, nil, "", nil, fmt.Errorf("ensure system collections: %w", err)
 	}
 
 	// Check email unique.
@@ -152,20 +165,20 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 		PageSize: 1,
 	}, databases.SystemPrincipal)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if len(list.Documents) > 0 {
-		return nil, nil, "", status.Error(codes.AlreadyExists, "email already registered")
+		return nil, nil, "", nil, status.Error(codes.AlreadyExists, "email already registered")
 	}
 
 	hash, err := password.Hash(cmd.Password)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	userID, err := a.generateUserID(ctx, project.ID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	userDoc := databases.Document{
 		ID: userID,
@@ -190,9 +203,9 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 	}
 	if _, err := a.docDB.CreateDocument(ctx, project.ID, "default", "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
 		if errors.Is(err, documentdb.ErrDuplicateKey) {
-			return nil, nil, "", status.Error(codes.AlreadyExists, "email already registered")
+			return nil, nil, "", nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
-		return nil, nil, "", fmt.Errorf("create user document: %w", err)
+		return nil, nil, "", nil, fmt.Errorf("create user document: %w", err)
 	}
 
 	user := mapUserDoc(&userDoc)
@@ -206,38 +219,38 @@ func (a *Account) generateUserID(ctx context.Context, projectID string) (string,
 	return idgen.UUID().String(), nil
 }
 
-func (a *Account) finishSignIn(ctx context.Context, projectID string, user *User) (*User, *TokenBundle, string, error) {
+func (a *Account) finishSignIn(ctx context.Context, projectID string, user *User) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	return a.finishSignInWithProvider(ctx, projectID, user, domainauth.ProviderEmail)
 }
 
-func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenBundle, string, error) {
+func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	if cmd.ProjectID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "project_id is required")
 	}
 	email := normalizeEmail(cmd.Email)
 	if email == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "email is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "email is required")
 	}
 	if cmd.Password == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "password is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "password is required")
 	}
 	clientInfo := contexts.ClientInfoFrom(ctx)
 	if err := a.checkLoginThrottle(ctx, email, clientInfo.IP); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
-	invalidCredentials := func() (*User, *TokenBundle, string, error) {
+	invalidCredentials := func() (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 		a.recordLoginFailure(ctx, email, clientInfo.IP)
-		return nil, nil, "", status.Error(codes.Unauthenticated, "invalid credentials")
+		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
 	project, err := a.projectRepo.GetProject(ctx, cmd.ProjectID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if project == nil {
-		return nil, nil, "", status.Error(codes.NotFound, "project not found")
+		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
 	}
 	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	list, err := a.docDB.ListDocuments(ctx, project.ID, "default", "users", databases.Query{
@@ -245,7 +258,7 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 		PageSize: 1,
 	}, databases.SystemPrincipal)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if len(list.Documents) == 0 {
 		return invalidCredentials()
@@ -258,7 +271,7 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 
 	user := mapUserDoc(&userDoc)
 	if !users.CanAuthenticate(user.Status) {
-		return nil, nil, "", status.Error(codes.Unauthenticated, "user account is not active")
+		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	a.resetLoginThrottle(ctx, email, clientInfo.IP)
 	return a.finishSignIn(ctx, project.ID, user)

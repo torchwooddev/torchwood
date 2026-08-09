@@ -34,7 +34,7 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := NewTestAccount(testConfig(), projectRepo, docDB)
-	user, _, _, err := account.SignUp(ctx, SignUpCommand{
+	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "client-docs@torchwood.local",
 		Password:  "User@123456",
@@ -167,7 +167,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := NewTestAccount(testConfig(), projectRepo, docDB)
-	user, _, _, err := account.SignUp(ctx, SignUpCommand{
+	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "private-doc@torchwood.local",
 		Password:  "User@123456",

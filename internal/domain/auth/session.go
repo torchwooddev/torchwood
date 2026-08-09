@@ -9,6 +9,8 @@ const (
 	ProviderPhoneOTP  = "phone_otp"
 	ProviderPhone     = "phone"
 	ProviderAnonymous = "anonymous"
+	ProviderMagicURL  = "magic_url"
+	ProviderMFA       = "mfa"
 )
 
 const (

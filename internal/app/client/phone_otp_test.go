@@ -59,7 +59,7 @@ func TestAccount_PhoneOTPLogin(t *testing.T) {
 	matches := re.FindStringSubmatch(sms.Body[0])
 	require.Len(t, matches, 2)
 
-	user, tokens, _, err := account.CreatePhoneOTPSession(ctx, CreatePhoneOTPSessionCommand{
+	user, tokens, _, _, err := account.CreatePhoneOTPSession(ctx, CreatePhoneOTPSessionCommand{
 		ProjectID:   projectID,
 		Phone:       "+8613900000001",
 		ChallengeID: challenge.ChallengeID,

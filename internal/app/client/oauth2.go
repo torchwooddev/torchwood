@@ -55,6 +55,7 @@ type OAuth2CallbackResult struct {
 	Tokens        *TokenBundle
 	SessionCookie string
 	RedirectURL   string
+	MFA           *MFASignInChallenge
 }
 
 func (a *Account) CreateOAuth2Session(ctx context.Context, cmd CreateOAuth2SessionCommand) (string, error) {
@@ -177,7 +178,7 @@ func (a *Account) createOAuth2Session(ctx context.Context, params createOAuth2Se
 	return authClient.AuthorizeURL(stateID, challenge), nil
 }
 
-func (a *Account) CreateOAuth2TokenSession(ctx context.Context, cmd CreateOAuth2TokenSessionCommand) (*User, *TokenBundle, string, error) {
+func (a *Account) CreateOAuth2TokenSession(ctx context.Context, cmd CreateOAuth2TokenSessionCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	result, err := a.completeOAuth2Code(ctx, completeOAuth2CodeCommand{
 		ProjectID: cmd.ProjectID,
 		Provider:  cmd.Provider,
@@ -185,9 +186,9 @@ func (a *Account) CreateOAuth2TokenSession(ctx context.Context, cmd CreateOAuth2
 		State:     cmd.State,
 	})
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
-	return result.User, result.Tokens, result.SessionCookie, nil
+	return result.User, result.Tokens, result.SessionCookie, result.MFA, nil
 }
 
 func (a *Account) HandleOAuth2Callback(ctx context.Context, provider, code, state string) (*OAuth2CallbackResult, error) {
@@ -213,6 +214,9 @@ func (a *Account) HandleOAuth2Callback(ctx context.Context, provider, code, stat
 		}, err
 	}
 	redirect := appendOAuthSPAFragment(result.SuccessURL, result.User.ID, result.Tokens)
+	if result.MFA != nil {
+		redirect = appendOAuthMFAFragment(result.SuccessURL, result.User.ID, result.MFA.Token, result.MFA.Factors)
+	}
 	return &OAuth2CallbackResult{
 		ProjectID:     result.ProjectID,
 		SuccessURL:    result.SuccessURL,
@@ -220,6 +224,7 @@ func (a *Account) HandleOAuth2Callback(ctx context.Context, provider, code, stat
 		User:          result.User,
 		Tokens:        result.Tokens,
 		SessionCookie: result.SessionCookie,
+		MFA:           result.MFA,
 		RedirectURL:   redirect,
 	}, nil
 }
@@ -238,6 +243,7 @@ type completeOAuth2CodeResult struct {
 	User          *User
 	Tokens        *TokenBundle
 	SessionCookie string
+	MFA           *MFASignInChallenge
 }
 
 func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2CodeCommand) (*completeOAuth2CodeResult, error) {
@@ -322,7 +328,7 @@ func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2Code
 		return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, status.Error(codes.Unauthenticated, "user account is not active")
 	}
 
-	user, tokens, cookie, err := a.finishSignInWithProvider(ctx, projectID, user, provider)
+	user, tokens, cookie, mfa, err := a.finishSignInWithProvider(ctx, projectID, user, provider)
 	if err != nil {
 		return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, err
 	}
@@ -333,6 +339,7 @@ func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2Code
 		User:          user,
 		Tokens:        tokens,
 		SessionCookie: cookie,
+		MFA:           mfa,
 	}, nil
 }
 
@@ -437,6 +444,41 @@ func appendOAuthSPAFragment(rawURL, userID string, tokens *TokenBundle) string {
 	}
 	u.Fragment = vals.Encode()
 	return u.String()
+}
+
+// appendOAuthMFAFragment 构造 MFA 挑战重定向：无会话，只有 userId 与挑战信息。
+func appendOAuthMFAFragment(rawURL, userID, challengeToken string, factors []domainauth.Factor) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	vals := url.Values{}
+	if userID != "" {
+		vals.Set("userId", userID)
+	}
+	if challengeToken != "" {
+		vals.Set("mfaRequired", "true")
+		vals.Set("challengeToken", challengeToken)
+	}
+	vals.Set("mfaFactorTypes", mfaFactorTypes(factors))
+	u.Fragment = vals.Encode()
+	return u.String()
+}
+
+func mfaFactorTypes(factors []domainauth.Factor) string {
+	seen := map[string]struct{}{}
+	parts := make([]string, 0, len(factors))
+	for _, f := range factors {
+		if f.Type == "" {
+			continue
+		}
+		if _, ok := seen[f.Type]; ok {
+			continue
+		}
+		seen[f.Type] = struct{}{}
+		parts = append(parts, f.Type)
+	}
+	return strings.Join(parts, ",")
 }
 
 func (a *Account) ensureProjectReady(ctx context.Context, projectID string) error {

@@ -56,7 +56,7 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 	require.Len(t, matches, 2)
 	code := matches[1]
 
-	user, tokens, _, err := account.CreateEmailOTPSession(ctx, CreateEmailOTPSessionCommand{
+	user, tokens, _, _, err := account.CreateEmailOTPSession(ctx, CreateEmailOTPSessionCommand{
 		ProjectID:   projectID,
 		Email:       "otp-user@torchwood.local",
 		ChallengeID: challenge.ChallengeID,
@@ -80,7 +80,7 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 	matches = re.FindStringSubmatch(mailer.Bodies[0])
 	require.Len(t, matches, 2)
 
-	user2, tokens2, _, err := account.CreateEmailOTPSession(ctx, CreateEmailOTPSessionCommand{
+	user2, tokens2, _, _, err := account.CreateEmailOTPSession(ctx, CreateEmailOTPSessionCommand{
 		ProjectID:   projectID,
 		Email:       "otp-user@torchwood.local",
 		ChallengeID: challenge2.ChallengeID,

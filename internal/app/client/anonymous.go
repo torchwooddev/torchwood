@@ -24,22 +24,22 @@ type CreateAnonymousSessionCommand struct {
 	ProjectID string
 }
 
-func (a *Account) CreateAnonymousSession(ctx context.Context, cmd CreateAnonymousSessionCommand) (*User, *TokenBundle, string, error) {
+func (a *Account) CreateAnonymousSession(ctx context.Context, cmd CreateAnonymousSessionCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	projectID := strings.TrimSpace(cmd.ProjectID)
 	if projectID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "project_id is required")
 	}
 	clientInfo := contexts.ClientInfoFrom(ctx)
 	if err := a.checkAnonymousSessionRateLimit(ctx, clientInfo.IP); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if err := a.ensureProjectReady(ctx, projectID); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	userID, err := a.generateUserID(ctx, projectID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	email := anonymousEmail(userID)
 	userDoc := databases.Document{
@@ -55,7 +55,7 @@ func (a *Account) CreateAnonymousSession(ctx context.Context, cmd CreateAnonymou
 		},
 	}
 	if _, err := a.docDB.CreateDocument(ctx, projectID, "default", "users", userDoc, userDocumentPermissions(userID), databases.SystemPrincipal); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	user := mapUserDoc(&userDoc)
 	return a.finishSignInWithProvider(ctx, projectID, user, domainauth.ProviderAnonymous)

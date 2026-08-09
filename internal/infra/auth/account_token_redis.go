@@ -17,6 +17,7 @@ import (
 const (
 	verificationTokenTTL = 24 * time.Hour
 	recoveryTokenTTL     = time.Hour
+	magicURLTokenTTL     = time.Hour
 )
 
 type accountTokenRecord struct {
@@ -55,6 +56,14 @@ func (s *RedisAccountTokenStore) CreateRecoveryToken(ctx context.Context, projec
 
 func (s *RedisAccountTokenStore) VerifyRecoveryToken(ctx context.Context, projectID, userID, secret string) error {
 	return s.verifyToken(ctx, projectID, userID, secret, domainauth.AccountTokenPurposeRecovery)
+}
+
+func (s *RedisAccountTokenStore) CreateMagicURLToken(ctx context.Context, projectID, userID, email string) (string, time.Time, error) {
+	return s.createToken(ctx, projectID, userID, email, domainauth.AccountTokenPurposeMagicURL, magicURLTokenTTL)
+}
+
+func (s *RedisAccountTokenStore) VerifyMagicURLToken(ctx context.Context, projectID, userID, secret string) error {
+	return s.verifyToken(ctx, projectID, userID, secret, domainauth.AccountTokenPurposeMagicURL)
 }
 
 func (s *RedisAccountTokenStore) createToken(ctx context.Context, projectID, userID, email, purpose string, ttl time.Duration) (string, time.Time, error) {

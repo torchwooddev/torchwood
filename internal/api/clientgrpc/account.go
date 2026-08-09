@@ -6,6 +6,9 @@ import (
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/torchwooddev/torchwood/internal/app/client"
+	"github.com/torchwooddev/torchwood/internal/domain/audit"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +26,7 @@ func NewAccountService(account *client.Account) *AccountService {
 }
 
 func (s *AccountService) SignUp(ctx context.Context, req *clientv1.SignUpRequest) (*clientv1.SignUpResponse, error) {
-	user, tokens, _, err := s.account.SignUp(ctx, client.SignUpCommand{
+	user, tokens, _, mfa, err := s.account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: req.GetProjectId(),
 		Email:     req.GetEmail(),
 		Password:  req.GetPassword(),
@@ -33,13 +36,16 @@ func (s *AccountService) SignUp(ctx context.Context, req *clientv1.SignUpRequest
 		return nil, err
 	}
 	return &clientv1.SignUpResponse{
-		Account: mapUser(user),
-		Tokens:  mapTokens(tokens),
+		Account:        mapUser(user),
+		Tokens:         mapTokens(tokens),
+		MfaRequired:    mfa != nil,
+		ChallengeToken: mapChallengeToken(mfa),
+		Factors:        mapFactors(mfa),
 	}, nil
 }
 
 func (s *AccountService) SignIn(ctx context.Context, req *clientv1.SignInRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, err := s.account.SignIn(ctx, client.SignInCommand{
+	user, tokens, _, mfa, err := s.account.SignIn(ctx, client.SignInCommand{
 		ProjectID: req.GetProjectId(),
 		Email:     req.GetEmail(),
 		Password:  req.GetPassword(),
@@ -47,10 +53,7 @@ func (s *AccountService) SignIn(ctx context.Context, req *clientv1.SignInRequest
 	if err != nil {
 		return nil, err
 	}
-	return &clientv1.SignInResponse{
-		Account: mapUser(user),
-		Tokens:  mapTokens(tokens),
-	}, nil
+	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) SignOut(ctx context.Context, _ *clientv1.SignOutRequest) (*sharedv1.Empty, error) {
@@ -163,7 +166,7 @@ func (s *AccountService) CreateEmailOTP(ctx context.Context, req *clientv1.Creat
 }
 
 func (s *AccountService) CreateEmailOTPSession(ctx context.Context, req *clientv1.CreateEmailOTPSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, err := s.account.CreateEmailOTPSession(ctx, client.CreateEmailOTPSessionCommand{
+	user, tokens, _, mfa, err := s.account.CreateEmailOTPSession(ctx, client.CreateEmailOTPSessionCommand{
 		ProjectID:   req.GetProjectId(),
 		Email:       req.GetEmail(),
 		ChallengeID: req.GetChallengeId(),
@@ -172,10 +175,7 @@ func (s *AccountService) CreateEmailOTPSession(ctx context.Context, req *clientv
 	if err != nil {
 		return nil, err
 	}
-	return &clientv1.SignInResponse{
-		Account: mapUser(user),
-		Tokens:  mapTokens(tokens),
-	}, nil
+	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) CreateOAuth2Session(ctx context.Context, req *clientv1.CreateOAuth2SessionRequest) (*clientv1.CreateOAuth2SessionResponse, error) {
@@ -192,7 +192,7 @@ func (s *AccountService) CreateOAuth2Session(ctx context.Context, req *clientv1.
 }
 
 func (s *AccountService) CreateOAuth2TokenSession(ctx context.Context, req *clientv1.CreateOAuth2TokenSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, err := s.account.CreateOAuth2TokenSession(ctx, client.CreateOAuth2TokenSessionCommand{
+	user, tokens, _, mfa, err := s.account.CreateOAuth2TokenSession(ctx, client.CreateOAuth2TokenSessionCommand{
 		ProjectID: req.GetProjectId(),
 		Provider:  req.GetProvider(),
 		Success:   req.GetSuccess(),
@@ -203,10 +203,7 @@ func (s *AccountService) CreateOAuth2TokenSession(ctx context.Context, req *clie
 	if err != nil {
 		return nil, err
 	}
-	return &clientv1.SignInResponse{
-		Account: mapUser(user),
-		Tokens:  mapTokens(tokens),
-	}, nil
+	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) CreatePhoneOTP(ctx context.Context, req *clientv1.CreatePhoneOTPRequest) (*clientv1.ChallengeResponse, error) {
@@ -224,7 +221,7 @@ func (s *AccountService) CreatePhoneOTP(ctx context.Context, req *clientv1.Creat
 }
 
 func (s *AccountService) CreatePhoneOTPSession(ctx context.Context, req *clientv1.CreatePhoneOTPSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, err := s.account.CreatePhoneOTPSession(ctx, client.CreatePhoneOTPSessionCommand{
+	user, tokens, _, mfa, err := s.account.CreatePhoneOTPSession(ctx, client.CreatePhoneOTPSessionCommand{
 		ProjectID:   req.GetProjectId(),
 		Phone:       req.GetPhone(),
 		ChallengeID: req.GetChallengeId(),
@@ -233,37 +230,28 @@ func (s *AccountService) CreatePhoneOTPSession(ctx context.Context, req *clientv
 	if err != nil {
 		return nil, err
 	}
-	return &clientv1.SignInResponse{
-		Account: mapUser(user),
-		Tokens:  mapTokens(tokens),
-	}, nil
+	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) CreateWeChatMiniProgramSession(ctx context.Context, req *clientv1.CreateWeChatMiniProgramSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, err := s.account.CreateWeChatMiniProgramSession(ctx, client.CreateWeChatMiniProgramSessionCommand{
+	user, tokens, _, mfa, err := s.account.CreateWeChatMiniProgramSession(ctx, client.CreateWeChatMiniProgramSessionCommand{
 		ProjectID: req.GetProjectId(),
 		Code:      req.GetCode(),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &clientv1.SignInResponse{
-		Account: mapUser(user),
-		Tokens:  mapTokens(tokens),
-	}, nil
+	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) CreateAnonymousSession(ctx context.Context, req *clientv1.CreateAnonymousSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, err := s.account.CreateAnonymousSession(ctx, client.CreateAnonymousSessionCommand{
+	user, tokens, _, mfa, err := s.account.CreateAnonymousSession(ctx, client.CreateAnonymousSessionCommand{
 		ProjectID: req.GetProjectId(),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &clientv1.SignInResponse{
-		Account: mapUser(user),
-		Tokens:  mapTokens(tokens),
-	}, nil
+	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) CreateOAuth2LinkSession(ctx context.Context, req *clientv1.CreateOAuth2LinkSessionRequest) (*clientv1.CreateOAuth2SessionResponse, error) {
@@ -339,6 +327,188 @@ func (s *AccountService) UpdateRecovery(ctx context.Context, req *clientv1.Updat
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
+}
+
+func (s *AccountService) ListFactors(ctx context.Context, _ *clientv1.ListFactorsRequest) (*clientv1.ListFactorsResponse, error) {
+	ctx = contexts.WithAuditResource(ctx, "")
+	factors, err := s.account.ListFactors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*clientv1.Factor, 0, len(factors))
+	for i := range factors {
+		out = append(out, mapFactor(&factors[i]))
+	}
+	return &clientv1.ListFactorsResponse{Factors: out}, nil
+}
+
+func (s *AccountService) CreateTOTPFactor(ctx context.Context, _ *clientv1.CreateTOTPFactorRequest) (*clientv1.TOTPFactor, error) {
+	p, err := s.requirePrincipal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx = contexts.WithAuditResource(ctx, p.UserID)
+	factor, plainSecret, otpauthURL, err := s.account.CreateTOTPFactor(ctx, p.ProjectID, p.UserID, p.Email)
+	if err != nil {
+		return nil, err
+	}
+	return &clientv1.TOTPFactor{
+		Factor:     mapFactor(factor),
+		Secret:     plainSecret,
+		OtpauthUrl: otpauthURL,
+	}, nil
+}
+
+func (s *AccountService) VerifyTOTPFactor(ctx context.Context, req *clientv1.VerifyTOTPFactorRequest) (*clientv1.Factor, error) {
+	p, err := s.requirePrincipal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx = contexts.WithAuditResource(ctx, p.UserID)
+	factor, err := s.account.VerifyTOTPFactor(ctx, p.ProjectID, p.UserID, req.GetFactorId(), req.GetCode())
+	if err != nil {
+		return nil, err
+	}
+	return mapFactor(factor), nil
+}
+
+func (s *AccountService) DeleteFactor(ctx context.Context, req *clientv1.DeleteFactorRequest) (*sharedv1.Empty, error) {
+	p, err := s.requirePrincipal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx = contexts.WithAuditResource(ctx, p.UserID)
+	if err := s.account.DeleteFactor(ctx, p.ProjectID, p.UserID, req.GetFactorId()); err != nil {
+		return nil, err
+	}
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *AccountService) CreateMFASession(ctx context.Context, req *clientv1.CreateMFASessionRequest) (*clientv1.SignInResponse, error) {
+	user, tokens, _, err := s.account.CompleteMFASession(ctx, req.GetProjectId(), req.GetChallengeToken(), req.GetFactorId(), req.GetCode())
+	if err != nil {
+		return nil, err
+	}
+	return mapSignInResult(user, tokens, nil), nil
+}
+
+func (s *AccountService) CreateJWT(ctx context.Context, _ *clientv1.CreateJWTRequest) (*clientv1.CreateJWTResponse, error) {
+	token, err := s.account.CreateJWT(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &clientv1.CreateJWTResponse{Token: token}, nil
+}
+
+func (s *AccountService) CreateMagicURLSession(ctx context.Context, req *clientv1.CreateMagicURLSessionRequest) (*clientv1.ChallengeResponse, error) {
+	challenge, err := s.account.CreateMagicURLSession(ctx, client.CreateMagicURLSessionCommand{
+		ProjectID: req.GetProjectId(),
+		Email:     req.GetEmail(),
+		URL:       req.GetUrl(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &clientv1.ChallengeResponse{
+		ChallengeId: challenge.ChallengeID,
+		ExpireAt:    challenge.ExpireAt.Unix(),
+	}, nil
+}
+
+func (s *AccountService) UpdateMagicURLSession(ctx context.Context, req *clientv1.UpdateMagicURLSessionRequest) (*clientv1.SignInResponse, error) {
+	user, tokens, _, mfa, err := s.account.UpdateMagicURLSession(ctx, client.UpdateMagicURLSessionCommand{
+		ProjectID: req.GetProjectId(),
+		UserID:    req.GetUserId(),
+		Secret:    req.GetSecret(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapSignInResult(user, tokens, mfa), nil
+}
+
+func (s *AccountService) ListLogs(ctx context.Context, req *clientv1.ListLogsRequest) (*clientv1.ListLogsResponse, error) {
+	entries, err := s.account.ListLogs(ctx, req.GetLimit())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*clientv1.LogEntry, 0, len(entries))
+	for i := range entries {
+		out = append(out, mapLogEntry(&entries[i]))
+	}
+	return &clientv1.ListLogsResponse{Logs: out}, nil
+}
+
+func (s *AccountService) requirePrincipal(ctx context.Context) (*shared.Principal, error) {
+	p, ok := contexts.Principal(ctx)
+	if !ok || p == nil || p.UserID == "" {
+		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+	return p, nil
+}
+
+func mapSignInResult(user *client.User, tokens *client.TokenBundle, mfa *client.MFASignInChallenge) *clientv1.SignInResponse {
+	resp := &clientv1.SignInResponse{
+		Account: mapUser(user),
+		Tokens:  mapTokens(tokens),
+	}
+	if mfa != nil {
+		resp.MfaRequired = true
+		resp.ChallengeToken = mfa.Token
+		resp.Factors = mapFactors(mfa)
+	}
+	return resp
+}
+
+func mapChallengeToken(mfa *client.MFASignInChallenge) string {
+	if mfa == nil {
+		return ""
+	}
+	return mfa.Token
+}
+
+func mapFactors(mfa *client.MFASignInChallenge) []*clientv1.Factor {
+	if mfa == nil {
+		return nil
+	}
+	out := make([]*clientv1.Factor, 0, len(mfa.Factors))
+	for i := range mfa.Factors {
+		out = append(out, mapFactor(&mfa.Factors[i]))
+	}
+	return out
+}
+
+func mapFactor(f *domainauth.Factor) *clientv1.Factor {
+	if f == nil {
+		return nil
+	}
+	out := &clientv1.Factor{
+		Id:     f.ID,
+		Type:   f.Type,
+		Status: f.Status,
+	}
+	if !f.CreatedAt.IsZero() {
+		out.CreatedAt = timestamppb.New(f.CreatedAt)
+	}
+	return out
+}
+
+func mapLogEntry(e *audit.Entry) *clientv1.LogEntry {
+	if e == nil {
+		return nil
+	}
+	out := &clientv1.LogEntry{
+		Id:         e.ID,
+		Action:     e.Action,
+		Status:     e.Status,
+		ResourceId: e.ResourceID,
+		Ip:         e.IP,
+		UserAgent:  e.UserAgent,
+	}
+	if !e.CreatedAt.IsZero() {
+		out.CreatedAt = timestamppb.New(e.CreatedAt)
+	}
+	return out
 }
 
 func mapUser(u *client.User) *clientv1.Account {

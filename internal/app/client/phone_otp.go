@@ -81,48 +81,48 @@ func (a *Account) CreatePhoneOTP(ctx context.Context, cmd CreatePhoneOTPCommand)
 	return &Challenge{ChallengeID: challengeID, ExpireAt: expireAt}, nil
 }
 
-func (a *Account) CreatePhoneOTPSession(ctx context.Context, cmd CreatePhoneOTPSessionCommand) (*User, *TokenBundle, string, error) {
+func (a *Account) CreatePhoneOTPSession(ctx context.Context, cmd CreatePhoneOTPSessionCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	if a.otp == nil {
-		return nil, nil, "", status.Error(codes.Unimplemented, "phone otp is not configured")
+		return nil, nil, "", nil, status.Error(codes.Unimplemented, "phone otp is not configured")
 	}
 	projectID := strings.TrimSpace(cmd.ProjectID)
 	phone, err := normalizePhone(cmd.Phone)
 	if err != nil {
-		return nil, nil, "", status.Errorf(codes.InvalidArgument, "%v", err)
+		return nil, nil, "", nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	challengeID := strings.TrimSpace(cmd.ChallengeID)
 	otp := strings.TrimSpace(cmd.OTP)
 	if projectID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "project_id is required")
 	}
 	if challengeID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "challenge_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "challenge_id is required")
 	}
 	if otp == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "otp is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "otp is required")
 	}
 
 	project, err := a.projectRepo.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if project == nil {
-		return nil, nil, "", status.Error(codes.NotFound, "project not found")
+		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
 	}
 	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	if err := a.otp.VerifyPhoneChallenge(ctx, projectID, challengeID, phone, otp); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	user, err := a.findOrCreateUserByPhone(ctx, projectID, phone)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if !users.CanAuthenticate(user.Status) {
-		return nil, nil, "", status.Error(codes.Unauthenticated, "user account is not active")
+		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	return a.finishSignInWithProvider(ctx, projectID, user, domainauth.ProviderPhoneOTP)
 }

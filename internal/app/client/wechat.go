@@ -18,43 +18,43 @@ type CreateWeChatMiniProgramSessionCommand struct {
 	Code      string
 }
 
-func (a *Account) CreateWeChatMiniProgramSession(ctx context.Context, cmd CreateWeChatMiniProgramSessionCommand) (*User, *TokenBundle, string, error) {
+func (a *Account) CreateWeChatMiniProgramSession(ctx context.Context, cmd CreateWeChatMiniProgramSessionCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	projectID := strings.TrimSpace(cmd.ProjectID)
 	code := strings.TrimSpace(cmd.Code)
 	provider := domainauth.ProviderWeChatMiniProgram
 	if projectID == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "project_id is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "project_id is required")
 	}
 	if code == "" {
-		return nil, nil, "", status.Error(codes.InvalidArgument, "code is required")
+		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "code is required")
 	}
 
 	project, err := a.projectRepo.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if project == nil {
-		return nil, nil, "", status.Error(codes.NotFound, "project not found")
+		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
 	}
 	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 
 	oauthCfg, err := a.loadOAuthProvider(ctx, projectID, provider)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	profile, err := infraauth.ExchangeWeChatMiniProgramCode(ctx, oauthCfg.ClientID, oauthCfg.ClientSecret, code)
 	if err != nil {
-		return nil, nil, "", status.Errorf(codes.Unauthenticated, "wechat code exchange failed: %v", err)
+		return nil, nil, "", nil, status.Errorf(codes.Unauthenticated, "wechat code exchange failed: %v", err)
 	}
 
 	user, err := a.resolveWeChatUser(ctx, projectID, provider, profile)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", nil, err
 	}
 	if !users.CanAuthenticate(user.Status) {
-		return nil, nil, "", status.Error(codes.Unauthenticated, "user account is not active")
+		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	return a.finishSignInWithProvider(ctx, projectID, user, provider)
 }

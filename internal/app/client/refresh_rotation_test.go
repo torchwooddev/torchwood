@@ -44,7 +44,7 @@ func setupRefreshRotationAccount(t *testing.T) (context.Context, *Account, datab
 
 func signUpForRefresh(t *testing.T, ctx context.Context, account *Account, projectID, email string) *TokenBundle {
 	t.Helper()
-	_, tokens, _, err := account.SignUp(ctx, SignUpCommand{
+	_, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     email,
 		Password:  "User@123",

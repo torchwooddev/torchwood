@@ -80,7 +80,7 @@ func TestAccount_CreateWeChatMiniProgramSession(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db)
 	account := NewTestAccountWithDeps(cfg, projectRepo, oauthRepo, docDB, nil, nil, nil)
 
-	_, _, _, err = account.CreateWeChatMiniProgramSession(ctx, CreateWeChatMiniProgramSessionCommand{
+	_, _, _, _, err = account.CreateWeChatMiniProgramSession(ctx, CreateWeChatMiniProgramSessionCommand{
 		ProjectID: projectID,
 		Code:      "invalid-code",
 	})

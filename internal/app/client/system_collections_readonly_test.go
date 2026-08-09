@@ -76,7 +76,7 @@ func TestClientDatabases_SystemCollectionReadPolicy(t *testing.T) {
 
 	// 认证用户读 users 同样拒绝。
 	account := NewTestAccount(testConfig(), projectRepo, docDB)
-	user, _, _, err := account.SignUp(ctx, SignUpCommand{
+	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "syscoll@torchwood.local",
 		Password:  "User@123456",
@@ -130,7 +130,7 @@ func TestClientDatabases_SystemCollectionWriteDenied(t *testing.T) {
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
 
 	account := NewTestAccount(testConfig(), projectRepo, docDB)
-	user, _, _, err := account.SignUp(ctx, SignUpCommand{
+	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "syscoll-write@torchwood.local",
 		Password:  "User@123456",

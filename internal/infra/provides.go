@@ -30,6 +30,8 @@ var ProviderSet = wire.NewSet(
 	auth.NewRedisLoginThrottle,
 	auth.NewRedisRefreshRotationStore,
 	auth.NewRedisRateLimiter,
+	auth.NewTOTPService,
+	auth.NewRedisMFAChallengeStore,
 	wire.Bind(new(domainauth.SessionService), new(*auth.SessionService)),
 	wire.Bind(new(domainauth.OTPChallengeStore), new(*auth.RedisOTPChallengeStore)),
 	wire.Bind(new(domainauth.OAuthStateStore), new(*auth.RedisOAuthStateStore)),

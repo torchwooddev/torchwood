@@ -257,7 +257,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	storageUC := appstorage.NewStorage(cfg, projectRepo, docDB, store)
 	account := client.NewTestAccount(cfg, projectRepo, docDB)
 
-	_, tokens, _, err := account.SignUp(ctx, client.SignUpCommand{
+	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectA,
 		Email:     "storage-http@torchwood.local",
 		Password:  "User@123456",

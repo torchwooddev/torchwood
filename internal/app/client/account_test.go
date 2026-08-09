@@ -38,7 +38,7 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 	account := NewTestAccount(cfg, projectRepo, docDB)
 
 	// Sign up.
-	user, tokens, cookie, err := account.SignUp(ctx, SignUpCommand{
+	user, tokens, cookie, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "account-test@torchwood.local",
 		Password:  "User@123",
@@ -50,7 +50,7 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 	require.NotEmpty(t, cookie)
 
 	// Duplicate email.
-	_, _, _, err = account.SignUp(ctx, SignUpCommand{
+	_, _, _, _, err = account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "account-test@torchwood.local",
 		Password:  "User@123",
@@ -61,7 +61,7 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 	require.Equal(t, codes.AlreadyExists, st.Code())
 
 	// Sign in.
-	user2, tokens2, _, err := account.SignIn(ctx, SignInCommand{
+	user2, tokens2, _, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
 		Email:     "account-test@torchwood.local",
 		Password:  "User@123",
@@ -86,7 +86,7 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 	require.NoError(t, account.SignOut(meCtx))
 
 	// Refresh token after sign-in (new session from sign-in above).
-	signInUser, refreshTokens, _, err := account.SignIn(ctx, SignInCommand{
+	signInUser, refreshTokens, _, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
 		Email:     "account-test@torchwood.local",
 		Password:  "User@123",

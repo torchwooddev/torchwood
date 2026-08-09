@@ -45,6 +45,15 @@ const (
 	AccountService_UpdateVerification_FullMethodName             = "/torchwood.client.v1.AccountService/UpdateVerification"
 	AccountService_CreateRecovery_FullMethodName                 = "/torchwood.client.v1.AccountService/CreateRecovery"
 	AccountService_UpdateRecovery_FullMethodName                 = "/torchwood.client.v1.AccountService/UpdateRecovery"
+	AccountService_ListFactors_FullMethodName                    = "/torchwood.client.v1.AccountService/ListFactors"
+	AccountService_CreateTOTPFactor_FullMethodName               = "/torchwood.client.v1.AccountService/CreateTOTPFactor"
+	AccountService_VerifyTOTPFactor_FullMethodName               = "/torchwood.client.v1.AccountService/VerifyTOTPFactor"
+	AccountService_DeleteFactor_FullMethodName                   = "/torchwood.client.v1.AccountService/DeleteFactor"
+	AccountService_CreateMFASession_FullMethodName               = "/torchwood.client.v1.AccountService/CreateMFASession"
+	AccountService_CreateJWT_FullMethodName                      = "/torchwood.client.v1.AccountService/CreateJWT"
+	AccountService_CreateMagicURLSession_FullMethodName          = "/torchwood.client.v1.AccountService/CreateMagicURLSession"
+	AccountService_UpdateMagicURLSession_FullMethodName          = "/torchwood.client.v1.AccountService/UpdateMagicURLSession"
+	AccountService_ListLogs_FullMethodName                       = "/torchwood.client.v1.AccountService/ListLogs"
 )
 
 // AccountServiceClient is the client API for AccountService service.
@@ -76,6 +85,19 @@ type AccountServiceClient interface {
 	UpdateVerification(ctx context.Context, in *UpdateVerificationRequest, opts ...grpc.CallOption) (*Account, error)
 	CreateRecovery(ctx context.Context, in *CreateRecoveryRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	UpdateRecovery(ctx context.Context, in *UpdateRecoveryRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	// MFA
+	ListFactors(ctx context.Context, in *ListFactorsRequest, opts ...grpc.CallOption) (*ListFactorsResponse, error)
+	CreateTOTPFactor(ctx context.Context, in *CreateTOTPFactorRequest, opts ...grpc.CallOption) (*TOTPFactor, error)
+	VerifyTOTPFactor(ctx context.Context, in *VerifyTOTPFactorRequest, opts ...grpc.CallOption) (*Factor, error)
+	DeleteFactor(ctx context.Context, in *DeleteFactorRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	CreateMFASession(ctx context.Context, in *CreateMFASessionRequest, opts ...grpc.CallOption) (*SignInResponse, error)
+	// 一次性 JWT
+	CreateJWT(ctx context.Context, in *CreateJWTRequest, opts ...grpc.CallOption) (*CreateJWTResponse, error)
+	// Magic URL
+	CreateMagicURLSession(ctx context.Context, in *CreateMagicURLSessionRequest, opts ...grpc.CallOption) (*ChallengeResponse, error)
+	UpdateMagicURLSession(ctx context.Context, in *UpdateMagicURLSessionRequest, opts ...grpc.CallOption) (*SignInResponse, error)
+	// 账号日志
+	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (*ListLogsResponse, error)
 }
 
 type accountServiceClient struct {
@@ -336,6 +358,96 @@ func (c *accountServiceClient) UpdateRecovery(ctx context.Context, in *UpdateRec
 	return out, nil
 }
 
+func (c *accountServiceClient) ListFactors(ctx context.Context, in *ListFactorsRequest, opts ...grpc.CallOption) (*ListFactorsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListFactorsResponse)
+	err := c.cc.Invoke(ctx, AccountService_ListFactors_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) CreateTOTPFactor(ctx context.Context, in *CreateTOTPFactorRequest, opts ...grpc.CallOption) (*TOTPFactor, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TOTPFactor)
+	err := c.cc.Invoke(ctx, AccountService_CreateTOTPFactor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) VerifyTOTPFactor(ctx context.Context, in *VerifyTOTPFactorRequest, opts ...grpc.CallOption) (*Factor, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Factor)
+	err := c.cc.Invoke(ctx, AccountService_VerifyTOTPFactor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) DeleteFactor(ctx context.Context, in *DeleteFactorRequest, opts ...grpc.CallOption) (*v1.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(v1.Empty)
+	err := c.cc.Invoke(ctx, AccountService_DeleteFactor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) CreateMFASession(ctx context.Context, in *CreateMFASessionRequest, opts ...grpc.CallOption) (*SignInResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignInResponse)
+	err := c.cc.Invoke(ctx, AccountService_CreateMFASession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) CreateJWT(ctx context.Context, in *CreateJWTRequest, opts ...grpc.CallOption) (*CreateJWTResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateJWTResponse)
+	err := c.cc.Invoke(ctx, AccountService_CreateJWT_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) CreateMagicURLSession(ctx context.Context, in *CreateMagicURLSessionRequest, opts ...grpc.CallOption) (*ChallengeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ChallengeResponse)
+	err := c.cc.Invoke(ctx, AccountService_CreateMagicURLSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) UpdateMagicURLSession(ctx context.Context, in *UpdateMagicURLSessionRequest, opts ...grpc.CallOption) (*SignInResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignInResponse)
+	err := c.cc.Invoke(ctx, AccountService_UpdateMagicURLSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (*ListLogsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListLogsResponse)
+	err := c.cc.Invoke(ctx, AccountService_ListLogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AccountServiceServer is the server API for AccountService service.
 // All implementations must embed UnimplementedAccountServiceServer
 // for forward compatibility.
@@ -365,6 +477,19 @@ type AccountServiceServer interface {
 	UpdateVerification(context.Context, *UpdateVerificationRequest) (*Account, error)
 	CreateRecovery(context.Context, *CreateRecoveryRequest) (*v1.Empty, error)
 	UpdateRecovery(context.Context, *UpdateRecoveryRequest) (*v1.Empty, error)
+	// MFA
+	ListFactors(context.Context, *ListFactorsRequest) (*ListFactorsResponse, error)
+	CreateTOTPFactor(context.Context, *CreateTOTPFactorRequest) (*TOTPFactor, error)
+	VerifyTOTPFactor(context.Context, *VerifyTOTPFactorRequest) (*Factor, error)
+	DeleteFactor(context.Context, *DeleteFactorRequest) (*v1.Empty, error)
+	CreateMFASession(context.Context, *CreateMFASessionRequest) (*SignInResponse, error)
+	// 一次性 JWT
+	CreateJWT(context.Context, *CreateJWTRequest) (*CreateJWTResponse, error)
+	// Magic URL
+	CreateMagicURLSession(context.Context, *CreateMagicURLSessionRequest) (*ChallengeResponse, error)
+	UpdateMagicURLSession(context.Context, *UpdateMagicURLSessionRequest) (*SignInResponse, error)
+	// 账号日志
+	ListLogs(context.Context, *ListLogsRequest) (*ListLogsResponse, error)
 	mustEmbedUnimplementedAccountServiceServer()
 }
 
@@ -449,6 +574,33 @@ func (UnimplementedAccountServiceServer) CreateRecovery(context.Context, *Create
 }
 func (UnimplementedAccountServiceServer) UpdateRecovery(context.Context, *UpdateRecoveryRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateRecovery not implemented")
+}
+func (UnimplementedAccountServiceServer) ListFactors(context.Context, *ListFactorsRequest) (*ListFactorsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListFactors not implemented")
+}
+func (UnimplementedAccountServiceServer) CreateTOTPFactor(context.Context, *CreateTOTPFactorRequest) (*TOTPFactor, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateTOTPFactor not implemented")
+}
+func (UnimplementedAccountServiceServer) VerifyTOTPFactor(context.Context, *VerifyTOTPFactorRequest) (*Factor, error) {
+	return nil, status.Error(codes.Unimplemented, "method VerifyTOTPFactor not implemented")
+}
+func (UnimplementedAccountServiceServer) DeleteFactor(context.Context, *DeleteFactorRequest) (*v1.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteFactor not implemented")
+}
+func (UnimplementedAccountServiceServer) CreateMFASession(context.Context, *CreateMFASessionRequest) (*SignInResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateMFASession not implemented")
+}
+func (UnimplementedAccountServiceServer) CreateJWT(context.Context, *CreateJWTRequest) (*CreateJWTResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateJWT not implemented")
+}
+func (UnimplementedAccountServiceServer) CreateMagicURLSession(context.Context, *CreateMagicURLSessionRequest) (*ChallengeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateMagicURLSession not implemented")
+}
+func (UnimplementedAccountServiceServer) UpdateMagicURLSession(context.Context, *UpdateMagicURLSessionRequest) (*SignInResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateMagicURLSession not implemented")
+}
+func (UnimplementedAccountServiceServer) ListLogs(context.Context, *ListLogsRequest) (*ListLogsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListLogs not implemented")
 }
 func (UnimplementedAccountServiceServer) mustEmbedUnimplementedAccountServiceServer() {}
 func (UnimplementedAccountServiceServer) testEmbeddedByValue()                        {}
@@ -921,6 +1073,168 @@ func _AccountService_UpdateRecovery_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AccountService_ListFactors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFactorsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).ListFactors(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_ListFactors_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).ListFactors(ctx, req.(*ListFactorsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_CreateTOTPFactor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateTOTPFactorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).CreateTOTPFactor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_CreateTOTPFactor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).CreateTOTPFactor(ctx, req.(*CreateTOTPFactorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_VerifyTOTPFactor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VerifyTOTPFactorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).VerifyTOTPFactor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_VerifyTOTPFactor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).VerifyTOTPFactor(ctx, req.(*VerifyTOTPFactorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_DeleteFactor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteFactorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).DeleteFactor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_DeleteFactor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).DeleteFactor(ctx, req.(*DeleteFactorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_CreateMFASession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateMFASessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).CreateMFASession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_CreateMFASession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).CreateMFASession(ctx, req.(*CreateMFASessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_CreateJWT_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateJWTRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).CreateJWT(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_CreateJWT_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).CreateJWT(ctx, req.(*CreateJWTRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_CreateMagicURLSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateMagicURLSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).CreateMagicURLSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_CreateMagicURLSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).CreateMagicURLSession(ctx, req.(*CreateMagicURLSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_UpdateMagicURLSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateMagicURLSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).UpdateMagicURLSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_UpdateMagicURLSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).UpdateMagicURLSession(ctx, req.(*UpdateMagicURLSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_ListLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListLogsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).ListLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_ListLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).ListLogs(ctx, req.(*ListLogsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AccountService_ServiceDesc is the grpc.ServiceDesc for AccountService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1027,6 +1341,42 @@ var AccountService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateRecovery",
 			Handler:    _AccountService_UpdateRecovery_Handler,
+		},
+		{
+			MethodName: "ListFactors",
+			Handler:    _AccountService_ListFactors_Handler,
+		},
+		{
+			MethodName: "CreateTOTPFactor",
+			Handler:    _AccountService_CreateTOTPFactor_Handler,
+		},
+		{
+			MethodName: "VerifyTOTPFactor",
+			Handler:    _AccountService_VerifyTOTPFactor_Handler,
+		},
+		{
+			MethodName: "DeleteFactor",
+			Handler:    _AccountService_DeleteFactor_Handler,
+		},
+		{
+			MethodName: "CreateMFASession",
+			Handler:    _AccountService_CreateMFASession_Handler,
+		},
+		{
+			MethodName: "CreateJWT",
+			Handler:    _AccountService_CreateJWT_Handler,
+		},
+		{
+			MethodName: "CreateMagicURLSession",
+			Handler:    _AccountService_CreateMagicURLSession_Handler,
+		},
+		{
+			MethodName: "UpdateMagicURLSession",
+			Handler:    _AccountService_UpdateMagicURLSession_Handler,
+		},
+		{
+			MethodName: "ListLogs",
+			Handler:    _AccountService_ListLogs_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
