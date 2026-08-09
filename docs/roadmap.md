@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-09（CI 落地：GitHub Actions 双 job（后端 gofmt/vet/全量测试/构建 + 前端 lint/构建）；补 Functions 单测与 Databases 变更路径集成测试；Taskfile 新增 lint 任务，见 §2.9）。
+> 最新更新：2026-08-09（Storage 交付：preview 缩略图、公开 bucket 匿名读、HMAC File Token、文件/bucket 元数据更新、Usage 统计，见 §2.5）。
 
 ---
 
@@ -153,16 +153,16 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ### 2.5 Storage 文件交付
 
-当前支持上传、下载、查看，缺少预览、公开访问、断点续传。
+当前支持上传、下载、查看、预览、公开访问、File Token、元数据更新、Usage 统计；分片上传待实现。
 
-| 任务 | 说明 | 关键端点 |
-|------|------|----------|
-| 文件预览/缩略图 | 图片裁剪/缩放（使用 `disintegration/imaging`） | `GET /v1/storage/buckets/{id}/files/{id}/preview` |
-| 公开 bucket | bucket 级 `public` 标志，允许匿名读取 | bucket metadata 增加 `public` 字段 |
-| File Token | 生成短期文件访问令牌 | `POST /v1/storage/buckets/{id}/files/{id}/tokens` |
-| 文件元数据更新 | 修改 name、metadata、permissions | `PATCH /v1/server/storage/buckets/{id}/files/{id}` |
-| 分片上传（占位） | 支持大文件分片上传与合并 | `POST /v1/storage/buckets/{id}/files/{id}/chunks` |
-| Usage 统计 | bucket/files 数量与容量统计 | `GET /v1/server/storage/usage` |
+| 任务 | 说明 | 关键端点 | 状态 |
+|------|------|----------|------|
+| 文件预览/缩略图 | 图片裁剪/缩放（使用 `disintegration/imaging`） | `GET /v1/storage/buckets/{id}/files/{id}/preview` | ✅ 完成（width/height 缩放、50MiB 上限、webp 解码 JPEG 输出） |
+| 公开 bucket | bucket 级 `public` 标志，允许匿名读取 | `CreateBucket`/`UpdateBucket` 的 `public` 字段 | ✅ 完成（匿名读需 `?project=` 参数，文件级 read:any 兜底） |
+| File Token | 生成短期文件访问令牌（HMAC 签名，默认 1h、上限 7d） | `POST /v1/storage/buckets/{id}/files/{id}/tokens` | ✅ 完成（下载 URL 携带 `?token=`，过期/篡改 401） |
+| 文件元数据更新 | 修改 name、mime_type、metadata | `PATCH /v1/server/storage/buckets/{id}/files/{id}` | ✅ 完成（含 `UpdateBucket`：改名/公开开关） |
+| 分片上传（占位） | 支持大文件分片上传与合并 | `POST /v1/storage/buckets/{id}/files/{id}/chunks` | 待办 |
+| Usage 统计 | bucket/files 数量与容量统计（`SumDocumentField` 聚合） | `GET /v1/server/storage/usage` | ✅ 完成 |
 
 **验收标准**：
 
@@ -415,7 +415,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [x] Server Users 创建与会话/令牌管理。
 - [x] Databases Documents CRUD、Client API 权限可用。
 - [x] Databases 批量操作、attribute/index 删除。
-- [ ] Storage preview、公开 bucket、file token 可用。
+- [x] Storage preview、公开 bucket、file token 可用。
 - [ ] Functions 可上传代码、构建、同步/异步执行。
 - [x] Admin Console 覆盖 Database 文档编辑、Teams 页面。
 - [x] Admin Console 覆盖系统管理员管理（Admins 页面，owner 权限保护）。

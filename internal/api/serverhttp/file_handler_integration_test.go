@@ -5,17 +5,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
 	"testing"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -45,6 +51,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
+	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
 	store := testutil.NewMemObjectStore()
 	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store)
 	validator := auth.NewValidator(
@@ -481,4 +488,185 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	require.NoError(t, err)
 	resp.Body.Close()
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
+// TestFileHandler_PublicBucketAnonymousRead: public bucket 文件可在无凭证时经
+// ?project= 匿名读取；非 public bucket 匿名读仍 401。
+func TestFileHandler_PublicBucketAnonymousRead(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	f := setupStorageHTTPFixture(t)
+
+	// 建 public bucket 并上传文件。
+	bucket, err := f.handler.storage.CreateBucket(ctx, appstorage.CreateBucketCommand{
+		ProjectID: f.projectID,
+		Name:      "public-bucket",
+		Public:    true,
+	})
+	require.NoError(t, err)
+
+	fileID, _, status := f.uploadTo(bucket.ID, []byte("public content"), map[string]string{"X-Api-Key": f.apiSecret}, "")
+	require.Equal(t, http.StatusCreated, status)
+
+	// 匿名（无任何凭证）+ project 参数 → 200。
+	code, data, _ := f.download(
+		"/v1/storage/buckets/"+bucket.ID+"/files/"+fileID+"/view?project="+f.projectID,
+		nil,
+	)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "public content", string(data))
+
+	// 无 project 参数 → 401（无法定位项目）。
+	code, _, _ = f.download("/v1/storage/buckets/"+bucket.ID+"/files/"+fileID+"/view", nil)
+	require.Equal(t, http.StatusUnauthorized, code)
+
+	// 非 public bucket 匿名读 → 401。
+	code, _, _ = f.download(
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/view?project="+f.projectID,
+		nil,
+	)
+	require.Equal(t, http.StatusUnauthorized, code)
+}
+
+// TestFileHandler_FileTokenDownload: 有效 token 匿名下载成功；过期与篡改 401；
+// 绑定其他文件的 token 无效。
+func TestFileHandler_FileTokenDownload(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	f := setupStorageHTTPFixture(t)
+
+	fileID, _, status := f.upload([]byte("token-protected"), map[string]string{"X-Api-Key": f.apiSecret}, "")
+	require.Equal(t, http.StatusCreated, status)
+
+	// 无 token 匿名下载 → 401（bucket 非 public）。
+	code, _, _ := f.download("/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/download", nil)
+	require.Equal(t, http.StatusUnauthorized, code)
+
+	token, err := f.handler.storage.CreateFileToken(ctx, f.projectID, f.bucketID, fileID, 300, databases.Principal{Roles: []string{"keys"}})
+	require.NoError(t, err)
+
+	// 有效 token → 200。
+	code, data, _ := f.download(
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/download?token="+token.Token,
+		nil,
+	)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "token-protected", string(data))
+
+	// 篡改 token → 401。
+	code, _, _ = f.download(
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/download?token="+token.Token+"x",
+		nil,
+	)
+	require.Equal(t, http.StatusUnauthorized, code)
+
+	// 过期 token → 401。
+	short, err := f.handler.storage.CreateFileToken(ctx, f.projectID, f.bucketID, fileID, 1, databases.Principal{Roles: []string{"keys"}})
+	require.NoError(t, err)
+	time.Sleep(1100 * time.Millisecond)
+	code, _, _ = f.download(
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/download?token="+short.Token,
+		nil,
+	)
+	require.Equal(t, http.StatusUnauthorized, code)
+}
+
+// TestFileHandler_Preview: 图片上传后 preview 生成指定尺寸缩略图；
+// 非图片类型拒绝。
+func TestFileHandler_Preview(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	f := setupStorageHTTPFixture(t)
+
+	// 生成 40x20 红色 PNG。
+	src := image.NewRGBA(image.Rect(0, 0, 40, 20))
+	draw.Draw(src, src.Bounds(), &image.Uniform{C: color.RGBA{R: 255, A: 255}}, image.Point{}, draw.Src)
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, src))
+
+	fileID, _, status := f.uploadTo(f.bucketID, pngBuf.Bytes(), map[string]string{"X-Api-Key": f.apiSecret}, "image/png")
+	require.Equal(t, http.StatusCreated, status)
+
+	// 缩放 10x10 → 200 且输出仍为 PNG。
+	code, data, headers := f.download(
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/preview?width=10&height=10",
+		map[string]string{"X-Api-Key": f.apiSecret},
+	)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "image/png", headers.Get("Content-Type"))
+	require.NotEmpty(t, data)
+	decoded, err := png.Decode(bytes.NewReader(data))
+	require.NoError(t, err)
+	require.Equal(t, 10, decoded.Bounds().Dx(), "Fit 保持宽高比：40x20 → 10x5")
+	require.Equal(t, 5, decoded.Bounds().Dy())
+
+	// 无缩放参数 → 原图回源。
+	code, data, _ = f.download(
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/preview",
+		map[string]string{"X-Api-Key": f.apiSecret},
+	)
+	require.Equal(t, http.StatusOK, code)
+	decoded, err = png.Decode(bytes.NewReader(data))
+	require.NoError(t, err)
+	require.Equal(t, 40, decoded.Bounds().Dx())
+
+	// 非图片（text/plain）→ 400。
+	txtID, _, status := f.upload([]byte("plain"), map[string]string{"X-Api-Key": f.apiSecret}, "text/plain")
+	require.Equal(t, http.StatusCreated, status)
+	code, _, _ = f.download(
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+txtID+"/preview?width=10",
+		map[string]string{"X-Api-Key": f.apiSecret},
+	)
+	require.Equal(t, http.StatusBadRequest, code)
+}
+
+// uploadTo 与 upload 相同，但可指定目标 bucket（默认 bucket 由 fixture 持有）。
+func (f *storageHTTPFixture) uploadTo(bucketID string, content []byte, headers map[string]string, contentType string) (string, string, int) {
+	f.t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if contentType == "" {
+		part, err := writer.CreateFormFile("file", "test.txt")
+		require.NoError(f.t, err)
+		_, err = part.Write(content)
+		require.NoError(f.t, err)
+	} else {
+		part, err := writer.CreatePart(textproto.MIMEHeader{
+			"Content-Disposition": {fmt.Sprintf(`form-data; name="file"; filename="test.png"`)},
+			"Content-Type":        {contentType},
+		})
+		require.NoError(f.t, err)
+		_, err = part.Write(content)
+		require.NoError(f.t, err)
+	}
+	require.NoError(f.t, writer.Close())
+
+	req, err := http.NewRequest(http.MethodPost, f.server.URL+"/v1/storage/buckets/"+bucketID+"/files", body)
+	require.NoError(f.t, err)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(f.t, err)
+	defer resp.Body.Close()
+
+	var payload struct {
+		ID       string `json:"id"`
+		MimeType string `json:"mime_type"`
+	}
+	if resp.StatusCode == http.StatusCreated {
+		require.NoError(f.t, json.NewDecoder(resp.Body).Decode(&payload))
+	}
+	return payload.ID, payload.MimeType, resp.StatusCode
 }

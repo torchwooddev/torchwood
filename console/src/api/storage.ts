@@ -4,6 +4,7 @@ export interface Bucket {
   id: string;
   name: string;
   permissions: string[];
+  public?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -14,29 +15,53 @@ export interface FileItem {
   name: string;
   mime_type: string;
   size: number;
+  metadata?: Record<string, string>;
   created_at: string;
   updated_at: string;
 }
 
+export interface StorageUsage {
+  buckets: number;
+  files: number;
+  total_size: number;
+}
+
+function normalizeBucket(bucket: Bucket): Bucket {
+  return {
+    ...bucket,
+    public: bucket.public ?? false,
+    permissions: bucket.permissions ?? [],
+  };
+}
+
 export async function listBuckets(): Promise<Bucket[]> {
   const res = await api.get<{ buckets: Bucket[] }>("/server/storage/buckets");
-  return res.data.buckets ?? [];
+  return (res.data.buckets ?? []).map(normalizeBucket);
 }
 
 export async function getBucket(id: string): Promise<Bucket> {
   const res = await api.get<Bucket>(`/server/storage/buckets/${id}`);
-  return res.data;
+  return normalizeBucket(res.data);
 }
 
 export async function createBucket(input: {
   name: string;
+  public?: boolean;
 }): Promise<Bucket> {
   const res = await api.post<Bucket>("/server/storage/buckets", input);
-  return res.data;
+  return normalizeBucket(res.data);
 }
 
 export async function deleteBucket(id: string): Promise<void> {
   await api.delete(`/server/storage/buckets/${id}`);
+}
+
+export async function updateBucket(
+  id: string,
+  input: { name?: string; public?: boolean }
+): Promise<Bucket> {
+  const res = await api.patch<Bucket>(`/server/storage/buckets/${id}`, input);
+  return normalizeBucket(res.data);
 }
 
 export async function listFiles(bucketId: string): Promise<FileItem[]> {
@@ -108,4 +133,47 @@ export async function downloadFile(
 
 export async function deleteFile(bucketId: string, fileId: string): Promise<void> {
   await api.delete(`/server/storage/buckets/${bucketId}/files/${fileId}`);
+}
+
+export async function updateFile(
+  bucketId: string,
+  fileId: string,
+  input: {
+    name?: string;
+    mime_type?: string;
+    metadata?: Record<string, string>;
+  }
+): Promise<FileItem> {
+  const res = await api.patch<FileItem>(
+    `/server/storage/buckets/${bucketId}/files/${fileId}`,
+    input
+  );
+  return res.data;
+}
+
+export async function createFileToken(
+  bucketId: string,
+  fileId: string,
+  expiresIn?: number
+): Promise<{ token: string; expires_at: string }> {
+  const res = await api.post<{ token: string; expires_at: string }>(
+    `/server/storage/buckets/${bucketId}/files/${fileId}/tokens`,
+    { expires_in: expiresIn }
+  );
+  return res.data;
+}
+
+export async function getStorageUsage(): Promise<StorageUsage> {
+  const res = await api.get<StorageUsage>("/server/storage/usage");
+  return res.data;
+}
+
+// fileViewUrl 构造内联查看 URL（浏览器可直接打开）。
+export function fileViewUrl(bucketId: string, fileId: string): string {
+  return `/v1/storage/buckets/${bucketId}/files/${fileId}/view`;
+}
+
+// filePreviewUrl 构造缩略图 URL（带鉴权 cookie，浏览器 img 标签可加载）。
+export function filePreviewUrl(bucketId: string, fileId: string): string {
+  return `/v1/storage/buckets/${bucketId}/files/${fileId}/preview?width=200`;
 }

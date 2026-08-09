@@ -262,6 +262,92 @@
         "tags": [
           "StorageService"
         ]
+      },
+      "patch": {
+        "operationId": "StorageService_UpdateFile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1File"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "bucketId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/StorageServiceUpdateFileBody"
+            }
+          }
+        ],
+        "tags": [
+          "StorageService"
+        ]
+      }
+    },
+    "/v1/server/storage/buckets/{bucketId}/files/{fileId}/tokens": {
+      "post": {
+        "operationId": "StorageService_CreateFileToken",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1FileToken"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "bucketId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/StorageServiceCreateFileTokenBody"
+            }
+          }
+        ],
+        "tags": [
+          "StorageService"
+        ]
       }
     },
     "/v1/server/storage/buckets/{id}": {
@@ -320,6 +406,64 @@
         "tags": [
           "StorageService"
         ]
+      },
+      "patch": {
+        "operationId": "StorageService_UpdateBucket",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Bucket"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/StorageServiceUpdateBucketBody"
+            }
+          }
+        ],
+        "tags": [
+          "StorageService"
+        ]
+      }
+    },
+    "/v1/server/storage/usage": {
+      "get": {
+        "operationId": "StorageService_GetStorageUsage",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1StorageUsage"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "StorageService"
+        ]
       }
     }
   },
@@ -346,6 +490,44 @@
         "permissions": {
           "type": "array",
           "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "StorageServiceCreateFileTokenBody": {
+      "type": "object",
+      "properties": {
+        "expiresIn": {
+          "type": "string",
+          "format": "int64",
+          "title": "有效期秒数，默认 3600（1 小时）。"
+        }
+      }
+    },
+    "StorageServiceUpdateBucketBody": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "public": {
+          "type": "boolean"
+        }
+      }
+    },
+    "StorageServiceUpdateFileBody": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
             "type": "string"
           }
         }
@@ -401,6 +583,9 @@
         "updatedAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "public": {
+          "type": "boolean"
         }
       }
     },
@@ -415,6 +600,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "public": {
+          "type": "boolean"
         }
       }
     },
@@ -451,6 +639,18 @@
           "format": "date-time"
         },
         "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "v1FileToken": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expiresAt": {
           "type": "string",
           "format": "date-time"
         }
@@ -502,6 +702,23 @@
         "totalCount": {
           "type": "integer",
           "format": "int32"
+        }
+      }
+    },
+    "v1StorageUsage": {
+      "type": "object",
+      "properties": {
+        "buckets": {
+          "type": "string",
+          "format": "int64"
+        },
+        "files": {
+          "type": "string",
+          "format": "int64"
+        },
+        "totalSize": {
+          "type": "string",
+          "format": "int64"
         }
       }
     }

@@ -29,6 +29,9 @@ type DocumentDB interface {
 	DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal Principal) error
 	ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q Query, principal Principal) (*DocumentList, error)
 	CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string, principal Principal) (int64, error)
+	// SumDocumentField sums a numeric column across a collection (e.g. file sizes
+	// for storage usage), scoped by the caller's read permissions.
+	SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal Principal) (int64, error)
 	BulkUpdateDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, data map[string]any, perms []Permission, principal Principal) (int64, error)
 	BulkDeleteDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, principal Principal) (int64, error)
 

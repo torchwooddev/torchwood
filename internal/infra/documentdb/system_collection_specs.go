@@ -99,6 +99,7 @@ func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
 			attrs: []databases.Attribute{
 				{ID: "buckets_name", Key: "name", Type: "string", Size: 256},
 				{ID: "buckets_permissions", Key: "permissions", Type: "json"},
+				{ID: "buckets_public", Key: "public", Type: "boolean"},
 			},
 			indexes: []databases.Index{
 				{ID: "buckets_name", Type: "key", Attributes: []string{"name"}},

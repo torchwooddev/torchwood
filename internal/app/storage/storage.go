@@ -2,8 +2,12 @@ package storage
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +40,7 @@ type CreateBucketCommand struct {
 	ProjectID   string
 	Name        string
 	Permissions []string
+	Public      bool
 }
 
 type CreateFileCommand struct {
@@ -67,6 +72,7 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 		Data: map[string]any{
 			"name":        cmd.Name,
 			"permissions": cmd.Permissions,
+			"public":      cmd.Public,
 		},
 	}
 	perms := bucketPermissions(bucketID, cmd.Permissions)
@@ -79,6 +85,7 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 		ProjectID:   project.ID,
 		Name:        cmd.Name,
 		Permissions: cmd.Permissions,
+		Public:      cmd.Public,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
@@ -102,6 +109,39 @@ func (s *Storage) ListBuckets(ctx context.Context, projectID string, q databases
 		buckets = append(buckets, *mapBucketDoc(&d))
 	}
 	return buckets, list.TotalCount, nil
+}
+
+// UpdateBucketCommand 更新 bucket 元数据；空字段表示不修改。
+type UpdateBucketCommand struct {
+	ProjectID string
+	ID        string
+	Name      string
+	Public    *bool
+	Principal databases.Principal
+}
+
+func (s *Storage) UpdateBucket(ctx context.Context, cmd UpdateBucketCommand) (*storage.Bucket, error) {
+	project, err := s.resolveProject(ctx, cmd.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	data := map[string]any{}
+	if cmd.Name != "" {
+		data["name"] = cmd.Name
+	}
+	if cmd.Public != nil {
+		data["public"] = *cmd.Public
+	}
+	if len(data) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "nothing to update")
+	}
+	updated, err := s.docDB.UpdateDocument(ctx, project.ID, "default", "buckets", databases.DocumentUpdate{
+		Document: databases.Document{ID: cmd.ID, Data: data},
+	}, cmd.Principal)
+	if err != nil {
+		return nil, err
+	}
+	return mapBucketDoc(&updated), nil
 }
 
 func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, principal databases.Principal) error {
@@ -246,6 +286,159 @@ func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q d
 	return files, list.TotalCount, list.NextPageToken, nil
 }
 
+// UpdateFileCommand 携带可更新的文件元数据字段；空值表示不修改。
+type UpdateFileCommand struct {
+	ProjectID string
+	BucketID  string
+	FileID    string
+	Name      string
+	MimeType  string
+	Metadata  map[string]string // nil 表示不修改；非 nil（含空 map）整体替换
+	Principal databases.Principal
+}
+
+func (s *Storage) UpdateFile(ctx context.Context, cmd UpdateFileCommand) (*storage.File, error) {
+	project, err := s.resolveProject(ctx, cmd.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := s.docDB.GetDocument(ctx, project.ID, "default", "files", cmd.FileID, cmd.Principal)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, status.Error(codes.NotFound, "file not found")
+	}
+	file := mapFileDoc(doc)
+	if file.BucketID != cmd.BucketID {
+		return nil, status.Error(codes.NotFound, "file not found in bucket")
+	}
+
+	data := map[string]any{}
+	if cmd.Name != "" {
+		data["name"] = cmd.Name
+	}
+	if cmd.MimeType != "" {
+		data["mime_type"] = normalizeMimeType(cmd.MimeType)
+	}
+	if cmd.Metadata != nil {
+		data["metadata"] = cmd.Metadata
+	}
+	if len(data) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "nothing to update")
+	}
+	updated, err := s.docDB.UpdateDocument(ctx, project.ID, "default", "files", databases.DocumentUpdate{
+		Document: databases.Document{ID: cmd.FileID, Data: data},
+	}, cmd.Principal)
+	if err != nil {
+		return nil, err
+	}
+	return mapFileDoc(&updated), nil
+}
+
+// GetStorageUsage 统计项目级 bucket/文件数量与总容量（按调用方读权限过滤）。
+func (s *Storage) GetStorageUsage(ctx context.Context, projectID string, principal databases.Principal) (*storage.Usage, error) {
+	project, err := s.resolveProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
+		return nil, err
+	}
+	buckets, err := s.docDB.CountDocuments(ctx, project.ID, "default", "buckets", nil, principal)
+	if err != nil {
+		return nil, err
+	}
+	files, err := s.docDB.CountDocuments(ctx, project.ID, "default", "files", nil, principal)
+	if err != nil {
+		return nil, err
+	}
+	totalSize, err := s.docDB.SumDocumentField(ctx, project.ID, "default", "files", "size", principal)
+	if err != nil {
+		return nil, err
+	}
+	return &storage.Usage{Buckets: buckets, Files: files, TotalSize: totalSize}, nil
+}
+
+// maxFileTokenLifetime caps token validity at 7 days.
+const maxFileTokenLifetime = 7 * 24 * 3600
+
+// defaultFileTokenLifetime is the validity when expires_in is not provided.
+const defaultFileTokenLifetime = 3600
+
+// FileToken 是短期匿名下载凭证。
+type FileToken struct {
+	Token     string
+	ExpiresAt time.Time
+}
+
+// CreateFileToken 为文件签发 HMAC 签名的短期匿名下载 token（绑定 bucket/file/过期时间）。
+func (s *Storage) CreateFileToken(ctx context.Context, projectID, bucketID, fileID string, expiresIn int64, principal databases.Principal) (*FileToken, error) {
+	project, err := s.resolveProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := s.docDB.GetDocument(ctx, project.ID, "default", "files", fileID, principal)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, status.Error(codes.NotFound, "file not found")
+	}
+	file := mapFileDoc(doc)
+	if file.BucketID != bucketID {
+		return nil, status.Error(codes.NotFound, "file not found in bucket")
+	}
+
+	if expiresIn <= 0 {
+		expiresIn = defaultFileTokenLifetime
+	}
+	if expiresIn > maxFileTokenLifetime {
+		expiresIn = maxFileTokenLifetime
+	}
+	secret := s.cfg.GetSecurity().GetJwt().GetSecret()
+	if secret == "" {
+		return nil, status.Error(codes.Internal, "file token secret is not configured")
+	}
+	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
+	token := signFileToken(secret, project.ID, bucketID, fileID, expiresAt.Unix())
+	return &FileToken{Token: token, ExpiresAt: expiresAt}, nil
+}
+
+// ParseFileToken 校验匿名下载 token：签名正确、未过期，返回绑定的
+// project/bucket/file。任何一项不符即返回错误（调用方仍需比对路径参数）。
+// token 格式："{expiresAt}.{projectID}.{bucketID}.{fileID}.{hex(hmac)}"。
+func (s *Storage) ParseFileToken(token string) (projectID, bucketID, fileID string, err error) {
+	secret := s.cfg.GetSecurity().GetJwt().GetSecret()
+	if secret == "" {
+		return "", "", "", status.Error(codes.Internal, "file token secret is not configured")
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 5 {
+		return "", "", "", status.Error(codes.Unauthenticated, "invalid file token")
+	}
+	expiresAt, parseErr := strconv.ParseInt(parts[0], 10, 64)
+	if parseErr != nil {
+		return "", "", "", status.Error(codes.Unauthenticated, "invalid file token")
+	}
+	if time.Now().Unix() >= expiresAt {
+		return "", "", "", status.Error(codes.Unauthenticated, "file token expired")
+	}
+	pid, bid, fid := parts[1], parts[2], parts[3]
+	expected := signFileToken(secret, pid, bid, fid, expiresAt)
+	if !hmac.Equal([]byte(expected), []byte(token)) {
+		return "", "", "", status.Error(codes.Unauthenticated, "invalid file token")
+	}
+	return pid, bid, fid, nil
+}
+
+// signFileToken 计算 token = "{expiresAt}.{projectID}.{bucketID}.{fileID}.{hex(hmac)}"。
+func signFileToken(secret, projectID, bucketID, fileID string, expiresAt int64) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = fmt.Fprintf(mac, "%s.%s.%s.%d", projectID, bucketID, fileID, expiresAt)
+	return fmt.Sprintf("%d.%s.%s.%s.%s", expiresAt, projectID, bucketID, fileID, hex.EncodeToString(mac.Sum(nil)))
+}
+
 func (s *Storage) resolveProject(ctx context.Context, projectID string) (*projects.Project, error) {
 	p, err := s.projectRepo.GetProject(ctx, projectID)
 	if err != nil {
@@ -346,6 +539,9 @@ func mapBucketDoc(doc *databases.Document) *storage.Bucket {
 				b.Permissions = append(b.Permissions, s)
 			}
 		}
+	}
+	if v, ok := doc.Data["public"].(bool); ok {
+		b.Public = v
 	}
 	return b
 }

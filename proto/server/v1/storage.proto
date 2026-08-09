@@ -28,6 +28,10 @@ service StorageService {
     option (google.api.http) = { delete: "/v1/server/storage/buckets/{id}" };
   }
 
+  rpc UpdateBucket(UpdateBucketRequest) returns (Bucket) {
+    option (google.api.http) = { patch: "/v1/server/storage/buckets/{id}", body: "*" };
+  }
+
   rpc CreateFile(CreateFileRequest) returns (File) {
     option (google.api.http) = { post: "/v1/server/storage/buckets/{bucket_id}/files", body: "*" };
   }
@@ -43,15 +47,34 @@ service StorageService {
   rpc DeleteFile(GetFileRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/server/storage/buckets/{bucket_id}/files/{file_id}" };
   }
+
+  rpc UpdateFile(UpdateFileRequest) returns (File) {
+    option (google.api.http) = { patch: "/v1/server/storage/buckets/{bucket_id}/files/{file_id}", body: "*" };
+  }
+
+  rpc CreateFileToken(CreateFileTokenRequest) returns (FileToken) {
+    option (google.api.http) = { post: "/v1/server/storage/buckets/{bucket_id}/files/{file_id}/tokens", body: "*" };
+  }
+
+  rpc GetStorageUsage(GetStorageUsageRequest) returns (StorageUsage) {
+    option (google.api.http) = { get: "/v1/server/storage/usage" };
+  }
 }
 
 message CreateBucketRequest {
   string name = 1;
   repeated string permissions = 2;
+  bool public = 3;
 }
 
 message GetBucketRequest {
   string id = 1;
+}
+
+message UpdateBucketRequest {
+  string id = 1;
+  optional string name = 2;
+  optional bool public = 3;
 }
 
 message ListBucketsResponse {
@@ -65,6 +88,7 @@ message Bucket {
   repeated string permissions = 3;
   google.protobuf.Timestamp created_at = 4;
   google.protobuf.Timestamp updated_at = 5;
+  bool public = 6;
 }
 
 message CreateFileRequest {
@@ -102,4 +126,32 @@ message File {
   map<string, string> metadata = 6;
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
+}
+
+message UpdateFileRequest {
+  string bucket_id = 1;
+  string file_id = 2;
+  optional string name = 3;
+  optional string mime_type = 4;
+  map<string, string> metadata = 5;
+}
+
+message CreateFileTokenRequest {
+  string bucket_id = 1;
+  string file_id = 2;
+  // 有效期秒数，默认 3600（1 小时）。
+  optional int64 expires_in = 3;
+}
+
+message FileToken {
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message GetStorageUsageRequest {}
+
+message StorageUsage {
+  int64 buckets = 1;
+  int64 files = 2;
+  int64 total_size = 3;
 }

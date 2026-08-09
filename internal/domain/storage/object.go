@@ -12,6 +12,7 @@ type Bucket struct {
 	ProjectID   string
 	Name        string
 	Permissions []string
+	Public      bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -27,6 +28,13 @@ type File struct {
 	Metadata  map[string]string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Usage aggregates storage statistics for a project.
+type Usage struct {
+	Buckets   int64
+	Files     int64
+	TotalSize int64
 }
 
 // ObjectStore abstracts binary object storage (S3 / MinIO).

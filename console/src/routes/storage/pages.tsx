@@ -2,17 +2,23 @@ import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Download, UploadCloud } from "lucide-react";
+import { Plus, Download, UploadCloud, Link2, Copy } from "lucide-react";
 import {
   listBuckets,
   getBucket,
   createBucket,
+  updateBucket,
   deleteBucket,
   listFiles,
   getFile,
   uploadFile,
+  updateFile,
+  createFileToken,
+  getStorageUsage,
   deleteFile,
   downloadFile,
+  filePreviewUrl,
+  fileViewUrl,
   type Bucket,
   type FileItem,
 } from "@/api/storage";
@@ -20,6 +26,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ColumnDef } from "@/components/list/DataTable";
 import {
   FormPageWrapper,
@@ -32,6 +41,14 @@ import {
   RowDeleteButton,
   DeleteButton,
 } from "@/components/resource/shared";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const bucketColumns: ColumnDef<Bucket>[] = [
   {
@@ -40,7 +57,16 @@ const bucketColumns: ColumnDef<Bucket>[] = [
     className: "font-mono text-xs max-w-[140px] truncate",
     cell: (b) => b.id,
   },
-  { key: "name", header: "名称", cell: (b) => b.name },
+  {
+    key: "name",
+    header: "名称",
+    cell: (b) => (
+      <span className="inline-flex items-center gap-2">
+        {b.name}
+        {b.public && <Badge variant="secondary">公开</Badge>}
+      </span>
+    ),
+  },
   {
     key: "created",
     header: "创建时间",
@@ -54,6 +80,21 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+function UsageStatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="text-sm text-muted-foreground">{label}</div>
+      <p className="mt-2 text-lg font-semibold">{value}</p>
+    </div>
+  );
 }
 
 export function StorageListPage() {
@@ -132,6 +173,7 @@ export function BucketNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
+  const [publicBucket, setPublicBucket] = useState(false);
 
   const mutation = useMutation({
     mutationFn: createBucket,
@@ -149,11 +191,15 @@ export function BucketNewPage() {
       submitLabel="创建"
       onSubmit={(e) => {
         e.preventDefault();
-        mutation.mutate({ name });
+        mutation.mutate({ name, public: publicBucket });
       }}
       loading={mutation.isPending}
     >
       <FormField id="name" label="Bucket 名称" value={name} onChange={setName} required placeholder="uploads" />
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={publicBucket} onChange={(e) => setPublicBucket(e.target.checked)} />
+        公开 Bucket（无凭证可匿名读取 read:any 文件）
+      </label>
     </FormPageWrapper>
   );
 }
@@ -170,10 +216,26 @@ export function BucketDetailPage() {
     enabled: !!bucketId,
   });
 
+  const { data: usage } = useQuery({
+    queryKey: ["storage-usage"],
+    queryFn: getStorageUsage,
+  });
+
   const { data: files = [], isLoading: filesLoading } = useQuery({
     queryKey: ["files", bucketId],
     queryFn: () => listFiles(bucketId!),
     enabled: !!bucketId,
+  });
+
+  const updateBucketMutation = useMutation({
+    mutationFn: (input: { name?: string; public?: boolean }) =>
+      updateBucket(bucketId!, input),
+    onSuccess: () => {
+      toast.success("Bucket 设置已更新");
+      queryClient.invalidateQueries({ queryKey: ["buckets", bucketId] });
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["storage-usage"] });
+    },
   });
 
   const removeBucket = useMutation({
@@ -254,6 +316,29 @@ export function BucketDetailPage() {
         />
       </DetailPageWrapper>
 
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <UsageStatCard label="Bucket 数量" value={String(usage?.buckets ?? "—")} />
+        <UsageStatCard label="文件数量" value={String(usage?.files ?? "—")} />
+        <UsageStatCard label="总容量" value={usage ? formatBytes(usage.total_size) : "—"} />
+        <Card>
+          <CardHeader className="space-y-0 pb-3">
+            <CardTitle className="text-sm">公开访问</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center gap-2">
+            <Checkbox
+              checked={bucket.public ?? false}
+              disabled={updateBucketMutation.isPending}
+              onChange={(e) =>
+                updateBucketMutation.mutate({ public: e.target.checked })
+              }
+            />
+            <span className="text-sm text-muted-foreground">
+              允许无凭证匿名读取（read:any 文件）
+            </span>
+          </CardContent>
+        </Card>
+      </div>
+
       <ResourceListPage
         title=""
         cardTitle="文件列表"
@@ -313,6 +398,10 @@ export function FileDetailPage() {
   const { bucketId, fileId } = useParams<{ bucketId: string; fileId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareExpires, setShareExpires] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
 
   const { data: file, isLoading } = useQuery({
     queryKey: ["files", bucketId, fileId],
@@ -329,8 +418,47 @@ export function FileDetailPage() {
     },
   });
 
+  const rename = useMutation({
+    mutationFn: (name: string) => updateFile(bucketId!, fileId!, { name }),
+    onSuccess: () => {
+      toast.success("文件名已更新");
+      queryClient.invalidateQueries({ queryKey: ["files", bucketId, fileId] });
+      queryClient.invalidateQueries({ queryKey: ["files", bucketId] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const [newName, setNewName] = useState("");
+  const [nameDirty, setNameDirty] = useState(false);
+
+  const generateShare = async () => {
+    if (!bucketId || !fileId) return;
+    setShareLoading(true);
+    try {
+      const { token, expires_at } = await createFileToken(bucketId, fileId);
+      setShareUrl(`${fileViewUrl(bucketId, fileId)}?token=${encodeURIComponent(token)}`);
+      setShareExpires(new Date(expires_at).toLocaleString());
+      setShareOpen(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "生成分享链接失败");
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const copyShare = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("链接已复制");
+    } catch {
+      toast.error("复制失败，请手动复制");
+    }
+  };
+
   if (isLoading) return <DetailSkeleton />;
   if (!file) return <NotFound backTo={`/console/storage/${bucketId}`} />;
+
+  const isImage = file.mime_type.startsWith("image/");
 
   return (
     <DetailPageWrapper
@@ -340,6 +468,10 @@ export function FileDetailPage() {
       backLabel="返回 Bucket"
       actions={
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={generateShare} disabled={shareLoading}>
+            <Link2 className="h-4 w-4 mr-2" />
+            分享链接
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -363,6 +495,69 @@ export function FileDetailPage() {
           { label: "更新时间", value: new Date(file.updated_at).toLocaleString() },
         ]}
       />
+
+      {isImage && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">预览</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <img
+              src={filePreviewUrl(bucketId!, file.id)}
+              alt={file.name}
+              className="max-h-96 rounded-lg border object-contain"
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="text-base">重命名</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-end gap-2">
+          <div className="flex-1 space-y-2">
+            <FormField
+              id="rename"
+              label="文件名"
+              value={newName}
+              onChange={(v) => {
+                setNewName(v);
+                setNameDirty(true);
+              }}
+              placeholder={file.name}
+            />
+          </div>
+          <Button
+            disabled={!nameDirty || !newName.trim() || rename.isPending}
+            onClick={() => rename.mutate(newName.trim())}
+          >
+            {rename.isPending ? "保存中..." : "保存"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>分享链接</DialogTitle>
+            <DialogDescription>
+              短期匿名访问链接，过期时间：{shareExpires}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <Input readOnly value={shareUrl} className="font-mono text-xs" />
+            <Button size="icon" variant="outline" onClick={copyShare} title="复制">
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareOpen(false)}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DetailPageWrapper>
   );
 }

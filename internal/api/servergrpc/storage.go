@@ -42,6 +42,7 @@ func (s *StorageService) CreateBucket(ctx context.Context, req *serverv1.CreateB
 		ProjectID:   projectID,
 		Name:        req.GetName(),
 		Permissions: req.GetPermissions(),
+		Public:      req.GetPublic(),
 	})
 	if err != nil {
 		return nil, err
@@ -99,6 +100,25 @@ func (s *StorageService) DeleteBucket(ctx context.Context, req *serverv1.GetBuck
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
+}
+
+func (s *StorageService) UpdateBucket(ctx context.Context, req *serverv1.UpdateBucketRequest) (*serverv1.Bucket, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, "storage.buckets/"+req.GetId())
+	bucket, err := s.storage.UpdateBucket(ctx, appstorage.UpdateBucketCommand{
+		ProjectID: projectID,
+		ID:        req.GetId(),
+		Name:      req.GetName(),
+		Public:    req.Public,
+		Principal: dbPrincipal(ctx),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapBucket(bucket), nil
 }
 
 func (s *StorageService) CreateFile(ctx context.Context, req *serverv1.CreateFileRequest) (*serverv1.File, error) {
@@ -175,6 +195,60 @@ func (s *StorageService) DeleteFile(ctx context.Context, req *serverv1.GetFileRe
 	return &sharedv1.Empty{}, nil
 }
 
+func (s *StorageService) UpdateFile(ctx context.Context, req *serverv1.UpdateFileRequest) (*serverv1.File, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, "storage.buckets/"+req.GetBucketId()+"/files/"+req.GetFileId())
+	file, err := s.storage.UpdateFile(ctx, appstorage.UpdateFileCommand{
+		ProjectID: projectID,
+		BucketID:  req.GetBucketId(),
+		FileID:    req.GetFileId(),
+		Name:      req.GetName(),
+		MimeType:  req.GetMimeType(),
+		Metadata:  req.GetMetadata(),
+		Principal: dbPrincipal(ctx),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapFile(file), nil
+}
+
+func (s *StorageService) CreateFileToken(ctx context.Context, req *serverv1.CreateFileTokenRequest) (*serverv1.FileToken, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, "storage.buckets/"+req.GetBucketId()+"/files/"+req.GetFileId()+"/tokens")
+	token, err := s.storage.CreateFileToken(ctx, projectID, req.GetBucketId(), req.GetFileId(), req.GetExpiresIn(), dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return &serverv1.FileToken{
+		Token:     token.Token,
+		ExpiresAt: timestamppb.New(token.ExpiresAt),
+	}, nil
+}
+
+func (s *StorageService) GetStorageUsage(ctx context.Context, _ *serverv1.GetStorageUsageRequest) (*serverv1.StorageUsage, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, "storage.usage")
+	usage, err := s.storage.GetStorageUsage(ctx, projectID, dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return &serverv1.StorageUsage{
+		Buckets:   usage.Buckets,
+		Files:     usage.Files,
+		TotalSize: usage.TotalSize,
+	}, nil
+}
+
 func mapBucket(b *domainstorage.Bucket) *serverv1.Bucket {
 	if b == nil {
 		return nil
@@ -183,6 +257,7 @@ func mapBucket(b *domainstorage.Bucket) *serverv1.Bucket {
 		Id:          b.ID,
 		Name:        b.Name,
 		Permissions: b.Permissions,
+		Public:      b.Public,
 		CreatedAt:   timestamppb.New(b.CreatedAt),
 		UpdatedAt:   timestamppb.New(b.UpdatedAt),
 	}

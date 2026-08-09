@@ -792,6 +792,66 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	return total, err
 }
 
+// SumDocumentField 对集合内某数值列求和（如 files.size 用于 storage usage），
+// 非 System 主体按 read 权限过滤（仅统计可见文档）。field 白名单校验防注入。
+func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal databases.Principal) (int64, error) {
+	if !validColumnName(field) {
+		return 0, status.Error(codes.InvalidArgument, "invalid field name")
+	}
+	internalID, err := p.resolveInternalID(ctx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	schema := schemaName(internalID, databaseID)
+	tbl := tableName(schema, collectionID)
+
+	var coll *databases.Collection
+	if !principal.IsSystem() {
+		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			return 0, err
+		}
+		if coll == nil {
+			return 0, status.Error(codes.NotFound, "collection not found")
+		}
+	}
+
+	whereParts := []string{"d._tenant = ?"}
+	args := []any{internalID}
+	if !principal.IsSystem() {
+		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
+		if err != nil {
+			return 0, err
+		}
+		if permWhere != "" {
+			whereParts = append(whereParts, permWhere)
+			args = append(args, permArgs...)
+		}
+	}
+
+	var total int64
+	sql := fmt.Sprintf(`SELECT COALESCE(SUM(d.%s), 0) FROM %s d WHERE %s`, quoteIdent(field), tbl, strings.Join(whereParts, " AND "))
+	err = p.conn(ctx).QueryRowContext(ctx, sql, args...).Scan(&total)
+	return total, err
+}
+
+// validColumnName 限制字段名为安全的小写标识符（防 SQL 注入）。
+func validColumnName(name string) bool {
+	if name == "" || len(name) > 64 {
+		return false
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9' && i > 0:
+		case r == '_' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error {
 	if internalID == 0 {
 		var err error

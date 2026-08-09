@@ -28,6 +28,7 @@ type CreateBucketRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Permissions   []string               `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	Public        bool                   `protobuf:"varint,3,opt,name=public,proto3" json:"public,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -76,6 +77,13 @@ func (x *CreateBucketRequest) GetPermissions() []string {
 	return nil
 }
 
+func (x *CreateBucketRequest) GetPublic() bool {
+	if x != nil {
+		return x.Public
+	}
+	return false
+}
+
 type GetBucketRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -120,6 +128,66 @@ func (x *GetBucketRequest) GetId() string {
 	return ""
 }
 
+type UpdateBucketRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Public        *bool                  `protobuf:"varint,3,opt,name=public,proto3,oneof" json:"public,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateBucketRequest) Reset() {
+	*x = UpdateBucketRequest{}
+	mi := &file_server_v1_storage_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateBucketRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateBucketRequest) ProtoMessage() {}
+
+func (x *UpdateBucketRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_storage_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateBucketRequest.ProtoReflect.Descriptor instead.
+func (*UpdateBucketRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *UpdateBucketRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateBucketRequest) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *UpdateBucketRequest) GetPublic() bool {
+	if x != nil && x.Public != nil {
+		return *x.Public
+	}
+	return false
+}
+
 type ListBucketsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Buckets       []*Bucket              `protobuf:"bytes,1,rep,name=buckets,proto3" json:"buckets,omitempty"`
@@ -130,7 +198,7 @@ type ListBucketsResponse struct {
 
 func (x *ListBucketsResponse) Reset() {
 	*x = ListBucketsResponse{}
-	mi := &file_server_v1_storage_proto_msgTypes[2]
+	mi := &file_server_v1_storage_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -142,7 +210,7 @@ func (x *ListBucketsResponse) String() string {
 func (*ListBucketsResponse) ProtoMessage() {}
 
 func (x *ListBucketsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_storage_proto_msgTypes[2]
+	mi := &file_server_v1_storage_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -155,7 +223,7 @@ func (x *ListBucketsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBucketsResponse.ProtoReflect.Descriptor instead.
 func (*ListBucketsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_storage_proto_rawDescGZIP(), []int{2}
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListBucketsResponse) GetBuckets() []*Bucket {
@@ -179,13 +247,14 @@ type Bucket struct {
 	Permissions   []string               `protobuf:"bytes,3,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Public        bool                   `protobuf:"varint,6,opt,name=public,proto3" json:"public,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Bucket) Reset() {
 	*x = Bucket{}
-	mi := &file_server_v1_storage_proto_msgTypes[3]
+	mi := &file_server_v1_storage_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -197,7 +266,7 @@ func (x *Bucket) String() string {
 func (*Bucket) ProtoMessage() {}
 
 func (x *Bucket) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_storage_proto_msgTypes[3]
+	mi := &file_server_v1_storage_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -210,7 +279,7 @@ func (x *Bucket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bucket.ProtoReflect.Descriptor instead.
 func (*Bucket) Descriptor() ([]byte, []int) {
-	return file_server_v1_storage_proto_rawDescGZIP(), []int{3}
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Bucket) GetId() string {
@@ -248,6 +317,13 @@ func (x *Bucket) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Bucket) GetPublic() bool {
+	if x != nil {
+		return x.Public
+	}
+	return false
+}
+
 type CreateFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BucketId      string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
@@ -262,7 +338,7 @@ type CreateFileRequest struct {
 
 func (x *CreateFileRequest) Reset() {
 	*x = CreateFileRequest{}
-	mi := &file_server_v1_storage_proto_msgTypes[4]
+	mi := &file_server_v1_storage_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -274,7 +350,7 @@ func (x *CreateFileRequest) String() string {
 func (*CreateFileRequest) ProtoMessage() {}
 
 func (x *CreateFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_storage_proto_msgTypes[4]
+	mi := &file_server_v1_storage_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -287,7 +363,7 @@ func (x *CreateFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFileRequest.ProtoReflect.Descriptor instead.
 func (*CreateFileRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_storage_proto_rawDescGZIP(), []int{4}
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CreateFileRequest) GetBucketId() string {
@@ -344,7 +420,7 @@ type ListFilesRequest struct {
 
 func (x *ListFilesRequest) Reset() {
 	*x = ListFilesRequest{}
-	mi := &file_server_v1_storage_proto_msgTypes[5]
+	mi := &file_server_v1_storage_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -356,7 +432,7 @@ func (x *ListFilesRequest) String() string {
 func (*ListFilesRequest) ProtoMessage() {}
 
 func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_storage_proto_msgTypes[5]
+	mi := &file_server_v1_storage_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -369,7 +445,7 @@ func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesRequest.ProtoReflect.Descriptor instead.
 func (*ListFilesRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_storage_proto_rawDescGZIP(), []int{5}
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListFilesRequest) GetBucketId() string {
@@ -410,7 +486,7 @@ type GetFileRequest struct {
 
 func (x *GetFileRequest) Reset() {
 	*x = GetFileRequest{}
-	mi := &file_server_v1_storage_proto_msgTypes[6]
+	mi := &file_server_v1_storage_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -422,7 +498,7 @@ func (x *GetFileRequest) String() string {
 func (*GetFileRequest) ProtoMessage() {}
 
 func (x *GetFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_storage_proto_msgTypes[6]
+	mi := &file_server_v1_storage_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -435,7 +511,7 @@ func (x *GetFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFileRequest.ProtoReflect.Descriptor instead.
 func (*GetFileRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_storage_proto_rawDescGZIP(), []int{6}
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetFileRequest) GetBucketId() string {
@@ -462,7 +538,7 @@ type ListFilesResponse struct {
 
 func (x *ListFilesResponse) Reset() {
 	*x = ListFilesResponse{}
-	mi := &file_server_v1_storage_proto_msgTypes[7]
+	mi := &file_server_v1_storage_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +550,7 @@ func (x *ListFilesResponse) String() string {
 func (*ListFilesResponse) ProtoMessage() {}
 
 func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_storage_proto_msgTypes[7]
+	mi := &file_server_v1_storage_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +563,7 @@ func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesResponse.ProtoReflect.Descriptor instead.
 func (*ListFilesResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_storage_proto_rawDescGZIP(), []int{7}
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListFilesResponse) GetFiles() []*File {
@@ -520,7 +596,7 @@ type File struct {
 
 func (x *File) Reset() {
 	*x = File{}
-	mi := &file_server_v1_storage_proto_msgTypes[8]
+	mi := &file_server_v1_storage_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -532,7 +608,7 @@ func (x *File) String() string {
 func (*File) ProtoMessage() {}
 
 func (x *File) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_storage_proto_msgTypes[8]
+	mi := &file_server_v1_storage_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -545,7 +621,7 @@ func (x *File) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use File.ProtoReflect.Descriptor instead.
 func (*File) Descriptor() ([]byte, []int) {
-	return file_server_v1_storage_proto_rawDescGZIP(), []int{8}
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *File) GetId() string {
@@ -604,19 +680,311 @@ func (x *File) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type UpdateFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BucketId      string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
+	FileId        string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	Name          *string                `protobuf:"bytes,3,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	MimeType      *string                `protobuf:"bytes,4,opt,name=mime_type,json=mimeType,proto3,oneof" json:"mime_type,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateFileRequest) Reset() {
+	*x = UpdateFileRequest{}
+	mi := &file_server_v1_storage_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateFileRequest) ProtoMessage() {}
+
+func (x *UpdateFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_storage_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateFileRequest.ProtoReflect.Descriptor instead.
+func (*UpdateFileRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UpdateFileRequest) GetBucketId() string {
+	if x != nil {
+		return x.BucketId
+	}
+	return ""
+}
+
+func (x *UpdateFileRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *UpdateFileRequest) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *UpdateFileRequest) GetMimeType() string {
+	if x != nil && x.MimeType != nil {
+		return *x.MimeType
+	}
+	return ""
+}
+
+func (x *UpdateFileRequest) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+type CreateFileTokenRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	BucketId string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
+	FileId   string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	// 有效期秒数，默认 3600（1 小时）。
+	ExpiresIn     *int64 `protobuf:"varint,3,opt,name=expires_in,json=expiresIn,proto3,oneof" json:"expires_in,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateFileTokenRequest) Reset() {
+	*x = CreateFileTokenRequest{}
+	mi := &file_server_v1_storage_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateFileTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateFileTokenRequest) ProtoMessage() {}
+
+func (x *CreateFileTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_storage_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateFileTokenRequest.ProtoReflect.Descriptor instead.
+func (*CreateFileTokenRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CreateFileTokenRequest) GetBucketId() string {
+	if x != nil {
+		return x.BucketId
+	}
+	return ""
+}
+
+func (x *CreateFileTokenRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *CreateFileTokenRequest) GetExpiresIn() int64 {
+	if x != nil && x.ExpiresIn != nil {
+		return *x.ExpiresIn
+	}
+	return 0
+}
+
+type FileToken struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileToken) Reset() {
+	*x = FileToken{}
+	mi := &file_server_v1_storage_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileToken) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileToken) ProtoMessage() {}
+
+func (x *FileToken) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_storage_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileToken.ProtoReflect.Descriptor instead.
+func (*FileToken) Descriptor() ([]byte, []int) {
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *FileToken) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *FileToken) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+type GetStorageUsageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetStorageUsageRequest) Reset() {
+	*x = GetStorageUsageRequest{}
+	mi := &file_server_v1_storage_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetStorageUsageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetStorageUsageRequest) ProtoMessage() {}
+
+func (x *GetStorageUsageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_storage_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetStorageUsageRequest.ProtoReflect.Descriptor instead.
+func (*GetStorageUsageRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{13}
+}
+
+type StorageUsage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Buckets       int64                  `protobuf:"varint,1,opt,name=buckets,proto3" json:"buckets,omitempty"`
+	Files         int64                  `protobuf:"varint,2,opt,name=files,proto3" json:"files,omitempty"`
+	TotalSize     int64                  `protobuf:"varint,3,opt,name=total_size,json=totalSize,proto3" json:"total_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StorageUsage) Reset() {
+	*x = StorageUsage{}
+	mi := &file_server_v1_storage_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StorageUsage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StorageUsage) ProtoMessage() {}
+
+func (x *StorageUsage) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_storage_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StorageUsage.ProtoReflect.Descriptor instead.
+func (*StorageUsage) Descriptor() ([]byte, []int) {
+	return file_server_v1_storage_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *StorageUsage) GetBuckets() int64 {
+	if x != nil {
+		return x.Buckets
+	}
+	return 0
+}
+
+func (x *StorageUsage) GetFiles() int64 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
+func (x *StorageUsage) GetTotalSize() int64 {
+	if x != nil {
+		return x.TotalSize
+	}
+	return 0
+}
+
 var File_server_v1_storage_proto protoreflect.FileDescriptor
 
 const file_server_v1_storage_proto_rawDesc = "" +
 	"\n" +
-	"\x17server/v1/storage.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"K\n" +
+	"\x17server/v1/storage.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"c\n" +
 	"\x13CreateBucketRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
-	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"\"\n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x16\n" +
+	"\x06public\x18\x03 \x01(\bR\x06public\"\"\n" +
 	"\x10GetBucketRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x87\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"o\n" +
+	"\x13UpdateBucketRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x1b\n" +
+	"\x06public\x18\x03 \x01(\bH\x01R\x06public\x88\x01\x01B\a\n" +
+	"\x05_nameB\t\n" +
+	"\a_public\"\x87\x01\n" +
 	"\x13ListBucketsResponse\x125\n" +
 	"\abuckets\x18\x01 \x03(\v2\x1b.torchwood.server.v1.BucketR\abuckets\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xc4\x01\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xdc\x01\n" +
 	"\x06Bucket\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -624,7 +992,8 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa6\x02\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x16\n" +
+	"\x06public\x18\x06 \x01(\bR\x06public\"\xa6\x02\n" +
 	"\x11CreateFileRequest\x12\x1b\n" +
 	"\tbucket_id\x18\x01 \x01(\tR\bbucketId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
@@ -660,18 +1029,51 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xc5\b\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaa\x02\n" +
+	"\x11UpdateFileRequest\x12\x1b\n" +
+	"\tbucket_id\x18\x01 \x01(\tR\bbucketId\x12\x17\n" +
+	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12\x17\n" +
+	"\x04name\x18\x03 \x01(\tH\x00R\x04name\x88\x01\x01\x12 \n" +
+	"\tmime_type\x18\x04 \x01(\tH\x01R\bmimeType\x88\x01\x01\x12P\n" +
+	"\bmetadata\x18\x05 \x03(\v24.torchwood.server.v1.UpdateFileRequest.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\a\n" +
+	"\x05_nameB\f\n" +
+	"\n" +
+	"_mime_type\"\x81\x01\n" +
+	"\x16CreateFileTokenRequest\x12\x1b\n" +
+	"\tbucket_id\x18\x01 \x01(\tR\bbucketId\x12\x17\n" +
+	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12\"\n" +
+	"\n" +
+	"expires_in\x18\x03 \x01(\x03H\x00R\texpiresIn\x88\x01\x01B\r\n" +
+	"\v_expires_in\"\\\n" +
+	"\tFileToken\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\x129\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x18\n" +
+	"\x16GetStorageUsageRequest\"]\n" +
+	"\fStorageUsage\x12\x18\n" +
+	"\abuckets\x18\x01 \x01(\x03R\abuckets\x12\x14\n" +
+	"\x05files\x18\x02 \x01(\x03R\x05files\x12\x1d\n" +
+	"\n" +
+	"total_size\x18\x03 \x01(\x03R\ttotalSize2\x8f\r\n" +
 	"\x0eStorageService\x12|\n" +
 	"\fCreateBucket\x12(.torchwood.server.v1.CreateBucketRequest\x1a\x1b.torchwood.server.v1.Bucket\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/server/storage/buckets\x12}\n" +
 	"\vListBuckets\x12 .torchwood.shared.v1.ListRequest\x1a(.torchwood.server.v1.ListBucketsResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/storage/buckets\x12x\n" +
 	"\tGetBucket\x12%.torchwood.server.v1.GetBucketRequest\x1a\x1b.torchwood.server.v1.Bucket\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/server/storage/buckets/{id}\x12z\n" +
-	"\fDeleteBucket\x12%.torchwood.server.v1.GetBucketRequest\x1a\x1a.torchwood.shared.v1.Empty\"'\x82\xd3\xe4\x93\x02!*\x1f/v1/server/storage/buckets/{id}\x12\x88\x01\n" +
+	"\fDeleteBucket\x12%.torchwood.server.v1.GetBucketRequest\x1a\x1a.torchwood.shared.v1.Empty\"'\x82\xd3\xe4\x93\x02!*\x1f/v1/server/storage/buckets/{id}\x12\x81\x01\n" +
+	"\fUpdateBucket\x12(.torchwood.server.v1.UpdateBucketRequest\x1a\x1b.torchwood.server.v1.Bucket\"*\x82\xd3\xe4\x93\x02$:\x01*2\x1f/v1/server/storage/buckets/{id}\x12\x88\x01\n" +
 	"\n" +
 	"CreateFile\x12&.torchwood.server.v1.CreateFileRequest\x1a\x19.torchwood.server.v1.File\"7\x82\xd3\xe4\x93\x021:\x01*\",/v1/server/storage/buckets/{bucket_id}/files\x12\x90\x01\n" +
 	"\tListFiles\x12%.torchwood.server.v1.ListFilesRequest\x1a&.torchwood.server.v1.ListFilesResponse\"4\x82\xd3\xe4\x93\x02.\x12,/v1/server/storage/buckets/{bucket_id}/files\x12\x89\x01\n" +
 	"\aGetFile\x12#.torchwood.server.v1.GetFileRequest\x1a\x19.torchwood.server.v1.File\">\x82\xd3\xe4\x93\x028\x126/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\x8d\x01\n" +
 	"\n" +
-	"DeleteFile\x12#.torchwood.server.v1.GetFileRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"DeleteFile\x12#.torchwood.server.v1.GetFileRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\x92\x01\n" +
+	"\n" +
+	"UpdateFile\x12&.torchwood.server.v1.UpdateFileRequest\x1a\x19.torchwood.server.v1.File\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\xa8\x01\n" +
+	"\x0fCreateFileToken\x12+.torchwood.server.v1.CreateFileTokenRequest\x1a\x1e.torchwood.server.v1.FileToken\"H\x82\xd3\xe4\x93\x02B:\x01*\"=/v1/server/storage/buckets/{bucket_id}/files/{file_id}/tokens\x12\x83\x01\n" +
+	"\x0fGetStorageUsage\x12+.torchwood.server.v1.GetStorageUsageRequest\x1a!.torchwood.server.v1.StorageUsage\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/storage/usage\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_storage_proto_rawDescOnce sync.Once
@@ -685,56 +1087,73 @@ func file_server_v1_storage_proto_rawDescGZIP() []byte {
 	return file_server_v1_storage_proto_rawDescData
 }
 
-var file_server_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_server_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_server_v1_storage_proto_goTypes = []any{
-	(*CreateBucketRequest)(nil),   // 0: torchwood.server.v1.CreateBucketRequest
-	(*GetBucketRequest)(nil),      // 1: torchwood.server.v1.GetBucketRequest
-	(*ListBucketsResponse)(nil),   // 2: torchwood.server.v1.ListBucketsResponse
-	(*Bucket)(nil),                // 3: torchwood.server.v1.Bucket
-	(*CreateFileRequest)(nil),     // 4: torchwood.server.v1.CreateFileRequest
-	(*ListFilesRequest)(nil),      // 5: torchwood.server.v1.ListFilesRequest
-	(*GetFileRequest)(nil),        // 6: torchwood.server.v1.GetFileRequest
-	(*ListFilesResponse)(nil),     // 7: torchwood.server.v1.ListFilesResponse
-	(*File)(nil),                  // 8: torchwood.server.v1.File
-	nil,                           // 9: torchwood.server.v1.CreateFileRequest.MetadataEntry
-	nil,                           // 10: torchwood.server.v1.File.MetadataEntry
-	(*v1.ListResponseMeta)(nil),   // 11: torchwood.shared.v1.ListResponseMeta
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),        // 13: torchwood.shared.v1.ListRequest
-	(*v1.Empty)(nil),              // 14: torchwood.shared.v1.Empty
+	(*CreateBucketRequest)(nil),    // 0: torchwood.server.v1.CreateBucketRequest
+	(*GetBucketRequest)(nil),       // 1: torchwood.server.v1.GetBucketRequest
+	(*UpdateBucketRequest)(nil),    // 2: torchwood.server.v1.UpdateBucketRequest
+	(*ListBucketsResponse)(nil),    // 3: torchwood.server.v1.ListBucketsResponse
+	(*Bucket)(nil),                 // 4: torchwood.server.v1.Bucket
+	(*CreateFileRequest)(nil),      // 5: torchwood.server.v1.CreateFileRequest
+	(*ListFilesRequest)(nil),       // 6: torchwood.server.v1.ListFilesRequest
+	(*GetFileRequest)(nil),         // 7: torchwood.server.v1.GetFileRequest
+	(*ListFilesResponse)(nil),      // 8: torchwood.server.v1.ListFilesResponse
+	(*File)(nil),                   // 9: torchwood.server.v1.File
+	(*UpdateFileRequest)(nil),      // 10: torchwood.server.v1.UpdateFileRequest
+	(*CreateFileTokenRequest)(nil), // 11: torchwood.server.v1.CreateFileTokenRequest
+	(*FileToken)(nil),              // 12: torchwood.server.v1.FileToken
+	(*GetStorageUsageRequest)(nil), // 13: torchwood.server.v1.GetStorageUsageRequest
+	(*StorageUsage)(nil),           // 14: torchwood.server.v1.StorageUsage
+	nil,                            // 15: torchwood.server.v1.CreateFileRequest.MetadataEntry
+	nil,                            // 16: torchwood.server.v1.File.MetadataEntry
+	nil,                            // 17: torchwood.server.v1.UpdateFileRequest.MetadataEntry
+	(*v1.ListResponseMeta)(nil),    // 18: torchwood.shared.v1.ListResponseMeta
+	(*timestamppb.Timestamp)(nil),  // 19: google.protobuf.Timestamp
+	(*v1.ListRequest)(nil),         // 20: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),               // 21: torchwood.shared.v1.Empty
 }
 var file_server_v1_storage_proto_depIdxs = []int32{
-	3,  // 0: torchwood.server.v1.ListBucketsResponse.buckets:type_name -> torchwood.server.v1.Bucket
-	11, // 1: torchwood.server.v1.ListBucketsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	12, // 2: torchwood.server.v1.Bucket.created_at:type_name -> google.protobuf.Timestamp
-	12, // 3: torchwood.server.v1.Bucket.updated_at:type_name -> google.protobuf.Timestamp
-	9,  // 4: torchwood.server.v1.CreateFileRequest.metadata:type_name -> torchwood.server.v1.CreateFileRequest.MetadataEntry
-	8,  // 5: torchwood.server.v1.ListFilesResponse.files:type_name -> torchwood.server.v1.File
-	11, // 6: torchwood.server.v1.ListFilesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	10, // 7: torchwood.server.v1.File.metadata:type_name -> torchwood.server.v1.File.MetadataEntry
-	12, // 8: torchwood.server.v1.File.created_at:type_name -> google.protobuf.Timestamp
-	12, // 9: torchwood.server.v1.File.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 10: torchwood.server.v1.StorageService.CreateBucket:input_type -> torchwood.server.v1.CreateBucketRequest
-	13, // 11: torchwood.server.v1.StorageService.ListBuckets:input_type -> torchwood.shared.v1.ListRequest
-	1,  // 12: torchwood.server.v1.StorageService.GetBucket:input_type -> torchwood.server.v1.GetBucketRequest
-	1,  // 13: torchwood.server.v1.StorageService.DeleteBucket:input_type -> torchwood.server.v1.GetBucketRequest
-	4,  // 14: torchwood.server.v1.StorageService.CreateFile:input_type -> torchwood.server.v1.CreateFileRequest
-	5,  // 15: torchwood.server.v1.StorageService.ListFiles:input_type -> torchwood.server.v1.ListFilesRequest
-	6,  // 16: torchwood.server.v1.StorageService.GetFile:input_type -> torchwood.server.v1.GetFileRequest
-	6,  // 17: torchwood.server.v1.StorageService.DeleteFile:input_type -> torchwood.server.v1.GetFileRequest
-	3,  // 18: torchwood.server.v1.StorageService.CreateBucket:output_type -> torchwood.server.v1.Bucket
-	2,  // 19: torchwood.server.v1.StorageService.ListBuckets:output_type -> torchwood.server.v1.ListBucketsResponse
-	3,  // 20: torchwood.server.v1.StorageService.GetBucket:output_type -> torchwood.server.v1.Bucket
-	14, // 21: torchwood.server.v1.StorageService.DeleteBucket:output_type -> torchwood.shared.v1.Empty
-	8,  // 22: torchwood.server.v1.StorageService.CreateFile:output_type -> torchwood.server.v1.File
-	7,  // 23: torchwood.server.v1.StorageService.ListFiles:output_type -> torchwood.server.v1.ListFilesResponse
-	8,  // 24: torchwood.server.v1.StorageService.GetFile:output_type -> torchwood.server.v1.File
-	14, // 25: torchwood.server.v1.StorageService.DeleteFile:output_type -> torchwood.shared.v1.Empty
-	18, // [18:26] is the sub-list for method output_type
-	10, // [10:18] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	4,  // 0: torchwood.server.v1.ListBucketsResponse.buckets:type_name -> torchwood.server.v1.Bucket
+	18, // 1: torchwood.server.v1.ListBucketsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	19, // 2: torchwood.server.v1.Bucket.created_at:type_name -> google.protobuf.Timestamp
+	19, // 3: torchwood.server.v1.Bucket.updated_at:type_name -> google.protobuf.Timestamp
+	15, // 4: torchwood.server.v1.CreateFileRequest.metadata:type_name -> torchwood.server.v1.CreateFileRequest.MetadataEntry
+	9,  // 5: torchwood.server.v1.ListFilesResponse.files:type_name -> torchwood.server.v1.File
+	18, // 6: torchwood.server.v1.ListFilesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	16, // 7: torchwood.server.v1.File.metadata:type_name -> torchwood.server.v1.File.MetadataEntry
+	19, // 8: torchwood.server.v1.File.created_at:type_name -> google.protobuf.Timestamp
+	19, // 9: torchwood.server.v1.File.updated_at:type_name -> google.protobuf.Timestamp
+	17, // 10: torchwood.server.v1.UpdateFileRequest.metadata:type_name -> torchwood.server.v1.UpdateFileRequest.MetadataEntry
+	19, // 11: torchwood.server.v1.FileToken.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 12: torchwood.server.v1.StorageService.CreateBucket:input_type -> torchwood.server.v1.CreateBucketRequest
+	20, // 13: torchwood.server.v1.StorageService.ListBuckets:input_type -> torchwood.shared.v1.ListRequest
+	1,  // 14: torchwood.server.v1.StorageService.GetBucket:input_type -> torchwood.server.v1.GetBucketRequest
+	1,  // 15: torchwood.server.v1.StorageService.DeleteBucket:input_type -> torchwood.server.v1.GetBucketRequest
+	2,  // 16: torchwood.server.v1.StorageService.UpdateBucket:input_type -> torchwood.server.v1.UpdateBucketRequest
+	5,  // 17: torchwood.server.v1.StorageService.CreateFile:input_type -> torchwood.server.v1.CreateFileRequest
+	6,  // 18: torchwood.server.v1.StorageService.ListFiles:input_type -> torchwood.server.v1.ListFilesRequest
+	7,  // 19: torchwood.server.v1.StorageService.GetFile:input_type -> torchwood.server.v1.GetFileRequest
+	7,  // 20: torchwood.server.v1.StorageService.DeleteFile:input_type -> torchwood.server.v1.GetFileRequest
+	10, // 21: torchwood.server.v1.StorageService.UpdateFile:input_type -> torchwood.server.v1.UpdateFileRequest
+	11, // 22: torchwood.server.v1.StorageService.CreateFileToken:input_type -> torchwood.server.v1.CreateFileTokenRequest
+	13, // 23: torchwood.server.v1.StorageService.GetStorageUsage:input_type -> torchwood.server.v1.GetStorageUsageRequest
+	4,  // 24: torchwood.server.v1.StorageService.CreateBucket:output_type -> torchwood.server.v1.Bucket
+	3,  // 25: torchwood.server.v1.StorageService.ListBuckets:output_type -> torchwood.server.v1.ListBucketsResponse
+	4,  // 26: torchwood.server.v1.StorageService.GetBucket:output_type -> torchwood.server.v1.Bucket
+	21, // 27: torchwood.server.v1.StorageService.DeleteBucket:output_type -> torchwood.shared.v1.Empty
+	4,  // 28: torchwood.server.v1.StorageService.UpdateBucket:output_type -> torchwood.server.v1.Bucket
+	9,  // 29: torchwood.server.v1.StorageService.CreateFile:output_type -> torchwood.server.v1.File
+	8,  // 30: torchwood.server.v1.StorageService.ListFiles:output_type -> torchwood.server.v1.ListFilesResponse
+	9,  // 31: torchwood.server.v1.StorageService.GetFile:output_type -> torchwood.server.v1.File
+	21, // 32: torchwood.server.v1.StorageService.DeleteFile:output_type -> torchwood.shared.v1.Empty
+	9,  // 33: torchwood.server.v1.StorageService.UpdateFile:output_type -> torchwood.server.v1.File
+	12, // 34: torchwood.server.v1.StorageService.CreateFileToken:output_type -> torchwood.server.v1.FileToken
+	14, // 35: torchwood.server.v1.StorageService.GetStorageUsage:output_type -> torchwood.server.v1.StorageUsage
+	24, // [24:36] is the sub-list for method output_type
+	12, // [12:24] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_server_v1_storage_proto_init() }
@@ -742,13 +1161,16 @@ func file_server_v1_storage_proto_init() {
 	if File_server_v1_storage_proto != nil {
 		return
 	}
+	file_server_v1_storage_proto_msgTypes[2].OneofWrappers = []any{}
+	file_server_v1_storage_proto_msgTypes[10].OneofWrappers = []any{}
+	file_server_v1_storage_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_storage_proto_rawDesc), len(file_server_v1_storage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

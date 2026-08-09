@@ -1,6 +1,7 @@
 package serverhttp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,15 +9,21 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
+	"github.com/disintegration/imaging"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/tiff"
+	_ "golang.org/x/image/webp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -95,6 +102,7 @@ func (h *FileHandler) Register(mux *runtime.ServeMux) {
 	_ = mux.HandlePath("POST", "/v1/storage/buckets/{bucketId}/files", h.upload)
 	_ = mux.HandlePath("GET", "/v1/storage/buckets/{bucketId}/files/{fileId}/download", h.download)
 	_ = mux.HandlePath("GET", "/v1/storage/buckets/{bucketId}/files/{fileId}/view", h.download)
+	_ = mux.HandlePath("GET", "/v1/storage/buckets/{bucketId}/files/{fileId}/preview", h.preview)
 }
 
 // maxUploadBytes caps the total size of a multipart upload request body.
@@ -180,32 +188,26 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 	ctx := r.Context()
 	bucketID := pathParams["bucketId"]
 	fileID := pathParams["fileId"]
-	principal, err := h.authorize(r)
-	if err != nil {
-		h.logOp(r, "download", bucketID, fileID, nil, err)
-		httpError(w, err)
-		return
-	}
-	projectID := h.projectID(r, principal)
-	if projectID == "" {
-		err := status.Error(codes.Unauthenticated, "missing project context")
-		h.logOp(r, "download", bucketID, fileID, principal, err)
-		httpError(w, err)
-		return
-	}
 	if bucketID == "" || fileID == "" {
 		httpError(w, status.Error(codes.InvalidArgument, "missing bucket or file id"))
 		return
 	}
 
-	file, reader, err := h.storage.GetFile(ctx, projectID, bucketID, fileID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	projectID, principal, actor, err := h.resolveReadContext(ctx, r, bucketID, fileID)
 	if err != nil {
-		h.logOp(r, "download", bucketID, fileID, principal, err)
+		h.logOp(r, "download", bucketID, fileID, nil, err)
+		httpError(w, err)
+		return
+	}
+
+	file, reader, err := h.storage.GetFile(ctx, projectID, bucketID, fileID, principal)
+	if err != nil {
+		h.logOp(r, "download", bucketID, fileID, actor, err)
 		httpError(w, err)
 		return
 	}
 	defer reader.Close()
-	h.logOp(r, "download", bucketID, fileID, principal, nil)
+	h.logOp(r, "download", bucketID, fileID, actor, nil)
 
 	w.Header().Set("Content-Type", file.MimeType)
 	disposition := "attachment"
@@ -220,6 +222,46 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 	_, _ = io.Copy(w, reader)
 }
 
+// resolveReadContext 解析文件读请求的项目与主体：
+//  1. 常规凭证（API key / admin / end-user JWT / session cookie）；
+//  2. 无凭证但带有效 file token（短期匿名下载凭证，优先级最高）；
+//  3. 无凭证且 bucket 为 public（URL 需携带 project 参数定位项目），
+//     以匿名主体读取（文件文档级 read:any 权限兜底）。
+//
+// 返回项目 ID、文档层 principal 与用于日志的 actor（匿名路径为 nil）。
+func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, bucketID, fileID string) (string, databases.Principal, *shared.Principal, error) {
+	principal, err := h.authorize(r)
+	if err == nil {
+		projectID := h.projectID(r, principal)
+		if projectID == "" {
+			return "", databases.Principal{}, nil, status.Error(codes.Unauthenticated, "missing project context")
+		}
+		return projectID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}, principal, nil
+	}
+
+	// File token 匿名下载：token 绑定 project/bucket/file 与过期时间。
+	if token := r.URL.Query().Get("token"); token != "" {
+		projectID, tokBucket, tokFile, verr := h.storage.ParseFileToken(token)
+		if verr == nil && tokBucket == bucketID && tokFile == fileID {
+			return projectID, databases.SystemPrincipal, nil, nil
+		}
+	}
+
+	// 公开 bucket 匿名读：需要 project 参数定位项目。
+	projectID := strings.TrimSpace(r.URL.Query().Get("project"))
+	if projectID != "" {
+		buckets, _, berr := h.storage.ListBuckets(ctx, projectID, databases.Query{
+			Queries:  []string{"equal(\"$id\",\"" + bucketID + "\")"},
+			PageSize: 1,
+		}, databases.GuestPrincipal)
+		if berr == nil && len(buckets) > 0 && buckets[0].Public {
+			return projectID, databases.GuestPrincipal, nil, nil
+		}
+	}
+
+	return "", databases.Principal{}, nil, err
+}
+
 // inlineSafeMime 判断文件 MIME 是否可安全以 inline 方式展示：
 // 视频/音频（无脚本执行面）与白名单类型可以内联；SVG 可内嵌脚本，一律按附件下载。
 func inlineSafeMime(mime string) bool {
@@ -230,6 +272,144 @@ func inlineSafeMime(mime string) bool {
 		return true
 	}
 	return strings.HasPrefix(mime, "video/") || strings.HasPrefix(mime, "audio/")
+}
+
+// previewImageMimeTypes 是可生成缩略图的图片类型；webp 由 golang.org/x/image 解码。
+var previewImageMimeTypes = map[string]struct{}{
+	"image/png":  {},
+	"image/jpeg": {},
+	"image/gif":  {},
+	"image/webp": {},
+}
+
+// maxPreviewSourceBytes 限制预览源文件大小（防解压炸弹与内存耗尽）。
+const maxPreviewSourceBytes = 50 << 20 // 50 MiB
+
+// maxPreviewDimension 限制缩放后的输出尺寸。
+const maxPreviewDimension = 4096
+
+// preview 生成图片缩略图：GET /v1/storage/buckets/{bucketId}/files/{fileId}/preview?width=&height=
+// 鉴权与 download 一致（凭证 / file token / public bucket），仅支持图片类型，
+// 无缩放参数时直接回源。
+func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
+	fileID := pathParams["fileId"]
+	if bucketID == "" || fileID == "" {
+		httpError(w, status.Error(codes.InvalidArgument, "missing bucket or file id"))
+		return
+	}
+
+	projectID, principal, actor, err := h.resolveReadContext(ctx, r, bucketID, fileID)
+	if err != nil {
+		h.logOp(r, "preview", bucketID, fileID, nil, err)
+		httpError(w, err)
+		return
+	}
+
+	file, reader, err := h.storage.GetFile(ctx, projectID, bucketID, fileID, principal)
+	if err != nil {
+		h.logOp(r, "preview", bucketID, fileID, actor, err)
+		httpError(w, err)
+		return
+	}
+	defer reader.Close()
+
+	if _, ok := previewImageMimeTypes[file.MimeType]; !ok {
+		httpError(w, status.Error(codes.InvalidArgument, "file type is not previewable"))
+		return
+	}
+	if file.Size > maxPreviewSourceBytes {
+		httpError(w, status.Error(codes.InvalidArgument, "file too large to preview"))
+		return
+	}
+
+	width, height, err := parsePreviewDimensions(r)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+
+	// 无缩放参数时回源（仍带安全响应头）。
+	if width <= 0 && height <= 0 {
+		serveImage(w, file, reader)
+		return
+	}
+
+	src, err := imaging.Decode(reader, imaging.AutoOrientation(true))
+	if err != nil {
+		httpError(w, status.Error(codes.Internal, "cannot decode image"))
+		return
+	}
+	if width > maxPreviewDimension {
+		width = maxPreviewDimension
+	}
+	if height > maxPreviewDimension {
+		height = maxPreviewDimension
+	}
+	dst := imaging.Fit(src, width, height, imaging.Lanczos)
+
+	var buf bytes.Buffer
+	if err := imaging.Encode(&buf, dst, imagingFormat(file.MimeType)); err != nil {
+		httpError(w, status.Error(codes.Internal, "cannot encode image"))
+		return
+	}
+	h.logOp(r, "preview", bucketID, fileID, actor, nil)
+
+	w.Header().Set("Content-Type", file.MimeType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(buf.Bytes())
+}
+
+// serveImage 原样输出图片（带安全响应头）。
+func serveImage(w http.ResponseWriter, file *domainstorage.File, reader io.Reader) {
+	w.Header().Set("Content-Type", file.MimeType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, reader)
+}
+
+// parsePreviewDimensions 解析 width/height query 参数（正整数）。
+func parsePreviewDimensions(r *http.Request) (int, int, error) {
+	parse := func(name string) (int, error) {
+		raw := strings.TrimSpace(r.URL.Query().Get(name))
+		if raw == "" {
+			return 0, nil
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || n > maxPreviewDimension {
+			return 0, status.Error(codes.InvalidArgument, "invalid "+name)
+		}
+		return n, nil
+	}
+	w, err := parse("width")
+	if err != nil {
+		return 0, 0, err
+	}
+	hgt, err := parse("height")
+	if err != nil {
+		return 0, 0, err
+	}
+	return w, hgt, nil
+}
+
+// imagingFormat 按 MIME 选择输出编码格式；webp 输出 JPEG 兜底（x/image webp 仅解码）。
+func imagingFormat(mime string) imaging.Format {
+	switch mime {
+	case "image/png":
+		return imaging.PNG
+	case "image/gif":
+		return imaging.GIF
+	case "image/webp":
+		return imaging.JPEG
+	default:
+		return imaging.JPEG
+	}
 }
 
 func (h *FileHandler) authorize(r *http.Request) (*shared.Principal, error) {

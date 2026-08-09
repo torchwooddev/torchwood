@@ -20,14 +20,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StorageService_CreateBucket_FullMethodName = "/torchwood.server.v1.StorageService/CreateBucket"
-	StorageService_ListBuckets_FullMethodName  = "/torchwood.server.v1.StorageService/ListBuckets"
-	StorageService_GetBucket_FullMethodName    = "/torchwood.server.v1.StorageService/GetBucket"
-	StorageService_DeleteBucket_FullMethodName = "/torchwood.server.v1.StorageService/DeleteBucket"
-	StorageService_CreateFile_FullMethodName   = "/torchwood.server.v1.StorageService/CreateFile"
-	StorageService_ListFiles_FullMethodName    = "/torchwood.server.v1.StorageService/ListFiles"
-	StorageService_GetFile_FullMethodName      = "/torchwood.server.v1.StorageService/GetFile"
-	StorageService_DeleteFile_FullMethodName   = "/torchwood.server.v1.StorageService/DeleteFile"
+	StorageService_CreateBucket_FullMethodName    = "/torchwood.server.v1.StorageService/CreateBucket"
+	StorageService_ListBuckets_FullMethodName     = "/torchwood.server.v1.StorageService/ListBuckets"
+	StorageService_GetBucket_FullMethodName       = "/torchwood.server.v1.StorageService/GetBucket"
+	StorageService_DeleteBucket_FullMethodName    = "/torchwood.server.v1.StorageService/DeleteBucket"
+	StorageService_UpdateBucket_FullMethodName    = "/torchwood.server.v1.StorageService/UpdateBucket"
+	StorageService_CreateFile_FullMethodName      = "/torchwood.server.v1.StorageService/CreateFile"
+	StorageService_ListFiles_FullMethodName       = "/torchwood.server.v1.StorageService/ListFiles"
+	StorageService_GetFile_FullMethodName         = "/torchwood.server.v1.StorageService/GetFile"
+	StorageService_DeleteFile_FullMethodName      = "/torchwood.server.v1.StorageService/DeleteFile"
+	StorageService_UpdateFile_FullMethodName      = "/torchwood.server.v1.StorageService/UpdateFile"
+	StorageService_CreateFileToken_FullMethodName = "/torchwood.server.v1.StorageService/CreateFileToken"
+	StorageService_GetStorageUsage_FullMethodName = "/torchwood.server.v1.StorageService/GetStorageUsage"
 )
 
 // StorageServiceClient is the client API for StorageService service.
@@ -38,10 +42,14 @@ type StorageServiceClient interface {
 	ListBuckets(ctx context.Context, in *v1.ListRequest, opts ...grpc.CallOption) (*ListBucketsResponse, error)
 	GetBucket(ctx context.Context, in *GetBucketRequest, opts ...grpc.CallOption) (*Bucket, error)
 	DeleteBucket(ctx context.Context, in *GetBucketRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	UpdateBucket(ctx context.Context, in *UpdateBucketRequest, opts ...grpc.CallOption) (*Bucket, error)
 	CreateFile(ctx context.Context, in *CreateFileRequest, opts ...grpc.CallOption) (*File, error)
 	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
 	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*File, error)
 	DeleteFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	UpdateFile(ctx context.Context, in *UpdateFileRequest, opts ...grpc.CallOption) (*File, error)
+	CreateFileToken(ctx context.Context, in *CreateFileTokenRequest, opts ...grpc.CallOption) (*FileToken, error)
+	GetStorageUsage(ctx context.Context, in *GetStorageUsageRequest, opts ...grpc.CallOption) (*StorageUsage, error)
 }
 
 type storageServiceClient struct {
@@ -92,6 +100,16 @@ func (c *storageServiceClient) DeleteBucket(ctx context.Context, in *GetBucketRe
 	return out, nil
 }
 
+func (c *storageServiceClient) UpdateBucket(ctx context.Context, in *UpdateBucketRequest, opts ...grpc.CallOption) (*Bucket, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Bucket)
+	err := c.cc.Invoke(ctx, StorageService_UpdateBucket_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageServiceClient) CreateFile(ctx context.Context, in *CreateFileRequest, opts ...grpc.CallOption) (*File, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(File)
@@ -132,6 +150,36 @@ func (c *storageServiceClient) DeleteFile(ctx context.Context, in *GetFileReques
 	return out, nil
 }
 
+func (c *storageServiceClient) UpdateFile(ctx context.Context, in *UpdateFileRequest, opts ...grpc.CallOption) (*File, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(File)
+	err := c.cc.Invoke(ctx, StorageService_UpdateFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageServiceClient) CreateFileToken(ctx context.Context, in *CreateFileTokenRequest, opts ...grpc.CallOption) (*FileToken, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileToken)
+	err := c.cc.Invoke(ctx, StorageService_CreateFileToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageServiceClient) GetStorageUsage(ctx context.Context, in *GetStorageUsageRequest, opts ...grpc.CallOption) (*StorageUsage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StorageUsage)
+	err := c.cc.Invoke(ctx, StorageService_GetStorageUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StorageServiceServer is the server API for StorageService service.
 // All implementations must embed UnimplementedStorageServiceServer
 // for forward compatibility.
@@ -140,10 +188,14 @@ type StorageServiceServer interface {
 	ListBuckets(context.Context, *v1.ListRequest) (*ListBucketsResponse, error)
 	GetBucket(context.Context, *GetBucketRequest) (*Bucket, error)
 	DeleteBucket(context.Context, *GetBucketRequest) (*v1.Empty, error)
+	UpdateBucket(context.Context, *UpdateBucketRequest) (*Bucket, error)
 	CreateFile(context.Context, *CreateFileRequest) (*File, error)
 	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
 	GetFile(context.Context, *GetFileRequest) (*File, error)
 	DeleteFile(context.Context, *GetFileRequest) (*v1.Empty, error)
+	UpdateFile(context.Context, *UpdateFileRequest) (*File, error)
+	CreateFileToken(context.Context, *CreateFileTokenRequest) (*FileToken, error)
+	GetStorageUsage(context.Context, *GetStorageUsageRequest) (*StorageUsage, error)
 	mustEmbedUnimplementedStorageServiceServer()
 }
 
@@ -166,6 +218,9 @@ func (UnimplementedStorageServiceServer) GetBucket(context.Context, *GetBucketRe
 func (UnimplementedStorageServiceServer) DeleteBucket(context.Context, *GetBucketRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteBucket not implemented")
 }
+func (UnimplementedStorageServiceServer) UpdateBucket(context.Context, *UpdateBucketRequest) (*Bucket, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateBucket not implemented")
+}
 func (UnimplementedStorageServiceServer) CreateFile(context.Context, *CreateFileRequest) (*File, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateFile not implemented")
 }
@@ -177,6 +232,15 @@ func (UnimplementedStorageServiceServer) GetFile(context.Context, *GetFileReques
 }
 func (UnimplementedStorageServiceServer) DeleteFile(context.Context, *GetFileRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteFile not implemented")
+}
+func (UnimplementedStorageServiceServer) UpdateFile(context.Context, *UpdateFileRequest) (*File, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateFile not implemented")
+}
+func (UnimplementedStorageServiceServer) CreateFileToken(context.Context, *CreateFileTokenRequest) (*FileToken, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateFileToken not implemented")
+}
+func (UnimplementedStorageServiceServer) GetStorageUsage(context.Context, *GetStorageUsageRequest) (*StorageUsage, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStorageUsage not implemented")
 }
 func (UnimplementedStorageServiceServer) mustEmbedUnimplementedStorageServiceServer() {}
 func (UnimplementedStorageServiceServer) testEmbeddedByValue()                        {}
@@ -271,6 +335,24 @@ func _StorageService_DeleteBucket_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageService_UpdateBucket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateBucketRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServiceServer).UpdateBucket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageService_UpdateBucket_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServiceServer).UpdateBucket(ctx, req.(*UpdateBucketRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageService_CreateFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateFileRequest)
 	if err := dec(in); err != nil {
@@ -343,6 +425,60 @@ func _StorageService_DeleteFile_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageService_UpdateFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServiceServer).UpdateFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageService_UpdateFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServiceServer).UpdateFile(ctx, req.(*UpdateFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageService_CreateFileToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateFileTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServiceServer).CreateFileToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageService_CreateFileToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServiceServer).CreateFileToken(ctx, req.(*CreateFileTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageService_GetStorageUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStorageUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServiceServer).GetStorageUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageService_GetStorageUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServiceServer).GetStorageUsage(ctx, req.(*GetStorageUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StorageService_ServiceDesc is the grpc.ServiceDesc for StorageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -367,6 +503,10 @@ var StorageService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageService_DeleteBucket_Handler,
 		},
 		{
+			MethodName: "UpdateBucket",
+			Handler:    _StorageService_UpdateBucket_Handler,
+		},
+		{
 			MethodName: "CreateFile",
 			Handler:    _StorageService_CreateFile_Handler,
 		},
@@ -381,6 +521,18 @@ var StorageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteFile",
 			Handler:    _StorageService_DeleteFile_Handler,
+		},
+		{
+			MethodName: "UpdateFile",
+			Handler:    _StorageService_UpdateFile_Handler,
+		},
+		{
+			MethodName: "CreateFileToken",
+			Handler:    _StorageService_CreateFileToken_Handler,
+		},
+		{
+			MethodName: "GetStorageUsage",
+			Handler:    _StorageService_GetStorageUsage_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
