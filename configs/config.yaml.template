@@ -1,19 +1,20 @@
 server:
-  grpc:
-    addr: ":8088"
-    timeout: "30s"
   http:
-    addr: ":9099"
+    addr: ":9080"
     timeout: "60s"
-    public_url: "http://localhost:9099"
+    public_url: "http://localhost:9080"
     cors:
       allow_origins: ["http://torchwood.local:9099"]  # set explicit origins; "*" is rejected when allow_credentials=true
       allow_methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
       allow_headers: ["Content-Type", "Authorization", "X-Api-Key", "X-Torchwood-Project", "X-Request-Id", "X-Correlation-Id"]
       allow_credentials: true
       max_age: 3600
+  grpc:
+    # gRPC 端口仅限本机回环（gateway 同机转发）；生产如需外部 gRPC 客户端访问，请配置 TLS 或经网络策略隔离
+    addr: "127.0.0.1:9060"
+    timeout: "30s"
   metrics:
-    addr: ":9100"
+    addr: ":9040"
 
 security:
   jwt:
