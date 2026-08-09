@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"github.com/stretchr/testify/require"
+	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"google.golang.org/grpc"
 )
 

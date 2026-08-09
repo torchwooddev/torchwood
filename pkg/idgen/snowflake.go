@@ -7,11 +7,11 @@ import (
 )
 
 const (
-	snowflakeEpochMs   = 1577836800000 // 2020-01-01 UTC
-	snowflakeNodeBits  = 10
-	snowflakeSeqBits   = 12
-	snowflakeMaxNode   = (1 << snowflakeNodeBits) - 1
-	snowflakeMaxSeq    = (1 << snowflakeSeqBits) - 1
+	snowflakeEpochMs  = 1577836800000 // 2020-01-01 UTC
+	snowflakeNodeBits = 10
+	snowflakeSeqBits  = 12
+	snowflakeMaxNode  = (1 << snowflakeNodeBits) - 1
+	snowflakeMaxSeq   = (1 << snowflakeSeqBits) - 1
 )
 
 // Snowflake generates 64-bit time-sortable numeric string IDs.

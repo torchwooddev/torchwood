@@ -496,7 +496,7 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 	setParts = append(setParts, incParts...)
 	args = append(args, incArgs...)
 	if len(setParts) == 0 && len(update.Permissions) == 0 {
-		return doc, fmt.Errorf("no fields to update")
+		return doc, fmt.Errorf("%w", databases.ErrNoFieldsToUpdate)
 	}
 	if len(setParts) > 0 {
 		args = append(args, doc.ID, internalID)

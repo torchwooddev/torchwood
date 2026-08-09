@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -387,4 +387,174 @@ func docIDsOf(docs []databases.Document) []string {
 		out[i] = docs[i].ID
 	}
 	return out
+}
+
+// TestDatabases_UpdateCollection 覆盖 Console「集合设置」路径：改名、停用/启用；
+// 停用后非系统主体读写被拒，系统主体放行。
+func TestDatabases_UpdateCollection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	disabled := true
+	require.NoError(t, uc.UpdateCollection(ctx, projectID, "app", "posts", databases.CollectionPatch{
+		Name:     "Articles",
+		Disabled: &disabled,
+	}, principal))
+
+	got, err := uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "Articles", got.Name)
+	require.True(t, got.Disabled)
+
+	// 停用后普通主体读写被拒（PermissionDenied），系统主体不受影响。
+	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "x"}, nil, principal)
+	require.Error(t, err)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "x"}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	// 重新启用后恢复。
+	disabled = false
+	require.NoError(t, uc.UpdateCollection(ctx, projectID, "app", "posts", databases.CollectionPatch{
+		Disabled: &disabled,
+	}, principal))
+	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.False(t, got.Disabled)
+	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "y"}, nil, principal)
+	require.NoError(t, err)
+}
+
+// TestDatabases_DeleteAttribute_DeleteIndex 覆盖 Schema 清理路径：删除 attribute
+// 同步 DROP COLUMN（可再建同名列），删除 index 同步 DROP INDEX（可再建同名索引）。
+func TestDatabases_DeleteAttribute_DeleteIndex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+		{ID: "views", Key: "views", Type: "integer"},
+	}, nil, nil, true))
+	require.NoError(t, uc.CreateIndex(ctx, projectID, "app", "posts", databases.Index{
+		ID:         "idx_views",
+		Type:       "key",
+		Attributes: []string{"views"},
+	}))
+
+	require.NoError(t, uc.DeleteIndex(ctx, projectID, "app", "posts", "idx_views"))
+	got, err := uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, got.Indexes, 0)
+
+	require.NoError(t, uc.DeleteAttribute(ctx, projectID, "app", "posts", "views"))
+	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, got.Attributes, 1)
+	require.Equal(t, "title", got.Attributes[0].Key)
+
+	// 删除后重建同名 attribute 与 index 成功（表结构已同步清理）。
+	require.NoError(t, uc.CreateAttribute(ctx, projectID, "app", "posts", databases.Attribute{
+		ID:   "views",
+		Key:  "views",
+		Type: "integer",
+	}))
+	require.NoError(t, uc.CreateIndex(ctx, projectID, "app", "posts", databases.Index{
+		ID:         "idx_views",
+		Type:       "key",
+		Attributes: []string{"views"},
+	}))
+	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, got.Attributes, 2)
+	require.Len(t, got.Indexes, 1)
+
+	// 新列可正常写入（验证 DROP COLUMN 后重建）。
+	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "t", "views": 7}, nil, principal)
+	require.NoError(t, err)
+}
+
+// TestDatabases_Document_Increment 覆盖字段自增路径：原子增减、0 增量无效、
+// 只传 increment 不覆盖 data。
+func TestDatabases_Document_Increment(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "stats", "Stats", []databases.Attribute{
+		{ID: "views", Key: "views", Type: "integer"},
+		{ID: "title", Key: "title", Type: "string", Size: 64},
+	}, nil, nil, true))
+
+	created, err := uc.CreateDocument(ctx, projectID, "app", "stats", "", map[string]any{"views": 10, "title": "hello"}, nil, principal)
+	require.NoError(t, err)
+
+	// +5 → 15
+	updated, err := uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 5}, principal)
+	require.NoError(t, err)
+	require.EqualValues(t, 15, updated.Data["views"])
+	require.Equal(t, "hello", updated.Data["title"], "increment 不覆盖其他字段")
+
+	// -3 → 12
+	updated, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": -3}, principal)
+	require.NoError(t, err)
+	require.EqualValues(t, 12, updated.Data["views"])
+
+	// 0 增量无字段可更新 → InvalidArgument（前端 Console 已过滤 0 增量）
+	_, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 0}, principal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 空 data/permissions/increment 三选一校验
+	_, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, nil, principal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

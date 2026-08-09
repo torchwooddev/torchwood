@@ -3,9 +3,9 @@ package projects
 import "strings"
 
 const (
-	SettingsKeyIDGenDefault  = "idgen.default"
-	SettingsKeyIDGenUsers    = "idgen.users"
-	SettingsKeyIDGenSessions = "idgen.sessions"
+	SettingsKeyIDGenDefault   = "idgen.default"
+	SettingsKeyIDGenUsers     = "idgen.users"
+	SettingsKeyIDGenSessions  = "idgen.sessions"
 	SettingsKeyIDGenDocuments = "idgen.documents"
 )
 

@@ -11,9 +11,9 @@ const (
 	RandomCharsetNumeric      = "numeric"
 	RandomCharsetAlphanumeric = "alphanumeric"
 
-	defaultRandomLength    = 10
-	defaultRandomMaxRetries  = 10
-	maxRandomLength        = 32
+	defaultRandomLength     = 10
+	defaultRandomMaxRetries = 10
+	maxRandomLength         = 32
 )
 
 var (

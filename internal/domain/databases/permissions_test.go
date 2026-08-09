@@ -32,7 +32,7 @@ func TestCollectionAllows_WriteGrantsUpdate(t *testing.T) {
 func TestAllowsDocumentAccess_UserCollectionDocumentOverrides(t *testing.T) {
 	coll := &Collection{
 		DocumentSecurity: true,
-		Permissions:    []Permission{{Type: "read", Role: "any"}},
+		Permissions:      []Permission{{Type: "read", Role: "any"}},
 	}
 	docPerms := []Permission{{Type: "read", Role: "user:bob"}}
 	// 用户集合（IsSystem=false）+ 文档有 _perms：文档权限覆盖集合权限（B1）。
@@ -103,7 +103,7 @@ func TestSkipDocumentPermissionFilter(t *testing.T) {
 func TestAllowsDocumentAccess_DocumentSecurityOffIgnoresDocPerms(t *testing.T) {
 	coll := &Collection{
 		DocumentSecurity: false,
-		Permissions:    []Permission{{Type: "read", Role: "any"}},
+		Permissions:      []Permission{{Type: "read", Role: "any"}},
 	}
 	docPerms := []Permission{{Type: "read", Role: "user:bob"}}
 	if !AllowsDocumentAccess(coll, docPerms, true, "read", []string{"user:carol"}) {

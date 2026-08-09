@@ -35,11 +35,12 @@ var queryRe = regexp.MustCompile(`^(\w+)\((.*)\)$`)
 
 // Parse parses a single Appwrite-style query string.
 // Examples:
-//   equal("email","a@b.com")
-//   greaterThan("age",18)
-//   contains("name","john")
-//   orderDesc("createdAt")
-//   limit(25)
+//
+//	equal("email","a@b.com")
+//	greaterThan("age",18)
+//	contains("name","john")
+//	orderDesc("createdAt")
+//	limit(25)
 func Parse(raw string) (*Query, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

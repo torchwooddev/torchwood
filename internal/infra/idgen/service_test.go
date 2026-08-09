@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/idgen"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
-	"github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/require"
 )
 
 type stubProjectRepo struct {
@@ -25,8 +25,8 @@ func (stubProjectRepo) GetProjectByName(context.Context, string) (*projects.Proj
 	return nil, nil
 }
 func (stubProjectRepo) ListProjects(context.Context) ([]projects.Project, error) { return nil, nil }
-func (stubProjectRepo) UpdateProject(context.Context, *projects.Project) error     { return nil }
-func (stubProjectRepo) DeleteProject(context.Context, string) error                { return nil }
+func (stubProjectRepo) UpdateProject(context.Context, *projects.Project) error   { return nil }
+func (stubProjectRepo) DeleteProject(context.Context, string) error              { return nil }
 
 func TestService_NewID_Sequence(t *testing.T) {
 	t.Parallel()

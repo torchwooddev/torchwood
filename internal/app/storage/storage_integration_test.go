@@ -6,12 +6,12 @@ import (
 	"io"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 // TestStorage_Acceptance_ServerAPI covers manual checklist §4.11–4.13:

@@ -26,8 +26,13 @@ export function Login() {
     setLoading(true);
     try {
       await login(email, password);
-    } catch (err: any) {
-      setError(err?.response?.data?.error?.message || "Login failed");
+    } catch (err) {
+      const msg = (
+        err as {
+          response?: { data?: { error?: { message?: string } } };
+        }
+      )?.response?.data?.error?.message;
+      setError(msg || "Login failed");
     } finally {
       setLoading(false);
     }

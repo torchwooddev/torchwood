@@ -1,13 +1,13 @@
 package app
 
 import (
+	"github.com/google/wire"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/app/functions"
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/app/storage"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/google/wire"
 )
 
 var ProviderSet = wire.NewSet(

@@ -3,8 +3,8 @@ package idgen_test
 import (
 	"testing"
 
-	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 func TestRandomString_NumericLength(t *testing.T) {

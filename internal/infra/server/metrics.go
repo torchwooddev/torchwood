@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	lynxhttp "github.com/lynx-go/lynx/server/http"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 type MetricsServer struct {

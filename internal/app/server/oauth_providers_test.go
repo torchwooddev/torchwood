@@ -3,8 +3,8 @@ package server
 import (
 	"testing"
 
-	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/stretchr/testify/require"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 )
 
 func TestNormalizeServerOAuthProvider(t *testing.T) {

@@ -527,10 +527,10 @@ func mapDocument(doc *databases.Document) (*serverv1.Document, error) {
 		return nil, status.Error(codes.InvalidArgument, "document data is not serializable")
 	}
 	return &serverv1.Document{
-		Id:        doc.ID,
-		Data:      data,
-		CreatedAt: timestamppb.New(doc.CreatedAt),
-		UpdatedAt: timestamppb.New(doc.UpdatedAt),
+		Id:          doc.ID,
+		Data:        data,
+		CreatedAt:   timestamppb.New(doc.CreatedAt),
+		UpdatedAt:   timestamppb.New(doc.UpdatedAt),
 		Permissions: formatPermissionStrings(doc.Permissions),
 	}, nil
 }

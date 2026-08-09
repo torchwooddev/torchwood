@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/infra/server"
 )
 
 func TestConsoleHandler_SecurityHeaders(t *testing.T) {

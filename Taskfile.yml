@@ -118,6 +118,22 @@ tasks:
     cmds:
       - go test -v ./... -cover
 
+  lint-go:
+    dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - go vet ./...
+      - test -z "$(gofmt -l .)"
+
+  lint-console:
+    dir: '{{.USER_WORKING_DIR}}/console'
+    cmds:
+      - pnpm lint
+
+  lint:
+    deps:
+      - lint-go
+      - lint-console
+
   build-docker:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:

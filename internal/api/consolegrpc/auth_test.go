@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"github.com/torchwooddev/torchwood/pkg/password"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -24,10 +24,13 @@ type captureTransportStream struct {
 	header metadata.MD
 }
 
-func (s *captureTransportStream) Method() string                  { return "/console.v1.ConsoleAuthService/test" }
-func (s *captureTransportStream) SetHeader(md metadata.MD) error  { s.header = metadata.Join(s.header, md); return nil }
-func (s *captureTransportStream) SendHeader(metadata.MD) error    { return nil }
-func (s *captureTransportStream) SetTrailer(metadata.MD) error    { return nil }
+func (s *captureTransportStream) Method() string { return "/console.v1.ConsoleAuthService/test" }
+func (s *captureTransportStream) SetHeader(md metadata.MD) error {
+	s.header = metadata.Join(s.header, md)
+	return nil
+}
+func (s *captureTransportStream) SendHeader(metadata.MD) error { return nil }
+func (s *captureTransportStream) SetTrailer(metadata.MD) error { return nil }
 
 var _ grpc.ServerTransportStream = (*captureTransportStream)(nil)
 

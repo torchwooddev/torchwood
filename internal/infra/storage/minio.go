@@ -7,10 +7,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/torchwooddev/torchwood/internal/domain/storage"
-	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/torchwooddev/torchwood/internal/domain/storage"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 // minioObjectStore is an S3-compatible ObjectStore implementation.

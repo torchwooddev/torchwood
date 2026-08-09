@@ -5,25 +5,25 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/redis/go-redis/v9"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	pkgidgen "github.com/torchwooddev/torchwood/pkg/idgen"
-	"github.com/redis/go-redis/v9"
 )
 
 // Service implements domainidgen.Generator using platform config and optional project overrides.
 type Service struct {
-	cfg             *config.AppConfig
-	rdb             *redis.Client
-	projectRepo     projects.Repository
+	cfg               *config.AppConfig
+	rdb               *redis.Client
+	projectRepo       projects.Repository
 	snowflake         *pkgidgen.Snowflake
 	randomCfg         pkgidgen.RandomConfig
 	randomPrefix      string
 	seqPrefix         string
-	defaultStrategy string
-	resourceUsers   string
-	resourceSessions string
+	defaultStrategy   string
+	resourceUsers     string
+	resourceSessions  string
 	resourceDocuments string
 }
 
@@ -73,10 +73,10 @@ func NewService(cfg *config.AppConfig, rdb *redis.Client, projectRepo projects.R
 	}
 
 	return &Service{
-		cfg:               cfg,
-		rdb:               rdb,
-		projectRepo:       projectRepo,
-		snowflake:         sf,
+		cfg:         cfg,
+		rdb:         rdb,
+		projectRepo: projectRepo,
+		snowflake:   sf,
 		randomCfg: pkgidgen.RandomConfig{
 			Length:     int(randomLen),
 			Charset:    randomCharset,

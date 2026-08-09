@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
 // OAuthHandler handles browser OAuth2 callback redirects.

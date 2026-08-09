@@ -1,8 +1,8 @@
 package messaging
 
 import (
-	domainmessaging "github.com/torchwooddev/torchwood/internal/domain/messaging"
 	"github.com/google/wire"
+	domainmessaging "github.com/torchwooddev/torchwood/internal/domain/messaging"
 )
 
 var ProviderSet = wire.NewSet(

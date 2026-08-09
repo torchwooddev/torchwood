@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/infra/auth"
 )
 
 func mrValue(t *testing.T, mr *miniredis.Miniredis, key string) string {

@@ -79,4 +79,3 @@ func refreshTokenFromCookie(ctx context.Context) string {
 	}
 	return ""
 }
-

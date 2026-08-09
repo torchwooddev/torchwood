@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lynx-go/lynx"
+	lynxgrpc "github.com/lynx-go/lynx/server/grpc"
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
@@ -17,8 +19,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
-	"github.com/lynx-go/lynx"
-	lynxgrpc "github.com/lynx-go/lynx/server/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"

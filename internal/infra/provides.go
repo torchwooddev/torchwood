@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"github.com/google/wire"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -10,9 +11,8 @@ import (
 	infrafunctions "github.com/torchwooddev/torchwood/internal/infra/functions"
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
-	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
-	"github.com/google/wire"
+	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 )
 
 var ProviderSet = wire.NewSet(

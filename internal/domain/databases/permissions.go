@@ -83,10 +83,10 @@ func CollectionAllows(perms []Permission, permType string, roles []string) bool 
 // AllowsDocumentAccess implements Appwrite-style documentSecurity semantics (B1):
 //   - documentSecurity=false: only collection permissions apply
 //   - documentSecurity=true:
-//     - document has no _perms rows (docHasPerms=false): collection permissions apply
-//     - document has _perms rows:
-//       - system collections (D1 豁免): collection OR document permissions
-//       - user collections: document permissions override collection permissions
+//   - document has no _perms rows (docHasPerms=false): collection permissions apply
+//   - document has _perms rows:
+//   - system collections (D1 豁免): collection OR document permissions
+//   - user collections: document permissions override collection permissions
 func AllowsDocumentAccess(coll *Collection, docPerms []Permission, docHasPerms bool, permType string, roles []string) bool {
 	if coll == nil {
 		return false

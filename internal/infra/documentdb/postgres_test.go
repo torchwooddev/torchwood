@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/driver/pgdriver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -873,11 +873,11 @@ func TestCreateDocument_AuditColumns(t *testing.T) {
 	// are ignored; audit columns carry "abc".
 	created, err := docDB.CreateDocument(ctx, projectID, "app", "audit", databases.Document{
 		Data: map[string]any{
-			"title":        "t1",
-			"_created_at":  "2000-01-01T00:00:00Z",
-			"_created_by":  "spoof",
-			"_updated_by":  "spoof",
-			"not_a_col!":   "ignored",
+			"title":       "t1",
+			"_created_at": "2000-01-01T00:00:00Z",
+			"_created_by": "spoof",
+			"_updated_by": "spoof",
+			"not_a_col!":  "ignored",
 		},
 	}, nil, databases.Principal{Roles: []string{"user:abc"}})
 	require.NoError(t, err)

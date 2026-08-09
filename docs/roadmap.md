@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-09（Databases 补全落地：批量更新/删除 RPC 接入 Console、字段自增 UI、Attribute/Index 行内删除、Collection 名称/停用设置，见 §2.4/§2.8）。
+> 最新更新：2026-08-09（CI 落地：GitHub Actions 双 job（后端 gofmt/vet/全量测试/构建 + 前端 lint/构建）；补 Functions 单测与 Databases 变更路径集成测试；Taskfile 新增 lint 任务，见 §2.9）。
 
 ---
 
@@ -230,14 +230,14 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ### 2.9 工程化与质量
 
-| 任务 | 说明 | 关键文件 |
-|------|------|----------|
-| API Key scope 校验 | 拦截器解析 scopes，对端点做细粒度授权 | `pkg/grpc/interceptor/scope.go` |
-| 单元测试补齐 | 每个新增 use-case 至少一个单元测试 | `internal/app/**/*_test.go` |
-| 集成测试 | Account、Databases Documents、Storage、Functions 端到端测试 | `tests/integration/*_test.go` |
-| Seed 数据增强 | 提供示例 collection、文件、函数 | `cmd/seed/main.go` |
-| GitHub Actions CI | lint、test、build、console-build | `.github/workflows/ci.yml` |
-| 代码格式化 | `gofumpt`、`eslint`、`prettier` | `Taskfile.yml` |
+| 任务 | 说明 | 关键文件 | 状态 |
+|------|------|----------|------|
+| API Key scope 校验 | 拦截器解析 scopes，对端点做细粒度授权 | `pkg/grpc/interceptor/scope.go` | ✅ 完成 |
+| 单元测试补齐 | 每个新增 use-case 至少一个单元测试（Functions use-case 已补） | `internal/app/**/*_test.go` | ✅ 完成 |
+| 集成测试 | Account、Databases Documents、Storage 端到端测试；本次补 UpdateCollection/DeleteAttribute/DeleteIndex/increment 路径 | `internal/app/**/*_integration_test.go` | ✅ 完成 |
+| Seed 数据增强 | 提供示例 collection、文件、函数 | `cmd/seed/main.go` | 待办 |
+| GitHub Actions CI | lint（gofmt/vet/eslint）、test（含 Postgres 集成）、build、console-build | `.github/workflows/ci.yml` | ✅ 完成 |
+| 代码格式化 | `gofmt`、`eslint`（prettier 未启用） | `Taskfile.yml`（`task lint`）、`console/eslint.config.js` | ✅ 完成 |
 
 **验收标准**：
 
@@ -420,7 +420,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [x] Admin Console 覆盖 Database 文档编辑、Teams 页面。
 - [x] Admin Console 覆盖系统管理员管理（Admins 页面，owner 权限保护）。
 - [ ] Admin Console 覆盖 Functions、Settings 页面。
-- [ ] CI 绿，集成测试覆盖核心流程。
+- [x] CI 绿，集成测试覆盖核心流程。
 
 ### M2：P2 生产就绪（中期结束）
 

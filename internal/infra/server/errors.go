@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/google/uuid"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"

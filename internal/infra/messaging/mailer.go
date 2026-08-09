@@ -25,13 +25,13 @@ type MailerService struct {
 func NewMailer(cfg *config.AppConfig) *MailerService {
 	smtpCfg := cfg.GetMessaging().GetSmtp()
 	svc := &MailerService{
-		smtpHost:  strings.TrimSpace(smtpCfg.GetHost()),
-		smtpPort:  smtpPort(smtpCfg),
-		smtpUser:  smtpCfg.GetUsername(),
+		smtpHost:     strings.TrimSpace(smtpCfg.GetHost()),
+		smtpPort:     smtpPort(smtpCfg),
+		smtpUser:     smtpCfg.GetUsername(),
 		smtpPassword: smtpCfg.GetPassword(),
-		from:      smtpFrom(smtpCfg),
-		useTLS:    smtpCfg.GetUseTls(),
-		devLogOTP: cfg.GetMessaging().GetDevLogOtp(),
+		from:         smtpFrom(smtpCfg),
+		useTLS:       smtpCfg.GetUseTls(),
+		devLogOTP:    cfg.GetMessaging().GetDevLogOtp(),
 	}
 	return svc
 }

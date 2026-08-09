@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/redis/go-redis/v9"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
@@ -39,12 +39,12 @@ func NewDataClients(cfg *config.AppConfig) (*DataClients, func(), error) {
 	}
 
 	return &DataClients{
-		DB:  db,
-		RDB: rdb,
-	}, func() {
-		closeDb()
-		_ = rdb.Close()
-	}, nil
+			DB:  db,
+			RDB: rdb,
+		}, func() {
+			closeDb()
+			_ = rdb.Close()
+		}, nil
 }
 
 func NewDatabase(dataClients *DataClients) *Database {

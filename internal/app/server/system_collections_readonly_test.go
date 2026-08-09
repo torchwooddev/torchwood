@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -197,7 +197,7 @@ func TestSystemCollections_DocumentReadPolicy(t *testing.T) {
 	_, err = docDB.CreateDocument(ctx, projectID, "default", "sessions", databases.Document{
 		ID: "session-1",
 		Data: map[string]any{
-			"user_id":    "user-1",
+			"user_id":     "user-1",
 			"secret_hash": "secret-hash",
 			"factors":     map[string]any{"totp": true},
 			"user_agent":  "curl",

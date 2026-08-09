@@ -4,15 +4,17 @@ import (
 	"context"
 	"testing"
 
-	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type fakeAPIKeyRepository struct{}
 
-func (f *fakeAPIKeyRepository) CreateAPIKey(ctx context.Context, key *projects.APIKey) error { return nil }
+func (f *fakeAPIKeyRepository) CreateAPIKey(ctx context.Context, key *projects.APIKey) error {
+	return nil
+}
 func (f *fakeAPIKeyRepository) GetAPIKey(ctx context.Context, id string) (*projects.APIKey, error) {
 	return nil, nil
 }

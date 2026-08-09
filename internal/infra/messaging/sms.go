@@ -14,12 +14,12 @@ import (
 
 // SMSService delivers outbound SMS using Twilio or development logging.
 type SMSService struct {
-	provider    string
-	accountSID  string
-	authToken   string
-	from        string
-	devLogSMS   bool
-	httpClient  *http.Client
+	provider   string
+	accountSID string
+	authToken  string
+	from       string
+	devLogSMS  bool
+	httpClient *http.Client
 }
 
 func NewSMSService(cfg *config.AppConfig) *SMSService {

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 
+	"github.com/redis/go-redis/v9"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/messaging"
@@ -10,7 +11,6 @@ import (
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
-	"github.com/redis/go-redis/v9"
 )
 
 func NewTestAccount(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB) *Account {
