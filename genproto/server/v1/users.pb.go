@@ -69,19 +69,106 @@ func (x *GetUserRequest) GetId() string {
 	return ""
 }
 
+type CreateUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Labels        *structpb.Struct       `protobuf:"bytes,5,opt,name=labels,proto3" json:"labels,omitempty"`
+	Prefs         *structpb.Struct       `protobuf:"bytes,6,opt,name=prefs,proto3" json:"prefs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUserRequest) Reset() {
+	*x = CreateUserRequest{}
+	mi := &file_server_v1_users_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUserRequest) ProtoMessage() {}
+
+func (x *CreateUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_users_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUserRequest.ProtoReflect.Descriptor instead.
+func (*CreateUserRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_users_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CreateUserRequest) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *CreateUserRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+func (x *CreateUserRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateUserRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CreateUserRequest) GetLabels() *structpb.Struct {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+func (x *CreateUserRequest) GetPrefs() *structpb.Struct {
+	if x != nil {
+		return x.Prefs
+	}
+	return nil
+}
+
 type UpdateUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
 	Labels        *structpb.Struct       `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
 	Prefs         *structpb.Struct       `protobuf:"bytes,4,opt,name=prefs,proto3" json:"prefs,omitempty"`
+	EmailVerified *bool                  `protobuf:"varint,5,opt,name=email_verified,json=emailVerified,proto3,oneof" json:"email_verified,omitempty"`
+	Name          string                 `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
+	Email         string                 `protobuf:"bytes,7,opt,name=email,proto3" json:"email,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateUserRequest) Reset() {
 	*x = UpdateUserRequest{}
-	mi := &file_server_v1_users_proto_msgTypes[1]
+	mi := &file_server_v1_users_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -93,7 +180,7 @@ func (x *UpdateUserRequest) String() string {
 func (*UpdateUserRequest) ProtoMessage() {}
 
 func (x *UpdateUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_users_proto_msgTypes[1]
+	mi := &file_server_v1_users_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -106,7 +193,7 @@ func (x *UpdateUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateUserRequest.ProtoReflect.Descriptor instead.
 func (*UpdateUserRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_users_proto_rawDescGZIP(), []int{1}
+	return file_server_v1_users_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *UpdateUserRequest) GetId() string {
@@ -137,6 +224,131 @@ func (x *UpdateUserRequest) GetPrefs() *structpb.Struct {
 	return nil
 }
 
+func (x *UpdateUserRequest) GetEmailVerified() bool {
+	if x != nil && x.EmailVerified != nil {
+		return *x.EmailVerified
+	}
+	return false
+}
+
+func (x *UpdateUserRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateUserRequest) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+type UpdateUserPasswordRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateUserPasswordRequest) Reset() {
+	*x = UpdateUserPasswordRequest{}
+	mi := &file_server_v1_users_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateUserPasswordRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateUserPasswordRequest) ProtoMessage() {}
+
+func (x *UpdateUserPasswordRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_users_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateUserPasswordRequest.ProtoReflect.Descriptor instead.
+func (*UpdateUserPasswordRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_users_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *UpdateUserPasswordRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateUserPasswordRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+type DeleteUserSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteUserSessionRequest) Reset() {
+	*x = DeleteUserSessionRequest{}
+	mi := &file_server_v1_users_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteUserSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteUserSessionRequest) ProtoMessage() {}
+
+func (x *DeleteUserSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_users_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteUserSessionRequest.ProtoReflect.Descriptor instead.
+func (*DeleteUserSessionRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_users_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DeleteUserSessionRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DeleteUserSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
 type ListUsersResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Users         []*User                `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
@@ -147,7 +359,7 @@ type ListUsersResponse struct {
 
 func (x *ListUsersResponse) Reset() {
 	*x = ListUsersResponse{}
-	mi := &file_server_v1_users_proto_msgTypes[2]
+	mi := &file_server_v1_users_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -159,7 +371,7 @@ func (x *ListUsersResponse) String() string {
 func (*ListUsersResponse) ProtoMessage() {}
 
 func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_users_proto_msgTypes[2]
+	mi := &file_server_v1_users_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -172,7 +384,7 @@ func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
 func (*ListUsersResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_users_proto_rawDescGZIP(), []int{2}
+	return file_server_v1_users_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListUsersResponse) GetUsers() []*User {
@@ -189,6 +401,50 @@ func (x *ListUsersResponse) GetMeta() *v1.ListResponseMeta {
 	return nil
 }
 
+type ListUserSessionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sessions      []*Session             `protobuf:"bytes,1,rep,name=sessions,proto3" json:"sessions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUserSessionsResponse) Reset() {
+	*x = ListUserSessionsResponse{}
+	mi := &file_server_v1_users_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUserSessionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUserSessionsResponse) ProtoMessage() {}
+
+func (x *ListUserSessionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_users_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUserSessionsResponse.ProtoReflect.Descriptor instead.
+func (*ListUserSessionsResponse) Descriptor() ([]byte, []int) {
+	return file_server_v1_users_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListUserSessionsResponse) GetSessions() []*Session {
+	if x != nil {
+		return x.Sessions
+	}
+	return nil
+}
+
 type User struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -198,13 +454,16 @@ type User struct {
 	EmailVerified bool                   `protobuf:"varint,5,opt,name=email_verified,json=emailVerified,proto3" json:"email_verified,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Labels        *structpb.Struct       `protobuf:"bytes,8,opt,name=labels,proto3" json:"labels,omitempty"`
+	Prefs         *structpb.Struct       `protobuf:"bytes,9,opt,name=prefs,proto3" json:"prefs,omitempty"`
+	Phone         string                 `protobuf:"bytes,10,opt,name=phone,proto3" json:"phone,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_server_v1_users_proto_msgTypes[3]
+	mi := &file_server_v1_users_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -216,7 +475,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_users_proto_msgTypes[3]
+	mi := &file_server_v1_users_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -229,7 +488,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_server_v1_users_proto_rawDescGZIP(), []int{3}
+	return file_server_v1_users_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *User) GetId() string {
@@ -281,21 +540,258 @@ func (x *User) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *User) GetLabels() *structpb.Struct {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+func (x *User) GetPrefs() *structpb.Struct {
+	if x != nil {
+		return x.Prefs
+	}
+	return nil
+}
+
+func (x *User) GetPhone() string {
+	if x != nil {
+		return x.Phone
+	}
+	return ""
+}
+
+type Session struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Provider      string                 `protobuf:"bytes,3,opt,name=provider,proto3" json:"provider,omitempty"`
+	UserAgent     string                 `protobuf:"bytes,4,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
+	Ip            string                 `protobuf:"bytes,5,opt,name=ip,proto3" json:"ip,omitempty"`
+	ExpireAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Session) Reset() {
+	*x = Session{}
+	mi := &file_server_v1_users_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Session) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Session) ProtoMessage() {}
+
+func (x *Session) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_users_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Session.ProtoReflect.Descriptor instead.
+func (*Session) Descriptor() ([]byte, []int) {
+	return file_server_v1_users_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *Session) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Session) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *Session) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *Session) GetUserAgent() string {
+	if x != nil {
+		return x.UserAgent
+	}
+	return ""
+}
+
+func (x *Session) GetIp() string {
+	if x != nil {
+		return x.Ip
+	}
+	return ""
+}
+
+func (x *Session) GetExpireAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpireAt
+	}
+	return nil
+}
+
+func (x *Session) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+type CreateUserTokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tokens        *TokenBundle           `protobuf:"bytes,1,opt,name=tokens,proto3" json:"tokens,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUserTokenResponse) Reset() {
+	*x = CreateUserTokenResponse{}
+	mi := &file_server_v1_users_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUserTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUserTokenResponse) ProtoMessage() {}
+
+func (x *CreateUserTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_users_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUserTokenResponse.ProtoReflect.Descriptor instead.
+func (*CreateUserTokenResponse) Descriptor() ([]byte, []int) {
+	return file_server_v1_users_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CreateUserTokenResponse) GetTokens() *TokenBundle {
+	if x != nil {
+		return x.Tokens
+	}
+	return nil
+}
+
+type TokenBundle struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	ExpiresAt     int64                  `protobuf:"varint,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TokenBundle) Reset() {
+	*x = TokenBundle{}
+	mi := &file_server_v1_users_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TokenBundle) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TokenBundle) ProtoMessage() {}
+
+func (x *TokenBundle) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_users_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TokenBundle.ProtoReflect.Descriptor instead.
+func (*TokenBundle) Descriptor() ([]byte, []int) {
+	return file_server_v1_users_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *TokenBundle) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *TokenBundle) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *TokenBundle) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
 var File_server_v1_users_proto protoreflect.FileDescriptor
 
 const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
 	"\x15server/v1/users.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\" \n" +
 	"\x0eGetUserRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x9b\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\xd1\x01\n" +
+	"\x11CreateUserRequest\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12/\n" +
+	"\x06labels\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x06labels\x12-\n" +
+	"\x05prefs\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"\x84\x02\n" +
 	"\x11UpdateUserRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12/\n" +
 	"\x06labels\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06labels\x12-\n" +
-	"\x05prefs\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"\x7f\n" +
+	"\x05prefs\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x05prefs\x12*\n" +
+	"\x0eemail_verified\x18\x05 \x01(\bH\x00R\remailVerified\x88\x01\x01\x12\x12\n" +
+	"\x04name\x18\x06 \x01(\tR\x04name\x12\x14\n" +
+	"\x05email\x18\a \x01(\tR\x05emailB\x11\n" +
+	"\x0f_email_verified\"G\n" +
+	"\x19UpdateUserPasswordRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"I\n" +
+	"\x18DeleteUserSessionRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\"\x7f\n" +
 	"\x11ListUsersResponse\x12/\n" +
 	"\x05users\x18\x01 \x03(\v2\x19.torchwood.server.v1.UserR\x05users\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xf5\x01\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"T\n" +
+	"\x18ListUserSessionsResponse\x128\n" +
+	"\bsessions\x18\x01 \x03(\v2\x1c.torchwood.server.v1.SessionR\bsessions\"\xeb\x02\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x12\n" +
@@ -305,14 +801,41 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xd2\x03\n" +
-	"\fUsersService\x12o\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12/\n" +
+	"\x06labels\x18\b \x01(\v2\x17.google.protobuf.StructR\x06labels\x12-\n" +
+	"\x05prefs\x18\t \x01(\v2\x17.google.protobuf.StructR\x05prefs\x12\x14\n" +
+	"\x05phone\x18\n" +
+	" \x01(\tR\x05phone\"\xf1\x01\n" +
+	"\aSession\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1a\n" +
+	"\bprovider\x18\x03 \x01(\tR\bprovider\x12\x1d\n" +
+	"\n" +
+	"user_agent\x18\x04 \x01(\tR\tuserAgent\x12\x0e\n" +
+	"\x02ip\x18\x05 \x01(\tR\x02ip\x127\n" +
+	"\texpire_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bexpireAt\x129\n" +
+	"\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"S\n" +
+	"\x17CreateUserTokenResponse\x128\n" +
+	"\x06tokens\x18\x01 \x01(\v2 .torchwood.server.v1.TokenBundleR\x06tokens\"t\n" +
+	"\vTokenBundle\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x03 \x01(\x03R\texpiresAt2\x81\t\n" +
+	"\fUsersService\x12l\n" +
+	"\n" +
+	"CreateUser\x12&.torchwood.server.v1.CreateUserRequest\x1a\x19.torchwood.server.v1.User\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/server/users\x12o\n" +
 	"\tListUsers\x12 .torchwood.shared.v1.ListRequest\x1a&.torchwood.server.v1.ListUsersResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/server/users\x12h\n" +
 	"\aGetUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x19.torchwood.server.v1.User\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/server/users/{id}\x12q\n" +
 	"\n" +
-	"UpdateUser\x12&.torchwood.server.v1.UpdateUserRequest\x1a\x19.torchwood.server.v1.User\" \x82\xd3\xe4\x93\x02\x1a:\x01*2\x15/v1/server/users/{id}\x12l\n" +
+	"UpdateUser\x12&.torchwood.server.v1.UpdateUserRequest\x1a\x19.torchwood.server.v1.User\" \x82\xd3\xe4\x93\x02\x1a:\x01*2\x15/v1/server/users/{id}\x12\x8a\x01\n" +
+	"\x12UpdateUserPassword\x12..torchwood.server.v1.UpdateUserPasswordRequest\x1a\x19.torchwood.server.v1.User\")\x82\xd3\xe4\x93\x02#:\x01*2\x1e/v1/server/users/{id}/password\x12l\n" +
 	"\n" +
-	"DeleteUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"DeleteUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x12\x8e\x01\n" +
+	"\x10ListUserSessions\x12#.torchwood.server.v1.GetUserRequest\x1a-.torchwood.server.v1.ListUserSessionsResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/server/users/{id}/sessions\x12\x93\x01\n" +
+	"\x11DeleteUserSession\x12-.torchwood.server.v1.DeleteUserSessionRequest\x1a\x1a.torchwood.shared.v1.Empty\"3\x82\xd3\xe4\x93\x02-*+/v1/server/users/{id}/sessions/{session_id}\x12\x8a\x01\n" +
+	"\x0fCreateUserToken\x12#.torchwood.server.v1.GetUserRequest\x1a,.torchwood.server.v1.CreateUserTokenResponse\"$\x82\xd3\xe4\x93\x02\x1e\"\x1c/v1/server/users/{id}/tokens\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_users_proto_rawDescOnce sync.Once
@@ -326,38 +849,63 @@ func file_server_v1_users_proto_rawDescGZIP() []byte {
 	return file_server_v1_users_proto_rawDescData
 }
 
-var file_server_v1_users_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_server_v1_users_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_server_v1_users_proto_goTypes = []any{
-	(*GetUserRequest)(nil),        // 0: torchwood.server.v1.GetUserRequest
-	(*UpdateUserRequest)(nil),     // 1: torchwood.server.v1.UpdateUserRequest
-	(*ListUsersResponse)(nil),     // 2: torchwood.server.v1.ListUsersResponse
-	(*User)(nil),                  // 3: torchwood.server.v1.User
-	(*structpb.Struct)(nil),       // 4: google.protobuf.Struct
-	(*v1.ListResponseMeta)(nil),   // 5: torchwood.shared.v1.ListResponseMeta
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
-	(*v1.ListRequest)(nil),        // 7: torchwood.shared.v1.ListRequest
-	(*v1.Empty)(nil),              // 8: torchwood.shared.v1.Empty
+	(*GetUserRequest)(nil),            // 0: torchwood.server.v1.GetUserRequest
+	(*CreateUserRequest)(nil),         // 1: torchwood.server.v1.CreateUserRequest
+	(*UpdateUserRequest)(nil),         // 2: torchwood.server.v1.UpdateUserRequest
+	(*UpdateUserPasswordRequest)(nil), // 3: torchwood.server.v1.UpdateUserPasswordRequest
+	(*DeleteUserSessionRequest)(nil),  // 4: torchwood.server.v1.DeleteUserSessionRequest
+	(*ListUsersResponse)(nil),         // 5: torchwood.server.v1.ListUsersResponse
+	(*ListUserSessionsResponse)(nil),  // 6: torchwood.server.v1.ListUserSessionsResponse
+	(*User)(nil),                      // 7: torchwood.server.v1.User
+	(*Session)(nil),                   // 8: torchwood.server.v1.Session
+	(*CreateUserTokenResponse)(nil),   // 9: torchwood.server.v1.CreateUserTokenResponse
+	(*TokenBundle)(nil),               // 10: torchwood.server.v1.TokenBundle
+	(*structpb.Struct)(nil),           // 11: google.protobuf.Struct
+	(*v1.ListResponseMeta)(nil),       // 12: torchwood.shared.v1.ListResponseMeta
+	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
+	(*v1.ListRequest)(nil),            // 14: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),                  // 15: torchwood.shared.v1.Empty
 }
 var file_server_v1_users_proto_depIdxs = []int32{
-	4,  // 0: torchwood.server.v1.UpdateUserRequest.labels:type_name -> google.protobuf.Struct
-	4,  // 1: torchwood.server.v1.UpdateUserRequest.prefs:type_name -> google.protobuf.Struct
-	3,  // 2: torchwood.server.v1.ListUsersResponse.users:type_name -> torchwood.server.v1.User
-	5,  // 3: torchwood.server.v1.ListUsersResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	6,  // 4: torchwood.server.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 5: torchwood.server.v1.User.updated_at:type_name -> google.protobuf.Timestamp
-	7,  // 6: torchwood.server.v1.UsersService.ListUsers:input_type -> torchwood.shared.v1.ListRequest
-	0,  // 7: torchwood.server.v1.UsersService.GetUser:input_type -> torchwood.server.v1.GetUserRequest
-	1,  // 8: torchwood.server.v1.UsersService.UpdateUser:input_type -> torchwood.server.v1.UpdateUserRequest
-	0,  // 9: torchwood.server.v1.UsersService.DeleteUser:input_type -> torchwood.server.v1.GetUserRequest
-	2,  // 10: torchwood.server.v1.UsersService.ListUsers:output_type -> torchwood.server.v1.ListUsersResponse
-	3,  // 11: torchwood.server.v1.UsersService.GetUser:output_type -> torchwood.server.v1.User
-	3,  // 12: torchwood.server.v1.UsersService.UpdateUser:output_type -> torchwood.server.v1.User
-	8,  // 13: torchwood.server.v1.UsersService.DeleteUser:output_type -> torchwood.shared.v1.Empty
-	10, // [10:14] is the sub-list for method output_type
-	6,  // [6:10] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	11, // 0: torchwood.server.v1.CreateUserRequest.labels:type_name -> google.protobuf.Struct
+	11, // 1: torchwood.server.v1.CreateUserRequest.prefs:type_name -> google.protobuf.Struct
+	11, // 2: torchwood.server.v1.UpdateUserRequest.labels:type_name -> google.protobuf.Struct
+	11, // 3: torchwood.server.v1.UpdateUserRequest.prefs:type_name -> google.protobuf.Struct
+	7,  // 4: torchwood.server.v1.ListUsersResponse.users:type_name -> torchwood.server.v1.User
+	12, // 5: torchwood.server.v1.ListUsersResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	8,  // 6: torchwood.server.v1.ListUserSessionsResponse.sessions:type_name -> torchwood.server.v1.Session
+	13, // 7: torchwood.server.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	13, // 8: torchwood.server.v1.User.updated_at:type_name -> google.protobuf.Timestamp
+	11, // 9: torchwood.server.v1.User.labels:type_name -> google.protobuf.Struct
+	11, // 10: torchwood.server.v1.User.prefs:type_name -> google.protobuf.Struct
+	13, // 11: torchwood.server.v1.Session.expire_at:type_name -> google.protobuf.Timestamp
+	13, // 12: torchwood.server.v1.Session.created_at:type_name -> google.protobuf.Timestamp
+	10, // 13: torchwood.server.v1.CreateUserTokenResponse.tokens:type_name -> torchwood.server.v1.TokenBundle
+	1,  // 14: torchwood.server.v1.UsersService.CreateUser:input_type -> torchwood.server.v1.CreateUserRequest
+	14, // 15: torchwood.server.v1.UsersService.ListUsers:input_type -> torchwood.shared.v1.ListRequest
+	0,  // 16: torchwood.server.v1.UsersService.GetUser:input_type -> torchwood.server.v1.GetUserRequest
+	2,  // 17: torchwood.server.v1.UsersService.UpdateUser:input_type -> torchwood.server.v1.UpdateUserRequest
+	3,  // 18: torchwood.server.v1.UsersService.UpdateUserPassword:input_type -> torchwood.server.v1.UpdateUserPasswordRequest
+	0,  // 19: torchwood.server.v1.UsersService.DeleteUser:input_type -> torchwood.server.v1.GetUserRequest
+	0,  // 20: torchwood.server.v1.UsersService.ListUserSessions:input_type -> torchwood.server.v1.GetUserRequest
+	4,  // 21: torchwood.server.v1.UsersService.DeleteUserSession:input_type -> torchwood.server.v1.DeleteUserSessionRequest
+	0,  // 22: torchwood.server.v1.UsersService.CreateUserToken:input_type -> torchwood.server.v1.GetUserRequest
+	7,  // 23: torchwood.server.v1.UsersService.CreateUser:output_type -> torchwood.server.v1.User
+	5,  // 24: torchwood.server.v1.UsersService.ListUsers:output_type -> torchwood.server.v1.ListUsersResponse
+	7,  // 25: torchwood.server.v1.UsersService.GetUser:output_type -> torchwood.server.v1.User
+	7,  // 26: torchwood.server.v1.UsersService.UpdateUser:output_type -> torchwood.server.v1.User
+	7,  // 27: torchwood.server.v1.UsersService.UpdateUserPassword:output_type -> torchwood.server.v1.User
+	15, // 28: torchwood.server.v1.UsersService.DeleteUser:output_type -> torchwood.shared.v1.Empty
+	6,  // 29: torchwood.server.v1.UsersService.ListUserSessions:output_type -> torchwood.server.v1.ListUserSessionsResponse
+	15, // 30: torchwood.server.v1.UsersService.DeleteUserSession:output_type -> torchwood.shared.v1.Empty
+	9,  // 31: torchwood.server.v1.UsersService.CreateUserToken:output_type -> torchwood.server.v1.CreateUserTokenResponse
+	23, // [23:32] is the sub-list for method output_type
+	14, // [14:23] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_server_v1_users_proto_init() }
@@ -365,13 +913,14 @@ func file_server_v1_users_proto_init() {
 	if File_server_v1_users_proto != nil {
 		return
 	}
+	file_server_v1_users_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_users_proto_rawDesc), len(file_server_v1_users_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

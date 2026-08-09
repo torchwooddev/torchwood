@@ -909,6 +909,37 @@
         }
       }
     },
+    "torchwoodclientv1Session": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "userAgent": {
+          "type": "string"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "expireAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "current": {
+          "type": "boolean"
+        }
+      }
+    },
     "torchwoodclientv1SignInRequest": {
       "type": "object",
       "properties": {
@@ -930,7 +961,7 @@
           "$ref": "#/definitions/v1Account"
         },
         "tokens": {
-          "$ref": "#/definitions/v1TokenBundle"
+          "$ref": "#/definitions/torchwoodclientv1TokenBundle"
         }
       }
     },
@@ -939,6 +970,21 @@
       "properties": {
         "projectId": {
           "type": "string"
+        }
+      }
+    },
+    "torchwoodclientv1TokenBundle": {
+      "type": "object",
+      "properties": {
+        "accessToken": {
+          "type": "string"
+        },
+        "refreshToken": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "int64"
         }
       }
     },
@@ -1120,7 +1166,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "$ref": "#/definitions/v1Session"
+            "$ref": "#/definitions/torchwoodclientv1Session"
           }
         }
       }
@@ -1129,38 +1175,7 @@
       "type": "object",
       "properties": {
         "tokens": {
-          "$ref": "#/definitions/v1TokenBundle"
-        }
-      }
-    },
-    "v1Session": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "userId": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "userAgent": {
-          "type": "string"
-        },
-        "ip": {
-          "type": "string"
-        },
-        "expireAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "current": {
-          "type": "boolean"
+          "$ref": "#/definitions/torchwoodclientv1TokenBundle"
         }
       }
     },
@@ -1188,22 +1203,7 @@
           "$ref": "#/definitions/v1Account"
         },
         "tokens": {
-          "$ref": "#/definitions/v1TokenBundle"
-        }
-      }
-    },
-    "v1TokenBundle": {
-      "type": "object",
-      "properties": {
-        "accessToken": {
-          "type": "string"
-        },
-        "refreshToken": {
-          "type": "string"
-        },
-        "expiresAt": {
-          "type": "string",
-          "format": "int64"
+          "$ref": "#/definitions/torchwoodclientv1TokenBundle"
         }
       }
     },

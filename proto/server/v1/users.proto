@@ -13,6 +13,10 @@ import "shared/v1/common.proto";
 service UsersService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
 
+  rpc CreateUser(CreateUserRequest) returns (User) {
+    option (google.api.http) = { post: "/v1/server/users", body: "*" };
+  }
+
   rpc ListUsers(shared.v1.ListRequest) returns (ListUsersResponse) {
     option (google.api.http) = { get: "/v1/server/users" };
   }
@@ -25,8 +29,24 @@ service UsersService {
     option (google.api.http) = { patch: "/v1/server/users/{id}", body: "*" };
   }
 
+  rpc UpdateUserPassword(UpdateUserPasswordRequest) returns (User) {
+    option (google.api.http) = { patch: "/v1/server/users/{id}/password", body: "*" };
+  }
+
   rpc DeleteUser(GetUserRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/server/users/{id}" };
+  }
+
+  rpc ListUserSessions(GetUserRequest) returns (ListUserSessionsResponse) {
+    option (google.api.http) = { get: "/v1/server/users/{id}/sessions" };
+  }
+
+  rpc DeleteUserSession(DeleteUserSessionRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/server/users/{id}/sessions/{session_id}" };
+  }
+
+  rpc CreateUserToken(GetUserRequest) returns (CreateUserTokenResponse) {
+    option (google.api.http) = { post: "/v1/server/users/{id}/tokens" };
   }
 }
 
@@ -34,16 +54,42 @@ message GetUserRequest {
   string id = 1;
 }
 
+message CreateUserRequest {
+  string email = 1;
+  string password = 2;
+  string name = 3;
+  string status = 4;
+  google.protobuf.Struct labels = 5;
+  google.protobuf.Struct prefs = 6;
+}
+
 message UpdateUserRequest {
   string id = 1;
   string status = 2;
   google.protobuf.Struct labels = 3;
   google.protobuf.Struct prefs = 4;
+  optional bool email_verified = 5;
+  string name = 6;
+  string email = 7;
+}
+
+message UpdateUserPasswordRequest {
+  string id = 1;
+  string password = 2;
+}
+
+message DeleteUserSessionRequest {
+  string id = 1;
+  string session_id = 2;
 }
 
 message ListUsersResponse {
   repeated User users = 1;
   shared.v1.ListResponseMeta meta = 2;
+}
+
+message ListUserSessionsResponse {
+  repeated Session sessions = 1;
 }
 
 message User {
@@ -54,4 +100,27 @@ message User {
   bool email_verified = 5;
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
+  google.protobuf.Struct labels = 8;
+  google.protobuf.Struct prefs = 9;
+  string phone = 10;
+}
+
+message Session {
+  string id = 1;
+  string user_id = 2;
+  string provider = 3;
+  string user_agent = 4;
+  string ip = 5;
+  google.protobuf.Timestamp expire_at = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message CreateUserTokenResponse {
+  TokenBundle tokens = 1;
+}
+
+message TokenBundle {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_at = 3;
 }

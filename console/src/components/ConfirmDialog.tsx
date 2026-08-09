@@ -16,7 +16,9 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   loading?: boolean;
+  destructive?: boolean;
   onConfirm: () => void;
+  children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -27,7 +29,9 @@ export function ConfirmDialog({
   confirmLabel = "确认",
   cancelLabel = "取消",
   loading,
+  destructive = true,
   onConfirm,
+  children,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -36,11 +40,16 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {children}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {cancelLabel}
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={loading}>
+          <Button
+            variant={destructive ? "destructive" : "default"}
+            onClick={onConfirm}
+            disabled={loading}
+          >
             {loading ? "处理中..." : confirmLabel}
           </Button>
         </DialogFooter>

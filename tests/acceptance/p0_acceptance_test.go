@@ -10,6 +10,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	infrAuth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
@@ -215,7 +216,7 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 	cfg := &config.AppConfig{}
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := client.NewTestAccount(cfg, projectRepo, docDB)
-	usersUC := appserver.NewUsers(projectRepo, docDB)
+	usersUC := appserver.NewUsers(projectRepo, docDB, infrAuth.NewSessionService(cfg, docDB, client.NewUserRoles(docDB), nil))
 
 	const email = "dsl-query@torchwood.local"
 	signedUp, _, _, err := account.SignUp(ctx, client.SignUpCommand{

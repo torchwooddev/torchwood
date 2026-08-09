@@ -19,6 +19,7 @@ import {
   UsersListPage,
   UserDetailPage,
   UserEditPage,
+  CreateUserPage,
 } from "@/routes/users/pages";
 import {
   StorageListPage,
@@ -90,6 +91,7 @@ function AppRoutes() {
         <Route path="api-keys/:id" element={<ApiKeyDetailPage />} />
 
         <Route path="users" element={<UsersListPage />} />
+        <Route path="users/new" element={<CreateUserPage />} />
         <Route path="users/:id" element={<UserDetailPage />} />
         <Route path="users/:id/edit" element={<UserEditPage />} />
 

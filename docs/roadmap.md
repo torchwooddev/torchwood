@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-07-01（补充 AI/Agent-Native 战略与 P1 Sprint 1 部分落地，见 `docs/archived/completed-tasks.md`）。
+> 最新更新：2026-08-09（Server Users 管理完整落地：创建用户、完整字段更新、会话/令牌管理、密码重置、模拟登录，见 §2.2）。
 
 ---
 
@@ -88,14 +88,14 @@ Client API 是终端用户直接使用的能力。Sprint 1 已补齐会话与 pr
 
 Server API 当前支持列表/获取/更新/删除，缺少创建用户、会话/令牌管理、labels/prefs 完整映射。
 
-| 任务 | 说明 | 关键端点 |
-|------|------|----------|
-| 创建用户 | 服务端创建用户并指定密码哈希 | `POST /v1/server/users` |
-| 完整更新字段 | labels、status、emailVerified、prefs 支持 `google.protobuf.Struct` | `PATCH /v1/server/users/{id}` |
-| 用户会话管理 | 列出/删除指定用户的 sessions | `GET/DELETE /v1/server/users/{id}/sessions` |
-| 用户令牌管理 | 列出/删除指定用户的 tokens | `GET/DELETE /v1/server/users/{id}/tokens` |
-| 密码重置 | 服务端直接重置密码 | `PATCH /v1/server/users/{id}/password` |
-| 模拟登录（占位） | 生成目标用户的 JWT 用于调试 | `POST /v1/server/users/{id}/tokens` |
+| 任务 | 说明 | 关键端点 | 状态 |
+|------|------|----------|------|
+| 创建用户 | 服务端创建用户并指定密码哈希 | `POST /v1/server/users` | ✅ 完成 |
+| 完整更新字段 | labels、status、emailVerified、prefs 支持 `google.protobuf.Struct` | `PATCH /v1/server/users/{id}` | ✅ 完成 |
+| 用户会话管理 | 列出/删除指定用户的 sessions | `GET/DELETE /v1/server/users/{id}/sessions` | ✅ 完成 |
+| 用户令牌管理 | 列出/删除指定用户的 tokens（与 sessions 合并：token 生命周期绑定会话） | `GET/DELETE /v1/server/users/{id}/sessions` | ✅ 完成 |
+| 密码重置 | 服务端直接重置密码（撤销该用户全部会话） | `PATCH /v1/server/users/{id}/password` | ✅ 完成 |
+| 模拟登录 | 生成目标用户的 JWT 用于调试 | `POST /v1/server/users/{id}/tokens` | ✅ 完成 |
 
 **验收标准**：
 
@@ -410,7 +410,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [x] Client Account 核心会话与 prefs（Refresh / Sessions / UpdateAccount / Prefs）。
 - [ ] Client Account 完整能力（密码重置、OAuth、MFA 等）。
 - [x] Server Teams / Memberships 管理可用。
-- [ ] Server Users 创建与会话/令牌管理。
+- [x] Server Users 创建与会话/令牌管理。
 - [x] Databases Documents CRUD、Client API 权限可用。
 - [ ] Databases 批量操作、attribute/index 删除。
 - [ ] Storage preview、公开 bucket、file token 可用。

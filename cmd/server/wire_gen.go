@@ -83,7 +83,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	}
 	storageStorage := storage2.NewStorage(appConfig, projectsRepository, documentDB, objectStore)
 	storageService := servergrpc.NewStorageService(storageStorage)
-	users := server.NewUsers(projectsRepository, documentDB)
+	users := server.NewUsers(projectsRepository, documentDB, sessionService)
 	usersService := servergrpc.NewUsersService(users)
 	apiKeys := server.NewAPIKeys(apiKeyRepository)
 	apiKeysService := servergrpc.NewAPIKeysService(apiKeys)

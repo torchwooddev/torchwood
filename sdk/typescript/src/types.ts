@@ -92,6 +92,9 @@ export interface User {
   name: string;
   status: string;
   email_verified: boolean;
+  labels?: string[];
+  prefs?: Record<string, unknown>;
+  phone?: string;
   created_at: string;
   updated_at: string;
 }

@@ -2,14 +2,17 @@ package servergrpc
 
 import (
 	"context"
+	"fmt"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -28,6 +31,25 @@ func (s *UsersService) projectID(ctx context.Context) string {
 		return ""
 	}
 	return p.ProjectID
+}
+
+func (s *UsersService) CreateUser(ctx context.Context, req *serverv1.CreateUserRequest) (*serverv1.User, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	doc, err := s.users.CreateUser(ctx, projectID, appserver.CreateUserCommand{
+		Email:    req.GetEmail(),
+		Password: req.GetPassword(),
+		Name:     req.GetName(),
+		Status:   req.GetStatus(),
+		Labels:   structToStringSlice(req.GetLabels()),
+		Prefs:    req.GetPrefs().AsMap(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapUserDoc(doc), nil
 }
 
 func (s *UsersService) ListUsers(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListUsersResponse, error) {
@@ -78,12 +100,33 @@ func (s *UsersService) UpdateUser(ctx context.Context, req *serverv1.UpdateUserR
 		updates["status"] = req.GetStatus()
 	}
 	if req.GetLabels() != nil {
-		updates["labels"] = req.GetLabels().AsMap()
+		updates["labels"] = structToStringSlice(req.GetLabels())
 	}
 	if req.GetPrefs() != nil {
 		updates["prefs"] = req.GetPrefs().AsMap()
 	}
+	if req.GetName() != "" {
+		updates["name"] = req.GetName()
+	}
+	if req.GetEmail() != "" {
+		updates["email"] = req.GetEmail()
+	}
+	if req.EmailVerified != nil {
+		updates["email_verified"] = req.GetEmailVerified()
+	}
 	doc, err := s.users.UpdateUser(ctx, projectID, req.GetId(), updates, dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return mapUserDoc(doc), nil
+}
+
+func (s *UsersService) UpdateUserPassword(ctx context.Context, req *serverv1.UpdateUserPasswordRequest) (*serverv1.User, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	doc, err := s.users.UpdateUserPassword(ctx, projectID, req.GetId(), req.GetPassword())
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +142,51 @@ func (s *UsersService) DeleteUser(ctx context.Context, req *serverv1.GetUserRequ
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
+}
+
+func (s *UsersService) ListUserSessions(ctx context.Context, req *serverv1.GetUserRequest) (*serverv1.ListUserSessionsResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	docs, err := s.users.ListUserSessions(ctx, projectID, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*serverv1.Session, len(docs))
+	for i := range docs {
+		out[i] = mapSessionDoc(&docs[i])
+	}
+	return &serverv1.ListUserSessionsResponse{Sessions: out}, nil
+}
+
+func (s *UsersService) DeleteUserSession(ctx context.Context, req *serverv1.DeleteUserSessionRequest) (*sharedv1.Empty, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	if err := s.users.DeleteUserSession(ctx, projectID, req.GetId(), req.GetSessionId()); err != nil {
+		return nil, err
+	}
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *UsersService) CreateUserToken(ctx context.Context, req *serverv1.GetUserRequest) (*serverv1.CreateUserTokenResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	bundle, err := s.users.CreateUserToken(ctx, projectID, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return &serverv1.CreateUserTokenResponse{
+		Tokens: &serverv1.TokenBundle{
+			AccessToken:  bundle.AccessToken,
+			RefreshToken: bundle.RefreshToken,
+			ExpiresAt:    bundle.ExpiresAt,
+		},
+	}, nil
 }
 
 func mapUserDoc(doc *databases.Document) *serverv1.User {
@@ -122,5 +210,71 @@ func mapUserDoc(doc *databases.Document) *serverv1.User {
 	if v, ok := doc.Data["email_verified"].(bool); ok {
 		u.EmailVerified = v
 	}
+	if v, ok := doc.Data["phone"].(string); ok {
+		u.Phone = v
+	}
+	if v, ok := doc.Data["labels"]; ok {
+		if labels, err := structpb.NewValue(v); err == nil {
+			u.Labels = labels.GetStructValue()
+		}
+	}
+	if v, ok := doc.Data["prefs"]; ok {
+		if prefs, err := structpb.NewValue(v); err == nil {
+			u.Prefs = prefs.GetStructValue()
+		}
+	}
 	return u
+}
+
+func mapSessionDoc(doc *databases.Document) *serverv1.Session {
+	if doc == nil {
+		return nil
+	}
+	s := &serverv1.Session{
+		Id:        doc.ID,
+		UserId:    stringValue(doc.Data["user_id"]),
+		Provider:  stringValue(doc.Data["provider"]),
+		UserAgent: stringValue(doc.Data["user_agent"]),
+		Ip:        stringValue(doc.Data["ip"]),
+		CreatedAt: timestamppb.New(doc.CreatedAt),
+	}
+	if expireAtRaw, ok := doc.Data["expire_at"]; ok {
+		if expireAt, err := auth.ParseSessionTime(expireAtRaw); err == nil {
+			s.ExpireAt = timestamppb.New(expireAt)
+		}
+	}
+	return s
+}
+
+// structToStringSlice 将 Struct（数组值）转为 []any 字符串数组；Appwrite 的
+// labels 语义是字符串数组，宽容接受字符串与数字标量。
+func structToStringSlice(v *structpb.Struct) []any {
+	if v == nil {
+		return nil
+	}
+	lv, ok := v.Fields["values"]
+	if !ok {
+		return nil
+	}
+	list := lv.GetListValue()
+	if list == nil {
+		return nil
+	}
+	out := make([]any, 0, len(list.Values))
+	for _, item := range list.Values {
+		switch val := item.AsInterface().(type) {
+		case string:
+			out = append(out, val)
+		case float64:
+			out = append(out, val)
+		default:
+			out = append(out, fmt.Sprint(val))
+		}
+	}
+	return out
+}
+
+func stringValue(v any) string {
+	s, _ := v.(string)
+	return s
 }
