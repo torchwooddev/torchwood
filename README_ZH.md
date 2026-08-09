@@ -11,7 +11,7 @@ Torchwood 是一个受 Appwrite 启发、**AI/Agent-Native** 的后端即服务�
 - **用户认证**：邮箱注册/登录、JWT access/refresh token、会话 Cookie、API Key 认证。
 - **动态文档数据库**：schema-per-database，支持 `_tenant`、`_perms`、动态属性/索引，查询语言兼容 Appwrite 风格 DSL。
 - **文件存储**：S3/MinIO 兼容的对象存储，支持 multipart 上传/下载，文件元数据以动态文档管理。
-- **函数执行**：Docker 执行器端口与 P0 stub。
+- **函数执行**：基于 Docker 的真实执行器（构建/运行），配套异步 worker（`cmd/worker`）。
 - **Admin Console**：React + Vite + TanStack Query + shadcn/ui 管理后台，嵌入 Go 二进制，路径 `/console/`。
 - **Server API**：Project / API Key / User / Storage / Database / Collection / Attribute / Index 的 CRUD。
 
@@ -43,7 +43,7 @@ Torchwood 是一个受 Appwrite 启发、**AI/Agent-Native** 的后端即服务�
 ### 前置要求
 
 - Go 1.25+
-- Node.js 22+ + npm
+- Node.js 22+ + pnpm
 - Docker + Docker Compose
 - [Task](https://taskfile.dev/)（`go install github.com/go-task/task/v3/cmd/task@latest`）
 
@@ -67,7 +67,7 @@ cp .env.example .env
 
 ```env
 TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
-TORCHWOOD_DATA_REDIS_ADDR=127.0.0.1:6379
+TORCHWOOD_DATA_REDIS_PASSWORD=            # Redis 地址走 configs/config.yaml 的 data.redis.addr
 TORCHWOOD_SECURITY_JWT_SECRET=change-me-in-production
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
 TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
@@ -111,11 +111,15 @@ task build      # 会先执行 console-build，再编译 Go server
 task dev-server
 ```
 
-访问：
+访问（默认取自 `configs/config.yaml.template`，并非硬编码）：
 
-- Admin Console：`http://torchwood.local:9099/console/`
-- HTTP/gRPC-gateway API：`http://127.0.0.1:9099/v1/...`
-- Metrics：`http://127.0.0.1:9100/metrics`
+- Admin Console：`http://127.0.0.1:9080/console/`
+- HTTP/gRPC-gateway API：`http://127.0.0.1:9080/v1/...`
+- gRPC（仅回环）：`127.0.0.1:9060`
+- Metrics：`http://127.0.0.1:9040/metrics`
+- 健康检查：`http://127.0.0.1:9080/healthz/liveness`、`/healthz/readiness`
+
+> 注意：`console/vite.config.ts` 与配置模板的 CORS `allow_origins` 仍引用旧端口 9099，使用 `task console-dev` 时需同步调整（或修改本地 `configs/config.yaml`）。
 
 ## 常用开发任务
 
@@ -132,9 +136,9 @@ task wire-all          # 重新生成 Wire
 task generate-all      # 以上全部
 
 # 前端
-task console-install   # npm install
-task console-build     # npm run build
-task console-dev       # npm run dev
+task console-install   # pnpm install
+task console-build     # pnpm run build
+task console-dev       # pnpm run dev
 
 # 后端
 task dev-server        # go run ./cmd/server
@@ -148,7 +152,8 @@ task build             # 构建完整二进制（含 console）
 .
 ├── cmd/
 │   ├── seed/              # 默认项目/管理员/API Key 初始化
-│   └── server/            # 服务入口与 Wire 组装
+│   ├── server/            # 服务入口与 Wire 组装
+│   └── worker/            # 异步 worker（函数执行队列消费者）
 ├── console/               # Admin Console React SPA
 │   ├── embed.go           # go:embed dist
 │   └── src/
@@ -241,10 +246,15 @@ task sdk-build
 task sdk-demo   # 演示站点 http://localhost:5174
 ```
 
+## 开发者文档
+
+完整的开发者文档（架构、配置、认证授权、数据库、存储、函数、API 开发指南、Console、测试、SDK、部署运维）位于 [`docs/developer/`](docs/developer/README.md)。
+
 ## 设计文档
 
 - `docs/roadmap.md`：开发路线图（含 AI/Agent-Native 战略）
 - `docs/tech-decision.md`：技术栈决策
+- `docs/developer/`：开发者文档（见上方索引）
 - `docs/archived/`：已归档的历史设计文档（P0 设计、迁移清单、安全评审、修复方案）
 
 ## 许可证

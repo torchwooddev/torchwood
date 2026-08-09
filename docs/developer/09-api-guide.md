@@ -71,6 +71,10 @@ service ProjectsService {
   rpc GetProject(GetProjectRequest) returns (Project) {
     option (google.api.http) = { get: "/v1/server/projects/{id}" };
   }
+
+  rpc UpdateProject(UpdateProjectRequest) returns (Project) {
+    option (google.api.http) = { patch: "/v1/server/projects/{id}", body: "*" };
+  }
 }
 ```
 
@@ -118,16 +122,13 @@ rpc ListAdmins(ListAdminsRequest) returns (ListAdminsResponse) {
 ### 1.3 message 定义约定
 
 - **proto3 optional 表达字段 presence**：更新类请求中「未传 ≠ 空串」的字段用 `optional string`，
-  app 层据此判断是否要更新。例如 `proto/server/v1/functions.proto` 的 `UpdateFunctionRequest`：
+  app 层据此判断是否要更新，如 `proto/server/v1/projects.proto` 的 `UpdateProjectRequest`：
 
 ```proto
-message UpdateFunctionRequest {
-  string function_id = 1;
-  optional string name = 2;          // 空值不修改（proto3 optional 表达 presence）
-  optional string entrypoint = 3;
-  optional int32 timeout_seconds = 4;
-  optional string spec = 5;
-  optional bool enabled = 6;
+message UpdateProjectRequest {
+  string id = 1;
+  optional string name = 2;         // 空值不修改（proto3 optional 表达 presence）
+  optional string description = 3;
 }
 ```
 
@@ -269,7 +270,7 @@ err := s.db.RunInTx(ctx, func(txCtx context.Context) error {
 
 事务内多个仓库调用必须共用 `txCtx`；事务外返回包装错误（`fmt.Errorf("...: %w", err)`）保留错误链。
 
-### 4.4 越权与错误语义（GetProject 为例）
+### 4.4 越权与错误语义（GetProject / UpdateProject）
 
 - 越权访问**返回 NotFound 而不是 PermissionDenied**，避免资源存在性探测（安全评审 M7）：
 

@@ -11,7 +11,7 @@ Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (Baa
 - **User authentication**: Email sign-up/sign-in, JWT access/refresh tokens, session cookies, and API Key auth.
 - **Dynamic document database**: Schema-per-database with `_tenant`, `_perms`, dynamic attributes/indexes, and an Appwrite-style query DSL.
 - **File storage**: S3/MinIO-compatible object storage with multipart upload/download; file metadata managed as dynamic documents.
-- **Function execution**: Docker executor port and P0 stub.
+- **Function execution**: Docker-based executor (build/run) with an async worker (`cmd/worker`).
 - **Admin Console**: React + Vite + TanStack Query + shadcn/ui admin UI, embedded in the Go binary at `/console/`.
 - **Server API**: CRUD for Projects, API Keys, Users, Storage, Databases, Collections, Attributes, and Indexes.
 
@@ -43,7 +43,7 @@ Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (Baa
 ### Prerequisites
 
 - Go 1.25+
-- Node.js 22+ and npm
+- Node.js 22+ and pnpm
 - Docker + Docker Compose
 - [Task](https://taskfile.dev/) (`go install github.com/go-task/task/v3/cmd/task@latest`)
 
@@ -67,7 +67,7 @@ Key variables:
 
 ```env
 TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
-TORCHWOOD_DATA_REDIS_ADDR=127.0.0.1:6379
+TORCHWOOD_DATA_REDIS_PASSWORD=            # Redis addr comes from data.redis.addr in configs/config.yaml
 TORCHWOOD_SECURITY_JWT_SECRET=change-me-in-production
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
 TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
@@ -111,11 +111,15 @@ Or use dev mode:
 task dev-server
 ```
 
-Endpoints:
+Endpoints (defaults from `configs/config.yaml.template`; not hardcoded):
 
-- Admin Console: `http://torchwood.local:9099/console/`
-- HTTP/gRPC-gateway API: `http://127.0.0.1:9099/v1/...`
-- Metrics: `http://127.0.0.1:9100/metrics`
+- Admin Console: `http://127.0.0.1:9080/console/`
+- HTTP/gRPC-gateway API: `http://127.0.0.1:9080/v1/...`
+- gRPC (loopback only): `127.0.0.1:9060`
+- Metrics: `http://127.0.0.1:9040/metrics`
+- Health: `http://127.0.0.1:9080/healthz/liveness`, `/healthz/readiness`
+
+> Note: `console/vite.config.ts` and the CORS `allow_origins` in the config template still reference the legacy port 9099; adjust them (or your local `configs/config.yaml`) if you use `task console-dev`.
 
 ## Common Development Tasks
 
@@ -148,7 +152,8 @@ task build             # build full binary (includes console)
 .
 ├── cmd/
 │   ├── seed/              # default project / admin / API key bootstrap
-│   └── server/            # server entrypoint and Wire assembly
+│   ├── server/            # server entrypoint and Wire assembly
+│   └── worker/            # async worker (functions executions queue consumer)
 ├── console/               # Admin Console React SPA
 │   ├── embed.go           # go:embed dist
 │   └── src/
@@ -240,10 +245,15 @@ task sdk-build
 task sdk-demo   # demo at http://localhost:5174
 ```
 
+## Developer Documentation
+
+Full developer docs (architecture, configuration, authentication, databases, storage, functions, API guide, Console, testing, SDK, operations) live in [`docs/developer/`](docs/developer/README.md).
+
 ## Design Documents
 
 - `docs/roadmap.md` — development roadmap (includes AI/Agent-Native strategy)
 - `docs/tech-decision.md` — technology decisions
+- `docs/developer/` — developer documentation (see index above)
 - `docs/archived/` — archived design docs (P0 design, migration checklist, security reviews, fix plans)
 
 ## License
