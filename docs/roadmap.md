@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-09（Console 系统管理员管理落地：Admins 页面 CRUD、角色/密码管理、owner 权限保护；侧边栏菜单按功能域分组，见 §2.8）。
+> 最新更新：2026-08-09（Databases 补全落地：批量更新/删除 RPC 接入 Console、字段自增 UI、Attribute/Index 行内删除、Collection 名称/停用设置，见 §2.4/§2.8）。
 
 ---
 
@@ -136,11 +136,11 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | Document 列表/计数 | 带 Appwrite DSL 查询、权限过滤 | `GET` / `count` | ✅ 完成 |
 | Client Database API | 终端用户在授权下读写文档 | `/v1/databases/{db}/collections/{coll}/documents/*` | ✅ 完成 |
 | Console 文档编辑器 | collection 下文档列表、新增/编辑/删除 | `/console/databases/.../documents` | ✅ 完成 |
-| 批量操作 | 批量更新、删除、upsert | `.../documents/bulk` | 待办 |
-| 字段自增/自减 | 对数值字段做原子增减 | `PATCH .../documents/{id}` | 待办 |
-| Attribute 删除 | 删除属性并同步 `ALTER TABLE DROP COLUMN` | `DELETE .../attributes/{key}` | 待办 |
-| Index 删除 | 删除索引 | `DELETE .../indexes/{id}` | 待办 |
-| Collection 更新 | 修改 name / permissions | `PATCH .../collections/{coll}` | 待办 |
+| 批量操作 | 批量更新、删除、upsert | `.../documents/bulk` | ✅ 完成（Console 文档列表批量更新/删除对话框） |
+| 字段自增/自减 | 对数值字段做原子增减 | `PATCH .../documents/{id}` | ✅ 完成（Document 详情页 Δ 增量输入） |
+| Attribute 删除 | 删除属性并同步 `ALTER TABLE DROP COLUMN` | `DELETE .../attributes/{key}` | ✅ 完成（Schema tab 行内删除按钮） |
+| Index 删除 | 删除索引 | `DELETE .../indexes/{id}` | ✅ 完成（Schema tab 行内删除按钮） |
+| Collection 更新 | 修改 name / permissions | `PATCH .../collections/{coll}` | ✅ 完成（集合设置卡片：名称编辑 + 停用开关） |
 
 **验收标准**：
 
@@ -215,7 +215,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | 系统管理员管理 | 管理员 CRUD、角色与密码管理、owner 权限保护；`ConsoleAdminsService`（`GET/POST/PATCH/DELETE /v1/console/admins`） | `console/src/routes/admins/`、`proto/console/v1/admins.proto` | ✅ 完成 |
 | Storage 文件上传 | 在 Storage 页面直接上传文件、展示下载链接 | `console/src/routes/storage/` | ✅ 完成 |
 | Databases 文档编辑器 | collection 下文档列表、新增/编辑/删除 | `console/src/routes/databases/` | ✅ 完成 |
-| Attributes / Indexes 管理 | 在 collection 详情中增删属性与索引 | Databases 子页面 | 待办 |
+| Attributes / Indexes 管理 | 在 collection 详情中增删属性与索引（含 Attribute/Index 行内删除） | Databases 子页面 | ✅ 完成 |
 | Teams Memberships | 管理团队邀请与成员 | `console/src/routes/teams/` | ✅ 完成 |
 | Functions 管理 | Functions / Deployments / Executions 页面 | 新增 `Functions.tsx` | 待办 |
 | Settings 占位 | 项目基本信息、OAuth、SMTP（只读或简单表单） | 新增 `Settings.tsx` | 待办 |
@@ -414,7 +414,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [x] Server Teams / Memberships 管理可用。
 - [x] Server Users 创建与会话/令牌管理。
 - [x] Databases Documents CRUD、Client API 权限可用。
-- [ ] Databases 批量操作、attribute/index 删除。
+- [x] Databases 批量操作、attribute/index 删除。
 - [ ] Storage preview、公开 bucket、file token 可用。
 - [ ] Functions 可上传代码、构建、同步/异步执行。
 - [x] Admin Console 覆盖 Database 文档编辑、Teams 页面。

@@ -181,6 +181,26 @@ export async function createIndex(
   return res.data;
 }
 
+export async function deleteAttribute(
+  databaseId: string,
+  collectionId: string,
+  key: string
+): Promise<void> {
+  await api.delete(
+    `/server/databases/${databaseId}/collections/${collectionId}/attributes/${key}`
+  );
+}
+
+export async function deleteIndex(
+  databaseId: string,
+  collectionId: string,
+  indexId: string
+): Promise<void> {
+  await api.delete(
+    `/server/databases/${databaseId}/collections/${collectionId}/indexes/${indexId}`
+  );
+}
+
 export async function listDocuments(
   databaseId: string,
   collectionId: string
@@ -239,4 +259,32 @@ export async function deleteDocument(
   await api.delete(
     `/server/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`
   );
+}
+
+export async function bulkUpdateDocuments(
+  databaseId: string,
+  collectionId: string,
+  input: {
+    document_ids: string[];
+    data: Record<string, unknown>;
+    permissions?: string[];
+  }
+): Promise<number> {
+  const res = await api.patch<{ affected: number }>(
+    `/server/databases/${databaseId}/collections/${collectionId}/documents/bulk`,
+    input
+  );
+  return res.data.affected ?? 0;
+}
+
+export async function bulkDeleteDocuments(
+  databaseId: string,
+  collectionId: string,
+  documentIds: string[]
+): Promise<number> {
+  const res = await api.post<{ affected: number }>(
+    `/server/databases/${databaseId}/collections/${collectionId}/documents/bulk/delete`,
+    { document_ids: documentIds }
+  );
+  return res.data.affected ?? 0;
 }

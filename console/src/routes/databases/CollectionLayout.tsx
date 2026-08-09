@@ -61,6 +61,7 @@ export function CollectionLayout() {
         title={
           <span className="inline-flex items-center gap-2">
             {collection.name}
+            {collection.disabled && <Badge variant="destructive">已停用</Badge>}
             {collection.is_system && <Badge variant="secondary">系统</Badge>}
           </span>
         }

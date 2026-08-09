@@ -27,11 +27,15 @@ import {
   updateCollection,
   createAttribute,
   createIndex,
+  deleteAttribute,
+  deleteIndex,
   listDocuments,
   getDocument,
   createDocument,
   updateDocument,
   deleteDocument,
+  bulkUpdateDocuments,
+  bulkDeleteDocuments,
   type Database,
   type Collection,
   type Attribute,
@@ -96,10 +100,12 @@ const STRING_LIKE_TYPES = new Set(["string", "email", "url"]);
 function AttributeList({
   attributes,
   onAdd,
+  onRemove,
   disabled,
 }: {
   attributes: Attribute[];
   onAdd: () => void;
+  onRemove?: (attr: Attribute) => void;
   disabled?: boolean;
 }) {
   return (
@@ -132,6 +138,7 @@ function AttributeList({
                 <TableHead>Key</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>约束</TableHead>
+                {onRemove && <TableHead className="w-12" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -154,6 +161,11 @@ function AttributeList({
                       )}
                     </div>
                   </TableCell>
+                  {onRemove && (
+                    <TableCell className="text-right">
+                      <RowDeleteButton onConfirm={() => onRemove(attr)} />
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -167,11 +179,13 @@ function AttributeList({
 function IndexList({
   indexes,
   onAdd,
+  onRemove,
   canAdd,
   disabled,
 }: {
   indexes: Collection["indexes"];
   onAdd: () => void;
+  onRemove?: (index: Collection["indexes"][number]) => void;
   canAdd: boolean;
   disabled?: boolean;
 }) {
@@ -212,6 +226,7 @@ function IndexList({
                 <TableHead>ID</TableHead>
                 <TableHead>Attributes</TableHead>
                 <TableHead>Type</TableHead>
+                {onRemove && <TableHead className="w-12" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -222,6 +237,11 @@ function IndexList({
                   <TableCell>
                     <Badge variant="outline">{idx.type}</Badge>
                   </TableCell>
+                  {onRemove && (
+                    <TableCell className="text-right">
+                      <RowDeleteButton onConfirm={() => onRemove(idx)} />
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -495,6 +515,66 @@ function EditPermissionsDialog({
         >
           <PermissionEditor permissions={permissions} onChange={setPermissions} />
           <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              取消
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditCollectionDialog({
+  open,
+  onOpenChange,
+  loading,
+  initialName,
+  initialDisabled,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  loading: boolean;
+  initialName: string;
+  initialDisabled: boolean;
+  onSubmit: (input: { name?: string; disabled?: boolean }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [disabled, setDisabled] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName(initialName);
+      setDisabled(initialDisabled);
+    }
+  }, [open, initialName, initialDisabled]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>编辑集合设置</DialogTitle>
+          <DialogDescription>
+            修改集合名称或停用/启用集合。停用后客户端 API 将拒绝读写该集合。
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit({ name: name.trim() || undefined, disabled });
+          }}
+          className="space-y-4"
+        >
+          <FormField id="name" label="名称" value={name} onChange={setName} placeholder="posts" />
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={disabled} onChange={(e) => setDisabled(e.target.checked)} />
+            停用集合
+          </label>
+          <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               取消
             </Button>
@@ -831,6 +911,7 @@ export function CollectionDetailPage() {
   const [attrDialogOpen, setAttrDialogOpen] = useState(false);
   const [indexDialogOpen, setIndexDialogOpen] = useState(false);
   const [permDialogOpen, setPermDialogOpen] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
   const { data: collection, isLoading } = useQuery({
     queryKey: ["collections", dbId, collId],
@@ -877,6 +958,38 @@ export function CollectionDetailPage() {
     },
   });
 
+  const removeAttribute = useMutation({
+    mutationFn: (attr: Attribute) => deleteAttribute(dbId, collId, attr.key),
+    onSuccess: () => {
+      toast.success("Attribute 已删除");
+      queryClient.invalidateQueries({ queryKey: ["collections", dbId, collId] });
+      queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const removeIndex = useMutation({
+    mutationFn: (index: Collection["indexes"][number]) => deleteIndex(dbId, collId, index.id),
+    onSuccess: () => {
+      toast.success("Index 已删除");
+      queryClient.invalidateQueries({ queryKey: ["collections", dbId, collId] });
+      queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const updateSettings = useMutation({
+    mutationFn: (input: { name?: string; disabled?: boolean }) =>
+      updateCollection(dbId, collId, input),
+    onSuccess: () => {
+      toast.success("集合设置已更新");
+      queryClient.invalidateQueries({ queryKey: ["collections", dbId, collId] });
+      queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
+      setSettingsDialogOpen(false);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   if (isLoading) return <DetailSkeleton />;
   if (!collection) return null;
 
@@ -899,6 +1012,47 @@ export function CollectionDetailPage() {
             value={new Date(collection.created_at).toLocaleDateString()}
           />
         </div>
+
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Settings2 className="h-4 w-4" />
+                集合设置
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                名称与可用状态；停用后客户端不可读写该集合
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSettingsDialogOpen(true)}
+              disabled={readonly}
+            >
+              <Settings2 className="mr-1 h-4 w-4" />
+              编辑
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-sm text-muted-foreground">名称</dt>
+                <dd className="mt-1 font-medium">{collection.name}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted-foreground">状态</dt>
+                <dd className="mt-1">
+                  {collection.disabled ? (
+                    <Badge variant="destructive">已停用</Badge>
+                  ) : (
+                    <Badge variant="secondary">启用</Badge>
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -937,12 +1091,14 @@ export function CollectionDetailPage() {
           <AttributeList
             attributes={collection.attributes}
             onAdd={() => setAttrDialogOpen(true)}
+            onRemove={readonly ? undefined : (attr) => removeAttribute.mutate(attr)}
             disabled={readonly}
           />
           <IndexList
             indexes={collection.indexes}
             canAdd={collection.attributes.length > 0}
             onAdd={() => setIndexDialogOpen(true)}
+            onRemove={readonly ? undefined : (index) => removeIndex.mutate(index)}
             disabled={readonly}
           />
         </div>
@@ -967,6 +1123,14 @@ export function CollectionDetailPage() {
         loading={updatePerms.isPending}
         initialPermissions={collection.permissions}
         onSubmit={(perms) => updatePerms.mutate({ permissions: perms })}
+      />
+      <EditCollectionDialog
+        open={settingsDialogOpen}
+        onOpenChange={setSettingsDialogOpen}
+        loading={updateSettings.isPending}
+        initialName={collection.name}
+        initialDisabled={collection.disabled ?? false}
+        onSubmit={(input) => updateSettings.mutate(input)}
       />
     </>
   );
@@ -999,6 +1163,9 @@ function DocumentListSection({
 }) {
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+  const [bulkUpdateIds, setBulkUpdateIds] = useState<string[]>([]);
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ["documents", dbId, collId],
     queryFn: () => listDocuments(dbId, collId),
@@ -1034,22 +1201,45 @@ function DocumentListSection({
   const handleBulkDelete = async (selected: Document[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((d) => deleteDocument(dbId, collId, d.id)));
-      toast.success(`已删除 ${selected.length} 个 Document`);
+      const affected = await bulkDeleteDocuments(
+        dbId,
+        collId,
+        selected.map((d) => d.id)
+      );
+      toast.success(`已删除 ${affected} 个 Document`);
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
       clear();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "批量删除失败");
     } finally {
       setBulkDeleting(false);
     }
   };
 
+  const handleBulkUpdate = async (ids: string[], data: Record<string, unknown>) => {
+    setBulkUpdating(true);
+    try {
+      const affected = await bulkUpdateDocuments(dbId, collId, {
+        document_ids: ids,
+        data,
+      });
+      toast.success(`已更新 ${affected} 个 Document`);
+      queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "批量更新失败");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   return (
-    <ResourceListPage
-      cardTitle="文档"
-      searchPlaceholder="搜索 Document ID 或字段内容..."
-      isLoading={isLoading}
-      items={documents}
-      columns={columns}
+    <>
+      <ResourceListPage
+        cardTitle="文档"
+        searchPlaceholder="搜索 Document ID 或字段内容..."
+        isLoading={isLoading}
+        items={documents}
+        columns={columns}
       getSearchText={getSearchText}
       toolbarActions={
         readonly ? undefined : (
@@ -1065,11 +1255,24 @@ function DocumentListSection({
         readonly
           ? undefined
           : (selected, clear) => (
-              <BulkDeleteButton
-                count={selected.length}
-                loading={bulkDeleting}
-                onConfirm={() => handleBulkDelete(selected, clear)}
-              />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setBulkUpdateIds(selected.map((d) => d.id));
+                    setBulkUpdateOpen(true);
+                  }}
+                >
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  批量更新 ({selected.length})
+                </Button>
+                <BulkDeleteButton
+                  count={selected.length}
+                  loading={bulkDeleting}
+                  onConfirm={() => handleBulkDelete(selected, clear)}
+                />
+              </div>
             )
       }
       detailPath={(d) =>
@@ -1095,6 +1298,79 @@ function DocumentListSection({
         )
       }
     />
+    <BulkUpdateDialog
+      open={bulkUpdateOpen}
+      onOpenChange={setBulkUpdateOpen}
+      loading={bulkUpdating}
+      count={bulkUpdateIds.length}
+      onSubmit={(data) => handleBulkUpdate(bulkUpdateIds, data)}
+    />
+    </>
+  );
+}
+
+function BulkUpdateDialog({
+  open,
+  onOpenChange,
+  loading,
+  count,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  loading: boolean;
+  count: number;
+  onSubmit: (data: Record<string, unknown>) => void;
+}) {
+  const [json, setJson] = useState("{}");
+
+  useEffect(() => {
+    if (open) setJson("{}");
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>批量更新 Document</DialogTitle>
+          <DialogDescription>
+            将 JSON 中的字段合并写入选中的 {count} 个 Document；留空的字段不会改动。
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            let data: Record<string, unknown>;
+            try {
+              data = JSON.parse(json) as Record<string, unknown>;
+            } catch {
+              toast.error("JSON 格式无效");
+              return;
+            }
+            onSubmit(data);
+            setJson("{}");
+            onOpenChange(false);
+          }}
+          className="space-y-4"
+        >
+          <FormField
+            id="bulk-json"
+            label="字段 (JSON)"
+            value={json}
+            onChange={setJson}
+            placeholder='{"status":"published"}'
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              取消
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "更新中..." : "更新"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1255,6 +1531,7 @@ export function DocumentDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [increments, setIncrements] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
 
   const { data: collection } = useQuery({
@@ -1285,12 +1562,25 @@ export function DocumentDetailPage() {
   }, [collection, document, initialized]);
 
   const save = useMutation({
-    mutationFn: () =>
-      updateDocument(dbId!, collId!, docId!, {
+    mutationFn: () => {
+      const increment: Record<string, number> = {};
+      for (const attr of collection?.attributes ?? []) {
+        const delta = increments[attr.key]?.trim();
+        if (!delta) continue;
+        const n = Number.parseInt(delta, 10);
+        if (Number.isNaN(n)) {
+          throw new Error(`增量必须是整数: ${attr.key}`);
+        }
+        if (n !== 0) increment[attr.key] = n;
+      }
+      return updateDocument(dbId!, collId!, docId!, {
         data: buildDocumentData(collection!.attributes, values),
-      }),
+        increment: Object.keys(increment).length > 0 ? increment : undefined,
+      });
+    },
     onSuccess: () => {
       toast.success("Document 已更新");
+      setIncrements({});
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId, docId] });
     },
@@ -1345,6 +1635,29 @@ export function DocumentDetailPage() {
               values={values}
               onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
             />
+            {collection.attributes.some((a) => a.type === "integer" || a.type === "float") && (
+              <div className="rounded-lg border p-4 space-y-3">
+                <p className="text-sm font-medium">字段自增</p>
+                <p className="text-xs text-muted-foreground">
+                  对数值字段做原子增减，不覆盖当前值；保存后立即生效（增量必须为整数）。
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {collection.attributes
+                    .filter((a) => a.type === "integer" || a.type === "float")
+                    .map((attr) => (
+                      <FormField
+                        key={attr.key}
+                        id={`inc-${attr.key}`}
+                        label={`${attr.key} Δ`}
+                        value={increments[attr.key] ?? ""}
+                        onChange={(v) => setIncrements((prev) => ({ ...prev, [attr.key]: v }))}
+                        placeholder="如 1、-1"
+                        type="number"
+                      />
+                    ))}
+                </div>
+              </div>
+            )}
             <Button type="submit" disabled={save.isPending}>
               {save.isPending ? "保存中..." : "保存"}
             </Button>
