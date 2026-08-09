@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { Link, useNavigate, useParams, useOutletContext } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -96,6 +96,9 @@ const INDEX_TYPES = [
 ] as const;
 
 const STRING_LIKE_TYPES = new Set(["string", "email", "url"]);
+
+// 与 internal/app/server/databases.go 的 maxBulkOperations 保持一致
+const MAX_BULK_OPERATIONS = 1000;
 
 function AttributeList({
   attributes,
@@ -565,7 +568,11 @@ function EditCollectionDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit({ name: name.trim() || undefined, disabled });
+            if (!name.trim()) {
+              toast.error("名称不能为空");
+              return;
+            }
+            onSubmit({ name: name.trim(), disabled });
           }}
           className="space-y-4"
         >
@@ -965,7 +972,6 @@ export function CollectionDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["collections", dbId, collId] });
       queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
     },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   const removeIndex = useMutation({
@@ -975,7 +981,6 @@ export function CollectionDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["collections", dbId, collId] });
       queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
     },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   const updateSettings = useMutation({
@@ -987,7 +992,6 @@ export function CollectionDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
       setSettingsDialogOpen(false);
     },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   if (isLoading) return <DetailSkeleton />;
@@ -1166,6 +1170,7 @@ function DocumentListSection({
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
   const [bulkUpdateIds, setBulkUpdateIds] = useState<string[]>([]);
+  const clearRef = useRef<(() => void) | null>(null);
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ["documents", dbId, collId],
     queryFn: () => listDocuments(dbId, collId),
@@ -1199,6 +1204,10 @@ function DocumentListSection({
   );
 
   const handleBulkDelete = async (selected: Document[], clear: () => void) => {
+    if (selected.length > MAX_BULK_OPERATIONS) {
+      toast.error(`单次批量操作最多 ${MAX_BULK_OPERATIONS} 个 Document`);
+      return;
+    }
     setBulkDeleting(true);
     try {
       const affected = await bulkDeleteDocuments(
@@ -1209,14 +1218,16 @@ function DocumentListSection({
       toast.success(`已删除 ${affected} 个 Document`);
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
       clear();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "批量删除失败");
     } finally {
       setBulkDeleting(false);
     }
   };
 
-  const handleBulkUpdate = async (ids: string[], data: Record<string, unknown>) => {
+  const handleBulkUpdate = async (
+    ids: string[],
+    data: Record<string, unknown>,
+    clear: () => void
+  ) => {
     setBulkUpdating(true);
     try {
       const affected = await bulkUpdateDocuments(dbId, collId, {
@@ -1225,8 +1236,8 @@ function DocumentListSection({
       });
       toast.success(`已更新 ${affected} 个 Document`);
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "批量更新失败");
+      clear();
+      setBulkUpdateOpen(false);
     } finally {
       setBulkUpdating(false);
     }
@@ -1240,8 +1251,8 @@ function DocumentListSection({
         isLoading={isLoading}
         items={documents}
         columns={columns}
-      getSearchText={getSearchText}
-      toolbarActions={
+        getSearchText={getSearchText}
+        toolbarActions={
         readonly ? undefined : (
           <Button asChild size="sm">
             <Link to={`/console/databases/${dbId}/collections/${collId}/documents/new`}>
@@ -1260,6 +1271,7 @@ function DocumentListSection({
                   size="sm"
                   variant="outline"
                   onClick={() => {
+                    clearRef.current = clear;
                     setBulkUpdateIds(selected.map((d) => d.id));
                     setBulkUpdateOpen(true);
                   }}
@@ -1303,7 +1315,7 @@ function DocumentListSection({
       onOpenChange={setBulkUpdateOpen}
       loading={bulkUpdating}
       count={bulkUpdateIds.length}
-      onSubmit={(data) => handleBulkUpdate(bulkUpdateIds, data)}
+      onSubmit={(data) => handleBulkUpdate(bulkUpdateIds, data, clearRef.current ?? (() => {}))}
     />
     </>
   );
@@ -1334,22 +1346,28 @@ function BulkUpdateDialog({
         <DialogHeader>
           <DialogTitle>批量更新 Document</DialogTitle>
           <DialogDescription>
-            将 JSON 中的字段合并写入选中的 {count} 个 Document；留空的字段不会改动。
+            将 JSON 中的字段合并写入选中的 {count} 个 Document（单次最多 {MAX_BULK_OPERATIONS} 个）；留空的字段不会改动。
           </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            let data: Record<string, unknown>;
+            let data: unknown;
             try {
-              data = JSON.parse(json) as Record<string, unknown>;
+              data = JSON.parse(json);
             } catch {
               toast.error("JSON 格式无效");
               return;
             }
-            onSubmit(data);
-            setJson("{}");
-            onOpenChange(false);
+            if (data === null || typeof data !== "object" || Array.isArray(data)) {
+              toast.error("必须是 JSON 对象，如 {\"status\":\"published\"}");
+              return;
+            }
+            if (Object.keys(data).length === 0) {
+              toast.error("至少填写一个字段");
+              return;
+            }
+            onSubmit(data as Record<string, unknown>);
           }}
           className="space-y-4"
         >
@@ -1567,8 +1585,8 @@ export function DocumentDetailPage() {
       for (const attr of collection?.attributes ?? []) {
         const delta = increments[attr.key]?.trim();
         if (!delta) continue;
-        const n = Number.parseInt(delta, 10);
-        if (Number.isNaN(n)) {
+        const n = Number(delta);
+        if (!Number.isInteger(n)) {
           throw new Error(`增量必须是整数: ${attr.key}`);
         }
         if (n !== 0) increment[attr.key] = n;
@@ -1645,15 +1663,19 @@ export function DocumentDetailPage() {
                   {collection.attributes
                     .filter((a) => a.type === "integer" || a.type === "float")
                     .map((attr) => (
-                      <FormField
-                        key={attr.key}
-                        id={`inc-${attr.key}`}
-                        label={`${attr.key} Δ`}
-                        value={increments[attr.key] ?? ""}
-                        onChange={(v) => setIncrements((prev) => ({ ...prev, [attr.key]: v }))}
-                        placeholder="如 1、-1"
-                        type="number"
-                      />
+                      <div key={attr.key} className="space-y-2">
+                        <Label htmlFor={`inc-${attr.key}`}>{attr.key} Δ</Label>
+                        <Input
+                          id={`inc-${attr.key}`}
+                          value={increments[attr.key] ?? ""}
+                          onChange={(e) =>
+                            setIncrements((prev) => ({ ...prev, [attr.key]: e.target.value }))
+                          }
+                          placeholder="如 1、-1"
+                          type="number"
+                          step="any"
+                        />
+                      </div>
                     ))}
                 </div>
               </div>
