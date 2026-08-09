@@ -43,6 +43,7 @@ import {
   DocumentDetailPage,
 } from "@/routes/databases/pages";
 import { SettingsPage } from "@/routes/settings/pages";
+import { AdminsListPage } from "@/routes/admins/pages";
 import { CollectionLayout } from "@/routes/databases/CollectionLayout";
 
 const queryClient = new QueryClient({
@@ -85,6 +86,8 @@ function AppRoutes() {
         <Route path="projects/:id" element={<ProjectDetailPage />} />
 
         <Route path="settings" element={<SettingsPage />} />
+
+        <Route path="admins" element={<AdminsListPage />} />
 
         <Route path="api-keys" element={<ApiKeysListPage />} />
         <Route path="api-keys/new" element={<ApiKeyNewPage />} />

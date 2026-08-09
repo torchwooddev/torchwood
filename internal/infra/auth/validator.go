@@ -138,6 +138,7 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 			UserID:          admin.ID,
 			Email:           admin.Email,
 			Roles:           []string{admin.Role},
+			Permissions:     []string{"console"},
 		}, nil
 	default:
 		if claims.SessionID != "" && claims.ProjectID != "" {

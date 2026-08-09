@@ -94,7 +94,9 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases)
 	consoleAuth := console.NewAuth(appConfig, consoleAdminRepository, redisAdminTokenRevokeStore, redisLoginThrottle, redisRefreshRotationStore)
 	authService := consolegrpc.NewAuthService(consoleAuth)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, authService)
+	admins := console.NewAdmins(consoleAdminRepository)
+	adminsService := consolegrpc.NewAdminsService(admins)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

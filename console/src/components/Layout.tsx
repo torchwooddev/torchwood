@@ -4,17 +4,35 @@ import { useAuth } from "@/hooks/useAuth";
 import { ProjectBootstrap } from "@/components/ProjectBootstrap";
 import { ProjectSelector } from "@/components/ProjectSelector";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Key, Users, Database, HardDrive, LogOut, Menu, X, UsersRound, Settings } from "lucide-react";
+import { LayoutDashboard, Key, Users, Database, HardDrive, LogOut, Menu, X, UsersRound, Settings, ShieldCheck, FolderKanban } from "lucide-react";
 
-const nav = [
-  { to: "/console", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/console/projects", label: "Projects", icon: Database },
-  { to: "/console/settings", label: "Settings", icon: Settings },
-  { to: "/console/api-keys", label: "API Keys", icon: Key },
-  { to: "/console/users", label: "Users", icon: Users },
-  { to: "/console/teams", label: "Teams", icon: UsersRound },
-  { to: "/console/storage", label: "Storage", icon: HardDrive },
-  { to: "/console/databases", label: "Databases", icon: Database },
+const navSections = [
+  {
+    items: [{ to: "/console", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    title: "Develop",
+    items: [
+      { to: "/console/api-keys", label: "API Keys", icon: Key },
+      { to: "/console/databases", label: "Databases", icon: Database },
+      { to: "/console/storage", label: "Storage", icon: HardDrive },
+    ],
+  },
+  {
+    title: "Auth",
+    items: [
+      { to: "/console/users", label: "Users", icon: Users },
+      { to: "/console/teams", label: "Teams", icon: UsersRound },
+    ],
+  },
+  {
+    title: "System",
+    items: [
+      { to: "/console/projects", label: "Projects", icon: FolderKanban },
+      { to: "/console/admins", label: "Admins", icon: ShieldCheck },
+      { to: "/console/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 export function Layout() {
@@ -92,23 +110,32 @@ function SidebarContent({
         <ProjectSelector />
       </div>
       <nav className="flex-1 p-4 space-y-1">
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === "/console"}
-            onClick={onNavigate}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`
-            }
-          >
-            <item.icon className="h-4 w-4" />
-            {item.label}
-          </NavLink>
+        {navSections.map((section) => (
+          <div key={section.title ?? "main"} className="space-y-1">
+            {section.title && (
+              <div className="px-3 pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                {section.title}
+              </div>
+            )}
+            {section.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/console"}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`
+                }
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
       <div className="p-4 border-t">

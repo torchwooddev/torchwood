@@ -22,6 +22,11 @@ type APIKeyRepository interface {
 type ConsoleAdminRepository interface {
 	GetConsoleAdmin(ctx context.Context, id string) (*ConsoleAdmin, error)
 	GetConsoleAdminByEmail(ctx context.Context, email string) (*ConsoleAdmin, error)
+	ListConsoleAdmins(ctx context.Context) ([]ConsoleAdmin, error)
+	CreateConsoleAdmin(ctx context.Context, admin *ConsoleAdmin) error
+	UpdateConsoleAdmin(ctx context.Context, admin *ConsoleAdmin) error
+	DeleteConsoleAdmin(ctx context.Context, id string) error
+	CountConsoleAdminsByRole(ctx context.Context, role string) (int64, error)
 }
 
 type ProjectResolver interface {

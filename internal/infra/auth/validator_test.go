@@ -77,6 +77,21 @@ func (r *stubAdminRepo) GetConsoleAdmin(_ context.Context, id string) (*projects
 func (r *stubAdminRepo) GetConsoleAdminByEmail(context.Context, string) (*projects.ConsoleAdmin, error) {
 	return nil, nil
 }
+func (r *stubAdminRepo) ListConsoleAdmins(context.Context) ([]projects.ConsoleAdmin, error) {
+	return nil, nil
+}
+func (r *stubAdminRepo) CreateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+	return nil
+}
+func (r *stubAdminRepo) UpdateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+	return nil
+}
+func (r *stubAdminRepo) DeleteConsoleAdmin(context.Context, string) error {
+	return nil
+}
+func (r *stubAdminRepo) CountConsoleAdminsByRole(context.Context, string) (int64, error) {
+	return 1, nil
+}
 
 type stubAdminProjectRepo struct {
 	access map[string]map[string]struct{}

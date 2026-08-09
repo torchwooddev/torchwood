@@ -1,0 +1,202 @@
+package console
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/password"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// ConsoleAdminRole 是 console_admins.role 的合法取值。
+const (
+	ConsoleAdminRoleOwner  = "owner"
+	ConsoleAdminRoleAdmin  = "admin"
+	ConsoleAdminRoleMember = "member"
+	ConsoleAdminRoleViewer = "viewer"
+)
+
+var validConsoleAdminRoles = map[string]struct{}{
+	ConsoleAdminRoleOwner:  {},
+	ConsoleAdminRoleAdmin:  {},
+	ConsoleAdminRoleMember: {},
+	ConsoleAdminRoleViewer: {},
+}
+
+// Admins 管理系统管理员；写操作的调用者身份（callerID）由 transport 层
+// 从 principal 传入，use case 内完成业务级保护（最后 owner、自我保护）。
+type Admins struct {
+	repo projects.ConsoleAdminRepository
+}
+
+func NewAdmins(repo projects.ConsoleAdminRepository) *Admins {
+	return &Admins{repo: repo}
+}
+
+type CreateAdminCommand struct {
+	Email    string
+	Password string
+	Role     string
+}
+
+type UpdateAdminCommand struct {
+	ID       string
+	CallerID string
+	Role     string
+	Password string // 非空则重置密码
+}
+
+func (a *Admins) List(ctx context.Context) ([]projects.ConsoleAdmin, error) {
+	admins, err := a.repo.ListConsoleAdmins(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list admins: %v", err)
+	}
+	return admins, nil
+}
+
+func (a *Admins) Get(ctx context.Context, id string) (*projects.ConsoleAdmin, error) {
+	admin, err := a.repo.GetConsoleAdmin(ctx, id)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "get admin: %v", err)
+	}
+	if admin == nil {
+		return nil, status.Error(codes.NotFound, "admin not found")
+	}
+	return admin, nil
+}
+
+func (a *Admins) Create(ctx context.Context, cmd CreateAdminCommand) (*projects.ConsoleAdmin, error) {
+	email := normalizeAdminEmail(cmd.Email)
+	if email == "" {
+		return nil, status.Error(codes.InvalidArgument, "email is required")
+	}
+	if err := validateAdminRole(cmd.Role); err != nil {
+		return nil, err
+	}
+	if err := users.ValidatePasswordStrength(cmd.Password); err != nil {
+		return nil, err
+	}
+	existing, err := a.repo.GetConsoleAdminByEmail(ctx, email)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "check admin email: %v", err)
+	}
+	if existing != nil {
+		return nil, status.Error(codes.AlreadyExists, "admin email already registered")
+	}
+	hash, err := password.Hash(cmd.Password)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "hash password: %v", err)
+	}
+	now := time.Now()
+	admin := &projects.ConsoleAdmin{
+		ID:           idgen.UUID().String(),
+		Email:        email,
+		PasswordHash: hash,
+		Role:         cmd.Role,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := a.repo.CreateConsoleAdmin(ctx, admin); err != nil {
+		return nil, status.Errorf(codes.Internal, "create admin: %v", err)
+	}
+	return admin, nil
+}
+
+func (a *Admins) Update(ctx context.Context, cmd UpdateAdminCommand) (*projects.ConsoleAdmin, error) {
+	if cmd.ID == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is required")
+	}
+	admin, err := a.repo.GetConsoleAdmin(ctx, cmd.ID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "get admin: %v", err)
+	}
+	if admin == nil {
+		return nil, status.Error(codes.NotFound, "admin not found")
+	}
+
+	if cmd.Role != "" && cmd.Role != admin.Role {
+		if err := validateAdminRole(cmd.Role); err != nil {
+			return nil, err
+		}
+		if cmd.CallerID == admin.ID {
+			return nil, status.Error(codes.InvalidArgument, "cannot change your own role")
+		}
+		// 防止把最后一个 owner 降级导致系统失去管理入口。
+		if admin.Role == ConsoleAdminRoleOwner {
+			if err := a.ensureNotLastOwner(ctx, admin.ID); err != nil {
+				return nil, err
+			}
+		}
+		admin.Role = cmd.Role
+	}
+
+	if cmd.Password != "" {
+		if err := users.ValidatePasswordStrength(cmd.Password); err != nil {
+			return nil, err
+		}
+		hash, err := password.Hash(cmd.Password)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "hash password: %v", err)
+		}
+		admin.PasswordHash = hash
+	}
+
+	admin.UpdatedAt = time.Now()
+	if err := a.repo.UpdateConsoleAdmin(ctx, admin); err != nil {
+		return nil, status.Errorf(codes.Internal, "update admin: %v", err)
+	}
+	return admin, nil
+}
+
+func (a *Admins) Delete(ctx context.Context, id, callerID string) error {
+	if id == "" {
+		return status.Error(codes.InvalidArgument, "id is required")
+	}
+	admin, err := a.repo.GetConsoleAdmin(ctx, id)
+	if err != nil {
+		return status.Errorf(codes.Internal, "get admin: %v", err)
+	}
+	if admin == nil {
+		return status.Error(codes.NotFound, "admin not found")
+	}
+	if callerID != "" && admin.ID == callerID {
+		return status.Error(codes.InvalidArgument, "cannot delete your own account")
+	}
+	if admin.Role == ConsoleAdminRoleOwner {
+		if err := a.ensureNotLastOwner(ctx, admin.ID); err != nil {
+			return err
+		}
+	}
+	if err := a.repo.DeleteConsoleAdmin(ctx, id); err != nil {
+		return status.Errorf(codes.Internal, "delete admin: %v", err)
+	}
+	return nil
+}
+
+// ensureNotLastOwner 拒绝删除/降级系统中最后一个 owner。
+func (a *Admins) ensureNotLastOwner(ctx context.Context, exceptID string) error {
+	count, err := a.repo.CountConsoleAdminsByRole(ctx, ConsoleAdminRoleOwner)
+	if err != nil {
+		return status.Errorf(codes.Internal, "count owners: %v", err)
+	}
+	if count <= 1 {
+		return status.Error(codes.FailedPrecondition, "cannot remove the last owner")
+	}
+	return nil
+}
+
+func validateAdminRole(role string) error {
+	if _, ok := validConsoleAdminRoles[role]; !ok {
+		return status.Errorf(codes.InvalidArgument, "invalid role %q (allowed: owner, admin, member, viewer)", role)
+	}
+	return nil
+}
+
+func normalizeAdminEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}

@@ -70,6 +70,29 @@ func (r *stubAdminRepo) GetConsoleAdminByEmail(_ context.Context, email string) 
 	return nil, nil
 }
 
+func (r *stubAdminRepo) ListConsoleAdmins(context.Context) ([]projects.ConsoleAdmin, error) {
+	if r.admin == nil {
+		return nil, nil
+	}
+	return []projects.ConsoleAdmin{*r.admin}, nil
+}
+
+func (r *stubAdminRepo) CreateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+	return nil
+}
+
+func (r *stubAdminRepo) UpdateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+	return nil
+}
+
+func (r *stubAdminRepo) DeleteConsoleAdmin(context.Context, string) error {
+	return nil
+}
+
+func (r *stubAdminRepo) CountConsoleAdminsByRole(context.Context, string) (int64, error) {
+	return 1, nil
+}
+
 var _ projects.ConsoleAdminRepository = (*stubAdminRepo)(nil)
 
 func newSignInService(t *testing.T, cfg *config.AppConfig) *AuthService {

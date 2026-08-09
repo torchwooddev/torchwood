@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-09（Server Users 管理完整落地：创建用户、完整字段更新、会话/令牌管理、密码重置、模拟登录，见 §2.2）。
+> 最新更新：2026-08-09（Console 系统管理员管理落地：Admins 页面 CRUD、角色/密码管理、owner 权限保护；侧边栏菜单按功能域分组，见 §2.8）。
 
 ---
 
@@ -212,12 +212,14 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 | 任务 | 说明 | 页面 | 状态 |
 |------|------|------|------|
+| 系统管理员管理 | 管理员 CRUD、角色与密码管理、owner 权限保护；`ConsoleAdminsService`（`GET/POST/PATCH/DELETE /v1/console/admins`） | `console/src/routes/admins/`、`proto/console/v1/admins.proto` | ✅ 完成 |
 | Storage 文件上传 | 在 Storage 页面直接上传文件、展示下载链接 | `console/src/routes/storage/` | ✅ 完成 |
 | Databases 文档编辑器 | collection 下文档列表、新增/编辑/删除 | `console/src/routes/databases/` | ✅ 完成 |
 | Attributes / Indexes 管理 | 在 collection 详情中增删属性与索引 | Databases 子页面 | 待办 |
 | Teams Memberships | 管理团队邀请与成员 | `console/src/routes/teams/` | ✅ 完成 |
 | Functions 管理 | Functions / Deployments / Executions 页面 | 新增 `Functions.tsx` | 待办 |
 | Settings 占位 | 项目基本信息、OAuth、SMTP（只读或简单表单） | 新增 `Settings.tsx` | 待办 |
+| 侧边栏菜单分组 | Dashboard 置顶；Develop（API Keys/Databases/Storage）、Auth（Users/Teams）、System（Projects/Admins/Settings）分组 | `console/src/components/Layout.tsx` | ✅ 完成 |
 
 **验收标准**：
 
@@ -416,6 +418,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [ ] Storage preview、公开 bucket、file token 可用。
 - [ ] Functions 可上传代码、构建、同步/异步执行。
 - [x] Admin Console 覆盖 Database 文档编辑、Teams 页面。
+- [x] Admin Console 覆盖系统管理员管理（Admins 页面，owner 权限保护）。
 - [ ] Admin Console 覆盖 Functions、Settings 页面。
 - [ ] CI 绿，集成测试覆盖核心流程。
 

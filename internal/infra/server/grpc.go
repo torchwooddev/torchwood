@@ -42,6 +42,7 @@ func NewGRPCServer(
 	teams *servergrpc.TeamsService,
 	databases *servergrpc.DatabasesService,
 	consoleAuth *consolegrpc.AuthService,
+	consoleAdmins *consolegrpc.AdminsService,
 ) (*lynxgrpc.Server, error) {
 	grpcCfg := cfg.GetServer().GetGrpc()
 	timeout := parseDuration(grpcCfg.GetTimeout(), 30*time.Second)
@@ -59,6 +60,7 @@ func NewGRPCServer(
 		serverv1.File_server_v1_teams_proto,
 		serverv1.File_server_v1_databases_proto,
 		consolev1.File_console_v1_auth_proto,
+		consolev1.File_console_v1_admins_proto,
 	)
 	if err != nil {
 		return nil, err
@@ -99,6 +101,7 @@ func NewGRPCServer(
 	serverv1.RegisterTeamsServiceServer(grpcSrv, teams)
 	serverv1.RegisterDatabasesServiceServer(grpcSrv, databases)
 	consolev1.RegisterConsoleAuthServiceServer(grpcSrv, consoleAuth)
+	consolev1.RegisterConsoleAdminsServiceServer(grpcSrv, consoleAdmins)
 
 	// fail-closed：所有已注册方法都必须带有 authz 注解，缺失的方法会在拦截器里被放行。
 	if err := assertRegisteredMethodsHaveAuthz(grpcSrv, publicMethods, apiKeyMethods, permissionMethods); err != nil {

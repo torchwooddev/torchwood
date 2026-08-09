@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package torchwood.console.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/console/v1;consolev1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// ConsoleAdminsService 管理系统管理员（console_admins 表）。
+// 权限模型：owner/admin 角色可查看列表；创建、修改、删除仅 owner 可执行。
+// 方法与 client/server API 不同，这里直接使用 console admin role 作为权限串。
+service ConsoleAdminsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_PERMISSION };
+
+  rpc GetCurrentAdmin(GetCurrentAdminRequest) returns (Admin) {
+    option (google.api.http) = { get: "/v1/console/admins/me" };
+    option (torchwood.shared.v1.method_auth) = {
+      access: ACCESS_PERMISSION
+      permissions: ["console"]
+    };
+  }
+
+  rpc ListAdmins(ListAdminsRequest) returns (ListAdminsResponse) {
+    option (google.api.http) = { get: "/v1/console/admins" };
+    option (torchwood.shared.v1.method_auth) = {
+      access: ACCESS_PERMISSION
+      permissions: ["owner", "admin"]
+    };
+  }
+
+  rpc CreateAdmin(CreateAdminRequest) returns (Admin) {
+    option (google.api.http) = { post: "/v1/console/admins", body: "*" };
+    option (torchwood.shared.v1.method_auth) = {
+      access: ACCESS_PERMISSION
+      permissions: ["owner"]
+    };
+  }
+
+  rpc UpdateAdmin(UpdateAdminRequest) returns (Admin) {
+    option (google.api.http) = { patch: "/v1/console/admins/{id}", body: "*" };
+    option (torchwood.shared.v1.method_auth) = {
+      access: ACCESS_PERMISSION
+      permissions: ["owner"]
+    };
+  }
+
+  rpc DeleteAdmin(DeleteAdminRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/console/admins/{id}" };
+    option (torchwood.shared.v1.method_auth) = {
+      access: ACCESS_PERMISSION
+      permissions: ["owner"]
+    };
+  }
+}
+
+message GetCurrentAdminRequest {}
+
+message ListAdminsRequest {}
+
+message ListAdminsResponse {
+  repeated Admin admins = 1;
+}
+
+message CreateAdminRequest {
+  string email = 1;
+  string password = 2;
+  string role = 3;
+}
+
+message UpdateAdminRequest {
+  string id = 1;
+  string role = 2;
+  string password = 3; // 非空则重置密码
+}
+
+message DeleteAdminRequest {
+  string id = 1;
+}
+
+message Admin {
+  string id = 1;
+  string email = 2;
+  string role = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}

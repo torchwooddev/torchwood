@@ -23,4 +23,5 @@ var ProviderSet = wire.NewSet(
 	serverhttp.NewFileHandler,
 	serverhttp.NewOAuthHandler,
 	consolegrpc.NewAuthService,
+	consolegrpc.NewAdminsService,
 )

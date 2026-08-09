@@ -286,7 +286,24 @@ LIMIT 10;
 
 ---
 
-## 13. 已知不在本次验收范围
+## 13. Console 系统管理员管理（P1）
+
+**认证**：Console 会话 cookie（`admin@torchwood.local / Admin@123` 登录），API 基址 `http://localhost:9099`。
+
+| # | 验收项 | 路径 / 方法 | 预期结果 | 通过 |
+|---|--------|-------------|----------|------|
+| 13.1 | 当前账户 | `GET /v1/console/admins/me` | 返回自身 email/role | [ ] |
+| 13.2 | 管理员列表 | `GET /v1/console/admins`（owner 或 admin 角色） | 返回全部管理员（不含密码哈希） | [ ] |
+| 13.3 | 新建管理员 | `POST /v1/console/admins`，body `{"email","password","role"}` | 创建成功；密码强度不足 / 邮箱重复返回 4xx | [ ] |
+| 13.4 | 改角色 / 重置密码 | `PATCH /v1/console/admins/{id}` | 仅 owner 可调用；admin 角色调用返回 403 | [ ] |
+| 13.5 | 删除管理员 | `DELETE /v1/console/admins/{id}` | 仅 owner；删除自己返回 400 | [ ] |
+| 13.6 | 最后 owner 保护 | 唯一 owner 尝试删除/降级自己 | `FailedPrecondition`（无法移除最后一个 owner） | [ ] |
+| 13.7 | Console 页面 | 侧边栏 System 分组 → Admins 页面 | 列表、新建、编辑、删除可用；非 owner 不显示增删改入口 | [ ] |
+| 13.8 | 侧边栏菜单分组 | 打开 Console | Dashboard 置顶；Develop / Auth / System 分组；Projects、Admins、Settings 在 System 分组 | [ ] |
+
+---
+
+## 14. 已知不在本次验收范围
 
 以下能力在 `docs/archived/completed-tasks.md` §13 中标记为**未实现或占位**，验收时**不应**作为通过标准：
 
@@ -301,9 +318,10 @@ LIMIT 10;
 
 ---
 
-## 14. 验收结论
+## 15. 验收结论
 
 > **状态（2026-06-20）**：P0 §0–§10 已通过自动化测试；**P1 §2.12–§12.6、§3.9–§3.10、§4.18–§4.24 待人工验收**。
+> **状态（2026-08-09）**：§13 Console 系统管理员管理 + 侧边栏菜单分组已实现并通过端到端验证。
 
 | 结论 | 勾选 |
 |------|------|

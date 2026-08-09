@@ -23,6 +23,7 @@ var ProviderSet = wire.NewSet(
 	server.NewTeams,
 	server.NewDatabases,
 	console.NewAuth,
+	console.NewAdmins,
 	storage.NewStorage,
 	functions.NewFunctions,
 )
