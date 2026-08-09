@@ -63,7 +63,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 		docDB,
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
 	require.NoError(t, err)
 
 	mux := runtime.NewServeMux()
@@ -285,7 +285,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 		docDB,
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
 	require.NoError(t, err)
 	mux := runtime.NewServeMux()
 	handler.Register(mux)
@@ -388,7 +388,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 		docDB,
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
 	require.NoError(t, err)
 	mux := runtime.NewServeMux()
 	handler.Register(mux)
@@ -450,7 +450,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 		docDB,
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
 	require.NoError(t, err)
 	mux := runtime.NewServeMux()
 	handler.Register(mux)

@@ -62,6 +62,7 @@ func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
 type HealthCheckResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Dependencies  []*DependencyStatus    `protobuf:"bytes,2,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -103,17 +104,192 @@ func (x *HealthCheckResponse) GetStatus() string {
 	return ""
 }
 
+func (x *HealthCheckResponse) GetDependencies() []*DependencyStatus {
+	if x != nil {
+		return x.Dependencies
+	}
+	return nil
+}
+
+type DependencyStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DependencyStatus) Reset() {
+	*x = DependencyStatus{}
+	mi := &file_server_v1_health_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DependencyStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DependencyStatus) ProtoMessage() {}
+
+func (x *DependencyStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_health_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DependencyStatus.ProtoReflect.Descriptor instead.
+func (*DependencyStatus) Descriptor() ([]byte, []int) {
+	return file_server_v1_health_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DependencyStatus) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DependencyStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *DependencyStatus) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type GetVersionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVersionRequest) Reset() {
+	*x = GetVersionRequest{}
+	mi := &file_server_v1_health_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVersionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVersionRequest) ProtoMessage() {}
+
+func (x *GetVersionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_health_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVersionRequest.ProtoReflect.Descriptor instead.
+func (*GetVersionRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_health_proto_rawDescGZIP(), []int{3}
+}
+
+type GetVersionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	Commit        string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`
+	Date          string                 `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetVersionResponse) Reset() {
+	*x = GetVersionResponse{}
+	mi := &file_server_v1_health_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetVersionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetVersionResponse) ProtoMessage() {}
+
+func (x *GetVersionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_health_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetVersionResponse.ProtoReflect.Descriptor instead.
+func (*GetVersionResponse) Descriptor() ([]byte, []int) {
+	return file_server_v1_health_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetVersionResponse) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *GetVersionResponse) GetCommit() string {
+	if x != nil {
+		return x.Commit
+	}
+	return ""
+}
+
+func (x *GetVersionResponse) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
 var File_server_v1_health_proto protoreflect.FileDescriptor
 
 const file_server_v1_health_proto_rawDesc = "" +
 	"\n" +
 	"\x16server/v1/health.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x15shared/v1/authz.proto\"\x14\n" +
-	"\x12HealthCheckRequest\"-\n" +
+	"\x12HealthCheckRequest\"x\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status2\x87\x01\n" +
-	"\rHealthService\x12n\n" +
-	"\x05Check\x12'.torchwood.server.v1.HealthCheckRequest\x1a(.torchwood.server.v1.HealthCheckResponse\"\x12\x82\xd3\xe4\x93\x02\f\x12\n" +
-	"/v1/health\x1a\x06\x92\xb2\x19\x02\b\x01B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x06status\x18\x01 \x01(\tR\x06status\x12I\n" +
+	"\fdependencies\x18\x02 \x03(\v2%.torchwood.server.v1.DependencyStatusR\fdependencies\"T\n" +
+	"\x10DependencyStatus\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\x13\n" +
+	"\x11GetVersionRequest\"Z\n" +
+	"\x12GetVersionResponse\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
+	"\x06commit\x18\x02 \x01(\tR\x06commit\x12\x12\n" +
+	"\x04date\x18\x03 \x01(\tR\x04date2\xa0\x02\n" +
+	"\rHealthService\x12\x83\x01\n" +
+	"\x05Check\x12'.torchwood.server.v1.HealthCheckRequest\x1a(.torchwood.server.v1.HealthCheckResponse\"'\x82\xd3\xe4\x93\x02!Z\x13\x12\x11/v1/server/health\x12\n" +
+	"/v1/health\x12\x80\x01\n" +
+	"\n" +
+	"GetVersion\x12&.torchwood.server.v1.GetVersionRequest\x1a'.torchwood.server.v1.GetVersionResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/server/health/version\x1a\x06\x92\xb2\x19\x02\b\x01B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_health_proto_rawDescOnce sync.Once
@@ -127,19 +303,25 @@ func file_server_v1_health_proto_rawDescGZIP() []byte {
 	return file_server_v1_health_proto_rawDescData
 }
 
-var file_server_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_server_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_server_v1_health_proto_goTypes = []any{
 	(*HealthCheckRequest)(nil),  // 0: torchwood.server.v1.HealthCheckRequest
 	(*HealthCheckResponse)(nil), // 1: torchwood.server.v1.HealthCheckResponse
+	(*DependencyStatus)(nil),    // 2: torchwood.server.v1.DependencyStatus
+	(*GetVersionRequest)(nil),   // 3: torchwood.server.v1.GetVersionRequest
+	(*GetVersionResponse)(nil),  // 4: torchwood.server.v1.GetVersionResponse
 }
 var file_server_v1_health_proto_depIdxs = []int32{
-	0, // 0: torchwood.server.v1.HealthService.Check:input_type -> torchwood.server.v1.HealthCheckRequest
-	1, // 1: torchwood.server.v1.HealthService.Check:output_type -> torchwood.server.v1.HealthCheckResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: torchwood.server.v1.HealthCheckResponse.dependencies:type_name -> torchwood.server.v1.DependencyStatus
+	0, // 1: torchwood.server.v1.HealthService.Check:input_type -> torchwood.server.v1.HealthCheckRequest
+	3, // 2: torchwood.server.v1.HealthService.GetVersion:input_type -> torchwood.server.v1.GetVersionRequest
+	1, // 3: torchwood.server.v1.HealthService.Check:output_type -> torchwood.server.v1.HealthCheckResponse
+	4, // 4: torchwood.server.v1.HealthService.GetVersion:output_type -> torchwood.server.v1.GetVersionResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_server_v1_health_proto_init() }
@@ -153,7 +335,7 @@ func file_server_v1_health_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_health_proto_rawDesc), len(file_server_v1_health_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

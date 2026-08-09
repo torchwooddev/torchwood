@@ -15,6 +15,7 @@ import (
 	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
+	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,6 +28,7 @@ type GRPCGatewayServer struct {
 func NewGRPCGatewayServer(
 	app lynx.App,
 	cfg *config.AppConfig,
+	checkers *health.Checkers,
 	fileHandler *serverhttp.FileHandler,
 	oauthHandler *serverhttp.OAuthHandler,
 	functionsHandler *serverhttp.FunctionsHandler,
@@ -92,10 +94,18 @@ func NewGRPCGatewayServer(
 	})
 
 	if cors := httpCfg.GetCors(); cors != nil {
-		combined = CORSMiddleware(cors)(combined)
+		combined = CORSMiddleware(cors, app.Logger())(combined)
 	}
 
-	return &GRPCGatewayServer{lynxhttp.NewServer(combined, lynxhttp.WithAddr(httpCfg.GetAddr()), lynxhttp.WithTimeout(timeout))}, nil
+	return &GRPCGatewayServer{lynxhttp.NewServer(combined,
+		lynxhttp.WithAddr(httpCfg.GetAddr()),
+		lynxhttp.WithTimeout(timeout),
+		// /healthz/readiness 依赖 checkers（任一失败 503）；请求日志为
+		// Debug 级（lynx requestlog），需 --log-level debug 可见。
+		lynxhttp.WithHealthCheckers(func() []lynx.Checker { return checkers.Deps() }),
+		lynxhttp.WithLogger(app.Logger()),
+		lynxhttp.WithRequestLog(true),
+	)}, nil
 }
 
 func portFromAddr(addr string) string {

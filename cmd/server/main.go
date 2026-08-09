@@ -11,7 +11,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
-var version string
+var version, commit, date string
 
 func main() {
 	_ = godotenv.Load()

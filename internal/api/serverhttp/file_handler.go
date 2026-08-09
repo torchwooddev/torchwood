@@ -55,12 +55,16 @@ func NewFileHandler(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	storage *storage.Storage,
+	logger *slog.Logger,
 ) (*FileHandler, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	trusted, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
-	return &FileHandler{cfg: cfg, validator: validator, storage: storage, trusted: trusted, logger: slog.Default()}, nil
+	return &FileHandler{cfg: cfg, validator: validator, storage: storage, trusted: trusted, logger: logger}, nil
 }
 
 // clientIP 与 gRPC ClientInfoInterceptor 走同一 trusted-proxy 规则。

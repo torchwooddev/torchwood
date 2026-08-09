@@ -39,12 +39,16 @@ func NewFunctionsHandler(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	functions *appfunctions.Functions,
+	logger *slog.Logger,
 ) (*FunctionsHandler, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	trusted, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
-	return &FunctionsHandler{cfg: cfg, validator: validator, functions: functions, trusted: trusted, logger: slog.Default()}, nil
+	return &FunctionsHandler{cfg: cfg, validator: validator, functions: functions, trusted: trusted, logger: logger}, nil
 }
 
 // Register attaches the deployment upload route to the gateway mux.

@@ -1,7 +1,7 @@
 package server
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,14 +9,17 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
-func CORSMiddleware(cfg *config.Http_Cors) func(http.Handler) http.Handler {
+func CORSMiddleware(cfg *config.Http_Cors, logger *slog.Logger) func(http.Handler) http.Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	allowed := cfg.GetAllowOrigins()
 	credentials := cfg.GetAllowCredentials()
 	if credentials {
 		filtered := make([]string, 0, len(allowed))
 		for _, o := range allowed {
 			if o == "*" {
-				log.Printf("[cors] warning: allow_credentials=true with wildcard origin is invalid per CORS spec; ignoring %q", o)
+				logger.Warn("cors: allow_credentials=true with wildcard origin is invalid per CORS spec; ignoring origin", "origin", o)
 				continue
 			}
 			filtered = append(filtered, o)

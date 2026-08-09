@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	infrafunctions "github.com/torchwooddev/torchwood/internal/infra/functions"
+	"github.com/torchwooddev/torchwood/internal/infra/health"
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
 	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
@@ -20,6 +21,7 @@ var ProviderSet = wire.NewSet(
 	clients.NewDataClients,
 	clients.NewDatabase,
 	clients.NewRedis,
+	health.NewCheckers,
 
 	auth.NewValidator,
 	auth.NewSessionService,

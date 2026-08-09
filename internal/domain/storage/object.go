@@ -47,4 +47,6 @@ type ObjectStore interface {
 	Get(ctx context.Context, bucket, key string) (io.ReadCloser, error)
 	// Delete removes an object.
 	Delete(ctx context.Context, bucket, key string) error
+	// Ping probes connectivity to the underlying store.
+	Ping(ctx context.Context) error
 }

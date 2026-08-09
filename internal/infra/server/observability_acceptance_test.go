@@ -39,7 +39,7 @@ func TestObservability_CORS(t *testing.T) {
 		AllowCredentials: true,
 		MaxAge:           86400,
 	}
-	handler := CORSMiddleware(corsCfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := CORSMiddleware(corsCfg, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

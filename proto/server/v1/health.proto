@@ -11,7 +11,13 @@ service HealthService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_PUBLIC };
 
   rpc Check(HealthCheckRequest) returns (HealthCheckResponse) {
-    option (google.api.http) = { get: "/v1/health" };
+    option (google.api.http) = {
+      get: "/v1/health"
+      additional_bindings { get: "/v1/server/health" }
+    };
+  }
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse) {
+    option (google.api.http) = { get: "/v1/server/health/version" };
   }
 }
 
@@ -19,4 +25,19 @@ message HealthCheckRequest {}
 
 message HealthCheckResponse {
   string status = 1;
+  repeated DependencyStatus dependencies = 2;
+}
+
+message DependencyStatus {
+  string name = 1;
+  string status = 2;
+  string error = 3;
+}
+
+message GetVersionRequest {}
+
+message GetVersionResponse {
+  string version = 1;
+  string commit = 2;
+  string date = 3;
 }

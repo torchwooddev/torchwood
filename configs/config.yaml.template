@@ -31,6 +31,7 @@ data:
   database:
     source: ""              # env: TORCHWOOD_DATA_DATABASE_SOURCE
     debug: true
+    slow_query_threshold: "500ms"   # 慢查询日志阈值；"0" 禁用；env: TORCHWOOD_DATA_DATABASE_SLOW_QUERY_THRESHOLD
     pool:
       max_idle_conns: 4
       max_open_conns: 16

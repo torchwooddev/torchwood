@@ -17,6 +17,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
+	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"google.golang.org/grpc"
@@ -30,6 +31,7 @@ func NewGRPCServer(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	auditRepo audit.Repository,
+	checkers *health.Checkers,
 	account *clientgrpc.AccountService,
 	clientDatabases *clientgrpc.DatabasesService,
 	clientTeams *clientgrpc.TeamsService,
@@ -72,6 +74,7 @@ func NewGRPCServer(
 	if err != nil {
 		return nil, err
 	}
+	authInterceptor = authInterceptor.WithLogger(app.Logger())
 	auditInterceptor := interceptor.NewAuditInterceptor(auditRepo)
 	trustedProxies, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
 	if err != nil {
@@ -83,6 +86,8 @@ func NewGRPCServer(
 		lynxgrpc.WithAddr(grpcCfg.GetAddr()),
 		lynxgrpc.WithTimeout(timeout),
 		lynxgrpc.WithLogger(app.Logger()),
+		// 轮询 checkers 并同步 grpc.health.v1.Health（10s 周期快照）。
+		lynxgrpc.WithHealthCheckers(func() []lynx.Checker { return checkers.Deps() }),
 		lynxgrpc.WithInterceptors(
 			clientInfoInterceptor.UnaryMiddleware,
 			authInterceptor.UnaryAuthMiddleware,

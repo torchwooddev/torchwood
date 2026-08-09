@@ -26,7 +26,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		return nil, nil, err
 	}
 	executor := functions.NewDockerExecutor(appConfig)
-	dataClients, cleanup, err := clients.NewDataClients(appConfig)
+	logger := NewLogger(app)
+	dataClients, cleanup, err := clients.NewDataClients(appConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -35,7 +36,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	client := clients.NewRedis(dataClients)
 	sharedQueue := queue.NewRedisQueue(client)
 	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
-	worker := NewWorker(functionsFunctions, sharedQueue)
+	worker := NewWorker(functionsFunctions, sharedQueue, logger)
 	v := NewComponents(worker)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)

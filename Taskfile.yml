@@ -120,11 +120,15 @@ tasks:
     deps:
       - console-build
     cmds:
-      - go build -ldflags "-X main.Version={{.VERSION}}" -o ./bin/ ./cmd/server
-      - go build -ldflags "-X main.Version={{.VERSION}}" -o ./bin/ ./cmd/worker
+      - go build -ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o ./bin/ ./cmd/server
+      - go build -ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o ./bin/ ./cmd/worker
     vars:
       VERSION:
         sh: git describe --tags --always
+      COMMIT:
+        sh: git rev-parse --short HEAD
+      DATE:
+        sh: '{{if eq .OS "Windows_NT"}}powershell -NoProfile -Command Get-Date -Format "yyyyMMddHHmmss"{{else}}date +%Y%m%d%H%M%S{{end}}'
 
   test:
     dir: '{{.USER_WORKING_DIR}}'

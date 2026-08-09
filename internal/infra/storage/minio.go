@@ -92,6 +92,11 @@ func (m *minioObjectStore) Delete(ctx context.Context, bucket, key string) error
 	return m.client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
 }
 
+func (m *minioObjectStore) Ping(ctx context.Context) error {
+	_, err := m.client.BucketExists(ctx, m.bucketName())
+	return err
+}
+
 func (m *minioObjectStore) bucketName() string {
 	if m.bucket != "" {
 		return m.bucket

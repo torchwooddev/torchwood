@@ -66,4 +66,8 @@ func (m *MemObjectStore) Delete(_ context.Context, bucket, key string) error {
 	return nil
 }
 
+func (m *MemObjectStore) Ping(_ context.Context) error {
+	return nil
+}
+
 var _ domainstorage.ObjectStore = (*MemObjectStore)(nil)

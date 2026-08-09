@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"runtime"
 	"strings"
@@ -25,9 +26,9 @@ type DataClients struct {
 	RDB *redis.Client
 }
 
-func NewDataClients(cfg *config.AppConfig) (*DataClients, func(), error) {
+func NewDataClients(cfg *config.AppConfig, logger *slog.Logger) (*DataClients, func(), error) {
 	ctx := context.Background()
-	db, closeDb, err := newDatabase(cfg.GetData().GetDatabase())
+	db, closeDb, err := newDatabase(cfg.GetData().GetDatabase(), logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -55,7 +56,7 @@ func NewRedis(dataClients *DataClients) *redis.Client {
 	return dataClients.RDB
 }
 
-func newDatabase(cfg *config.Database) (*Database, func(), error) {
+func newDatabase(cfg *config.Database, logger *slog.Logger) (*Database, func(), error) {
 	source := strings.TrimSpace(cfg.GetSource())
 	if source == "" {
 		return nil, func() {}, fmt.Errorf("database source is empty: set data.database.source or TORCHWOOD_DATA_DATABASE_SOURCE")
@@ -89,8 +90,8 @@ func newDatabase(cfg *config.Database) (*Database, func(), error) {
 		_ = db.Close()
 		return nil, func() {}, fmt.Errorf("database ping failed: %w", err)
 	}
-	if cfg.GetDebug() {
-		// TODO: add query hook if needed
+	if hook := NewSlowQueryHook(cfg.GetSlowQueryThreshold(), cfg.GetDebug(), logger); hook != nil {
+		db.AddQueryHook(hook)
 	}
 	return &Database{db}, func() { _ = db.Close() }, nil
 }

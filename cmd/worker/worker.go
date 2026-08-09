@@ -32,11 +32,14 @@ type Worker struct {
 }
 
 // NewWorker creates the functions execution queue consumer.
-func NewWorker(functions *appfunctions.Functions, queue domainshared.Queue) *Worker {
+func NewWorker(functions *appfunctions.Functions, queue domainshared.Queue, logger *slog.Logger) *Worker {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Worker{
 		functions: functions,
 		queue:     queue,
-		logger:    slog.Default(),
+		logger:    logger,
 		workers:   workerConcurrency,
 	}
 }

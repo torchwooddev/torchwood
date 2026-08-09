@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log/slog"
 
 	"github.com/google/wire"
 	"github.com/lynx-go/lynx"
@@ -20,6 +21,7 @@ var ProviderSet = wire.NewSet(
 	infra.ProviderSet,
 	domain.ProviderSet,
 
+	NewLogger,
 	NewComponents,
 	NewComponentBuilders,
 	NewOnStarts,
@@ -27,6 +29,11 @@ var ProviderSet = wire.NewSet(
 	NewAppConfig,
 	NewWorker,
 )
+
+// NewLogger 暴露 app 装配的 *slog.Logger（zap 后端），供各层构造器注入。
+func NewLogger(app lynx.App) *slog.Logger {
+	return app.Logger()
+}
 
 func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	var c config.AppConfig

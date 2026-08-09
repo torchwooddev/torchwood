@@ -23,6 +23,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
+	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/messaging"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
@@ -39,7 +40,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	dataClients, cleanup, err := clients.NewDataClients(appConfig)
+	logger := NewLogger(app)
+	dataClients, cleanup, err := clients.NewDataClients(appConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -53,6 +55,12 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	userRoles := client.NewUserRoles(documentDB)
 	validator := auth.NewValidator(appConfig, apiKeyRepository, consoleAdminRepository, consoleAdminProjectRepository, redisAdminTokenRevokeStore, documentDB, userRoles)
 	repository := bunrepo.NewAuditRepository(database)
+	objectStore, err := storage.NewMinioObjectStore(appConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	checkers := health.NewCheckers(database, redisClient, objectStore)
 	projectsRepository := bunrepo.NewProjectRepository(database)
 	oAuthProviderRepository := bunrepo.NewOAuthProviderRepository(database, appConfig)
 	redisRefreshRotationStore := auth.NewRedisRefreshRotationStore(redisClient)
@@ -78,14 +86,10 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	teams := server.NewTeams(projectsRepository, documentDB)
 	clientTeams := client.NewTeams(teams, documentDB)
 	teamsService := clientgrpc.NewTeamsService(clientTeams)
-	healthService := servergrpc.NewHealthService()
+	buildInfo := NewBuildInfo()
+	healthService := servergrpc.NewHealthService(checkers, buildInfo)
 	projects := server.NewProjects(projectsRepository, documentDB, database)
 	projectsService := servergrpc.NewProjectsService(projects)
-	objectStore, err := storage.NewMinioObjectStore(appConfig)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
 	storageStorage := storage2.NewStorage(appConfig, projectsRepository, documentDB, objectStore)
 	storageService := servergrpc.NewStorageService(storageStorage)
 	users := server.NewUsers(projectsRepository, documentDB, sessionService)
@@ -106,12 +110,12 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	authService := consolegrpc.NewAuthService(consoleAuth)
 	admins := console.NewAdmins(consoleAdminRepository)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, authService, adminsService)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, checkers, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	fileHandler, err := serverhttp.NewFileHandler(appConfig, validator, storageStorage)
+	fileHandler, err := serverhttp.NewFileHandler(appConfig, validator, storageStorage, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -121,12 +125,12 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	functionsHandler, err := serverhttp.NewFunctionsHandler(appConfig, validator, functionsFunctions)
+	functionsHandler, err := serverhttp.NewFunctionsHandler(appConfig, validator, functionsFunctions, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, fileHandler, oAuthHandler, functionsHandler)
+	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, checkers, fileHandler, oAuthHandler, functionsHandler)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
