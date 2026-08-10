@@ -892,11 +892,15 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		if err != nil {
 			return err
 		}
-		if coll != nil {
+		if coll == nil {
+			if err := p.CreateCollection(ctx, projectID, dbID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
+				return fmt.Errorf("create system collection %s: %w", id, err)
+			}
 			continue
 		}
-		if err := p.CreateCollection(ctx, projectID, dbID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
-			return fmt.Errorf("create system collection %s: %w", id, err)
+		// 集合已存在 → 幂等补齐缺失属性（存量项目迁移：物理列 + 目录元数据）。
+		if err := p.reconcileSystemCollectionAttrs(ctx, projectID, dbID, id, coll, spec); err != nil {
+			return err
 		}
 	}
 	// 存量项目 keys 写权限收窄（安全评审 C1 第 3 层 / M2 存量迁移）：幂等清理
@@ -909,6 +913,30 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		p.keysPermsCleaned.Store(projectID, struct{}{})
 	}
 	p.bootstrapCache.Store(projectID, struct{}{})
+	return nil
+}
+
+// reconcileSystemCollectionAttrs 幂等补齐存量系统集合中 spec 有而集合缺的属性：
+// 直接调 CreateAttribute（infra 层无系统集合守卫，ADD COLUMN IF NOT EXISTS 幂等，
+// 一步完成物理列 + document_attributes 元数据）。按属性 Key 比对（存量行 ID 可能
+// 不符 {collection}_{key} 约定）；只修"任一缺失"方向，不做反向校验。并发时元数据
+// INSERT 撞唯一约束（23505）属正常竞态，忽略。
+func (p *postgresDocumentDB) reconcileSystemCollectionAttrs(ctx context.Context, projectID, databaseID, collectionID string, coll *databases.Collection, spec systemCollectionSpec) error {
+	existing := make(map[string]struct{}, len(coll.Attributes))
+	for _, a := range coll.Attributes {
+		existing[a.Key] = struct{}{}
+	}
+	for _, attr := range spec.attrs {
+		if _, ok := existing[attr.Key]; ok {
+			continue
+		}
+		if err := p.CreateAttribute(ctx, projectID, databaseID, collectionID, attr); err != nil {
+			if isUniqueViolation(err) {
+				continue
+			}
+			return fmt.Errorf("reconcile attribute %s on system collection %s: %w", attr.Key, collectionID, err)
+		}
+	}
 	return nil
 }
 
@@ -1022,6 +1050,12 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 	cols = append(cols, "PRIMARY KEY (_tenant, _id)")
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n\t\t%s\n\t)", tableName(schema, collectionID), strings.Join(cols, ",\n\t\t"))
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
+	if err != nil && isUniqueViolation(err) {
+		// 并发建同名表时 PG 可能在 pg_type 类型注册上撞唯一约束（既有竞态，
+		// EnsureSystemCollections 并发首请求触发）：表已由另一事务建成，
+		// 重试一次即变为幂等 no-op。
+		_, err = p.conn(ctx).ExecContext(ctx, sql)
+	}
 	return err
 }
 

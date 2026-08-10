@@ -5,6 +5,7 @@ package torchwood.server.v1;
 option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
 
 import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
@@ -26,6 +27,14 @@ service TeamsService {
 
   rpc DeleteTeam(GetTeamRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/server/teams/{id}" };
+  }
+
+  rpc GetTeamPrefs(GetTeamRequest) returns (GetTeamPrefsResponse) {
+    option (google.api.http) = { get: "/v1/server/teams/{id}/prefs" };
+  }
+
+  rpc UpdateTeamPrefs(UpdateTeamPrefsRequest) returns (GetTeamPrefsResponse) {
+    option (google.api.http) = { put: "/v1/server/teams/{id}/prefs", body: "*" };
   }
 
   rpc CreateMembership(CreateMembershipRequest) returns (Membership) {
@@ -65,6 +74,15 @@ message GetTeamRequest {
 message ListTeamsResponse {
   repeated Team teams = 1;
   shared.v1.ListResponseMeta meta = 2;
+}
+
+message GetTeamPrefsResponse {
+  google.protobuf.Struct prefs = 1;
+}
+
+message UpdateTeamPrefsRequest {
+  string id = 1;
+  google.protobuf.Struct prefs = 2;
 }
 
 message Team {

@@ -61,6 +61,8 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.TeamsService/UpdateMembership":       {"teams", "write"},
 	"/torchwood.server.v1.TeamsService/UpdateMembershipStatus": {"teams", "write"},
 	"/torchwood.server.v1.TeamsService/DeleteMembership":       {"teams", "write"},
+	"/torchwood.server.v1.TeamsService/GetTeamPrefs":           {"teams", "read"},
+	"/torchwood.server.v1.TeamsService/UpdateTeamPrefs":        {"teams", "write"},
 	// StorageService
 	"/torchwood.server.v1.StorageService/CreateBucket":    {"storage", "write"},
 	"/torchwood.server.v1.StorageService/UpdateBucket":    {"storage", "write"},

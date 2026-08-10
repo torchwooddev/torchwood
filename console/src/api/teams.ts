@@ -42,6 +42,21 @@ export async function deleteTeam(id: string): Promise<void> {
   await api.delete(`/server/teams/${id}`);
 }
 
+export async function getTeamPrefs(id: string): Promise<Record<string, unknown>> {
+  const res = await api.get<{ prefs: Record<string, unknown> }>(`/server/teams/${id}/prefs`);
+  return res.data.prefs ?? {};
+}
+
+export async function updateTeamPrefs(
+  id: string,
+  prefs: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const res = await api.put<{ prefs: Record<string, unknown> }>(`/server/teams/${id}/prefs`, {
+    prefs,
+  });
+  return res.data.prefs ?? {};
+}
+
 export async function listMemberships(teamId: string): Promise<Membership[]> {
   const res = await api.get<{ memberships: Membership[] }>(
     `/server/teams/${teamId}/memberships`

@@ -11,6 +11,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -90,6 +91,41 @@ func (s *TeamsService) DeleteTeam(ctx context.Context, req *serverv1.GetTeamRequ
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
+}
+
+func (s *TeamsService) GetTeamPrefs(ctx context.Context, req *serverv1.GetTeamRequest) (*serverv1.GetTeamPrefsResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	prefs, err := s.teams.GetTeamPrefs(ctx, projectID, req.GetId(), dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	data, err := structpb.NewStruct(prefs)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "prefs is not serializable")
+	}
+	return &serverv1.GetTeamPrefsResponse{Prefs: data}, nil
+}
+
+func (s *TeamsService) UpdateTeamPrefs(ctx context.Context, req *serverv1.UpdateTeamPrefsRequest) (*serverv1.GetTeamPrefsResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	if req.GetPrefs() == nil {
+		return nil, status.Error(codes.InvalidArgument, "prefs is required")
+	}
+	prefs, err := s.teams.UpdateTeamPrefs(ctx, projectID, req.GetId(), req.GetPrefs().AsMap(), dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	data, err := structpb.NewStruct(prefs)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "prefs is not serializable")
+	}
+	return &serverv1.GetTeamPrefsResponse{Prefs: data}, nil
 }
 
 func (s *TeamsService) CreateMembership(ctx context.Context, req *serverv1.CreateMembershipRequest) (*serverv1.Membership, error) {

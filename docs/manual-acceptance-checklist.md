@@ -154,6 +154,7 @@ curl -s -X POST http://localhost:8088/v1/console/auth/sign-in \
 | 4.22 | 成员状态（管理员） | `PATCH .../memberships/{id}/status`，body `{"status":"accepted"}` | 仅当邮箱对应用户已注册时成功 | [ ] |
 | 4.23 | 成员角色 | `PATCH .../memberships/{id}`，body `{"roles":["admin"]}` | roles 更新成功 | [ ] |
 | 4.24 | 删除团队级联 | `DELETE /v1/server/teams/{id}` | team 及 memberships 均被删除 | [ ] |
+| 4.25 | 团队偏好 | `GET` / `PUT /v1/server/teams/{id}/prefs` | 未设置返回 `{}`；PUT 整体替换并返回更新值；无团队角色的 users 主体 PUT 返回 403 | [ ] |
 
 ---
 
@@ -309,7 +310,6 @@ LIMIT 10;
 
 - [ ] 密码重置、邮箱验证、OAuth、MFA、匿名登录
 - [ ] Server 侧创建用户、sessions/tokens 管理、impersonation
-- [ ] Teams prefs（`GET/PUT /v1/server/teams/{id}/prefs`）
 - [ ] Document 批量写、relationship、transaction
 - [ ] Storage 分片上传、缩略图、file token
 - [ ] Functions 真实 Docker 执行

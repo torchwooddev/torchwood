@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/teams"
@@ -122,6 +123,43 @@ func (t *Teams) GetTeam(ctx context.Context, projectID, teamID string, principal
 		return nil, err
 	}
 	return t.docDB.GetDocument(ctx, projectID, "default", "teams", teamID, principal)
+}
+
+func (t *Teams) GetTeamPrefs(ctx context.Context, projectID, teamID string, principal databases.Principal) (map[string]any, error) {
+	if _, err := t.resolveProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	doc, err := t.getTeamDoc(ctx, projectID, teamID, principal)
+	if err != nil {
+		return nil, err
+	}
+	if prefs, ok := doc.Data["prefs"].(map[string]any); ok {
+		return prefs, nil
+	}
+	return map[string]any{}, nil
+}
+
+func (t *Teams) UpdateTeamPrefs(ctx context.Context, projectID, teamID string, prefs map[string]any, principal databases.Principal) (map[string]any, error) {
+	if _, err := t.resolveProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	if prefs == nil {
+		return nil, status.Error(codes.InvalidArgument, "prefs is required")
+	}
+	if _, err := t.getTeamDoc(ctx, projectID, teamID, principal); err != nil {
+		return nil, err
+	}
+	updated, err := t.docDB.UpdateDocument(ctx, projectID, "default", "teams", databases.SimpleDocumentUpdate(databases.Document{
+		ID:   teamID,
+		Data: map[string]any{"prefs": prefs},
+	}, nil), principal)
+	if err != nil {
+		return nil, appshared.MapDocumentDBError(err)
+	}
+	if out, ok := updated.Data["prefs"].(map[string]any); ok {
+		return out, nil
+	}
+	return map[string]any{}, nil
 }
 
 func (t *Teams) DeleteTeam(ctx context.Context, projectID, teamID string, principal databases.Principal) error {

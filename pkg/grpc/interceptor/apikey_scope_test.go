@@ -140,6 +140,31 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	if APIKeyScopeAllowed(updateProject, []string{"users"}) {
 		t.Fatal("unrelated scope must NOT allow UpdateProject")
 	}
+
+	// Teams prefs：GetTeamPrefs 需要 teams.read，UpdateTeamPrefs 需要 teams.write。
+	getTeamPrefs := "/torchwood.server.v1.TeamsService/GetTeamPrefs"
+	updateTeamPrefs := "/torchwood.server.v1.TeamsService/UpdateTeamPrefs"
+	if !APIKeyScopeAllowed(getTeamPrefs, []string{"teams.read"}) {
+		t.Fatal("teams.read scope should allow GetTeamPrefs")
+	}
+	if APIKeyScopeAllowed(getTeamPrefs, []string{"teams.write"}) {
+		t.Fatal("teams.write scope must NOT allow GetTeamPrefs")
+	}
+	if APIKeyScopeAllowed(updateTeamPrefs, []string{"teams.read"}) {
+		t.Fatal("teams.read scope must NOT allow UpdateTeamPrefs")
+	}
+	if !APIKeyScopeAllowed(updateTeamPrefs, []string{"teams.write"}) {
+		t.Fatal("teams.write scope should allow UpdateTeamPrefs")
+	}
+	if !APIKeyScopeAllowed(getTeamPrefs, []string{"teams"}) {
+		t.Fatal("bare teams scope should allow GetTeamPrefs")
+	}
+	if !APIKeyScopeAllowed(updateTeamPrefs, []string{"teams"}) {
+		t.Fatal("bare teams scope should allow UpdateTeamPrefs")
+	}
+	if APIKeyScopeAllowed(updateTeamPrefs, []string{"users"}) {
+		t.Fatal("unrelated scope must NOT allow UpdateTeamPrefs")
+	}
 }
 
 func TestValidAPIKeyScope(t *testing.T) {

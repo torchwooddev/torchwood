@@ -91,14 +91,14 @@ CREATE TABLE IF NOT EXISTS "TORCHWOOD_1_default"."_perms" (
 | `users` | email、password_hash、name、status、email_verified、phone、labels、prefs、factors | email 唯一、phone | Account / Server Users |
 | `sessions` | user_id、secret_hash、provider、user_agent、ip、expire_at | user_id | Account |
 | `identities` | user_id、provider、provider_uid、provider_email、provider_data | user_id、(provider,provider_uid) 唯一 | OAuth / OTP |
-| `teams` | name、permissions、total | name | Teams |
+| `teams` | name、permissions、total、prefs | name | Teams |
 | `memberships` | team_id、user_id、email、roles、status、invited_at、joined_at | team_id、user_id、email | Teams |
 | `buckets` | name、permissions、public | name | Storage |
 | `files` | bucket_id、name、mime_type、size、metadata | bucket_id、name fulltext | Storage |
 
 - `SensitiveSystemCollectionIDs`（users / sessions / identities）：Server API 仅 PlatformAdmin 可读（返回前脱敏），Client API 一律拒绝（走 Account 专用 API）。
 - `isWriteProtectedSystemCollection`（纵深防御）：`default` 库的 users/sessions/identities 禁止非 System 主体直接写；更新路径对文档 owner（`user:<id>` 匹配）放行，以支持 `UpdateAccount` / `UpdatePrefs` 自助路径。
-- `EnsureSystemCollections` 在项目首次使用时引导创建全部系统集合（幂等，进程内缓存 + `DO NOTHING`），并执行存量 `keys` 角色写权限收窄清理（`cleanupKeysWritePerms`：移除 users/sessions/identities 的 `update:keys` / `delete:keys`，teams/memberships 保留）。
+- `EnsureSystemCollections` 在项目首次使用时引导创建全部系统集合（幂等，进程内缓存 + `DO NOTHING`），并执行存量 `keys` 角色写权限收窄清理（`cleanupKeysWritePerms`：移除 users/sessions/identities 的 `update:keys` / `delete:keys`，teams/memberships 保留）；对**已存在**的存量集合按 spec 幂等补齐缺失属性（`reconcileSystemCollectionAttrs`：直接调 `CreateAttribute` 补物理列 + `document_attributes` 元数据，按属性 Key 比对，并发元数据 INSERT 撞唯一约束 23505 忽略）。
 
 ---
 

@@ -114,7 +114,7 @@ Sprint 1 已完成成员、邀请、角色与 Client/Console 页面；团队 pre
 | 成员 CRUD | 列出、创建、获取、更新、删除成员 | `/v1/server/teams/{id}/memberships` | ✅ 完成 |
 | 邀请流程 | 创建邀请 → 被邀请人接受/拒绝 | `POST` + `PATCH .../status` | ✅ 完成 |
 | 角色体系 | owner / admin / member → JWT `team:{id}`、`member:{id}` | `PATCH .../memberships/{id}` | ✅ 完成 |
-| 团队偏好 | `GET/PUT /v1/server/teams/{id}/prefs` | 扩展 `teams` 集合 | 待办 |
+| 团队偏好 | `GET/PUT /v1/server/teams/{id}/prefs` | 扩展 `teams` 集合 | ✅ 完成 |
 | Client Teams API | 当前用户创建/加入/退出团队 | `/v1/teams/*` | ✅ 完成 |
 | Console Teams | 团队列表、详情、邀请与成员管理 | `/console/teams` | ✅ 完成 |
 

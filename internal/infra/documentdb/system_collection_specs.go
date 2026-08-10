@@ -151,6 +151,7 @@ func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
 				{ID: "teams_name", Key: "name", Type: "string", Size: 256},
 				{ID: "teams_permissions", Key: "permissions", Type: "json"},
 				{ID: "teams_total", Key: "total", Type: "integer", Default: 0},
+				{ID: "teams_prefs", Key: "prefs", Type: "json"},
 			},
 			indexes: []databases.Index{
 				{ID: "teams_name", Type: "key", Attributes: []string{"name"}},

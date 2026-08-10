@@ -163,6 +163,72 @@
         ]
       }
     },
+    "/v1/server/teams/{id}/prefs": {
+      "get": {
+        "operationId": "TeamsService_GetTeamPrefs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetTeamPrefsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TeamsService"
+        ]
+      },
+      "put": {
+        "operationId": "TeamsService_UpdateTeamPrefs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetTeamPrefsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/TeamsServiceUpdateTeamPrefsBody"
+            }
+          }
+        ],
+        "tags": [
+          "TeamsService"
+        ]
+      }
+    },
     "/v1/server/teams/{teamId}/memberships": {
       "get": {
         "operationId": "TeamsService_ListMemberships",
@@ -421,6 +487,14 @@
         }
       }
     },
+    "TeamsServiceUpdateTeamPrefsBody": {
+      "type": "object",
+      "properties": {
+        "prefs": {
+          "type": "object"
+        }
+      }
+    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -429,6 +503,14 @@
         }
       },
       "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
     },
     "rpcStatus": {
       "type": "object",
@@ -600,6 +682,14 @@
     },
     "v1Empty": {
       "type": "object"
+    },
+    "v1GetTeamPrefsResponse": {
+      "type": "object",
+      "properties": {
+        "prefs": {
+          "type": "object"
+        }
+      }
     },
     "v1ListResponseMeta": {
       "type": "object",

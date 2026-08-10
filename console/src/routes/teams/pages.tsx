@@ -1,8 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, UserPlus } from "lucide-react";
+import { Plus, Settings2, UserPlus } from "lucide-react";
 import {
   listTeams,
   getTeam,
@@ -13,6 +13,8 @@ import {
   updateMembership,
   updateMembershipStatus,
   deleteMembership,
+  getTeamPrefs,
+  updateTeamPrefs,
   type Team,
   type Membership,
 } from "@/api/teams";
@@ -205,6 +207,79 @@ function MembershipRoleSelect({
   );
 }
 
+function TeamPrefsCard({ teamId }: { teamId: string }) {
+  const queryClient = useQueryClient();
+  const [prefsText, setPrefsText] = useState("{}");
+
+  const { data: prefs, isLoading } = useQuery({
+    queryKey: ["teams", teamId, "prefs"],
+    queryFn: () => getTeamPrefs(teamId),
+    enabled: !!teamId,
+  });
+
+  useEffect(() => {
+    if (prefs !== undefined) setPrefsText(JSON.stringify(prefs));
+  }, [prefs]);
+
+  const save = useMutation({
+    mutationFn: (data: Record<string, unknown>) => updateTeamPrefs(teamId, data),
+    onSuccess: (updated) => {
+      toast.success("团队偏好已保存");
+      setPrefsText(JSON.stringify(updated));
+      queryClient.invalidateQueries({ queryKey: ["teams", teamId, "prefs"] });
+    },
+  });
+
+  const handleSave = () => {
+    let data: unknown;
+    try {
+      data = JSON.parse(prefsText);
+    } catch {
+      toast.error("JSON 格式无效");
+      return;
+    }
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      toast.error("必须是 JSON 对象，如 {\"theme\":\"dark\"}");
+      return;
+    }
+    save.mutate(data as Record<string, unknown>);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Settings2 className="h-4 w-4" />
+          团队偏好
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          以 JSON 对象整体替换团队偏好（如主题、通知开关等），保存后即时生效。
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4 max-w-lg"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+        >
+          <FormField
+            id="team-prefs-json"
+            label="prefs (JSON)"
+            value={prefsText}
+            onChange={setPrefsText}
+            placeholder='{"theme":"dark"}'
+          />
+          <Button type="submit" disabled={isLoading || save.isPending}>
+            {save.isPending ? "保存中..." : "保存"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function TeamDetailPage() {
   const { id: teamId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -389,6 +464,8 @@ export function TeamDetailPage() {
           ]}
         />
       </DetailPageWrapper>
+
+      <TeamPrefsCard teamId={team.id} />
 
       <Card>
         <CardHeader>

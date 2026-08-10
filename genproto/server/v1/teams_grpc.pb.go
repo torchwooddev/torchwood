@@ -24,6 +24,8 @@ const (
 	TeamsService_ListTeams_FullMethodName              = "/torchwood.server.v1.TeamsService/ListTeams"
 	TeamsService_GetTeam_FullMethodName                = "/torchwood.server.v1.TeamsService/GetTeam"
 	TeamsService_DeleteTeam_FullMethodName             = "/torchwood.server.v1.TeamsService/DeleteTeam"
+	TeamsService_GetTeamPrefs_FullMethodName           = "/torchwood.server.v1.TeamsService/GetTeamPrefs"
+	TeamsService_UpdateTeamPrefs_FullMethodName        = "/torchwood.server.v1.TeamsService/UpdateTeamPrefs"
 	TeamsService_CreateMembership_FullMethodName       = "/torchwood.server.v1.TeamsService/CreateMembership"
 	TeamsService_ListMemberships_FullMethodName        = "/torchwood.server.v1.TeamsService/ListMemberships"
 	TeamsService_GetMembership_FullMethodName          = "/torchwood.server.v1.TeamsService/GetMembership"
@@ -40,6 +42,8 @@ type TeamsServiceClient interface {
 	ListTeams(ctx context.Context, in *v1.ListRequest, opts ...grpc.CallOption) (*ListTeamsResponse, error)
 	GetTeam(ctx context.Context, in *GetTeamRequest, opts ...grpc.CallOption) (*Team, error)
 	DeleteTeam(ctx context.Context, in *GetTeamRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	GetTeamPrefs(ctx context.Context, in *GetTeamRequest, opts ...grpc.CallOption) (*GetTeamPrefsResponse, error)
+	UpdateTeamPrefs(ctx context.Context, in *UpdateTeamPrefsRequest, opts ...grpc.CallOption) (*GetTeamPrefsResponse, error)
 	CreateMembership(ctx context.Context, in *CreateMembershipRequest, opts ...grpc.CallOption) (*Membership, error)
 	ListMemberships(ctx context.Context, in *ListMembershipsRequest, opts ...grpc.CallOption) (*ListMembershipsResponse, error)
 	GetMembership(ctx context.Context, in *GetMembershipRequest, opts ...grpc.CallOption) (*Membership, error)
@@ -90,6 +94,26 @@ func (c *teamsServiceClient) DeleteTeam(ctx context.Context, in *GetTeamRequest,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(v1.Empty)
 	err := c.cc.Invoke(ctx, TeamsService_DeleteTeam_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *teamsServiceClient) GetTeamPrefs(ctx context.Context, in *GetTeamRequest, opts ...grpc.CallOption) (*GetTeamPrefsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTeamPrefsResponse)
+	err := c.cc.Invoke(ctx, TeamsService_GetTeamPrefs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *teamsServiceClient) UpdateTeamPrefs(ctx context.Context, in *UpdateTeamPrefsRequest, opts ...grpc.CallOption) (*GetTeamPrefsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTeamPrefsResponse)
+	err := c.cc.Invoke(ctx, TeamsService_UpdateTeamPrefs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +188,8 @@ type TeamsServiceServer interface {
 	ListTeams(context.Context, *v1.ListRequest) (*ListTeamsResponse, error)
 	GetTeam(context.Context, *GetTeamRequest) (*Team, error)
 	DeleteTeam(context.Context, *GetTeamRequest) (*v1.Empty, error)
+	GetTeamPrefs(context.Context, *GetTeamRequest) (*GetTeamPrefsResponse, error)
+	UpdateTeamPrefs(context.Context, *UpdateTeamPrefsRequest) (*GetTeamPrefsResponse, error)
 	CreateMembership(context.Context, *CreateMembershipRequest) (*Membership, error)
 	ListMemberships(context.Context, *ListMembershipsRequest) (*ListMembershipsResponse, error)
 	GetMembership(context.Context, *GetMembershipRequest) (*Membership, error)
@@ -191,6 +217,12 @@ func (UnimplementedTeamsServiceServer) GetTeam(context.Context, *GetTeamRequest)
 }
 func (UnimplementedTeamsServiceServer) DeleteTeam(context.Context, *GetTeamRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteTeam not implemented")
+}
+func (UnimplementedTeamsServiceServer) GetTeamPrefs(context.Context, *GetTeamRequest) (*GetTeamPrefsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTeamPrefs not implemented")
+}
+func (UnimplementedTeamsServiceServer) UpdateTeamPrefs(context.Context, *UpdateTeamPrefsRequest) (*GetTeamPrefsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateTeamPrefs not implemented")
 }
 func (UnimplementedTeamsServiceServer) CreateMembership(context.Context, *CreateMembershipRequest) (*Membership, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateMembership not implemented")
@@ -299,6 +331,42 @@ func _TeamsService_DeleteTeam_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(TeamsServiceServer).DeleteTeam(ctx, req.(*GetTeamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TeamsService_GetTeamPrefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTeamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TeamsServiceServer).GetTeamPrefs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TeamsService_GetTeamPrefs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TeamsServiceServer).GetTeamPrefs(ctx, req.(*GetTeamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TeamsService_UpdateTeamPrefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateTeamPrefsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TeamsServiceServer).UpdateTeamPrefs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TeamsService_UpdateTeamPrefs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TeamsServiceServer).UpdateTeamPrefs(ctx, req.(*UpdateTeamPrefsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -433,6 +501,14 @@ var TeamsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteTeam",
 			Handler:    _TeamsService_DeleteTeam_Handler,
+		},
+		{
+			MethodName: "GetTeamPrefs",
+			Handler:    _TeamsService_GetTeamPrefs_Handler,
+		},
+		{
+			MethodName: "UpdateTeamPrefs",
+			Handler:    _TeamsService_UpdateTeamPrefs_Handler,
 		},
 		{
 			MethodName: "CreateMembership",
