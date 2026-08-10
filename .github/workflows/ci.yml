@@ -27,9 +27,22 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       TORCHWOOD_TEST_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/TORCHWOOD_test?sslmode=disable
       TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/postgres?sslmode=disable
+      TORCHWOOD_TEST_MINIO_ENDPOINT: http://localhost:9000
       TORCHWOOD_RUN_DOCKER_TESTS: "1"
     steps:
       - uses: actions/checkout@v4

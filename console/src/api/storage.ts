@@ -94,6 +94,94 @@ export async function uploadFile(
   return res.data;
 }
 
+// 分片上传常量：与后端 internal/domain/storage 的 DefaultChunkSize/MaxComposePartCount 一致。
+export const CHUNK_SIZE = 16 * 1024 * 1024;
+export const MAX_UPLOAD_SIZE = 10000 * CHUNK_SIZE;
+
+// shouldChunk 判断文件是否走分片上传（>16MiB）。
+export function shouldChunk(size: number): boolean {
+  return size > CHUNK_SIZE;
+}
+
+// isTooLarge 判断文件是否超过分片上传上限（156.25GB）。
+export function isTooLarge(size: number): boolean {
+  return size > MAX_UPLOAD_SIZE;
+}
+
+export interface UploadSession {
+  upload_id: string;
+  file_id: string;
+  chunk_size: number;
+  part_count: number;
+  expires_at: string;
+}
+
+export interface UploadProgress {
+  upload_id: string;
+  part_count: number;
+  received: number[];
+  chunk_size: number;
+}
+
+export async function createUploadSession(
+  bucketId: string,
+  input: {
+    name: string;
+    mime_type: string;
+    size: number;
+    metadata?: Record<string, string>;
+  }
+): Promise<UploadSession> {
+  const res = await api.post<UploadSession>(
+    `/storage/buckets/${bucketId}/uploads`,
+    input
+  );
+  return res.data;
+}
+
+export async function getUploadSession(
+  bucketId: string,
+  uploadId: string
+): Promise<UploadProgress> {
+  const res = await api.get<UploadProgress>(
+    `/storage/buckets/${bucketId}/uploads/${uploadId}`
+  );
+  return res.data;
+}
+
+export async function uploadChunk(
+  bucketId: string,
+  uploadId: string,
+  partNumber: number,
+  blob: Blob
+): Promise<{ part_number: number; received_count: number }> {
+  const form = new FormData();
+  form.append("chunk", blob);
+  const res = await api.post(
+    `/storage/buckets/${bucketId}/uploads/${uploadId}/chunks/${partNumber}`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return res.data;
+}
+
+export async function completeUpload(
+  bucketId: string,
+  uploadId: string
+): Promise<FileItem> {
+  const res = await api.post<FileItem>(
+    `/storage/buckets/${bucketId}/uploads/${uploadId}/complete`
+  );
+  return res.data;
+}
+
+export async function abortUpload(
+  bucketId: string,
+  uploadId: string
+): Promise<void> {
+  await api.delete(`/storage/buckets/${bucketId}/uploads/${uploadId}`);
+}
+
 function filenameFromDisposition(header: string | undefined): string | undefined {
   if (!header) return undefined;
   const encoded = header.match(/filename\*=UTF-8''([^;\n]+)/i);

@@ -17,20 +17,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
 
+// newUploadSessionStoreForTest 返回 miniredis 支撑的 UploadSessionStore。
+func newUploadSessionStoreForTest(t *testing.T) domainstorage.UploadSessionStore {
+	t.Helper()
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return infrastorage.NewRedisUploadSessionStore(rdb)
+}
+
 type storageHTTPFixture struct {
 	t         *testing.T
+	db        *clients.Database
 	projectID string
 	apiSecret string
 	handler   *FileHandler
@@ -53,7 +70,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	cfg := &config.AppConfig{}
 	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store)
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t))
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
@@ -85,6 +102,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 
 	return &storageHTTPFixture{
 		t:         t,
+		db:        db,
 		projectID: projectID,
 		apiSecret: apiSecret,
 		handler:   handler,
@@ -254,7 +272,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	storageUC := appstorage.NewStorage(cfg, projectRepo, docDB, store)
+	storageUC := appstorage.NewStorage(cfg, projectRepo, docDB, store, newUploadSessionStoreForTest(t))
 	account := client.NewTestAccount(cfg, projectRepo, docDB)
 
 	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
@@ -378,7 +396,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store)
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t))
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
@@ -389,7 +407,6 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
-	require.NoError(t, err)
 	mux := runtime.NewServeMux()
 	handler.Register(mux)
 	server := httptest.NewServer(mux)
@@ -435,7 +452,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store)
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t))
 	admin, adminCleanup := testutil.CreateTestConsoleAdmin(ctx, db, "member")
 	token, err := testutil.SignConsoleAdminToken(cfg, admin)
 	require.NoError(t, err)

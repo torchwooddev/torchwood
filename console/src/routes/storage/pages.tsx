@@ -19,9 +19,12 @@ import {
   downloadFile,
   filePreviewUrl,
   fileViewUrl,
+  shouldChunk,
+  isTooLarge,
   type Bucket,
   type FileItem,
 } from "@/api/storage";
+import { ChunkedUploader } from "@/routes/storage/chunked-uploader";
 import { useAuth } from "@/hooks/useAuth";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
@@ -209,6 +212,8 @@ export function BucketDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  // 分片上传中的文件（>16MiB 走 ChunkedUploader）。
+  const [chunkUpload, setChunkUpload] = useState<{ file: File; key: string } | null>(null);
 
   const { data: bucket, isLoading: bucketLoading } = useQuery({
     queryKey: ["buckets", bucketId],
@@ -339,6 +344,25 @@ export function BucketDetailPage() {
         </Card>
       </div>
 
+      {chunkUpload && (
+        <div className="rounded-lg border bg-card p-4">
+          <ChunkedUploader
+            key={chunkUpload.key}
+            bucketId={bucketId!}
+            file={chunkUpload.file}
+            onSuccess={() => {
+              toast.success("文件上传成功");
+              queryClient.invalidateQueries({ queryKey: ["files", bucketId] });
+              setChunkUpload(null);
+            }}
+            onError={(message) => {
+              toast.error(message);
+              setChunkUpload(null);
+            }}
+          />
+        </div>
+      )}
+
       <ResourceListPage
         title=""
         cardTitle="文件列表"
@@ -356,10 +380,17 @@ export function BucketDetailPage() {
               className="max-w-xs"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) {
-                  uploadMutation.mutate(file);
-                  e.target.value = "";
+                e.target.value = "";
+                if (!file) return;
+                if (isTooLarge(file.size)) {
+                  toast.error("文件超过 156.25GB 分片上传上限");
+                  return;
                 }
+                if (shouldChunk(file.size)) {
+                  setChunkUpload({ file, key: `${file.name}:${file.size}:${Date.now()}` });
+                  return;
+                }
+                uploadMutation.mutate(file);
               }}
             />
           </div>

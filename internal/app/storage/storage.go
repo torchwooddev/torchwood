@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ type Storage struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
 	store       storage.ObjectStore
+	uploads     storage.UploadSessionStore
 }
 
 func NewStorage(
@@ -32,8 +34,9 @@ func NewStorage(
 	projectRepo projects.Repository,
 	docDB databases.DocumentDB,
 	store storage.ObjectStore,
+	uploads storage.UploadSessionStore,
 ) *Storage {
-	return &Storage{cfg: cfg, projectRepo: projectRepo, docDB: docDB, store: store}
+	return &Storage{cfg: cfg, projectRepo: projectRepo, docDB: docDB, store: store, uploads: uploads}
 }
 
 type CreateBucketCommand struct {
@@ -164,6 +167,18 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 		}
 		pageToken = next
 		_ = total
+	}
+	// 按前缀清尾：删除 ListFiles 不可见的残留对象（孤儿分片、complete 失败遗留等）。
+	// 与上面的按文档删除有重叠，List+Delete 幂等。
+	objects, err := s.store.List(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, ""))
+	if err != nil {
+		slog.Warn("list objects for bucket cleanup failed", "bucket", bucketID, "error", err)
+	} else {
+		for _, obj := range objects {
+			if derr := s.store.Delete(ctx, defaultBucketName(s.cfg), obj.Key); derr != nil {
+				slog.Warn("delete object during bucket cleanup failed", "key", obj.Key, "error", derr)
+			}
+		}
 	}
 	return s.docDB.DeleteDocument(ctx, project.ID, "default", "buckets", bucketID, principal)
 }

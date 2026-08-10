@@ -9,12 +9,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/disintegration/imaging"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/torchwooddev/torchwood/internal/app/storage"
+	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
@@ -45,7 +46,7 @@ var inlineSafeMimeTypes = map[string]struct{}{
 type FileHandler struct {
 	cfg       *config.AppConfig
 	validator *auth.Validator
-	storage   *storage.Storage
+	storage   *appstorage.Storage
 	trusted   *interceptor.TrustedProxies
 	logger    *slog.Logger
 }
@@ -54,7 +55,7 @@ type FileHandler struct {
 func NewFileHandler(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
-	storage *storage.Storage,
+	storage *appstorage.Storage,
 	logger *slog.Logger,
 ) (*FileHandler, error) {
 	if logger == nil {
@@ -107,10 +108,21 @@ func (h *FileHandler) Register(mux *runtime.ServeMux) {
 	_ = mux.HandlePath("GET", "/v1/storage/buckets/{bucketId}/files/{fileId}/download", h.download)
 	_ = mux.HandlePath("GET", "/v1/storage/buckets/{bucketId}/files/{fileId}/view", h.download)
 	_ = mux.HandlePath("GET", "/v1/storage/buckets/{bucketId}/files/{fileId}/preview", h.preview)
+	// 分片上传（upload session）：create/get/uploadChunk/complete/abort。
+	_ = mux.HandlePath("POST", "/v1/storage/buckets/{bucketId}/uploads", h.createUpload)
+	_ = mux.HandlePath("GET", "/v1/storage/buckets/{bucketId}/uploads/{uploadId}", h.getUpload)
+	_ = mux.HandlePath("POST", "/v1/storage/buckets/{bucketId}/uploads/{uploadId}/chunks/{partNumber}", h.uploadChunk)
+	_ = mux.HandlePath("POST", "/v1/storage/buckets/{bucketId}/uploads/{uploadId}/complete", h.completeUpload)
+	_ = mux.HandlePath("DELETE", "/v1/storage/buckets/{bucketId}/uploads/{uploadId}", h.abortUpload)
 }
 
-// maxUploadBytes caps the total size of a multipart upload request body.
-const maxUploadBytes = 100 << 20 // 100 MiB
+// maxUploadBytes caps the total size of a multipart upload request body。
+// +1MiB 缓冲 multipart 边界/头部开销，避免整 100MiB 文件被拒。
+const maxUploadBytes = (100 << 20) + (1 << 20)
+
+// maxChunkUploadBytes caps a chunk upload request body（16MiB 整片 + 缓冲；
+// use-case 仍按 size 严格拒绝）。
+const maxChunkUploadBytes = domainstorage.MaxChunkSize + (1 << 20)
 
 func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
 	ctx := r.Context()
@@ -163,8 +175,277 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 	h.createFile(ctx, w, r, projectID, bucketID, f, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
 }
 
+// createUploadRequest 是创建分片上传会话的 JSON body。
+type createUploadRequest struct {
+	Name        string            `json:"name"`
+	MimeType    string            `json:"mime_type"`
+	Size        int64             `json:"size"`
+	Metadata    map[string]string `json:"metadata"`
+	Permissions []string          `json:"permissions"`
+}
+
+// createUpload 创建分片上传会话：POST /v1/storage/buckets/{bucketId}/uploads。
+func (h *FileHandler) createUpload(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
+	principal, err := h.authorize(r)
+	if err != nil {
+		h.logOp(r, "create-upload", bucketID, "", nil, err)
+		httpError(w, err)
+		return
+	}
+	projectID := h.projectID(r, principal)
+	if projectID == "" {
+		err := status.Error(codes.Unauthenticated, "missing project context")
+		h.logOp(r, "create-upload", bucketID, "", principal, err)
+		httpError(w, err)
+		return
+	}
+	if bucketID == "" {
+		httpError(w, status.Error(codes.InvalidArgument, "missing bucket id"))
+		return
+	}
+
+	// JSON body 1MiB 上限（防超大 metadata）。
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req createUploadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpError(w, status.Error(codes.InvalidArgument, "invalid JSON body"))
+		return
+	}
+	session, err := h.storage.CreateUploadSession(ctx, appstorage.CreateUploadCommand{
+		ProjectID:   projectID,
+		BucketID:    bucketID,
+		Name:        req.Name,
+		MimeType:    req.MimeType,
+		Size:        req.Size,
+		Metadata:    req.Metadata,
+		Permissions: req.Permissions,
+		OwnerUserID: principal.UserID,
+	}, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	if err != nil {
+		h.logOp(r, "create-upload", bucketID, "", principal, err)
+		httpError(w, err)
+		return
+	}
+	h.logOp(r, "create-upload", bucketID, session.ID, principal, nil)
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"upload_id":  session.ID,
+		"file_id":    session.FileID,
+		"chunk_size": session.ChunkSize,
+		"part_count": session.PartCount,
+		"expires_at": session.ExpiresAt,
+	})
+}
+
+// getUpload 查询会话（续传）：GET /v1/storage/buckets/{bucketId}/uploads/{uploadId}。
+// GET 分支自动要求 storage.read scope。
+func (h *FileHandler) getUpload(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
+	uploadID := pathParams["uploadId"]
+	principal, err := h.authorize(r)
+	if err != nil {
+		h.logOp(r, "get-upload", bucketID, uploadID, nil, err)
+		httpError(w, err)
+		return
+	}
+	projectID := h.projectID(r, principal)
+	if projectID == "" {
+		err := status.Error(codes.Unauthenticated, "missing project context")
+		h.logOp(r, "get-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	if err != nil {
+		h.logOp(r, "get-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	if session.BucketID != bucketID {
+		err := status.Error(codes.NotFound, "upload session not found in bucket")
+		h.logOp(r, "get-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	h.logOp(r, "get-upload", bucketID, uploadID, principal, nil)
+	received := make([]int, 0, len(session.Received))
+	for p := range session.Received {
+		received = append(received, p)
+	}
+	sort.Ints(received)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"upload_id":  session.ID,
+		"part_count": session.PartCount,
+		"received":   received,
+		"chunk_size": session.ChunkSize,
+	})
+}
+
+// uploadChunk 上传分片：POST /v1/storage/buckets/{bucketId}/uploads/{uploadId}/chunks/{partNumber}。
+// multipart 字段名 `chunk`；成功不记 logOp（防 64 片 64 条噪音），失败仍记。
+func (h *FileHandler) uploadChunk(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
+	uploadID := pathParams["uploadId"]
+	partNumber, err := strconv.Atoi(pathParams["partNumber"])
+	if err != nil {
+		httpError(w, status.Error(codes.InvalidArgument, "invalid part number"))
+		return
+	}
+	principal, err := h.authorize(r)
+	if err != nil {
+		h.logOp(r, "upload-chunk", bucketID, uploadID, nil, err)
+		httpError(w, err)
+		return
+	}
+	projectID := h.projectID(r, principal)
+	if projectID == "" {
+		err := status.Error(codes.Unauthenticated, "missing project context")
+		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	if bucketID == "" {
+		httpError(w, status.Error(codes.InvalidArgument, "missing bucket id"))
+		return
+	}
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	if err != nil {
+		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	if session.BucketID != bucketID {
+		err := status.Error(codes.NotFound, "upload session not found in bucket")
+		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxChunkUploadBytes)
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		httpError(w, status.Error(codes.InvalidArgument, "invalid multipart form or chunk too large"))
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	fh := r.MultipartForm.File["chunk"]
+	if len(fh) == 0 {
+		httpError(w, status.Error(codes.InvalidArgument, "missing chunk"))
+		return
+	}
+	f, err := fh[0].Open()
+	if err != nil {
+		httpError(w, status.Error(codes.Internal, "cannot open uploaded chunk"))
+		return
+	}
+	defer f.Close()
+
+	received, err := h.storage.UploadChunk(ctx, projectID, uploadID, partNumber, f, fh[0].Size, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	if err != nil {
+		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"part_number":    partNumber,
+		"received_count": received,
+	})
+}
+
+// completeUpload 合并分片并创建文件文档：POST /v1/storage/buckets/{bucketId}/uploads/{uploadId}/complete。
+func (h *FileHandler) completeUpload(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
+	uploadID := pathParams["uploadId"]
+	principal, err := h.authorize(r)
+	if err != nil {
+		h.logOp(r, "complete-upload", bucketID, uploadID, nil, err)
+		httpError(w, err)
+		return
+	}
+	projectID := h.projectID(r, principal)
+	if projectID == "" {
+		err := status.Error(codes.Unauthenticated, "missing project context")
+		h.logOp(r, "complete-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	if err != nil {
+		h.logOp(r, "complete-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	if session.BucketID != bucketID {
+		err := status.Error(codes.NotFound, "upload session not found in bucket")
+		h.logOp(r, "complete-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+
+	file, err := h.storage.CompleteUpload(ctx, projectID, uploadID, principal.UserID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	if err != nil {
+		h.logOp(r, "complete-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	h.logOp(r, "complete-upload", bucketID, file.ID, principal, nil)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":         file.ID,
+		"bucket_id":  file.BucketID,
+		"name":       file.Name,
+		"mime_type":  file.MimeType,
+		"size":       file.Size,
+		"created_at": file.CreatedAt,
+		"updated_at": file.UpdatedAt,
+	})
+}
+
+// abortUpload 取消上传并清理分片：DELETE /v1/storage/buckets/{bucketId}/uploads/{uploadId}。
+func (h *FileHandler) abortUpload(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	ctx := r.Context()
+	bucketID := pathParams["bucketId"]
+	uploadID := pathParams["uploadId"]
+	principal, err := h.authorize(r)
+	if err != nil {
+		h.logOp(r, "abort-upload", bucketID, uploadID, nil, err)
+		httpError(w, err)
+		return
+	}
+	projectID := h.projectID(r, principal)
+	if projectID == "" {
+		err := status.Error(codes.Unauthenticated, "missing project context")
+		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	if err != nil {
+		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	if session.BucketID != bucketID {
+		err := status.Error(codes.NotFound, "upload session not found in bucket")
+		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+
+	if err := h.storage.AbortUpload(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}); err != nil {
+		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
+		httpError(w, err)
+		return
+	}
+	h.logOp(r, "abort-upload", bucketID, uploadID, principal, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *FileHandler) createFile(ctx context.Context, w http.ResponseWriter, r *http.Request, projectID, bucketID string, rd io.Reader, size int64, name, contentType string, principal *shared.Principal) {
-	file, err := h.storage.CreateFile(ctx, storage.CreateFileCommand{
+	file, err := h.storage.CreateFile(ctx, appstorage.CreateFileCommand{
 		ProjectID:   projectID,
 		OwnerUserID: principal.UserID,
 		BucketID:    bucketID,

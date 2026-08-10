@@ -10,10 +10,13 @@ import (
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
+	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
+	"github.com/torchwooddev/torchwood/internal/infra/storage"
 )
 
 // Injectors from wire.go:
@@ -37,7 +40,17 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	sharedQueue := queue.NewRedisQueue(client)
 	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
 	worker := NewWorker(functionsFunctions, sharedQueue, logger)
-	v := NewComponents(worker)
+	repository := bunrepo.NewProjectRepository(database)
+	documentDB := documentdb.NewPostgresDocumentDB(database)
+	objectStore, err := storage.NewMinioObjectStore(appConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	uploadSessionStore := storage.NewRedisUploadSessionStore(client)
+	storageStorage := storage2.NewStorage(appConfig, repository, documentDB, objectStore, uploadSessionStore)
+	mainChunkCleaner := NewChunkCleaner(storageStorage, logger)
+	v := NewComponents(worker, mainChunkCleaner)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {

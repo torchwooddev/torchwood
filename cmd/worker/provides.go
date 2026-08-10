@@ -8,6 +8,7 @@ import (
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"
 	"github.com/torchwooddev/torchwood/internal/app"
+	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain"
 	"github.com/torchwooddev/torchwood/internal/infra"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -28,6 +29,8 @@ var ProviderSet = wire.NewSet(
 	NewOnStops,
 	NewAppConfig,
 	NewWorker,
+	NewChunkCleaner,
+	wire.Bind(new(chunkCleaner), new(*appstorage.Storage)),
 )
 
 // NewLogger 暴露 app 装配的 *slog.Logger（zap 后端），供各层构造器注入。
@@ -46,8 +49,8 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	return &c, nil
 }
 
-func NewComponents(worker *Worker) []lynx.Service {
-	return []lynx.Service{worker}
+func NewComponents(worker *Worker, cleaner *ChunkCleaner) []lynx.Service {
+	return []lynx.Service{worker, cleaner}
 }
 
 func NewComponentBuilders() []lynx.ServiceFactory {

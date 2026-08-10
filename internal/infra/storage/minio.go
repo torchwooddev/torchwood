@@ -92,6 +92,31 @@ func (m *minioObjectStore) Delete(ctx context.Context, bucket, key string) error
 	return m.client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
 }
 
+// List 列出 bucket 下指定前缀的对象（recursive），收集 Key 与 LastModified。
+func (m *minioObjectStore) List(ctx context.Context, bucket, prefix string) ([]storage.ObjectMeta, error) {
+	opts := minio.ListObjectsOptions{Prefix: prefix, Recursive: true}
+	var out []storage.ObjectMeta
+	for info := range m.client.ListObjects(ctx, bucket, opts) {
+		if info.Err != nil {
+			return nil, info.Err
+		}
+		out = append(out, storage.ObjectMeta{Key: info.Key, LastModified: info.LastModified})
+	}
+	return out, nil
+}
+
+// Compose 将 srcKeys 按序服务端合并为 dstKey（映射 minio-go ComposeObject）。
+// 多源路径忽略目标 Content-Type（对象 mime 恒为 octet-stream，以文档 mime 为准）；
+// 5MiB/10000 约束由服务端校验兜底，ComposeObject 失败（小片）返回错误透传。
+func (m *minioObjectStore) Compose(ctx context.Context, bucket, dstKey string, srcKeys []string) error {
+	srcs := make([]minio.CopySrcOptions, len(srcKeys))
+	for i, k := range srcKeys {
+		srcs[i] = minio.CopySrcOptions{Bucket: bucket, Object: k}
+	}
+	_, err := m.client.ComposeObject(ctx, minio.CopyDestOptions{Bucket: bucket, Object: dstKey}, srcs...)
+	return err
+}
+
 func (m *minioObjectStore) Ping(ctx context.Context) error {
 	_, err := m.client.BucketExists(ctx, m.bucketName())
 	return err

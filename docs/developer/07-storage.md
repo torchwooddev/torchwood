@@ -1,6 +1,6 @@
 # Torchwood 存储子系统（Storage）
 
-> 本文描述 Torchwood 的对象存储适配、multipart 上传下载、预览缩略图、公开 bucket 匿名读、HMAC File Token、元数据更新与 Usage 统计。
+> 本文描述 Torchwood 的对象存储适配、multipart 上传下载、**分片上传（upload session）**、预览缩略图、公开 bucket 匿名读、HMAC File Token、元数据更新与 Usage 统计。
 > 相关代码：`internal/domain/storage/`、`internal/infra/storage/`、`internal/app/storage/`、`internal/api/serverhttp/file_handler.go`、`proto/server/v1/storage.proto`。
 
 ---
@@ -27,6 +27,7 @@ gRPC StorageService (proto/server/v1/storage.proto) ──→ app/storage.Storag
 | `Put` | 上传对象（缺省 `application/octet-stream`） |
 | `Get` | 下载对象（Stat 校验存在，NoSuchKey → not found 错误） |
 | `Delete` | 删除对象 |
+| `Compose` | 按序服务端合并 srcKeys 为 dstKey（映射 minio-go `ComposeObject`；除末片外每片 ≥5MiB、源数 ≤10000；目标对象 Content-Type 无法设置，mime 以文档为准） |
 | `Ping` | 健康探测 |
 
 `internal/infra/storage/minio.go` 是唯一实现：`NewMinioObjectStore` 从配置 `storage.s3.*` 构造 `minio.Client`（静态 V4 凭据；endpoint 带 scheme 时自动解析 https 与主机名；`use_ssl` 可被 https scheme 覆盖）。
@@ -88,14 +89,36 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/v1/storage/buckets/{bucketId}/files` | multipart 上传，字段名 `file`；请求体上限 **100 MiB**（`maxUploadBytes`），`ParseMultipartForm(32MB)` 后读取 |
+| `POST` | `/v1/storage/buckets/{bucketId}/files` | multipart 上传，字段名 `file`；请求体上限 **100 MiB + 1MiB 缓冲**（`maxUploadBytes`），`ParseMultipartForm(32MB)` 后读取 |
 | `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/download` | 下载（`Content-Disposition: attachment`） |
 | `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/view` | 浏览器查看（安全 MIME 内联，见 §5） |
 | `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/preview` | 图片缩略图（见 §5） |
 
-认证（`authorize`）：`X-Api-Key` / `Authorization`（Bearer/Session/ApiKey scheme，与 gRPC 拦截器同一解析）/ `TORCHWOOD_session_*` cookie；API Key 按方法检查 scope（上传 → `StorageServiceCreateFile`，下载/预览 → `StorageServiceGetFile`，避免只读 key 越权上传）；admin 会话带 `X-Torchwood-Project` header 并校验项目访问权。上传/下载输出结构化访问日志（含解析后的客户端 IP，与 gRPC 同一 trusted-proxy 规则）。
+### 4.3 分片上传（upload session）
 
-### 4.3 读上下文解析（`resolveReadContext`，优先级从高到低）
+> 设计文档：`docs/implementation-storage-chunked-upload.md`（含与 roadmap 端点占位的显式偏离说明）。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/v1/storage/buckets/{bucketId}/uploads` | 创建会话，JSON body `{name, mime_type, size, metadata?, permissions?}`（1MiB 上限）；201 返回 `{upload_id, file_id, chunk_size, part_count, expires_at}` |
+| `GET` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}` | 查询会话（断点续传）：`{upload_id, part_count, received: [1,3,...], chunk_size}`；**GET 分支要求 `storage.read` scope** |
+| `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/chunks/{partNumber}` | 上传分片，multipart 字段名 `chunk`（16MiB 整片 + 1MiB 缓冲上限）；同号覆盖 = 幂等；成功不记 logOp |
+| `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/complete` | 合并分片并创建文件文档（mime 已归一化）；缺片 400 |
+| `DELETE` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}` | 取消上传：删会话 + 清理暂存分片对象；204 |
+
+**约定**：
+
+- 常量（`internal/domain/storage/upload_session.go`）：`DefaultChunkSize = MaxChunkSize = 16MiB`、`UploadSessionTTL = 24h`、`MinComposePartSize = 5MiB`、`MaxComposePartCount = 10000`、`MaxUploadSize ≈ 156.25GB`；
+- 分片大小严格校验：非末片 **== chunkSize**（保证 sum(parts)==size），末片 `1..chunkSize`（可 < 5MiB，5MiB 约束仅对非末片，由 ComposeObject 兜底）；
+- 会话存 Redis：`torchwood:upload:{id}` Hash（metadata/permissions JSON）+ `:parts` Set，Create/MarkChunk 刷新 24h TTL（MarkChunk 前 EXISTS 检查防孤儿 key）；
+- complete 互斥：`SETNX torchwood:upload:{id}:lock EX 300`，重复 complete → FailedPrecondition（HTTP 400）；时序 Lock → 缺片校验 → Compose → 建文档 → 删分片 → 删会话 → Unlock；
+- 分片对象 key：`{projectID}/{bucketID}/{fileID}/chunks/{part:03d}`；
+- 鉴权：create/uploadChunk/complete/abort 复用 `authorize`（POST 分支要求 `storage.write`）；项目归属在 use-case 二次校验（`databases.Principal` 无 ProjectID，由 handler 传入）；
+- Console：`ChunkedUploader`（`console/src/routes/storage/chunked-uploader.tsx`）对 >16MiB 文件自动分片：`File.slice` 顺序上传、进度条（`components/ui/progress.tsx`）、uploadId 存 localStorage（键含 bucketId+fileName+size）实现失败/刷新后续传（getUploadSession 跳过已收分片）、complete/abort 后清除。
+
+### 4.4 读上下文解析（`resolveReadContext`，优先级从高到低）
+
+认证（`authorize`）：`X-Api-Key` / `Authorization`（Bearer/Session/ApiKey scheme，与 gRPC 拦截器同一解析）/ `TORCHWOOD_session_*` cookie；API Key 按方法检查 scope（上传 → `StorageServiceCreateFile`，下载/预览 → `StorageServiceGetFile`，避免只读 key 越权上传）；admin 会话带 `X-Torchwood-Project` header 并校验项目访问权。上传/下载输出结构化访问日志（含解析后的客户端 IP，与 gRPC 同一 trusted-proxy 规则）。
 
 1. **常规凭证**：API key / admin / end-user JWT / session cookie → 文档层 principal 按其角色过滤；
 2. **File Token**：URL 携带 `?token=` 且解析后与路径 bucket/file 匹配 → `SystemPrincipal`（绕过文档权限，匿名下载）；
@@ -135,14 +158,17 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 
 ## 8. 测试
 
-- `internal/api/serverhttp/file_handler_integration_test.go`：multipart 上传、下载、preview、File Token、公开 bucket 匿名读端到端测试。
-- `internal/app/storage/storage_integration_test.go`：bucket/file CRUD、元数据更新、usage 聚合等用例层测试。
+- `internal/api/serverhttp/file_handler_integration_test.go` + `file_handler_uploads_test.go`：multipart 上传、下载、preview、File Token、公开 bucket 匿名读、分片上传全流程/scope/校验端到端测试。
+- `internal/app/storage/storage_integration_test.go` + `uploads_integration_test.go`：bucket/file CRUD、元数据更新、usage 聚合、分片会话全流程/续传/校验/互斥等用例层测试。
+- `internal/infra/storage/redis_upload_session_test.go`：miniredis 会话往返/TTL 刷新/过期/锁互斥。
+- `internal/infra/storage/minio_integration_test.go`：真实 MinIO `ComposeObject`（`TORCHWOOD_TEST_MINIO_ENDPOINT` 未设跳过；CI backend job 提供 minio service）。
 - 均使用 `testutil.SetupTestDB`（`TORCHWOOD_TEST_DATABASE_SOURCE` / `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE`，见 `docs/developer/06-databases.md` §7）。
 
 ---
 
 ## 9. 已知边界
 
-- **分片上传未实现**（roadmap §2.5 待办）：大文件仍走单次 multipart，上限 100 MiB；
+- **分片上传**：单分片 ≤16MiB、part_count ≤10000（size ≤156.25GB）；会话 24h TTL；重复上传同号分片幂等覆盖；
+- **孤儿分片对象清理未实现**（MVP 范围外）：complete/abort 过程中删除失败或与上传并发产生的孤儿分片对象、以及 DeleteBucket 后残留的会话分片，由未来后台清理任务覆盖（roadmap P2）；
 - `storage.provider: local` 仅配置占位，未实现本地磁盘适配器；
 - 底层 bucket 无 per-bucket 映射：所有 project/bucket 共享同一 S3 bucket，以 `projectID/bucketID/fileID` 键隔离。

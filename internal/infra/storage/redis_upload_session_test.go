@@ -1,0 +1,210 @@
+package storage
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/domain/storage"
+)
+
+func newRedisUploadSessionTestStore(t *testing.T) (*miniredis.Miniredis, storage.UploadSessionStore) {
+	t.Helper()
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return mr, NewRedisUploadSessionStore(rdb)
+}
+
+func sampleUploadSession() *storage.UploadSession {
+	return &storage.UploadSession{
+		ID:          "upload-1",
+		ProjectID:   "project-1",
+		BucketID:    "bucket-1",
+		FileID:      "file-1",
+		Name:        "movie.mp4",
+		MimeType:    "video/mp4",
+		Size:        12 << 20,
+		Metadata:    map[string]string{"k": "v"},
+		Permissions: []string{"read:any", "update:keys"},
+		ChunkSize:   16 << 20,
+		PartCount:   2,
+		Received:    map[int]bool{},
+		CreatedAt:   time.Now().Add(-time.Minute),
+		ExpiresAt:   time.Now().Add(storage.UploadSessionTTL),
+	}
+}
+
+func TestRedisUploadSession_CreateGetRoundtrip(t *testing.T) {
+	mr, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	want := sampleUploadSession()
+	require.NoError(t, store.Create(ctx, want))
+
+	got, err := store.Get(ctx, want.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, want.ID, got.ID)
+	require.Equal(t, want.ProjectID, got.ProjectID)
+	require.Equal(t, want.BucketID, got.BucketID)
+	require.Equal(t, want.FileID, got.FileID)
+	require.Equal(t, want.Name, got.Name)
+	require.Equal(t, want.MimeType, got.MimeType)
+	require.Equal(t, want.Size, got.Size)
+	require.Equal(t, want.ChunkSize, got.ChunkSize)
+	require.Equal(t, want.PartCount, got.PartCount)
+	require.Equal(t, want.Metadata, got.Metadata)
+	require.Equal(t, want.Permissions, got.Permissions)
+	require.WithinDuration(t, want.CreatedAt, got.CreatedAt, time.Second)
+	require.WithinDuration(t, want.ExpiresAt, got.ExpiresAt, time.Second)
+	require.Empty(t, got.Received)
+
+	// 不存在的会话 → nil, nil。
+	missing, err := store.Get(ctx, "nope")
+	require.NoError(t, err)
+	require.Nil(t, missing)
+
+	// TTL 24h。
+	ttl := mr.TTL(uploadSessionKey(want.ID))
+	require.InDelta(t, float64(storage.UploadSessionTTL), float64(ttl), float64(time.Minute))
+}
+
+func TestRedisUploadSession_MarkChunkIdempotentAndTTLRefresh(t *testing.T) {
+	mr, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	up := sampleUploadSession()
+	require.NoError(t, store.Create(ctx, up))
+
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 1))
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 1))
+
+	got, err := store.Get(ctx, up.ID)
+	require.NoError(t, err)
+	require.Equal(t, map[int]bool{1: true}, got.Received)
+
+	// TTL 刷新：前进 12h 后 MarkChunk 恢复为满 TTL（未刷新则会过期）。
+	mr.FastForward(12 * time.Hour)
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 2))
+	ttl := mr.TTL(uploadSessionKey(up.ID))
+	require.InDelta(t, float64(storage.UploadSessionTTL), float64(ttl), float64(time.Minute),
+		"MarkChunk 应刷新 TTL 至满 24h")
+
+	got, err = store.Get(ctx, up.ID)
+	require.NoError(t, err)
+	require.Equal(t, map[int]bool{1: true, 2: true}, got.Received)
+}
+
+func TestRedisUploadSession_MarkChunkNoOrphanAfterDelete(t *testing.T) {
+	_, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	up := sampleUploadSession()
+	require.NoError(t, store.Create(ctx, up))
+	require.NoError(t, store.Delete(ctx, up.ID))
+
+	// 会话已删：MarkChunk 不得重建孤儿 parts key。
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 1))
+	got, err := store.Get(ctx, up.ID)
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestRedisUploadSession_Expiry(t *testing.T) {
+	mr, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	up := sampleUploadSession()
+	require.NoError(t, store.Create(ctx, up))
+
+	mr.FastForward(25 * time.Hour)
+	got, err := store.Get(ctx, up.ID)
+	require.NoError(t, err)
+	require.Nil(t, got, "TTL 过期后会话应不存在")
+}
+
+func TestRedisUploadSession_Delete(t *testing.T) {
+	_, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	up := sampleUploadSession()
+	require.NoError(t, store.Create(ctx, up))
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 1))
+	require.NoError(t, store.Delete(ctx, up.ID))
+
+	got, err := store.Get(ctx, up.ID)
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestRedisUploadSession_CountChunks(t *testing.T) {
+	_, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	up := sampleUploadSession()
+	require.NoError(t, store.Create(ctx, up))
+
+	// 未上传任何分片 → 0。
+	n, err := store.CountChunks(ctx, up.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, n)
+
+	// SADD 后计数准确（含重复标记幂等）。
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 1))
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 1))
+	require.NoError(t, store.MarkChunk(ctx, up.ID, 2))
+	n, err = store.CountChunks(ctx, up.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, n, "重复标记不重复计数")
+
+	// 会话删除后 → 0。
+	require.NoError(t, store.Delete(ctx, up.ID))
+	n, err = store.CountChunks(ctx, up.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, n)
+
+	// 不存在的会话 → 0。
+	n, err = store.CountChunks(ctx, "nope")
+	require.NoError(t, err)
+	require.Equal(t, 0, n)
+}
+
+func TestRedisUploadSession_LockCompleteMutex(t *testing.T) {
+	_, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	// 会话不存在也可加锁（锁与会话生命周期独立）。
+	locked, err := store.LockComplete(ctx, "upload-lock")
+	require.NoError(t, err)
+	require.True(t, locked)
+
+	// 第二次加锁互斥。
+	locked, err = store.LockComplete(ctx, "upload-lock")
+	require.NoError(t, err)
+	require.False(t, locked)
+
+	// 释放后可再次加锁。
+	require.NoError(t, store.UnlockComplete(ctx, "upload-lock"))
+	locked, err = store.LockComplete(ctx, "upload-lock")
+	require.NoError(t, err)
+	require.True(t, locked)
+}
+
+func TestRedisUploadSession_LockCompleteTTLExpiry(t *testing.T) {
+	mr, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	_, err := store.LockComplete(ctx, "upload-lock-ttl")
+	require.NoError(t, err)
+
+	mr.FastForward(6 * time.Minute)
+	locked, err := store.LockComplete(ctx, "upload-lock-ttl")
+	require.NoError(t, err)
+	require.True(t, locked, "锁 TTL 5min 过期后应可重新获取")
+}

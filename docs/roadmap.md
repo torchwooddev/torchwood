@@ -153,7 +153,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ### 2.5 Storage 文件交付
 
-当前支持上传、下载、查看、预览、公开访问、File Token、元数据更新、Usage 统计；分片上传待实现。
+当前支持上传、下载、查看、预览、公开访问、File Token、元数据更新、Usage 统计、**分片上传（upload session）**。
 
 | 任务 | 说明 | 关键端点 | 状态 |
 |------|------|----------|------|
@@ -161,7 +161,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | 公开 bucket | bucket 级 `public` 标志，允许匿名读取 | `CreateBucket`/`UpdateBucket` 的 `public` 字段 | ✅ 完成（匿名读需 `?project=` 参数，文件级 read:any 兜底） |
 | File Token | 生成短期文件访问令牌（HMAC 签名，默认 1h、上限 7d） | `POST /v1/storage/buckets/{id}/files/{id}/tokens` | ✅ 完成（下载 URL 携带 `?token=`，过期/篡改 401） |
 | 文件元数据更新 | 修改 name、mime_type、metadata | `PATCH /v1/server/storage/buckets/{id}/files/{id}` | ✅ 完成（含 `UpdateBucket`：改名/公开开关） |
-| 分片上传（占位） | 支持大文件分片上传与合并 | `POST /v1/storage/buckets/{id}/files/{id}/chunks` | 待办 |
+| 分片上传 | upload session 生命周期（create/get/chunk/complete/abort），断点续传 + 服务端合并（ComposeObject） | `POST /v1/storage/buckets/{id}/uploads`、`GET .../uploads/{uploadId}`、`POST .../uploads/{uploadId}/chunks/{partNumber}`、`POST .../uploads/{uploadId}/complete`、`DELETE .../uploads/{uploadId}` | ✅ 完成（分片 ≤16MiB、part_count ≤10000（≤156.25GB）、24h 会话 TTL、complete 互斥锁、Console 自动分片+进度+localStorage 续传；端点与早期 `files/{id}/chunks` 占位不同——会话语义见 `docs/implementation-storage-chunked-upload.md`） |
 | Usage 统计 | bucket/files 数量与容量统计（`SumDocumentField` 聚合） | `GET /v1/server/storage/usage` | ✅ 完成 |
 
 **验收标准**：

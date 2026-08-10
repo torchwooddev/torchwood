@@ -37,7 +37,8 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	store := testutil.NewMemObjectStore()
-	uc := NewStorage(&config.AppConfig{}, bunrepo.NewProjectRepository(db), docDB, store)
+	_, upStore := newTestUploadSessionStore(t)
+	uc := NewStorage(&config.AppConfig{}, bunrepo.NewProjectRepository(db), docDB, store, upStore)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	bucket, err := uc.CreateBucket(ctx, CreateBucketCommand{
@@ -93,7 +94,8 @@ func newStorageUC(t *testing.T) (context.Context, *Storage, string, *config.AppC
 
 	cfg := &config.AppConfig{}
 	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
-	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, testutil.NewMemObjectStore())
+	_, upStore := newTestUploadSessionStore(t)
+	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, testutil.NewMemObjectStore(), upStore)
 	return ctx, uc, projectID, cfg
 }
 
