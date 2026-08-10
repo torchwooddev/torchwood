@@ -169,6 +169,9 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 ## 9. 已知边界
 
 - **分片上传**：单分片 ≤16MiB、part_count ≤10000（size ≤156.25GB）；会话 24h TTL；重复上传同号分片幂等覆盖；
-- **孤儿分片对象清理未实现**（MVP 范围外）：complete/abort 过程中删除失败或与上传并发产生的孤儿分片对象、以及 DeleteBucket 后残留的会话分片，由未来后台清理任务覆盖（roadmap P2）；
+- **孤儿分片清理（已实现）**：`cmd/worker` 的 `ChunkCleaner` 每小时扫描各项目对象，
+  删除 key 含 `/chunks/` 且 LastModified 超过 48h 的分片对象（活跃会话分片必然
+  <24h，48h 为 2 倍安全余量）；`DeleteBucket` 同步按前缀清尾（含孤儿分片）；
+  与上传并发产生的极小概率残留由下轮扫描覆盖；
 - `storage.provider: local` 仅配置占位，未实现本地磁盘适配器；
 - 底层 bucket 无 per-bucket 映射：所有 project/bucket 共享同一 S3 bucket，以 `projectID/bucketID/fileID` 键隔离。

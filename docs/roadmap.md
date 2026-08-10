@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-09（Settings 交付：项目基本信息编辑 `PATCH /v1/server/projects/{id}`、Console「项目」Tab；OAuth Providers 配置与 Messaging 只读说明已在 Settings 页面可用）。
+> 最新更新：2026-08-10（**P1 MVP 全部完成**：Teams 团队偏好交付收尾 §2.3；M1 里程碑全量勾选，进入 P2 规划）。
 
 ---
 
@@ -45,7 +45,7 @@ Torchwood 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定�
 | 阶段 | 目标 | 时间范围 | 状态 |
 |------|------|----------|------|
 | **P0 底座** | 可运行的工程骨架：动态文档层、Admin Console、基础认证、Storage/Functions 端口 | 已完成 | 完成 |
-| **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Teams、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **进行中** |
+| **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Teams、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **完成** |
 | **P2 增强** | Realtime、Webhooks/Events、Messaging、Project settings、Migrations、Tokens、Worker 框架 | 中期：3-6 个月 | 规划中 |
 | **P3 生态** | Sites、Proxy、VCS、GraphQL、Avatars、Locale、Advisor、多区域/水平扩展 | 长期：6-12 个月 | 规划中 |
 
@@ -107,7 +107,7 @@ Server API 当前支持列表/获取/更新/删除，缺少创建用户、会话
 
 ### 2.3 Teams & Memberships
 
-Sprint 1 已完成成员、邀请、角色与 Client/Console 页面；团队 prefs 仍待实现。
+Sprint 1 已完成成员、邀请、角色与 Client/Console 页面；团队偏好已交付（2026-08-10，含存量集合 reconcile 自愈）。
 
 | 任务 | 说明 | 关键端点 | 状态 |
 |------|------|----------|------|
@@ -174,20 +174,22 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ### 2.6 Functions 真实执行器
 
-当前为 stub，需要实现 Docker build & run。
+已交付（2026-08-09）：真实 Docker build/run、同步/异步执行、`cmd/worker` 消费队列。
+「构建队列」任务以「CreateDeployment 同步构建」落地（对 roadmap 的 MVP 偏离，见
+`docs/implementation-functions-executor.md` §2）。
 
-| 任务 | 说明 | 关键端点 / 组件 |
-|------|------|-----------------|
-| Runtime 列表 | 返回支持的运行时（node-18、python-3.11 等） | `GET /v1/server/functions/runtimes` |
-| Specification 列表 | 返回 CPU/内存规格 | `GET /v1/server/functions/specifications` |
-| Function CRUD | 创建/列表/获取/更新/删除函数 | `/v1/server/functions` |
-| Deployment CRUD | 上传代码包、列表、获取、删除 | `/v1/server/functions/{id}/deployments` |
-| Variables CRUD | 函数环境变量 | `/v1/server/functions/{id}/variables` |
-| Execution CRUD | 同步/异步执行、获取结果 | `POST/GET /v1/server/functions/{id}/executions` |
-| Docker build | 解压代码包，按运行时 Dockerfile 构建镜像 | `internal/infra/functions/docker.go` |
-| Docker run | 运行容器，收集 stdout/stderr，超时控制 | `internal/infra/functions/docker.go` |
-| 异步执行 Worker | `cmd/worker` 消费执行队列 | 新增 `cmd/worker` |
-| 构建队列 | Redis/PG 队列抽象（可用 Redis List 占位） | `internal/domain/shared/ports.go` |
+| 任务 | 说明 | 关键端点 / 组件 | 状态 |
+|------|------|-----------------|------|
+| Runtime 列表 | 返回支持的运行时（node-18、python-3.11 等） | `GET /v1/server/functions/runtimes` | ✅ 完成 |
+| Specification 列表 | 返回 CPU/内存规格 | `GET /v1/server/functions/specifications` | ✅ 完成 |
+| Function CRUD | 创建/列表/获取/更新/删除函数 | `/v1/server/functions` | ✅ 完成 |
+| Deployment CRUD | 上传代码包、列表、获取、删除 | `/v1/server/functions/{id}/deployments` | ✅ 完成 |
+| Variables CRUD | 函数环境变量 | `/v1/server/functions/{id}/variables` | ✅ 完成 |
+| Execution CRUD | 同步/异步执行、获取结果 | `POST/GET /v1/server/functions/{id}/executions` | ✅ 完成 |
+| Docker build | 解压代码包，按运行时 Dockerfile 构建镜像（防 zip 炸弹/slip） | `internal/infra/functions/docker.go` | ✅ 完成 |
+| Docker run | 运行容器，收集 stdout/stderr，超时控制与安全基线 | `internal/infra/functions/docker.go` | ✅ 完成 |
+| 异步执行 Worker | `cmd/worker` 消费执行队列（BRPOP、N=4 并发、孤儿对账） | `cmd/worker/` | ✅ 完成 |
+| 构建队列 | Redis List 队列 + CreateDeployment 同步构建（MVP 偏离） | `internal/domain/shared/ports.go`、`internal/infra/queue/` | ✅ 完成 |
 
 **验收标准**：
 
@@ -199,12 +201,14 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ### 2.7 Health & 可观测性
 
-| 任务 | 说明 | 关键端点 |
-|------|------|----------|
-| 健康检查 | DB、Redis、Storage 健康状态 | `GET /v1/server/health` |
-| 版本端点 | 返回版本与构建信息 | `GET /v1/server/health/version` |
-| 结构化日志 | 使用 `slog` 替换零散日志 | 全局中间件 |
-| 慢查询日志 | 动态文档层记录慢 SQL | `internal/infra/documentdb` |
+已交付（2026-08-09）：依赖探测健康检查、版本端点（ldflags 注入）、请求日志与统一 logger、慢查询 hook。
+
+| 任务 | 说明 | 关键端点 | 状态 |
+|------|------|----------|------|
+| 健康检查 | DB、Redis、Storage 健康状态（并行探测 + 依赖明细 + readiness 503） | `GET /v1/health`、`/healthz/readiness` | ✅ 完成 |
+| 版本端点 | 返回版本与构建信息 | `GET /v1/server/health/version` | ✅ 完成 |
+| 结构化日志 | `slog` 统一 logger + gateway 请求日志（Debug 级） | 全局中间件 | ✅ 完成 |
+| 慢查询日志 | 动态文档层记录慢 SQL（bun QueryHook，空值默认 500ms） | `internal/infra/clients/dbhook.go` | ✅ 完成 |
 
 ---
 
@@ -408,7 +412,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ## 5. 里程碑与验收标准
 
-### M1：P1 MVP 可用（短期结束）
+### M1：P1 MVP 可用（短期结束）✅ 全部完成（2026-08-10）
 
 - [x] Client Account 核心会话与 prefs（Refresh / Sessions / UpdateAccount / Prefs）。
 - [x] Client Account 完整能力（密码重置、邮箱验证、OAuth、MFA、Magic URL、JWT、账号日志、匿名登录）。
@@ -417,10 +421,10 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [x] Databases Documents CRUD、Client API 权限可用。
 - [x] Databases 批量操作、attribute/index 删除。
 - [x] Storage preview、公开 bucket、file token 可用。
-- [ ] Functions 可上传代码、构建、同步/异步执行。
+- [x] Functions 可上传代码、构建、同步/异步执行。
 - [x] Admin Console 覆盖 Database 文档编辑、Teams 页面。
 - [x] Admin Console 覆盖系统管理员管理（Admins 页面，owner 权限保护）。
-- [ ] Admin Console 覆盖 Functions 页面。
+- [x] Admin Console 覆盖 Functions 页面。
 - [x] Admin Console 覆盖 Settings 页面（项目基本信息编辑、OAuth Providers、Messaging 只读说明）。
 - [x] CI 绿，集成测试覆盖核心流程。
 

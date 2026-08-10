@@ -8,18 +8,19 @@ Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (Baa
 
 - **AI / Agent-Native**: Protobuf-first APIs with auto-generated OpenAPI/Swagger specs; scoped API Keys for autonomous Server-side automation; predictable JSON REST surface and structured errors; TypeScript SDK for agent workflows and tool integration.
 - **Project management**: Multi-project isolation; each project gets its own database schema.
-- **User authentication**: Email sign-up/sign-in, JWT access/refresh tokens, session cookies, and API Key auth.
-- **Dynamic document database**: Schema-per-database with `_tenant`, `_perms`, dynamic attributes/indexes, and an Appwrite-style query DSL.
-- **File storage**: S3/MinIO-compatible object storage with multipart upload/download; file metadata managed as dynamic documents.
-- **Function execution**: Docker-based executor (build/run) with an async worker (`cmd/worker`).
+- **User authentication**: Email sign-up/sign-in, JWT access/refresh tokens with rotation, session cookies, Email/Phone OTP, OAuth2 (Google/GitHub/WeChat), anonymous sessions, Magic URL, one-time JWTs, and TOTP MFA with sign-in challenges.
+- **Dynamic document database**: Schema-per-database with `_tenant`, `_perms`, dynamic attributes/indexes, an Appwrite-style query DSL, bulk operations, and field increments.
+- **File storage**: S3/MinIO-compatible object storage with upload/download/view, preview thumbnails, public buckets, HMAC file tokens, and chunked upload with resume.
+- **Function execution**: Docker-based executor (build/run with security baseline) with sync/async execution, an async worker (`cmd/worker`), and execution history.
 - **Admin Console**: React + Vite + TanStack Query + shadcn/ui admin UI, embedded in the Go binary at `/console/`.
-- **Server API**: CRUD for Projects, API Keys, Users, Storage, Databases, Collections, Attributes, and Indexes.
+- **Server API**: CRUD for Projects, API Keys, Users, Teams, Storage, Databases, Collections, Attributes, Indexes, Functions, and OAuth Providers; health & version endpoints.
+- **Observability**: dependency health checks, version endpoint, structured slog logging, slow query logging, and Prometheus metrics.
 
 ## Tech Stack
 
 ### Backend
 
-- Go 1.25
+- Go 1.26
 - [Lynx](https://github.com/lynx-go/lynx) service framework
 - gRPC + grpc-gateway
 - [Wire](https://github.com/google/wire) dependency injection
