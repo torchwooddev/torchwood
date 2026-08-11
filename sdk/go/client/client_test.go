@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
+	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -24,6 +25,38 @@ type fakeAccount struct {
 	lastAuth     atomic.Value // []string
 	tokens       *clientv1.TokenBundle
 	refreshErr   error
+	signInResp   *clientv1.SignInResponse
+	signInErr    error
+	signUpResp   *clientv1.SignUpResponse
+	signUpErr    error
+	signOutErr   error
+}
+
+func (f *fakeAccount) SignIn(ctx context.Context, req *clientv1.SignInRequest) (*clientv1.SignInResponse, error) {
+	if f.signInErr != nil {
+		return nil, f.signInErr
+	}
+	if f.signInResp == nil {
+		return &clientv1.SignInResponse{Account: &clientv1.Account{Id: "acc-1", Email: req.Email}}, nil
+	}
+	return f.signInResp, nil
+}
+
+func (f *fakeAccount) SignUp(ctx context.Context, req *clientv1.SignUpRequest) (*clientv1.SignUpResponse, error) {
+	if f.signUpErr != nil {
+		return nil, f.signUpErr
+	}
+	if f.signUpResp == nil {
+		return &clientv1.SignUpResponse{Account: &clientv1.Account{Id: "acc-1", Email: req.Email, Name: req.Name}}, nil
+	}
+	return f.signUpResp, nil
+}
+
+func (f *fakeAccount) SignOut(ctx context.Context, _ *clientv1.SignOutRequest) (*sharedv1.Empty, error) {
+	if f.signOutErr != nil {
+		return nil, f.signOutErr
+	}
+	return &sharedv1.Empty{}, nil
 }
 
 func (f *fakeAccount) RefreshToken(_ context.Context, req *clientv1.RefreshTokenRequest) (*clientv1.RefreshTokenResponse, error) {
@@ -43,7 +76,7 @@ func (f *fakeAccount) Me(ctx context.Context, _ *clientv1.MeRequest) (*clientv1.
 	if f.failFirstMe.Load() && f.meCalls.Add(1) == 1 {
 		return nil, status.Error(codes.Unauthenticated, "expired")
 	}
-	return &clientv1.Account{Id: "u1"}, nil
+	return &clientv1.Account{Id: "acc-1"}, nil
 }
 
 // newBufconn 启动注册了 AccountService fake 的 bufconn gRPC 服务。

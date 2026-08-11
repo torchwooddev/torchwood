@@ -54,7 +54,7 @@ func TestRetryOnUnauthorized(t *testing.T) {
 
 	me, err := c.Account.Me(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, "u1", me.Id)
+	require.Equal(t, "acc-1", me.Id)
 	require.Equal(t, int32(1), fake.refreshCalls.Load())
 	require.Equal(t, int32(2), fake.meCalls.Load())
 }

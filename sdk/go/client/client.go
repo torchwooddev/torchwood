@@ -62,10 +62,16 @@ type Client struct {
 	mu  sync.Mutex // 串行化刷新
 	now func() time.Time
 
-	account clientv1.AccountServiceClient
+	account  clientv1.AccountServiceClient
+	teams    clientv1.TeamsServiceClient
+	databases clientv1.DatabasesServiceClient
 
 	// Account 提供注册/登录/账户管理。
 	Account *AccountService
+	// Teams 提供团队与成员管理。
+	Teams *TeamsService
+	// Databases 提供文档 CRUD，绑定默认 DatabaseID。
+	Databases *DatabasesService
 }
 
 // New 建立 Client API 连接。target 为 gRPC 目标地址，不能为空。
@@ -91,12 +97,21 @@ func New(target string, opts ...Option) (*Client, error) {
 	}
 	c.conn = gc
 	c.account = clientv1.NewAccountServiceClient(gc)
+	c.teams = clientv1.NewTeamsServiceClient(gc)
+	c.databases = clientv1.NewDatabasesServiceClient(gc)
 	c.Account = &AccountService{c: c}
+	c.Teams = &TeamsService{c: c}
+	c.Databases = c.UseDatabase(cfg.DatabaseID)
 	return c, nil
 }
 
 // Close 关闭底层连接。
 func (c *Client) Close() error { return c.conn.Close() }
+
+// UseDatabase 返回绑定指定 databaseID 的文档服务副本。
+func (c *Client) UseDatabase(databaseID string) *DatabasesService {
+	return newDatabasesService(c, databaseID)
+}
 
 // saveTokens 保存 token 并触发回调。
 func (c *Client) saveTokens(t *clientv1.TokenBundle) error {
