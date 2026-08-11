@@ -440,6 +440,110 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 	return *created, nil
 }
 
+// UpsertDocument inserts doc, or when a row already matches conflictColumns
+// (which must correspond to a unique index on the collection table), updates
+// its data, _updated_at, _updated_by and replaces document permissions with
+// perms (Appwrite-style replace semantics). The insert and update are
+// performed atomically by a single INSERT ... ON CONFLICT (...) DO UPDATE SET
+// statement.
+func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, conflictColumns []string, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
+	if err := validateDocID(doc.ID); err != nil {
+		return doc, err
+	}
+	if len(conflictColumns) == 0 {
+		return doc, status.Error(codes.InvalidArgument, "conflict columns are required")
+	}
+	conflictCols := make([]string, 0, len(conflictColumns))
+	for _, col := range conflictColumns {
+		if !safeNameRe.MatchString(col) || strings.HasPrefix(col, "_") {
+			return doc, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid conflict column: %s", col))
+		}
+		conflictCols = append(conflictCols, quoteIdent(col))
+	}
+	internalID, err := p.resolveInternalID(ctx, projectID)
+	if err != nil {
+		return doc, err
+	}
+	schema := schemaName(internalID, databaseID)
+	tbl := tableName(schema, collectionID)
+
+	if !principal.IsSystem() {
+		if isWriteProtectedSystemCollection(databaseID, collectionID) {
+			return doc, ErrPermissionDenied
+		}
+		coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			return doc, err
+		}
+		if err := p.ensureCollectionAccessible(coll, principal); err != nil {
+			return doc, err
+		}
+		// 已存在文档（行存在）→ 按 UpdateDocument 语义做文档级 update 检查；
+		// 否则为插入路径 → 以集合级 create 权限为准（CreateDocument 语义）。
+		var exists bool
+		if err := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s WHERE _id = ? AND _tenant = ?)`, tbl), doc.ID, internalID).Scan(&exists); err != nil {
+			return doc, err
+		}
+		if exists {
+			if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "update", principal); err != nil {
+				return doc, err
+			}
+		} else if coll != nil && !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
+			return doc, ErrPermissionDenied
+		}
+	}
+
+	// INSERT 部分（含 _created_by/_updated_by 审计列，与 CreateDocument 一致）。
+	columns, placeholders, args := buildInsertParts(doc)
+	createdBy := userIDFromPrincipal(principal)
+	if createdBy != "" {
+		if columns != "" {
+			columns += ", "
+			placeholders += ", "
+		}
+		columns += quoteIdent("_created_by") + ", " + quoteIdent("_updated_by")
+		placeholders += "?, ?"
+		args = append(args, createdBy, createdBy)
+	}
+	args = append([]any{doc.ID}, args...)
+	allPlaceholders := "?"
+	if columns != "" {
+		allPlaceholders = "?, " + placeholders
+		columns = ", " + columns
+	}
+	// ON CONFLICT 的 SET 部分（含 _updated_at/_updated_by 更新，与 UpdateDocument 一致）。
+	setParts, setArgs := buildUpdateParts(doc, userIDFromPrincipal(principal))
+	if len(setParts) == 0 {
+		return doc, status.Error(codes.InvalidArgument, "no fields to upsert")
+	}
+	args = append(args, setArgs...)
+	sql := fmt.Sprintf(`INSERT INTO %s (_id%s) VALUES (%s) ON CONFLICT (%s) DO UPDATE SET %s`,
+		tbl, columns, allPlaceholders, strings.Join(conflictCols, ", "), strings.Join(setParts, ", "))
+	if _, err := p.conn(ctx).ExecContext(ctx, sql, args...); err != nil {
+		if isUniqueViolation(err) {
+			return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
+		}
+		return doc, fmt.Errorf("upsert document: %w", err)
+	}
+	// 文档级权限替换语义（与 UpdateDocument 一致）：非空时先清后写。
+	if len(perms) > 0 {
+		if err := p.clearPermissions(ctx, schema, collectionID, doc.ID, internalID); err != nil {
+			return doc, err
+		}
+		if err := p.setPermissions(ctx, schema, collectionID, doc.ID, internalID, perms); err != nil {
+			return doc, err
+		}
+	}
+	upserted, err := p.GetDocument(ctx, projectID, databaseID, collectionID, doc.ID, databases.SystemPrincipal)
+	if err != nil {
+		return doc, err
+	}
+	if upserted == nil {
+		return doc, errors.New("document not found after upsert")
+	}
+	return *upserted, nil
+}
+
 func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) (*databases.Document, error) {
 	if err := validateDocID(docID); err != nil {
 		return nil, err

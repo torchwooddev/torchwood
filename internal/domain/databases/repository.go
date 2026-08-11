@@ -24,6 +24,11 @@ type DocumentDB interface {
 
 	// Document
 	CreateDocument(ctx context.Context, projectID, databaseID, collectionID string, doc Document, perms []Permission, principal Principal) (Document, error)
+	// UpsertDocument inserts doc, or when a row already matches the conflict
+	// columns, updates its data, _updated_at, _updated_by and replaces its
+	// document permissions with perms. conflictColumns must match a unique
+	// index on the collection table.
+	UpsertDocument(ctx context.Context, projectID, databaseID, collectionID string, doc Document, conflictColumns []string, perms []Permission, principal Principal) (Document, error)
 	GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal Principal) (*Document, error)
 	UpdateDocument(ctx context.Context, projectID, databaseID, collectionID string, update DocumentUpdate, principal Principal) (Document, error)
 	DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal Principal) error

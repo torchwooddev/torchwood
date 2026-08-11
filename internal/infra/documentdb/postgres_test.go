@@ -91,6 +91,70 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	require.Nil(t, got2)
 }
 
+// TestPostgresDocumentDatabase_UpsertDocument (T2): UpsertDocument inserts when
+// no row matches the conflict columns and updates (data/_updated_at/_updated_by
+// + permissions replaced) when one does. conflictColumns must match a unique
+// index on the collection table.
+func TestPostgresDocumentDatabase_UpsertDocument(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
+		{ID: "channel_id", Key: "channel_id", Type: "string", Size: 64},
+		{ID: "user_id", Key: "user_id", Type: "string", Size: 64},
+		{ID: "last_read_seq", Key: "last_read_seq", Type: "integer"},
+	}, []databases.Index{
+		{ID: "member_key", Type: "unique", Attributes: []string{"channel_id", "user_id"}},
+	}, nil, true))
+
+	// First upsert: no matching row → insert.
+	upserted, err := docDB.UpsertDocument(ctx, projectID, "app", "members", databases.Document{
+		ID: "m1",
+		Data: map[string]any{
+			"channel_id":    "ch1",
+			"user_id":       "u1",
+			"last_read_seq": 10,
+		},
+	}, []string{"channel_id", "user_id"}, []databases.Permission{
+		{Type: "read", Role: "user:u1"},
+		{Type: "update", Role: "user:u1"},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, float64(10), upserted.Data["last_read_seq"])
+
+	// Second upsert: row matches the conflict columns → update.
+	upserted, err = docDB.UpsertDocument(ctx, projectID, "app", "members", databases.Document{
+		ID: "m1",
+		Data: map[string]any{
+			"channel_id":    "ch1",
+			"user_id":       "u1",
+			"last_read_seq": 42,
+		},
+	}, []string{"channel_id", "user_id"}, []databases.Permission{
+		{Type: "read", Role: "user:u1"},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, float64(42), upserted.Data["last_read_seq"])
+
+	// GetDocument confirms the data was updated and permissions replaced.
+	got, err := docDB.GetDocument(ctx, projectID, "app", "members", "m1", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, float64(42), got.Data["last_read_seq"])
+	require.Len(t, got.Permissions, 1)
+	require.Equal(t, databases.Permission{Type: "read", Role: "user:u1"}, got.Permissions[0])
+}
+
 func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
