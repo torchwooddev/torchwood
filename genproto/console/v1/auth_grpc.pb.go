@@ -20,9 +20,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ConsoleAuthService_SignIn_FullMethodName       = "/torchwood.console.v1.ConsoleAuthService/SignIn"
-	ConsoleAuthService_RefreshToken_FullMethodName = "/torchwood.console.v1.ConsoleAuthService/RefreshToken"
-	ConsoleAuthService_SignOut_FullMethodName      = "/torchwood.console.v1.ConsoleAuthService/SignOut"
+	ConsoleAuthService_SignIn_FullMethodName         = "/torchwood.console.v1.ConsoleAuthService/SignIn"
+	ConsoleAuthService_RefreshToken_FullMethodName   = "/torchwood.console.v1.ConsoleAuthService/RefreshToken"
+	ConsoleAuthService_SignOut_FullMethodName        = "/torchwood.console.v1.ConsoleAuthService/SignOut"
+	ConsoleAuthService_GetSetupStatus_FullMethodName = "/torchwood.console.v1.ConsoleAuthService/GetSetupStatus"
+	ConsoleAuthService_SignUp_FullMethodName         = "/torchwood.console.v1.ConsoleAuthService/SignUp"
 )
 
 // ConsoleAuthServiceClient is the client API for ConsoleAuthService service.
@@ -32,6 +34,11 @@ type ConsoleAuthServiceClient interface {
 	SignIn(ctx context.Context, in *SignInRequest, opts ...grpc.CallOption) (*SignInResponse, error)
 	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*SignInResponse, error)
 	SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	// 查询是否已完成初始化（console_admins 是否为空）。
+	GetSetupStatus(ctx context.Context, in *GetSetupStatusRequest, opts ...grpc.CallOption) (*GetSetupStatusResponse, error)
+	// 首个管理员注册：仅当 console_admins 表为空时可用；注册成功后自动创建
+	// 默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。
+	SignUp(ctx context.Context, in *SignUpRequest, opts ...grpc.CallOption) (*SignUpResponse, error)
 }
 
 type consoleAuthServiceClient struct {
@@ -72,6 +79,26 @@ func (c *consoleAuthServiceClient) SignOut(ctx context.Context, in *SignOutReque
 	return out, nil
 }
 
+func (c *consoleAuthServiceClient) GetSetupStatus(ctx context.Context, in *GetSetupStatusRequest, opts ...grpc.CallOption) (*GetSetupStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSetupStatusResponse)
+	err := c.cc.Invoke(ctx, ConsoleAuthService_GetSetupStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *consoleAuthServiceClient) SignUp(ctx context.Context, in *SignUpRequest, opts ...grpc.CallOption) (*SignUpResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignUpResponse)
+	err := c.cc.Invoke(ctx, ConsoleAuthService_SignUp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConsoleAuthServiceServer is the server API for ConsoleAuthService service.
 // All implementations must embed UnimplementedConsoleAuthServiceServer
 // for forward compatibility.
@@ -79,6 +106,11 @@ type ConsoleAuthServiceServer interface {
 	SignIn(context.Context, *SignInRequest) (*SignInResponse, error)
 	RefreshToken(context.Context, *RefreshTokenRequest) (*SignInResponse, error)
 	SignOut(context.Context, *SignOutRequest) (*v1.Empty, error)
+	// 查询是否已完成初始化（console_admins 是否为空）。
+	GetSetupStatus(context.Context, *GetSetupStatusRequest) (*GetSetupStatusResponse, error)
+	// 首个管理员注册：仅当 console_admins 表为空时可用；注册成功后自动创建
+	// 默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。
+	SignUp(context.Context, *SignUpRequest) (*SignUpResponse, error)
 	mustEmbedUnimplementedConsoleAuthServiceServer()
 }
 
@@ -97,6 +129,12 @@ func (UnimplementedConsoleAuthServiceServer) RefreshToken(context.Context, *Refr
 }
 func (UnimplementedConsoleAuthServiceServer) SignOut(context.Context, *SignOutRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SignOut not implemented")
+}
+func (UnimplementedConsoleAuthServiceServer) GetSetupStatus(context.Context, *GetSetupStatusRequest) (*GetSetupStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSetupStatus not implemented")
+}
+func (UnimplementedConsoleAuthServiceServer) SignUp(context.Context, *SignUpRequest) (*SignUpResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SignUp not implemented")
 }
 func (UnimplementedConsoleAuthServiceServer) mustEmbedUnimplementedConsoleAuthServiceServer() {}
 func (UnimplementedConsoleAuthServiceServer) testEmbeddedByValue()                            {}
@@ -173,6 +211,42 @@ func _ConsoleAuthService_SignOut_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConsoleAuthService_GetSetupStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSetupStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsoleAuthServiceServer).GetSetupStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConsoleAuthService_GetSetupStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsoleAuthServiceServer).GetSetupStatus(ctx, req.(*GetSetupStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConsoleAuthService_SignUp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignUpRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsoleAuthServiceServer).SignUp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConsoleAuthService_SignUp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsoleAuthServiceServer).SignUp(ctx, req.(*SignUpRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConsoleAuthService_ServiceDesc is the grpc.ServiceDesc for ConsoleAuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -191,6 +265,14 @@ var ConsoleAuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SignOut",
 			Handler:    _ConsoleAuthService_SignOut_Handler,
+		},
+		{
+			MethodName: "GetSetupStatus",
+			Handler:    _ConsoleAuthService_GetSetupStatus_Handler,
+		},
+		{
+			MethodName: "SignUp",
+			Handler:    _ConsoleAuthService_SignUp_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

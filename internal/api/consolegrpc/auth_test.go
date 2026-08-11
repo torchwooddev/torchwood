@@ -108,7 +108,13 @@ func newSignInService(t *testing.T, cfg *config.AppConfig) *AuthService {
 		PasswordHash: hash,
 		Role:         "admin",
 	}}
-	return NewAuthService(console.NewAuth(cfg, repo, nil, nil, nil))
+	return NewAuthService(console.NewAuth(cfg, repo, nil, nil, nil), newTestSetup())
+}
+
+// newTestSetup 构造一个仅用于既有 SignIn/RefreshToken/SignOut 测试的 Setup
+// 桩（SignUp/GetSetupStatus 相关测试不依赖其内部字段）。
+func newTestSetup() *console.Setup {
+	return console.NewSetup(nil, nil, nil, nil, nil, nil, nil)
 }
 
 // findCookie 在 set-cookie metadata 值里按 cookie 名查找。
@@ -183,7 +189,7 @@ func adminRefreshToken(t *testing.T, cfg *config.AppConfig) string {
 func TestRefreshToken_ReadsCookieWhenBodyEmpty(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig("http://localhost:9099")
-	svc := NewAuthService(console.NewAuth(cfg, nil, nil, nil, nil))
+	svc := NewAuthService(console.NewAuth(cfg, nil, nil, nil, nil), newTestSetup())
 	ctx, stream := testCtx(t)
 	refresh := adminRefreshToken(t, cfg)
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
@@ -201,7 +207,7 @@ func TestRefreshToken_ReadsCookieWhenBodyEmpty(t *testing.T) {
 func TestRefreshToken_BodyTakesPrecedenceOverCookie(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig("http://localhost:9099")
-	svc := NewAuthService(console.NewAuth(cfg, nil, nil, nil, nil))
+	svc := NewAuthService(console.NewAuth(cfg, nil, nil, nil, nil), newTestSetup())
 	ctx, _ := testCtx(t)
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
 		"cookie", "TORCHWOOD_console_refresh=forged-token",
@@ -216,7 +222,7 @@ func TestRefreshToken_BodyTakesPrecedenceOverCookie(t *testing.T) {
 
 func TestSignOut_ClearsSessionCookies(t *testing.T) {
 	t.Parallel()
-	svc := NewAuthService(console.NewAuth(testConfig("http://localhost:9099"), nil, nil, nil, nil))
+	svc := NewAuthService(console.NewAuth(testConfig("http://localhost:9099"), nil, nil, nil, nil), newTestSetup())
 	ctx, stream := testCtx(t)
 
 	_, err := svc.SignOut(ctx, &consolev1.SignOutRequest{})

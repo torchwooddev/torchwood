@@ -48,6 +48,29 @@
         ]
       }
     },
+    "/v1/console/auth/setup-status": {
+      "get": {
+        "summary": "查询是否已完成初始化（console_admins 是否为空）。",
+        "operationId": "ConsoleAuthService_GetSetupStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetSetupStatusResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "ConsoleAuthService"
+        ]
+      }
+    },
     "/v1/console/auth/sign-in": {
       "post": {
         "operationId": "ConsoleAuthService_SignIn",
@@ -104,6 +127,39 @@
             "required": true,
             "schema": {
               "$ref": "#/definitions/torchwoodconsolev1SignOutRequest"
+            }
+          }
+        ],
+        "tags": [
+          "ConsoleAuthService"
+        ]
+      }
+    },
+    "/v1/console/auth/sign-up": {
+      "post": {
+        "summary": "首个管理员注册：仅当 console_admins 表为空时可用；注册成功后自动创建\r\n默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。",
+        "operationId": "ConsoleAuthService_SignUp",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodconsolev1SignUpResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/torchwoodconsolev1SignUpRequest"
             }
           }
         ],
@@ -179,8 +235,69 @@
     "torchwoodconsolev1SignOutRequest": {
       "type": "object"
     },
+    "torchwoodconsolev1SignUpRequest": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        }
+      }
+    },
+    "torchwoodconsolev1SignUpResponse": {
+      "type": "object",
+      "properties": {
+        "admin": {
+          "$ref": "#/definitions/v1Admin",
+          "title": "复用 admins.proto 的 Admin 消息"
+        },
+        "accessToken": {
+          "type": "string",
+          "title": "与 SignInResponse 一致，便于前端统一处理"
+        },
+        "refreshToken": {
+          "type": "string"
+        },
+        "defaultApiKeySecret": {
+          "type": "string",
+          "title": "仅此一次返回明文"
+        }
+      }
+    },
+    "v1Admin": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "v1Empty": {
       "type": "object"
+    },
+    "v1GetSetupStatusResponse": {
+      "type": "object",
+      "properties": {
+        "needsSetup": {
+          "type": "boolean"
+        }
+      }
     }
   }
 }

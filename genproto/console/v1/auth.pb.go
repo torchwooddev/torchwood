@@ -215,11 +215,211 @@ func (*SignOutRequest) Descriptor() ([]byte, []int) {
 	return file_console_v1_auth_proto_rawDescGZIP(), []int{3}
 }
 
+type GetSetupStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSetupStatusRequest) Reset() {
+	*x = GetSetupStatusRequest{}
+	mi := &file_console_v1_auth_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSetupStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSetupStatusRequest) ProtoMessage() {}
+
+func (x *GetSetupStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_console_v1_auth_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSetupStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetSetupStatusRequest) Descriptor() ([]byte, []int) {
+	return file_console_v1_auth_proto_rawDescGZIP(), []int{4}
+}
+
+type GetSetupStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NeedsSetup    bool                   `protobuf:"varint,1,opt,name=needs_setup,json=needsSetup,proto3" json:"needs_setup,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSetupStatusResponse) Reset() {
+	*x = GetSetupStatusResponse{}
+	mi := &file_console_v1_auth_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSetupStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSetupStatusResponse) ProtoMessage() {}
+
+func (x *GetSetupStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_console_v1_auth_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSetupStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetSetupStatusResponse) Descriptor() ([]byte, []int) {
+	return file_console_v1_auth_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetSetupStatusResponse) GetNeedsSetup() bool {
+	if x != nil {
+		return x.NeedsSetup
+	}
+	return false
+}
+
+type SignUpRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignUpRequest) Reset() {
+	*x = SignUpRequest{}
+	mi := &file_console_v1_auth_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignUpRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignUpRequest) ProtoMessage() {}
+
+func (x *SignUpRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_console_v1_auth_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignUpRequest.ProtoReflect.Descriptor instead.
+func (*SignUpRequest) Descriptor() ([]byte, []int) {
+	return file_console_v1_auth_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SignUpRequest) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *SignUpRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+type SignUpResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Admin               *Admin                 `protobuf:"bytes,1,opt,name=admin,proto3" json:"admin,omitempty"`                                // 复用 admins.proto 的 Admin 消息
+	AccessToken         string                 `protobuf:"bytes,2,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"` // 与 SignInResponse 一致，便于前端统一处理
+	RefreshToken        string                 `protobuf:"bytes,3,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	DefaultApiKeySecret string                 `protobuf:"bytes,4,opt,name=default_api_key_secret,json=defaultApiKeySecret,proto3" json:"default_api_key_secret,omitempty"` // 仅此一次返回明文
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *SignUpResponse) Reset() {
+	*x = SignUpResponse{}
+	mi := &file_console_v1_auth_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignUpResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignUpResponse) ProtoMessage() {}
+
+func (x *SignUpResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_console_v1_auth_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignUpResponse.ProtoReflect.Descriptor instead.
+func (*SignUpResponse) Descriptor() ([]byte, []int) {
+	return file_console_v1_auth_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SignUpResponse) GetAdmin() *Admin {
+	if x != nil {
+		return x.Admin
+	}
+	return nil
+}
+
+func (x *SignUpResponse) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *SignUpResponse) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *SignUpResponse) GetDefaultApiKeySecret() string {
+	if x != nil {
+		return x.DefaultApiKeySecret
+	}
+	return ""
+}
+
 var File_console_v1_auth_proto protoreflect.FileDescriptor
 
 const file_console_v1_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x15console/v1/auth.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
+	"\x15console/v1/auth.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17console/v1/admins.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
 	"\rSignInRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"w\n" +
@@ -230,11 +430,25 @@ const file_console_v1_auth_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x03 \x01(\tR\frefreshToken\":\n" +
 	"\x13RefreshTokenRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"\x10\n" +
-	"\x0eSignOutRequest2\x90\x03\n" +
+	"\x0eSignOutRequest\"\x17\n" +
+	"\x15GetSetupStatusRequest\"9\n" +
+	"\x16GetSetupStatusResponse\x12\x1f\n" +
+	"\vneeds_setup\x18\x01 \x01(\bR\n" +
+	"needsSetup\"A\n" +
+	"\rSignUpRequest\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\xc0\x01\n" +
+	"\x0eSignUpResponse\x121\n" +
+	"\x05admin\x18\x01 \x01(\v2\x1b.torchwood.console.v1.AdminR\x05admin\x12!\n" +
+	"\faccess_token\x18\x02 \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x03 \x01(\tR\frefreshToken\x123\n" +
+	"\x16default_api_key_secret\x18\x04 \x01(\tR\x13defaultApiKeySecret2\x9f\x05\n" +
 	"\x12ConsoleAuthService\x12x\n" +
 	"\x06SignIn\x12#.torchwood.console.v1.SignInRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-in\x12\x84\x01\n" +
 	"\fRefreshToken\x12).torchwood.console.v1.RefreshTokenRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/refresh\x12q\n" +
-	"\aSignOut\x12$.torchwood.console.v1.SignOutRequest\x1a\x1a.torchwood.shared.v1.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/console/auth/sign-out\x1a\x06\x92\xb2\x19\x02\b\x01BAZ?github.com/torchwooddev/torchwood/genproto/console/v1;consolev1b\x06proto3"
+	"\aSignOut\x12$.torchwood.console.v1.SignOutRequest\x1a\x1a.torchwood.shared.v1.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/console/auth/sign-out\x12\x92\x01\n" +
+	"\x0eGetSetupStatus\x12+.torchwood.console.v1.GetSetupStatusRequest\x1a,.torchwood.console.v1.GetSetupStatusResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/console/auth/setup-status\x12x\n" +
+	"\x06SignUp\x12#.torchwood.console.v1.SignUpRequest\x1a$.torchwood.console.v1.SignUpResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-up\x1a\x06\x92\xb2\x19\x02\b\x01BAZ?github.com/torchwooddev/torchwood/genproto/console/v1;consolev1b\x06proto3"
 
 var (
 	file_console_v1_auth_proto_rawDescOnce sync.Once
@@ -248,26 +462,36 @@ func file_console_v1_auth_proto_rawDescGZIP() []byte {
 	return file_console_v1_auth_proto_rawDescData
 }
 
-var file_console_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_console_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_console_v1_auth_proto_goTypes = []any{
-	(*SignInRequest)(nil),       // 0: torchwood.console.v1.SignInRequest
-	(*SignInResponse)(nil),      // 1: torchwood.console.v1.SignInResponse
-	(*RefreshTokenRequest)(nil), // 2: torchwood.console.v1.RefreshTokenRequest
-	(*SignOutRequest)(nil),      // 3: torchwood.console.v1.SignOutRequest
-	(*v1.Empty)(nil),            // 4: torchwood.shared.v1.Empty
+	(*SignInRequest)(nil),          // 0: torchwood.console.v1.SignInRequest
+	(*SignInResponse)(nil),         // 1: torchwood.console.v1.SignInResponse
+	(*RefreshTokenRequest)(nil),    // 2: torchwood.console.v1.RefreshTokenRequest
+	(*SignOutRequest)(nil),         // 3: torchwood.console.v1.SignOutRequest
+	(*GetSetupStatusRequest)(nil),  // 4: torchwood.console.v1.GetSetupStatusRequest
+	(*GetSetupStatusResponse)(nil), // 5: torchwood.console.v1.GetSetupStatusResponse
+	(*SignUpRequest)(nil),          // 6: torchwood.console.v1.SignUpRequest
+	(*SignUpResponse)(nil),         // 7: torchwood.console.v1.SignUpResponse
+	(*Admin)(nil),                  // 8: torchwood.console.v1.Admin
+	(*v1.Empty)(nil),               // 9: torchwood.shared.v1.Empty
 }
 var file_console_v1_auth_proto_depIdxs = []int32{
-	0, // 0: torchwood.console.v1.ConsoleAuthService.SignIn:input_type -> torchwood.console.v1.SignInRequest
-	2, // 1: torchwood.console.v1.ConsoleAuthService.RefreshToken:input_type -> torchwood.console.v1.RefreshTokenRequest
-	3, // 2: torchwood.console.v1.ConsoleAuthService.SignOut:input_type -> torchwood.console.v1.SignOutRequest
-	1, // 3: torchwood.console.v1.ConsoleAuthService.SignIn:output_type -> torchwood.console.v1.SignInResponse
-	1, // 4: torchwood.console.v1.ConsoleAuthService.RefreshToken:output_type -> torchwood.console.v1.SignInResponse
-	4, // 5: torchwood.console.v1.ConsoleAuthService.SignOut:output_type -> torchwood.shared.v1.Empty
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	8, // 0: torchwood.console.v1.SignUpResponse.admin:type_name -> torchwood.console.v1.Admin
+	0, // 1: torchwood.console.v1.ConsoleAuthService.SignIn:input_type -> torchwood.console.v1.SignInRequest
+	2, // 2: torchwood.console.v1.ConsoleAuthService.RefreshToken:input_type -> torchwood.console.v1.RefreshTokenRequest
+	3, // 3: torchwood.console.v1.ConsoleAuthService.SignOut:input_type -> torchwood.console.v1.SignOutRequest
+	4, // 4: torchwood.console.v1.ConsoleAuthService.GetSetupStatus:input_type -> torchwood.console.v1.GetSetupStatusRequest
+	6, // 5: torchwood.console.v1.ConsoleAuthService.SignUp:input_type -> torchwood.console.v1.SignUpRequest
+	1, // 6: torchwood.console.v1.ConsoleAuthService.SignIn:output_type -> torchwood.console.v1.SignInResponse
+	1, // 7: torchwood.console.v1.ConsoleAuthService.RefreshToken:output_type -> torchwood.console.v1.SignInResponse
+	9, // 8: torchwood.console.v1.ConsoleAuthService.SignOut:output_type -> torchwood.shared.v1.Empty
+	5, // 9: torchwood.console.v1.ConsoleAuthService.GetSetupStatus:output_type -> torchwood.console.v1.GetSetupStatusResponse
+	7, // 10: torchwood.console.v1.ConsoleAuthService.SignUp:output_type -> torchwood.console.v1.SignUpResponse
+	6, // [6:11] is the sub-list for method output_type
+	1, // [1:6] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_console_v1_auth_proto_init() }
@@ -275,13 +499,14 @@ func file_console_v1_auth_proto_init() {
 	if File_console_v1_auth_proto != nil {
 		return
 	}
+	file_console_v1_admins_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_console_v1_auth_proto_rawDesc), len(file_console_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

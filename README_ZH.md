@@ -80,7 +80,7 @@ TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 task migrate
 ```
 
-### 4. 安装依赖并初始化数据
+### 4. 安装依赖
 
 ```bash
 # 安装工具（首次）
@@ -91,12 +91,7 @@ task console-install
 
 # 生成 protobuf、wire 等
 task generate-all
-
-# 创建默认项目和 Console 管理员
-go run ./cmd/seed
 ```
-
-默认管理员：`admin@torchwood.local / Admin@123`。
 
 ### 5. 构建并运行
 
@@ -110,6 +105,17 @@ task build      # 会先执行 console-build，再编译 Go server
 ```bash
 task dev-server
 ```
+
+### 6. 首次部署引导（bootstrap）
+
+全新数据库上启动后，打开 Admin Console `http://127.0.0.1:9080/console/`，
+登录页会自动切换为「初始化设置」表单。注册第一个管理员将自动：
+
+- 创建 owner 管理员账户（首个管理员固定为 `owner`）；
+- 创建默认项目（id=`default`）与默认 API Key（scope=`all`）；
+- 页面展示一次默认 API Key secret（请立即复制，此后无法再读取）。
+
+使用该 secret 以 `x-api-key` metadata 调用 Server API 即可。
 
 访问（默认取自 `configs/config.yaml.template`，并非硬编码）：
 
@@ -151,7 +157,6 @@ task build             # 构建完整二进制（含 console）
 ```
 .
 ├── cmd/
-│   ├── seed/              # 默认项目/管理员/API Key 初始化
 │   ├── server/            # 服务入口与 Wire 组装
 │   └── worker/            # 异步 worker（函数执行队列消费者）
 ├── console/               # Admin Console React SPA

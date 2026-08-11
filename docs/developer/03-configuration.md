@@ -182,7 +182,7 @@ cmd/server/main.go
   校验 security.jwt.secret 非空   # 5. 失败即退出
 ```
 
-`cmd/seed/main.go` 与 `cmd/worker/main.go` 也通过 `godotenv.Load()` 加载 `.env`；`seed` 使用 `internal/pkg/database.SourceFromEnv()` 直接读取 `TORCHWOOD_DATA_DATABASE_SOURCE`。
+`cmd/worker/main.go` 也通过 `godotenv.Load()` 加载 `.env`。
 
 ---
 

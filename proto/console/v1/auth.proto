@@ -5,6 +5,7 @@ package torchwood.console.v1;
 option go_package = "github.com/torchwooddev/torchwood/genproto/console/v1;consolev1";
 
 import "google/api/annotations.proto";
+import "console/v1/admins.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
@@ -21,6 +22,17 @@ service ConsoleAuthService {
 
   rpc SignOut(SignOutRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { post: "/v1/console/auth/sign-out", body: "*" };
+  }
+
+  // 查询是否已完成初始化（console_admins 是否为空）。
+  rpc GetSetupStatus(GetSetupStatusRequest) returns (GetSetupStatusResponse) {
+    option (google.api.http) = { get: "/v1/console/auth/setup-status" };
+  }
+
+  // 首个管理员注册：仅当 console_admins 表为空时可用；注册成功后自动创建
+  // 默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。
+  rpc SignUp(SignUpRequest) returns (SignUpResponse) {
+    option (google.api.http) = { post: "/v1/console/auth/sign-up", body: "*" };
   }
 }
 
@@ -40,3 +52,21 @@ message RefreshTokenRequest {
 }
 
 message SignOutRequest {}
+
+message GetSetupStatusRequest {}
+
+message GetSetupStatusResponse {
+  bool needs_setup = 1;
+}
+
+message SignUpRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message SignUpResponse {
+  Admin admin = 1;                   // 复用 admins.proto 的 Admin 消息
+  string access_token = 2;           // 与 SignInResponse 一致，便于前端统一处理
+  string refresh_token = 3;
+  string default_api_key_secret = 4; // 仅此一次返回明文
+}

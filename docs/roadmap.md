@@ -239,7 +239,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | API Key scope 校验 | 拦截器解析 scopes，对端点做细粒度授权 | `pkg/grpc/interceptor/scope.go` | ✅ 完成 |
 | 单元测试补齐 | 每个新增 use-case 至少一个单元测试（Functions use-case 已补） | `internal/app/**/*_test.go` | ✅ 完成 |
 | 集成测试 | Account、Databases Documents、Storage 端到端测试；本次补 UpdateCollection/DeleteAttribute/DeleteIndex/increment 路径 | `internal/app/**/*_integration_test.go` | ✅ 完成 |
-| Seed 数据增强 | 提供示例 collection、文件、函数 | `cmd/seed/main.go` | 待办 |
+| Seed 数据增强 | 提供示例 collection、文件、函数 | ~~`cmd/seed/main.go`~~ | 已由首个管理员 bootstrap 取代（`docs/implementation-bootstrap-and-cli.md`），`cmd/seed` 移除 |
 | GitHub Actions CI | lint（gofmt/vet/eslint）、test（含 Postgres 集成）、build、console-build | `.github/workflows/ci.yml` | ✅ 完成 |
 | 代码格式化 | `gofmt`、`eslint`（prettier 未启用） | `Taskfile.yml`（`task lint`）、`console/eslint.config.js` | ✅ 完成 |
 

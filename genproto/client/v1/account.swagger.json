@@ -1014,7 +1014,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/v1SignUpResponse"
+              "$ref": "#/definitions/torchwoodclientv1SignUpResponse"
             }
           },
           "default": {
@@ -1030,7 +1030,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/v1SignUpRequest"
+              "$ref": "#/definitions/torchwoodclientv1SignUpRequest"
             }
           }
         ],
@@ -1261,6 +1261,50 @@
       "properties": {
         "projectId": {
           "type": "string"
+        }
+      }
+    },
+    "torchwoodclientv1SignUpRequest": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        }
+      }
+    },
+    "torchwoodclientv1SignUpResponse": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "$ref": "#/definitions/v1Account"
+        },
+        "tokens": {
+          "$ref": "#/definitions/torchwoodclientv1TokenBundle"
+        },
+        "mfaRequired": {
+          "type": "boolean",
+          "title": "用户有 verified 因子且未完成挑战时 true"
+        },
+        "challengeToken": {
+          "type": "string",
+          "title": "mfa_required 时返回（5min 一次性）"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Factor"
+          },
+          "title": "mfa_required 时返回（不含 secret）"
         }
       }
     },
@@ -1588,50 +1632,6 @@
       "properties": {
         "tokens": {
           "$ref": "#/definitions/torchwoodclientv1TokenBundle"
-        }
-      }
-    },
-    "v1SignUpRequest": {
-      "type": "object",
-      "properties": {
-        "email": {
-          "type": "string"
-        },
-        "password": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "projectId": {
-          "type": "string"
-        }
-      }
-    },
-    "v1SignUpResponse": {
-      "type": "object",
-      "properties": {
-        "account": {
-          "$ref": "#/definitions/v1Account"
-        },
-        "tokens": {
-          "$ref": "#/definitions/torchwoodclientv1TokenBundle"
-        },
-        "mfaRequired": {
-          "type": "boolean",
-          "title": "用户有 verified 因子且未完成挑战时 true"
-        },
-        "challengeToken": {
-          "type": "string",
-          "title": "mfa_required 时返回（5min 一次性）"
-        },
-        "factors": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/v1Factor"
-          },
-          "title": "mfa_required 时返回（不含 secret）"
         }
       }
     },

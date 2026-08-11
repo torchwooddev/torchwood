@@ -81,7 +81,7 @@ TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 task migrate
 ```
 
-### 4. Install dependencies and seed data
+### 4. Install dependencies
 
 ```bash
 # Install tools (first time)
@@ -92,12 +92,7 @@ task console-install
 
 # Generate protobuf, wire, etc.
 task generate-all
-
-# Create default project and Console admin
-go run ./cmd/seed
 ```
-
-Default admin: `admin@torchwood.local / Admin@123`.
 
 ### 5. Build and run
 
@@ -111,6 +106,18 @@ Or use dev mode:
 ```bash
 task dev-server
 ```
+
+### 6. First-run setup (bootstrap)
+
+On a fresh database, open the Admin Console at `http://127.0.0.1:9080/console/`.
+The login page switches to the **setup form**; registering the first admin
+automatically:
+
+- creates the owner admin account (first admin is always `owner`);
+- creates the default project (`default`) and a default API Key (scope `all`);
+- shows the API Key secret **once** (copy it, it cannot be retrieved later).
+
+Use that secret with `x-api-key` metadata to call the Server API.
 
 Endpoints (defaults from `configs/config.yaml.template`; not hardcoded):
 
@@ -152,7 +159,6 @@ task build             # build full binary (includes console)
 ```
 .
 ├── cmd/
-│   ├── seed/              # default project / admin / API key bootstrap
 │   ├── server/            # server entrypoint and Wire assembly
 │   └── worker/            # async worker (functions executions queue consumer)
 ├── console/               # Admin Console React SPA

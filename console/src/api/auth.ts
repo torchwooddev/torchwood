@@ -27,3 +27,28 @@ export async function logout(): Promise<void> {
     // Ignore: sign-out is best-effort.
   }
 }
+
+// getSetupStatus 查询是否尚未初始化（needs_setup=true 时登录页切换为
+// 初始化设置表单）。
+export async function getSetupStatus(): Promise<boolean> {
+  const res = await api.get<{ needs_setup: boolean }>("/console/auth/setup-status");
+  return res.data.needs_setup;
+}
+
+export interface SignUpInput {
+  email: string;
+  password: string;
+}
+
+export interface SignUpResult {
+  admin: { id: string; email: string; role: string };
+  // default_api_key_secret 仅此一次返回，前端只展示不持久化。
+  default_api_key_secret: string;
+}
+
+// signUp 注册首个管理员（owner）。成功后服务端通过 HttpOnly cookie 下发
+// 会话凭证，浏览器端无需再次登录。
+export async function signUp(input: SignUpInput): Promise<SignUpResult> {
+  const res = await api.post<SignUpResult>("/console/auth/sign-up", input);
+  return res.data;
+}

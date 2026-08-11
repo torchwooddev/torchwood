@@ -10,11 +10,12 @@ import (
 
 type AuthService struct {
 	consolev1.UnimplementedConsoleAuthServiceServer
-	auth *console.Auth
+	auth  *console.Auth
+	setup *console.Setup
 }
 
-func NewAuthService(auth *console.Auth) *AuthService {
-	return &AuthService{auth: auth}
+func NewAuthService(auth *console.Auth, setup *console.Setup) *AuthService {
+	return &AuthService{auth: auth, setup: setup}
 }
 
 func (s *AuthService) SignIn(ctx context.Context, req *consolev1.SignInRequest) (*consolev1.SignInResponse, error) {
@@ -51,6 +52,29 @@ func (s *AuthService) SignOut(ctx context.Context, _ *consolev1.SignOutRequest) 
 	}
 	clearSessionCookies(ctx, s.auth)
 	return &sharedv1.Empty{}, nil
+}
+
+func (s *AuthService) GetSetupStatus(ctx context.Context, _ *consolev1.GetSetupStatusRequest) (*consolev1.GetSetupStatusResponse, error) {
+	needsSetup, err := s.setup.GetSetupStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &consolev1.GetSetupStatusResponse{NeedsSetup: needsSetup}, nil
+}
+
+func (s *AuthService) SignUp(ctx context.Context, req *consolev1.SignUpRequest) (*consolev1.SignUpResponse, error) {
+	result, err := s.setup.SignUp(ctx, req.GetEmail(), req.GetPassword())
+	if err != nil {
+		return nil, err
+	}
+	// 与 SignIn 一致：注册成功后下发会话 cookie，浏览器端免再次登录。
+	setSessionCookies(ctx, s.auth, result.Tokens)
+	return &consolev1.SignUpResponse{
+		Admin:               mapAdmin(result.Admin),
+		AccessToken:         result.Tokens.AccessToken,
+		RefreshToken:        result.Tokens.RefreshToken,
+		DefaultApiKeySecret: result.APIKeySecret,
+	}, nil
 }
 
 func mapSignInResponse(tokens *console.TokenPair) *consolev1.SignInResponse {

@@ -51,6 +51,14 @@ func (s *Projects) CreateProject(ctx context.Context, cmd CreateProjectCommand) 
 	if principal.ActorKind != shared.ActorKindAdmin || !principal.IsPlatformAdmin {
 		return nil, status.Error(codes.PermissionDenied, "platform admin required to create projects")
 	}
+	return s.CreateProjectInternal(ctx, cmd)
+}
+
+// CreateProjectInternal 创建项目（校验 name/description、生成 id、事务内插入
+// project 并 EnsureSystemCollections）。不做 principal 检查，仅供 bootstrap 等
+// 系统路径调用，调用方负责授权；外部入口 CreateProject 保留平台 admin 校验后
+// 委托本方法。
+func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectCommand) (*projects.Project, error) {
 	if cmd.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
