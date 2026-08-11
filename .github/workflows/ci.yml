@@ -68,6 +68,10 @@ jobs:
       - name: Tests (unit + integration)
         run: go test ./...
 
+      - name: SDK Go tests (independent module)
+        working-directory: sdk/go
+        run: go test ./...
+
       - name: Build (console + server embed)
         run: task build
 
