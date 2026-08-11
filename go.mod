@@ -25,6 +25,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/torchwooddev/torchwood/genproto v0.0.0-00010101000000-000000000000
+	github.com/torchwooddev/torchwood/sdk/go v0.0.0-00010101000000-000000000000
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
@@ -115,3 +116,5 @@ require (
 )
 
 replace github.com/torchwooddev/torchwood/genproto => ./genproto
+
+replace github.com/torchwooddev/torchwood/sdk/go => ./sdk/go
