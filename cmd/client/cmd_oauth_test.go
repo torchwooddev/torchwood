@@ -1,11 +1,9 @@
 package main
 
 import (
-	"strings"
 	"testing"
 
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	"google.golang.org/protobuf/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildUpsertOAuthProviderReq(t *testing.T) {
@@ -31,32 +29,23 @@ func TestBuildUpsertOAuthProviderReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildUpsertOAuthProviderReq(tt.provider, tt.enabled, tt.clientID, tt.clientSecret, tt.scopes)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.provider, req["provider"])
+			require.Equal(t, tt.enabled, req["enabled"])
+			require.Equal(t, tt.clientID, req["clientId"])
+			if tt.clientSecret != "" {
+				require.Equal(t, tt.clientSecret, req["clientSecret"])
+			} else {
+				require.NotContains(t, req, "clientSecret")
 			}
-			if req.GetProvider() != tt.provider || req.GetClientId() != tt.clientID ||
-				req.GetEnabled() != tt.enabled || req.GetClientSecret() != tt.clientSecret {
-				t.Errorf("请求不匹配: %v", req)
-			}
-			if tt.scopes != "" && len(req.GetScopes()) != 2 {
-				t.Errorf("scopes 未解析: %v", req.GetScopes())
+			if tt.scopes != "" {
+				require.Equal(t, []string{"email", "profile"}, req["scopes"])
+			} else {
+				require.NotContains(t, req, "scopes")
 			}
 		})
-	}
-}
-
-// TestOAuthRegistryTypes 校验具名命令构造的请求类型与 rpc 注册表一致。
-func TestOAuthRegistryTypes(t *testing.T) {
-	e, err := lookupRPCMethod(serverv1.OAuthProvidersService_UpsertOAuthProvider_FullMethodName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if proto.MessageName(e.newReq()) != proto.MessageName(&serverv1.UpsertOAuthProviderRequest{}) {
-		t.Fatal("注册表请求类型与具名命令不一致")
 	}
 }

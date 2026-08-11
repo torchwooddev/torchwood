@@ -5,7 +5,21 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+)
+
+const (
+	methodTeamsCreate                 = "/torchwood.server.v1.TeamsService/CreateTeam"
+	methodTeamsList                   = "/torchwood.server.v1.TeamsService/ListTeams"
+	methodTeamsGet                    = "/torchwood.server.v1.TeamsService/GetTeam"
+	methodTeamsDelete                 = "/torchwood.server.v1.TeamsService/DeleteTeam"
+	methodTeamsGetPrefs               = "/torchwood.server.v1.TeamsService/GetTeamPrefs"
+	methodTeamsUpdatePrefs            = "/torchwood.server.v1.TeamsService/UpdateTeamPrefs"
+	methodTeamsCreateMembership       = "/torchwood.server.v1.TeamsService/CreateMembership"
+	methodTeamsListMemberships        = "/torchwood.server.v1.TeamsService/ListMemberships"
+	methodTeamsGetMembership          = "/torchwood.server.v1.TeamsService/GetMembership"
+	methodTeamsUpdateMembership       = "/torchwood.server.v1.TeamsService/UpdateMembership"
+	methodTeamsUpdateMembershipStatus = "/torchwood.server.v1.TeamsService/UpdateMembershipStatus"
+	methodTeamsDeleteMembership       = "/torchwood.server.v1.TeamsService/DeleteMembership"
 )
 
 // newTeamsCmd 覆盖 TeamsService 全部 12 个方法：
@@ -37,8 +51,8 @@ func newTeamsCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Team{}
-			if err := invoke(g, serverv1.TeamsService_CreateTeam_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodTeamsCreate, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -56,8 +70,8 @@ func newTeamsListCmd(g *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "列出团队",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListTeamsResponse{}
-			if err := invoke(g, serverv1.TeamsService_ListTeams_FullMethodName, buildListRequest(pageSize, pageToken), resp); err != nil {
+			resp, err := invoke(g, methodTeamsList, listJSON(pageSize, pageToken))
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -74,8 +88,8 @@ func newTeamsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取团队",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Team{}
-			if err := invoke(g, serverv1.TeamsService_GetTeam_FullMethodName, &serverv1.GetTeamRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodTeamsGet, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -89,8 +103,8 @@ func newTeamsDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除团队",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Team{}
-			if err := invoke(g, serverv1.TeamsService_DeleteTeam_FullMethodName, &serverv1.GetTeamRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodTeamsDelete, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -110,8 +124,8 @@ func newTeamsPrefsCmd(g *globalFlags) *cobra.Command {
 			Short: "获取团队偏好",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.GetTeamPrefsResponse{}
-				if err := invoke(g, serverv1.TeamsService_GetTeamPrefs_FullMethodName, &serverv1.GetTeamRequest{Id: args[0]}, resp); err != nil {
+				resp, err := invoke(g, methodTeamsGetPrefs, map[string]any{"id": args[0]})
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -133,8 +147,8 @@ func newTeamsPrefsUpdateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.GetTeamPrefsResponse{}
-			if err := invoke(g, serverv1.TeamsService_UpdateTeamPrefs_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodTeamsUpdatePrefs, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -173,8 +187,8 @@ func newTeamsMembershipsCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Membership{}
-			if err := invoke(g, serverv1.TeamsService_CreateMembership_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodTeamsCreateMembership, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -201,8 +215,8 @@ func newTeamsMembershipsListCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.ListMembershipsResponse{}
-			if err := invoke(g, serverv1.TeamsService_ListMemberships_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodTeamsListMemberships, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -220,8 +234,8 @@ func newTeamsMembershipsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取团队成员",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Membership{}
-			if err := invoke(g, serverv1.TeamsService_GetMembership_FullMethodName, &serverv1.GetMembershipRequest{TeamId: args[0], MembershipId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodTeamsGetMembership, map[string]any{"teamId": args[0], "membershipId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -240,8 +254,8 @@ func newTeamsMembershipsUpdateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Membership{}
-			if err := invoke(g, serverv1.TeamsService_UpdateMembership_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodTeamsUpdateMembership, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -262,8 +276,8 @@ func newTeamsMembershipsUpdateStatusCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Membership{}
-			if err := invoke(g, serverv1.TeamsService_UpdateMembershipStatus_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodTeamsUpdateMembershipStatus, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -279,8 +293,8 @@ func newTeamsMembershipsDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除团队成员",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Membership{}
-			if err := invoke(g, serverv1.TeamsService_DeleteMembership_FullMethodName, &serverv1.GetMembershipRequest{TeamId: args[0], MembershipId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodTeamsDeleteMembership, map[string]any{"teamId": args[0], "membershipId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -289,90 +303,111 @@ func newTeamsMembershipsDeleteCmd(g *globalFlags) *cobra.Command {
 }
 
 // buildCreateTeamReq 构造 CreateTeamRequest（name 必填）。
-func buildCreateTeamReq(name, permissions string) (*serverv1.CreateTeamRequest, error) {
+func buildCreateTeamReq(name, permissions string) (map[string]any, error) {
 	if name == "" {
 		return nil, fmt.Errorf("--name 必填")
 	}
-	perms, err := jsonStringList(permissions, "permissions")
-	if err != nil {
-		return nil, err
+	req := map[string]any{"name": name}
+	if permissions != "" {
+		perms, err := jsonStringList(permissions, "--permissions")
+		if err != nil {
+			return nil, err
+		}
+		req["permissions"] = perms
 	}
-	return &serverv1.CreateTeamRequest{Name: name, Permissions: perms}, nil
+	return req, nil
 }
 
 // buildUpdateTeamPrefsReq 构造 UpdateTeamPrefsRequest（--data 为 prefs 对象本体）。
-func buildUpdateTeamPrefsReq(id, data string) (*serverv1.UpdateTeamPrefsRequest, error) {
+func buildUpdateTeamPrefsReq(id, data string) (map[string]any, error) {
 	if id == "" {
 		return nil, fmt.Errorf("缺少团队 ID")
 	}
-	prefs, err := structData(data)
+	req := map[string]any{"id": id}
+	prefs, err := jsonObject(data, "--data")
 	if err != nil {
 		return nil, err
 	}
 	if prefs == nil {
 		return nil, fmt.Errorf("--data 必填（prefs JSON 对象）")
 	}
-	return &serverv1.UpdateTeamPrefsRequest{Id: id, Prefs: prefs}, nil
+	req["prefs"] = prefs
+	return req, nil
 }
 
 // buildCreateMembershipReq 构造 CreateMembershipRequest（user-id/email 至少一个）。
-func buildCreateMembershipReq(teamID, userID, email, name, roles, status string) (*serverv1.CreateMembershipRequest, error) {
+func buildCreateMembershipReq(teamID, userID, email, name, roles, status string) (map[string]any, error) {
 	if teamID == "" {
 		return nil, fmt.Errorf("缺少 team-id")
 	}
 	if userID == "" && email == "" {
 		return nil, fmt.Errorf("--user-id 与 --email 至少提供一个")
 	}
-	roleList, err := jsonStringList(roles, "roles")
-	if err != nil {
-		return nil, err
+	req := map[string]any{"teamId": teamID}
+	if userID != "" {
+		req["userId"] = userID
 	}
-	return &serverv1.CreateMembershipRequest{
-		TeamId: teamID,
-		UserId: userID,
-		Email:  email,
-		Name:   name,
-		Roles:  roleList,
-		Status: status,
-	}, nil
+	if email != "" {
+		req["email"] = email
+	}
+	if name != "" {
+		req["name"] = name
+	}
+	if roles != "" {
+		roleList, err := jsonStringList(roles, "--roles")
+		if err != nil {
+			return nil, err
+		}
+		req["roles"] = roleList
+	}
+	if status != "" {
+		req["status"] = status
+	}
+	return req, nil
 }
 
 // buildListMembershipsReq 构造 ListMembershipsRequest。
-func buildListMembershipsReq(teamID, queries string, pageSize int32, pageToken string) (*serverv1.ListMembershipsRequest, error) {
+func buildListMembershipsReq(teamID, queries string, pageSize int32, pageToken string) (map[string]any, error) {
 	if teamID == "" {
 		return nil, fmt.Errorf("缺少 team-id")
 	}
-	qs, err := jsonStringList(queries, "queries")
-	if err != nil {
-		return nil, err
+	req := map[string]any{"teamId": teamID}
+	if queries != "" {
+		qs, err := jsonStringList(queries, "--queries")
+		if err != nil {
+			return nil, err
+		}
+		req["queries"] = qs
 	}
-	req := &serverv1.ListMembershipsRequest{TeamId: teamID, Queries: qs, PageToken: pageToken}
 	if pageSize > 0 {
-		req.PageSize = pageSize
+		req["pageSize"] = pageSize
+	}
+	if pageToken != "" {
+		req["pageToken"] = pageToken
 	}
 	return req, nil
 }
 
 // buildUpdateMembershipReq 构造 UpdateMembershipRequest（roles 必填）。
-func buildUpdateMembershipReq(teamID, membershipID, roles string) (*serverv1.UpdateMembershipRequest, error) {
+func buildUpdateMembershipReq(teamID, membershipID, roles string) (map[string]any, error) {
 	if teamID == "" {
 		return nil, fmt.Errorf("缺少 team-id")
 	}
 	if membershipID == "" {
 		return nil, fmt.Errorf("缺少 membership-id")
 	}
-	roleList, err := jsonStringList(roles, "roles")
+	roleList, err := jsonStringList(roles, "--roles")
 	if err != nil {
 		return nil, err
 	}
 	if len(roleList) == 0 {
 		return nil, fmt.Errorf("--roles 必填")
 	}
-	return &serverv1.UpdateMembershipRequest{TeamId: teamID, MembershipId: membershipID, Roles: roleList}, nil
+	return map[string]any{"teamId": teamID, "membershipId": membershipID, "roles": roleList}, nil
 }
 
 // buildUpdateMembershipStatusReq 构造 UpdateMembershipStatusRequest（status 必填）。
-func buildUpdateMembershipStatusReq(teamID, membershipID, status string) (*serverv1.UpdateMembershipStatusRequest, error) {
+func buildUpdateMembershipStatusReq(teamID, membershipID, status string) (map[string]any, error) {
 	if teamID == "" {
 		return nil, fmt.Errorf("缺少 team-id")
 	}
@@ -382,5 +417,5 @@ func buildUpdateMembershipStatusReq(teamID, membershipID, status string) (*serve
 	if status == "" {
 		return nil, fmt.Errorf("--status 必填")
 	}
-	return &serverv1.UpdateMembershipStatusRequest{TeamId: teamID, MembershipId: membershipID, Status: status}, nil
+	return map[string]any{"teamId": teamID, "membershipId": membershipID, "status": status}, nil
 }

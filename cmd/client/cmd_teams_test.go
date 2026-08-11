@@ -1,11 +1,9 @@
 package main
 
 import (
-	"strings"
 	"testing"
 
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	"google.golang.org/protobuf/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildCreateTeamReq(t *testing.T) {
@@ -24,19 +22,15 @@ func TestBuildCreateTeamReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildCreateTeamReq(tt.teamName, tt.permissions)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if req.GetName() != tt.teamName {
-				t.Errorf("name 不匹配: %q", req.GetName())
-			}
-			if tt.permissions != "" && len(req.GetPermissions()) != 1 {
-				t.Errorf("permissions 未合并: %v", req.GetPermissions())
+			require.NoError(t, err)
+			require.Equal(t, tt.teamName, req["name"])
+			if tt.permissions != "" {
+				require.Equal(t, []string{`read("teams")`}, req["permissions"])
+			} else {
+				require.NotContains(t, req, "permissions")
 			}
 		})
 	}
@@ -58,17 +52,14 @@ func TestBuildUpdateTeamPrefsReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildUpdateTeamPrefsReq(tt.id, tt.data)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if req.GetPrefs() == nil || req.GetPrefs().AsMap()["theme"] != "dark" {
-				t.Errorf("prefs 未解析: %v", req.GetPrefs())
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.id, req["id"])
+			prefs, ok := req["prefs"].(map[string]any)
+			require.True(t, ok, "prefs 不是 map: %v", req["prefs"])
+			require.Equal(t, "dark", prefs["theme"])
 		})
 	}
 }
@@ -94,19 +85,77 @@ func TestBuildCreateMembershipReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildCreateMembershipReq(tt.teamID, tt.userID, tt.email, tt.memberName, tt.roles, tt.status)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.teamID, req["teamId"])
+			if tt.userID != "" {
+				require.Equal(t, tt.userID, req["userId"])
+			} else {
+				require.NotContains(t, req, "userId")
 			}
-			if req.GetTeamId() != tt.teamID || req.GetUserId() != tt.userID || req.GetEmail() != tt.email {
-				t.Errorf("请求不匹配: %v", req)
+			if tt.email != "" {
+				require.Equal(t, tt.email, req["email"])
+			} else {
+				require.NotContains(t, req, "email")
 			}
-			if tt.roles != "" && len(req.GetRoles()) != 1 {
-				t.Errorf("roles 未合并: %v", req.GetRoles())
+			if tt.memberName != "" {
+				require.Equal(t, tt.memberName, req["name"])
+			} else {
+				require.NotContains(t, req, "name")
+			}
+			if tt.roles != "" {
+				require.Equal(t, []string{"admin"}, req["roles"])
+			} else {
+				require.NotContains(t, req, "roles")
+			}
+			if tt.status != "" {
+				require.Equal(t, tt.status, req["status"])
+			} else {
+				require.NotContains(t, req, "status")
+			}
+		})
+	}
+}
+
+func TestBuildListMembershipsReq(t *testing.T) {
+	tests := []struct {
+		name      string
+		teamID    string
+		queries   string
+		pageSize  int32
+		pageToken string
+		wantErr   string
+	}{
+		{name: "缺 team-id", wantErr: "缺少 team-id"},
+		{name: "最小字段", teamID: "t1", wantErr: ""},
+		{name: "queries 非法", teamID: "t1", queries: `x`, wantErr: "--queries 解析失败"},
+		{name: "全字段", teamID: "t1", queries: `["equal(\"status\",\"active\")"]`, pageSize: 10, pageToken: "tok", wantErr: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := buildListMembershipsReq(tt.teamID, tt.queries, tt.pageSize, tt.pageToken)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.teamID, req["teamId"])
+			if tt.queries != "" {
+				require.Equal(t, []string{`equal("status","active")`}, req["queries"])
+			} else {
+				require.NotContains(t, req, "queries")
+			}
+			if tt.pageSize > 0 {
+				require.Equal(t, int32(10), req["pageSize"])
+			} else {
+				require.NotContains(t, req, "pageSize")
+			}
+			if tt.pageToken != "" {
+				require.Equal(t, tt.pageToken, req["pageToken"])
+			} else {
+				require.NotContains(t, req, "pageToken")
 			}
 		})
 	}
@@ -128,17 +177,13 @@ func TestBuildUpdateMembershipReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildUpdateMembershipReq(tt.teamID, tt.membershipID, tt.roles)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(req.GetRoles()) != 2 {
-				t.Errorf("roles 未解析: %v", req.GetRoles())
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.teamID, req["teamId"])
+			require.Equal(t, tt.membershipID, req["membershipId"])
+			require.Equal(t, []string{"admin", "viewer"}, req["roles"])
 		})
 	}
 }
@@ -158,36 +203,13 @@ func TestBuildUpdateMembershipStatusReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildUpdateMembershipStatusReq(tt.teamID, tt.membershipID, tt.status)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if req.GetStatus() != tt.status {
-				t.Errorf("status 不匹配: %q", req.GetStatus())
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.teamID, req["teamId"])
+			require.Equal(t, tt.membershipID, req["membershipId"])
+			require.Equal(t, tt.status, req["status"])
 		})
-	}
-}
-
-// TestTeamsRegistryTypes 校验具名命令构造的请求类型与 rpc 注册表一致。
-func TestTeamsRegistryTypes(t *testing.T) {
-	for method, sample := range map[string]proto.Message{
-		serverv1.TeamsService_CreateTeam_FullMethodName:             &serverv1.CreateTeamRequest{},
-		serverv1.TeamsService_UpdateTeamPrefs_FullMethodName:        &serverv1.UpdateTeamPrefsRequest{},
-		serverv1.TeamsService_CreateMembership_FullMethodName:       &serverv1.CreateMembershipRequest{},
-		serverv1.TeamsService_UpdateMembership_FullMethodName:       &serverv1.UpdateMembershipRequest{},
-		serverv1.TeamsService_UpdateMembershipStatus_FullMethodName: &serverv1.UpdateMembershipStatusRequest{},
-	} {
-		e, err := lookupRPCMethod(method)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if proto.MessageName(e.newReq()) != proto.MessageName(sample) {
-			t.Errorf("注册表请求类型与具名命令不一致: %s", method)
-		}
 	}
 }

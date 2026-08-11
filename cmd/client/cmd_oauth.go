@@ -5,7 +5,12 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+)
+
+const (
+	methodOAuthList   = "/torchwood.server.v1.OAuthProvidersService/ListOAuthProviders"
+	methodOAuthUpsert = "/torchwood.server.v1.OAuthProvidersService/UpsertOAuthProvider"
+	methodOAuthDelete = "/torchwood.server.v1.OAuthProvidersService/DeleteOAuthProvider"
 )
 
 // newOAuthProvidersCmd 覆盖 OAuthProvidersService 全部 3 个方法：
@@ -30,8 +35,8 @@ func newOAuthProvidersListCmd(g *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "列出 OAuth 提供商",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListOAuthProvidersResponse{}
-			if err := invoke(g, serverv1.OAuthProvidersService_ListOAuthProviders_FullMethodName, buildListRequest(pageSize, pageToken), resp); err != nil {
+			resp, err := invoke(g, methodOAuthList, listJSON(pageSize, pageToken))
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -54,8 +59,8 @@ func newOAuthProvidersUpsertCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.OAuthProvider{}
-			if err := invoke(g, serverv1.OAuthProvidersService_UpsertOAuthProvider_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodOAuthUpsert, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -74,8 +79,8 @@ func newOAuthProvidersDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除 OAuth 提供商",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.OAuthProvider{}
-			if err := invoke(g, serverv1.OAuthProvidersService_DeleteOAuthProvider_FullMethodName, &serverv1.DeleteOAuthProviderRequest{Provider: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodOAuthDelete, map[string]any{"provider": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -85,22 +90,23 @@ func newOAuthProvidersDeleteCmd(g *globalFlags) *cobra.Command {
 
 // buildUpsertOAuthProviderReq 构造 UpsertOAuthProviderRequest（client-id 必填；
 // client_secret 仅在启用且无既有 secret 时由服务端校验必填，此处不做本地拦截）。
-func buildUpsertOAuthProviderReq(provider string, enabled bool, clientID, clientSecret, scopes string) (*serverv1.UpsertOAuthProviderRequest, error) {
+func buildUpsertOAuthProviderReq(provider string, enabled bool, clientID, clientSecret, scopes string) (map[string]any, error) {
 	if provider == "" {
 		return nil, fmt.Errorf("缺少 provider")
 	}
 	if clientID == "" {
 		return nil, fmt.Errorf("--client-id 必填")
 	}
-	scopeList, err := jsonStringList(scopes, "scopes")
-	if err != nil {
-		return nil, err
+	req := map[string]any{"provider": provider, "enabled": enabled, "clientId": clientID}
+	if clientSecret != "" {
+		req["clientSecret"] = clientSecret
 	}
-	return &serverv1.UpsertOAuthProviderRequest{
-		Provider:     provider,
-		Enabled:      enabled,
-		ClientId:     clientID,
-		ClientSecret: clientSecret,
-		Scopes:       scopeList,
-	}, nil
+	if scopes != "" {
+		scopeList, err := jsonStringList(scopes, "--scopes")
+		if err != nil {
+			return nil, err
+		}
+		req["scopes"] = scopeList
+	}
+	return req, nil
 }
