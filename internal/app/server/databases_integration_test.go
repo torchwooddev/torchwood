@@ -93,6 +93,38 @@ func TestDatabases_AcceptanceChain(t *testing.T) {
 	require.Nil(t, gotDB)
 }
 
+// TestDatabases_CreateCollection_DocumentSecurityFalse: 显式 document_security=false
+// 必须落库为 false（bun 不再因 default tag 把 false 剔除为 DB 默认 TRUE）。
+func TestDatabases_CreateCollection_DocumentSecurityFalse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "open_coll", "Open", nil, nil, nil, false))
+	openColl, err := uc.GetCollection(ctx, projectID, "app", "open_coll")
+	require.NoError(t, err)
+	require.False(t, openColl.DocumentSecurity, "document_security=false 必须原样落库")
+
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "secure_coll", "Secure", nil, nil, nil, true))
+	secureColl, err := uc.GetCollection(ctx, projectID, "app", "secure_coll")
+	require.NoError(t, err)
+	require.True(t, secureColl.DocumentSecurity, "document_security=true 行为不变")
+}
+
 // TestDatabases_ServerCreateDocument_EmptyPermissions (#1): Server API 创建文档
 // 不带 permissions 时不再展开为默认集合权限（文档级权限为空）；显式传入保持原行为。
 func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {

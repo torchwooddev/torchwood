@@ -17,6 +17,9 @@ const (
 	maxTimeoutSeconds = 300
 	// maxSyncTimeoutSeconds 限制同步执行超时（grpc-gateway WriteTimeout 余量）。
 	maxSyncTimeoutSeconds = 30
+	// defaultTimeoutSeconds 是创建函数未显式指定 timeout_seconds 时的服务端默认值
+	// （与 Console 前端默认值 15 及 DB 列 DEFAULT 15 保持一致）。
+	defaultTimeoutSeconds = 15
 )
 
 type CreateFunctionCommand struct {
@@ -25,9 +28,9 @@ type CreateFunctionCommand struct {
 	Name           string
 	Runtime        string
 	Entrypoint     string
-	TimeoutSeconds int
+	TimeoutSeconds *int
 	Spec           string
-	Enabled        bool
+	Enabled        *bool
 }
 
 type UpdateFunctionCommand struct {
@@ -50,7 +53,11 @@ func (f *Functions) CreateFunction(ctx context.Context, cmd CreateFunctionComman
 	if !runtimeExists(cmd.Runtime) {
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported runtime %q", cmd.Runtime)
 	}
-	if cmd.TimeoutSeconds < minTimeoutSeconds || cmd.TimeoutSeconds > maxTimeoutSeconds {
+	timeoutSeconds := defaultTimeoutSeconds
+	if cmd.TimeoutSeconds != nil {
+		timeoutSeconds = *cmd.TimeoutSeconds
+	}
+	if timeoutSeconds < minTimeoutSeconds || timeoutSeconds > maxTimeoutSeconds {
 		return nil, status.Errorf(codes.InvalidArgument, "timeout_seconds must be between %d and %d", minTimeoutSeconds, maxTimeoutSeconds)
 	}
 	if cmd.Spec == "" {
@@ -62,6 +69,10 @@ func (f *Functions) CreateFunction(ctx context.Context, cmd CreateFunctionComman
 	if cmd.Entrypoint == "" {
 		cmd.Entrypoint = defaultEntrypoint(cmd.Runtime)
 	}
+	enabled := true
+	if cmd.Enabled != nil {
+		enabled = *cmd.Enabled
+	}
 	now := time.Now()
 	fn := &domainfunctions.Function{
 		ID:             cmd.ID,
@@ -69,9 +80,9 @@ func (f *Functions) CreateFunction(ctx context.Context, cmd CreateFunctionComman
 		Name:           cmd.Name,
 		Runtime:        cmd.Runtime,
 		Entrypoint:     cmd.Entrypoint,
-		TimeoutSeconds: cmd.TimeoutSeconds,
+		TimeoutSeconds: timeoutSeconds,
 		Spec:           cmd.Spec,
-		Enabled:        cmd.Enabled,
+		Enabled:        enabled,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}

@@ -47,10 +47,11 @@ func (o *OAuthProviders) Upsert(ctx context.Context, cmd UpsertOAuthProviderComm
 		if err != nil {
 			return nil, err
 		}
-		if existing == nil || existing.ClientSecret == "" {
-			return nil, status.Error(codes.InvalidArgument, "client_secret is required")
+		if existing != nil && existing.ClientSecret != "" {
+			clientSecret = existing.ClientSecret
+		} else if cmd.Enabled {
+			return nil, status.Error(codes.InvalidArgument, "client_secret is required when enabling the provider")
 		}
-		clientSecret = existing.ClientSecret
 	}
 
 	cfg := &projects.OAuthProvider{

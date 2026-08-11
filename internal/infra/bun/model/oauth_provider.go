@@ -11,7 +11,7 @@ type ProjectOAuthProvider struct {
 
 	ProjectID    string    `bun:"project_id,pk"`
 	Provider     string    `bun:"provider,pk"`
-	Enabled      bool      `bun:"enabled,notnull,default:true"`
+	Enabled      bool      `bun:"enabled,notnull"`
 	ClientID     string    `bun:"client_id,notnull"`
 	ClientSecret string    `bun:"client_secret,notnull"`
 	Scopes       []string  `bun:"scopes,array,notnull,default:'{}'"`

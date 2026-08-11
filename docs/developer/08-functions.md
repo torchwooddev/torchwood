@@ -35,7 +35,7 @@ HTTP multipart (serverhttp.FunctionsHandler) ← deployment 代码包上传
 |------|------|------|
 | `ListRuntimes` | `GET /v1/server/functions/runtimes` | `node-18.0`（入口 `index.js` 的 `main`）、`python-3.11`（入口 `main.py` 的 `main`） |
 | `ListSpecifications` | `GET /v1/server/functions/specifications` | `shared-1x`（0.5 CPU / 256MB）、`shared-2x`（1 CPU / 512MB） |
-| `CreateFunction` | `POST /v1/server/functions` | 校验 runtime/spec 存在、`timeout_seconds` ∈ [1, 300]；缺省 spec `shared-1x`、entrypoint 按 runtime 缺省 |
+| `CreateFunction` | `POST /v1/server/functions` | 校验 runtime/spec 存在、`timeout_seconds` ∈ [1, 300]；缺省 spec `shared-1x`、`timeout_seconds` 15s、entrypoint 按 runtime 缺省 |
 | `ListFunctions` / `GetFunction` | `GET /v1/server/functions`、`GET /v1/server/functions/{function_id}` | |
 | `UpdateFunction` | `PATCH /v1/server/functions/{function_id}` | name / entrypoint / timeout_seconds / spec / enabled |
 | `DeleteFunction` | `DELETE /v1/server/functions/{function_id}` | DB 级联删除 → 逐 deployment `RemoveImage` + 删本地 zip（幂等，失败仅记日志） |

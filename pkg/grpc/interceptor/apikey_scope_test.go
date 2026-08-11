@@ -81,6 +81,7 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	countDocs := "/torchwood.server.v1.DatabasesService/CountDocuments"
 	deleteDB := "/torchwood.server.v1.DatabasesService/DeleteDatabase"
 	createDoc := "/torchwood.server.v1.DatabasesService/CreateDocument"
+	upsertDoc := "/torchwood.server.v1.DatabasesService/UpsertDocument"
 	bulkUpdate := "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
 	if !APIKeyScopeAllowed(listDocs, []string{"databases.read"}) {
 		t.Fatal("databases.read should allow ListDocuments")
@@ -99,6 +100,21 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	}
 	if APIKeyScopeAllowed(bulkUpdate, []string{"databases.read"}) {
 		t.Fatal("databases.read must NOT allow BulkUpdateDocuments")
+	}
+	if APIKeyScopeAllowed(upsertDoc, []string{"databases.read"}) {
+		t.Fatal("databases.read must NOT allow UpsertDocument")
+	}
+	if !APIKeyScopeAllowed(upsertDoc, []string{"databases.write"}) {
+		t.Fatal("databases.write should allow UpsertDocument")
+	}
+	if !APIKeyScopeAllowed(upsertDoc, []string{"*"}) {
+		t.Fatal("wildcard scope should allow UpsertDocument")
+	}
+	if !APIKeyScopeAllowed(upsertDoc, []string{"all"}) {
+		t.Fatal("all scope should allow UpsertDocument")
+	}
+	if !APIKeyScopeAllowed(upsertDoc, []string{"databases"}) {
+		t.Fatal("bare databases scope should allow UpsertDocument")
 	}
 	if !APIKeyScopeAllowed(deleteDB, []string{"databases.write"}) {
 		t.Fatal("databases.write should allow DeleteDatabase")

@@ -64,16 +64,20 @@ func (s *FunctionsService) CreateFunction(ctx context.Context, req *serverv1.Cre
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, req.GetId())
-	fn, err := s.functions.CreateFunction(ctx, appfunctions.CreateFunctionCommand{
-		ID:             req.GetId(),
-		ProjectID:      projectID,
-		Name:           req.GetName(),
-		Runtime:        req.GetRuntime(),
-		Entrypoint:     req.GetEntrypoint(),
-		TimeoutSeconds: int(req.GetTimeoutSeconds()),
-		Spec:           req.GetSpec(),
-		Enabled:        req.GetEnabled(),
-	})
+	cmd := appfunctions.CreateFunctionCommand{
+		ID:         req.GetId(),
+		ProjectID:  projectID,
+		Name:       req.GetName(),
+		Runtime:    req.GetRuntime(),
+		Entrypoint: req.GetEntrypoint(),
+		Spec:       req.GetSpec(),
+		Enabled:    req.Enabled,
+	}
+	if req.TimeoutSeconds != nil {
+		t := int(req.GetTimeoutSeconds())
+		cmd.TimeoutSeconds = &t
+	}
+	fn, err := s.functions.CreateFunction(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}

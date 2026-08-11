@@ -47,7 +47,7 @@ storage:
   s3:
     endpoint: ""            # env: TORCHWOOD_STORAGE_S3_ENDPOINT
     region: "us-east-1"
-    bucket: "Torchwood-storage"
+    bucket: "torchwood-storage"   # S3/MinIO 要求全小写
     access_key_id: ""       # env: TORCHWOOD_STORAGE_S3_ACCESS_KEY
     secret_access_key: ""   # env: TORCHWOOD_STORAGE_S3_SECRET_KEY
   local:

@@ -44,7 +44,8 @@ func NewMinioObjectStore(cfg *config.AppConfig) (storage.ObjectStore, error) {
 
 	bucket := s.GetBucket()
 	if bucket == "" {
-		bucket = "Torchwood-files"
+		// S3/MinIO bucket 命名规范要求全小写（大写名 MakeBucket 会失败）。
+		bucket = "torchwood-files"
 	}
 
 	return &minioObjectStore{client: client, bucket: bucket}, nil

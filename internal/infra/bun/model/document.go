@@ -23,7 +23,7 @@ type DocumentCollection struct {
 	DatabaseID       string    `bun:"database_id,pk"`
 	ProjectID        string    `bun:"project_id,pk"`
 	Name             string    `bun:"name,notnull"`
-	DocumentSecurity bool      `bun:"document_security,notnull,default:true"`
+	DocumentSecurity bool      `bun:"document_security,notnull"`
 	Disabled         bool      `bun:"disabled,notnull,default:false"`
 	IsSystem         bool      `bun:"is_system,notnull,default:false"`
 	Permissions      []string  `bun:"permissions,array"`

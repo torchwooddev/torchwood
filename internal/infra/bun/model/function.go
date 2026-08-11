@@ -16,7 +16,7 @@ type Function struct {
 	Entrypoint     string    `bun:"entrypoint,notnull,default:'index.main'"`
 	TimeoutSeconds int       `bun:"timeout_seconds,notnull,default:15"`
 	Spec           string    `bun:"spec,notnull,default:'shared-1x'"`
-	Enabled        bool      `bun:"enabled,notnull,default:true"`
+	Enabled        bool      `bun:"enabled,notnull"`
 	CreatedAt      time.Time `bun:"created_at,notnull"`
 	UpdatedAt      time.Time `bun:"updated_at,notnull"`
 }
