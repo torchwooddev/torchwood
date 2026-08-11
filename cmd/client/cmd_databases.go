@@ -5,7 +5,31 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+)
+
+const (
+	methodDBCreateDatabase      = "/torchwood.server.v1.DatabasesService/CreateDatabase"
+	methodDBListDatabases       = "/torchwood.server.v1.DatabasesService/ListDatabases"
+	methodDBGetDatabase         = "/torchwood.server.v1.DatabasesService/GetDatabase"
+	methodDBDeleteDatabase      = "/torchwood.server.v1.DatabasesService/DeleteDatabase"
+	methodDBCreateCollection    = "/torchwood.server.v1.DatabasesService/CreateCollection"
+	methodDBListCollections     = "/torchwood.server.v1.DatabasesService/ListCollections"
+	methodDBGetCollection       = "/torchwood.server.v1.DatabasesService/GetCollection"
+	methodDBUpdateCollection    = "/torchwood.server.v1.DatabasesService/UpdateCollection"
+	methodDBDeleteCollection    = "/torchwood.server.v1.DatabasesService/DeleteCollection"
+	methodDBCreateAttribute     = "/torchwood.server.v1.DatabasesService/CreateAttribute"
+	methodDBDeleteAttribute     = "/torchwood.server.v1.DatabasesService/DeleteAttribute"
+	methodDBCreateIndex         = "/torchwood.server.v1.DatabasesService/CreateIndex"
+	methodDBDeleteIndex         = "/torchwood.server.v1.DatabasesService/DeleteIndex"
+	methodDBCreateDocument      = "/torchwood.server.v1.DatabasesService/CreateDocument"
+	methodDBListDocuments       = "/torchwood.server.v1.DatabasesService/ListDocuments"
+	methodDBGetDocument         = "/torchwood.server.v1.DatabasesService/GetDocument"
+	methodDBUpdateDocument      = "/torchwood.server.v1.DatabasesService/UpdateDocument"
+	methodDBUpsertDocument      = "/torchwood.server.v1.DatabasesService/UpsertDocument"
+	methodDBDeleteDocument      = "/torchwood.server.v1.DatabasesService/DeleteDocument"
+	methodDBCountDocuments      = "/torchwood.server.v1.DatabasesService/CountDocuments"
+	methodDBBulkUpdateDocuments = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
+	methodDBBulkDeleteDocuments = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
 )
 
 // newDatabasesCmd 覆盖 DatabasesService 全部 22 个方法：
@@ -41,8 +65,8 @@ func newDatabasesCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Database{}
-			if err := invoke(g, serverv1.DatabasesService_CreateDatabase_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBCreateDatabase, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -60,8 +84,8 @@ func newDatabasesListCmd(g *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "列出数据库",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListDatabasesResponse{}
-			if err := invoke(g, serverv1.DatabasesService_ListDatabases_FullMethodName, buildListRequest(pageSize, pageToken), resp); err != nil {
+			resp, err := invoke(g, methodDBListDatabases, listJSON(pageSize, pageToken))
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -78,8 +102,8 @@ func newDatabasesGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取数据库",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Database{}
-			if err := invoke(g, serverv1.DatabasesService_GetDatabase_FullMethodName, &serverv1.GetDatabaseRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodDBGetDatabase, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -93,8 +117,8 @@ func newDatabasesDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除数据库（default 库不可删除）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Database{}
-			if err := invoke(g, serverv1.DatabasesService_DeleteDatabase_FullMethodName, &serverv1.GetDatabaseRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodDBDeleteDatabase, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -126,13 +150,12 @@ func newDatabasesCollectionsCreateCmd(g *globalFlags) *cobra.Command {
 		Short: "创建集合",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildCreateCollectionReq(args[0], id, name, permissions,
-				changedBoolPtr(cmd, "document-security", documentSecurity))
+			req, err := buildCreateCollectionReq(cmd, args[0], id, name, permissions, documentSecurity)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Collection{}
-			if err := invoke(g, serverv1.DatabasesService_CreateCollection_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBCreateCollection, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -158,8 +181,8 @@ func newDatabasesCollectionsListCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.ListCollectionsResponse{}
-			if err := invoke(g, serverv1.DatabasesService_ListCollections_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBListCollections, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -177,8 +200,8 @@ func newDatabasesCollectionsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取集合",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Collection{}
-			if err := invoke(g, serverv1.DatabasesService_GetCollection_FullMethodName, &serverv1.GetCollectionRequest{DatabaseId: args[0], CollectionId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodDBGetCollection, map[string]any{"databaseId": args[0], "collectionId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -194,14 +217,12 @@ func newDatabasesCollectionsUpdateCmd(g *globalFlags) *cobra.Command {
 		Short: "更新集合（仅更新显式传入的字段）",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildUpdateCollectionReq(args[0], args[1], name, permissions,
-				changedBoolPtr(cmd, "document-security", documentSecurity),
-				changedBoolPtr(cmd, "disabled", disabled))
+			req, err := buildUpdateCollectionReq(cmd, args[0], args[1], name, permissions, documentSecurity, disabled)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Collection{}
-			if err := invoke(g, serverv1.DatabasesService_UpdateCollection_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBUpdateCollection, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -220,8 +241,8 @@ func newDatabasesCollectionsDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除集合",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Collection{}
-			if err := invoke(g, serverv1.DatabasesService_DeleteCollection_FullMethodName, &serverv1.GetCollectionRequest{DatabaseId: args[0], CollectionId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodDBDeleteCollection, map[string]any{"databaseId": args[0], "collectionId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -255,8 +276,8 @@ func newDatabasesAttributesCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Attribute{}
-			if err := invoke(g, serverv1.DatabasesService_CreateAttribute_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBCreateAttribute, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -277,8 +298,8 @@ func newDatabasesAttributesDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除属性",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Attribute{}
-			if err := invoke(g, serverv1.DatabasesService_DeleteAttribute_FullMethodName, &serverv1.DeleteAttributeRequest{DatabaseId: args[0], CollectionId: args[1], Key: args[2]}, resp); err != nil {
+			resp, err := invoke(g, methodDBDeleteAttribute, map[string]any{"databaseId": args[0], "collectionId": args[1], "key": args[2]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -310,8 +331,8 @@ func newDatabasesIndexesCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Index{}
-			if err := invoke(g, serverv1.DatabasesService_CreateIndex_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBCreateIndex, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -330,8 +351,8 @@ func newDatabasesIndexesDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除索引",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Index{}
-			if err := invoke(g, serverv1.DatabasesService_DeleteIndex_FullMethodName, &serverv1.DeleteIndexRequest{DatabaseId: args[0], CollectionId: args[1], IndexId: args[2]}, resp); err != nil {
+			resp, err := invoke(g, methodDBDeleteIndex, map[string]any{"databaseId": args[0], "collectionId": args[1], "indexId": args[2]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -371,8 +392,8 @@ func newDatabasesDocumentsCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Document{}
-			if err := invoke(g, serverv1.DatabasesService_CreateDocument_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBCreateDocument, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -397,8 +418,8 @@ func newDatabasesDocumentsListCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.ListDocumentsResponse{}
-			if err := invoke(g, serverv1.DatabasesService_ListDocuments_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBListDocuments, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -416,8 +437,8 @@ func newDatabasesDocumentsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取文档",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Document{}
-			if err := invoke(g, serverv1.DatabasesService_GetDocument_FullMethodName, &serverv1.GetDocumentRequest{DatabaseId: args[0], CollectionId: args[1], DocumentId: args[2]}, resp); err != nil {
+			resp, err := invoke(g, methodDBGetDocument, map[string]any{"databaseId": args[0], "collectionId": args[1], "documentId": args[2]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -436,8 +457,8 @@ func newDatabasesDocumentsUpdateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Document{}
-			if err := invoke(g, serverv1.DatabasesService_UpdateDocument_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBUpdateDocument, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -460,8 +481,8 @@ func newDatabasesDocumentsUpsertCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Document{}
-			if err := invoke(g, serverv1.DatabasesService_UpsertDocument_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBUpsertDocument, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -479,8 +500,8 @@ func newDatabasesDocumentsDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除文档",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Document{}
-			if err := invoke(g, serverv1.DatabasesService_DeleteDocument_FullMethodName, &serverv1.GetDocumentRequest{DatabaseId: args[0], CollectionId: args[1], DocumentId: args[2]}, resp); err != nil {
+			resp, err := invoke(g, methodDBDeleteDocument, map[string]any{"databaseId": args[0], "collectionId": args[1], "documentId": args[2]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -499,8 +520,8 @@ func newDatabasesDocumentsCountCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.CountDocumentsResponse{}
-			if err := invoke(g, serverv1.DatabasesService_CountDocuments_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBCountDocuments, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -521,8 +542,8 @@ func newDatabasesDocumentsBulkUpdateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.BulkDocumentsResponse{}
-			if err := invoke(g, serverv1.DatabasesService_BulkUpdateDocuments_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBBulkUpdateDocuments, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -545,8 +566,8 @@ func newDatabasesDocumentsBulkDeleteCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.BulkDocumentsResponse{}
-			if err := invoke(g, serverv1.DatabasesService_BulkDeleteDocuments_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodDBBulkDeleteDocuments, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -556,21 +577,21 @@ func newDatabasesDocumentsBulkDeleteCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-// buildCreateDatabaseReq 构造 CreateDatabaseRequest（id/name 必填，与
-// 服务端校验一致）。
-func buildCreateDatabaseReq(id, name string) (*serverv1.CreateDatabaseRequest, error) {
+// buildCreateDatabaseReq 构造 CreateDatabaseRequest JSON map（id/name 必填，
+// 与服务端校验一致）。
+func buildCreateDatabaseReq(id, name string) (map[string]any, error) {
 	if id == "" {
 		return nil, fmt.Errorf("--id 必填")
 	}
 	if name == "" {
 		return nil, fmt.Errorf("--name 必填")
 	}
-	return &serverv1.CreateDatabaseRequest{Id: id, Name: name}, nil
+	return map[string]any{"id": id, "name": name}, nil
 }
 
-// buildCreateCollectionReq 构造 CreateCollectionRequest：
-// documentSecurity 为 nil 表示未显式传 --document-security（proto3 optional presence）。
-func buildCreateCollectionReq(databaseID, id, name, permissions string, documentSecurity *bool) (*serverv1.CreateCollectionRequest, error) {
+// buildCreateCollectionReq 构造 CreateCollectionRequest JSON map；
+// documentSecurity 依赖 flag presence（proto3 optional 语义用键存在性表达）。
+func buildCreateCollectionReq(cmd *cobra.Command, databaseID, id, name, permissions string, documentSecurity bool) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
@@ -580,67 +601,73 @@ func buildCreateCollectionReq(databaseID, id, name, permissions string, document
 	if name == "" {
 		return nil, fmt.Errorf("--name 必填")
 	}
-	perms, err := jsonStringList(permissions, "permissions")
-	if err != nil {
-		return nil, err
+	req := map[string]any{
+		"databaseId": databaseID,
+		"id":         id,
+		"name":       name,
 	}
-	req := &serverv1.CreateCollectionRequest{
-		DatabaseId:  databaseID,
-		Id:          id,
-		Name:        name,
-		Permissions: perms,
+	if permissions != "" {
+		perms, err := jsonStringList(permissions, "--permissions")
+		if err != nil {
+			return nil, err
+		}
+		req["permissions"] = perms
 	}
-	if documentSecurity != nil {
-		req.DocumentSecurity = documentSecurity
-	}
+	setChanged(cmd, "document-security", req, "documentSecurity", documentSecurity)
 	return req, nil
 }
 
-// buildListCollectionsReq 构造 ListCollectionsRequest（queries 数组 + 分页）。
-func buildListCollectionsReq(databaseID, queries string, pageSize int32, pageToken string) (*serverv1.ListCollectionsRequest, error) {
+// buildListCollectionsReq 构造 ListCollectionsRequest JSON map（queries 数组 + 分页）。
+func buildListCollectionsReq(databaseID, queries string, pageSize int32, pageToken string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
-	qs, err := jsonStringList(queries, "queries")
-	if err != nil {
-		return nil, err
+	req := map[string]any{"databaseId": databaseID}
+	if queries != "" {
+		qs, err := jsonStringList(queries, "--queries")
+		if err != nil {
+			return nil, err
+		}
+		req["queries"] = qs
 	}
-	req := &serverv1.ListCollectionsRequest{DatabaseId: databaseID, Queries: qs, PageToken: pageToken}
 	if pageSize > 0 {
-		req.PageSize = pageSize
+		req["pageSize"] = pageSize
+	}
+	if pageToken != "" {
+		req["pageToken"] = pageToken
 	}
 	return req, nil
 }
 
-// buildUpdateCollectionReq 构造 UpdateCollectionRequest：仅设置显式传入的字段。
-func buildUpdateCollectionReq(databaseID, collectionID, name, permissions string, documentSecurity, disabled *bool) (*serverv1.UpdateCollectionRequest, error) {
+// buildUpdateCollectionReq 构造 UpdateCollectionRequest JSON map：仅设置显式传入的字段。
+func buildUpdateCollectionReq(cmd *cobra.Command, databaseID, collectionID, name, permissions string, documentSecurity, disabled bool) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
 	if collectionID == "" {
 		return nil, fmt.Errorf("缺少 collection-id")
 	}
-	req := &serverv1.UpdateCollectionRequest{
-		DatabaseId:       databaseID,
-		CollectionId:     collectionID,
-		DocumentSecurity: documentSecurity,
-		Disabled:         disabled,
+	req := map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
 	}
 	if name != "" {
-		req.Name = name
+		req["name"] = name
 	}
 	if permissions != "" {
-		values, err := jsonStringList(permissions, "permissions")
+		values, err := jsonStringList(permissions, "--permissions")
 		if err != nil {
 			return nil, err
 		}
-		req.Permissions = &serverv1.PermissionsUpdate{Values: values}
+		req["permissions"] = map[string]any{"values": values}
 	}
+	setChanged(cmd, "document-security", req, "documentSecurity", documentSecurity)
+	setChanged(cmd, "disabled", req, "disabled", disabled)
 	return req, nil
 }
 
-// buildCreateAttributeReq 构造 CreateAttributeRequest（key/type 必填）。
-func buildCreateAttributeReq(databaseID, collectionID, key, typ string, size int32, required, array bool, defaultValue string) (*serverv1.CreateAttributeRequest, error) {
+// buildCreateAttributeReq 构造 CreateAttributeRequest JSON map（key/type 必填）。
+func buildCreateAttributeReq(databaseID, collectionID, key, typ string, size int32, required, array bool, defaultValue string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
@@ -653,20 +680,23 @@ func buildCreateAttributeReq(databaseID, collectionID, key, typ string, size int
 	if typ == "" {
 		return nil, fmt.Errorf("--type 必填")
 	}
-	return &serverv1.CreateAttributeRequest{
-		DatabaseId:   databaseID,
-		CollectionId: collectionID,
-		Key:          key,
-		Type:         typ,
-		Size:         size,
-		Required:     required,
-		Array:        array,
-		DefaultValue: defaultValue,
-	}, nil
+	req := map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
+		"key":          key,
+		"type":         typ,
+		"size":         size,
+		"required":     required,
+		"array":        array,
+	}
+	if defaultValue != "" {
+		req["defaultValue"] = defaultValue
+	}
+	return req, nil
 }
 
-// buildCreateIndexReq 构造 CreateIndexRequest（id/type/attributes 必填）。
-func buildCreateIndexReq(databaseID, collectionID, id, typ, attributes, orders string) (*serverv1.CreateIndexRequest, error) {
+// buildCreateIndexReq 构造 CreateIndexRequest JSON map（id/type/attributes 必填）。
+func buildCreateIndexReq(databaseID, collectionID, id, typ, attributes, orders string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
@@ -679,77 +709,94 @@ func buildCreateIndexReq(databaseID, collectionID, id, typ, attributes, orders s
 	if typ == "" {
 		return nil, fmt.Errorf("--type 必填")
 	}
-	attrs, err := jsonStringList(attributes, "attributes")
+	attrs, err := jsonStringList(attributes, "--attributes")
 	if err != nil {
 		return nil, err
 	}
 	if len(attrs) == 0 {
 		return nil, fmt.Errorf("--attributes 必填")
 	}
-	ords, err := jsonStringList(orders, "orders")
-	if err != nil {
-		return nil, err
+	req := map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
+		"id":           id,
+		"type":         typ,
+		"attributes":   attrs,
 	}
-	return &serverv1.CreateIndexRequest{
-		DatabaseId:   databaseID,
-		CollectionId: collectionID,
-		Id:           id,
-		Type:         typ,
-		Attributes:   attrs,
-		Orders:       ords,
-	}, nil
+	if orders != "" {
+		ords, err := jsonStringList(orders, "--orders")
+		if err != nil {
+			return nil, err
+		}
+		req["orders"] = ords
+	}
+	return req, nil
 }
 
-// buildCreateDocumentReq 构造 CreateDocumentRequest（--data 为文档数据本体）。
-func buildCreateDocumentReq(databaseID, collectionID, documentID, data, permissions string) (*serverv1.CreateDocumentRequest, error) {
+// buildCreateDocumentReq 构造 CreateDocumentRequest JSON map（--data 为文档数据本体）。
+func buildCreateDocumentReq(databaseID, collectionID, documentID, data, permissions string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
 	if collectionID == "" {
 		return nil, fmt.Errorf("缺少 collection-id")
 	}
-	docData, err := structData(data)
+	docData, err := jsonObject(data, "--data")
 	if err != nil {
 		return nil, err
 	}
 	if docData == nil {
 		return nil, fmt.Errorf("--data 必填（文档数据 JSON 对象）")
 	}
-	perms, err := jsonStringList(permissions, "permissions")
-	if err != nil {
-		return nil, err
+	req := map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
+		"data":         docData,
 	}
-	return &serverv1.CreateDocumentRequest{
-		DatabaseId:   databaseID,
-		CollectionId: collectionID,
-		DocumentId:   documentID,
-		Data:         docData,
-		Permissions:  perms,
-	}, nil
+	if documentID != "" {
+		req["documentId"] = documentID
+	}
+	if permissions != "" {
+		perms, err := jsonStringList(permissions, "--permissions")
+		if err != nil {
+			return nil, err
+		}
+		req["permissions"] = perms
+	}
+	return req, nil
 }
 
-// buildListDocumentsReq 构造 ListDocumentsRequest（供 list/count 复用）。
-func buildListDocumentsReq(databaseID, collectionID, queries string, pageSize int32, pageToken string) (*serverv1.ListDocumentsRequest, error) {
+// buildListDocumentsReq 构造 ListDocumentsRequest JSON map（供 list/count 复用）。
+func buildListDocumentsReq(databaseID, collectionID, queries string, pageSize int32, pageToken string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
 	if collectionID == "" {
 		return nil, fmt.Errorf("缺少 collection-id")
 	}
-	qs, err := jsonStringList(queries, "queries")
-	if err != nil {
-		return nil, err
+	req := map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
 	}
-	req := &serverv1.ListDocumentsRequest{DatabaseId: databaseID, CollectionId: collectionID, Queries: qs, PageToken: pageToken}
+	if queries != "" {
+		qs, err := jsonStringList(queries, "--queries")
+		if err != nil {
+			return nil, err
+		}
+		req["queries"] = qs
+	}
 	if pageSize > 0 {
-		req.PageSize = pageSize
+		req["pageSize"] = pageSize
+	}
+	if pageToken != "" {
+		req["pageToken"] = pageToken
 	}
 	return req, nil
 }
 
-// buildUpdateDocumentReq 构造 UpdateDocumentRequest（data/permissions/increment
-// 至少一个，与服务端校验一致）。
-func buildUpdateDocumentReq(databaseID, collectionID, documentID, data, permissions, increment string) (*serverv1.UpdateDocumentRequest, error) {
+// buildUpdateDocumentReq 构造 UpdateDocumentRequest JSON map（data/permissions/
+// increment 至少一个，与服务端校验一致；increment 用 json.Number 保持 int64 精度）。
+func buildUpdateDocumentReq(databaseID, collectionID, documentID, data, permissions, increment string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
@@ -762,30 +809,37 @@ func buildUpdateDocumentReq(databaseID, collectionID, documentID, data, permissi
 	if data == "" && permissions == "" && increment == "" {
 		return nil, fmt.Errorf("--data/--permissions/--increment 至少提供一个")
 	}
-	docData, err := structData(data)
-	if err != nil {
-		return nil, err
+	req := map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
+		"documentId":   documentID,
 	}
-	perms, err := jsonStringList(permissions, "permissions")
-	if err != nil {
-		return nil, err
+	if data != "" {
+		docData, err := jsonObject(data, "--data")
+		if err != nil {
+			return nil, err
+		}
+		req["data"] = docData
 	}
-	incr, err := jsonInt64Map(increment, "increment")
-	if err != nil {
-		return nil, err
+	if permissions != "" {
+		perms, err := jsonStringList(permissions, "--permissions")
+		if err != nil {
+			return nil, err
+		}
+		req["permissions"] = perms
 	}
-	return &serverv1.UpdateDocumentRequest{
-		DatabaseId:   databaseID,
-		CollectionId: collectionID,
-		DocumentId:   documentID,
-		Data:         docData,
-		Permissions:  perms,
-		Increment:    incr,
-	}, nil
+	if increment != "" {
+		incr, err := jsonInt64Map(increment, "--increment")
+		if err != nil {
+			return nil, err
+		}
+		req["increment"] = incr
+	}
+	return req, nil
 }
 
-// buildUpsertDocumentReq 构造 UpsertDocumentRequest（data/conflict-columns 必填）。
-func buildUpsertDocumentReq(databaseID, collectionID, documentID, data, permissions, conflictColumns string) (*serverv1.UpsertDocumentRequest, error) {
+// buildUpsertDocumentReq 构造 UpsertDocumentRequest JSON map（data/conflict-columns 必填）。
+func buildUpsertDocumentReq(databaseID, collectionID, documentID, data, permissions, conflictColumns string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
@@ -795,87 +849,93 @@ func buildUpsertDocumentReq(databaseID, collectionID, documentID, data, permissi
 	if documentID == "" {
 		return nil, fmt.Errorf("缺少 document-id")
 	}
-	docData, err := structData(data)
+	docData, err := jsonObject(data, "--data")
 	if err != nil {
 		return nil, err
 	}
 	if docData == nil {
 		return nil, fmt.Errorf("--data 必填（文档数据 JSON 对象）")
 	}
-	cols, err := jsonStringList(conflictColumns, "conflict-columns")
+	cols, err := jsonStringList(conflictColumns, "--conflict-columns")
 	if err != nil {
 		return nil, err
 	}
 	if len(cols) == 0 {
 		return nil, fmt.Errorf("--conflict-columns 必填")
 	}
-	perms, err := jsonStringList(permissions, "permissions")
-	if err != nil {
-		return nil, err
+	req := map[string]any{
+		"databaseId":      databaseID,
+		"collectionId":    collectionID,
+		"documentId":      documentID,
+		"data":            docData,
+		"conflictColumns": cols,
 	}
-	return &serverv1.UpsertDocumentRequest{
-		DatabaseId:      databaseID,
-		CollectionId:    collectionID,
-		DocumentId:      documentID,
-		Data:            docData,
-		Permissions:     perms,
-		ConflictColumns: cols,
-	}, nil
+	if permissions != "" {
+		perms, err := jsonStringList(permissions, "--permissions")
+		if err != nil {
+			return nil, err
+		}
+		req["permissions"] = perms
+	}
+	return req, nil
 }
 
-// buildBulkUpdateDocumentsReq 构造 BulkUpdateDocumentsRequest。
-func buildBulkUpdateDocumentsReq(databaseID, collectionID, documentIDs, data, permissions string) (*serverv1.BulkUpdateDocumentsRequest, error) {
+// buildBulkUpdateDocumentsReq 构造 BulkUpdateDocumentsRequest JSON map。
+func buildBulkUpdateDocumentsReq(databaseID, collectionID, documentIDs, data, permissions string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
 	if collectionID == "" {
 		return nil, fmt.Errorf("缺少 collection-id")
 	}
-	ids, err := jsonStringList(documentIDs, "document-ids")
+	ids, err := jsonStringList(documentIDs, "--document-ids")
 	if err != nil {
 		return nil, err
 	}
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("--document-ids 必填")
 	}
-	docData, err := structData(data)
+	docData, err := jsonObject(data, "--data")
 	if err != nil {
 		return nil, err
 	}
 	if docData == nil {
 		return nil, fmt.Errorf("--data 必填（共享更新数据 JSON 对象）")
 	}
-	perms, err := jsonStringList(permissions, "permissions")
-	if err != nil {
-		return nil, err
+	req := map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
+		"documentIds":  ids,
+		"data":         docData,
 	}
-	return &serverv1.BulkUpdateDocumentsRequest{
-		DatabaseId:   databaseID,
-		CollectionId: collectionID,
-		DocumentIds:  ids,
-		Data:         docData,
-		Permissions:  perms,
-	}, nil
+	if permissions != "" {
+		perms, err := jsonStringList(permissions, "--permissions")
+		if err != nil {
+			return nil, err
+		}
+		req["permissions"] = perms
+	}
+	return req, nil
 }
 
-// buildBulkDeleteDocumentsReq 构造 BulkDeleteDocumentsRequest。
-func buildBulkDeleteDocumentsReq(databaseID, collectionID, documentIDs string) (*serverv1.BulkDeleteDocumentsRequest, error) {
+// buildBulkDeleteDocumentsReq 构造 BulkDeleteDocumentsRequest JSON map。
+func buildBulkDeleteDocumentsReq(databaseID, collectionID, documentIDs string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
 	if collectionID == "" {
 		return nil, fmt.Errorf("缺少 collection-id")
 	}
-	ids, err := jsonStringList(documentIDs, "document-ids")
+	ids, err := jsonStringList(documentIDs, "--document-ids")
 	if err != nil {
 		return nil, err
 	}
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("--document-ids 必填")
 	}
-	return &serverv1.BulkDeleteDocumentsRequest{
-		DatabaseId:   databaseID,
-		CollectionId: collectionID,
-		DocumentIds:  ids,
+	return map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
+		"documentIds":  ids,
 	}, nil
 }

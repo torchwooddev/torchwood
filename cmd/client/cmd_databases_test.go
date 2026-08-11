@@ -1,12 +1,24 @@
 package main
 
 import (
-	"strings"
+	"encoding/json"
 	"testing"
 
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	"google.golang.org/protobuf/proto"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
+
+// newCmdWithFlags 构造带集合相关 bool flag 的 cobra 命令，
+// 用于表达 --document-security/--disabled 的显式 presence。
+func newCmdWithFlags(t *testing.T, set map[string]string) *cobra.Command {
+	c := &cobra.Command{}
+	c.Flags().Bool("document-security", false, "")
+	c.Flags().Bool("disabled", false, "")
+	for k, v := range set {
+		require.NoError(t, c.Flags().Set(k, v))
+	}
+	return c
+}
 
 func TestBuildCreateDatabaseReq(t *testing.T) {
 	tests := []struct {
@@ -23,70 +35,68 @@ func TestBuildCreateDatabaseReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildCreateDatabaseReq(tt.id, tt.label)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if req.GetId() != tt.id || req.GetName() != tt.label {
-				t.Errorf("请求不匹配: %v", req)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.id, req["id"])
+			require.Equal(t, tt.label, req["name"])
 		})
 	}
 }
 
 func TestBuildCreateCollectionReq(t *testing.T) {
 	tests := []struct {
-		name             string
-		databaseID       string
-		id               string
-		collectionName   string
-		permissions      string
-		documentSecurity *bool
-		wantErr          string
-		wantDocSec       *bool
+		name           string
+		databaseID     string
+		id             string
+		collectionName string
+		permissions    string
+		docSec         string
+		wantErr        string
 	}{
 		{name: "缺 database-id", wantErr: "缺少 database-id"},
 		{name: "缺 id", databaseID: "app", wantErr: "--id 必填"},
 		{name: "缺 name", databaseID: "app", id: "notes", wantErr: "--name 必填"},
 		{name: "未传 document-security", databaseID: "app", id: "notes", collectionName: "笔记", wantErr: ""},
 		{name: "显式 true", databaseID: "app", id: "notes", collectionName: "笔记",
-			documentSecurity: boolPtr(true), wantErr: "", wantDocSec: boolPtr(true)},
+			docSec: "true", wantErr: ""},
 		{name: "显式 false", databaseID: "app", id: "notes", collectionName: "笔记",
-			documentSecurity: boolPtr(false), wantErr: "", wantDocSec: boolPtr(false)},
+			docSec: "false", wantErr: ""},
 		{name: "权限与安全", databaseID: "app", id: "notes", collectionName: "笔记",
-			permissions: `["read(\"users\")"]`, documentSecurity: boolPtr(true),
-			wantErr: "", wantDocSec: boolPtr(true)},
+			permissions: `["read(\"users\")"]`, docSec: "true", wantErr: ""},
 		{name: "permissions 非法 JSON", databaseID: "app", id: "notes", collectionName: "笔记",
 			permissions: `[not-json`, wantErr: "--permissions 解析失败"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := buildCreateCollectionReq(tt.databaseID, tt.id, tt.collectionName, tt.permissions, tt.documentSecurity)
+			set := map[string]string{}
+			if tt.docSec != "" {
+				set["document-security"] = tt.docSec
+			}
+			cmd := newCmdWithFlags(t, set)
+			req, err := buildCreateCollectionReq(cmd, tt.databaseID, tt.id, tt.collectionName, tt.permissions, tt.docSec == "true")
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.id, req["id"])
+			require.Equal(t, tt.collectionName, req["name"])
+			if tt.docSec == "" {
+				_, ok := req["documentSecurity"]
+				require.False(t, ok, "未显式传 --document-security 不应设置键: %v", req)
+			} else {
+				require.Equal(t, tt.docSec == "true", req["documentSecurity"])
 			}
-			if req.GetId() != tt.id || req.GetName() != tt.collectionName || req.GetDatabaseId() != tt.databaseID {
-				t.Errorf("请求不匹配: %v", req)
-			}
-			if tt.wantDocSec == nil {
-				if req.DocumentSecurity != nil {
-					t.Errorf("documentSecurity 不应设置: %v", req.DocumentSecurity)
-				}
-			} else if req.DocumentSecurity == nil || *req.DocumentSecurity != *tt.wantDocSec {
-				t.Errorf("documentSecurity 不匹配: %v", req.DocumentSecurity)
-			}
-			if tt.permissions != "" && len(req.GetPermissions()) != 1 {
-				t.Errorf("permissions 未合并: %v", req.GetPermissions())
+			if tt.permissions != "" {
+				require.Equal(t, []string{`read("users")`}, req["permissions"])
+			} else {
+				_, ok := req["permissions"]
+				require.False(t, ok)
 			}
 		})
 	}
@@ -94,64 +104,69 @@ func TestBuildCreateCollectionReq(t *testing.T) {
 
 func TestBuildUpdateCollectionReq(t *testing.T) {
 	tests := []struct {
-		name             string
-		databaseID       string
-		collectionID     string
-		collectionName   string
-		permissions      string
-		documentSecurity *bool
-		disabled         *bool
-		wantErr          string
-		wantPermissions  bool
-		wantDocSec       *bool
-		wantDisabled     *bool
+		name           string
+		databaseID     string
+		collectionID   string
+		collectionName string
+		permissions    string
+		docSec         string
+		disabled       string
+		wantErr        string
 	}{
 		{name: "缺 database-id", wantErr: "缺少 database-id"},
+		{name: "缺 collection-id", databaseID: "app", wantErr: "缺少 collection-id"},
 		{name: "仅 id", databaseID: "app", collectionID: "c1", wantErr: ""},
 		{name: "改名", databaseID: "app", collectionID: "c1", collectionName: "新名", wantErr: ""},
-		{name: "权限替换", databaseID: "app", collectionID: "c1", permissions: `["read(\"all\")"]`,
-			wantErr: "", wantPermissions: true},
+		{name: "权限替换", databaseID: "app", collectionID: "c1",
+			permissions: `["read(\"all\")"]`, wantErr: ""},
 		{name: "optional bool", databaseID: "app", collectionID: "c1",
-			documentSecurity: boolPtr(false), disabled: boolPtr(true),
-			wantDocSec: boolPtr(false), wantDisabled: boolPtr(true), wantErr: ""},
+			docSec: "false", disabled: "true", wantErr: ""},
 		{name: "permissions 非法", databaseID: "app", collectionID: "c1",
 			permissions: `nope`, wantErr: "--permissions 解析失败"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := buildUpdateCollectionReq(tt.databaseID, tt.collectionID, tt.collectionName,
-				tt.permissions, tt.documentSecurity, tt.disabled)
+			set := map[string]string{}
+			if tt.docSec != "" {
+				set["document-security"] = tt.docSec
+			}
+			if tt.disabled != "" {
+				set["disabled"] = tt.disabled
+			}
+			cmd := newCmdWithFlags(t, set)
+			req, err := buildUpdateCollectionReq(cmd, tt.databaseID, tt.collectionID, tt.collectionName,
+				tt.permissions, tt.docSec == "true", tt.disabled == "true")
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			if tt.collectionName == "" {
+				_, ok := req["name"]
+				require.False(t, ok, "未传 --name 不应设置 name: %v", req)
+			} else {
+				require.Equal(t, tt.collectionName, req["name"])
 			}
-			if tt.collectionName == "" && req.GetName() != "" {
-				t.Errorf("未传 --name 不应设置: %q", req.GetName())
+			if tt.permissions == "" {
+				_, ok := req["permissions"]
+				require.False(t, ok)
+			} else {
+				require.Equal(t, map[string]any{"values": []string{`read("all")`}}, req["permissions"])
 			}
-			if tt.collectionName != "" && req.GetName() != tt.collectionName {
-				t.Errorf("name 不匹配: %q", req.GetName())
+			if tt.docSec == "" {
+				_, ok := req["documentSecurity"]
+				require.False(t, ok, "未显式传 --document-security 不应设置键: %v", req)
+			} else {
+				require.Equal(t, tt.docSec == "true", req["documentSecurity"])
 			}
-			if tt.wantPermissions != (req.Permissions != nil) {
-				t.Errorf("permissions presence 不匹配: %v", req.Permissions)
-			}
-			if tt.wantDocSec == nil {
-				if req.DocumentSecurity != nil {
-					t.Errorf("documentSecurity 不应设置: %v", req.DocumentSecurity)
-				}
-			} else if req.DocumentSecurity == nil || *req.DocumentSecurity != *tt.wantDocSec {
-				t.Errorf("documentSecurity 不匹配: %v", req.DocumentSecurity)
-			}
-			if tt.wantDisabled == nil {
-				if req.Disabled != nil {
-					t.Errorf("disabled 不应设置: %v", req.Disabled)
-				}
-			} else if req.Disabled == nil || *req.Disabled != *tt.wantDisabled {
-				t.Errorf("disabled 不匹配: %v", req.Disabled)
+			if tt.disabled == "" {
+				_, ok := req["disabled"]
+				require.False(t, ok, "未显式传 --disabled 不应设置键: %v", req)
+			} else {
+				require.Equal(t, tt.disabled == "true", req["disabled"])
 			}
 		})
 	}
@@ -181,17 +196,23 @@ func TestBuildCreateAttributeReq(t *testing.T) {
 			req, err := buildCreateAttributeReq(tt.databaseID, tt.collectionID, tt.key, tt.typ,
 				tt.size, tt.required, tt.array, tt.defaultValue)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if req.GetKey() != tt.key || req.GetType() != tt.typ || req.GetSize() != tt.size ||
-				req.GetRequired() != tt.required || req.GetArray() != tt.array || req.GetDefaultValue() != tt.defaultValue {
-				t.Errorf("请求不匹配: %v", req)
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			require.Equal(t, tt.key, req["key"])
+			require.Equal(t, tt.typ, req["type"])
+			require.Equal(t, tt.size, req["size"])
+			require.Equal(t, tt.required, req["required"])
+			require.Equal(t, tt.array, req["array"])
+			if tt.defaultValue == "" {
+				_, ok := req["defaultValue"]
+				require.False(t, ok)
+			} else {
+				require.Equal(t, tt.defaultValue, req["defaultValue"])
 			}
 		})
 	}
@@ -222,19 +243,25 @@ func TestBuildCreateIndexReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildCreateIndexReq(tt.databaseID, tt.collectionID, tt.id, tt.typ, tt.attributes, tt.orders)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if req.GetId() != tt.id || req.GetType() != tt.typ || len(req.GetAttributes()) < 1 {
-				t.Errorf("请求不匹配: %v", req)
-			}
-			if tt.orders != "" && len(req.GetOrders()) != 2 {
-				t.Errorf("orders 未解析: %v", req.GetOrders())
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			require.Equal(t, tt.id, req["id"])
+			require.Equal(t, tt.typ, req["type"])
+			attrs, err := jsonStringList(tt.attributes, "--attributes")
+			require.NoError(t, err)
+			require.Equal(t, attrs, req["attributes"])
+			if tt.orders == "" {
+				_, ok := req["orders"]
+				require.False(t, ok)
+			} else {
+				ords, err := jsonStringList(tt.orders, "--orders")
+				require.NoError(t, err)
+				require.Equal(t, ords, req["orders"])
 			}
 		})
 	}
@@ -249,13 +276,11 @@ func TestBuildListDocumentsReq(t *testing.T) {
 		pageSize     int32
 		pageToken    string
 		wantErr      string
-		wantQueries  []string
 	}{
 		{name: "缺 database-id", collectionID: "c1", wantErr: "缺少 database-id"},
 		{name: "缺 collection-id", databaseID: "app", wantErr: "缺少 collection-id"},
 		{name: "成功路径", databaseID: "app", collectionID: "c1",
-			queries: `["equal(\"title\",\"hi\")"]`, pageSize: 10, pageToken: "tok",
-			wantErr: "", wantQueries: []string{`equal("title","hi")`}},
+			queries: `["equal(\"title\",\"hi\")"]`, pageSize: 10, pageToken: "tok", wantErr: ""},
 		{name: "queries 非法 JSON", databaseID: "app", collectionID: "c1",
 			queries: `oops`, wantErr: "--queries 解析失败"},
 	}
@@ -263,22 +288,32 @@ func TestBuildListDocumentsReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildListDocumentsReq(tt.databaseID, tt.collectionID, tt.queries, tt.pageSize, tt.pageToken)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			if tt.queries == "" {
+				_, ok := req["queries"]
+				require.False(t, ok)
+			} else {
+				qs, err := jsonStringList(tt.queries, "--queries")
+				require.NoError(t, err)
+				require.Equal(t, qs, req["queries"])
 			}
-			if len(req.GetQueries()) != len(tt.wantQueries) || len(tt.wantQueries) > 0 && req.GetQueries()[0] != tt.wantQueries[0] {
-				t.Errorf("queries 未解析: %v", req.GetQueries())
+			if tt.pageSize > 0 {
+				require.Equal(t, tt.pageSize, req["pageSize"])
+			} else {
+				_, ok := req["pageSize"]
+				require.False(t, ok)
 			}
-			if req.GetPageSize() != tt.pageSize {
-				t.Errorf("pageSize 不匹配: %d", req.GetPageSize())
-			}
-			if req.GetPageToken() != tt.pageToken {
-				t.Errorf("pageToken 不匹配: %q", req.GetPageToken())
+			if tt.pageToken == "" {
+				_, ok := req["pageToken"]
+				require.False(t, ok)
+			} else {
+				require.Equal(t, tt.pageToken, req["pageToken"])
 			}
 		})
 	}
@@ -293,15 +328,13 @@ func TestBuildCreateDocumentReq(t *testing.T) {
 		data         string
 		permissions  string
 		wantErr      string
-		wantTitle    string
 	}{
 		{name: "缺 data", databaseID: "app", collectionID: "c1", wantErr: "--data 必填"},
 		{name: "data 非对象", databaseID: "app", collectionID: "c1", data: `[1,2]`, wantErr: "--data 解析失败"},
 		{name: "data 非法 JSON", databaseID: "app", collectionID: "c1", data: `{`, wantErr: "--data 解析失败"},
-		{name: "最小字段", databaseID: "app", collectionID: "c1", data: `{"title":"hi"}`, wantErr: "",
-			wantTitle: "hi"},
+		{name: "最小字段", databaseID: "app", collectionID: "c1", data: `{"title":"hi"}`, wantErr: ""},
 		{name: "指定 id 与权限", databaseID: "app", collectionID: "c1", documentID: "doc1",
-			data: `{"title":"hi"}`, permissions: `["read(\"all\")"]`, wantErr: "", wantTitle: "hi"},
+			data: `{"title":"hi"}`, permissions: `["read(\"all\")"]`, wantErr: ""},
 		{name: "permissions 非法", databaseID: "app", collectionID: "c1", data: `{"title":"hi"}`,
 			permissions: `x`, wantErr: "--permissions 解析失败"},
 	}
@@ -309,22 +342,25 @@ func TestBuildCreateDocumentReq(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildCreateDocumentReq(tt.databaseID, tt.collectionID, tt.documentID, tt.data, tt.permissions)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			if tt.documentID == "" {
+				_, ok := req["documentId"]
+				require.False(t, ok)
+			} else {
+				require.Equal(t, tt.documentID, req["documentId"])
 			}
-			if req.GetDocumentId() != tt.documentID {
-				t.Errorf("documentId 不匹配: %q", req.GetDocumentId())
-			}
-			if req.GetData() == nil || req.GetData().AsMap()["title"] != tt.wantTitle {
-				t.Errorf("data 未正确解析: %v", req.GetData())
-			}
-			if tt.permissions != "" && len(req.GetPermissions()) != 1 {
-				t.Errorf("permissions 未合并: %v", req.GetPermissions())
+			require.Equal(t, map[string]any{"title": "hi"}, req["data"])
+			if tt.permissions == "" {
+				_, ok := req["permissions"]
+				require.False(t, ok)
+			} else {
+				require.Equal(t, []string{`read("all")`}, req["permissions"])
 			}
 		})
 	}
@@ -357,22 +393,46 @@ func TestBuildUpdateDocumentReq(t *testing.T) {
 			req, err := buildUpdateDocumentReq(tt.databaseID, tt.collectionID, tt.documentID,
 				tt.data, tt.permissions, tt.increment)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			require.Equal(t, tt.documentID, req["documentId"])
+			if tt.data == "" {
+				_, ok := req["data"]
+				require.False(t, ok)
+			} else {
+				require.Equal(t, map[string]any{"title": "new"}, req["data"])
 			}
-			if tt.data != "" && (req.GetData() == nil || req.GetData().AsMap()["title"] != "new") {
-				t.Errorf("data 未解析: %v", req.GetData())
+			if tt.permissions == "" {
+				_, ok := req["permissions"]
+				require.False(t, ok)
+			} else {
+				require.Equal(t, []string{`read("all")`}, req["permissions"])
 			}
-			if tt.increment != "" && req.GetIncrement()["views"] != 1 {
-				t.Errorf("increment 未解析: %v", req.GetIncrement())
+			if tt.increment == "" {
+				_, ok := req["increment"]
+				require.False(t, ok)
+			} else {
+				incr, ok := req["increment"].(map[string]json.Number)
+				require.True(t, ok)
+				require.Equal(t, json.Number("1"), incr["views"])
 			}
 		})
 	}
+}
+
+// TestDocumentsUpdateIncrementPrecision 回归 int64 精度：>2^53 的增量经
+// json.Marshal 后必须是原始整数，不能变 1.234...e+18。
+func TestDocumentsUpdateIncrementPrecision(t *testing.T) {
+	req, err := buildUpdateDocumentReq("db1", "col1", "doc1", "", "", `{"big": 1234567890123456789}`)
+	require.NoError(t, err)
+	b, err := json.Marshal(req)
+	require.NoError(t, err)
+	require.Contains(t, string(b), "1234567890123456789") // 不是 1.23...e+18
 }
 
 func TestBuildUpsertDocumentReq(t *testing.T) {
@@ -399,19 +459,18 @@ func TestBuildUpsertDocumentReq(t *testing.T) {
 			req, err := buildUpsertDocumentReq(tt.databaseID, tt.collectionID, tt.documentID,
 				tt.data, tt.permissions, tt.conflictColumns)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(req.GetConflictColumns()) != 1 || req.GetConflictColumns()[0] != "email" {
-				t.Errorf("conflictColumns 未解析: %v", req.GetConflictColumns())
-			}
-			if req.GetData() == nil || req.GetData().AsMap()["email"] != "a@b.c" {
-				t.Errorf("data 未解析: %v", req.GetData())
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			require.Equal(t, tt.documentID, req["documentId"])
+			require.Equal(t, []string{"email"}, req["conflictColumns"])
+			require.Equal(t, map[string]any{"email": "a@b.c"}, req["data"])
+			if tt.permissions != "" {
+				require.Equal(t, []string{`read("all")`}, req["permissions"])
 			}
 		})
 	}
@@ -440,57 +499,31 @@ func TestBuildBulkDocumentsReq(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var ids []string
-			var err error
 			if tt.bulkDelete {
-				var req *serverv1.BulkDeleteDocumentsRequest
-				req, err = buildBulkDeleteDocumentsReq(tt.databaseID, tt.collectionID, tt.documentIDs)
-				if err == nil && req != nil {
-					ids = req.GetDocumentIds()
+				req, err := buildBulkDeleteDocumentsReq(tt.databaseID, tt.collectionID, tt.documentIDs)
+				if tt.wantErr != "" {
+					require.Error(t, err)
+					require.Contains(t, err.Error(), tt.wantErr)
+					return
 				}
-			} else {
-				var req *serverv1.BulkUpdateDocumentsRequest
-				req, err = buildBulkUpdateDocumentsReq(tt.databaseID, tt.collectionID, tt.documentIDs, tt.data, tt.permissions)
-				if err == nil && req != nil {
-					ids = req.GetDocumentIds()
-				}
-			}
-			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
-				}
+				require.NoError(t, err)
+				require.Equal(t, []string{"d1", "d2"}, req["documentIds"])
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			req, err := buildBulkUpdateDocumentsReq(tt.databaseID, tt.collectionID, tt.documentIDs, tt.data, tt.permissions)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
+				return
 			}
-			if len(ids) != 2 {
-				t.Errorf("documentIds 未解析: %v", ids)
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			require.Equal(t, []string{"d1", "d2"}, req["documentIds"])
+			require.Equal(t, map[string]any{"status": "x"}, req["data"])
+			if tt.permissions != "" {
+				require.Equal(t, []string{`read("all")`}, req["permissions"])
 			}
 		})
-	}
-}
-
-// TestDatabasesRegistryTypes 校验具名命令构造的请求类型与 rpc 注册表一致。
-func TestDatabasesRegistryTypes(t *testing.T) {
-	for method, sample := range map[string]proto.Message{
-		serverv1.DatabasesService_CreateDatabase_FullMethodName:      &serverv1.CreateDatabaseRequest{},
-		serverv1.DatabasesService_CreateCollection_FullMethodName:    &serverv1.CreateCollectionRequest{},
-		serverv1.DatabasesService_UpdateCollection_FullMethodName:    &serverv1.UpdateCollectionRequest{},
-		serverv1.DatabasesService_CreateAttribute_FullMethodName:     &serverv1.CreateAttributeRequest{},
-		serverv1.DatabasesService_CreateIndex_FullMethodName:         &serverv1.CreateIndexRequest{},
-		serverv1.DatabasesService_CreateDocument_FullMethodName:      &serverv1.CreateDocumentRequest{},
-		serverv1.DatabasesService_UpdateDocument_FullMethodName:      &serverv1.UpdateDocumentRequest{},
-		serverv1.DatabasesService_UpsertDocument_FullMethodName:      &serverv1.UpsertDocumentRequest{},
-		serverv1.DatabasesService_BulkUpdateDocuments_FullMethodName: &serverv1.BulkUpdateDocumentsRequest{},
-		serverv1.DatabasesService_BulkDeleteDocuments_FullMethodName: &serverv1.BulkDeleteDocumentsRequest{},
-	} {
-		e, err := lookupRPCMethod(method)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if proto.MessageName(e.newReq()) != proto.MessageName(sample) {
-			t.Errorf("注册表请求类型与具名命令不一致: %s", method)
-		}
 	}
 }
