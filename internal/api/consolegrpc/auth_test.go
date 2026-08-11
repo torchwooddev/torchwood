@@ -56,53 +56,53 @@ func testConfig(publicURL string) *config.AppConfig {
 }
 
 type stubAdminRepo struct {
-	admin *projects.ConsoleAdmin
+	admin *projects.Admin
 }
 
-func (r *stubAdminRepo) GetConsoleAdmin(_ context.Context, id string) (*projects.ConsoleAdmin, error) {
+func (r *stubAdminRepo) GetAdmin(_ context.Context, id string) (*projects.Admin, error) {
 	if r.admin != nil && r.admin.ID == id {
 		return r.admin, nil
 	}
 	return nil, nil
 }
 
-func (r *stubAdminRepo) GetConsoleAdminByEmail(_ context.Context, email string) (*projects.ConsoleAdmin, error) {
+func (r *stubAdminRepo) GetAdminByEmail(_ context.Context, email string) (*projects.Admin, error) {
 	if r.admin != nil && r.admin.Email == email {
 		return r.admin, nil
 	}
 	return nil, nil
 }
 
-func (r *stubAdminRepo) ListConsoleAdmins(context.Context) ([]projects.ConsoleAdmin, error) {
+func (r *stubAdminRepo) ListAdmins(context.Context) ([]projects.Admin, error) {
 	if r.admin == nil {
 		return nil, nil
 	}
-	return []projects.ConsoleAdmin{*r.admin}, nil
+	return []projects.Admin{*r.admin}, nil
 }
 
-func (r *stubAdminRepo) CreateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+func (r *stubAdminRepo) CreateAdmin(context.Context, *projects.Admin) error {
 	return nil
 }
 
-func (r *stubAdminRepo) UpdateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+func (r *stubAdminRepo) UpdateAdmin(context.Context, *projects.Admin) error {
 	return nil
 }
 
-func (r *stubAdminRepo) DeleteConsoleAdmin(context.Context, string) error {
+func (r *stubAdminRepo) DeleteAdmin(context.Context, string) error {
 	return nil
 }
 
-func (r *stubAdminRepo) CountConsoleAdminsByRole(context.Context, string) (int64, error) {
+func (r *stubAdminRepo) CountAdminsByRole(context.Context, string) (int64, error) {
 	return 1, nil
 }
 
-var _ projects.ConsoleAdminRepository = (*stubAdminRepo)(nil)
+var _ projects.AdminRepository = (*stubAdminRepo)(nil)
 
 func newSignInService(t *testing.T, cfg *config.AppConfig) *AuthService {
 	t.Helper()
 	hash, err := password.Hash("Admin@123")
 	require.NoError(t, err)
-	repo := &stubAdminRepo{admin: &projects.ConsoleAdmin{
+	repo := &stubAdminRepo{admin: &projects.Admin{
 		ID:           "admin-1",
 		Email:        "admin@torchwood.local",
 		PasswordHash: hash,

@@ -9,8 +9,8 @@ var ProviderSet = wire.NewSet(
 	bunrepo.NewProjectRepository,
 	bunrepo.NewOAuthProviderRepository,
 	bunrepo.NewAPIKeyRepository,
-	bunrepo.NewConsoleAdminRepository,
-	bunrepo.NewConsoleAdminProjectRepository,
+	bunrepo.NewAdminRepository,
+	bunrepo.NewAdminProjectRepository,
 	bunrepo.NewAuditRepository,
 	bunrepo.NewFunctionRepository,
 )

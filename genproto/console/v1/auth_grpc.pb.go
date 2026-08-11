@@ -34,9 +34,9 @@ type ConsoleAuthServiceClient interface {
 	SignIn(ctx context.Context, in *SignInRequest, opts ...grpc.CallOption) (*SignInResponse, error)
 	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*SignInResponse, error)
 	SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*v1.Empty, error)
-	// 查询是否已完成初始化（console_admins 是否为空）。
+	// 查询是否已完成初始化（admins 是否为空）。
 	GetSetupStatus(ctx context.Context, in *GetSetupStatusRequest, opts ...grpc.CallOption) (*GetSetupStatusResponse, error)
-	// 首个管理员注册：仅当 console_admins 表为空时可用；注册成功后自动创建
+	// 首个管理员注册：仅当 admins 表为空时可用；注册成功后自动创建
 	// 默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。
 	SignUp(ctx context.Context, in *SignUpRequest, opts ...grpc.CallOption) (*SignUpResponse, error)
 }
@@ -106,9 +106,9 @@ type ConsoleAuthServiceServer interface {
 	SignIn(context.Context, *SignInRequest) (*SignInResponse, error)
 	RefreshToken(context.Context, *RefreshTokenRequest) (*SignInResponse, error)
 	SignOut(context.Context, *SignOutRequest) (*v1.Empty, error)
-	// 查询是否已完成初始化（console_admins 是否为空）。
+	// 查询是否已完成初始化（admins 是否为空）。
 	GetSetupStatus(context.Context, *GetSetupStatusRequest) (*GetSetupStatusResponse, error)
-	// 首个管理员注册：仅当 console_admins 表为空时可用；注册成功后自动创建
+	// 首个管理员注册：仅当 admins 表为空时可用；注册成功后自动创建
 	// 默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。
 	SignUp(context.Context, *SignUpRequest) (*SignUpResponse, error)
 	mustEmbedUnimplementedConsoleAuthServiceServer()

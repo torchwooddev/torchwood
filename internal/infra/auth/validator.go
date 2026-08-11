@@ -22,8 +22,8 @@ import (
 type Validator struct {
 	cfg              *config.AppConfig
 	apiKeyRepo       projects.APIKeyRepository
-	adminRepo        projects.ConsoleAdminRepository
-	adminProjectRepo projects.ConsoleAdminProjectRepository
+	adminRepo        projects.AdminRepository
+	adminProjectRepo projects.AdminProjectRepository
 	adminRevokeStore domainauth.AdminTokenRevokeStore
 	docDB            databases.DocumentDB
 	roleResolver     domainauth.UserRoleResolver
@@ -33,8 +33,8 @@ type Validator struct {
 func NewValidator(
 	cfg *config.AppConfig,
 	apiKeyRepo projects.APIKeyRepository,
-	adminRepo projects.ConsoleAdminRepository,
-	adminProjectRepo projects.ConsoleAdminProjectRepository,
+	adminRepo projects.AdminRepository,
+	adminProjectRepo projects.AdminProjectRepository,
 	adminRevokeStore domainauth.AdminTokenRevokeStore,
 	docDB databases.DocumentDB,
 	roleResolver domainauth.UserRoleResolver,
@@ -123,7 +123,7 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 		if err := v.checkAdminTokenRevoked(ctx, claims); err != nil {
 			return nil, err
 		}
-		admin, err := v.adminRepo.GetConsoleAdmin(ctx, claims.UserID)
+		admin, err := v.adminRepo.GetAdmin(ctx, claims.UserID)
 		if err != nil {
 			return nil, status.Error(codes.Internal, "admin lookup failed")
 		}

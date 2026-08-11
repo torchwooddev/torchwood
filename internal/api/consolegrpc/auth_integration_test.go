@@ -40,13 +40,13 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	docDB := documentdb.NewPostgresDocumentDB(db)
 	cfg := &config.AppConfig{Security: &config.Security{Jwt: &config.Security_Jwt{Secret: "bootstrap-integration-secret"}}}
 
-	adminRepo := bunrepo.NewConsoleAdminRepository(db)
+	adminRepo := bunrepo.NewAdminRepository(db)
 	projectRepo := bunrepo.NewProjectRepository(db)
 	admins := console.NewAdmins(adminRepo)
 	projects := server.NewProjects(projectRepo, docDB, db)
 	apiKeys := server.NewAPIKeys(bunrepo.NewAPIKeyRepository(db))
 	auth := console.NewAuth(cfg, adminRepo, nil, nil, nil)
-	setupUC := console.NewSetup(admins, projects, apiKeys, auth, adminRepo, bunrepo.NewConsoleAdminProjectRepository(db), projectRepo)
+	setupUC := console.NewSetup(admins, projects, apiKeys, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
 	svc := NewAuthService(auth, setupUC)
 
 	env, err := testutil.NewInterceptorEnv(db, cfg, docDB)

@@ -196,13 +196,13 @@ DSN 优先级：`TORCHWOOD_DATA_DATABASE_SOURCE` → 默认
 不再需要离线 seed 脚本：全新数据库上启动 server 后，打开 `/console/`，
 登录页会自动切换为「初始化设置」表单。注册第一个管理员将自动创建：
 
-- **owner** 管理员账户（首个管理员固定为超管，仅当 `console_admins` 表为空
+- **owner** 管理员账户（首个管理员固定为超管，仅当 `admins` 表为空
   时可用；`POST /v1/console/auth/sign-up` 二次调用返回 `FailedPrecondition`）；
 - 默认项目（id = `default`）与默认 API Key（scope = `all`，明文 secret
   **仅注册响应展示一次**；轮换请在 Console 的 API Key 页面删除后重建）。
 
 Console 与 SDK demo 的 Server API Key 均来自此引导流程。若需在空库上重置，
-删除 `console_admins`、`projects`、`api_keys` 相应行后重启引导即可。
+删除 `admins`、`projects`、`api_keys` 相应行后重启引导即可。
 
 ### 6.3 备份要点
 

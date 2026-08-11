@@ -20,13 +20,13 @@ import (
 
 type Auth struct {
 	cfg              *config.AppConfig
-	adminRepo        projects.ConsoleAdminRepository
+	adminRepo        projects.AdminRepository
 	adminRevokeStore domainauth.AdminTokenRevokeStore
 	loginThrottle    domainauth.LoginThrottle
 	rotation         domainauth.RefreshRotationStore
 }
 
-func NewAuth(cfg *config.AppConfig, adminRepo projects.ConsoleAdminRepository, adminRevokeStore domainauth.AdminTokenRevokeStore, loginThrottle domainauth.LoginThrottle, rotation domainauth.RefreshRotationStore) *Auth {
+func NewAuth(cfg *config.AppConfig, adminRepo projects.AdminRepository, adminRevokeStore domainauth.AdminTokenRevokeStore, loginThrottle domainauth.LoginThrottle, rotation domainauth.RefreshRotationStore) *Auth {
 	return &Auth{cfg: cfg, adminRepo: adminRepo, adminRevokeStore: adminRevokeStore, loginThrottle: loginThrottle, rotation: rotation}
 }
 
@@ -58,7 +58,7 @@ func (a *Auth) SignIn(ctx context.Context, cmd SignInCommand) (*TokenPair, error
 		a.recordLoginFailure(ctx, throttleEmail, clientInfo.IP)
 		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
-	admin, err := a.adminRepo.GetConsoleAdminByEmail(ctx, cmd.Email)
+	admin, err := a.adminRepo.GetAdminByEmail(ctx, cmd.Email)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "admin lookup failed")
 	}

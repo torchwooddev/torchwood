@@ -8,7 +8,7 @@
 ## 任务目标
 
 1. 移除离线脚本 `cmd/seed`。
-2. Console 新增公开的首个管理员注册能力：仅当 `console_admins` 表为空时可用，第一个注册的管理员自动成为超管（`owner`），并在注册流程中自动创建默认 project（id=`default`）和默认 API Key（scope=`all`，明文 secret 仅此一次返回）。
+2. Console 新增公开的首个管理员注册能力：仅当 `admins` 表为空时可用，第一个注册的管理员自动成为超管（`owner`），并在注册流程中自动创建默认 project（id=`default`）和默认 API Key（scope=`all`，明文 secret 仅此一次返回）。
 3. Console 前端登录页在未初始化时切换为「初始化设置」表单。
 4. 同步清理所有文档中的 seed 引用。
 
@@ -20,7 +20,7 @@
 - `internal/app/server/projects.go` `Projects.CreateProject`：**有平台 admin principal 校验**（安全评审 M7，不得移除），需按设计文档 §3.3 最小重构拆出 `CreateProjectInternal`。
 - 有效 scope 校验：`interceptor.ValidAPIKeyScope`，`all` 表示全量放行。
 - handler 层 `internal/api/consolegrpc/auth.go` 的 `SignIn` 成功后会 `setSessionCookies`；`SignUp` 复用该逻辑。
-- `console_admin_projects` 关联表模型在 `internal/infra/bun/model/audit.go`；如 repo 层无写入方法需新增。
+- `admin_projects` 关联表模型在 `internal/infra/bun/model/audit.go`；如 repo 层无写入方法需新增。
 - Console 前端无注册页：`console/src/routes/Login.tsx`、`console/src/api/auth.ts`。
 
 ## 实施步骤
@@ -38,7 +38,7 @@
 - 遵守 `AGENTS.md`：Clean Architecture 分层、proto authz 注解、最小改动、中文注释风格与现有代码一致。
 - 不引入新第三方依赖。
 - `SignUp` 是公开端点，首次性保证必须在 use-case 层，不依赖拦截器。
-- 不得放宽 `ConsoleAdminsService.CreateAdmin` 的 `permissions: ["owner"]`。
+- 不得放宽 `AdminsService.CreateAdmin` 的 `permissions: ["owner"]`。
 - 并发首次注册窗口按设计文档处理（MVP 接受，advisory lock 为可选增强）。
 
 ## 完成验收

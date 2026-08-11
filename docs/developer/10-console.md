@@ -215,12 +215,12 @@ var Dist embed.FS
 
 ```ts
 // src/api/admins.ts（真实文件）
-export async function listAdmins(): Promise<ConsoleAdmin[]> {
+export async function listAdmins(): Promise<Admin[]> {
   const res = await api.get<ListAdminsResponse>("/console/admins");
   return res.data.admins ?? [];
 }
-export async function createAdmin(input: { email: string; password: string; role: string }): Promise<ConsoleAdmin> {
-  const res = await api.post<ConsoleAdmin>("/console/admins", input);
+export async function createAdmin(input: { email: string; password: string; role: string }): Promise<Admin> {
+  const res = await api.post<Admin>("/console/admins", input);
   return res.data;
 }
 ```
@@ -231,7 +231,7 @@ export async function createAdmin(input: { email: string; password: string; role
 
 ```tsx
 // 参照 src/routes/admins/pages.tsx
-const columns: ColumnDef<ConsoleAdmin>[] = [
+const columns: ColumnDef<Admin>[] = [
   { key: "email", header: "邮箱", cell: (a) => a.email },
   { key: "role", header: "角色", cell: (a) => <Badge>{a.role}</Badge> },
 ];

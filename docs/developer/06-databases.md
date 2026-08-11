@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS "TORCHWOOD_1_default"."_perms" (
 
 | 层 | 技术 | 职责 | 表 |
 |----|------|------|-----|
-| 元数据静态层 | bun + golang-migrate（`db/migrations/`） | 项目、API Key、库/集合目录、审计等平台元数据 | `projects`、`api_keys`、`console_admins`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`audit_logs`、`console_admin_projects`、`project_oauth_providers`、`functions` 等 |
+| 元数据静态层 | bun + golang-migrate（`db/migrations/`） | 项目、API Key、库/集合目录、审计等平台元数据 | `projects`、`api_keys`、`admins`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`audit_logs`、`admin_projects`、`project_oauth_providers`、`functions` 等 |
 | 动态文档层 | schema-per-database 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、teams 等）与用户动态集合的真实数据 | `TORCHWOOD_<internalID>_<dbID>.*` |
 
 - `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。

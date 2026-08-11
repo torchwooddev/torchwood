@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func TestP0_Section6_ConsoleAdminProjectAccess(t *testing.T) {
+func TestP0_Section6_AdminProjectAccess(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -38,14 +38,14 @@ func TestP0_Section6_ConsoleAdminProjectAccess(t *testing.T) {
 	env, err := testutil.NewInterceptorEnv(db, cfg, docDB)
 	require.NoError(t, err)
 
-	owner, ownerCleanup := testutil.CreateTestConsoleAdmin(ctx, db, "owner")
+	owner, ownerCleanup := testutil.CreateTestAdmin(ctx, db, "owner")
 	defer ownerCleanup()
-	viewer, viewerCleanup := testutil.CreateTestConsoleAdmin(ctx, db, "viewer")
+	viewer, viewerCleanup := testutil.CreateTestAdmin(ctx, db, "viewer")
 	defer viewerCleanup()
 
-	ownerToken, err := testutil.SignConsoleAdminToken(cfg, owner)
+	ownerToken, err := testutil.SignAdminToken(cfg, owner)
 	require.NoError(t, err)
-	viewerToken, err := testutil.SignConsoleAdminToken(cfg, viewer)
+	viewerToken, err := testutil.SignAdminToken(cfg, viewer)
 	require.NoError(t, err)
 
 	adminMD := func(token string) metadata.MD {
@@ -59,7 +59,7 @@ func TestP0_Section6_ConsoleAdminProjectAccess(t *testing.T) {
 	err = env.InvokeUnary(ctx, testutil.MethodListUsers, adminMD(ownerToken))
 	require.NoError(t, err)
 
-	// §6.7 viewer without console_admin_projects gets PermissionDenied.
+	// §6.7 viewer without admin_projects gets PermissionDenied.
 	err = env.InvokeUnary(ctx, testutil.MethodListUsers, adminMD(viewerToken))
 	require.Error(t, err)
 	st, ok := status.FromError(err)
@@ -67,7 +67,7 @@ func TestP0_Section6_ConsoleAdminProjectAccess(t *testing.T) {
 	require.Equal(t, codes.PermissionDenied, st.Code())
 
 	// §6.9 viewer granted project access can call Server API.
-	require.NoError(t, testutil.GrantConsoleAdminProject(ctx, db, viewer.ID, projectID))
+	require.NoError(t, testutil.GrantAdminProject(ctx, db, viewer.ID, projectID))
 	err = env.InvokeUnary(ctx, testutil.MethodListUsers, adminMD(viewerToken))
 	require.NoError(t, err)
 }
@@ -114,9 +114,9 @@ func TestP0_Section7_AuditLogs(t *testing.T) {
 	require.NotEmpty(t, log.ActorKind)
 
 	// §7.3 admin request with X-Torchwood-Project records project_id.
-	owner, ownerCleanup := testutil.CreateTestConsoleAdmin(ctx, db, "owner")
+	owner, ownerCleanup := testutil.CreateTestAdmin(ctx, db, "owner")
 	defer ownerCleanup()
-	ownerToken, err := testutil.SignConsoleAdminToken(cfg, owner)
+	ownerToken, err := testutil.SignAdminToken(cfg, owner)
 	require.NoError(t, err)
 	require.NoError(t, env.InvokeUnary(ctx, testutil.MethodListUsers, metadata.Pairs(
 		"authorization", "Bearer "+ownerToken,

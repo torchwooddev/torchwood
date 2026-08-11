@@ -68,28 +68,28 @@ func (r *stubAPIKeyRepo) ListAPIKeys(context.Context, string) ([]projects.APIKey
 func (r *stubAPIKeyRepo) DeleteAPIKey(context.Context, string) error { return nil }
 
 type stubAdminRepo struct {
-	admins map[string]*projects.ConsoleAdmin
+	admins map[string]*projects.Admin
 }
 
-func (r *stubAdminRepo) GetConsoleAdmin(_ context.Context, id string) (*projects.ConsoleAdmin, error) {
+func (r *stubAdminRepo) GetAdmin(_ context.Context, id string) (*projects.Admin, error) {
 	return r.admins[id], nil
 }
-func (r *stubAdminRepo) GetConsoleAdminByEmail(context.Context, string) (*projects.ConsoleAdmin, error) {
+func (r *stubAdminRepo) GetAdminByEmail(context.Context, string) (*projects.Admin, error) {
 	return nil, nil
 }
-func (r *stubAdminRepo) ListConsoleAdmins(context.Context) ([]projects.ConsoleAdmin, error) {
+func (r *stubAdminRepo) ListAdmins(context.Context) ([]projects.Admin, error) {
 	return nil, nil
 }
-func (r *stubAdminRepo) CreateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+func (r *stubAdminRepo) CreateAdmin(context.Context, *projects.Admin) error {
 	return nil
 }
-func (r *stubAdminRepo) UpdateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+func (r *stubAdminRepo) UpdateAdmin(context.Context, *projects.Admin) error {
 	return nil
 }
-func (r *stubAdminRepo) DeleteConsoleAdmin(context.Context, string) error {
+func (r *stubAdminRepo) DeleteAdmin(context.Context, string) error {
 	return nil
 }
-func (r *stubAdminRepo) CountConsoleAdminsByRole(context.Context, string) (int64, error) {
+func (r *stubAdminRepo) CountAdminsByRole(context.Context, string) (int64, error) {
 	return 1, nil
 }
 
@@ -236,12 +236,12 @@ func TestValidator_ValidateAPIKey(t *testing.T) {
 func TestValidator_ValidateAdminJWT(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	admin := &projects.ConsoleAdmin{
+	admin := &projects.Admin{
 		ID:    "admin-1",
 		Email: "admin@torchwood.local",
 		Role:  "member",
 	}
-	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
+	admins := &stubAdminRepo{admins: map[string]*projects.Admin{admin.ID: admin}}
 	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 
 	token := signToken(t, jwtparser.Claims{
@@ -261,12 +261,12 @@ func TestValidator_ValidateAdminJWT(t *testing.T) {
 func TestValidator_ValidateAdminJWT_RejectsRefreshToken(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	admin := &projects.ConsoleAdmin{
+	admin := &projects.Admin{
 		ID:    "admin-1",
 		Email: "admin@torchwood.local",
 		Role:  "owner",
 	}
-	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
+	admins := &stubAdminRepo{admins: map[string]*projects.Admin{admin.ID: admin}}
 	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 
 	token := signToken(t, jwtparser.Claims{
@@ -285,14 +285,14 @@ func TestValidator_ValidateAdminJWT_Revoked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	issuedAt := time.Now().Add(-time.Hour).Unix()
-	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
+	admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
 	revokeStore := newMemAdminRevokeStore()
 	require.NoError(t, revokeStore.RevokeBefore(ctx, admin.ID, time.Now(), time.Hour))
 
 	v := auth.NewValidator(
 		testValidatorConfig(),
 		&stubAPIKeyRepo{},
-		&stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}},
+		&stubAdminRepo{admins: map[string]*projects.Admin{admin.ID: admin}},
 		&stubAdminProjectRepo{},
 		revokeStore,
 		&stubDocDB{},
@@ -461,8 +461,8 @@ func TestValidator_SessionCookie_CorruptExpireAtFailsClosed(t *testing.T) {
 func TestValidator_CrossPurposeTokenRejected(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	admin := &projects.ConsoleAdmin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
-	admins := &stubAdminRepo{admins: map[string]*projects.ConsoleAdmin{admin.ID: admin}}
+	admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
+	admins := &stubAdminRepo{admins: map[string]*projects.Admin{admin.ID: admin}}
 	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, admins, &stubAdminProjectRepo{}, nil, &stubDocDB{}, nil)
 
 	// A token signed with the raw master secret must no longer validate.

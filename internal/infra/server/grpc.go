@@ -45,7 +45,7 @@ func NewGRPCServer(
 	databases *servergrpc.DatabasesService,
 	functions *servergrpc.FunctionsService,
 	consoleAuth *consolegrpc.AuthService,
-	consoleAdmins *consolegrpc.AdminsService,
+	adminsService *consolegrpc.AdminsService,
 ) (*lynxgrpc.Server, error) {
 	grpcCfg := cfg.GetServer().GetGrpc()
 	timeout := parseDuration(grpcCfg.GetTimeout(), 30*time.Second)
@@ -111,7 +111,7 @@ func NewGRPCServer(
 	serverv1.RegisterDatabasesServiceServer(grpcSrv, databases)
 	serverv1.RegisterFunctionsServiceServer(grpcSrv, functions)
 	consolev1.RegisterConsoleAuthServiceServer(grpcSrv, consoleAuth)
-	consolev1.RegisterConsoleAdminsServiceServer(grpcSrv, consoleAdmins)
+	consolev1.RegisterAdminsServiceServer(grpcSrv, adminsService)
 
 	// fail-closed：所有已注册方法都必须带有 authz 注解，缺失的方法会在拦截器里被放行。
 	if err := assertRegisteredMethodsHaveAuthz(grpcSrv, publicMethods, apiKeyMethods, permissionMethods); err != nil {

@@ -50,7 +50,7 @@
     },
     "/v1/console/auth/setup-status": {
       "get": {
-        "summary": "查询是否已完成初始化（console_admins 是否为空）。",
+        "summary": "查询是否已完成初始化（admins 是否为空）。",
         "operationId": "ConsoleAuthService_GetSetupStatus",
         "responses": {
           "200": {
@@ -137,7 +137,7 @@
     },
     "/v1/console/auth/sign-up": {
       "post": {
-        "summary": "首个管理员注册：仅当 console_admins 表为空时可用；注册成功后自动创建\r\n默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。",
+        "summary": "首个管理员注册：仅当 admins 表为空时可用；注册成功后自动创建\r\n默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。",
         "operationId": "ConsoleAuthService_SignUp",
         "responses": {
           "200": {

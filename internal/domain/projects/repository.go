@@ -19,14 +19,14 @@ type APIKeyRepository interface {
 	DeleteAPIKey(ctx context.Context, id string) error
 }
 
-type ConsoleAdminRepository interface {
-	GetConsoleAdmin(ctx context.Context, id string) (*ConsoleAdmin, error)
-	GetConsoleAdminByEmail(ctx context.Context, email string) (*ConsoleAdmin, error)
-	ListConsoleAdmins(ctx context.Context) ([]ConsoleAdmin, error)
-	CreateConsoleAdmin(ctx context.Context, admin *ConsoleAdmin) error
-	UpdateConsoleAdmin(ctx context.Context, admin *ConsoleAdmin) error
-	DeleteConsoleAdmin(ctx context.Context, id string) error
-	CountConsoleAdminsByRole(ctx context.Context, role string) (int64, error)
+type AdminRepository interface {
+	GetAdmin(ctx context.Context, id string) (*Admin, error)
+	GetAdminByEmail(ctx context.Context, email string) (*Admin, error)
+	ListAdmins(ctx context.Context) ([]Admin, error)
+	CreateAdmin(ctx context.Context, admin *Admin) error
+	UpdateAdmin(ctx context.Context, admin *Admin) error
+	DeleteAdmin(ctx context.Context, id string) error
+	CountAdminsByRole(ctx context.Context, role string) (int64, error)
 }
 
 type ProjectResolver interface {

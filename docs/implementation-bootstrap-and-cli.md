@@ -11,7 +11,7 @@
 当前系统第一个 Console 管理员、默认 project、默认 API Key 只能由离线脚本 `cmd/seed` 写入数据库，存在三个问题：
 
 - 固定凭据（`admin@torchwood.local / Admin@123`）容易被遗忘在线上环境；
-- seed 不经过用例层，绕过权限与校验逻辑（如未写 `console_admin_projects` 关联）；
+- seed 不经过用例层，绕过权限与校验逻辑（如未写 `admin_projects` 关联）；
 - 首次部署体验割裂：要先跑 CLI 脚本再进 Console。
 
 本方案做两件事：
@@ -22,7 +22,7 @@
 ## 2. 现状关键事实（调研结论，实施时以代码为准）
 
 - `proto/console/v1/auth.proto` 的 `ConsoleAuthService` 默认 `ACCESS_PUBLIC`，仅有 `SignIn/RefreshToken/SignOut`，**无注册端点**。
-- `ConsoleAdminsService.CreateAdmin` 受 `permissions: ["owner"]` 保护，不能用于创建第一个管理员。
+- `AdminsService.CreateAdmin` 受 `permissions: ["owner"]` 保护，不能用于创建第一个管理员。
 - `internal/app/console/admins.go` 的 `Admins.Create` **无 principal 检查**，校验邮箱唯一、密码强度（`users.ValidatePasswordStrength`）、角色合法后可创建。
 - `internal/app/server/apikeys.go` 的 `APIKeys.Create` **无 principal 检查**；secret 为两个 UUID 拼接（64 字符），存 SHA-256 hex，明文仅创建时返回。
 - `internal/app/server/projects.go` 的 `Projects.CreateProject` **要求平台 admin principal**（安全评审 M7），内部在 `RunInTx` 中插入 project 并调用 `docDB.EnsureSystemCollections`（创建 `default` schema + 7 个系统集合）。
@@ -44,12 +44,12 @@
 `ConsoleAuthService` 新增两个 RPC（继承服务级 `ACCESS_PUBLIC`）：
 
 ```proto
-// 查询是否已完成初始化（console_admins 是否为空）
+// 查询是否已完成初始化（admins 是否为空）
 rpc GetSetupStatus(GetSetupStatusRequest) returns (GetSetupStatusResponse) {
   option (google.api.http) = { get: "/v1/console/auth/setup-status" };
 }
 
-// 首个管理员注册：仅当 console_admins 为空时可用
+// 首个管理员注册：仅当 admins 为空时可用
 rpc SignUp(SignUpRequest) returns (SignUpResponse) {
   option (google.api.http) = { post: "/v1/console/auth/sign-up", body: "*" };
 }
@@ -80,12 +80,12 @@ type Setup struct {
     projects *server.Projects // 复用 CreateProjectInternal（见 3.3）
     apiKeys  *server.APIKeys  // 复用 Create（无 principal 检查）
     auth     *Auth            // 复用 SignIn 签发 TokenPair
-    adminRepo projects.ConsoleAdminRepository
-    // console_admin_projects 关联写入（repo 已有或新增方法）
+    adminRepo projects.AdminRepository
+    // admin_projects 关联写入（repo 已有或新增方法）
 }
 
 type SignUpResult struct {
-    Admin       *projects.ConsoleAdmin
+    Admin       *projects.Admin
     Tokens      *TokenPair
     APIKeySecret string
 }
@@ -96,11 +96,11 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 
 `SignUp` 流程（顺序与补偿）：
 
-1. **首次性检查**：`console_admins` 计数 > 0 → `FailedPrecondition("setup already completed")`。
+1. **首次性检查**：`admins` 计数 > 0 → `FailedPrecondition("setup already completed")`。
 2. 调用 `Admins.Create(ctx, {Email, Password, Role: "owner"})` —— 复用邮箱/密码/角色校验。
 3. 调用 `Projects.CreateProjectInternal(ctx, {Name: "Default"})` —— 生成 id `default`，内含 `RunInTx` + `EnsureSystemCollections`。
 4. 调用 `APIKeys.Create(ctx, {ProjectID: "default", Name: "Default API Key", Scopes: ["all"]})` —— 得到明文 secret。
-5. 写入 `console_admin_projects` 关联（owner 实际会被 `ValidateAdminProjectAccess` 放行，但保持数据完整）。
+5. 写入 `admin_projects` 关联（owner 实际会被 `ValidateAdminProjectAccess` 放行，但保持数据完整）。
 6. 调用 `Auth.SignIn(ctx, {Email, Password})` 签发 TokenPair（handler 侧复用 `setSessionCookies`）。
 
 **失败补偿**：步骤 3-6 任一步失败时，best-effort 回删已创建的 admin（避免「admin 已建但 project 缺失」导致无法重试也无法登录的死锁），然后返回错误。补偿失败只记日志。

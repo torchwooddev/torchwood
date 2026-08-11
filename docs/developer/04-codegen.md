@@ -76,7 +76,7 @@ breaking:
 |----|------|------|-------------------|
 | Client API | `proto/client/v1/` | 终端用户直接调用（Account、Databases、Teams 等） | `genproto/client/v1/` |
 | Server API | `proto/server/v1/` | Agent / 自动化通过 scoped API Key 调用管理面（Projects、Users、Storage、Databases、Functions、APIKeys、Teams、Health、OAuthProviders） | `genproto/server/v1/` |
-| Console API | `proto/console/v1/` | Admin Console 后台（ConsoleAuth、ConsoleAdmins） | `genproto/console/v1/` |
+| Console API | `proto/console/v1/` | Admin Console 后台（ConsoleAuth、Admins） | `genproto/console/v1/` |
 | Shared | `proto/shared/v1/` | 跨组共享：`authz.proto`（鉴权注解）、`common.proto`（列表/响应元数据） | `genproto/shared/v1/` |
 
 每个 service proto 生成的产物示例：`<svc>.pb.go`、`<svc>_grpc.pb.go`、`<svc>.pb.gw.go`、`<svc>.swagger.json`。

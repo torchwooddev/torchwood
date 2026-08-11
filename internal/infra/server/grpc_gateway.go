@@ -65,7 +65,7 @@ func NewGRPCGatewayServer(
 		serverv1.RegisterDatabasesServiceHandlerFromEndpoint,
 		serverv1.RegisterFunctionsServiceHandlerFromEndpoint,
 		consolev1.RegisterConsoleAuthServiceHandlerFromEndpoint,
-		consolev1.RegisterConsoleAdminsServiceHandlerFromEndpoint,
+		consolev1.RegisterAdminsServiceHandlerFromEndpoint,
 	}
 	for _, fn := range register {
 		if err := fn(ctx, mux, grpcEndpoint, opts); err != nil {

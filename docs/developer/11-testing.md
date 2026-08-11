@@ -61,9 +61,9 @@ defer db.Close()
 | 函数 | 用途 |
 |------|------|
 | `testutil.CreateTestProject(ctx, db)` | 插入测试项目，返回 `(projectID, internalID, cleanup)` |
-| `testutil.CreateTestConsoleAdmin(ctx, db, role)` | 插入 console admin（默认密码 `Admin@123`），返回 `(model, cleanup)` |
-| `testutil.SignConsoleAdminToken(cfg, admin)` | 签发与 `auth.Validator` 兼容的 admin JWT |
-| `testutil.GrantConsoleAdminProject(ctx, db, adminID, projectID)` | 把非平台 admin 绑定到项目 |
+| `testutil.CreateTestAdmin(ctx, db, role)` | 插入 console admin（默认密码 `Admin@123`），返回 `(model, cleanup)` |
+| `testutil.SignAdminToken(cfg, admin)` | 签发与 `auth.Validator` 兼容的 admin JWT |
+| `testutil.GrantAdminProject(ctx, db, adminID, projectID)` | 把非平台 admin 绑定到项目 |
 | `testutil.CreateTestAPIKey(ctx, db, projectID, scopes)` | 插入 API key，返回 `(rawSecret, cleanup)` |
 | `testutil.NewMemObjectStore` | 内存 ObjectStore（storage/health 测试用，实现 `ObjectStore` 端口含 `Ping`） |
 | `testutil.NewInterceptorEnv(db, cfg, docDB)` | 按生产方式装配 auth + audit 拦截器，`InvokeUnary` 直接跑鉴权链 |

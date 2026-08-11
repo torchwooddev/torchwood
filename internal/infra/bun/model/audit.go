@@ -22,8 +22,8 @@ type AuditLog struct {
 	CreatedAt  time.Time      `bun:"created_at,notnull"`
 }
 
-type ConsoleAdminProject struct {
-	bun.BaseModel `bun:"table:console_admin_projects,alias:cap"`
+type AdminProject struct {
+	bun.BaseModel `bun:"table:admin_projects,alias:cap"`
 
 	AdminID   string    `bun:"admin_id,pk"`
 	ProjectID string    `bun:"project_id,pk"`

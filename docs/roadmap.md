@@ -216,7 +216,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 | 任务 | 说明 | 页面 | 状态 |
 |------|------|------|------|
-| 系统管理员管理 | 管理员 CRUD、角色与密码管理、owner 权限保护；`ConsoleAdminsService`（`GET/POST/PATCH/DELETE /v1/console/admins`） | `console/src/routes/admins/`、`proto/console/v1/admins.proto` | ✅ 完成 |
+| 系统管理员管理 | 管理员 CRUD、角色与密码管理、owner 权限保护；`AdminsService`（`GET/POST/PATCH/DELETE /v1/console/admins`） | `console/src/routes/admins/`、`proto/console/v1/admins.proto` | ✅ 完成 |
 | Storage 文件上传 | 在 Storage 页面直接上传文件、展示下载链接 | `console/src/routes/storage/` | ✅ 完成 |
 | Databases 文档编辑器 | collection 下文档列表、新增/编辑/删除 | `console/src/routes/databases/` | ✅ 完成 |
 | Attributes / Indexes 管理 | 在 collection 详情中增删属性与索引（含 Attribute/Index 行内删除） | Databases 子页面 | ✅ 完成 |

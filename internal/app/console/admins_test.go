@@ -14,10 +14,10 @@ import (
 )
 
 type memAdminRepo struct {
-	admins []projects.ConsoleAdmin
+	admins []projects.Admin
 }
 
-func (r *memAdminRepo) GetConsoleAdmin(_ context.Context, id string) (*projects.ConsoleAdmin, error) {
+func (r *memAdminRepo) GetAdmin(_ context.Context, id string) (*projects.Admin, error) {
 	for i := range r.admins {
 		if r.admins[i].ID == id {
 			return &r.admins[i], nil
@@ -26,7 +26,7 @@ func (r *memAdminRepo) GetConsoleAdmin(_ context.Context, id string) (*projects.
 	return nil, nil
 }
 
-func (r *memAdminRepo) GetConsoleAdminByEmail(_ context.Context, email string) (*projects.ConsoleAdmin, error) {
+func (r *memAdminRepo) GetAdminByEmail(_ context.Context, email string) (*projects.Admin, error) {
 	for i := range r.admins {
 		if r.admins[i].Email == email {
 			return &r.admins[i], nil
@@ -35,18 +35,18 @@ func (r *memAdminRepo) GetConsoleAdminByEmail(_ context.Context, email string) (
 	return nil, nil
 }
 
-func (r *memAdminRepo) ListConsoleAdmins(_ context.Context) ([]projects.ConsoleAdmin, error) {
-	out := make([]projects.ConsoleAdmin, len(r.admins))
+func (r *memAdminRepo) ListAdmins(_ context.Context) ([]projects.Admin, error) {
+	out := make([]projects.Admin, len(r.admins))
 	copy(out, r.admins)
 	return out, nil
 }
 
-func (r *memAdminRepo) CreateConsoleAdmin(_ context.Context, admin *projects.ConsoleAdmin) error {
+func (r *memAdminRepo) CreateAdmin(_ context.Context, admin *projects.Admin) error {
 	r.admins = append(r.admins, *admin)
 	return nil
 }
 
-func (r *memAdminRepo) UpdateConsoleAdmin(_ context.Context, admin *projects.ConsoleAdmin) error {
+func (r *memAdminRepo) UpdateAdmin(_ context.Context, admin *projects.Admin) error {
 	for i := range r.admins {
 		if r.admins[i].ID == admin.ID {
 			r.admins[i] = *admin
@@ -56,7 +56,7 @@ func (r *memAdminRepo) UpdateConsoleAdmin(_ context.Context, admin *projects.Con
 	return nil
 }
 
-func (r *memAdminRepo) DeleteConsoleAdmin(_ context.Context, id string) error {
+func (r *memAdminRepo) DeleteAdmin(_ context.Context, id string) error {
 	for i := range r.admins {
 		if r.admins[i].ID == id {
 			r.admins = append(r.admins[:i], r.admins[i+1:]...)
@@ -66,7 +66,7 @@ func (r *memAdminRepo) DeleteConsoleAdmin(_ context.Context, id string) error {
 	return nil
 }
 
-func (r *memAdminRepo) CountConsoleAdminsByRole(_ context.Context, role string) (int64, error) {
+func (r *memAdminRepo) CountAdminsByRole(_ context.Context, role string) (int64, error) {
 	var n int64
 	for _, a := range r.admins {
 		if a.Role == role {
@@ -76,15 +76,15 @@ func (r *memAdminRepo) CountConsoleAdminsByRole(_ context.Context, role string) 
 	return n, nil
 }
 
-var _ projects.ConsoleAdminRepository = (*memAdminRepo)(nil)
+var _ projects.AdminRepository = (*memAdminRepo)(nil)
 
-func newAdminRepo(admins ...projects.ConsoleAdmin) *memAdminRepo {
+func newAdminRepo(admins ...projects.Admin) *memAdminRepo {
 	return &memAdminRepo{admins: admins}
 }
 
-func consoleAdmin(id, email, role string) projects.ConsoleAdmin {
+func mkAdmin(id, email, role string) projects.Admin {
 	now := time.Now()
-	return projects.ConsoleAdmin{
+	return projects.Admin{
 		ID:           id,
 		Email:        email,
 		PasswordHash: "hash",
@@ -130,7 +130,7 @@ func TestAdmins_Create_HashesPasswordAndNormalizesEmail(t *testing.T) {
 
 func TestAdmins_Update_RejectsSelfDemotion(t *testing.T) {
 	t.Parallel()
-	repo := newAdminRepo(consoleAdmin("a1", "owner@x.com", "owner"), consoleAdmin("a2", "admin@x.com", "admin"))
+	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"), mkAdmin("a2", "admin@x.com", "admin"))
 	uc := console.NewAdmins(repo)
 
 	_, err := uc.Update(context.Background(), console.UpdateAdminCommand{ID: "a1", CallerID: "a1", Role: "member"})
@@ -139,7 +139,7 @@ func TestAdmins_Update_RejectsSelfDemotion(t *testing.T) {
 
 func TestAdmins_Update_RejectsDemotingLastOwner(t *testing.T) {
 	t.Parallel()
-	repo := newAdminRepo(consoleAdmin("a1", "owner@x.com", "owner"))
+	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
 	uc := console.NewAdmins(repo)
 
 	_, err := uc.Update(context.Background(), console.UpdateAdminCommand{ID: "a1", CallerID: "a2", Role: "member"})
@@ -149,8 +149,8 @@ func TestAdmins_Update_RejectsDemotingLastOwner(t *testing.T) {
 func TestAdmins_Update_AllowsRoleChangeAndPasswordReset(t *testing.T) {
 	t.Parallel()
 	repo := newAdminRepo(
-		consoleAdmin("a1", "owner@x.com", "owner"),
-		consoleAdmin("a2", "admin@x.com", "admin"),
+		mkAdmin("a1", "owner@x.com", "owner"),
+		mkAdmin("a2", "admin@x.com", "admin"),
 	)
 	uc := console.NewAdmins(repo)
 
@@ -166,7 +166,7 @@ func TestAdmins_Update_AllowsRoleChangeAndPasswordReset(t *testing.T) {
 
 func TestAdmins_Delete_RejectsSelfDeletion(t *testing.T) {
 	t.Parallel()
-	repo := newAdminRepo(consoleAdmin("a1", "owner@x.com", "owner"))
+	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
 	uc := console.NewAdmins(repo)
 
 	err := uc.Delete(context.Background(), "a1", "a1")
@@ -176,7 +176,7 @@ func TestAdmins_Delete_RejectsSelfDeletion(t *testing.T) {
 
 func TestAdmins_Delete_RejectsDeletingLastOwner(t *testing.T) {
 	t.Parallel()
-	repo := newAdminRepo(consoleAdmin("a1", "owner@x.com", "owner"))
+	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
 	uc := console.NewAdmins(repo)
 
 	err := uc.Delete(context.Background(), "a1", "a2")
@@ -187,9 +187,9 @@ func TestAdmins_Delete_RejectsDeletingLastOwner(t *testing.T) {
 func TestAdmins_Delete_AllowsWithSecondOwner(t *testing.T) {
 	t.Parallel()
 	repo := newAdminRepo(
-		consoleAdmin("a1", "owner1@x.com", "owner"),
-		consoleAdmin("a2", "owner2@x.com", "owner"),
-		consoleAdmin("a3", "admin@x.com", "admin"),
+		mkAdmin("a1", "owner1@x.com", "owner"),
+		mkAdmin("a2", "owner2@x.com", "owner"),
+		mkAdmin("a3", "admin@x.com", "admin"),
 	)
 	uc := console.NewAdmins(repo)
 

@@ -39,7 +39,7 @@
 - Console admin 会话走 `TORCHWOOD_session_console` HttpOnly cookie（SameSite=Lax，refresh cookie 限 `/v1/console/auth` 路径），前端不再用 localStorage 存 token。
 
 ## 数据库约定
-- 元数据静态表（projects、api_keys、document_*、console_admins）使用 bun + golang-migrate。
+- 元数据静态表（projects、api_keys、document_*、admins）使用 bun + golang-migrate。
 - 系统资源（users、sessions、files、buckets、teams）和用户动态集合使用 PostgreSQL 动态文档 adapter（schema-per-database + `_tenant` + `_perms`）。
 - 动态文档查询使用 Appwrite 风格 DSL（`pkg/query`），支持 `equal`、`greaterThan`、`contains`、`orderDesc`、`limit` 等。
 

@@ -11,22 +11,22 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 )
 
-type consoleAdminProjectRepo struct {
+type adminProjectRepo struct {
 	db *clients.Database
 }
 
-func NewConsoleAdminProjectRepository(db *clients.Database) projects.ConsoleAdminProjectRepository {
-	return &consoleAdminProjectRepo{db: db}
+func NewAdminProjectRepository(db *clients.Database) projects.AdminProjectRepository {
+	return &adminProjectRepo{db: db}
 }
 
-func (r *consoleAdminProjectRepo) HasProjectAccess(ctx context.Context, adminID, projectID string) (bool, error) {
-	return r.db.NewSelect().Model((*model.ConsoleAdminProject)(nil)).
+func (r *adminProjectRepo) HasProjectAccess(ctx context.Context, adminID, projectID string) (bool, error) {
+	return r.db.NewSelect().Model((*model.AdminProject)(nil)).
 		Where("admin_id = ? AND project_id = ?", adminID, projectID).
 		Exists(ctx)
 }
 
-func (r *consoleAdminProjectRepo) GrantProjectAccess(ctx context.Context, adminID, projectID string) error {
-	m := &model.ConsoleAdminProject{
+func (r *adminProjectRepo) GrantProjectAccess(ctx context.Context, adminID, projectID string) error {
+	m := &model.AdminProject{
 		AdminID:   adminID,
 		ProjectID: projectID,
 		CreatedAt: time.Now(),

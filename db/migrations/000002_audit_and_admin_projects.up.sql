@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_logs_project_created ON audit_logs(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs(actor_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS console_admin_projects (
-    admin_id   TEXT NOT NULL REFERENCES console_admins(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS admin_projects (
+    admin_id   TEXT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (admin_id, project_id)
 );
-CREATE INDEX IF NOT EXISTS idx_console_admin_projects_project ON console_admin_projects(project_id);
+CREATE INDEX IF NOT EXISTS idx_admin_projects_project ON admin_projects(project_id);

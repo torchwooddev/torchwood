@@ -33,8 +33,8 @@ type APIKey struct {
 	UpdatedAt  time.Time  `bun:"updated_at,notnull"`
 }
 
-type ConsoleAdmin struct {
-	bun.BaseModel `bun:"table:console_admins,alias:ca"`
+type Admin struct {
+	bun.BaseModel `bun:"table:admins,alias:ca"`
 
 	ID           string    `bun:"id,pk"`
 	Email        string    `bun:"email,notnull,unique"`

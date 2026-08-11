@@ -1,6 +1,6 @@
 import { api } from "./client";
 
-export interface ConsoleAdmin {
+export interface Admin {
   id: string;
   email: string;
   role: string;
@@ -9,17 +9,17 @@ export interface ConsoleAdmin {
 }
 
 export interface ListAdminsResponse {
-  admins: ConsoleAdmin[];
+  admins: Admin[];
 }
 
 export const ADMIN_ROLES = ["owner", "admin", "member", "viewer"] as const;
 
-export async function getCurrentAdmin(): Promise<ConsoleAdmin> {
-  const res = await api.get<ConsoleAdmin>("/console/admins/me");
+export async function getCurrentAdmin(): Promise<Admin> {
+  const res = await api.get<Admin>("/console/admins/me");
   return res.data;
 }
 
-export async function listAdmins(): Promise<ConsoleAdmin[]> {
+export async function listAdmins(): Promise<Admin[]> {
   const res = await api.get<ListAdminsResponse>("/console/admins");
   return res.data.admins ?? [];
 }
@@ -28,16 +28,16 @@ export async function createAdmin(input: {
   email: string;
   password: string;
   role: string;
-}): Promise<ConsoleAdmin> {
-  const res = await api.post<ConsoleAdmin>("/console/admins", input);
+}): Promise<Admin> {
+  const res = await api.post<Admin>("/console/admins", input);
   return res.data;
 }
 
 export async function updateAdmin(
   id: string,
   input: { role?: string; password?: string }
-): Promise<ConsoleAdmin> {
-  const res = await api.patch<ConsoleAdmin>(
+): Promise<Admin> {
+  const res = await api.patch<Admin>(
     `/console/admins/${encodeURIComponent(id)}`,
     input
   );

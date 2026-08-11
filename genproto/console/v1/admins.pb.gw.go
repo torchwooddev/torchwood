@@ -35,7 +35,7 @@ var (
 	_ = metadata.Join
 )
 
-func request_ConsoleAdminsService_GetCurrentAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client ConsoleAdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_AdminsService_GetCurrentAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client AdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq GetCurrentAdminRequest
 		metadata runtime.ServerMetadata
@@ -47,7 +47,7 @@ func request_ConsoleAdminsService_GetCurrentAdmin_0(ctx context.Context, marshal
 	return msg, metadata, err
 }
 
-func local_request_ConsoleAdminsService_GetCurrentAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server ConsoleAdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_AdminsService_GetCurrentAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server AdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq GetCurrentAdminRequest
 		metadata runtime.ServerMetadata
@@ -56,7 +56,7 @@ func local_request_ConsoleAdminsService_GetCurrentAdmin_0(ctx context.Context, m
 	return msg, metadata, err
 }
 
-func request_ConsoleAdminsService_ListAdmins_0(ctx context.Context, marshaler runtime.Marshaler, client ConsoleAdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_AdminsService_ListAdmins_0(ctx context.Context, marshaler runtime.Marshaler, client AdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListAdminsRequest
 		metadata runtime.ServerMetadata
@@ -68,7 +68,7 @@ func request_ConsoleAdminsService_ListAdmins_0(ctx context.Context, marshaler ru
 	return msg, metadata, err
 }
 
-func local_request_ConsoleAdminsService_ListAdmins_0(ctx context.Context, marshaler runtime.Marshaler, server ConsoleAdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_AdminsService_ListAdmins_0(ctx context.Context, marshaler runtime.Marshaler, server AdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListAdminsRequest
 		metadata runtime.ServerMetadata
@@ -77,7 +77,7 @@ func local_request_ConsoleAdminsService_ListAdmins_0(ctx context.Context, marsha
 	return msg, metadata, err
 }
 
-func request_ConsoleAdminsService_CreateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client ConsoleAdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_AdminsService_CreateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client AdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq CreateAdminRequest
 		metadata runtime.ServerMetadata
@@ -92,7 +92,7 @@ func request_ConsoleAdminsService_CreateAdmin_0(ctx context.Context, marshaler r
 	return msg, metadata, err
 }
 
-func local_request_ConsoleAdminsService_CreateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server ConsoleAdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_AdminsService_CreateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server AdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq CreateAdminRequest
 		metadata runtime.ServerMetadata
@@ -104,7 +104,7 @@ func local_request_ConsoleAdminsService_CreateAdmin_0(ctx context.Context, marsh
 	return msg, metadata, err
 }
 
-func request_ConsoleAdminsService_UpdateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client ConsoleAdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_AdminsService_UpdateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client AdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq UpdateAdminRequest
 		metadata runtime.ServerMetadata
@@ -128,7 +128,7 @@ func request_ConsoleAdminsService_UpdateAdmin_0(ctx context.Context, marshaler r
 	return msg, metadata, err
 }
 
-func local_request_ConsoleAdminsService_UpdateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server ConsoleAdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_AdminsService_UpdateAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server AdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq UpdateAdminRequest
 		metadata runtime.ServerMetadata
@@ -149,7 +149,7 @@ func local_request_ConsoleAdminsService_UpdateAdmin_0(ctx context.Context, marsh
 	return msg, metadata, err
 }
 
-func request_ConsoleAdminsService_DeleteAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client ConsoleAdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_AdminsService_DeleteAdmin_0(ctx context.Context, marshaler runtime.Marshaler, client AdminsServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq DeleteAdminRequest
 		metadata runtime.ServerMetadata
@@ -170,7 +170,7 @@ func request_ConsoleAdminsService_DeleteAdmin_0(ctx context.Context, marshaler r
 	return msg, metadata, err
 }
 
-func local_request_ConsoleAdminsService_DeleteAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server ConsoleAdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_AdminsService_DeleteAdmin_0(ctx context.Context, marshaler runtime.Marshaler, server AdminsServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq DeleteAdminRequest
 		metadata runtime.ServerMetadata
@@ -188,119 +188,119 @@ func local_request_ConsoleAdminsService_DeleteAdmin_0(ctx context.Context, marsh
 	return msg, metadata, err
 }
 
-// RegisterConsoleAdminsServiceHandlerServer registers the http handlers for service ConsoleAdminsService to "mux".
-// UnaryRPC     :call ConsoleAdminsServiceServer directly.
+// RegisterAdminsServiceHandlerServer registers the http handlers for service AdminsService to "mux".
+// UnaryRPC     :call AdminsServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
-// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterConsoleAdminsServiceHandlerFromEndpoint instead.
+// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterAdminsServiceHandlerFromEndpoint instead.
 // GRPC interceptors will not work for this type of registration. To use interceptors, you must use the "runtime.WithMiddlewares" option in the "runtime.NewServeMux" call.
-func RegisterConsoleAdminsServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server ConsoleAdminsServiceServer) error {
-	mux.Handle(http.MethodGet, pattern_ConsoleAdminsService_GetCurrentAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+func RegisterAdminsServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server AdminsServiceServer) error {
+	mux.Handle(http.MethodGet, pattern_AdminsService_GetCurrentAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/GetCurrentAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/me"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/GetCurrentAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/me"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_ConsoleAdminsService_GetCurrentAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_AdminsService_GetCurrentAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_GetCurrentAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_GetCurrentAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_ConsoleAdminsService_ListAdmins_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_AdminsService_ListAdmins_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/ListAdmins", runtime.WithHTTPPathPattern("/v1/console/admins"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/ListAdmins", runtime.WithHTTPPathPattern("/v1/console/admins"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_ConsoleAdminsService_ListAdmins_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_AdminsService_ListAdmins_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_ListAdmins_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_ListAdmins_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_ConsoleAdminsService_CreateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_AdminsService_CreateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/CreateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/CreateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_ConsoleAdminsService_CreateAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_AdminsService_CreateAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_CreateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_CreateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPatch, pattern_ConsoleAdminsService_UpdateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPatch, pattern_AdminsService_UpdateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/UpdateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/UpdateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_ConsoleAdminsService_UpdateAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_AdminsService_UpdateAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_UpdateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_UpdateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodDelete, pattern_ConsoleAdminsService_DeleteAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodDelete, pattern_AdminsService_DeleteAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/DeleteAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/DeleteAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_ConsoleAdminsService_DeleteAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_AdminsService_DeleteAdmin_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_DeleteAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_DeleteAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
 }
 
-// RegisterConsoleAdminsServiceHandlerFromEndpoint is same as RegisterConsoleAdminsServiceHandler but
+// RegisterAdminsServiceHandlerFromEndpoint is same as RegisterAdminsServiceHandler but
 // automatically dials to "endpoint" and closes the connection when "ctx" gets done.
-func RegisterConsoleAdminsServiceHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
+func RegisterAdminsServiceHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
 	conn, err := grpc.NewClient(endpoint, opts...)
 	if err != nil {
 		return err
@@ -319,121 +319,121 @@ func RegisterConsoleAdminsServiceHandlerFromEndpoint(ctx context.Context, mux *r
 			}
 		}()
 	}()
-	return RegisterConsoleAdminsServiceHandler(ctx, mux, conn)
+	return RegisterAdminsServiceHandler(ctx, mux, conn)
 }
 
-// RegisterConsoleAdminsServiceHandler registers the http handlers for service ConsoleAdminsService to "mux".
+// RegisterAdminsServiceHandler registers the http handlers for service AdminsService to "mux".
 // The handlers forward requests to the grpc endpoint over "conn".
-func RegisterConsoleAdminsServiceHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
-	return RegisterConsoleAdminsServiceHandlerClient(ctx, mux, NewConsoleAdminsServiceClient(conn))
+func RegisterAdminsServiceHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+	return RegisterAdminsServiceHandlerClient(ctx, mux, NewAdminsServiceClient(conn))
 }
 
-// RegisterConsoleAdminsServiceHandlerClient registers the http handlers for service ConsoleAdminsService
-// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "ConsoleAdminsServiceClient".
-// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "ConsoleAdminsServiceClient"
+// RegisterAdminsServiceHandlerClient registers the http handlers for service AdminsService
+// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "AdminsServiceClient".
+// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "AdminsServiceClient"
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
-// "ConsoleAdminsServiceClient" to call the correct interceptors. This client ignores the HTTP middlewares.
-func RegisterConsoleAdminsServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client ConsoleAdminsServiceClient) error {
-	mux.Handle(http.MethodGet, pattern_ConsoleAdminsService_GetCurrentAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+// "AdminsServiceClient" to call the correct interceptors. This client ignores the HTTP middlewares.
+func RegisterAdminsServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client AdminsServiceClient) error {
+	mux.Handle(http.MethodGet, pattern_AdminsService_GetCurrentAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/GetCurrentAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/me"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/GetCurrentAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/me"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_ConsoleAdminsService_GetCurrentAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_AdminsService_GetCurrentAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_GetCurrentAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_GetCurrentAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_ConsoleAdminsService_ListAdmins_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_AdminsService_ListAdmins_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/ListAdmins", runtime.WithHTTPPathPattern("/v1/console/admins"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/ListAdmins", runtime.WithHTTPPathPattern("/v1/console/admins"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_ConsoleAdminsService_ListAdmins_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_AdminsService_ListAdmins_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_ListAdmins_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_ListAdmins_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_ConsoleAdminsService_CreateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPost, pattern_AdminsService_CreateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/CreateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/CreateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_ConsoleAdminsService_CreateAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_AdminsService_CreateAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_CreateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_CreateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPatch, pattern_ConsoleAdminsService_UpdateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPatch, pattern_AdminsService_UpdateAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/UpdateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/UpdateAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_ConsoleAdminsService_UpdateAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_AdminsService_UpdateAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_UpdateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_UpdateAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodDelete, pattern_ConsoleAdminsService_DeleteAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodDelete, pattern_AdminsService_DeleteAdmin_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.ConsoleAdminsService/DeleteAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.console.v1.AdminsService/DeleteAdmin", runtime.WithHTTPPathPattern("/v1/console/admins/{id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_ConsoleAdminsService_DeleteAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_AdminsService_DeleteAdmin_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_ConsoleAdminsService_DeleteAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_AdminsService_DeleteAdmin_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	return nil
 }
 
 var (
-	pattern_ConsoleAdminsService_GetCurrentAdmin_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "console", "admins", "me"}, ""))
-	pattern_ConsoleAdminsService_ListAdmins_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "console", "admins"}, ""))
-	pattern_ConsoleAdminsService_CreateAdmin_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "console", "admins"}, ""))
-	pattern_ConsoleAdminsService_UpdateAdmin_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "console", "admins", "id"}, ""))
-	pattern_ConsoleAdminsService_DeleteAdmin_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "console", "admins", "id"}, ""))
+	pattern_AdminsService_GetCurrentAdmin_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "console", "admins", "me"}, ""))
+	pattern_AdminsService_ListAdmins_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "console", "admins"}, ""))
+	pattern_AdminsService_CreateAdmin_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "console", "admins"}, ""))
+	pattern_AdminsService_UpdateAdmin_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "console", "admins", "id"}, ""))
+	pattern_AdminsService_DeleteAdmin_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "console", "admins", "id"}, ""))
 )
 
 var (
-	forward_ConsoleAdminsService_GetCurrentAdmin_0 = runtime.ForwardResponseMessage
-	forward_ConsoleAdminsService_ListAdmins_0      = runtime.ForwardResponseMessage
-	forward_ConsoleAdminsService_CreateAdmin_0     = runtime.ForwardResponseMessage
-	forward_ConsoleAdminsService_UpdateAdmin_0     = runtime.ForwardResponseMessage
-	forward_ConsoleAdminsService_DeleteAdmin_0     = runtime.ForwardResponseMessage
+	forward_AdminsService_GetCurrentAdmin_0 = runtime.ForwardResponseMessage
+	forward_AdminsService_ListAdmins_0      = runtime.ForwardResponseMessage
+	forward_AdminsService_CreateAdmin_0     = runtime.ForwardResponseMessage
+	forward_AdminsService_UpdateAdmin_0     = runtime.ForwardResponseMessage
+	forward_AdminsService_DeleteAdmin_0     = runtime.ForwardResponseMessage
 )

@@ -33,8 +33,8 @@ func NewInterceptorEnv(db *clients.Database, cfg *config.AppConfig, docDB databa
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
-		bunrepo.NewConsoleAdminRepository(db),
-		bunrepo.NewConsoleAdminProjectRepository(db),
+		bunrepo.NewAdminRepository(db),
+		bunrepo.NewAdminProjectRepository(db),
 		nil,
 		docDB,
 		nil,

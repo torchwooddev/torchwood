@@ -189,7 +189,7 @@ extend google.protobuf.ServiceOptions { ServiceAuth service_auth = 52002; }
 
 - `method_auth = { access: ACCESS_API_KEY }` 标注方法；
 - 服务可用 `(service_auth) = { default_access: ... }` 声明默认级别，方法未标注时回退到服务默认（`resolveMethodAccess`）。
-- 例：`ConsoleAuthService` 服务默认 `ACCESS_PUBLIC`；`APIKeysService` 服务默认 `ACCESS_API_KEY`；`ConsoleAdminsService` 默认 `ACCESS_PERMISSION` 并对个别方法显式声明。
+- 例：`ConsoleAuthService` 服务默认 `ACCESS_PUBLIC`；`APIKeysService` 服务默认 `ACCESS_API_KEY`；`AdminsService` 默认 `ACCESS_PERMISSION` 并对个别方法显式声明。
 
 ### 5.2 为什么必须带注解（collectMethodsByAccess）
 

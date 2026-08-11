@@ -47,7 +47,7 @@ roadmap 无要求——**后续版本单独排期**，在 roadmap 记 TODO）；
 | Projects API | proto 仅 3 个 RPC（Create/List/Get，projects.proto:15-25）；`Project{id,name,description,status,created_at,updated_at}`（:42-49）；use-case `GetProject` 越权保护（projects.go:121-133） |
 | UpdateProject | **repository 层已有**：domain `UpdateProject`（repository.go:10）+ bunrepo 实现（project_repo.go:67-71，全列覆盖写）；**`GetProjectByName` 也已存在但未被任何 use-case 使用**（repository.go:8）；缺 proto/use-case/handler/scope/前端/测试 |
 | CreateProject 校验 | **不校验 description**（projects.go:40-84 只查 name 非空 + id 白名单）；DB 无 description 长度约束（000001_init_tables.up.sql:5）；name 有**唯一索引**（:11，CreateProject 因 id 由 name 派生天然避免撞名） |
-| 角色模型 | owner/admin = 平台 admin（validator.go:133-142）；member/viewer 的 `ListProjects` 返回空（projects.go:99-102）但 `HasProjectAccess` 不看角色（console_admin_project_repo.go:22） |
+| 角色模型 | owner/admin = 平台 admin（validator.go:133-142）；member/viewer 的 `ListProjects` 返回空（projects.go:99-102）但 `HasProjectAccess` 不看角色（admin_project_repo.go:22） |
 
 ---
 

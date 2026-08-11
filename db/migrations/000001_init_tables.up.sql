@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 CREATE INDEX IF NOT EXISTS idx_api_keys_project ON api_keys(project_id);
 
-CREATE TABLE IF NOT EXISTS console_admins (
+CREATE TABLE IF NOT EXISTS admins (
     id            TEXT PRIMARY KEY,
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,

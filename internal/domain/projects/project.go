@@ -25,7 +25,7 @@ type APIKey struct {
 	UpdatedAt  time.Time
 }
 
-type ConsoleAdmin struct {
+type Admin struct {
 	ID           string
 	Email        string
 	PasswordHash string

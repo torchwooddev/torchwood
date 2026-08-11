@@ -9,10 +9,10 @@ import "google/protobuf/timestamp.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
-// ConsoleAdminsService 管理系统管理员（console_admins 表）。
+// AdminsService 管理系统管理员（admins 表）。
 // 权限模型：owner/admin 角色可查看列表；创建、修改、删除仅 owner 可执行。
 // 方法与 client/server API 不同，这里直接使用 console admin role 作为权限串。
-service ConsoleAdminsService {
+service AdminsService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_PERMISSION };
 
   rpc GetCurrentAdmin(GetCurrentAdminRequest) returns (Admin) {

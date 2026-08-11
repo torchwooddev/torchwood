@@ -14,13 +14,13 @@ import (
 	"github.com/torchwooddev/torchwood/pkg/password"
 )
 
-// CreateTestConsoleAdmin inserts a console admin and returns the model plus cleanup.
-func CreateTestConsoleAdmin(ctx context.Context, db *clients.Database, role string) (*model.ConsoleAdmin, func()) {
+// CreateTestAdmin inserts a console admin and returns the model plus cleanup.
+func CreateTestAdmin(ctx context.Context, db *clients.Database, role string) (*model.Admin, func()) {
 	hash, err := password.Hash("Admin@123")
 	if err != nil {
 		panic(err)
 	}
-	admin := &model.ConsoleAdmin{
+	admin := &model.Admin{
 		ID:           idgen.UUID().String(),
 		Email:        fmt.Sprintf("admin-%d@torchwood.local", time.Now().UnixNano()),
 		PasswordHash: hash,
@@ -32,14 +32,14 @@ func CreateTestConsoleAdmin(ctx context.Context, db *clients.Database, role stri
 		panic(err)
 	}
 	cleanup := func() {
-		_, _ = db.NewDelete().Model((*model.ConsoleAdmin)(nil)).Where("id = ?", admin.ID).Exec(ctx)
-		_, _ = db.NewDelete().Model((*model.ConsoleAdminProject)(nil)).Where("admin_id = ?", admin.ID).Exec(ctx)
+		_, _ = db.NewDelete().Model((*model.Admin)(nil)).Where("id = ?", admin.ID).Exec(ctx)
+		_, _ = db.NewDelete().Model((*model.AdminProject)(nil)).Where("admin_id = ?", admin.ID).Exec(ctx)
 	}
 	return admin, cleanup
 }
 
-// SignConsoleAdminToken issues a console admin JWT compatible with auth.Validator.
-func SignConsoleAdminToken(cfg *config.AppConfig, admin *model.ConsoleAdmin) (string, error) {
+// SignAdminToken issues a console admin JWT compatible with auth.Validator.
+func SignAdminToken(cfg *config.AppConfig, admin *model.Admin) (string, error) {
 	now := time.Now()
 	return jwtparser.Generate(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		TokenID:   idgen.UUID().String(),
@@ -52,7 +52,7 @@ func SignConsoleAdminToken(cfg *config.AppConfig, admin *model.ConsoleAdmin) (st
 	})
 }
 
-// GrantConsoleAdminProject links a non-platform admin to a project.
-func GrantConsoleAdminProject(ctx context.Context, db *clients.Database, adminID, projectID string) error {
-	return bunrepo.NewConsoleAdminProjectRepository(db).GrantProjectAccess(ctx, adminID, projectID)
+// GrantAdminProject links a non-platform admin to a project.
+func GrantAdminProject(ctx context.Context, db *clients.Database, adminID, projectID string) error {
+	return bunrepo.NewAdminProjectRepository(db).GrantProjectAccess(ctx, adminID, projectID)
 }

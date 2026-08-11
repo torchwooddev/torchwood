@@ -9,7 +9,7 @@ import {
   getCurrentAdmin,
   listAdmins,
   updateAdmin,
-  type ConsoleAdmin,
+  type Admin,
 } from "@/api/admins";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +42,7 @@ const ROLE_STYLE: Record<string, "default" | "secondary" | "outline" | "destruct
   viewer: "outline",
 };
 
-const columns: ColumnDef<ConsoleAdmin>[] = [
+const columns: ColumnDef<Admin>[] = [
   { key: "email", header: "邮箱", cell: (a) => a.email },
   {
     key: "role",
@@ -215,7 +215,7 @@ function EditAdminDialog({
   admin,
   onSaved,
 }: {
-  admin: ConsoleAdmin;
+  admin: Admin;
   onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);

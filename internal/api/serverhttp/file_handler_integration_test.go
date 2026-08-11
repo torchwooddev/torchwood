@@ -74,8 +74,8 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
-		bunrepo.NewConsoleAdminRepository(db),
-		bunrepo.NewConsoleAdminProjectRepository(db),
+		bunrepo.NewAdminRepository(db),
+		bunrepo.NewAdminProjectRepository(db),
 		nil,
 		docDB,
 		nil,
@@ -297,8 +297,8 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
-		bunrepo.NewConsoleAdminRepository(db),
-		bunrepo.NewConsoleAdminProjectRepository(db),
+		bunrepo.NewAdminRepository(db),
+		bunrepo.NewAdminProjectRepository(db),
 		nil,
 		docDB,
 		nil,
@@ -400,8 +400,8 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
-		bunrepo.NewConsoleAdminRepository(db),
-		bunrepo.NewConsoleAdminProjectRepository(db),
+		bunrepo.NewAdminRepository(db),
+		bunrepo.NewAdminProjectRepository(db),
 		nil,
 		docDB,
 		nil,
@@ -453,16 +453,16 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
 	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t))
-	admin, adminCleanup := testutil.CreateTestConsoleAdmin(ctx, db, "member")
-	token, err := testutil.SignConsoleAdminToken(cfg, admin)
+	admin, adminCleanup := testutil.CreateTestAdmin(ctx, db, "member")
+	token, err := testutil.SignAdminToken(cfg, admin)
 	require.NoError(t, err)
-	require.NoError(t, testutil.GrantConsoleAdminProject(ctx, db, admin.ID, projectID))
+	require.NoError(t, testutil.GrantAdminProject(ctx, db, admin.ID, projectID))
 
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
-		bunrepo.NewConsoleAdminRepository(db),
-		bunrepo.NewConsoleAdminProjectRepository(db),
+		bunrepo.NewAdminRepository(db),
+		bunrepo.NewAdminProjectRepository(db),
 		nil,
 		docDB,
 		nil,

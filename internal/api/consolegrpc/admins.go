@@ -15,7 +15,7 @@ import (
 )
 
 type AdminsService struct {
-	consolev1.UnimplementedConsoleAdminsServiceServer
+	consolev1.UnimplementedAdminsServiceServer
 	admins *console.Admins
 }
 
@@ -91,7 +91,7 @@ func callerID(ctx context.Context) string {
 	return p.UserID
 }
 
-func mapAdmin(a *projects.ConsoleAdmin) *consolev1.Admin {
+func mapAdmin(a *projects.Admin) *consolev1.Admin {
 	if a == nil {
 		return nil
 	}

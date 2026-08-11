@@ -27,7 +27,7 @@
 |---|--------|----------|----------|-----|
 | 0.1 | 基础设施启动 | `task up` | Postgres / Redis / MinIO 容器健康 | [x] |
 | 0.2 | 环境变量 | 复制 `.env.example` → `.env`，设置 `TORCHWOOD_SECURITY_JWT_SECRET` 等非空值 | 服务可读取配置 | [x] |
-| 0.3 | 数据库迁移 | `task migrate` | `000001`、`000002` 迁移成功；存在 `audit_logs`、`console_admin_projects` 表 | [x] |
+| 0.3 | 数据库迁移 | `task migrate` | `000001`、`000002` 迁移成功；存在 `audit_logs`、`admin_projects` 表 | [x] |
 | 0.4 | 首次部署引导（bootstrap） | 全新数据库启动 server 后打开 `/console/`，按「初始化设置」表单注册第一个管理员 | 注册成功即进入 Console；页面展示一次默认 API Key secret（scope=`all`）；`GET /v1/console/auth/setup-status` 返回 `{"needs_setup":false}`；二次 `POST /v1/console/auth/sign-up` 返回 `FailedPrecondition` | [x] |
 | 0.5 | Console 构建 | `task console-build`（若验收嵌入版 Console） | `console/dist/` 生成且无报错 | [x] |
 | 0.6 | 服务启动 | `task dev-server` 或 `task build && ./bin/server` | gRPC / HTTP / Metrics 均监听；无启动 panic | [x] |
@@ -188,14 +188,14 @@ curl -s -X POST "http://localhost:8088/v1/storage/buckets/<BUCKET_ID>/files" \
 | 6.4 | 伪造项目 Header（HTTP 文件） | 用户 JWT + `X-Torchwood-Project: <其他项目>` 上传/下载 | **不应**访问到其他项目文件 | [x] |
 | 6.5 | 登出吊销 | SignOut 后使用旧 access token 调 Me | 失败 | [x] |
 | 6.6 | Refresh 绑定 Session | SignOut 后使用旧 refresh_token | 失败 | [x] |
-| 6.7 | Console Viewer 权限 | 创建 `role=viewer` 的 admin（无 `console_admin_projects` 记录），带 `X-Torchwood-Project` 调 Server API | `PermissionDenied`（无项目归属） | [x] |
+| 6.7 | Console Viewer 权限 | 创建 `role=viewer` 的 admin（无 `admin_projects` 记录），带 `X-Torchwood-Project` 调 Server API | `PermissionDenied`（无项目归属） | [x] |
 | 6.8 | Console Owner 放行 | `role=owner` 的 admin 带 `X-Torchwood-Project: default` | 可正常访问 Server API | [x] |
-| 6.9 | Viewer 授权后 | 在 `console_admin_projects` 插入 viewer 与 default 关联后重试 | 可访问该项目 | [x] |
+| 6.9 | Viewer 授权后 | 在 `admin_projects` 插入 viewer 与 default 关联后重试 | 可访问该项目 | [x] |
 
 **Viewer 授权 SQL 示例：**
 
 ```sql
-INSERT INTO console_admin_projects (admin_id, project_id)
+INSERT INTO admin_projects (admin_id, project_id)
 VALUES ('<viewer-admin-uuid>', 'default');
 ```
 

@@ -108,7 +108,7 @@ func (s *Projects) ListProjects(ctx context.Context, pageSize int32, pageToken, 
 		return nil, nil, err
 	}
 	// 非平台 admin（API key 或受限 console 管理员）无权列出全量项目：
-	// ConsoleAdminProjectRepository 端口仅提供单项目授权判定（HasProjectAccess），
+	// AdminProjectRepository 端口仅提供单项目授权判定（HasProjectAccess），
 	// 无"列出授权项目"方法，故对非平台 admin 返回空列表（防跨项目信息泄露），
 	// 项目级访问经 GetProject 按 principal.ProjectID 白名单放行（安全评审 M7）。
 	if !principal.IsPlatformAdmin {

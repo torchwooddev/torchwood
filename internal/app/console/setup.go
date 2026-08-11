@@ -28,8 +28,8 @@ type Setup struct {
 	projects         projectCreator
 	apiKeys          apiKeyCreator
 	auth             tokenIssuer
-	adminRepo        projects.ConsoleAdminRepository
-	adminProjectRepo projects.ConsoleAdminProjectRepository
+	adminRepo        projects.AdminRepository
+	adminProjectRepo projects.AdminProjectRepository
 	projectRepo      projects.Repository
 }
 
@@ -49,7 +49,7 @@ type apiKeyCreator interface {
 }
 
 type adminCreator interface {
-	Create(ctx context.Context, cmd CreateAdminCommand) (*projects.ConsoleAdmin, error)
+	Create(ctx context.Context, cmd CreateAdminCommand) (*projects.Admin, error)
 }
 
 type tokenIssuer interface {
@@ -61,8 +61,8 @@ func NewSetup(
 	projects *server.Projects,
 	apiKeys *server.APIKeys,
 	auth *Auth,
-	adminRepo projects.ConsoleAdminRepository,
-	adminProjectRepo projects.ConsoleAdminProjectRepository,
+	adminRepo projects.AdminRepository,
+	adminProjectRepo projects.AdminProjectRepository,
 	projectRepo projects.Repository,
 ) *Setup {
 	return &Setup{
@@ -76,9 +76,9 @@ func NewSetup(
 	}
 }
 
-// GetSetupStatus 返回是否尚未初始化（console_admins 表为空即 needs_setup=true）。
+// GetSetupStatus 返回是否尚未初始化（admins 表为空即 needs_setup=true）。
 func (s *Setup) GetSetupStatus(ctx context.Context) (bool, error) {
-	admins, err := s.adminRepo.ListConsoleAdmins(ctx)
+	admins, err := s.adminRepo.ListAdmins(ctx)
 	if err != nil {
 		return false, status.Errorf(codes.Internal, "check setup status: %v", err)
 	}
@@ -86,19 +86,19 @@ func (s *Setup) GetSetupStatus(ctx context.Context) (bool, error) {
 }
 
 type SignUpResult struct {
-	Admin        *projects.ConsoleAdmin
+	Admin        *projects.Admin
 	Tokens       *TokenPair
 	APIKeySecret string
 }
 
 // SignUp 注册首个管理员并完成引导：admin(owner) + 默认 project + 默认
-// API Key(scope=all) + console_admin_projects 关联 + 签发 TokenPair。
+// API Key(scope=all) + admin_projects 关联 + 签发 TokenPair。
 // 任一后续步骤失败时 best-effort 回删已建资源，避免「admin 已建但 project
 // 缺失」导致无法重试也无法登录的死锁；补偿失败只记日志。
 // 并发窗口：两个并发 SignUp 可能同时通过首次性检查，MVP 接受（首次部署
 // 单人操作；收紧可引入 Postgres advisory lock，列为可选增强）。
 func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResult, error) {
-	admins, err := s.adminRepo.ListConsoleAdmins(ctx)
+	admins, err := s.adminRepo.ListAdmins(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "check setup state: %v", err)
 	}
@@ -109,7 +109,7 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 	admin, err := s.admins.Create(ctx, CreateAdminCommand{
 		Email:    email,
 		Password: password,
-		Role:     ConsoleAdminRoleOwner,
+		Role:     AdminRoleOwner,
 	})
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 		}
 		// 直接走 repo 删除：Admins.Delete 会拒绝删除最后一个 owner，
 		// 与失败补偿的语义冲突。
-		if err := s.adminRepo.DeleteConsoleAdmin(ctx, admin.ID); err != nil {
+		if err := s.adminRepo.DeleteAdmin(ctx, admin.ID); err != nil {
 			slog.Warn("setup rollback: delete admin failed", "admin", admin.ID, "error", err)
 		}
 	}
@@ -156,7 +156,7 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 		return nil, status.Errorf(codes.Internal, "create default api key: %v", err)
 	}
 
-	// 保持 console_admin_projects 关联数据完整（owner 实际会被
+	// 保持 admin_projects 关联数据完整（owner 实际会被
 	// ValidateAdminProjectAccess 放行，但表应反映真实授权关系）。
 	if err := s.adminProjectRepo.GrantProjectAccess(ctx, admin.ID, project.ID); err != nil {
 		rollback()

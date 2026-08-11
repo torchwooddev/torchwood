@@ -42,7 +42,7 @@ task test          # Taskfile dotenv 自动加载 .env（含 TORCHWOOD_TEST_DATA
 
 ### A3. Use-case（`internal/app/console/setup.go`）
 
-- `GetSetupStatus`：`console_admins` 为空 → `true`。
+- `GetSetupStatus`：`admins` 为空 → `true`。
 - `SignUp` 步骤顺序（对照设计文档 §3.2）：
   1. 首次性检查：已存在任何 admin → `FailedPrecondition("setup already completed")`；
   2. `Admins.Create(ctx, {Email, Password, Role: "owner"})`（复用邮箱唯一/密码强度/角色校验）；
@@ -60,7 +60,7 @@ task test          # Taskfile dotenv 自动加载 .env（含 TORCHWOOD_TEST_DATA
 
 ### A5. 安全约束未放宽（重点抽查）
 
-- `ConsoleAdminsService.CreateAdmin` 的 proto 注解仍为 `permissions: ["owner"]`；
+- `AdminsService.CreateAdmin` 的 proto 注解仍为 `permissions: ["owner"]`；
 - `APIKeysService` 仍拒绝 API key 凭证调用（`IsAPIKeysServiceMethod`）；
 - 未新增任何绕过 `CreateProject` 校验的公开入口（`CreateProjectInternal` 仅系统路径 reachable）；
 - `SignUp` 是公开端点：确认首次性检查在 use-case 层，拦截器配置无法绕过。
@@ -92,10 +92,10 @@ task test          # Taskfile dotenv 自动加载 .env（含 TORCHWOOD_TEST_DATA
    → 200；`admin.role == "owner"`；`access_token`/`refresh_token` 非空；`default_api_key_secret` 非空；
    `Set-Cookie` 含 `TORCHWOOD_session_console`（Path=/）与 `TORCHWOOD_console_refresh`（Path=/v1/console/auth）。
 3. **默认资源落库**（psql 核对）：
-   - `console_admins` 恰 1 行且 `role='owner'`；
+   - `admins` 恰 1 行且 `role='owner'`；
    - `projects` 存在 `id='default'`；
    - `api_keys` 存在 `project_id='default'` 且 `scopes` 含 `"all"`；
-   - `console_admin_projects` 存在 `(admin_id, 'default')` 关联。
+   - `admin_projects` 存在 `(admin_id, 'default')` 关联。
 4. **API Key 生效**：`GET /v1/server/users` 带 `x-api-key: <default_api_key_secret>` → 200（`all` scope 放行 `ListUsers`）。
 5. **二次注册**：再次 `POST /v1/console/auth/sign-up` → HTTP 400，message 含 `setup already completed`。
 6. **初始化后状态**：`GET /v1/console/auth/setup-status` → 响应中 `needs_setup` 不为 true

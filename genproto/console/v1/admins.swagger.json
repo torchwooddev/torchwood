@@ -6,7 +6,7 @@
   },
   "tags": [
     {
-      "name": "ConsoleAdminsService"
+      "name": "AdminsService"
     }
   ],
   "consumes": [
@@ -18,7 +18,7 @@
   "paths": {
     "/v1/console/admins": {
       "get": {
-        "operationId": "ConsoleAdminsService_ListAdmins",
+        "operationId": "AdminsService_ListAdmins",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -34,11 +34,11 @@
           }
         },
         "tags": [
-          "ConsoleAdminsService"
+          "AdminsService"
         ]
       },
       "post": {
-        "operationId": "ConsoleAdminsService_CreateAdmin",
+        "operationId": "AdminsService_CreateAdmin",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -64,13 +64,13 @@
           }
         ],
         "tags": [
-          "ConsoleAdminsService"
+          "AdminsService"
         ]
       }
     },
     "/v1/console/admins/me": {
       "get": {
-        "operationId": "ConsoleAdminsService_GetCurrentAdmin",
+        "operationId": "AdminsService_GetCurrentAdmin",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -86,13 +86,13 @@
           }
         },
         "tags": [
-          "ConsoleAdminsService"
+          "AdminsService"
         ]
       }
     },
     "/v1/console/admins/{id}": {
       "delete": {
-        "operationId": "ConsoleAdminsService_DeleteAdmin",
+        "operationId": "AdminsService_DeleteAdmin",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -116,11 +116,11 @@
           }
         ],
         "tags": [
-          "ConsoleAdminsService"
+          "AdminsService"
         ]
       },
       "patch": {
-        "operationId": "ConsoleAdminsService_UpdateAdmin",
+        "operationId": "AdminsService_UpdateAdmin",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -147,18 +147,18 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/ConsoleAdminsServiceUpdateAdminBody"
+              "$ref": "#/definitions/AdminsServiceUpdateAdminBody"
             }
           }
         ],
         "tags": [
-          "ConsoleAdminsService"
+          "AdminsService"
         ]
       }
     }
   },
   "definitions": {
-    "ConsoleAdminsServiceUpdateAdminBody": {
+    "AdminsServiceUpdateAdminBody": {
       "type": "object",
       "properties": {
         "role": {

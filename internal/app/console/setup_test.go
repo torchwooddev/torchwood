@@ -15,16 +15,16 @@ import (
 // --- fakes（仅覆盖 Setup 用到的仓库方法） ---
 
 type fakeAdminRepo struct {
-	admins  []projects.ConsoleAdmin
+	admins  []projects.Admin
 	created []string
 	deleted []string
 }
 
-func (r *fakeAdminRepo) GetConsoleAdmin(_ context.Context, _ string) (*projects.ConsoleAdmin, error) {
+func (r *fakeAdminRepo) GetAdmin(_ context.Context, _ string) (*projects.Admin, error) {
 	return nil, nil
 }
 
-func (r *fakeAdminRepo) GetConsoleAdminByEmail(_ context.Context, email string) (*projects.ConsoleAdmin, error) {
+func (r *fakeAdminRepo) GetAdminByEmail(_ context.Context, email string) (*projects.Admin, error) {
 	for i := range r.admins {
 		if r.admins[i].Email == email {
 			return &r.admins[i], nil
@@ -33,21 +33,21 @@ func (r *fakeAdminRepo) GetConsoleAdminByEmail(_ context.Context, email string) 
 	return nil, nil
 }
 
-func (r *fakeAdminRepo) ListConsoleAdmins(context.Context) ([]projects.ConsoleAdmin, error) {
+func (r *fakeAdminRepo) ListAdmins(context.Context) ([]projects.Admin, error) {
 	return r.admins, nil
 }
 
-func (r *fakeAdminRepo) CreateConsoleAdmin(_ context.Context, a *projects.ConsoleAdmin) error {
+func (r *fakeAdminRepo) CreateAdmin(_ context.Context, a *projects.Admin) error {
 	r.admins = append(r.admins, *a)
 	r.created = append(r.created, a.ID)
 	return nil
 }
 
-func (r *fakeAdminRepo) UpdateConsoleAdmin(context.Context, *projects.ConsoleAdmin) error {
+func (r *fakeAdminRepo) UpdateAdmin(context.Context, *projects.Admin) error {
 	return nil
 }
 
-func (r *fakeAdminRepo) DeleteConsoleAdmin(_ context.Context, id string) error {
+func (r *fakeAdminRepo) DeleteAdmin(_ context.Context, id string) error {
 	for i := range r.admins {
 		if r.admins[i].ID == id {
 			r.admins = append(r.admins[:i], r.admins[i+1:]...)
@@ -58,11 +58,11 @@ func (r *fakeAdminRepo) DeleteConsoleAdmin(_ context.Context, id string) error {
 	return nil
 }
 
-func (r *fakeAdminRepo) CountConsoleAdminsByRole(context.Context, string) (int64, error) {
+func (r *fakeAdminRepo) CountAdminsByRole(context.Context, string) (int64, error) {
 	return 0, nil
 }
 
-var _ projects.ConsoleAdminRepository = (*fakeAdminRepo)(nil)
+var _ projects.AdminRepository = (*fakeAdminRepo)(nil)
 
 type fakeProjectRepo struct {
 	projects map[string]*projects.Project
@@ -123,7 +123,7 @@ func (r *fakeAdminProjectRepo) GrantProjectAccess(_ context.Context, adminID, pr
 	return nil
 }
 
-var _ projects.ConsoleAdminProjectRepository = (*fakeAdminProjectRepo)(nil)
+var _ projects.AdminProjectRepository = (*fakeAdminProjectRepo)(nil)
 
 // fakeProjects 注入 projectCreator（CreateProjectInternal 失败场景）；
 // 成功时模拟真实行为把项目写入 projectRepo。
@@ -194,7 +194,7 @@ func TestSetup_GetSetupStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, status)
 
-	filled := &fakeAdminRepo{admins: []projects.ConsoleAdmin{{ID: "a-1", Email: "a@b.c"}}}
+	filled := &fakeAdminRepo{admins: []projects.Admin{{ID: "a-1", Email: "a@b.c"}}}
 	status, err = setupWithFakes(filled, &fakeProjectRepo{}, &fakeAdminProjectRepo{}, &fakeProjects{}, &fakeAPIKeys{}, &fakeAuth{}).GetSetupStatus(ctx)
 	require.NoError(t, err)
 	require.False(t, status)
@@ -212,7 +212,7 @@ func TestSetup_SignUp_FirstSuccess(t *testing.T) {
 	require.NoError(t, err)
 
 	// admin 为 owner，密码已哈希。
-	require.Equal(t, ConsoleAdminRoleOwner, result.Admin.Role)
+	require.Equal(t, AdminRoleOwner, result.Admin.Role)
 	require.NotEmpty(t, result.Admin.PasswordHash)
 	// project id = default。
 	require.NotNil(t, projectRepo.projects["default"])
@@ -221,7 +221,7 @@ func TestSetup_SignUp_FirstSuccess(t *testing.T) {
 	// tokens 已签发。
 	require.NotNil(t, result.Tokens)
 	require.Equal(t, "access-1", result.Tokens.AccessToken)
-	// console_admin_projects 关联已写入。
+	// admin_projects 关联已写入。
 	require.Equal(t, []string{result.Admin.ID + ":default"}, adminProjectRepo.grants)
 	// 用规范化后的 email 签发 token。
 	require.Equal(t, setupEmail, auth.signedInEmail)
@@ -243,7 +243,7 @@ func TestSetup_SignUp_SecondCallFails(t *testing.T) {
 
 func TestSetup_SignUp_AlreadyInitializedFails(t *testing.T) {
 	ctx := context.Background()
-	adminRepo := &fakeAdminRepo{admins: []projects.ConsoleAdmin{{ID: "a-1", Email: "a@b.c"}}}
+	adminRepo := &fakeAdminRepo{admins: []projects.Admin{{ID: "a-1", Email: "a@b.c"}}}
 	setup := setupWithFakes(adminRepo, &fakeProjectRepo{}, &fakeAdminProjectRepo{}, &fakeProjects{}, &fakeAPIKeys{}, &fakeAuth{})
 
 	_, err := setup.SignUp(ctx, setupEmail, setupPassword)

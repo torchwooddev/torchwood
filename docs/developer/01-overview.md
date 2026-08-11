@@ -42,7 +42,7 @@ Torchwood 是一个 **Appwrite-inspired、AI/Agent-Native 的 Backend-as-a-Servi
 | [Lynx](https://github.com/lynx-go/lynx) | 服务框架：Runner、生命周期、配置绑定、HTTP/gRPC server 基元 |
 | gRPC + grpc-gateway | RPC 与 JSON REST 双表面 |
 | [Wire](https://github.com/google/wire) | 编译期依赖注入，`cmd/server/provides.go` 声明 provider |
-| [bun](https://github.com/uptrace/bun) | 元数据静态表 ORM（projects、api_keys、document_*、console_admins） |
+| [bun](https://github.com/uptrace/bun) | 元数据静态表 ORM（projects、api_keys、document_*、admins） |
 | [cobra](https://github.com/spf13/cobra) | CLI 框架（`cmd/client`，与 pflag/viper 同族） |
 | PostgreSQL 18 | 元数据 + 动态文档层 |
 | Redis 7 | 会话/队列/ID 生成等 |
@@ -113,7 +113,7 @@ torchwood/
 ├── internal/
 │   ├── api/                            # 传输层
 │   │   ├── clientgrpc/                 # Client API：Account、Databases、Teams
-│   │   ├── consolegrpc/                # Console API：ConsoleAuth、ConsoleAdmins
+│   │   ├── consolegrpc/                # Console API：ConsoleAuth、Admins
 │   │   ├── servergrpc/                 # Server API：Projects、APIKeys、Users、Storage、Databases、Functions、Teams、Health、OAuthProviders
 │   │   └── serverhttp/                 # 自定义 HTTP handler：文件 multipart 上传下载、OAuth 回调、Functions
 │   ├── app/                            # 用例层
@@ -225,7 +225,7 @@ PostgreSQL
 6. **列表查询复用 `pkg/crud` 或 `pkg/query`**：不手拼 SQL filter/order；动态文档查询优先使用 Appwrite 风格 DSL。
 7. **JWT claims 与 `pkg/jwtparser` 映射保持一致**；Principal 由 `pkg/grpc/interceptor` 统一注入。
 8. **配置单一入口**：`internal/pkg/config/config.proto` 定义 schema，`bind.go` 负责环境变量绑定（`TORCHWOOD_` 前缀、点号路径映射）。
-9. **元数据与动态文档分层存储**：静态表（projects、api_keys、document_*、console_admins）用 bun + migrate；用户资源与动态集合走 PostgreSQL 动态文档 adapter。
+9. **元数据与动态文档分层存储**：静态表（projects、api_keys、document_*、admins）用 bun + migrate；用户资源与动态集合走 PostgreSQL 动态文档 adapter。
 
 ---
 
