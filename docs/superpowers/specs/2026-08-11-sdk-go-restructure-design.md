@@ -123,7 +123,7 @@ c, err := server.New(target,
 respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser", reqJSON)
 ```
 
-- 内部注册表：full method name → `{ newReq func() proto.Message, call func(ctx, msg) (proto.Message, error) }`，call 转发到类型化服务方法。
+- **动态分发实现**（替代手写注册表）：从 `protoregistry.GlobalFiles` 按 full method name 查找 MethodDescriptor，限定 `torchwood.server.v1` 包内且不属于 `APIKeysService`；用 `dynamicpb` 构造请求/响应消息，`conn.Invoke` 发起调用。proto 新增方法自动获得支持，完整性由构造保证，无需维护注册表。
 - protojson 解码请求（`DiscardUnknown: false`，未知字段直接报错）、调用、protojson 编码响应（`Multiline: true, Indent: "  "`，不输出零值字段——与 CLI 现有 `protoJSONMarshaler` 输出格式逐字节一致）。
 - genproto / protojson 仅存在于 SDK 内部，调用方零接触。
 - 错误形态（供 CLI 与测试断言）：
@@ -133,7 +133,7 @@ respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser
 
 ### 完整性测试
 
-`invoke_test.go` 用 protoreflect 遍历 `serverv1` FileDescriptor 中全部 service/method（排除 `APIKeysService`），断言每个方法都在注册表中——接管现 `cmd/client` registry 完整性测试的职责。
+`invoke_test.go` 用 protoreflect 遍历 `serverv1` FileDescriptor 中全部 service/method（排除 `APIKeysService`），断言每个方法都能被 InvokeJSON 解析并接受空 JSON `{}` 构造出请求——动态分发下完整性由构造保证，该测试防回归（如包名白名单被改坏）。此测试接管现 `cmd/client` registry 完整性测试的职责。
 
 ## CLI 切换（cmd/client/）
 
@@ -144,7 +144,7 @@ respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser
 
 **代码改动**：
 
-- `conn.go`、`registry.go` 删除：连接与认证改为 `server.New(...)`；rpcEntry 注册表由 SDK 的 InvokeJSON 注册表接管。
+- `conn.go`、`registry.go` 删除：连接与认证改为 `server.New(...)`；rpcEntry 注册表由 SDK 的 InvokeJSON 动态分发接管。
 - **所有命令改为构造请求 JSON 而非 genproto 结构体**：
   - `cmd_rpc.go`（通用逃生舱）：`--data` JSON 直接透传给 `InvokeJSON`。
   - `cmd_users.go`、`cmd_databases.go`、`cmd_teams.go`、`cmd_projects.go`、`cmd_storage.go`、`cmd_functions.go`、`cmd_oauth.go`、`cmd_health.go` 等 flag 命令：用 `map[string]any` 构造 protojson（camelCase 键），proto3 optional presence 用「键存在/不存在」表达（替代 `changedBoolPtr`/`changedInt32Ptr`/`changedStringPtr` 的指针语义）；`--data` 合并语义改为「先 flag 生成 map，再把 --data JSON 解码为 map 覆盖合并」（与 --data 优先的现语义一致）。
