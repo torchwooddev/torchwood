@@ -45,15 +45,21 @@ func TestBuildCreateCollectionReq(t *testing.T) {
 		id               string
 		collectionName   string
 		permissions      string
-		documentSecurity bool
+		documentSecurity *bool
 		wantErr          string
+		wantDocSec       *bool
 	}{
 		{name: "缺 database-id", wantErr: "缺少 database-id"},
 		{name: "缺 id", databaseID: "app", wantErr: "--id 必填"},
 		{name: "缺 name", databaseID: "app", id: "notes", wantErr: "--name 必填"},
-		{name: "最小字段", databaseID: "app", id: "notes", collectionName: "笔记", wantErr: ""},
+		{name: "未传 document-security", databaseID: "app", id: "notes", collectionName: "笔记", wantErr: ""},
+		{name: "显式 true", databaseID: "app", id: "notes", collectionName: "笔记",
+			documentSecurity: boolPtr(true), wantErr: "", wantDocSec: boolPtr(true)},
+		{name: "显式 false", databaseID: "app", id: "notes", collectionName: "笔记",
+			documentSecurity: boolPtr(false), wantErr: "", wantDocSec: boolPtr(false)},
 		{name: "权限与安全", databaseID: "app", id: "notes", collectionName: "笔记",
-			permissions: `["read(\"users\")"]`, documentSecurity: true, wantErr: ""},
+			permissions: `["read(\"users\")"]`, documentSecurity: boolPtr(true),
+			wantErr: "", wantDocSec: boolPtr(true)},
 		{name: "permissions 非法 JSON", databaseID: "app", id: "notes", collectionName: "笔记",
 			permissions: `[not-json`, wantErr: "--permissions 解析失败"},
 	}
@@ -72,8 +78,12 @@ func TestBuildCreateCollectionReq(t *testing.T) {
 			if req.GetId() != tt.id || req.GetName() != tt.collectionName || req.GetDatabaseId() != tt.databaseID {
 				t.Errorf("请求不匹配: %v", req)
 			}
-			if tt.documentSecurity && req.GetDocumentSecurity() != true {
-				t.Errorf("documentSecurity 未设置: %v", req.GetDocumentSecurity())
+			if tt.wantDocSec == nil {
+				if req.DocumentSecurity != nil {
+					t.Errorf("documentSecurity 不应设置: %v", req.DocumentSecurity)
+				}
+			} else if req.DocumentSecurity == nil || *req.DocumentSecurity != *tt.wantDocSec {
+				t.Errorf("documentSecurity 不匹配: %v", req.DocumentSecurity)
 			}
 			if tt.permissions != "" && len(req.GetPermissions()) != 1 {
 				t.Errorf("permissions 未合并: %v", req.GetPermissions())
@@ -225,6 +235,50 @@ func TestBuildCreateIndexReq(t *testing.T) {
 			}
 			if tt.orders != "" && len(req.GetOrders()) != 2 {
 				t.Errorf("orders 未解析: %v", req.GetOrders())
+			}
+		})
+	}
+}
+
+func TestBuildListDocumentsReq(t *testing.T) {
+	tests := []struct {
+		name         string
+		databaseID   string
+		collectionID string
+		queries      string
+		pageSize     int32
+		pageToken    string
+		wantErr      string
+		wantQueries  []string
+	}{
+		{name: "缺 database-id", collectionID: "c1", wantErr: "缺少 database-id"},
+		{name: "缺 collection-id", databaseID: "app", wantErr: "缺少 collection-id"},
+		{name: "成功路径", databaseID: "app", collectionID: "c1",
+			queries: `["equal(\"title\",\"hi\")"]`, pageSize: 10, pageToken: "tok",
+			wantErr: "", wantQueries: []string{`equal("title","hi")`}},
+		{name: "queries 非法 JSON", databaseID: "app", collectionID: "c1",
+			queries: `oops`, wantErr: "--queries 解析失败"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := buildListDocumentsReq(tt.databaseID, tt.collectionID, tt.queries, tt.pageSize, tt.pageToken)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(req.GetQueries()) != len(tt.wantQueries) || len(tt.wantQueries) > 0 && req.GetQueries()[0] != tt.wantQueries[0] {
+				t.Errorf("queries 未解析: %v", req.GetQueries())
+			}
+			if req.GetPageSize() != tt.pageSize {
+				t.Errorf("pageSize 不匹配: %d", req.GetPageSize())
+			}
+			if req.GetPageToken() != tt.pageToken {
+				t.Errorf("pageToken 不匹配: %q", req.GetPageToken())
 			}
 		})
 	}

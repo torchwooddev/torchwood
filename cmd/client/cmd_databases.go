@@ -8,7 +8,7 @@ import (
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 )
 
-// newDatabasesCmd 覆盖 DatabasesService 全部 21 个方法：
+// newDatabasesCmd 覆盖 DatabasesService 全部 22 个方法：
 // 库（create/list/get/delete）、集合（create/list/get/update/delete）、
 // 属性（create/delete）、索引（create/delete）、文档（create/list/get/
 // update/upsert/delete/count/bulk-update/bulk-delete）。
@@ -126,7 +126,8 @@ func newDatabasesCollectionsCreateCmd(g *globalFlags) *cobra.Command {
 		Short: "创建集合",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildCreateCollectionReq(args[0], id, name, permissions, documentSecurity)
+			req, err := buildCreateCollectionReq(args[0], id, name, permissions,
+				changedBoolPtr(cmd, "document-security", documentSecurity))
 			if err != nil {
 				return err
 			}
@@ -140,7 +141,7 @@ func newDatabasesCollectionsCreateCmd(g *globalFlags) *cobra.Command {
 	cmd.Flags().StringVar(&id, "id", "", "集合 ID（必填）")
 	cmd.Flags().StringVar(&name, "name", "", "集合名称（必填）")
 	cmd.Flags().StringVar(&permissions, "permissions", "", "权限 JSON 数组（如 '[\"read(\\\"users\\\")\"]'）")
-	cmd.Flags().BoolVar(&documentSecurity, "document-security", false, "启用文档级安全")
+	cmd.Flags().BoolVar(&documentSecurity, "document-security", false, "文档级安全开关（显式传 --document-security=true/false 才生效）")
 	return cmd
 }
 
@@ -567,8 +568,9 @@ func buildCreateDatabaseReq(id, name string) (*serverv1.CreateDatabaseRequest, e
 	return &serverv1.CreateDatabaseRequest{Id: id, Name: name}, nil
 }
 
-// buildCreateCollectionReq 构造 CreateCollectionRequest。
-func buildCreateCollectionReq(databaseID, id, name, permissions string, documentSecurity bool) (*serverv1.CreateCollectionRequest, error) {
+// buildCreateCollectionReq 构造 CreateCollectionRequest：
+// documentSecurity 为 nil 表示未显式传 --document-security（proto3 optional presence）。
+func buildCreateCollectionReq(databaseID, id, name, permissions string, documentSecurity *bool) (*serverv1.CreateCollectionRequest, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
@@ -582,13 +584,16 @@ func buildCreateCollectionReq(databaseID, id, name, permissions string, document
 	if err != nil {
 		return nil, err
 	}
-	return &serverv1.CreateCollectionRequest{
-		DatabaseId:       databaseID,
-		Id:               id,
-		Name:             name,
-		Permissions:      perms,
-		DocumentSecurity: &documentSecurity,
-	}, nil
+	req := &serverv1.CreateCollectionRequest{
+		DatabaseId:  databaseID,
+		Id:          id,
+		Name:        name,
+		Permissions: perms,
+	}
+	if documentSecurity != nil {
+		req.DocumentSecurity = documentSecurity
+	}
+	return req, nil
 }
 
 // buildListCollectionsReq 构造 ListCollectionsRequest（queries 数组 + 分页）。

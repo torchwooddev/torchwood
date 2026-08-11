@@ -142,7 +142,7 @@ func newStorageBucketsDeleteCmd(g *globalFlags) *cobra.Command {
 func newStorageFilesCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "files",
-		Short: "文件元数据管理（上传/下载/分片会话走 HTTP，CLI 不提供）",
+		Short: "文件元数据管理（上传/下载走独立 HTTP handler，CLI 不提供）",
 	}
 	cmd.AddCommand(
 		newStorageFilesListCmd(g),

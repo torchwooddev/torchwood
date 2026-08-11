@@ -61,7 +61,7 @@ func newOAuthProvidersUpsertCmd(g *globalFlags) *cobra.Command {
 			return printJSON(os.Stdout, resp)
 		},
 	}
-	cmd.Flags().BoolVar(&enabled, "enabled", false, "是否启用（启用时必填 --client-secret）")
+	cmd.Flags().BoolVar(&enabled, "enabled", false, "是否启用（启用且无既有 secret 时服务端要求 --client-secret）")
 	cmd.Flags().StringVar(&clientID, "client-id", "", "OAuth client ID（必填）")
 	cmd.Flags().StringVar(&clientSecret, "client-secret", "", "OAuth client secret（启用时必填）")
 	cmd.Flags().StringVar(&scopes, "scopes", "", "请求 scope JSON 数组（如 '[\"email\",\"profile\"]'）")
@@ -84,16 +84,13 @@ func newOAuthProvidersDeleteCmd(g *globalFlags) *cobra.Command {
 }
 
 // buildUpsertOAuthProviderReq 构造 UpsertOAuthProviderRequest（client-id 必填；
-// 启用时 client-secret 必填，与服务端校验一致）。
+// client_secret 仅在启用且无既有 secret 时由服务端校验必填，此处不做本地拦截）。
 func buildUpsertOAuthProviderReq(provider string, enabled bool, clientID, clientSecret, scopes string) (*serverv1.UpsertOAuthProviderRequest, error) {
 	if provider == "" {
 		return nil, fmt.Errorf("缺少 provider")
 	}
 	if clientID == "" {
 		return nil, fmt.Errorf("--client-id 必填")
-	}
-	if enabled && clientSecret == "" {
-		return nil, fmt.Errorf("--enabled=true 时 --client-secret 必填")
 	}
 	scopeList, err := jsonStringList(scopes, "scopes")
 	if err != nil {
