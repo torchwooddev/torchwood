@@ -1,5 +1,5 @@
 import { listQuery, type HttpTransport } from "../http.js";
-import type { Document, ListMeta, ListParams, UpdateDocumentInput } from "../types.js";
+import type { Document, ListMeta, ListParams, UpdateDocumentInput, UpsertDocumentInput } from "../types.js";
 
 export class ClientDatabasesService {
   constructor(private readonly http: HttpTransport) {}
@@ -61,6 +61,26 @@ export class ClientDatabasesService {
   ): Promise<Document> {
     return this.http.request<Document>(
       "PATCH",
+      `/v1/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`,
+      {
+        body: {
+          database_id: databaseId,
+          collection_id: collectionId,
+          document_id: documentId,
+          ...input,
+        },
+      }
+    );
+  }
+
+  async upsertDocument(
+    databaseId: string,
+    collectionId: string,
+    documentId: string,
+    input: UpsertDocumentInput
+  ): Promise<Document> {
+    return this.http.request<Document>(
+      "PUT",
       `/v1/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`,
       {
         body: {

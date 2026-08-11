@@ -412,6 +412,37 @@ func (d *Databases) UpdateDocument(
 	return &updated, nil
 }
 
+func (d *Databases) UpsertDocument(
+	ctx context.Context,
+	projectID, databaseID, collectionID, documentID string,
+	data map[string]any,
+	conflictColumns []string,
+	perms []databases.Permission,
+	principal databases.Principal,
+) (*databases.Document, error) {
+	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "data is required")
+	}
+	if len(conflictColumns) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "conflict_columns is required")
+	}
+	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
+	if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	upserted, err := d.docDB.UpsertDocument(ctx, projectID, databaseID, collectionID, databases.Document{
+		ID:   documentID,
+		Data: data,
+	}, conflictColumns, perms, principal)
+	if err != nil {
+		return nil, shared.MapDocumentDBError(fmt.Errorf("upsert document: %w", err))
+	}
+	return &upserted, nil
+}
+
 func (d *Databases) BulkUpdateDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,

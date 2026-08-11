@@ -81,6 +81,10 @@ service DatabasesService {
     option (google.api.http) = { patch: "/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}", body: "*" };
   }
 
+  rpc UpsertDocument(UpsertDocumentRequest) returns (Document) {
+    option (google.api.http) = { put: "/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}", body: "*" };
+  }
+
   rpc DeleteDocument(GetDocumentRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}" };
   }
@@ -243,6 +247,15 @@ message UpdateDocumentRequest {
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;
   map<string, int64> increment = 6;
+}
+
+message UpsertDocumentRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  string document_id = 3;
+  google.protobuf.Struct data = 4;
+  repeated string permissions = 5;
+  repeated string conflict_columns = 6;
 }
 
 message GetDocumentRequest {

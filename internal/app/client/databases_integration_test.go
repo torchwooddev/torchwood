@@ -91,6 +91,75 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID))
 }
 
+// TestClientDatabases_UpsertDocument (T2): client UpsertDocument inserts with
+// owner default permissions and updates the existing row on conflict columns.
+func TestClientDatabases_UpsertDocument(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	projectRepo := bunrepo.NewProjectRepository(db)
+	account := NewTestAccount(testConfig(), projectRepo, docDB)
+	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
+		ProjectID: projectID,
+		Email:     "client-upsert@torchwood.local",
+		Password:  "User@123456",
+		Name:      "Client Upsert",
+	})
+	require.NoError(t, err)
+
+	serverUC := appserver.NewDatabases(projectRepo, docDB)
+	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
+		{ID: "email", Key: "email", Type: "string", Size: 256},
+		{ID: "name", Key: "name", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "uq_email", Type: "unique", Attributes: []string{"email"}},
+	}, []databases.Permission{
+		{Type: "create", Role: "users"},
+		{Type: "update", Role: "users"},
+		{Type: "read", Role: "users"},
+	}, true))
+
+	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    user.ID,
+		Roles:     []string{"users", "user:" + user.ID},
+	})
+	clientUC := NewDatabases(projectRepo, docDB)
+
+	upserted, err := clientUC.UpsertDocument(userCtx, "app", "members", "m1", map[string]any{
+		"email": "upsert@example.com",
+		"name":  "First",
+	}, []string{"email"}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "m1", upserted.ID)
+	require.Equal(t, "First", upserted.Data["name"])
+	require.Contains(t, upserted.Permissions, databases.Permission{Type: "update", Role: "user:" + user.ID})
+
+	updated, err := clientUC.UpsertDocument(userCtx, "app", "members", "m1", map[string]any{
+		"email": "upsert@example.com",
+		"name":  "Second",
+	}, []string{"email"}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "m1", updated.ID)
+	require.Equal(t, "Second", updated.Data["name"])
+
+	got, err := clientUC.GetDocument(userCtx, projectID, "app", "members", updated.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Second", got.Data["name"])
+}
+
 func TestClientDatabases_GuestPublicRead(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

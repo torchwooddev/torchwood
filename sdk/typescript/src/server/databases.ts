@@ -9,6 +9,7 @@ import type {
   ListMeta,
   ListParams,
   UpdateDocumentInput,
+  UpsertDocumentInput,
 } from "../types.js";
 
 export class ServerDatabasesService {
@@ -230,6 +231,27 @@ export class ServerDatabasesService {
   ): Promise<Document> {
     return this.http.request<Document>(
       "PATCH",
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`,
+      {
+        auth: "apiKey",
+        body: {
+          database_id: databaseId,
+          collection_id: collectionId,
+          document_id: documentId,
+          ...input,
+        },
+      }
+    );
+  }
+
+  async upsertDocument(
+    databaseId: string,
+    collectionId: string,
+    documentId: string,
+    input: UpsertDocumentInput
+  ): Promise<Document> {
+    return this.http.request<Document>(
+      "PUT",
       `/v1/server/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`,
       {
         auth: "apiKey",

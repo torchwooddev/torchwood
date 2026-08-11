@@ -1441,6 +1441,90 @@ func (x *UpdateDocumentRequest) GetIncrement() map[string]int64 {
 	return nil
 }
 
+type UpsertDocumentRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId      string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId    string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	DocumentId      string                 `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	Data            *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	Permissions     []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	ConflictColumns []string               `protobuf:"bytes,6,rep,name=conflict_columns,json=conflictColumns,proto3" json:"conflict_columns,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *UpsertDocumentRequest) Reset() {
+	*x = UpsertDocumentRequest{}
+	mi := &file_server_v1_databases_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertDocumentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertDocumentRequest) ProtoMessage() {}
+
+func (x *UpsertDocumentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_databases_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertDocumentRequest.ProtoReflect.Descriptor instead.
+func (*UpsertDocumentRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *UpsertDocumentRequest) GetDatabaseId() string {
+	if x != nil {
+		return x.DatabaseId
+	}
+	return ""
+}
+
+func (x *UpsertDocumentRequest) GetCollectionId() string {
+	if x != nil {
+		return x.CollectionId
+	}
+	return ""
+}
+
+func (x *UpsertDocumentRequest) GetDocumentId() string {
+	if x != nil {
+		return x.DocumentId
+	}
+	return ""
+}
+
+func (x *UpsertDocumentRequest) GetData() *structpb.Struct {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *UpsertDocumentRequest) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
+func (x *UpsertDocumentRequest) GetConflictColumns() []string {
+	if x != nil {
+		return x.ConflictColumns
+	}
+	return nil
+}
+
 type GetDocumentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -1452,7 +1536,7 @@ type GetDocumentRequest struct {
 
 func (x *GetDocumentRequest) Reset() {
 	*x = GetDocumentRequest{}
-	mi := &file_server_v1_databases_proto_msgTypes[20]
+	mi := &file_server_v1_databases_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1464,7 +1548,7 @@ func (x *GetDocumentRequest) String() string {
 func (*GetDocumentRequest) ProtoMessage() {}
 
 func (x *GetDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_databases_proto_msgTypes[20]
+	mi := &file_server_v1_databases_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1477,7 +1561,7 @@ func (x *GetDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDocumentRequest.ProtoReflect.Descriptor instead.
 func (*GetDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_databases_proto_rawDescGZIP(), []int{20}
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetDocumentRequest) GetDatabaseId() string {
@@ -1514,7 +1598,7 @@ type ListDocumentsRequest struct {
 
 func (x *ListDocumentsRequest) Reset() {
 	*x = ListDocumentsRequest{}
-	mi := &file_server_v1_databases_proto_msgTypes[21]
+	mi := &file_server_v1_databases_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1526,7 +1610,7 @@ func (x *ListDocumentsRequest) String() string {
 func (*ListDocumentsRequest) ProtoMessage() {}
 
 func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_databases_proto_msgTypes[21]
+	mi := &file_server_v1_databases_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1539,7 +1623,7 @@ func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_databases_proto_rawDescGZIP(), []int{21}
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListDocumentsRequest) GetDatabaseId() string {
@@ -1587,7 +1671,7 @@ type ListDocumentsResponse struct {
 
 func (x *ListDocumentsResponse) Reset() {
 	*x = ListDocumentsResponse{}
-	mi := &file_server_v1_databases_proto_msgTypes[22]
+	mi := &file_server_v1_databases_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1599,7 +1683,7 @@ func (x *ListDocumentsResponse) String() string {
 func (*ListDocumentsResponse) ProtoMessage() {}
 
 func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_databases_proto_msgTypes[22]
+	mi := &file_server_v1_databases_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1612,7 +1696,7 @@ func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*ListDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_databases_proto_rawDescGZIP(), []int{22}
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListDocumentsResponse) GetDocuments() []*Document {
@@ -1638,7 +1722,7 @@ type CountDocumentsResponse struct {
 
 func (x *CountDocumentsResponse) Reset() {
 	*x = CountDocumentsResponse{}
-	mi := &file_server_v1_databases_proto_msgTypes[23]
+	mi := &file_server_v1_databases_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1650,7 +1734,7 @@ func (x *CountDocumentsResponse) String() string {
 func (*CountDocumentsResponse) ProtoMessage() {}
 
 func (x *CountDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_databases_proto_msgTypes[23]
+	mi := &file_server_v1_databases_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1663,7 +1747,7 @@ func (x *CountDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*CountDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_databases_proto_rawDescGZIP(), []int{23}
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CountDocumentsResponse) GetCount() int64 {
@@ -1686,7 +1770,7 @@ type BulkUpdateDocumentsRequest struct {
 
 func (x *BulkUpdateDocumentsRequest) Reset() {
 	*x = BulkUpdateDocumentsRequest{}
-	mi := &file_server_v1_databases_proto_msgTypes[24]
+	mi := &file_server_v1_databases_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1698,7 +1782,7 @@ func (x *BulkUpdateDocumentsRequest) String() string {
 func (*BulkUpdateDocumentsRequest) ProtoMessage() {}
 
 func (x *BulkUpdateDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_databases_proto_msgTypes[24]
+	mi := &file_server_v1_databases_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1711,7 +1795,7 @@ func (x *BulkUpdateDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BulkUpdateDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*BulkUpdateDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_databases_proto_rawDescGZIP(), []int{24}
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *BulkUpdateDocumentsRequest) GetDatabaseId() string {
@@ -1760,7 +1844,7 @@ type BulkDeleteDocumentsRequest struct {
 
 func (x *BulkDeleteDocumentsRequest) Reset() {
 	*x = BulkDeleteDocumentsRequest{}
-	mi := &file_server_v1_databases_proto_msgTypes[25]
+	mi := &file_server_v1_databases_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1772,7 +1856,7 @@ func (x *BulkDeleteDocumentsRequest) String() string {
 func (*BulkDeleteDocumentsRequest) ProtoMessage() {}
 
 func (x *BulkDeleteDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_databases_proto_msgTypes[25]
+	mi := &file_server_v1_databases_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1785,7 +1869,7 @@ func (x *BulkDeleteDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BulkDeleteDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*BulkDeleteDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_databases_proto_rawDescGZIP(), []int{25}
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *BulkDeleteDocumentsRequest) GetDatabaseId() string {
@@ -1818,7 +1902,7 @@ type BulkDocumentsResponse struct {
 
 func (x *BulkDocumentsResponse) Reset() {
 	*x = BulkDocumentsResponse{}
-	mi := &file_server_v1_databases_proto_msgTypes[26]
+	mi := &file_server_v1_databases_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1830,7 +1914,7 @@ func (x *BulkDocumentsResponse) String() string {
 func (*BulkDocumentsResponse) ProtoMessage() {}
 
 func (x *BulkDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_databases_proto_msgTypes[26]
+	mi := &file_server_v1_databases_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1843,7 +1927,7 @@ func (x *BulkDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BulkDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*BulkDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_databases_proto_rawDescGZIP(), []int{26}
+	return file_server_v1_databases_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *BulkDocumentsResponse) GetAffected() int64 {
@@ -1999,7 +2083,16 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\tincrement\x18\x06 \x03(\v29.torchwood.server.v1.UpdateDocumentRequest.IncrementEntryR\tincrement\x1a<\n" +
 	"\x0eIncrementEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\"{\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\"\xf8\x01\n" +
+	"\x15UpsertDocumentRequest\x12\x1f\n" +
+	"\vdatabase_id\x18\x01 \x01(\tR\n" +
+	"databaseId\x12#\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x1f\n" +
+	"\vdocument_id\x18\x03 \x01(\tR\n" +
+	"documentId\x12+\n" +
+	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
+	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12)\n" +
+	"\x10conflict_columns\x18\x06 \x03(\tR\x0fconflictColumns\"{\n" +
 	"\x12GetDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -2032,7 +2125,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12!\n" +
 	"\fdocument_ids\x18\x03 \x03(\tR\vdocumentIds\"3\n" +
 	"\x15BulkDocumentsResponse\x12\x1a\n" +
-	"\baffected\x18\x01 \x01(\x03R\baffected2\x94\x1c\n" +
+	"\baffected\x18\x01 \x01(\x03R\baffected2\xd5\x1d\n" +
 	"\x10DatabasesService\x12|\n" +
 	"\x0eCreateDatabase\x12*.torchwood.server.v1.CreateDatabaseRequest\x1a\x1d.torchwood.server.v1.Database\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/server/databases\x12{\n" +
 	"\rListDatabases\x12 .torchwood.shared.v1.ListRequest\x1a*.torchwood.server.v1.ListDatabasesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/server/databases\x12x\n" +
@@ -2050,7 +2143,8 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x0eCreateDocument\x12*.torchwood.server.v1.CreateDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"S\x82\xd3\xe4\x93\x02M:\x01*\"H/v1/server/databases/{database_id}/collections/{collection_id}/documents\x12\xb8\x01\n" +
 	"\rListDocuments\x12).torchwood.server.v1.ListDocumentsRequest\x1a*.torchwood.server.v1.ListDocumentsResponse\"P\x82\xd3\xe4\x93\x02J\x12H/v1/server/databases/{database_id}/collections/{collection_id}/documents\x12\xb5\x01\n" +
 	"\vGetDocument\x12'.torchwood.server.v1.GetDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"^\x82\xd3\xe4\x93\x02X\x12V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xbe\x01\n" +
-	"\x0eUpdateDocument\x12*.torchwood.server.v1.UpdateDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"a\x82\xd3\xe4\x93\x02[:\x01*2V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb5\x01\n" +
+	"\x0eUpdateDocument\x12*.torchwood.server.v1.UpdateDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"a\x82\xd3\xe4\x93\x02[:\x01*2V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xbe\x01\n" +
+	"\x0eUpsertDocument\x12*.torchwood.server.v1.UpsertDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"a\x82\xd3\xe4\x93\x02[:\x01*\x1aV/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb5\x01\n" +
 	"\x0eDeleteDocument\x12'.torchwood.server.v1.GetDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"^\x82\xd3\xe4\x93\x02X*V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xc0\x01\n" +
 	"\x0eCountDocuments\x12).torchwood.server.v1.ListDocumentsRequest\x1a+.torchwood.server.v1.CountDocumentsResponse\"V\x82\xd3\xe4\x93\x02P\x12N/v1/server/databases/{database_id}/collections/{collection_id}/documents/count\x12\xcc\x01\n" +
 	"\x13BulkUpdateDocuments\x12/.torchwood.server.v1.BulkUpdateDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"X\x82\xd3\xe4\x93\x02R:\x01*2M/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk\x12\xd3\x01\n" +
@@ -2068,7 +2162,7 @@ func file_server_v1_databases_proto_rawDescGZIP() []byte {
 	return file_server_v1_databases_proto_rawDescData
 }
 
-var file_server_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_server_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_server_v1_databases_proto_goTypes = []any{
 	(*CreateDatabaseRequest)(nil),      // 0: torchwood.server.v1.CreateDatabaseRequest
 	(*GetDatabaseRequest)(nil),         // 1: torchwood.server.v1.GetDatabaseRequest
@@ -2090,88 +2184,92 @@ var file_server_v1_databases_proto_goTypes = []any{
 	(*Document)(nil),                   // 17: torchwood.server.v1.Document
 	(*CreateDocumentRequest)(nil),      // 18: torchwood.server.v1.CreateDocumentRequest
 	(*UpdateDocumentRequest)(nil),      // 19: torchwood.server.v1.UpdateDocumentRequest
-	(*GetDocumentRequest)(nil),         // 20: torchwood.server.v1.GetDocumentRequest
-	(*ListDocumentsRequest)(nil),       // 21: torchwood.server.v1.ListDocumentsRequest
-	(*ListDocumentsResponse)(nil),      // 22: torchwood.server.v1.ListDocumentsResponse
-	(*CountDocumentsResponse)(nil),     // 23: torchwood.server.v1.CountDocumentsResponse
-	(*BulkUpdateDocumentsRequest)(nil), // 24: torchwood.server.v1.BulkUpdateDocumentsRequest
-	(*BulkDeleteDocumentsRequest)(nil), // 25: torchwood.server.v1.BulkDeleteDocumentsRequest
-	(*BulkDocumentsResponse)(nil),      // 26: torchwood.server.v1.BulkDocumentsResponse
-	nil,                                // 27: torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
-	(*v1.ListResponseMeta)(nil),        // 28: torchwood.shared.v1.ListResponseMeta
-	(*timestamppb.Timestamp)(nil),      // 29: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),            // 30: google.protobuf.Struct
-	(*v1.ListRequest)(nil),             // 31: torchwood.shared.v1.ListRequest
-	(*v1.Empty)(nil),                   // 32: torchwood.shared.v1.Empty
+	(*UpsertDocumentRequest)(nil),      // 20: torchwood.server.v1.UpsertDocumentRequest
+	(*GetDocumentRequest)(nil),         // 21: torchwood.server.v1.GetDocumentRequest
+	(*ListDocumentsRequest)(nil),       // 22: torchwood.server.v1.ListDocumentsRequest
+	(*ListDocumentsResponse)(nil),      // 23: torchwood.server.v1.ListDocumentsResponse
+	(*CountDocumentsResponse)(nil),     // 24: torchwood.server.v1.CountDocumentsResponse
+	(*BulkUpdateDocumentsRequest)(nil), // 25: torchwood.server.v1.BulkUpdateDocumentsRequest
+	(*BulkDeleteDocumentsRequest)(nil), // 26: torchwood.server.v1.BulkDeleteDocumentsRequest
+	(*BulkDocumentsResponse)(nil),      // 27: torchwood.server.v1.BulkDocumentsResponse
+	nil,                                // 28: torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
+	(*v1.ListResponseMeta)(nil),        // 29: torchwood.shared.v1.ListResponseMeta
+	(*timestamppb.Timestamp)(nil),      // 30: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),            // 31: google.protobuf.Struct
+	(*v1.ListRequest)(nil),             // 32: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),                   // 33: torchwood.shared.v1.Empty
 }
 var file_server_v1_databases_proto_depIdxs = []int32{
 	3,  // 0: torchwood.server.v1.ListDatabasesResponse.databases:type_name -> torchwood.server.v1.Database
-	28, // 1: torchwood.server.v1.ListDatabasesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	29, // 2: torchwood.server.v1.Database.created_at:type_name -> google.protobuf.Timestamp
-	29, // 3: torchwood.server.v1.Database.updated_at:type_name -> google.protobuf.Timestamp
+	29, // 1: torchwood.server.v1.ListDatabasesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	30, // 2: torchwood.server.v1.Database.created_at:type_name -> google.protobuf.Timestamp
+	30, // 3: torchwood.server.v1.Database.updated_at:type_name -> google.protobuf.Timestamp
 	8,  // 4: torchwood.server.v1.UpdateCollectionRequest.permissions:type_name -> torchwood.server.v1.PermissionsUpdate
 	10, // 5: torchwood.server.v1.ListCollectionsResponse.collections:type_name -> torchwood.server.v1.Collection
-	28, // 6: torchwood.server.v1.ListCollectionsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	29, // 6: torchwood.server.v1.ListCollectionsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
 	13, // 7: torchwood.server.v1.Collection.attributes:type_name -> torchwood.server.v1.Attribute
 	16, // 8: torchwood.server.v1.Collection.indexes:type_name -> torchwood.server.v1.Index
-	29, // 9: torchwood.server.v1.Collection.created_at:type_name -> google.protobuf.Timestamp
-	29, // 10: torchwood.server.v1.Collection.updated_at:type_name -> google.protobuf.Timestamp
-	30, // 11: torchwood.server.v1.Document.data:type_name -> google.protobuf.Struct
-	29, // 12: torchwood.server.v1.Document.created_at:type_name -> google.protobuf.Timestamp
-	29, // 13: torchwood.server.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
-	30, // 14: torchwood.server.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
-	30, // 15: torchwood.server.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
-	27, // 16: torchwood.server.v1.UpdateDocumentRequest.increment:type_name -> torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
-	17, // 17: torchwood.server.v1.ListDocumentsResponse.documents:type_name -> torchwood.server.v1.Document
-	28, // 18: torchwood.server.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	30, // 19: torchwood.server.v1.BulkUpdateDocumentsRequest.data:type_name -> google.protobuf.Struct
-	0,  // 20: torchwood.server.v1.DatabasesService.CreateDatabase:input_type -> torchwood.server.v1.CreateDatabaseRequest
-	31, // 21: torchwood.server.v1.DatabasesService.ListDatabases:input_type -> torchwood.shared.v1.ListRequest
-	1,  // 22: torchwood.server.v1.DatabasesService.GetDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
-	1,  // 23: torchwood.server.v1.DatabasesService.DeleteDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
-	4,  // 24: torchwood.server.v1.DatabasesService.CreateCollection:input_type -> torchwood.server.v1.CreateCollectionRequest
-	5,  // 25: torchwood.server.v1.DatabasesService.ListCollections:input_type -> torchwood.server.v1.ListCollectionsRequest
-	6,  // 26: torchwood.server.v1.DatabasesService.GetCollection:input_type -> torchwood.server.v1.GetCollectionRequest
-	6,  // 27: torchwood.server.v1.DatabasesService.DeleteCollection:input_type -> torchwood.server.v1.GetCollectionRequest
-	7,  // 28: torchwood.server.v1.DatabasesService.UpdateCollection:input_type -> torchwood.server.v1.UpdateCollectionRequest
-	11, // 29: torchwood.server.v1.DatabasesService.CreateAttribute:input_type -> torchwood.server.v1.CreateAttributeRequest
-	12, // 30: torchwood.server.v1.DatabasesService.DeleteAttribute:input_type -> torchwood.server.v1.DeleteAttributeRequest
-	14, // 31: torchwood.server.v1.DatabasesService.CreateIndex:input_type -> torchwood.server.v1.CreateIndexRequest
-	15, // 32: torchwood.server.v1.DatabasesService.DeleteIndex:input_type -> torchwood.server.v1.DeleteIndexRequest
-	18, // 33: torchwood.server.v1.DatabasesService.CreateDocument:input_type -> torchwood.server.v1.CreateDocumentRequest
-	21, // 34: torchwood.server.v1.DatabasesService.ListDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
-	20, // 35: torchwood.server.v1.DatabasesService.GetDocument:input_type -> torchwood.server.v1.GetDocumentRequest
-	19, // 36: torchwood.server.v1.DatabasesService.UpdateDocument:input_type -> torchwood.server.v1.UpdateDocumentRequest
-	20, // 37: torchwood.server.v1.DatabasesService.DeleteDocument:input_type -> torchwood.server.v1.GetDocumentRequest
-	21, // 38: torchwood.server.v1.DatabasesService.CountDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
-	24, // 39: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:input_type -> torchwood.server.v1.BulkUpdateDocumentsRequest
-	25, // 40: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:input_type -> torchwood.server.v1.BulkDeleteDocumentsRequest
-	3,  // 41: torchwood.server.v1.DatabasesService.CreateDatabase:output_type -> torchwood.server.v1.Database
-	2,  // 42: torchwood.server.v1.DatabasesService.ListDatabases:output_type -> torchwood.server.v1.ListDatabasesResponse
-	3,  // 43: torchwood.server.v1.DatabasesService.GetDatabase:output_type -> torchwood.server.v1.Database
-	32, // 44: torchwood.server.v1.DatabasesService.DeleteDatabase:output_type -> torchwood.shared.v1.Empty
-	10, // 45: torchwood.server.v1.DatabasesService.CreateCollection:output_type -> torchwood.server.v1.Collection
-	9,  // 46: torchwood.server.v1.DatabasesService.ListCollections:output_type -> torchwood.server.v1.ListCollectionsResponse
-	10, // 47: torchwood.server.v1.DatabasesService.GetCollection:output_type -> torchwood.server.v1.Collection
-	32, // 48: torchwood.server.v1.DatabasesService.DeleteCollection:output_type -> torchwood.shared.v1.Empty
-	10, // 49: torchwood.server.v1.DatabasesService.UpdateCollection:output_type -> torchwood.server.v1.Collection
-	13, // 50: torchwood.server.v1.DatabasesService.CreateAttribute:output_type -> torchwood.server.v1.Attribute
-	32, // 51: torchwood.server.v1.DatabasesService.DeleteAttribute:output_type -> torchwood.shared.v1.Empty
-	16, // 52: torchwood.server.v1.DatabasesService.CreateIndex:output_type -> torchwood.server.v1.Index
-	32, // 53: torchwood.server.v1.DatabasesService.DeleteIndex:output_type -> torchwood.shared.v1.Empty
-	17, // 54: torchwood.server.v1.DatabasesService.CreateDocument:output_type -> torchwood.server.v1.Document
-	22, // 55: torchwood.server.v1.DatabasesService.ListDocuments:output_type -> torchwood.server.v1.ListDocumentsResponse
-	17, // 56: torchwood.server.v1.DatabasesService.GetDocument:output_type -> torchwood.server.v1.Document
-	17, // 57: torchwood.server.v1.DatabasesService.UpdateDocument:output_type -> torchwood.server.v1.Document
-	32, // 58: torchwood.server.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
-	23, // 59: torchwood.server.v1.DatabasesService.CountDocuments:output_type -> torchwood.server.v1.CountDocumentsResponse
-	26, // 60: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
-	26, // 61: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
-	41, // [41:62] is the sub-list for method output_type
-	20, // [20:41] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	30, // 9: torchwood.server.v1.Collection.created_at:type_name -> google.protobuf.Timestamp
+	30, // 10: torchwood.server.v1.Collection.updated_at:type_name -> google.protobuf.Timestamp
+	31, // 11: torchwood.server.v1.Document.data:type_name -> google.protobuf.Struct
+	30, // 12: torchwood.server.v1.Document.created_at:type_name -> google.protobuf.Timestamp
+	30, // 13: torchwood.server.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
+	31, // 14: torchwood.server.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
+	31, // 15: torchwood.server.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
+	28, // 16: torchwood.server.v1.UpdateDocumentRequest.increment:type_name -> torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
+	31, // 17: torchwood.server.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
+	17, // 18: torchwood.server.v1.ListDocumentsResponse.documents:type_name -> torchwood.server.v1.Document
+	29, // 19: torchwood.server.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	31, // 20: torchwood.server.v1.BulkUpdateDocumentsRequest.data:type_name -> google.protobuf.Struct
+	0,  // 21: torchwood.server.v1.DatabasesService.CreateDatabase:input_type -> torchwood.server.v1.CreateDatabaseRequest
+	32, // 22: torchwood.server.v1.DatabasesService.ListDatabases:input_type -> torchwood.shared.v1.ListRequest
+	1,  // 23: torchwood.server.v1.DatabasesService.GetDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
+	1,  // 24: torchwood.server.v1.DatabasesService.DeleteDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
+	4,  // 25: torchwood.server.v1.DatabasesService.CreateCollection:input_type -> torchwood.server.v1.CreateCollectionRequest
+	5,  // 26: torchwood.server.v1.DatabasesService.ListCollections:input_type -> torchwood.server.v1.ListCollectionsRequest
+	6,  // 27: torchwood.server.v1.DatabasesService.GetCollection:input_type -> torchwood.server.v1.GetCollectionRequest
+	6,  // 28: torchwood.server.v1.DatabasesService.DeleteCollection:input_type -> torchwood.server.v1.GetCollectionRequest
+	7,  // 29: torchwood.server.v1.DatabasesService.UpdateCollection:input_type -> torchwood.server.v1.UpdateCollectionRequest
+	11, // 30: torchwood.server.v1.DatabasesService.CreateAttribute:input_type -> torchwood.server.v1.CreateAttributeRequest
+	12, // 31: torchwood.server.v1.DatabasesService.DeleteAttribute:input_type -> torchwood.server.v1.DeleteAttributeRequest
+	14, // 32: torchwood.server.v1.DatabasesService.CreateIndex:input_type -> torchwood.server.v1.CreateIndexRequest
+	15, // 33: torchwood.server.v1.DatabasesService.DeleteIndex:input_type -> torchwood.server.v1.DeleteIndexRequest
+	18, // 34: torchwood.server.v1.DatabasesService.CreateDocument:input_type -> torchwood.server.v1.CreateDocumentRequest
+	22, // 35: torchwood.server.v1.DatabasesService.ListDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
+	21, // 36: torchwood.server.v1.DatabasesService.GetDocument:input_type -> torchwood.server.v1.GetDocumentRequest
+	19, // 37: torchwood.server.v1.DatabasesService.UpdateDocument:input_type -> torchwood.server.v1.UpdateDocumentRequest
+	20, // 38: torchwood.server.v1.DatabasesService.UpsertDocument:input_type -> torchwood.server.v1.UpsertDocumentRequest
+	21, // 39: torchwood.server.v1.DatabasesService.DeleteDocument:input_type -> torchwood.server.v1.GetDocumentRequest
+	22, // 40: torchwood.server.v1.DatabasesService.CountDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
+	25, // 41: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:input_type -> torchwood.server.v1.BulkUpdateDocumentsRequest
+	26, // 42: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:input_type -> torchwood.server.v1.BulkDeleteDocumentsRequest
+	3,  // 43: torchwood.server.v1.DatabasesService.CreateDatabase:output_type -> torchwood.server.v1.Database
+	2,  // 44: torchwood.server.v1.DatabasesService.ListDatabases:output_type -> torchwood.server.v1.ListDatabasesResponse
+	3,  // 45: torchwood.server.v1.DatabasesService.GetDatabase:output_type -> torchwood.server.v1.Database
+	33, // 46: torchwood.server.v1.DatabasesService.DeleteDatabase:output_type -> torchwood.shared.v1.Empty
+	10, // 47: torchwood.server.v1.DatabasesService.CreateCollection:output_type -> torchwood.server.v1.Collection
+	9,  // 48: torchwood.server.v1.DatabasesService.ListCollections:output_type -> torchwood.server.v1.ListCollectionsResponse
+	10, // 49: torchwood.server.v1.DatabasesService.GetCollection:output_type -> torchwood.server.v1.Collection
+	33, // 50: torchwood.server.v1.DatabasesService.DeleteCollection:output_type -> torchwood.shared.v1.Empty
+	10, // 51: torchwood.server.v1.DatabasesService.UpdateCollection:output_type -> torchwood.server.v1.Collection
+	13, // 52: torchwood.server.v1.DatabasesService.CreateAttribute:output_type -> torchwood.server.v1.Attribute
+	33, // 53: torchwood.server.v1.DatabasesService.DeleteAttribute:output_type -> torchwood.shared.v1.Empty
+	16, // 54: torchwood.server.v1.DatabasesService.CreateIndex:output_type -> torchwood.server.v1.Index
+	33, // 55: torchwood.server.v1.DatabasesService.DeleteIndex:output_type -> torchwood.shared.v1.Empty
+	17, // 56: torchwood.server.v1.DatabasesService.CreateDocument:output_type -> torchwood.server.v1.Document
+	23, // 57: torchwood.server.v1.DatabasesService.ListDocuments:output_type -> torchwood.server.v1.ListDocumentsResponse
+	17, // 58: torchwood.server.v1.DatabasesService.GetDocument:output_type -> torchwood.server.v1.Document
+	17, // 59: torchwood.server.v1.DatabasesService.UpdateDocument:output_type -> torchwood.server.v1.Document
+	17, // 60: torchwood.server.v1.DatabasesService.UpsertDocument:output_type -> torchwood.server.v1.Document
+	33, // 61: torchwood.server.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
+	24, // 62: torchwood.server.v1.DatabasesService.CountDocuments:output_type -> torchwood.server.v1.CountDocumentsResponse
+	27, // 63: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
+	27, // 64: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
+	43, // [43:65] is the sub-list for method output_type
+	21, // [21:43] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_server_v1_databases_proto_init() }
@@ -2187,7 +2285,7 @@ func file_server_v1_databases_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_databases_proto_rawDesc), len(file_server_v1_databases_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

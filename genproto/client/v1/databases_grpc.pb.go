@@ -24,6 +24,7 @@ const (
 	DatabasesService_ListDocuments_FullMethodName  = "/torchwood.client.v1.DatabasesService/ListDocuments"
 	DatabasesService_GetDocument_FullMethodName    = "/torchwood.client.v1.DatabasesService/GetDocument"
 	DatabasesService_UpdateDocument_FullMethodName = "/torchwood.client.v1.DatabasesService/UpdateDocument"
+	DatabasesService_UpsertDocument_FullMethodName = "/torchwood.client.v1.DatabasesService/UpsertDocument"
 	DatabasesService_DeleteDocument_FullMethodName = "/torchwood.client.v1.DatabasesService/DeleteDocument"
 	DatabasesService_CountDocuments_FullMethodName = "/torchwood.client.v1.DatabasesService/CountDocuments"
 )
@@ -36,6 +37,7 @@ type DatabasesServiceClient interface {
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*ListDocumentsResponse, error)
 	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error)
 	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
+	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*Document, error)
 	DeleteDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	CountDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
 }
@@ -88,6 +90,16 @@ func (c *databasesServiceClient) UpdateDocument(ctx context.Context, in *UpdateD
 	return out, nil
 }
 
+func (c *databasesServiceClient) UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Document)
+	err := c.cc.Invoke(ctx, DatabasesService_UpsertDocument_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *databasesServiceClient) DeleteDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*v1.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(v1.Empty)
@@ -116,6 +128,7 @@ type DatabasesServiceServer interface {
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
 	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
 	UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error)
+	UpsertDocument(context.Context, *UpsertDocumentRequest) (*Document, error)
 	DeleteDocument(context.Context, *GetDocumentRequest) (*v1.Empty, error)
 	CountDocuments(context.Context, *ListDocumentsRequest) (*CountDocumentsResponse, error)
 	mustEmbedUnimplementedDatabasesServiceServer()
@@ -139,6 +152,9 @@ func (UnimplementedDatabasesServiceServer) GetDocument(context.Context, *GetDocu
 }
 func (UnimplementedDatabasesServiceServer) UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDocument not implemented")
+}
+func (UnimplementedDatabasesServiceServer) UpsertDocument(context.Context, *UpsertDocumentRequest) (*Document, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertDocument not implemented")
 }
 func (UnimplementedDatabasesServiceServer) DeleteDocument(context.Context, *GetDocumentRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteDocument not implemented")
@@ -239,6 +255,24 @@ func _DatabasesService_UpdateDocument_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabasesService_UpsertDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertDocumentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).UpsertDocument(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_UpsertDocument_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).UpsertDocument(ctx, req.(*UpsertDocumentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DatabasesService_DeleteDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetDocumentRequest)
 	if err := dec(in); err != nil {
@@ -297,6 +331,10 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateDocument",
 			Handler:    _DatabasesService_UpdateDocument_Handler,
+		},
+		{
+			MethodName: "UpsertDocument",
+			Handler:    _DatabasesService_UpsertDocument_Handler,
 		},
 		{
 			MethodName: "DeleteDocument",

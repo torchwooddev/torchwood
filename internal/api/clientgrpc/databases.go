@@ -106,6 +106,31 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.Upd
 	return mapClientDocument(doc)
 }
 
+func (s *DatabasesService) UpsertDocument(ctx context.Context, req *clientv1.UpsertDocumentRequest) (*clientv1.Document, error) {
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
+	data := map[string]any{}
+	if req.GetData() != nil {
+		data = req.GetData().AsMap()
+	}
+	perms, err := parseOptionalPermissions(req.GetPermissions())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	doc, err := s.databases.UpsertDocument(
+		ctx,
+		req.GetDatabaseId(),
+		req.GetCollectionId(),
+		req.GetDocumentId(),
+		data,
+		req.GetConflictColumns(),
+		perms,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return mapClientDocument(doc)
+}
+
 func (s *DatabasesService) DeleteDocument(ctx context.Context, req *clientv1.GetDocumentRequest) (*sharedv1.Empty, error) {
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
 	if err := s.databases.DeleteDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()); err != nil {

@@ -147,6 +147,12 @@ export interface UpdateDocumentInput {
   increment?: Record<string, number>;
 }
 
+export interface UpsertDocumentInput {
+  data: Record<string, unknown>;
+  permissions?: string[];
+  conflict_columns: string[];
+}
+
 export interface Bucket {
   id: string;
   name: string;

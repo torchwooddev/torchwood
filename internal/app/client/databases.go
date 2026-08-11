@@ -229,6 +229,53 @@ func (d *Databases) UpdateDocument(
 	return &updated, nil
 }
 
+func (d *Databases) UpsertDocument(
+	ctx context.Context,
+	databaseID, collectionID, documentID string,
+	data map[string]any,
+	conflictColumns []string,
+	perms []databases.Permission,
+) (*databases.Document, error) {
+	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "data is required")
+	}
+	if len(conflictColumns) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "conflict_columns is required")
+	}
+	p, _ := contexts.Principal(ctx)
+	if len(perms) == 0 {
+		perms = ownerDocumentPermissions(p.UserID)
+	}
+	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
+	if err := databases.ValidateGrantablePermissions(principal, perms, false); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	// 与 UpdateDocument 一致：客户端无法通过 UpsertDocument 直接修改
+	// 认证/状态相关敏感字段。
+	filtered := make(map[string]any, len(data))
+	for k, v := range data {
+		if _, ok := clientDocumentUpdateProtectedFields[k]; ok {
+			continue
+		}
+		filtered[k] = v
+	}
+	if len(filtered) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied")
+	}
+	upserted, err := d.docDB.UpsertDocument(ctx, projectID, databaseID, collectionID, databases.Document{
+		ID:   documentID,
+		Data: filtered,
+	}, conflictColumns, perms, principal)
+	if err != nil {
+		return nil, shared.MapDocumentDBError(fmt.Errorf("upsert document: %w", err))
+	}
+	return &upserted, nil
+}
+
 func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID, documentID string) error {
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {

@@ -721,6 +721,54 @@
           "DatabasesService"
         ]
       },
+      "put": {
+        "operationId": "DatabasesService_UpsertDocument",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1Document"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1DatabasesServiceUpsertDocumentBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      },
       "patch": {
         "operationId": "DatabasesService_UpdateDocument",
         "responses": {
@@ -1110,6 +1158,26 @@
           "additionalProperties": {
             "type": "string",
             "format": "int64"
+          }
+        }
+      }
+    },
+    "torchwoodserverv1DatabasesServiceUpsertDocumentBody": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conflictColumns": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       }

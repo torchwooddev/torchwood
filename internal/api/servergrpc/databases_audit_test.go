@@ -72,6 +72,63 @@ func TestDatabasesService_AuditResource(t *testing.T) {
 	require.Equal(t, "databases/app/collections/posts/documents/doc-1", log.ResourceID)
 }
 
+// TestDatabasesService_UpsertDocumentAuditResource (T2): UpsertDocument 注入
+// 文档级审计资源路径。
+func TestDatabasesService_UpsertDocumentAuditResource(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	env, err := testutil.NewInterceptorEnv(db, &config.AppConfig{}, docDB)
+	require.NoError(t, err)
+
+	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	svc := NewDatabasesService(uc)
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "uq_title", Type: "unique", Attributes: []string{"title"}},
+	}, nil, true))
+
+	const method = "/torchwood.server.v1.DatabasesService/UpsertDocument"
+	info := &grpc.UnaryServerInfo{FullMethod: method}
+	handler := func(ctx context.Context, req any) (any, error) {
+		return svc.UpsertDocument(ctx, req.(*serverv1.UpsertDocumentRequest))
+	}
+
+	principal := &shared.Principal{
+		ActorKind: shared.ActorKindService,
+		ProjectID: projectID,
+		Roles:     []string{"keys"},
+	}
+	req := &serverv1.UpsertDocumentRequest{
+		DatabaseId:      "app",
+		CollectionId:    "posts",
+		DocumentId:      "doc-1",
+		Data:            mapStringToStruct(t, map[string]any{"title": "t"}),
+		ConflictColumns: []string{"title"},
+	}
+	_, err = env.Audit.UnaryAuditMiddleware(contexts.WithPrincipal(ctx, principal), req, info, handler)
+	require.NoError(t, err)
+
+	log, err := env.LatestAuditLog(ctx)
+	require.NoError(t, err)
+	require.Equal(t, method, log.Action)
+	require.Equal(t, "databases/app/collections/posts/documents/doc-1", log.ResourceID)
+}
+
 func mapStringToStruct(t *testing.T, m map[string]any) *structpb.Struct {
 	t.Helper()
 	s, err := structpb.NewStruct(m)

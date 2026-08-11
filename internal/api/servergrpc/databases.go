@@ -397,6 +397,37 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 	return mapDocument(doc)
 }
 
+func (s *DatabasesService) UpsertDocument(ctx context.Context, req *serverv1.UpsertDocumentRequest) (*serverv1.Document, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditDocumentResource(req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()))
+	data := map[string]any{}
+	if req.GetData() != nil {
+		data = req.GetData().AsMap()
+	}
+	perms, err := parseOptionalPermissions(req.GetPermissions())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	doc, err := s.databases.UpsertDocument(
+		ctx,
+		projectID,
+		req.GetDatabaseId(),
+		req.GetCollectionId(),
+		req.GetDocumentId(),
+		data,
+		req.GetConflictColumns(),
+		perms,
+		dbPrincipal(ctx),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return mapDocument(doc)
+}
+
 func (s *DatabasesService) BulkUpdateDocuments(ctx context.Context, req *serverv1.BulkUpdateDocumentsRequest) (*serverv1.BulkDocumentsResponse, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {

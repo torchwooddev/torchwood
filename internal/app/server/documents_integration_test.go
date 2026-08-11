@@ -9,6 +9,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestDatabases_DocumentCRUD covers P1 Sprint 1 document API use cases.
@@ -72,4 +74,85 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, uc.DeleteDocument(ctx, projectID, dbID, collID, created.ID, principal))
 	_, err = uc.GetDocument(ctx, projectID, dbID, collID, created.ID, principal)
 	require.Error(t, err)
+}
+
+// TestDatabases_UpsertDocument (T2): UpsertDocument inserts a new document
+// when no row matches the conflict columns and updates it when one does.
+func TestDatabases_UpsertDocument(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
+		{ID: "email", Key: "email", Type: "string", Size: 256},
+		{ID: "name", Key: "name", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "uq_email", Type: "unique", Attributes: []string{"email"}},
+	}, nil, true))
+
+	upserted, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+		"email": "a@example.com",
+		"name":  "Alice",
+	}, []string{"email"}, databases.DefaultCollectionPermissions(), principal)
+	require.NoError(t, err)
+	require.Equal(t, "m1", upserted.ID)
+	require.Equal(t, "Alice", upserted.Data["name"])
+
+	updated, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+		"email": "a@example.com",
+		"name":  "Alice Updated",
+	}, []string{"email"}, databases.DefaultCollectionPermissions(), principal)
+	require.NoError(t, err)
+	require.Equal(t, "m1", updated.ID)
+	require.Equal(t, "Alice Updated", updated.Data["name"])
+
+	got, err := uc.GetDocument(ctx, projectID, "app", "members", updated.ID, principal)
+	require.NoError(t, err)
+	require.Equal(t, "Alice Updated", got.Data["name"])
+}
+
+func TestDatabases_UpsertDocument_Validation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	_, err := uc.UpsertDocument(ctx, projectID, "app", "posts", "", nil, []string{"title"}, nil, principal)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+
+	_, err = uc.UpsertDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "t"}, nil, nil, principal)
+	st, _ = status.FromError(err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
 }

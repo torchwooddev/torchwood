@@ -327,6 +327,83 @@ func local_request_DatabasesService_UpdateDocument_0(ctx context.Context, marsha
 	return msg, metadata, err
 }
 
+func request_DatabasesService_UpsertDocument_0(ctx context.Context, marshaler runtime.Marshaler, client DatabasesServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq UpsertDocumentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["database_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "database_id")
+	}
+	protoReq.DatabaseId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "database_id", err)
+	}
+	val, ok = pathParams["collection_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "collection_id")
+	}
+	protoReq.CollectionId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "collection_id", err)
+	}
+	val, ok = pathParams["document_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "document_id")
+	}
+	protoReq.DocumentId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "document_id", err)
+	}
+	msg, err := client.UpsertDocument(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DatabasesService_UpsertDocument_0(ctx context.Context, marshaler runtime.Marshaler, server DatabasesServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq UpsertDocumentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["database_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "database_id")
+	}
+	protoReq.DatabaseId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "database_id", err)
+	}
+	val, ok = pathParams["collection_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "collection_id")
+	}
+	protoReq.CollectionId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "collection_id", err)
+	}
+	val, ok = pathParams["document_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "document_id")
+	}
+	protoReq.DocumentId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "document_id", err)
+	}
+	msg, err := server.UpsertDocument(ctx, &protoReq)
+	return msg, metadata, err
+}
+
 var filter_DatabasesService_DeleteDocument_0 = &utilities.DoubleArray{Encoding: map[string]int{"database_id": 0, "collection_id": 1, "document_id": 2}, Base: []int{1, 1, 2, 3, 0, 0, 0}, Check: []int{0, 1, 1, 1, 2, 3, 4}}
 
 func request_DatabasesService_DeleteDocument_0(ctx context.Context, marshaler runtime.Marshaler, client DatabasesServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -567,6 +644,26 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		}
 		forward_DatabasesService_UpdateDocument_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPut, pattern_DatabasesService_UpsertDocument_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/UpsertDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DatabasesService_UpsertDocument_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DatabasesService_UpsertDocument_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodDelete, pattern_DatabasesService_DeleteDocument_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -715,6 +812,23 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 		forward_DatabasesService_UpdateDocument_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPut, pattern_DatabasesService_UpsertDocument_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/UpsertDocument", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DatabasesService_UpsertDocument_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DatabasesService_UpsertDocument_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodDelete, pattern_DatabasesService_DeleteDocument_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -757,6 +871,7 @@ var (
 	pattern_DatabasesService_ListDocuments_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents"}, ""))
 	pattern_DatabasesService_GetDocument_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
 	pattern_DatabasesService_UpdateDocument_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
+	pattern_DatabasesService_UpsertDocument_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
 	pattern_DatabasesService_DeleteDocument_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
 	pattern_DatabasesService_CountDocuments_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 2, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "count"}, ""))
 )
@@ -766,6 +881,7 @@ var (
 	forward_DatabasesService_ListDocuments_0  = runtime.ForwardResponseMessage
 	forward_DatabasesService_GetDocument_0    = runtime.ForwardResponseMessage
 	forward_DatabasesService_UpdateDocument_0 = runtime.ForwardResponseMessage
+	forward_DatabasesService_UpsertDocument_0 = runtime.ForwardResponseMessage
 	forward_DatabasesService_DeleteDocument_0 = runtime.ForwardResponseMessage
 	forward_DatabasesService_CountDocuments_0 = runtime.ForwardResponseMessage
 )
