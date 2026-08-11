@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -84,21 +83,21 @@ func TestFormatRPCError(t *testing.T) {
 	}
 }
 
-func TestNewConnTLSUnsupported(t *testing.T) {
-	if _, err := newConn("127.0.0.1:9060", "k", true); err == nil || !strings.Contains(err.Error(), "尚未支持") {
+func TestInvokeTLSNotSupported(t *testing.T) {
+	g := &globalFlags{tls: true}
+	_, err := invoke(g, "/torchwood.server.v1.HealthService/Check", nil)
+	if err == nil || !strings.Contains(err.Error(), "--tls 尚未支持") {
 		t.Fatalf("--tls 应返回未支持错误，got %v", err)
 	}
 }
 
 func TestPrintJSON(t *testing.T) {
 	var buf bytes.Buffer
-	msg := &serverv1.GetVersionResponse{Version: "v1.2.3"}
-	if err := printJSON(&buf, msg); err != nil {
+	if err := printJSON(&buf, []byte("{\"version\":\"v1.2.3\"}")); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	// protojson Multiline+Indent：字段后跟 Indent 串作为分隔（"version":  "v1.2.3"）。
-	if !strings.Contains(out, "\n  \"version\"") || !strings.Contains(out, "\"v1.2.3\"") {
-		t.Errorf("printJSON 输出格式不符：%q", out)
+	if out != "{\"version\":\"v1.2.3\"}\n" {
+		t.Errorf("printJSON 应原样写字节 + 换行：%q", out)
 	}
 }

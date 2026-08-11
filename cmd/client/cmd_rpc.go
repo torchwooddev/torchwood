@@ -1,15 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // newRPCCmd 是逃生舱命令：按完整 gRPC 方法名调用任意 Server API 方法，
-// --data 以 protojson 填充请求体（注册表见 registry.go，完整性有测试保证）。
+// --data 以 protojson 填充请求体（动态分发见 sdk/go/server.InvokeJSON，
+// 完整性由 SDK 测试保证）。
 func newRPCCmd(g *globalFlags) *cobra.Command {
 	var data string
 	cmd := &cobra.Command{
@@ -25,19 +24,8 @@ API Key 凭证被服务端禁止调用）。--data 为请求的 protojson（came
 `,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			method := args[0]
-			e, err := lookupRPCMethod(method)
+			resp, err := invoke(g, args[0], data)
 			if err != nil {
-				return err
-			}
-			req := e.newReq()
-			if data != "" {
-				if err := protojson.Unmarshal([]byte(data), req); err != nil {
-					return fmt.Errorf("--data 解析失败：%v", err)
-				}
-			}
-			resp := e.newResp()
-			if err := invoke(g, method, req, resp); err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)

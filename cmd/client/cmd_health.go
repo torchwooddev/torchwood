@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 )
 
 // newHealthCmd 提供 HealthService 两个公开方法（ACCESS_PUBLIC，无需 API key）。
@@ -20,8 +19,8 @@ func newHealthCmd(g *globalFlags) *cobra.Command {
 			Use:   "get",
 			Short: "查询服务健康状态",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.HealthCheckResponse{}
-				if err := invoke(g, serverv1.HealthService_Check_FullMethodName, &serverv1.HealthCheckRequest{}, resp); err != nil {
+				resp, err := invoke(g, "/torchwood.server.v1.HealthService/Check", nil)
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -31,8 +30,8 @@ func newHealthCmd(g *globalFlags) *cobra.Command {
 			Use:   "version",
 			Short: "查询服务端构建版本",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.GetVersionResponse{}
-				if err := invoke(g, serverv1.HealthService_GetVersion_FullMethodName, &serverv1.GetVersionRequest{}, resp); err != nil {
+				resp, err := invoke(g, "/torchwood.server.v1.HealthService/GetVersion", nil)
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
