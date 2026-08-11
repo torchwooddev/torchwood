@@ -5,9 +5,18 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
+)
+
+const (
+	methodUsersList           = "/torchwood.server.v1.UsersService/ListUsers"
+	methodUsersGet            = "/torchwood.server.v1.UsersService/GetUser"
+	methodUsersCreate         = "/torchwood.server.v1.UsersService/CreateUser"
+	methodUsersUpdate         = "/torchwood.server.v1.UsersService/UpdateUser"
+	methodUsersUpdatePassword = "/torchwood.server.v1.UsersService/UpdateUserPassword"
+	methodUsersDelete         = "/torchwood.server.v1.UsersService/DeleteUser"
+	methodUsersListSessions   = "/torchwood.server.v1.UsersService/ListUserSessions"
+	methodUsersDeleteSession  = "/torchwood.server.v1.UsersService/DeleteUserSession"
+	methodUsersCreateToken    = "/torchwood.server.v1.UsersService/CreateUserToken"
 )
 
 // newUsersCmd 覆盖 UsersService 全部 9 个方法：
@@ -38,8 +47,8 @@ func newUsersListCmd(g *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "列出用户",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListUsersResponse{}
-			if err := invoke(g, serverv1.UsersService_ListUsers_FullMethodName, buildListRequest(pageSize, pageToken), resp); err != nil {
+			resp, err := invoke(g, methodUsersList, listJSON(pageSize, pageToken))
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -56,8 +65,8 @@ func newUsersGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取用户",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.User{}
-			if err := invoke(g, serverv1.UsersService_GetUser_FullMethodName, &serverv1.GetUserRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodUsersGet, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -75,8 +84,8 @@ func newUsersCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.User{}
-			if err := invoke(g, serverv1.UsersService_CreateUser_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodUsersCreate, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -98,12 +107,12 @@ func newUsersUpdateCmd(g *globalFlags) *cobra.Command {
 		Short: "更新用户（仅更新显式传入的字段；清空字段请用 --data）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildUpdateUserReq(args[0], changedBoolPtr(cmd, "email-verified", emailVerified), name, email, status, data)
+			req, err := buildUpdateUserReq(cmd, args[0], emailVerified, name, email, status, data)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.User{}
-			if err := invoke(g, serverv1.UsersService_UpdateUser_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodUsersUpdate, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -127,8 +136,8 @@ func newUsersUpdatePasswordCmd(g *globalFlags) *cobra.Command {
 			if password == "" {
 				return fmt.Errorf("--password 必填")
 			}
-			resp := &serverv1.User{}
-			if err := invoke(g, serverv1.UsersService_UpdateUserPassword_FullMethodName, &serverv1.UpdateUserPasswordRequest{Id: args[0], Password: password}, resp); err != nil {
+			resp, err := invoke(g, methodUsersUpdatePassword, map[string]any{"id": args[0], "password": password})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -144,8 +153,8 @@ func newUsersDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除用户",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.User{}
-			if err := invoke(g, serverv1.UsersService_DeleteUser_FullMethodName, &serverv1.GetUserRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodUsersDelete, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -165,8 +174,8 @@ func newUsersSessionsCmd(g *globalFlags) *cobra.Command {
 			Short: "列出用户会话",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.ListUserSessionsResponse{}
-				if err := invoke(g, serverv1.UsersService_ListUserSessions_FullMethodName, &serverv1.GetUserRequest{Id: args[0]}, resp); err != nil {
+				resp, err := invoke(g, methodUsersListSessions, map[string]any{"id": args[0]})
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -177,8 +186,8 @@ func newUsersSessionsCmd(g *globalFlags) *cobra.Command {
 			Short: "删除用户会话",
 			Args:  cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.User{}
-				if err := invoke(g, serverv1.UsersService_DeleteUserSession_FullMethodName, &serverv1.DeleteUserSessionRequest{Id: args[0], SessionId: args[1]}, resp); err != nil {
+				resp, err := invoke(g, methodUsersDeleteSession, map[string]any{"id": args[0], "sessionId": args[1]})
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -200,8 +209,8 @@ func newUsersTokensCmd(g *globalFlags) *cobra.Command {
 			Short: "为用户创建访问/刷新令牌",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.CreateUserTokenResponse{}
-				if err := invoke(g, serverv1.UsersService_CreateUserToken_FullMethodName, &serverv1.GetUserRequest{Id: args[0]}, resp); err != nil {
+				resp, err := invoke(g, methodUsersCreateToken, map[string]any{"id": args[0]})
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -211,56 +220,44 @@ func newUsersTokensCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-// buildCreateUserReq 由 flag 参数构造 CreateUserRequest；--data 以 protojson
-// 合并（labels/prefs 等 Struct 字段），与 flag 冲突时以 --data 为准。
-func buildCreateUserReq(email, password, name, status, data string) (*serverv1.CreateUserRequest, error) {
+// buildCreateUserReq 由 flag 参数构造 CreateUserRequest JSON map；
+// --data 以 JSON 覆盖合并（labels/prefs 等 Struct 字段），与 flag 冲突时以 --data 为准。
+func buildCreateUserReq(email, password, name, status, data string) (map[string]any, error) {
 	if email == "" || password == "" {
 		return nil, fmt.Errorf("--email 与 --password 必填")
 	}
-	req := &serverv1.CreateUserRequest{
-		Email:    email,
-		Password: password,
-		Name:     name,
-		Status:   status,
+	req := map[string]any{"email": email, "password": password}
+	if name != "" {
+		req["name"] = name
 	}
-	if err := mergeData(req, data); err != nil {
+	if status != "" {
+		req["status"] = status
+	}
+	if err := mergeJSON(req, data); err != nil {
 		return nil, err
 	}
 	return req, nil
 }
 
-// buildUpdateUserReq 构造 UpdateUserRequest：仅设置显式传入的字段，
-// emailVerified 为 nil 表示未设置（proto3 optional presence）。
-func buildUpdateUserReq(id string, emailVerified *bool, name, email, status, data string) (*serverv1.UpdateUserRequest, error) {
+// buildUpdateUserReq 构造 UpdateUserRequest JSON map：仅设置显式传入的字段，
+// emailVerified 依赖 flag presence（proto3 optional 语义用键存在性表达）。
+func buildUpdateUserReq(cmd *cobra.Command, id string, emailVerified bool, name, email, status, data string) (map[string]any, error) {
 	if id == "" {
 		return nil, fmt.Errorf("缺少用户 ID")
 	}
-	req := &serverv1.UpdateUserRequest{Id: id, EmailVerified: emailVerified}
+	req := map[string]any{"id": id}
+	setChanged(cmd, "email-verified", req, "emailVerified", emailVerified)
 	if name != "" {
-		req.Name = name
+		req["name"] = name
 	}
 	if email != "" {
-		req.Email = email
+		req["email"] = email
 	}
 	if status != "" {
-		req.Status = status
+		req["status"] = status
 	}
-	if err := mergeData(req, data); err != nil {
+	if err := mergeJSON(req, data); err != nil {
 		return nil, err
 	}
 	return req, nil
-}
-
-// mergeData 把 --data JSON 以 protojson 解析到同类型新消息后 proto.Merge 进请求
-// （protojson.Unmarshal 会重置目标消息，不能直接复用）；--data 与 flag 冲突时以 --data 为准。
-func mergeData(req proto.Message, data string) error {
-	if data == "" {
-		return nil
-	}
-	dataMsg := req.ProtoReflect().New().Interface()
-	if err := protojson.Unmarshal([]byte(data), dataMsg); err != nil {
-		return fmt.Errorf("--data 解析失败：%v", err)
-	}
-	proto.Merge(req, dataMsg)
-	return nil
 }

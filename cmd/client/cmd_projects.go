@@ -4,8 +4,11 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+)
+
+const (
+	methodProjectsList = "/torchwood.server.v1.ProjectsService/ListProjects"
+	methodProjectsGet  = "/torchwood.server.v1.ProjectsService/GetProject"
 )
 
 // newProjectsCmd 提供 ProjectsService 的 list/get。
@@ -29,9 +32,8 @@ func newProjectsListCmd(g *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "列出项目",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req := buildListRequest(pageSize, pageToken)
-			resp := &serverv1.ListProjectsResponse{}
-			if err := invoke(g, serverv1.ProjectsService_ListProjects_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodProjectsList, listJSON(pageSize, pageToken))
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -48,20 +50,11 @@ func newProjectsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取项目",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Project{}
-			if err := invoke(g, serverv1.ProjectsService_GetProject_FullMethodName, &serverv1.GetProjectRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodProjectsGet, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
 		},
 	}
-}
-
-// buildListRequest 由 --page-size/--page-token 构造共享的 ListRequest。
-func buildListRequest(pageSize int32, pageToken string) *sharedv1.ListRequest {
-	req := &sharedv1.ListRequest{PageToken: pageToken}
-	if pageSize > 0 {
-		req.PageSize = pageSize
-	}
-	return req
 }
