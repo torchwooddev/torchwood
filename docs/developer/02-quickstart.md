@@ -117,19 +117,7 @@ task generate-all    # = generate-proto（buf generate）+ generate-config（con
 | `generate-config` | `internal/pkg/config/config.pb.go` |
 | `wire-all` | `cmd/server/wire_gen.go` + `cmd/worker/wire_gen.go` |
 
-### 步骤 5：引导默认数据
-
-```bash
-go run ./cmd/seed
-```
-
-幂等创建：
-
-- 默认项目（id = `default`）；
-- Console 管理员：**`admin@torchwood.local / Admin@123`**；
-- 默认 API Key（scope 覆盖 projects/users/storage/databases/teams 的 read/write），**secret 仅在首次创建时打印**，重复运行不会重建；如需轮换，删除 `default-default-api-key` 行后重跑 seed。
-
-### 步骤 6：构建并启动
+### 步骤 5：构建并启动
 
 ```bash
 task build         # 先 console-build，再编译 server 与 worker 到 ./bin/
@@ -142,7 +130,19 @@ task build         # 先 console-build，再编译 server 与 worker 到 ./bin/
 task dev-server    # go run ./cmd/server
 ```
 
-首次登录 Console：浏览器打开 Console 地址 → 使用 `admin@torchwood.local / Admin@123` 登录。会话凭证为 HttpOnly cookie（`TORCHWOOD_session_console`），前端不再使用 localStorage 存储 token。
+### 步骤 6：首次部署引导（bootstrap）
+
+全新数据库上，浏览器打开 Console 地址 → 登录页会自动切换为「初始化设置」
+表单。注册第一个管理员将自动：
+
+- 创建 **owner** 管理员账户（首个管理员固定为超管）；
+- 创建默认项目（id = `default`）与默认 API Key（scope = `all`）；
+- 注册成功后页面**仅展示一次**默认 API Key secret（请立即复制，此后无法
+  再读取），并直接进入 Console（会话为 HttpOnly cookie
+  `TORCHWOOD_session_console`，前端不存储 token）。
+
+用该 secret 以 `x-api-key` metadata 调用 Server API 即可（如
+`UsersService/ListUsers`）。后续管理员由 Console 的「管理员」页面创建。
 
 ---
 
@@ -237,3 +237,63 @@ task build           # 重新编译 Go 二进制
 ### 测试直接 `go test ./...` 报错
 
 集成测试需要本地 Postgres 与测试 DSN 环境变量（`TORCHWOOD_TEST_DATABASE_SOURCE`、`TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE`）。`task test` 会自动从 `.env` 加载；直接运行 `go test` 时请先导出这两个变量。测试会自动创建/删除 `TORCHWOOD_test` 数据库。
+
+---
+
+## 7. Torchwood CLI（cmd/client）
+
+`task build` 产出 `bin/torchwood[.exe]`：通过 API Key 走 **gRPC**（非 HTTP gateway）调用 Server API，适合 Agent/自动化与运维场景。`health` 命令公开可调用，其余命令需要 API key。
+
+```bash
+./bin/torchwood health get                          # 无需 key
+./bin/torchwood users list --api-key <secret>       # 列出用户
+./bin/torchwood projects get default --api-key <secret>
+./bin/torchwood rpc /torchwood.server.v1.UsersService/ListUsers --data '{"pageSize": 10}' --api-key <secret>
+```
+
+具名命令覆盖 `proto/server/v1` 全部资源（除 `APIKeysService` 与 `projects create/update`）：
+
+```text
+torchwood
+├── health                 # 公开
+├── projects               # list/get（create/update 限平台 admin）
+├── users                  # 全部方法（含 sessions/tokens 子命令）
+├── databases              # 库；collections/attributes/indexes/documents 子命令
+├── teams                  # 团队；prefs/memberships 子命令
+├── storage                # buckets；files（元数据）；usage（不做上传/下载）
+├── functions              # 函数；deployments/variables/executions 子命令
+├── oauth-providers        # list/upsert/delete
+└── rpc                    # 逃生舱：按完整 gRPC 方法名调用
+```
+
+命令示例（复杂结构一律 JSON 字符串 flag）：
+
+```bash
+./bin/torchwood databases create --id app --name '应用库'
+./bin/torchwood databases collections create app --id notes --name '笔记' \
+  --permissions '["read(\"users\")"]'
+./bin/torchwood databases documents create app notes \
+  --data '{"title":"hi"}' --document-id doc1
+./bin/torchwood databases documents list app notes \
+  --queries '["equal(\"status\",\"active\")"]' --page-size 20
+./bin/torchwood teams create --name '核心组'
+./bin/torchwood teams memberships create <team-id> --user-id <uid> --roles '["admin"]'
+./bin/torchwood storage buckets create --name assets --public
+./bin/torchwood storage usage
+./bin/torchwood functions create --id hello --name hello --runtime nodejs18
+./bin/torchwood functions deployments create hello --code ./code.zip
+./bin/torchwood functions variables set hello --vars '{"FOO":"bar"}'
+./bin/torchwood functions executions create hello --input '{"name":"world"}' --async
+./bin/torchwood oauth-providers upsert google --client-id <id> --client-secret <sec>
+```
+
+全局参数（均可被同名 `TORCHWOOD_CLI_*` 环境变量覆盖）：
+
+| Flag | 环境变量 | 默认值 | 说明 |
+|------|----------|--------|------|
+| `--endpoint` | `TORCHWOOD_CLI_ENDPOINT` | `127.0.0.1:9060` | gRPC 地址（服务端仅监听回环，远程走 SSH 隧道） |
+| `--api-key` | `TORCHWOOD_CLI_API_KEY` | 无 | API Key secret（`health` 除外必填） |
+| `--timeout` | `TORCHWOOD_CLI_TIMEOUT` | `30s` | 单次调用超时 |
+| `--output` | `TORCHWOOD_CLI_OUTPUT` | `json` | 输出格式（MVP 仅 json） |
+
+`rpc` 命令的方法注册表（`cmd/client/registry.go`）覆盖 `proto/server/v1` 全部方法（除 `APIKeysService`），新增 Server API 方法需同步登记并跑 `go test ./cmd/client/...` 校验。完整命令树见 `torchwood --help`。

@@ -43,6 +43,7 @@ Torchwood 是一个 **Appwrite-inspired、AI/Agent-Native 的 Backend-as-a-Servi
 | gRPC + grpc-gateway | RPC 与 JSON REST 双表面 |
 | [Wire](https://github.com/google/wire) | 编译期依赖注入，`cmd/server/provides.go` 声明 provider |
 | [bun](https://github.com/uptrace/bun) | 元数据静态表 ORM（projects、api_keys、document_*、console_admins） |
+| [cobra](https://github.com/spf13/cobra) | CLI 框架（`cmd/client`，与 pflag/viper 同族） |
 | PostgreSQL 18 | 元数据 + 动态文档层 |
 | Redis 7 | 会话/队列/ID 生成等 |
 | MinIO / S3 | 对象存储 |
@@ -93,9 +94,9 @@ Torchwood 采用 Clean Architecture / DDD 分层：**依赖方向始终从外向
 ```
 torchwood/
 ├── cmd/                                # 可执行入口
-│   ├── seed/                           # 引导：默认项目 / Console admin / API Key
 │   ├── server/                         # 服务器入口（main.go + provides.go + wire.go + wire_gen.go）
-│   └── worker/                         # Worker 入口（后台任务，Wire 独立装配）
+│   ├── worker/                         # Worker 入口（后台任务，Wire 独立装配）
+│   └── client/                         # Torchwood CLI 入口（cobra，无 Wire：conn.go / output.go / registry.go / cmd_*.go）
 ├── console/                            # Admin Console React SPA
 │   ├── embed.go                        # go:embed dist，编译进 Go 二进制
 │   ├── vite.config.ts                  # dev 代理 /v1 → localhost:9099
@@ -228,12 +229,15 @@ PostgreSQL
 
 ---
 
-## 7. 三大运行时入口
+## 7. 两大运行时入口
 
 | 入口 | 说明 |
 |------|------|
 | `cmd/server` | **主服务器**。Lynx Runner 启动：gRPC（默认 `127.0.0.1:9060`）、grpc-gateway + Console SPA（`server.http.addr`）、独立 HTTP handler（multipart 上传下载、OAuth 回调）、Metrics。Wire 装配见 `provides.go` |
 | `cmd/worker` | **Worker**。后台任务进程，独立 Wire 装配（`cmd/worker/provides.go`），与 server 共享 app/domain/infra 代码 |
-| `cmd/seed` | **数据引导**。幂等创建默认项目（id=`default`）、Console 管理员（`admin@torchwood.local / Admin@123`）、默认 API Key（首次运行打印 secret；已存在则跳过） |
 
-三个入口都通过 `godotenv` 加载 `.env`，并从 `./configs` 绑定配置；统一使用 `config.NewBindConfigFunc()` 完成配置绑定。
+两个入口都通过 `godotenv` 加载 `.env`，并从 `./configs` 绑定配置；统一使用 `config.NewBindConfigFunc()` 完成配置绑定。
+
+> 首个管理员与默认 project/API Key 不再由离线脚本引导：全新数据库上打开 `/console/` 后按「初始化设置」表单注册第一个管理员（自动成为 owner，并创建默认 project 与默认 API Key），详见 `docs/implementation-bootstrap-and-cli.md` §3。
+
+另有 **`cmd/client`（Torchwood CLI，二进制 `torchwood`）**：面向 Agent / 自动化 / 运维的 gRPC 客户端，用 cobra 实现（不依赖 Wire），通过 API Key 以 `x-api-key` metadata 调用 Server API；含 `health`、`projects`、`users` 具名命令与覆盖全部 Server API 方法的 `rpc` 逃生舱命令（方法注册表 `cmd/client/registry.go`）。使用示例见 `docs/developer/02-quickstart.md` §7、设计细节见 `docs/implementation-bootstrap-and-cli.md` §4。

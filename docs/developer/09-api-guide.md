@@ -553,3 +553,56 @@ grpc-gateway 用自定义 `HTTPErrorHandler` 把 gRPC status 转为统一结构�
 5. 按 §8/§9 核对错误码与分页参数命名；
 6. 集成测试参照 `internal/api/servergrpc/projects_test.go`（stub repo + `contexts.WithPrincipal`）与
    `internal/testutil`（真实 DB），详见 `docs/developer/11-testing.md`。
+
+---
+
+## 12. 用 Torchwood CLI 调用 Server API
+
+`cmd/client`（二进制 `bin/torchwood[.exe]`，cobra）通过 gRPC 调用 Server API，认证走 `x-api-key` metadata（**不传** `X-Torchwood-Project`，该 header 仅对 admin console session 有效）。`health` 为公开命令，其余命令必须先提供 API key（`--api-key` 或 `TORCHWOOD_CLI_API_KEY`）。
+
+常用示例：
+
+```bash
+torchwood health get
+torchwood users list --api-key <secret> --page-size 20
+torchwood users create --email a@b.c --password 'pw' --data '{"labels":{"team":"core"}}'
+torchwood projects get default
+torchwood databases documents create app notes --data '{"title":"hi"}'
+torchwood storage usage
+torchwood functions executions create hello --input '{}' --async
+torchwood oauth-providers list
+torchwood rpc /torchwood.server.v1.UsersService/ListUsers --data '{"pageSize": 10}'
+```
+
+命令树（`torchwood --help`）：
+
+```text
+databases    create/list/get/delete；collections create/list/get/update/delete；
+             attributes create/delete；indexes create/delete；
+             documents create/list/get/update/upsert/delete/count/bulk-update/bulk-delete
+teams        create/list/get/delete；prefs get/update；memberships create/list/get/
+             update/update-status/delete
+storage      buckets create/list/get/update/delete；files list/get/update/delete；
+             usage（不做文件上传/下载与分片会话，也不提供 files create/token）
+functions    runtimes/specifications；create/list/get/update/delete；
+             deployments create/list/get/delete（create 走 gRPC 纯消息，≤50MiB）；
+             variables set/get；executions create/list/get
+oauth-providers list/upsert/delete（proto 无 get 方法）
+```
+
+要点：
+
+- **新增 Server API 方法后**：同步登记 `cmd/client/registry.go`（用生成的
+  `XxxService_Method_FullMethodName` 常量做 key），完整性由
+  `cmd/client/registry_test.go` 的 `TestRPCRegistryCoverage` 保证（遍历
+  `protoregistry.GlobalFiles` 中 `server/v1/` 全部方法比对，含请求类型一致性）。
+- **具名命令**覆盖 `proto/server/v1` 全部资源（health/projects/users/databases/teams/
+  storage/functions/oauth-providers），方法级覆盖见上方命令树；注册表仍保留全部
+  方法（含 CLI 具名命令未暴露的 `storage files create`、`CreateFileToken` 等），
+  供 `rpc` 逃生舱复用。
+- **请求参数**：标量用具名 flag，复杂结构（labels/prefs 等 `Struct`、document data）
+  用 `--data` 传 protojson（camelCase 字段名），与 flag 冲突时以 `--data` 为准。
+- **安全边界**：CLI 不提供 api-keys 命令（API Key 凭证被服务端拦截器禁止调用），
+  不提供 `projects create/update`（限平台 admin）。
+- 错误统一输出 `code + message`（`PermissionDenied` 附带 scope 提示）到 stderr，非 0 退出码。
+- 设计文档：`docs/implementation-bootstrap-and-cli.md` §4；快速上手：`docs/developer/02-quickstart.md` §7。
