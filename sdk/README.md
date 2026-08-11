@@ -9,7 +9,7 @@
 | 管理面自动化（建用户、管文档、Storage） | **Server API** + API Key | 在 Console 或通过 `POST /v1/server/api-keys` 创建带 scope 的 Key |
 | 终端用户身份流（注册/登录/会话） | **Client API** + JWT | SDK 自动持久化 access token |
 | Agent 工具 schema 来源 | **OpenAPI** | `task generate-proto` 后在 `genproto/**/*.swagger.json` 获取 |
-| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入 seed 输出的 API Key |
+| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入首次部署引导展示的默认 API Key |
 
 典型 Agent 工作流：用 scoped API Key 实例化 `Torchwood.withApiKey()` → 读取 OpenAPI 或 SDK 类型 → 调用 Server Databases/Users/Storage API → 将结构化响应回传给 LLM。
 
@@ -17,8 +17,48 @@
 
 | 路径 | 说明 |
 |------|------|
-| `typescript/` | SDK 包 `@torchwood/sdk` |
+| `typescript/` | SDK 包 `@torchwood/sdk`（TypeScript） |
+| `go/` | 官方 Go SDK（模块 `github.com/torchwooddev/torchwood/sdk/go`） |
 | `demo/` | Web 演示站点（注册/登录 + SDK 功能演示） |
+
+## Go SDK
+
+Go SDK 是 gRPC 直连的薄封装（默认本地走 insecure，生产用 `WithDialOptions` 配置 TLS），
+提供 `Client`（Client API，Bearer JWT）与 `ServerClient`（Server API，API Key）两类客户端。
+
+```go
+import (
+    "context"
+
+    "github.com/torchwooddev/torchwood/sdk/go"
+)
+
+// Server API：以 API Key 管理用户/团队/文档库
+srv, err := torchwood.NewServerClient("127.0.0.1:9081",
+    torchwood.WithServerAPIKey(apiKey),
+    torchwood.WithDatabaseID("app"),
+)
+
+// 为 Agent 账号签发 client token
+tok, err := srv.Users.CreateUserToken(ctx, "user-1")
+
+// 文档 upsert（按唯一索引冲突列）
+doc, err := srv.Databases.UpsertDocument(ctx, "members", "m1",
+    map[string]any{"channel_id": "ch1", "last_read_seq": 42},
+    []string{"channel_id", "user_id"}, nil)
+
+// Client API：注册登录后回填 access token
+c, err := torchwood.NewClient("127.0.0.1:9081",
+    torchwood.WithProjectID("default"),
+)
+resp, err := c.Account.SignIn(ctx, "u@example.com", "Pass@123")
+c.SetAccessToken(resp.Tokens.AccessToken)
+me, err := c.Account.Me(ctx)
+```
+
+- 文档 API 默认绑定 `WithDatabaseID` 指定的库，可用 `c.UseDatabase(id)` 切换副本。
+- 所有调用返回 gRPC status 错误，用 `status.Code(err)` 判别（`codes.NotFound` 等）。
+- SDK 测试通过 bufconn 内存 gRPC 服务运行，无需外部依赖；`task test` / `task lint-go` 已覆盖 `sdk/go`。
 
 ## 快速开始
 
@@ -30,8 +70,9 @@ task sdk-build
 # 启动本地 Torchwood（另开终端）
 task up
 task migrate
-go run ./cmd/seed   # 记下输出的 api_key
 task dev-server
+# 全新数据库上打开 http://127.0.0.1:9080/console/ 完成首次部署引导，
+# 注册第一个管理员后页面展示一次默认 API Key secret
 
 # 启动 Web 演示（默认 http://localhost:5174）
 task sdk-demo
@@ -52,7 +93,7 @@ task sdk-demo
 | `/app/server` | Health / Projects / Users / Teams / Databases |
 | `/app/settings` | Endpoint、Project ID、API Key 配置 |
 
-Server API 相关功能需在设置页填写 `go run ./cmd/seed` 输出的 API Key。
+Server API 相关功能需在设置页填写首次部署引导展示的默认 API Key。
 
 ## SDK 用法
 

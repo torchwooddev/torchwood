@@ -130,13 +130,26 @@ tasks:
       DATE:
         sh: '{{if eq .OS "Windows_NT"}}powershell -NoProfile -Command Get-Date -Format "yyyyMMddHHmmss"{{else}}date +%Y%m%d%H%M%S{{end}}'
 
+  test-sdk-go:
+    dir: '{{.USER_WORKING_DIR}}/sdk/go'
+    cmds:
+      - go test -v ./... -cover
+
   test:
+    deps:
+      - test-sdk-go
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - go test -v ./... -cover
 
   lint-go:
     dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - go vet ./...
+      - test -z "$(gofmt -l .)"
+
+  lint-sdk-go:
+    dir: '{{.USER_WORKING_DIR}}/sdk/go'
     cmds:
       - go vet ./...
       - test -z "$(gofmt -l .)"
@@ -149,6 +162,7 @@ tasks:
   lint:
     deps:
       - lint-go
+      - lint-sdk-go
       - lint-console
 
   build-docker:

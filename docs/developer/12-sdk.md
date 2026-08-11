@@ -18,7 +18,7 @@ MCP Tool Server 以类型安全的方式调用后端。
 | 管理面自动化（建用户、管文档、Storage） | **Server API** + API Key | 在 Console 或通过 `POST /v1/server/api-keys` 创建带 scope 的 Key |
 | 终端用户身份流（注册/登录/会话） | **Client API** + JWT | SDK 自动持久化 access token（内存态，`setAccessToken` 可覆盖） |
 | Agent 工具 schema 来源 | **OpenAPI** | `task generate-proto` 后在 `genproto/**/*.swagger.json` 获取 |
-| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入 `go run ./cmd/seed` 输出的 API Key |
+| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入首次部署引导展示的默认 API Key |
 
 典型 Agent 工作流：用 scoped API Key 实例化 `Torchwood.withApiKey()` → 读取 OpenAPI
 或 SDK 类型 → 调用 Server Databases/Users/Storage API → 将结构化响应回传给 LLM。
@@ -330,8 +330,8 @@ Vite + React 19 + react-router-dom 7 + Tailwind 的演示站点，**默认端口
 task sdk-demo        # 自动先跑 sdk-build，然后 vite dev（http://localhost:5174）
 ```
 
-启动前确认本地后端已就绪（`task up` + `task migrate` + `go run ./cmd/seed` +
-`task dev-server`），复制 `sdk/demo/.env.example` 为 `.env` 可覆盖默认值：
+启动前确认本地后端已就绪（`task up` + `task migrate` + `task dev-server`），
+并在全新数据库上先完成首次部署引导（打开 `/console/` 注册第一个管理员，展示的默认 API Key secret 用于 Server API），复制 `sdk/demo/.env.example` 为 `.env` 可覆盖默认值：
 
 ```dotenv
 VITE_TORCHWOOD_ENDPOINT=http://localhost:9080
@@ -348,5 +348,68 @@ VITE_TORCHWOOD_PROJECT_ID=default
 | `/app/server` | `health.check` / `projects.list` / `users.list` / `teams.create` / `databases.listDatabases` |
 | `/app/settings` | Endpoint、Project ID、API Key 配置（本地持久化） |
 
-Server API 页面需要先在设置页填入 `go run ./cmd/seed` 输出的 API Key；设置与登录态
+Server API 页面需要先在设置页填入首次部署引导展示的默认 API Key；设置与登录态
 保存在 localStorage（`Torchwood-demo-settings` / `Torchwood-demo-auth`）。
+
+---
+
+## 9. Go SDK（`sdk/go/`）
+
+> 独立 Go module：`github.com/torchwooddev/torchwood/sdk/go`（require + replace
+> `github.com/torchwooddev/torchwood => ../..` 本地开发）。薄封装，gRPC 直连，无第三方
+> 运行时依赖；API surface 与 TS SDK 对应。
+
+### 9.1 客户端类型
+
+| 类型 | 认证 | 服务 |
+|------|------|------|
+| `Client`（`NewClient(target, opts...)`） | `Authorization: Bearer <JWT>` | `Account` / `Teams` / `Databases`（文档 CRUD） |
+| `ServerClient`（`NewServerClient(target, opts...)`） | `x-api-key`（+ `x-torchwood-project`） | `Health` / `Users` / `Teams` / `Databases`（库/集合/属性/索引/文档/Bulk） |
+
+Options：`WithServerAPIKey` / `WithAccessToken` / `WithProjectID` / `WithDatabaseID` /
+`WithDialOptions`（TLS 等）。`SetAccessToken` / `SetAPIKey` 支持运行时更新；
+`UseDatabase(id)` 返回绑定指定库的文档服务副本。
+
+### 9.2 典型用法
+
+```go
+import (
+    "context"
+    "github.com/torchwooddev/torchwood/sdk/go"
+)
+
+ctx := context.Background()
+
+// Server API：API Key 管理面
+srv, err := torchwood.NewServerClient("127.0.0.1:9081",
+    torchwood.WithServerAPIKey(os.Getenv("TORCHWOOD_API_KEY")),
+    torchwood.WithDatabaseID("app"),
+)
+
+user, err := srv.Users.CreateUser(ctx, "agent-1@agents.local", "pw", "Agent One", "active", nil, nil)
+tok, err := srv.Users.CreateUserToken(ctx, user.Id) // 签发 Agent 登录凭证
+
+doc, err := srv.Databases.UpsertDocument(ctx, "members", "m1",
+    map[string]any{"channel_id": "ch1", "user_id": "u1", "last_read_seq": 42},
+    []string{"channel_id", "user_id"}, nil) // ON CONFLICT DO UPDATE
+
+count, err := srv.Databases.CountDocuments(ctx, "messages",
+    []string{`equal("channel_id","ch1")`})
+
+// Client API：注册/登录后回填 token
+c, err := torchwood.NewClient("127.0.0.1:9081", torchwood.WithProjectID("default"))
+resp, err := c.Account.SignIn(ctx, "u@example.com", "Pass@123")
+c.SetAccessToken(resp.Tokens.AccessToken)
+me, err := c.Account.Me(ctx)
+```
+
+### 9.3 行为说明
+
+- **错误**：全部调用返回 gRPC `status` 错误，用 `status.Code(err)` 判别
+  （`codes.NotFound`、`codes.PermissionDenied` 等），与 TS SDK 的 `TorchwoodError.status` 对应。
+- **文档数据**：`map[string]any` 入参内部转 `structpb`；数值字段读回为 `float64`。
+- **查询**：List/Count 使用 Appwrite 风格 DSL 字符串（`equal`/`greaterThan`/`orderAsc` 等），
+  与 `pkg/query` 一致；List 返回 `([]*Document, nextPageToken, error)`。
+- **测试**：bufconn 内存 gRPC fake 服务，无外部依赖；已纳入 `task test`（`test-sdk-go`）
+  与 `task lint`（`lint-sdk-go`）。
+- **发版**：`sdk/go` 为独立 module，发版时单独 tag（如 `sdk/go/v0.1.0`）。
