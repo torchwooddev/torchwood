@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/spf13/cobra"
 	"github.com/torchwooddev/torchwood/sdk/go/server"
 )
 
@@ -66,14 +65,4 @@ func formatRPCError(err error) string {
 		return fmt.Sprintf("rpc failed: %v\n提示：请检查 API Key 的 scope（如 users.read / users.write，或 * / all），或用 Console 重新生成 key", err)
 	}
 	return fmt.Sprintf("rpc failed: %v", err)
-}
-
-// changedBoolPtr 返回 flag 显式设置时的指针（nil 表示未设置），
-// 用于映射 proto3 optional bool 字段的 presence 语义。
-// 注意：Task 11 起被 setChanged（JSON map 版本）取代，本函数随命令迁移后删除。
-func changedBoolPtr(cmd *cobra.Command, name string, v bool) *bool {
-	if cmd.Flags().Changed(name) {
-		return &v
-	}
-	return nil
 }
