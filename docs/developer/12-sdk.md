@@ -356,60 +356,95 @@ Server API 页面需要先在设置页填入首次部署引导展示的默认 AP
 ## 9. Go SDK（`sdk/go/`）
 
 > 独立 Go module：`github.com/torchwooddev/torchwood/sdk/go`（require + replace
-> `github.com/torchwooddev/torchwood => ../..` 本地开发）。薄封装，gRPC 直连，无第三方
-> 运行时依赖；API surface 与 TS SDK 对应。
+> 本地开发）。拆分为两个子包：`sdk/go/client`（end-user 认证，自动刷新 token）
+> 与 `sdk/go/server`（API Key 认证，含 InvokeJSON 动态分发）。gRPC 直连，
+> 默认明文（insecure），生产用 `WithDialOptions` 配置 TLS。
 
-### 9.1 客户端类型
+### 9.1 包结构与客户端类型
 
-| 类型 | 认证 | 服务 |
-|------|------|------|
-| `Client`（`NewClient(target, opts...)`） | `Authorization: Bearer <JWT>` | `Account` / `Teams` / `Databases`（文档 CRUD） |
-| `ServerClient`（`NewServerClient(target, opts...)`） | `x-api-key`（+ `x-torchwood-project`） | `Health` / `Users` / `Teams` / `Databases`（库/集合/属性/索引/文档/Bulk） |
+| 包 | 类型 | 认证 | 服务 |
+|----|------|------|------|
+| `sdk/go/client` | `client.New(target, opts...)` | `Authorization: Bearer <JWT>`（自动刷新） | `Account`（SignUp/SignIn/RefreshToken/Me/SignOut）/ `Teams` / `Databases`（文档 CRUD） |
+| `sdk/go/server` | `server.New(target, opts...)` | `x-api-key`（+ 可选 `x-torchwood-project`） | `Health` / `Users` / `Teams` / `Databases` / `Projects` / `Storage` / `Functions` / `OAuthProviders` + `InvokeJSON` |
 
-Options：`WithServerAPIKey` / `WithAccessToken` / `WithProjectID` / `WithDatabaseID` /
-`WithDialOptions`（TLS 等）。`SetAccessToken` / `SetAPIKey` 支持运行时更新；
-`UseDatabase(id)` 返回绑定指定库的文档服务副本。
+server 包 Options：`WithAPIKey` / `WithProjectID` / `WithDatabaseID` / `WithDialOptions`；
+client 包 Options：`WithProjectID` / `WithDatabaseID` / `WithTokenStore` /
+`WithOnTokensChanged` / `WithInitialTokens` / `WithDialOptions`。
+`UseDatabase(id)` 返回绑定指定库的文档服务副本（两包均有）。
 
-### 9.2 典型用法
+### 9.2 Token 管理（client 包）
+
+- `TokenStore` 接口：`Load() (*clientv1.TokenBundle, error)` / `Save` / `Clear`；
+  内置 `MemoryTokenStore`（进程内）与 `FileTokenStore`（JSON 文件、0600、
+  临时文件 + rename 原子写、内置 mutex 可并发）。
+- `TokenBundle` 直接复用 proto 类型（access_token / refresh_token / expires_at）。
+- 自动刷新（unary interceptor 对全部调用透明生效）：
+  1. **主动刷新**：`expires_at` 距现在不足 30 秒且持有 refresh token 时先刷新；
+  2. **401 重试**：返回 Unauthenticated 时刷新一次并重试原调用；
+  3. **并发去重**：刷新用 mutex 串行 + double-check；
+  4. 刷新失败仅当 RPC 返回 Unauthenticated 才清空本地 token，临时错误保留。
+- `OnTokensChanged` 回调在登录/刷新/清空（nil）时触发；SignOut 成功或
+  Unauthenticated 都清空本地 token；SignIn/SignUp 仅在非 MFA 且 access_token
+  非空时落 token。
+
+### 9.3 InvokeJSON（server 包）
+
+```go
+respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser", reqJSON)
+```
+
+- 动态分发：从 `protoregistry.GlobalFiles` 按 full method name 查找，限定
+  `torchwood.server.v1.*` 且排除 `APIKeysService`；proto 新增方法自动获得支持。
+- `reqJSON` 为 protojson（camelCase 键，未知字段报错）；响应为缩进 protojson。
+- 错误形态：未知方法 `torchwood: unknown method "<method>"`；非法 JSON 为
+  protojson 原始错误；RPC 错误为 gRPC status 错误（CLI 侧用
+  `server.IsPermissionDenied` 判断 scope 提示）。
+
+### 9.4 典型用法
 
 ```go
 import (
     "context"
-    "github.com/torchwooddev/torchwood/sdk/go"
+    "github.com/torchwooddev/torchwood/sdk/go/client"
+    "github.com/torchwooddev/torchwood/sdk/go/server"
 )
 
 ctx := context.Background()
 
 // Server API：API Key 管理面
-srv, err := torchwood.NewServerClient("127.0.0.1:9081",
-    torchwood.WithServerAPIKey(os.Getenv("TORCHWOOD_API_KEY")),
-    torchwood.WithDatabaseID("app"),
+srv, err := server.New("127.0.0.1:9060",
+    server.WithAPIKey(os.Getenv("TORCHWOOD_API_KEY")),
+    server.WithDatabaseID("app"),
 )
-
 user, err := srv.Users.CreateUser(ctx, "agent-1@agents.local", "pw", "Agent One", "active", nil, nil)
 tok, err := srv.Users.CreateUserToken(ctx, user.Id) // 签发 Agent 登录凭证
-
 doc, err := srv.Databases.UpsertDocument(ctx, "members", "m1",
     map[string]any{"channel_id": "ch1", "user_id": "u1", "last_read_seq": 42},
     []string{"channel_id", "user_id"}, nil) // ON CONFLICT DO UPDATE
-
 count, err := srv.Databases.CountDocuments(ctx, "messages",
     []string{`equal("channel_id","ch1")`})
+// 逃生舱：按方法名 + JSON 调用任意 Server API unary 方法
+respJSON, err := srv.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/ListUsers", []byte(`{"pageSize":10}`))
 
-// Client API：注册/登录后回填 token
-c, err := torchwood.NewClient("127.0.0.1:9081", torchwood.WithProjectID("default"))
-resp, err := c.Account.SignIn(ctx, "u@example.com", "Pass@123")
-c.SetAccessToken(resp.Tokens.AccessToken)
+// Client API：注册/登录自动保存 token，后续调用自动刷新
+store := client.NewFileTokenStore("~/.torchwood/tokens.json")
+c, err := client.New("127.0.0.1:9060",
+    client.WithProjectID("default"),
+    client.WithTokenStore(store),
+)
+_, err = c.Account.SignIn(ctx, "u@example.com", "Pass@123")
 me, err := c.Account.Me(ctx)
 ```
 
-### 9.3 行为说明
+### 9.5 行为说明
 
 - **错误**：全部调用返回 gRPC `status` 错误，用 `status.Code(err)` 判别
   （`codes.NotFound`、`codes.PermissionDenied` 等），与 TS SDK 的 `TorchwoodError.status` 对应。
 - **文档数据**：`map[string]any` 入参内部转 `structpb`；数值字段读回为 `float64`。
 - **查询**：List/Count 使用 Appwrite 风格 DSL 字符串（`equal`/`greaterThan`/`orderAsc` 等），
   与 `pkg/query` 一致；List 返回 `([]*Document, nextPageToken, error)`。
+- **CLI 依赖**：`cmd/client` 只依赖 sdk/go（server 包 InvokeJSON），源码不直接
+  import genproto/grpc（import_guard_test 兜底）；新增 RPC 无需在 CLI 登记。
 - **测试**：bufconn 内存 gRPC fake 服务，无外部依赖；已纳入 `task test`（`test-sdk-go`）
   与 `task lint`（`lint-sdk-go`）。
 - **发版**：`sdk/go` 为独立 module，发版时单独 tag（如 `sdk/go/v0.1.0`）。

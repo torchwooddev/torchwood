@@ -24,19 +24,21 @@
 ## Go SDK
 
 Go SDK 是 gRPC 直连的薄封装（默认本地走 insecure，生产用 `WithDialOptions` 配置 TLS），
-提供 `Client`（Client API，Bearer JWT）与 `ServerClient`（Server API，API Key）两类客户端。
+拆分为 `sdk/go/client`（Client API，Bearer JWT，自动刷新 token）与
+`sdk/go/server`（Server API，API Key，含 InvokeJSON 动态分发）两个子包。
 
 ```go
 import (
     "context"
 
-    "github.com/torchwooddev/torchwood/sdk/go"
+    "github.com/torchwooddev/torchwood/sdk/go/client"
+    "github.com/torchwooddev/torchwood/sdk/go/server"
 )
 
 // Server API：以 API Key 管理用户/团队/文档库
-srv, err := torchwood.NewServerClient("127.0.0.1:9081",
-    torchwood.WithServerAPIKey(apiKey),
-    torchwood.WithDatabaseID("app"),
+srv, err := server.New("127.0.0.1:9060",
+    server.WithAPIKey(apiKey),
+    server.WithDatabaseID("app"),
 )
 
 // 为 Agent 账号签发 client token
@@ -47,16 +49,21 @@ doc, err := srv.Databases.UpsertDocument(ctx, "members", "m1",
     map[string]any{"channel_id": "ch1", "last_read_seq": 42},
     []string{"channel_id", "user_id"}, nil)
 
-// Client API：注册登录后回填 access token
-c, err := torchwood.NewClient("127.0.0.1:9081",
-    torchwood.WithProjectID("default"),
+// 逃生舱：按方法名 + JSON 调用任意 Server API unary 方法
+respJSON, err := srv.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/ListUsers", []byte(`{"pageSize":10}`))
+
+// Client API：注册/登录自动保存 token，过期自动刷新
+store := client.NewFileTokenStore("~/.torchwood/tokens.json")
+c, err := client.New("127.0.0.1:9060",
+    client.WithProjectID("default"),
+    client.WithTokenStore(store),
 )
-resp, err := c.Account.SignIn(ctx, "u@example.com", "Pass@123")
-c.SetAccessToken(resp.Tokens.AccessToken)
+_, err = c.Account.SignIn(ctx, "u@example.com", "Pass@123")
 me, err := c.Account.Me(ctx)
 ```
 
 - 文档 API 默认绑定 `WithDatabaseID` 指定的库，可用 `c.UseDatabase(id)` 切换副本。
+- client 包 TokenStore 支持内存与 JSON 文件两种实现；`OnTokensChanged` 回调感知登录/刷新/清空。
 - 所有调用返回 gRPC status 错误，用 `status.Code(err)` 判别（`codes.NotFound` 等）。
 - SDK 测试通过 bufconn 内存 gRPC 服务运行，无需外部依赖；`task test` / `task lint-go` 已覆盖 `sdk/go`。
 

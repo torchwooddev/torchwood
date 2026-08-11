@@ -11,7 +11,7 @@
 
 ## 项目结构补充
 - `console/`：React + Vite + TanStack Query + shadcn/ui 管理后台前端，通过 `console/embed.go` 嵌入 Go 二进制。
-- `cmd/client/`：Torchwood CLI 二进制（`bin/torchwood`），cobra 实现，通过 API Key 走 gRPC 调用 Server API；方法注册表 `cmd/client/registry.go` 覆盖 proto/server/v1 全部方法（除 APIKeysService），新增 RPC 需同步登记并跑 `go test ./cmd/client/...` 校验完整性。
+- `cmd/client/`：Torchwood CLI 二进制（`bin/torchwood`），cobra 实现，通过 sdk/go（server 包 InvokeJSON）以 API Key 调用 Server API；CLI 源码不直接 import genproto/grpc（有 import_guard_test 兜底），方法覆盖完整性由 `sdk/go/server` 的测试保证，新增 RPC 无需在 CLI 登记。
 - `internal/api/serverhttp/`：自定义 HTTP handler，例如 Storage multipart 上传下载。
 - `pkg/query/`：Appwrite 风格查询 DSL 解析器，供动态文档层使用。
 - `internal/testutil/`：集成测试数据库辅助工具。
