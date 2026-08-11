@@ -1,16 +1,30 @@
 package main
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	"google.golang.org/protobuf/proto"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
-func int32Ptr(v int32) *int32 { return &v }
+func newFuncCmdWithFlags(t *testing.T, set map[string]string) *cobra.Command {
+	c := &cobra.Command{}
+	c.Flags().Int32("timeout-seconds", 0, "")
+	c.Flags().String("spec", "", "")
+	c.Flags().Bool("enabled", false, "")
+	c.Flags().String("name", "", "")
+	c.Flags().String("entrypoint", "", "")
+	c.Flags().String("deployment-id", "", "")
+	c.Flags().Bool("async", false, "")
+	for k, v := range set {
+		require.NoError(t, c.Flags().Set(k, v))
+	}
+	return c
+}
 
 func TestBuildCreateFunctionReq(t *testing.T) {
 	tests := []struct {
@@ -19,9 +33,10 @@ func TestBuildCreateFunctionReq(t *testing.T) {
 		functionName   string
 		runtime        string
 		entrypoint     string
-		timeoutSeconds *int32
-		spec           *string
-		enabled        *bool
+		timeoutSeconds int32
+		spec           string
+		enabled        bool
+		set            map[string]string
 		wantErr        string
 	}{
 		{name: "缺 id", functionName: "f", runtime: "nodejs18", wantErr: "--id 必填"},
@@ -29,11 +44,12 @@ func TestBuildCreateFunctionReq(t *testing.T) {
 		{name: "缺 runtime", id: "f1", functionName: "f", wantErr: "--runtime 必填"},
 		{name: "最小字段", id: "f1", functionName: "f", runtime: "nodejs18", wantErr: ""},
 		{name: "全字段", id: "f1", functionName: "f", runtime: "nodejs18", entrypoint: "index.js",
-			timeoutSeconds: int32Ptr(30), spec: stringPtr("shared-2x"), enabled: boolPtr(true), wantErr: ""},
+			timeoutSeconds: 30, spec: "shared-2x", enabled: true,
+			set: map[string]string{"timeout-seconds": "30", "spec": "shared-2x", "enabled": "true"}, wantErr: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := buildCreateFunctionReq(tt.id, tt.functionName, tt.runtime, tt.entrypoint,
+			req, err := buildCreateFunctionReq(newFuncCmdWithFlags(t, tt.set), tt.id, tt.functionName, tt.runtime, tt.entrypoint,
 				tt.timeoutSeconds, tt.spec, tt.enabled)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -41,46 +57,59 @@ func TestBuildCreateFunctionReq(t *testing.T) {
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.id, req["id"])
+			require.Equal(t, tt.functionName, req["name"])
+			require.Equal(t, tt.runtime, req["runtime"])
+			if tt.entrypoint != "" {
+				require.Equal(t, tt.entrypoint, req["entrypoint"])
+			} else {
+				_, ok := req["entrypoint"]
+				require.False(t, ok, "entrypoint 未提供不应设置键: %v", req)
 			}
-			if req.GetId() != tt.id || req.GetName() != tt.functionName || req.GetRuntime() != tt.runtime {
-				t.Errorf("请求不匹配: %v", req)
+			_, wantTimeout := tt.set["timeout-seconds"]
+			_, hasTimeout := req["timeoutSeconds"]
+			require.Equal(t, wantTimeout, hasTimeout, "timeoutSeconds presence 不匹配: %v", req)
+			if wantTimeout {
+				require.Equal(t, tt.timeoutSeconds, req["timeoutSeconds"])
 			}
-			if tt.timeoutSeconds != nil && (req.TimeoutSeconds == nil || *req.TimeoutSeconds != *tt.timeoutSeconds) {
-				t.Errorf("timeoutSeconds 不匹配: %v", req.TimeoutSeconds)
+			_, wantSpec := tt.set["spec"]
+			_, hasSpec := req["spec"]
+			require.Equal(t, wantSpec, hasSpec, "spec presence 不匹配: %v", req)
+			if wantSpec {
+				require.Equal(t, tt.spec, req["spec"])
 			}
-			if tt.spec != nil && (req.Spec == nil || *req.Spec != *tt.spec) {
-				t.Errorf("spec 不匹配: %v", req.Spec)
-			}
-			if tt.enabled != nil && (req.Enabled == nil || *req.Enabled != *tt.enabled) {
-				t.Errorf("enabled 不匹配: %v", req.Enabled)
+			_, wantEnabled := tt.set["enabled"]
+			_, hasEnabled := req["enabled"]
+			require.Equal(t, wantEnabled, hasEnabled, "enabled presence 不匹配: %v", req)
+			if wantEnabled {
+				require.Equal(t, tt.enabled, req["enabled"])
 			}
 		})
 	}
 }
 
-func stringPtr(s string) *string { return &s }
-
 func TestBuildUpdateFunctionReq(t *testing.T) {
 	tests := []struct {
 		name           string
 		functionID     string
-		newName        *string
-		entrypoint     *string
-		timeoutSeconds *int32
-		spec           *string
-		enabled        *bool
+		newName        string
+		entrypoint     string
+		timeoutSeconds int32
+		spec           string
+		enabled        bool
+		set            map[string]string
 		wantErr        string
 	}{
 		{name: "缺 function-id", wantErr: "缺少 function-id"},
-		{name: "仅 name", functionID: "f1", newName: stringPtr("new"), wantErr: ""},
-		{name: "全字段", functionID: "f1", newName: stringPtr("new"), entrypoint: stringPtr("main.py"),
-			timeoutSeconds: int32Ptr(60), spec: stringPtr("shared-1x"), enabled: boolPtr(false), wantErr: ""},
+		{name: "仅 name", functionID: "f1", newName: "new", set: map[string]string{"name": "new"}, wantErr: ""},
+		{name: "全字段", functionID: "f1", newName: "new", entrypoint: "main.py",
+			timeoutSeconds: 60, spec: "shared-1x", enabled: false,
+			set: map[string]string{"name": "new", "entrypoint": "main.py", "timeout-seconds": "60", "spec": "shared-1x", "enabled": "false"}, wantErr: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := buildUpdateFunctionReq(tt.functionID, tt.newName, tt.entrypoint,
+			req, err := buildUpdateFunctionReq(newFuncCmdWithFlags(t, tt.set), tt.functionID, tt.newName, tt.entrypoint,
 				tt.timeoutSeconds, tt.spec, tt.enabled)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -88,17 +117,37 @@ func TestBuildUpdateFunctionReq(t *testing.T) {
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.functionID, req["functionId"])
+			_, wantName := tt.set["name"]
+			_, hasName := req["name"]
+			require.Equal(t, wantName, hasName, "name presence 不匹配: %v", req)
+			if wantName {
+				require.Equal(t, tt.newName, req["name"])
 			}
-			if tt.newName == nil && req.GetName() != "" {
-				t.Errorf("未传 --name 不应设置: %q", req.GetName())
+			_, wantEntry := tt.set["entrypoint"]
+			_, hasEntry := req["entrypoint"]
+			require.Equal(t, wantEntry, hasEntry, "entrypoint presence 不匹配: %v", req)
+			if wantEntry {
+				require.Equal(t, tt.entrypoint, req["entrypoint"])
 			}
-			if tt.newName != nil && (req.Name == nil || *req.Name != *tt.newName) {
-				t.Errorf("name 不匹配: %v", req.Name)
+			_, wantTimeout := tt.set["timeout-seconds"]
+			_, hasTimeout := req["timeoutSeconds"]
+			require.Equal(t, wantTimeout, hasTimeout, "timeoutSeconds presence 不匹配: %v", req)
+			if wantTimeout {
+				require.Equal(t, tt.timeoutSeconds, req["timeoutSeconds"])
 			}
-			if tt.timeoutSeconds != nil && (req.TimeoutSeconds == nil || *req.TimeoutSeconds != *tt.timeoutSeconds) {
-				t.Errorf("timeoutSeconds 不匹配: %v", req.TimeoutSeconds)
+			_, wantSpec := tt.set["spec"]
+			_, hasSpec := req["spec"]
+			require.Equal(t, wantSpec, hasSpec, "spec presence 不匹配: %v", req)
+			if wantSpec {
+				require.Equal(t, tt.spec, req["spec"])
+			}
+			_, wantEnabled := tt.set["enabled"]
+			_, hasEnabled := req["enabled"]
+			require.Equal(t, wantEnabled, hasEnabled, "enabled presence 不匹配: %v", req)
+			if wantEnabled {
+				require.Equal(t, tt.enabled, req["enabled"])
 			}
 		})
 	}
@@ -131,12 +180,8 @@ func TestBuildCreateDeploymentReq(t *testing.T) {
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if string(req.GetCode()) != "PK\x03\x04fakezip" {
-				t.Errorf("code 字节未正确读取")
-			}
+			require.NoError(t, err)
+			require.Equal(t, base64.StdEncoding.EncodeToString([]byte("PK\x03\x04fakezip")), req["code"])
 		})
 	}
 }
@@ -161,12 +206,9 @@ func TestBuildSetVariablesReq(t *testing.T) {
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(req.GetVariables()) != 1 || req.GetVariables()[0].GetKey() != "FOO" || req.GetVariables()[0].GetValue() != "bar" {
-				t.Errorf("variables 未解析: %v", req.GetVariables())
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.functionID, req["functionId"])
+			require.Equal(t, []map[string]string{{"key": "FOO", "value": "bar"}}, req["variables"])
 		})
 	}
 }
@@ -176,58 +218,40 @@ func TestBuildCreateExecutionReq(t *testing.T) {
 		name         string
 		functionID   string
 		input        string
-		deploymentID *string
-		async        *bool
+		deploymentID string
+		async        bool
+		set          map[string]string
 		wantErr      string
 	}{
 		{name: "缺 input", functionID: "f1", wantErr: "--input 必填"},
 		{name: "同步最小字段", functionID: "f1", input: `{"a":1}`, wantErr: ""},
-		{name: "异步指定部署", functionID: "f1", input: `{}`, deploymentID: stringPtr("d1"),
-			async: boolPtr(true), wantErr: ""},
+		{name: "异步指定部署", functionID: "f1", input: `{}`, deploymentID: "d1", async: true,
+			set: map[string]string{"deployment-id": "d1", "async": "true"}, wantErr: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := buildCreateExecutionReq(tt.functionID, tt.input, tt.deploymentID, tt.async)
+			req, err := buildCreateExecutionReq(newFuncCmdWithFlags(t, tt.set), tt.functionID, tt.input, tt.deploymentID, tt.async)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			require.NoError(t, err)
+			require.Equal(t, tt.functionID, req["functionId"])
+			require.Equal(t, tt.input, req["data"])
+			_, wantDep := tt.set["deployment-id"]
+			_, hasDep := req["deploymentId"]
+			require.Equal(t, wantDep, hasDep, "deploymentId presence 不匹配: %v", req)
+			if wantDep {
+				require.Equal(t, tt.deploymentID, req["deploymentId"])
 			}
-			if req.GetData() != tt.input {
-				t.Errorf("data 不匹配: %q", req.GetData())
-			}
-			if tt.deploymentID == nil && req.GetDeploymentId() != "" {
-				t.Errorf("deploymentId 不应设置: %q", req.GetDeploymentId())
-			}
-			if tt.deploymentID != nil && (req.DeploymentId == nil || *req.DeploymentId != *tt.deploymentID) {
-				t.Errorf("deploymentId 不匹配: %v", req.DeploymentId)
-			}
-			if tt.async != nil && (req.Async == nil || *req.Async != *tt.async) {
-				t.Errorf("async 不匹配: %v", req.Async)
+			_, wantAsync := tt.set["async"]
+			_, hasAsync := req["async"]
+			require.Equal(t, wantAsync, hasAsync, "async presence 不匹配: %v", req)
+			if wantAsync {
+				require.Equal(t, tt.async, req["async"])
 			}
 		})
-	}
-}
-
-// TestFunctionsRegistryTypes 校验具名命令构造的请求类型与 rpc 注册表一致。
-func TestFunctionsRegistryTypes(t *testing.T) {
-	for method, sample := range map[string]proto.Message{
-		serverv1.FunctionsService_CreateFunction_FullMethodName:   &serverv1.CreateFunctionRequest{},
-		serverv1.FunctionsService_UpdateFunction_FullMethodName:   &serverv1.UpdateFunctionRequest{},
-		serverv1.FunctionsService_CreateDeployment_FullMethodName: &serverv1.CreateDeploymentRequest{},
-		serverv1.FunctionsService_SetVariables_FullMethodName:     &serverv1.SetVariablesRequest{},
-		serverv1.FunctionsService_CreateExecution_FullMethodName:  &serverv1.CreateExecutionRequest{},
-	} {
-		e, err := lookupRPCMethod(method)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if proto.MessageName(e.newReq()) != proto.MessageName(sample) {
-			t.Errorf("注册表请求类型与具名命令不一致: %s", method)
-		}
 	}
 }

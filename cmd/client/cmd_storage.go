@@ -5,7 +5,19 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+)
+
+const (
+	methodStorageCreateBucket = "/torchwood.server.v1.StorageService/CreateBucket"
+	methodStorageListBuckets  = "/torchwood.server.v1.StorageService/ListBuckets"
+	methodStorageGetBucket    = "/torchwood.server.v1.StorageService/GetBucket"
+	methodStorageDeleteBucket = "/torchwood.server.v1.StorageService/DeleteBucket"
+	methodStorageUpdateBucket = "/torchwood.server.v1.StorageService/UpdateBucket"
+	methodStorageListFiles    = "/torchwood.server.v1.StorageService/ListFiles"
+	methodStorageGetFile      = "/torchwood.server.v1.StorageService/GetFile"
+	methodStorageDeleteFile   = "/torchwood.server.v1.StorageService/DeleteFile"
+	methodStorageUpdateFile   = "/torchwood.server.v1.StorageService/UpdateFile"
+	methodStorageUsage        = "/torchwood.server.v1.StorageService/GetStorageUsage"
 )
 
 // newStorageCmd 覆盖 StorageService 元数据操作：buckets（create/list/get/
@@ -52,8 +64,8 @@ func newStorageBucketsCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Bucket{}
-			if err := invoke(g, serverv1.StorageService_CreateBucket_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodStorageCreateBucket, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -72,8 +84,8 @@ func newStorageBucketsListCmd(g *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "列出存储桶",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListBucketsResponse{}
-			if err := invoke(g, serverv1.StorageService_ListBuckets_FullMethodName, buildListRequest(pageSize, pageToken), resp); err != nil {
+			resp, err := invoke(g, methodStorageListBuckets, listJSON(pageSize, pageToken))
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -90,8 +102,8 @@ func newStorageBucketsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取存储桶",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Bucket{}
-			if err := invoke(g, serverv1.StorageService_GetBucket_FullMethodName, &serverv1.GetBucketRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodStorageGetBucket, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -107,12 +119,12 @@ func newStorageBucketsUpdateCmd(g *globalFlags) *cobra.Command {
 		Short: "更新存储桶（仅更新显式传入的字段）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildUpdateBucketReq(args[0], name, changedBoolPtr(cmd, "public", public))
+			req, err := buildUpdateBucketReq(cmd, args[0], name, public)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Bucket{}
-			if err := invoke(g, serverv1.StorageService_UpdateBucket_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodStorageUpdateBucket, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -129,8 +141,8 @@ func newStorageBucketsDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除存储桶",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Bucket{}
-			if err := invoke(g, serverv1.StorageService_DeleteBucket_FullMethodName, &serverv1.GetBucketRequest{Id: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodStorageDeleteBucket, map[string]any{"id": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -166,8 +178,8 @@ func newStorageFilesListCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.ListFilesResponse{}
-			if err := invoke(g, serverv1.StorageService_ListFiles_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodStorageListFiles, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -185,8 +197,8 @@ func newStorageFilesGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取文件元数据",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.File{}
-			if err := invoke(g, serverv1.StorageService_GetFile_FullMethodName, &serverv1.GetFileRequest{BucketId: args[0], FileId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodStorageGetFile, map[string]any{"bucketId": args[0], "fileId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -201,12 +213,12 @@ func newStorageFilesUpdateCmd(g *globalFlags) *cobra.Command {
 		Short: "更新文件元数据（仅更新显式传入的字段）",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildUpdateFileReq(args[0], args[1], name, mimeType, metadata)
+			req, err := buildUpdateFileReq(cmd, args[0], args[1], name, mimeType, metadata)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.File{}
-			if err := invoke(g, serverv1.StorageService_UpdateFile_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodStorageUpdateFile, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -224,8 +236,8 @@ func newStorageFilesDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除文件",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.File{}
-			if err := invoke(g, serverv1.StorageService_DeleteFile_FullMethodName, &serverv1.GetFileRequest{BucketId: args[0], FileId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodStorageDeleteFile, map[string]any{"bucketId": args[0], "fileId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -238,8 +250,8 @@ func newStorageUsageCmd(g *globalFlags) *cobra.Command {
 		Use:   "usage",
 		Short: "获取存储用量（桶数/文件数/总大小）",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.StorageUsage{}
-			if err := invoke(g, serverv1.StorageService_GetStorageUsage_FullMethodName, &serverv1.GetStorageUsageRequest{}, resp); err != nil {
+			resp, err := invoke(g, methodStorageUsage, nil)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -248,48 +260,59 @@ func newStorageUsageCmd(g *globalFlags) *cobra.Command {
 }
 
 // buildCreateBucketReq 构造 CreateBucketRequest（name 必填）。
-func buildCreateBucketReq(name, permissions string, public bool) (*serverv1.CreateBucketRequest, error) {
+func buildCreateBucketReq(name, permissions string, public bool) (map[string]any, error) {
 	if name == "" {
 		return nil, fmt.Errorf("--name 必填")
 	}
-	perms, err := jsonStringList(permissions, "permissions")
-	if err != nil {
-		return nil, err
-	}
-	return &serverv1.CreateBucketRequest{Name: name, Permissions: perms, Public: public}, nil
-}
-
-// buildUpdateBucketReq 构造 UpdateBucketRequest：仅设置显式传入的字段；
-// name 非空即设置（清空请用 --data 全量合并），public 依赖 presence。
-func buildUpdateBucketReq(id, name string, public *bool) (*serverv1.UpdateBucketRequest, error) {
-	if id == "" {
-		return nil, fmt.Errorf("缺少存储桶 ID")
-	}
-	req := &serverv1.UpdateBucketRequest{Id: id, Public: public}
-	if name != "" {
-		req.Name = &name
+	req := map[string]any{"name": name, "public": public}
+	if permissions != "" {
+		perms, err := jsonStringList(permissions, "--permissions")
+		if err != nil {
+			return nil, err
+		}
+		req["permissions"] = perms
 	}
 	return req, nil
 }
 
+// buildUpdateBucketReq 构造 UpdateBucketRequest：仅设置显式传入的字段；
+// name 非空即设置，public 依赖 flag presence。
+func buildUpdateBucketReq(cmd *cobra.Command, id, name string, public bool) (map[string]any, error) {
+	if id == "" {
+		return nil, fmt.Errorf("缺少存储桶 ID")
+	}
+	req := map[string]any{"id": id}
+	if name != "" {
+		req["name"] = name
+	}
+	setChanged(cmd, "public", req, "public", public)
+	return req, nil
+}
+
 // buildListFilesReq 构造 ListFilesRequest。
-func buildListFilesReq(bucketID, queries string, pageSize int32, pageToken string) (*serverv1.ListFilesRequest, error) {
+func buildListFilesReq(bucketID, queries string, pageSize int32, pageToken string) (map[string]any, error) {
 	if bucketID == "" {
 		return nil, fmt.Errorf("缺少 bucket-id")
 	}
-	qs, err := jsonStringList(queries, "queries")
-	if err != nil {
-		return nil, err
+	req := map[string]any{"bucketId": bucketID}
+	if queries != "" {
+		qs, err := jsonStringList(queries, "--queries")
+		if err != nil {
+			return nil, err
+		}
+		req["queries"] = qs
 	}
-	req := &serverv1.ListFilesRequest{BucketId: bucketID, Queries: qs, PageToken: pageToken}
 	if pageSize > 0 {
-		req.PageSize = pageSize
+		req["pageSize"] = pageSize
+	}
+	if pageToken != "" {
+		req["pageToken"] = pageToken
 	}
 	return req, nil
 }
 
 // buildUpdateFileReq 构造 UpdateFileRequest（name/mime-type/metadata 至少一个）。
-func buildUpdateFileReq(bucketID, fileID, name, mimeType, metadata string) (*serverv1.UpdateFileRequest, error) {
+func buildUpdateFileReq(cmd *cobra.Command, bucketID, fileID, name, mimeType, metadata string) (map[string]any, error) {
 	if bucketID == "" {
 		return nil, fmt.Errorf("缺少 bucket-id")
 	}
@@ -299,16 +322,15 @@ func buildUpdateFileReq(bucketID, fileID, name, mimeType, metadata string) (*ser
 	if name == "" && mimeType == "" && metadata == "" {
 		return nil, fmt.Errorf("--name/--mime-type/--metadata 至少提供一个")
 	}
-	md, err := jsonStringMap(metadata, "metadata")
-	if err != nil {
-		return nil, err
-	}
-	req := &serverv1.UpdateFileRequest{BucketId: bucketID, FileId: fileID, Metadata: md}
-	if name != "" {
-		req.Name = &name
-	}
-	if mimeType != "" {
-		req.MimeType = &mimeType
+	req := map[string]any{"bucketId": bucketID, "fileId": fileID}
+	setChanged(cmd, "name", req, "name", name)
+	setChanged(cmd, "mime-type", req, "mimeType", mimeType)
+	if metadata != "" {
+		md, err := jsonStringMap(metadata, "--metadata")
+		if err != nil {
+			return nil, err
+		}
+		req["metadata"] = md
 	}
 	return req, nil
 }

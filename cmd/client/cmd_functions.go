@@ -1,20 +1,39 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+)
+
+const (
+	methodFunctionsRuntimes         = "/torchwood.server.v1.FunctionsService/ListRuntimes"
+	methodFunctionsSpecifications   = "/torchwood.server.v1.FunctionsService/ListSpecifications"
+	methodFunctionsCreate           = "/torchwood.server.v1.FunctionsService/CreateFunction"
+	methodFunctionsList             = "/torchwood.server.v1.FunctionsService/ListFunctions"
+	methodFunctionsGet              = "/torchwood.server.v1.FunctionsService/GetFunction"
+	methodFunctionsUpdate           = "/torchwood.server.v1.FunctionsService/UpdateFunction"
+	methodFunctionsDelete           = "/torchwood.server.v1.FunctionsService/DeleteFunction"
+	methodFunctionsCreateDeployment = "/torchwood.server.v1.FunctionsService/CreateDeployment"
+	methodFunctionsListDeployments  = "/torchwood.server.v1.FunctionsService/ListDeployments"
+	methodFunctionsGetDeployment    = "/torchwood.server.v1.FunctionsService/GetDeployment"
+	methodFunctionsDeleteDeployment = "/torchwood.server.v1.FunctionsService/DeleteDeployment"
+	methodFunctionsSetVariables     = "/torchwood.server.v1.FunctionsService/SetVariables"
+	methodFunctionsGetVariables     = "/torchwood.server.v1.FunctionsService/GetVariables"
+	methodFunctionsCreateExecution  = "/torchwood.server.v1.FunctionsService/CreateExecution"
+	methodFunctionsListExecutions   = "/torchwood.server.v1.FunctionsService/ListExecutions"
+	methodFunctionsGetExecution     = "/torchwood.server.v1.FunctionsService/GetExecution"
 )
 
 // newFunctionsCmd 覆盖 FunctionsService 全部 16 个方法：
 // runtimes/specifications、functions（create/list/get/update/delete）、
 // deployments（create/list/get/delete）、variables（set/get）、
 // executions（create/list/get）。
-// deployments create 走 gRPC 纯消息（bytes code，≤1MiB 建议；服务端上限 50MiB），
-// 更大的代码包走 multipart 上传（独立 HTTP handler，CLI 不提供）。
+// deployments create 由 CLI 读取 zip 文件并 base64 编码后走 gRPC 纯消息
+// （bytes code，≤1MiB 建议；服务端上限 50MiB），更大的代码包拆分或走
+// multipart 上传（独立 HTTP handler，CLI 不提供）。
 func newFunctionsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "functions",
@@ -40,8 +59,8 @@ func newFunctionsRuntimesCmd(g *globalFlags) *cobra.Command {
 		Use:   "runtimes",
 		Short: "列出支持的运行时",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListRuntimesResponse{}
-			if err := invoke(g, serverv1.FunctionsService_ListRuntimes_FullMethodName, &sharedv1.Empty{}, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsRuntimes, nil)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -54,8 +73,8 @@ func newFunctionsSpecificationsCmd(g *globalFlags) *cobra.Command {
 		Use:   "specifications",
 		Short: "列出支持的资源配置（spec）",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListSpecificationsResponse{}
-			if err := invoke(g, serverv1.FunctionsService_ListSpecifications_FullMethodName, &sharedv1.Empty{}, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsSpecifications, nil)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -70,8 +89,8 @@ func newFunctionsListCmd(g *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "列出函数",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListFunctionsResponse{}
-			if err := invoke(g, serverv1.FunctionsService_ListFunctions_FullMethodName, buildListRequest(pageSize, pageToken), resp); err != nil {
+			resp, err := invoke(g, methodFunctionsList, listJSON(pageSize, pageToken))
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -91,15 +110,12 @@ func newFunctionsCreateCmd(g *globalFlags) *cobra.Command {
 		Use:   "create --id <id> --name <name> --runtime <runtime>",
 		Short: "创建函数",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildCreateFunctionReq(id, name, runtime, entrypoint,
-				changedInt32Ptr(cmd, "timeout-seconds", timeoutSeconds),
-				changedStringPtr(cmd, "spec", spec),
-				changedBoolPtr(cmd, "enabled", enabled))
+			req, err := buildCreateFunctionReq(cmd, id, name, runtime, entrypoint, timeoutSeconds, spec, enabled)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Function{}
-			if err := invoke(g, serverv1.FunctionsService_CreateFunction_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsCreate, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -121,8 +137,8 @@ func newFunctionsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取函数",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Function{}
-			if err := invoke(g, serverv1.FunctionsService_GetFunction_FullMethodName, &serverv1.GetFunctionRequest{FunctionId: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsGet, map[string]any{"functionId": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -139,17 +155,12 @@ func newFunctionsUpdateCmd(g *globalFlags) *cobra.Command {
 		Short: "更新函数（仅更新显式传入的字段）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildUpdateFunctionReq(args[0],
-				changedStringPtr(cmd, "name", name),
-				changedStringPtr(cmd, "entrypoint", entrypoint),
-				changedInt32Ptr(cmd, "timeout-seconds", timeoutSeconds),
-				changedStringPtr(cmd, "spec", spec),
-				changedBoolPtr(cmd, "enabled", enabled))
+			req, err := buildUpdateFunctionReq(cmd, args[0], name, entrypoint, timeoutSeconds, spec, enabled)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Function{}
-			if err := invoke(g, serverv1.FunctionsService_UpdateFunction_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsUpdate, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -169,8 +180,8 @@ func newFunctionsDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除函数",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Function{}
-			if err := invoke(g, serverv1.FunctionsService_DeleteFunction_FullMethodName, &serverv1.GetFunctionRequest{FunctionId: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsDelete, map[string]any{"functionId": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -204,8 +215,8 @@ func newFunctionsDeploymentsCreateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Deployment{}
-			if err := invoke(g, serverv1.FunctionsService_CreateDeployment_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsCreateDeployment, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -221,8 +232,8 @@ func newFunctionsDeploymentsListCmd(g *globalFlags) *cobra.Command {
 		Short: "列出函数部署",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.ListDeploymentsResponse{}
-			if err := invoke(g, serverv1.FunctionsService_ListDeployments_FullMethodName, &serverv1.GetFunctionRequest{FunctionId: args[0]}, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsListDeployments, map[string]any{"functionId": args[0]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -236,8 +247,8 @@ func newFunctionsDeploymentsGetCmd(g *globalFlags) *cobra.Command {
 		Short: "按 ID 获取部署",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Deployment{}
-			if err := invoke(g, serverv1.FunctionsService_GetDeployment_FullMethodName, &serverv1.GetDeploymentRequest{FunctionId: args[0], DeploymentId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsGetDeployment, map[string]any{"functionId": args[0], "deploymentId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -251,8 +262,8 @@ func newFunctionsDeploymentsDeleteCmd(g *globalFlags) *cobra.Command {
 		Short: "删除部署",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp := &serverv1.Deployment{}
-			if err := invoke(g, serverv1.FunctionsService_DeleteDeployment_FullMethodName, &serverv1.GetDeploymentRequest{FunctionId: args[0], DeploymentId: args[1]}, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsDeleteDeployment, map[string]any{"functionId": args[0], "deploymentId": args[1]})
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -273,8 +284,8 @@ func newFunctionsVariablesCmd(g *globalFlags) *cobra.Command {
 			Short: "获取函数环境变量",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.Variables{}
-				if err := invoke(g, serverv1.FunctionsService_GetVariables_FullMethodName, &serverv1.GetFunctionRequest{FunctionId: args[0]}, resp); err != nil {
+				resp, err := invoke(g, methodFunctionsGetVariables, map[string]any{"functionId": args[0]})
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -295,8 +306,8 @@ func newFunctionsVariablesSetCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Variables{}
-			if err := invoke(g, serverv1.FunctionsService_SetVariables_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsSetVariables, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -319,8 +330,8 @@ func newFunctionsExecutionsCmd(g *globalFlags) *cobra.Command {
 			Short: "列出执行记录（最近 100 条）",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.ListExecutionsResponse{}
-				if err := invoke(g, serverv1.FunctionsService_ListExecutions_FullMethodName, &serverv1.GetFunctionRequest{FunctionId: args[0]}, resp); err != nil {
+				resp, err := invoke(g, methodFunctionsListExecutions, map[string]any{"functionId": args[0]})
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -331,8 +342,8 @@ func newFunctionsExecutionsCmd(g *globalFlags) *cobra.Command {
 			Short: "按 ID 获取执行记录",
 			Args:  cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp := &serverv1.Execution{}
-				if err := invoke(g, serverv1.FunctionsService_GetExecution_FullMethodName, &serverv1.GetExecutionRequest{FunctionId: args[0], ExecutionId: args[1]}, resp); err != nil {
+				resp, err := invoke(g, methodFunctionsGetExecution, map[string]any{"functionId": args[0], "executionId": args[1]})
+				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
@@ -350,14 +361,12 @@ func newFunctionsExecutionsCreateCmd(g *globalFlags) *cobra.Command {
 		Short: "创建执行（缺省用最新 ready 部署）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildCreateExecutionReq(args[0], input,
-				changedStringPtr(cmd, "deployment-id", deploymentID),
-				changedBoolPtr(cmd, "async", async))
+			req, err := buildCreateExecutionReq(cmd, args[0], input, deploymentID, async)
 			if err != nil {
 				return err
 			}
-			resp := &serverv1.Execution{}
-			if err := invoke(g, serverv1.FunctionsService_CreateExecution_FullMethodName, req, resp); err != nil {
+			resp, err := invoke(g, methodFunctionsCreateExecution, req)
+			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
@@ -370,7 +379,7 @@ func newFunctionsExecutionsCreateCmd(g *globalFlags) *cobra.Command {
 }
 
 // buildCreateFunctionReq 构造 CreateFunctionRequest（id/name/runtime 必填）。
-func buildCreateFunctionReq(id, name, runtime, entrypoint string, timeoutSeconds *int32, spec *string, enabled *bool) (*serverv1.CreateFunctionRequest, error) {
+func buildCreateFunctionReq(cmd *cobra.Command, id, name, runtime, entrypoint string, timeoutSeconds int32, spec string, enabled bool) (map[string]any, error) {
 	if id == "" {
 		return nil, fmt.Errorf("--id 必填")
 	}
@@ -380,34 +389,33 @@ func buildCreateFunctionReq(id, name, runtime, entrypoint string, timeoutSeconds
 	if runtime == "" {
 		return nil, fmt.Errorf("--runtime 必填（可用 runtimes 命令查看）")
 	}
-	return &serverv1.CreateFunctionRequest{
-		Id:             id,
-		Name:           name,
-		Runtime:        runtime,
-		Entrypoint:     entrypoint,
-		TimeoutSeconds: timeoutSeconds,
-		Spec:           spec,
-		Enabled:        enabled,
-	}, nil
+	req := map[string]any{"id": id, "name": name, "runtime": runtime}
+	if entrypoint != "" {
+		req["entrypoint"] = entrypoint
+	}
+	setChanged(cmd, "timeout-seconds", req, "timeoutSeconds", timeoutSeconds)
+	setChanged(cmd, "spec", req, "spec", spec)
+	setChanged(cmd, "enabled", req, "enabled", enabled)
+	return req, nil
 }
 
 // buildUpdateFunctionReq 构造 UpdateFunctionRequest：仅设置显式传入的字段。
-func buildUpdateFunctionReq(functionID string, name, entrypoint *string, timeoutSeconds *int32, spec *string, enabled *bool) (*serverv1.UpdateFunctionRequest, error) {
+func buildUpdateFunctionReq(cmd *cobra.Command, functionID string, name, entrypoint string, timeoutSeconds int32, spec string, enabled bool) (map[string]any, error) {
 	if functionID == "" {
 		return nil, fmt.Errorf("缺少 function-id")
 	}
-	return &serverv1.UpdateFunctionRequest{
-		FunctionId:     functionID,
-		Name:           name,
-		Entrypoint:     entrypoint,
-		TimeoutSeconds: timeoutSeconds,
-		Spec:           spec,
-		Enabled:        enabled,
-	}, nil
+	req := map[string]any{"functionId": functionID}
+	setChanged(cmd, "name", req, "name", name)
+	setChanged(cmd, "entrypoint", req, "entrypoint", entrypoint)
+	setChanged(cmd, "timeout-seconds", req, "timeoutSeconds", timeoutSeconds)
+	setChanged(cmd, "spec", req, "spec", spec)
+	setChanged(cmd, "enabled", req, "enabled", enabled)
+	return req, nil
 }
 
-// buildCreateDeploymentReq 读取 zip 文件并构造 CreateDeploymentRequest。
-func buildCreateDeploymentReq(functionID, codePath string) (*serverv1.CreateDeploymentRequest, error) {
+// buildCreateDeploymentReq 读取 zip 文件并构造 CreateDeploymentRequest
+// （code 为 bytes 字段，CLI 负责读文件后 base64 编码，不让用户手写）。
+func buildCreateDeploymentReq(functionID, codePath string) (map[string]any, error) {
 	if functionID == "" {
 		return nil, fmt.Errorf("缺少 function-id")
 	}
@@ -422,43 +430,41 @@ func buildCreateDeploymentReq(functionID, codePath string) (*serverv1.CreateDepl
 		return nil, fmt.Errorf("--code 为空文件")
 	}
 	if len(code) > 50<<20 {
-		return nil, fmt.Errorf("--code 超过 50MiB，请走 multipart 上传（POST /v1/server/functions/{id}/deployments/code）")
+		return nil, fmt.Errorf("--code 超过 50MiB，请拆分或使用对象存储")
 	}
-	return &serverv1.CreateDeploymentRequest{FunctionId: functionID, Code: code}, nil
+	return map[string]any{"functionId": functionID, "code": base64.StdEncoding.EncodeToString(code)}, nil
 }
 
 // buildSetVariablesReq 构造 SetVariablesRequest（--vars 为 JSON 对象）。
-func buildSetVariablesReq(functionID, vars string) (*serverv1.SetVariablesRequest, error) {
+func buildSetVariablesReq(functionID, vars string) (map[string]any, error) {
 	if functionID == "" {
 		return nil, fmt.Errorf("缺少 function-id")
 	}
-	kv, err := jsonStringMap(vars, "vars")
+	kv, err := jsonStringMap(vars, "--vars")
 	if err != nil {
 		return nil, err
 	}
 	if len(kv) == 0 {
 		return nil, fmt.Errorf("--vars 必填（环境变量 JSON 对象）")
 	}
-	variables := make([]*serverv1.Variable, 0, len(kv))
+	list := make([]map[string]string, 0, len(kv))
 	for k, v := range kv {
-		variables = append(variables, &serverv1.Variable{Key: k, Value: v})
+		list = append(list, map[string]string{"key": k, "value": v})
 	}
-	return &serverv1.SetVariablesRequest{FunctionId: functionID, Variables: variables}, nil
+	return map[string]any{"functionId": functionID, "variables": list}, nil
 }
 
 // buildCreateExecutionReq 构造 CreateExecutionRequest（--input 必填，与服务端
 // 校验一致）。
-func buildCreateExecutionReq(functionID, input string, deploymentID *string, async *bool) (*serverv1.CreateExecutionRequest, error) {
+func buildCreateExecutionReq(cmd *cobra.Command, functionID, input, deploymentID string, async bool) (map[string]any, error) {
 	if functionID == "" {
 		return nil, fmt.Errorf("缺少 function-id")
 	}
 	if input == "" {
 		return nil, fmt.Errorf("--input 必填（执行输入 JSON 字符串）")
 	}
-	return &serverv1.CreateExecutionRequest{
-		FunctionId:   functionID,
-		DeploymentId: deploymentID,
-		Data:         input,
-		Async:        async,
-	}, nil
+	req := map[string]any{"functionId": functionID, "data": input}
+	setChanged(cmd, "deployment-id", req, "deploymentId", deploymentID)
+	setChanged(cmd, "async", req, "async", async)
+	return req, nil
 }
