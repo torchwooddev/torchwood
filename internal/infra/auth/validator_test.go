@@ -162,6 +162,9 @@ func (d *stubDocDB) CreateDocument(context.Context, string, string, string, data
 func (d *stubDocDB) UpdateDocument(context.Context, string, string, string, databases.DocumentUpdate, databases.Principal) (databases.Document, error) {
 	return databases.Document{}, nil
 }
+func (d *stubDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
+	return databases.Document{}, nil
+}
 func (d *stubDocDB) DeleteDocument(context.Context, string, string, string, string, databases.Principal) error {
 	return nil
 }
