@@ -14,7 +14,9 @@ func TestInvokeJSONRoundTrip(t *testing.T) {
 	c := newTestClient(t, lis, WithAPIKey("k"))
 	out, err := c.InvokeJSON(context.Background(), "/torchwood.server.v1.HealthService/Check", nil)
 	require.NoError(t, err)
-	require.Contains(t, string(out), `"status": "ok"`)
+	// protojson Multiline 的 key: 后空格数由 detrand 随机（1 或 2 个），
+	// 与 CLI 历史输出同一实现，格式一致；断言不依赖空格数。
+	require.Regexp(t, `"status":\s+"ok"`, string(out))
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	require.Equal(t, []string{"k"}, rec.md.Get("x-api-key"))

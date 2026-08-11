@@ -59,6 +59,14 @@ type Client struct {
 	Teams *TeamsService
 	// Databases 提供库/集合/属性/索引/文档管理，绑定默认 DatabaseID。
 	Databases *DatabasesService
+	// Projects 提供项目管理。
+	Projects *ProjectsService
+	// Storage 提供存储元数据管理（上传/下载走独立 HTTP handler）。
+	Storage *StorageService
+	// Functions 提供函数管理（运行时/部署/变量/执行）。
+	Functions *FunctionsService
+	// OAuthProviders 提供 OAuth 提供商管理。
+	OAuthProviders *OAuthProvidersService
 }
 
 // New 建立 Server API 连接。target 为 gRPC 目标地址，不能为空。
@@ -82,6 +90,10 @@ func New(target string, opts ...Option) (*Client, error) {
 	c.Users = &UsersService{c: c}
 	c.Teams = &TeamsService{c: c}
 	c.Databases = c.UseDatabase(cfg.DatabaseID)
+	c.Projects = &ProjectsService{c: c, api: serverv1.NewProjectsServiceClient(gc)}
+	c.Storage = &StorageService{c: c, api: serverv1.NewStorageServiceClient(gc)}
+	c.Functions = &FunctionsService{c: c, api: serverv1.NewFunctionsServiceClient(gc)}
+	c.OAuthProviders = &OAuthProvidersService{c: c, api: serverv1.NewOAuthProvidersServiceClient(gc)}
 	return c, nil
 }
 
