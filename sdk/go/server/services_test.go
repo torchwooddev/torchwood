@@ -1,0 +1,338 @@
+package server
+
+import (
+	"context"
+	"testing"
+
+	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
+)
+
+// fakeServices 实现 Server API 的 Health/Users/Teams/Databases fake 服务。
+type fakeServices struct {
+	rec *recorder
+	serverv1.UnimplementedHealthServiceServer
+	serverv1.UnimplementedUsersServiceServer
+	serverv1.UnimplementedTeamsServiceServer
+	serverv1.UnimplementedDatabasesServiceServer
+}
+
+func (s *fakeServices) Check(ctx context.Context, _ *serverv1.HealthCheckRequest) (*serverv1.HealthCheckResponse, error) {
+	return &serverv1.HealthCheckResponse{Status: "SERVING"}, nil
+}
+
+func (s *fakeServices) GetVersion(ctx context.Context, _ *serverv1.GetVersionRequest) (*serverv1.GetVersionResponse, error) {
+	return &serverv1.GetVersionResponse{Version: "v0.1.0", Commit: "abc123"}, nil
+}
+
+func (s *fakeServices) CreateUser(ctx context.Context, req *serverv1.CreateUserRequest) (*serverv1.User, error) {
+	s.rec.mu.Lock()
+	s.rec.createdUser = req
+	s.rec.mu.Unlock()
+	return &serverv1.User{Id: "user-1", Email: req.Email, Name: req.Name, Status: req.Status}, nil
+}
+
+func (s *fakeServices) GetUser(ctx context.Context, req *serverv1.GetUserRequest) (*serverv1.User, error) {
+	return &serverv1.User{Id: req.Id, Email: "agent-1@agents.local", Name: "Agent One"}, nil
+}
+
+func (s *fakeServices) ListUsers(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListUsersResponse, error) {
+	return &serverv1.ListUsersResponse{Users: []*serverv1.User{{Id: "user-1", Email: "a@example.com"}}}, nil
+}
+
+func (s *fakeServices) UpdateUser(ctx context.Context, req *serverv1.UpdateUserRequest) (*serverv1.User, error) {
+	return &serverv1.User{Id: req.Id, Name: req.Name, Status: req.Status}, nil
+}
+
+func (s *fakeServices) DeleteUser(ctx context.Context, _ *serverv1.GetUserRequest) (*sharedv1.Empty, error) {
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *fakeServices) ListUserSessions(ctx context.Context, _ *serverv1.GetUserRequest) (*serverv1.ListUserSessionsResponse, error) {
+	return &serverv1.ListUserSessionsResponse{Sessions: []*serverv1.Session{{Id: "sess-1"}}}, nil
+}
+
+func (s *fakeServices) DeleteUserSession(ctx context.Context, _ *serverv1.DeleteUserSessionRequest) (*sharedv1.Empty, error) {
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *fakeServices) CreateUserToken(ctx context.Context, _ *serverv1.GetUserRequest) (*serverv1.CreateUserTokenResponse, error) {
+	return &serverv1.CreateUserTokenResponse{Tokens: &serverv1.TokenBundle{AccessToken: "agent-token"}}, nil
+}
+
+func (s *fakeServices) CreateTeam(ctx context.Context, req *serverv1.CreateTeamRequest) (*serverv1.Team, error) {
+	return &serverv1.Team{Id: "team-1", Name: req.Name, Permissions: req.Permissions}, nil
+}
+
+func (s *fakeServices) GetTeam(ctx context.Context, req *serverv1.GetTeamRequest) (*serverv1.Team, error) {
+	return &serverv1.Team{Id: req.Id, Name: "Team One"}, nil
+}
+
+func (s *fakeServices) ListTeams(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListTeamsResponse, error) {
+	return &serverv1.ListTeamsResponse{Teams: []*serverv1.Team{{Id: "team-1", Name: "Team One"}}}, nil
+}
+
+func (s *fakeServices) CreateMembership(ctx context.Context, req *serverv1.CreateMembershipRequest) (*serverv1.Membership, error) {
+	return &serverv1.Membership{Id: "mem-1", TeamId: req.TeamId, UserId: req.UserId, Roles: req.Roles, Status: req.Status}, nil
+}
+
+func (s *fakeServices) ListMemberships(ctx context.Context, req *serverv1.ListMembershipsRequest) (*serverv1.ListMembershipsResponse, error) {
+	return &serverv1.ListMembershipsResponse{Memberships: []*serverv1.Membership{{Id: "mem-1", TeamId: req.TeamId}}}, nil
+}
+
+func (s *fakeServices) GetMembership(ctx context.Context, req *serverv1.GetMembershipRequest) (*serverv1.Membership, error) {
+	return &serverv1.Membership{Id: req.MembershipId, TeamId: req.TeamId}, nil
+}
+
+func (s *fakeServices) UpdateMembership(ctx context.Context, req *serverv1.UpdateMembershipRequest) (*serverv1.Membership, error) {
+	return &serverv1.Membership{Id: req.MembershipId, TeamId: req.TeamId, Roles: req.Roles}, nil
+}
+
+func (s *fakeServices) UpdateMembershipStatus(ctx context.Context, req *serverv1.UpdateMembershipStatusRequest) (*serverv1.Membership, error) {
+	return &serverv1.Membership{Id: req.MembershipId, TeamId: req.TeamId, Status: req.Status}, nil
+}
+
+func (s *fakeServices) DeleteMembership(ctx context.Context, _ *serverv1.GetMembershipRequest) (*sharedv1.Empty, error) {
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *fakeServices) CreateDatabase(ctx context.Context, req *serverv1.CreateDatabaseRequest) (*serverv1.Database, error) {
+	return &serverv1.Database{Id: req.Id, Name: req.Name}, nil
+}
+
+func (s *fakeServices) GetDatabase(ctx context.Context, req *serverv1.GetDatabaseRequest) (*serverv1.Database, error) {
+	return &serverv1.Database{Id: req.Id, Name: req.Id}, nil
+}
+
+func (s *fakeServices) ListDatabases(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListDatabasesResponse, error) {
+	return &serverv1.ListDatabasesResponse{Databases: []*serverv1.Database{{Id: "app"}}}, nil
+}
+
+func (s *fakeServices) CreateCollection(ctx context.Context, req *serverv1.CreateCollectionRequest) (*serverv1.Collection, error) {
+	s.rec.mu.Lock()
+	s.rec.lastCollection = req
+	s.rec.mu.Unlock()
+	return &serverv1.Collection{Id: req.Id, DatabaseId: req.DatabaseId, Name: req.Name, Permissions: req.Permissions}, nil
+}
+
+func (s *fakeServices) GetCollection(ctx context.Context, req *serverv1.GetCollectionRequest) (*serverv1.Collection, error) {
+	return &serverv1.Collection{Id: req.CollectionId, DatabaseId: req.DatabaseId, Name: req.CollectionId}, nil
+}
+
+func (s *fakeServices) ListCollections(ctx context.Context, _ *serverv1.ListCollectionsRequest) (*serverv1.ListCollectionsResponse, error) {
+	return &serverv1.ListCollectionsResponse{Collections: []*serverv1.Collection{{Id: "members"}}}, nil
+}
+
+func (s *fakeServices) CreateAttribute(ctx context.Context, req *serverv1.CreateAttributeRequest) (*serverv1.Attribute, error) {
+	return &serverv1.Attribute{Id: "attr-" + req.Key, Key: req.Key, Type: req.Type, Required: req.Required, Array: req.Array}, nil
+}
+
+func (s *fakeServices) CreateIndex(ctx context.Context, req *serverv1.CreateIndexRequest) (*serverv1.Index, error) {
+	return &serverv1.Index{Id: req.Id, Type: req.Type, Attributes: req.Attributes}, nil
+}
+
+func (s *fakeServices) CreateDocument(ctx context.Context, req *serverv1.CreateDocumentRequest) (*serverv1.Document, error) {
+	return &serverv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
+}
+
+func (s *fakeServices) GetDocument(ctx context.Context, req *serverv1.GetDocumentRequest) (*serverv1.Document, error) {
+	return &serverv1.Document{Id: req.DocumentId}, nil
+}
+
+func (s *fakeServices) UpdateDocument(ctx context.Context, req *serverv1.UpdateDocumentRequest) (*serverv1.Document, error) {
+	return &serverv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
+}
+
+func (s *fakeServices) UpsertDocument(ctx context.Context, req *serverv1.UpsertDocumentRequest) (*serverv1.Document, error) {
+	s.rec.mu.Lock()
+	s.rec.upserts = append(s.rec.upserts, req)
+	s.rec.mu.Unlock()
+	return &serverv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
+}
+
+func (s *fakeServices) DeleteDocument(ctx context.Context, _ *serverv1.GetDocumentRequest) (*sharedv1.Empty, error) {
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *fakeServices) ListDocuments(ctx context.Context, _ *serverv1.ListDocumentsRequest) (*serverv1.ListDocumentsResponse, error) {
+	return &serverv1.ListDocumentsResponse{
+		Documents: []*serverv1.Document{{Id: "d1"}, {Id: "d2"}},
+		Meta:      &sharedv1.ListResponseMeta{NextPageToken: "next-token"},
+	}, nil
+}
+
+func (s *fakeServices) CountDocuments(ctx context.Context, _ *serverv1.ListDocumentsRequest) (*serverv1.CountDocumentsResponse, error) {
+	return &serverv1.CountDocumentsResponse{Count: 42}, nil
+}
+
+func (s *fakeServices) BulkUpdateDocuments(ctx context.Context, req *serverv1.BulkUpdateDocumentsRequest) (*serverv1.BulkDocumentsResponse, error) {
+	return &serverv1.BulkDocumentsResponse{Affected: int64(len(req.DocumentIds))}, nil
+}
+
+func (s *fakeServices) BulkDeleteDocuments(ctx context.Context, req *serverv1.BulkDeleteDocumentsRequest) (*serverv1.BulkDocumentsResponse, error) {
+	return &serverv1.BulkDocumentsResponse{Affected: int64(len(req.DocumentIds))}, nil
+}
+
+// newServicesBufconn 启动注册了 Health/Users/Teams/Databases fake 的 bufconn gRPC 服务。
+func newServicesBufconn(t *testing.T) (*bufconn.Listener, *recorder) {
+	t.Helper()
+	lis := bufconn.Listen(1 << 20)
+	rec := &recorder{}
+	srv := grpc.NewServer()
+	fake := &fakeServices{rec: rec}
+	serverv1.RegisterHealthServiceServer(srv, fake)
+	serverv1.RegisterUsersServiceServer(srv, fake)
+	serverv1.RegisterTeamsServiceServer(srv, fake)
+	serverv1.RegisterDatabasesServiceServer(srv, fake)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	return lis, rec
+}
+
+// newServicesClient 返回连接全量 fake 服务的 Server API 客户端。
+func newServicesClient(t *testing.T, opts ...Option) *Client {
+	t.Helper()
+	lis, _ := newServicesBufconn(t)
+	return newTestClient(t, lis, opts...)
+}
+
+func TestHealthCheckAndVersion(t *testing.T) {
+	c := newServicesClient(t, WithAPIKey("key-1"))
+	ctx := context.Background()
+
+	check, err := c.Health.Check(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "SERVING", check.Status)
+
+	version, err := c.Health.Version(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "v0.1.0", version.Version)
+	require.Equal(t, "abc123", version.Commit)
+}
+
+func TestUsers_CreateUserAndToken(t *testing.T) {
+	lis, rec := newServicesBufconn(t)
+	c := newTestClient(t, lis, WithAPIKey("key-1"))
+	ctx := context.Background()
+
+	user, err := c.Users.CreateUser(ctx, "agent-1@agents.local", "pw", "Agent One", "active", nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, "user-1", user.Id)
+	require.Equal(t, "active", user.Status)
+
+	rec.mu.Lock()
+	require.Equal(t, "agent-1@agents.local", rec.createdUser.Email)
+	require.Equal(t, "pw", rec.createdUser.Password)
+	rec.mu.Unlock()
+
+	got, err := c.Users.GetUser(ctx, "user-1")
+	require.NoError(t, err)
+	require.Equal(t, "agent-1@agents.local", got.Email)
+
+	tok, err := c.Users.CreateUserToken(ctx, "user-1")
+	require.NoError(t, err)
+	require.Equal(t, "agent-token", tok.Tokens.AccessToken)
+}
+
+func TestUsers_ListSessionsAndDelete(t *testing.T) {
+	c := newServicesClient(t, WithAPIKey("key-1"))
+	ctx := context.Background()
+
+	sessions, err := c.Users.ListUserSessions(ctx, "user-1")
+	require.NoError(t, err)
+	require.Len(t, sessions.Sessions, 1)
+
+	require.NoError(t, c.Users.DeleteUserSession(ctx, "user-1", "sess-1"))
+	require.NoError(t, c.Users.DeleteUser(ctx, "user-1"))
+}
+
+func TestTeams_CreateTeamAndMembership(t *testing.T) {
+	c := newServicesClient(t, WithAPIKey("key-1"))
+	ctx := context.Background()
+
+	team, err := c.Teams.CreateTeam(ctx, "Team One", []string{"read"})
+	require.NoError(t, err)
+	require.Equal(t, "Team One", team.Name)
+	require.Equal(t, []string{"read"}, team.Permissions)
+
+	got, err := c.Teams.GetTeam(ctx, "team-1")
+	require.NoError(t, err)
+	require.Equal(t, "team-1", got.Id)
+
+	mem, err := c.Teams.CreateMembership(ctx, "team-1", "user-1", "", "", []string{"member"}, "active")
+	require.NoError(t, err)
+	require.Equal(t, "user-1", mem.UserId)
+	require.Equal(t, "active", mem.Status)
+
+	listed, err := c.Teams.ListMemberships(ctx, "team-1")
+	require.NoError(t, err)
+	require.Len(t, listed.Memberships, 1)
+}
+
+func TestDatabases_SchemaSetup(t *testing.T) {
+	lis, rec := newServicesBufconn(t)
+	c := newTestClient(t, lis, WithAPIKey("key-1"), WithDatabaseID("app"))
+	ctx := context.Background()
+	db := c.Databases
+
+	created, err := db.CreateDatabase(ctx, "app", "Application DB")
+	require.NoError(t, err)
+	require.Equal(t, "app", created.Id)
+
+	col, err := db.CreateCollection(ctx, "members", "Members",
+		[]string{"read:user:*"}, true)
+	require.NoError(t, err)
+	require.Equal(t, "members", col.Id)
+	require.Equal(t, "Members", col.Name)
+
+	rec.mu.Lock()
+	require.NotNil(t, rec.lastCollection)
+	require.True(t, *rec.lastCollection.DocumentSecurity)
+	require.Equal(t, []string{"read:user:*"}, rec.lastCollection.Permissions)
+	rec.mu.Unlock()
+
+	attr, err := db.CreateAttribute(ctx, "members", "channel_id", "string", 64, true, false)
+	require.NoError(t, err)
+	require.Equal(t, "channel_id", attr.Key)
+	require.Equal(t, "string", attr.Type)
+	require.True(t, attr.Required)
+
+	idx, err := db.CreateIndex(ctx, "members", "members_channel_user", "unique",
+		[]string{"channel_id", "user_id"})
+	require.NoError(t, err)
+	require.Equal(t, "unique", idx.Type)
+	require.Equal(t, []string{"channel_id", "user_id"}, idx.Attributes)
+}
+
+func TestDatabases_CountAndListDocuments(t *testing.T) {
+	c := newServicesClient(t, WithAPIKey("key-1"), WithDatabaseID("app"))
+	ctx := context.Background()
+
+	count, err := c.Databases.CountDocuments(ctx, "messages",
+		[]string{`equal("channel_id","ch1")`})
+	require.NoError(t, err)
+	require.Equal(t, int64(42), count)
+
+	docs, next, err := c.Databases.ListDocuments(ctx, "messages",
+		[]string{`equal("channel_id","ch1")`}, 20, "")
+	require.NoError(t, err)
+	require.Len(t, docs, 2)
+	require.Equal(t, "next-token", next)
+}
+
+func TestDatabases_BulkOperations(t *testing.T) {
+	c := newServicesClient(t, WithAPIKey("key-1"), WithDatabaseID("app"))
+	ctx := context.Background()
+
+	resp, err := c.Databases.BulkUpdateDocuments(ctx, "members", []string{"m1", "m2"},
+		map[string]any{"last_read_seq": 1}, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), resp.Affected)
+
+	del, err := c.Databases.BulkDeleteDocuments(ctx, "members", []string{"m1"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), del.Affected)
+}

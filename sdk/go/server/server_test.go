@@ -13,10 +13,13 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// recorder 记录 fake 服务收到的 metadata。
+// recorder 记录 fake 服务收到的 metadata 与关键请求，供断言使用。
 type recorder struct {
-	mu sync.Mutex
-	md metadata.MD
+	mu             sync.Mutex
+	md             metadata.MD
+	lastCollection *serverv1.CreateCollectionRequest
+	createdUser    *serverv1.CreateUserRequest
+	upserts        []*serverv1.UpsertDocumentRequest
 }
 
 type fakeServer struct {

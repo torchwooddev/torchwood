@@ -16,3 +16,8 @@ type HealthService struct {
 func (h *HealthService) Check(ctx context.Context) (*serverv1.HealthCheckResponse, error) {
 	return h.api.Check(ctx, &serverv1.HealthCheckRequest{})
 }
+
+// Version 返回服务版本信息。
+func (h *HealthService) Version(ctx context.Context) (*serverv1.GetVersionResponse, error) {
+	return h.api.GetVersion(ctx, &serverv1.GetVersionRequest{})
+}

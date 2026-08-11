@@ -53,6 +53,12 @@ type Client struct {
 
 	// Health 提供服务健康检查（ACCESS_PUBLIC，可不配置 API Key）。
 	Health *HealthService
+	// Users 提供用户管理（含 CreateUserToken 签发 Agent 凭证）。
+	Users *UsersService
+	// Teams 提供服务端团队管理。
+	Teams *TeamsService
+	// Databases 提供库/集合/属性/索引/文档管理，绑定默认 DatabaseID。
+	Databases *DatabasesService
 }
 
 // New 建立 Server API 连接。target 为 gRPC 目标地址，不能为空。
@@ -69,7 +75,13 @@ func New(target string, opts ...Option) (*Client, error) {
 	}
 	c.conn = gc
 	c.health = serverv1.NewHealthServiceClient(gc)
+	c.users = serverv1.NewUsersServiceClient(gc)
+	c.teams = serverv1.NewTeamsServiceClient(gc)
+	c.databases = serverv1.NewDatabasesServiceClient(gc)
 	c.Health = &HealthService{c: c, api: c.health}
+	c.Users = &UsersService{c: c}
+	c.Teams = &TeamsService{c: c}
+	c.Databases = c.UseDatabase(cfg.DatabaseID)
 	return c, nil
 }
 
