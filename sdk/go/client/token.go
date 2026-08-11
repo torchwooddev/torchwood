@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
@@ -85,9 +86,12 @@ func (s *FileTokenStore) Save(t *clientv1.TokenBundle) error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return fmt.Errorf("torchwood: write token file: %w", err)
 	}
-	// Windows 上 os.Rename 目标已存在会报错，先移除旧文件（忽略 NotExist）。
-	if err := os.Remove(s.path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("torchwood: remove old token file: %w", err)
+	// Windows 上 os.Rename 目标已存在会报错，先移除旧文件（忽略 NotExist）；
+	// POSIX 直接 rename 原子替换，不开文件缺失窗口。
+	if runtime.GOOS == "windows" {
+		if err := os.Remove(s.path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("torchwood: remove old token file: %w", err)
+		}
 	}
 	if err := os.Rename(tmp, s.path); err != nil {
 		return fmt.Errorf("torchwood: rename token file: %w", err)
