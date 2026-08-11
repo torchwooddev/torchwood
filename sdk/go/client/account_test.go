@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"github.com/stretchr/testify/require"
+	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -51,7 +51,7 @@ func TestSignInMFADoesNotSaveTokens(t *testing.T) {
 	called := false
 	c, fake := newTestClient(t, WithOnTokensChanged(func(*clientv1.TokenBundle) { called = true }))
 	fake.signInResp = &clientv1.SignInResponse{
-		Account:    &clientv1.Account{Id: "acc-1"},
+		Account:     &clientv1.Account{Id: "acc-1"},
 		MfaRequired: true,
 	}
 

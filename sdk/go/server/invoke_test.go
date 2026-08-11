@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"github.com/stretchr/testify/require"
+	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 

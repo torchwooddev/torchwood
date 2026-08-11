@@ -62,8 +62,8 @@ type Client struct {
 	mu  sync.Mutex // 串行化刷新
 	now func() time.Time
 
-	account  clientv1.AccountServiceClient
-	teams    clientv1.TeamsServiceClient
+	account   clientv1.AccountServiceClient
+	teams     clientv1.TeamsServiceClient
 	databases clientv1.DatabasesServiceClient
 
 	// Account 提供注册/登录/账户管理。

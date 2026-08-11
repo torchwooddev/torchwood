@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"github.com/stretchr/testify/require"
+	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 )
 
 func bundle() *clientv1.TokenBundle {

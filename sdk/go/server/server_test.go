@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"github.com/stretchr/testify/require"
+	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
