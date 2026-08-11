@@ -1,0 +1,81 @@
+package server
+
+import (
+	"context"
+	"net"
+	"sync"
+	"testing"
+
+	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/test/bufconn"
+)
+
+// recorder 记录 fake 服务收到的 metadata。
+type recorder struct {
+	mu sync.Mutex
+	md metadata.MD
+}
+
+type fakeServer struct {
+	serverv1.UnimplementedHealthServiceServer
+	rec *recorder
+}
+
+func (f *fakeServer) Check(ctx context.Context, _ *serverv1.HealthCheckRequest) (*serverv1.HealthCheckResponse, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	f.rec.mu.Lock()
+	f.rec.md = md
+	f.rec.mu.Unlock()
+	return &serverv1.HealthCheckResponse{Status: "ok"}, nil
+}
+
+func newBufconn(t *testing.T) (*bufconn.Listener, *recorder) {
+	t.Helper()
+	lis := bufconn.Listen(1 << 20)
+	rec := &recorder{}
+	srv := grpc.NewServer()
+	serverv1.RegisterHealthServiceServer(srv, &fakeServer{rec: rec})
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	return lis, rec
+}
+
+func dialer(lis *bufconn.Listener) grpc.DialOption {
+	return grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+		return lis.DialContext(ctx)
+	})
+}
+
+func newTestClient(t *testing.T, lis *bufconn.Listener, opts ...Option) *Client {
+	t.Helper()
+	opts = append(opts, WithDialOptions(dialer(lis)))
+	c, err := New("passthrough:///bufconn", opts...)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+func TestAuthHeadersInjected(t *testing.T) {
+	lis, rec := newBufconn(t)
+	c := newTestClient(t, lis, WithAPIKey("secret"), WithProjectID("proj-1"))
+	_, err := c.Health.Check(context.Background())
+	require.NoError(t, err)
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	require.Equal(t, []string{"secret"}, rec.md.Get("x-api-key"))
+	require.Equal(t, []string{"proj-1"}, rec.md.Get("x-torchwood-project"))
+}
+
+func TestNoHeadersWithoutConfig(t *testing.T) {
+	lis, rec := newBufconn(t)
+	c := newTestClient(t, lis)
+	_, err := c.Health.Check(context.Background())
+	require.NoError(t, err)
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	require.Empty(t, rec.md.Get("x-api-key"))
+	require.Empty(t, rec.md.Get("x-torchwood-project"))
+}
