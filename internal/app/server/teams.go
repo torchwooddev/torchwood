@@ -286,8 +286,15 @@ func (t *Teams) UpdateMembership(ctx context.Context, projectID, teamID, members
 			return nil, err
 		}
 	}
-	if _, err := t.getMembershipDoc(ctx, projectID, teamID, membershipID, principal); err != nil {
+	doc, err := t.getMembershipDoc(ctx, projectID, teamID, membershipID, principal)
+	if err != nil {
 		return nil, err
+	}
+	// last-owner 保护：降级 owner 角色前校验团队仍有其他 owner。
+	if !containsRole(cmd.Roles, teams.RoleOwner) {
+		if err := t.guardLastOwner(ctx, projectID, teamID, doc); err != nil {
+			return nil, err
+		}
 	}
 	updated, err := t.docDB.UpdateDocument(ctx, projectID, "default", "memberships", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   membershipID,
@@ -357,6 +364,11 @@ func (t *Teams) UpdateMembershipStatus(ctx context.Context, projectID, teamID, m
 func (t *Teams) DeleteMembership(ctx context.Context, projectID, teamID, membershipID string, principal databases.Principal) error {
 	doc, err := t.getMembershipDoc(ctx, projectID, teamID, membershipID, principal)
 	if err != nil {
+		return err
+	}
+	// last-owner 保护：删除 owner membership 前校验团队仍有其他 owner
+	// （client 自退路径经本用例同样受保护）。
+	if err := t.guardLastOwner(ctx, projectID, teamID, doc); err != nil {
 		return err
 	}
 	if statusVal, _ := doc.Data["status"].(string); statusVal == teams.StatusAccepted {
@@ -452,14 +464,48 @@ func (t *Teams) getMembershipDoc(ctx context.Context, projectID, teamID, members
 	return doc, nil
 }
 
-func (t *Teams) listMembershipDocs(ctx context.Context, projectID, teamID string, principal databases.Principal) ([]databases.Document, error) {
-	list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
-		Queries: []string{query.BuildEqual("team_id", teamID)},
-	}, principal)
-	if err != nil {
-		return nil, err
+func (t *Teams) listMembershipDocs(ctx context.Context, projectID, teamID string, _ databases.Principal) ([]databases.Document, error) {
+	return cascadeListAll(ctx, t.docDB, projectID, "memberships", []string{query.BuildEqual("team_id", teamID)})
+}
+
+// guardLastOwner 在删除/降级 owner membership 前校验：目标为 accepted 且含
+// owner 角色时，团队其余 accepted+owner 数量必须 ≥1，防止团队失去最后 owner。
+func (t *Teams) guardLastOwner(ctx context.Context, projectID, teamID string, target *databases.Document) error {
+	if statusVal, _ := target.Data["status"].(string); statusVal != teams.StatusAccepted {
+		return nil
 	}
-	return list.Documents, nil
+	if !containsRole(membershipRoleLabels(target.Data["roles"]), teams.RoleOwner) {
+		return nil
+	}
+	memberships, err := t.listMembershipDocs(ctx, projectID, teamID, databases.SystemPrincipal)
+	if err != nil {
+		return err
+	}
+	otherOwners := 0
+	for _, m := range memberships {
+		if m.ID == target.ID {
+			continue
+		}
+		if statusVal, _ := m.Data["status"].(string); statusVal != teams.StatusAccepted {
+			continue
+		}
+		if containsRole(membershipRoleLabels(m.Data["roles"]), teams.RoleOwner) {
+			otherOwners++
+		}
+	}
+	if otherOwners == 0 {
+		return status.Error(codes.FailedPrecondition, "team must keep at least one owner")
+	}
+	return nil
+}
+
+func containsRole(roles []string, want string) bool {
+	for _, r := range roles {
+		if r == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *Teams) resolveUserIDByEmail(ctx context.Context, projectID, email string) (string, error) {

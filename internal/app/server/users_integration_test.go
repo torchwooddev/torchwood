@@ -3,16 +3,20 @@ package server
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/teams"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/password"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -31,7 +35,7 @@ func newUsersUC(ctx context.Context, t *testing.T) (*Users, databases.DocumentDB
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	cfg := &config.AppConfig{}
 	sessions := auth.NewSessionService(cfg, docDB, documentRoles{}, nil)
-	uc := NewUsers(bunrepo.NewProjectRepository(db), docDB, sessions)
+	uc := NewUsers(bunrepo.NewProjectRepository(db), docDB, sessions, db)
 	return uc, docDB, projectID, cleanup
 }
 
@@ -40,7 +44,7 @@ func TestServerUsers_CreateAndUpdate(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	uc, docDB, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
 	_ = docDB
@@ -112,7 +116,7 @@ func TestServerUsers_PasswordResetAndSessions(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	uc, _, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
 
@@ -185,12 +189,76 @@ func TestServerUsers_PasswordResetAndSessions(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 }
 
+func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	// 需要本地 Postgres（CI 兜底）：级联删除必须循环分页，
+	// 超过默认 50 条页上限的会话/成员不得残留（F4-1）。
+	ctx := platformAdminCtx(context.Background())
+	uc, docDB, projectID, cleanup := newUsersUC(ctx, t)
+	defer cleanup()
+
+	doc, err := uc.CreateUser(ctx, projectID, CreateUserCommand{
+		Email:    "cascade-61@torchwood.local",
+		Password: "Pass@123",
+		Name:     "Cascade 61",
+	})
+	require.NoError(t, err)
+
+	// 直插 61 条 sessions（> 默认 50 条页上限）。
+	for i := 0; i < 61; i++ {
+		_, err := docDB.CreateDocument(ctx, projectID, "default", "sessions", databases.Document{
+			ID: idgen.UUID().String(),
+			Data: map[string]any{
+				"user_id":    doc.ID,
+				"provider":   "email",
+				"expire_at":  time.Now().Add(time.Hour).Format(time.RFC3339Nano),
+				"user_agent": "cascade-test",
+			},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+	// 直插 61 条 memberships。
+	for i := 0; i < 61; i++ {
+		_, err := docDB.CreateDocument(ctx, projectID, "default", "memberships", databases.Document{
+			ID: idgen.UUID().String(),
+			Data: map[string]any{
+				"team_id":  idgen.UUID().String(),
+				"user_id":  doc.ID,
+				"status":   teams.StatusAccepted,
+				"roles":    []string{teams.RoleMember},
+				"joined_at": time.Now().Format(time.RFC3339Nano),
+			},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, uc.DeleteUser(ctx, projectID, doc.ID, databases.Principal{Roles: []string{"keys"}}))
+
+	// 用户文档与全部级联文档均已清理。
+	me, err := docDB.GetDocument(ctx, projectID, "default", "users", doc.ID, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Nil(t, me)
+	sessions, err := docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+		Queries: []string{query.BuildEqual("user_id", doc.ID)},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Zero(t, sessions.TotalCount)
+	memberships, err := docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+		Queries: []string{query.BuildEqual("user_id", doc.ID)},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Zero(t, memberships.TotalCount)
+}
+
 func TestServerUsers_CreateUserToken(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	uc, docDB, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
 

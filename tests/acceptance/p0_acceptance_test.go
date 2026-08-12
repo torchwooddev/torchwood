@@ -216,7 +216,7 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 	cfg := &config.AppConfig{}
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := client.NewTestAccount(cfg, projectRepo, docDB)
-	usersUC := appserver.NewUsers(projectRepo, docDB, infrAuth.NewSessionService(cfg, docDB, client.NewUserRoles(docDB), nil))
+	usersUC := appserver.NewUsers(projectRepo, docDB, infrAuth.NewSessionService(cfg, docDB, client.NewUserRoles(docDB), nil), db)
 
 	const email = "dsl-query@torchwood.local"
 	signedUp, _, _, _, err := account.SignUp(ctx, client.SignUpCommand{

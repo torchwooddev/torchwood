@@ -3,13 +3,17 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/teams"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/password"
 	"github.com/torchwooddev/torchwood/pkg/query"
@@ -21,10 +25,11 @@ type Users struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
 	sessions    domainauth.SessionService
+	db          *clients.Database
 }
 
-func NewUsers(projectRepo projects.Repository, docDB databases.DocumentDB, sessions domainauth.SessionService) *Users {
-	return &Users{projectRepo: projectRepo, docDB: docDB, sessions: sessions}
+func NewUsers(projectRepo projects.Repository, docDB databases.DocumentDB, sessions domainauth.SessionService, db *clients.Database) *Users {
+	return &Users{projectRepo: projectRepo, docDB: docDB, sessions: sessions, db: db}
 }
 
 func (u *Users) resolveProject(ctx context.Context, projectID string) (*projects.Project, error) {
@@ -147,6 +152,19 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 		if email == "" {
 			return nil, status.Error(codes.InvalidArgument, "email must not be empty")
 		}
+		// 改邮箱查重（排除自身 userID）：users_email_unique 唯一索引兜底并发冲突。
+		existing, err := u.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+			Queries:  []string{query.BuildEqual("email", email), "limit(1)"},
+			PageSize: 1,
+		}, databases.SystemPrincipal)
+		if err != nil {
+			return nil, err
+		}
+		for _, dup := range existing.Documents {
+			if dup.ID != userID {
+				return nil, status.Error(codes.AlreadyExists, "email already registered")
+			}
+		}
 		updates["email"] = email
 		// 与 UpdateAccount 一致：改邮箱必须重新验证。
 		updates["email_verified"] = false
@@ -169,7 +187,8 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 	doc := databases.Document{ID: userID, Data: filtered}
 	updated, err := u.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(doc, nil), databases.SystemPrincipal)
 	if err != nil {
-		return nil, fmt.Errorf("update user: %w", err)
+		// 并发下唯一索引冲突（ErrDuplicateKey/23505）映射为 AlreadyExists。
+		return nil, fmt.Errorf("update user: %w", appshared.MapDocumentDBError(err))
 	}
 	return &updated, nil
 }
@@ -177,6 +196,9 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 // UpdateUserPassword 服务端直接重置密码，并撤销该用户全部会话（与客户端
 // 改密后清会话语义一致），避免旧令牌继续有效。
 func (u *Users) UpdateUserPassword(ctx context.Context, projectID, userID, newPassword string) (*databases.Document, error) {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -247,7 +269,12 @@ func (u *Users) DeleteUserSession(ctx context.Context, projectID, userID, sessio
 }
 
 // CreateUserToken 模拟登录：以指定用户身份创建会话并签发 token（调试/客服场景）。
+// 注意：签发的 token 生命周期为默认会话 TTL（7 天），仅供调试使用，
+// 不应作为长期凭证用于生产路径。
 func (u *Users) CreateUserToken(ctx context.Context, projectID, userID string) (*domainauth.TokenBundle, error) {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -266,19 +293,40 @@ func (u *Users) CreateUserToken(ctx context.Context, projectID, userID string) (
 	if err != nil {
 		return nil, err
 	}
+	// 审计标记：记录谁为哪个用户模拟签发了 token（session provider 为 server_token）。
+	if p, ok := contexts.Principal(ctx); ok {
+		slog.Info("create user token",
+			"project", projectID,
+			"user", userID,
+			"caller_actor", p.ActorID,
+			"caller_kind", p.ActorKind,
+			"caller_credential", p.CredentialType,
+		)
+	}
 	return bundle, nil
 }
 
 func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, principal databases.Principal) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
 	// M10：删除 users 文档前级联清理 sessions/identities/memberships，
 	// 避免 identity 残留阻塞同 provider 重新注册、memberships 残留遗留孤儿团队角色。
-	if err := u.deleteUserCascade(ctx, projectID, userID); err != nil {
+	// 级联与主文档删除包在同一事务：中途失败整体回滚，不残留半删除状态
+	// （docDB 文档操作经 conn(ctx) 感知外层事务）。
+	err := u.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := u.deleteUserCascade(txCtx, projectID, userID); err != nil {
+			return err
+		}
+		return u.docDB.DeleteDocument(txCtx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	})
+	if err != nil {
 		return err
 	}
-	return u.docDB.DeleteDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	return nil
 }
 
 // deleteUserCascade 以 SystemPrincipal 清理用户的 sessions/identities/memberships，
@@ -286,13 +334,11 @@ func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, princi
 // 内联实现避免跨用例结构体耦合）。
 func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string) error {
 	for _, coll := range []string{"sessions", "identities"} {
-		list, err := u.docDB.ListDocuments(ctx, projectID, "default", coll, databases.Query{
-			Queries: []string{query.BuildEqual("user_id", userID)},
-		}, databases.SystemPrincipal)
+		docs, err := cascadeListAll(ctx, u.docDB, projectID, coll, []string{query.BuildEqual("user_id", userID)})
 		if err != nil {
 			return fmt.Errorf("list %s for user: %w", coll, err)
 		}
-		for _, doc := range list.Documents {
+		for _, doc := range docs {
 			if err := u.docDB.DeleteDocument(ctx, projectID, "default", coll, doc.ID, databases.SystemPrincipal); err != nil {
 				return fmt.Errorf("delete %s: %w", coll, err)
 			}
@@ -301,13 +347,11 @@ func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string)
 
 	// memberships：仅 accepted 状态计入团队 total（与 CreateMembership/DeleteMembership 一致）。
 	teamsToAdjust := map[string]struct{}{}
-	list, err := u.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
-		Queries: []string{query.BuildEqual("user_id", userID)},
-	}, databases.SystemPrincipal)
+	docs, err := cascadeListAll(ctx, u.docDB, projectID, "memberships", []string{query.BuildEqual("user_id", userID)})
 	if err != nil {
 		return fmt.Errorf("list memberships for user: %w", err)
 	}
-	for _, doc := range list.Documents {
+	for _, doc := range docs {
 		if statusVal, _ := doc.Data["status"].(string); statusVal == teams.StatusAccepted {
 			if teamID, _ := doc.Data["team_id"].(string); teamID != "" {
 				teamsToAdjust[teamID] = struct{}{}
@@ -363,6 +407,32 @@ type CreateUserCommand struct {
 	Status   string
 	Labels   []any
 	Prefs    map[string]any
+}
+
+// cascadePageSize 是级联清理的分页大小：ListDocuments 默认页太小（DSL 无显式
+// limit 时为 50 条），大账号的会话/成员数据会被截断，必须显式设大并循环拉取。
+const cascadePageSize = 1000
+
+// cascadeListAll 以固定页大小循环拉取集合内全部匹配文档（级联删除用），
+// 直至 NextPageToken 为空；DSL 附加 limit(1000) 覆盖 ParseMany 的默认 50 注入。
+func cascadeListAll(ctx context.Context, docDB databases.DocumentDB, projectID, collectionID string, queries []string) ([]databases.Document, error) {
+	var out []databases.Document
+	token := ""
+	for {
+		list, err := docDB.ListDocuments(ctx, projectID, "default", collectionID, databases.Query{
+			Queries:   append(append([]string{}, queries...), "limit(1000)"),
+			PageSize:  cascadePageSize,
+			PageToken: token,
+		}, databases.SystemPrincipal)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, list.Documents...)
+		if list.NextPageToken == "" {
+			return out, nil
+		}
+		token = list.NextPageToken
+	}
 }
 
 func normalizeEmail(email string) string {

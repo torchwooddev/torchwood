@@ -9,6 +9,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -65,7 +67,9 @@ func (s *ProjectsService) GetProject(ctx context.Context, req *serverv1.GetProje
 		return nil, err
 	}
 	if p == nil {
-		return nil, nil
+		// 对齐 GetUser 模式：use-case 返回 nil,nil 时显式转 NotFound，
+		// 避免 gRPC OK + 空响应的错误分类。
+		return nil, status.Error(codes.NotFound, "project not found")
 	}
 	return mapProject(p), nil
 }

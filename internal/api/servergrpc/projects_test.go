@@ -75,6 +75,28 @@ func TestProjectsService_UpdateProject_WithoutPrincipal(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
+// TestProjectsService_GetProject_Missing: use-case 返回 nil,nil 时 handler
+// 必须转 NotFound，不得返回 gRPC OK + 空响应（F4-5）。
+func TestProjectsService_GetProject_Missing(t *testing.T) {
+	s := newTestProjectsService(&stubProjectRepo{})
+
+	_, err := s.GetProject(projectPrincipalCtx("", true), &serverv1.GetProjectRequest{Id: "missing"})
+	require.Error(t, err)
+	require.Equal(t, codes.NotFound, status.Code(err))
+}
+
+func TestProjectsService_GetProject_Found(t *testing.T) {
+	s := newTestProjectsService(&stubProjectRepo{project: &projects.Project{
+		ID: "p1", Name: "Project 1", Status: "active",
+		Settings: map[string]any{}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}})
+
+	p, err := s.GetProject(projectPrincipalCtx("", true), &serverv1.GetProjectRequest{Id: "p1"})
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	require.Equal(t, "p1", p.Id)
+}
+
 func TestProjectsService_UpdateProject_HappyPath(t *testing.T) {
 	repo := &stubProjectRepo{project: &projects.Project{
 		ID: "p1", Name: "Old Name", Description: "old desc", Status: "active",

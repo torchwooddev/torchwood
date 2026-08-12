@@ -1,0 +1,338 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/teams"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/pkg/crud"
+	"github.com/torchwooddev/torchwood/pkg/query"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// fakeProjectRepo 是最小 projects.Repository 桩。
+type fakeProjectRepo struct{}
+
+func (fakeProjectRepo) CreateProject(context.Context, *projects.Project) error { return nil }
+func (fakeProjectRepo) GetProject(_ context.Context, id string) (*projects.Project, error) {
+	return &projects.Project{ID: id}, nil
+}
+func (fakeProjectRepo) GetProjectByName(context.Context, string) (*projects.Project, error) {
+	return nil, nil
+}
+func (fakeProjectRepo) ListProjects(context.Context) ([]projects.Project, error) { return nil, nil }
+func (fakeProjectRepo) UpdateProject(context.Context, *projects.Project) error   { return nil }
+func (fakeProjectRepo) DeleteProject(context.Context, string) error              { return nil }
+
+// fakeDocDB 是内存版 DocumentDB，支持 GetDocument/ListDocuments（equal 过滤 +
+// offset 分页）/UpdateDocument/CreateDocument/DeleteDocument/EnsureSystemCollections，
+// 其余方法不参与测试路径。
+type fakeDocDB struct {
+	docs map[string]map[string]databases.Document
+}
+
+func newFakeDocDB() *fakeDocDB {
+	return &fakeDocDB{docs: map[string]map[string]databases.Document{}}
+}
+
+func (f *fakeDocDB) seed(collectionID string, docs ...databases.Document) {
+	if f.docs[collectionID] == nil {
+		f.docs[collectionID] = map[string]databases.Document{}
+	}
+	for _, d := range docs {
+		f.docs[collectionID][d.ID] = d
+	}
+}
+
+func (f *fakeDocDB) GetDocument(_ context.Context, _, _, collectionID, docID string, _ databases.Principal) (*databases.Document, error) {
+	doc, ok := f.docs[collectionID][docID]
+	if !ok {
+		return nil, nil
+	}
+	return &doc, nil
+}
+
+func (f *fakeDocDB) ListDocuments(_ context.Context, _, _, collectionID string, q databases.Query, _ databases.Principal) (*databases.DocumentList, error) {
+	parsed, err := query.ParseMany(q.Queries)
+	if err != nil {
+		return nil, err
+	}
+	var matched []databases.Document
+	for _, doc := range f.docs[collectionID] {
+		if fakeMatches(parsed, doc) {
+			matched = append(matched, doc)
+		}
+	}
+	total := int64(len(matched))
+	offset := 0
+	if q.PageToken != "" {
+		off, err := crud.DecodePageToken(q.PageToken)
+		if err != nil {
+			return nil, err
+		}
+		offset = off
+	}
+	limit := parsed.Limit
+	if limit == 0 {
+		limit = int(q.PageSize)
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset > len(matched) {
+		offset = len(matched)
+	}
+	end := offset + limit
+	if end > len(matched) {
+		end = len(matched)
+	}
+	next := ""
+	if end < len(matched) {
+		next = crud.EncodePageToken(end)
+	}
+	return &databases.DocumentList{
+		Documents:     append([]databases.Document{}, matched[offset:end]...),
+		TotalCount:    total,
+		NextPageToken: next,
+	}, nil
+}
+
+func fakeMatches(parsed *query.Query, doc databases.Document) bool {
+	for _, fl := range parsed.Filters {
+		switch fl.Op {
+		case "equal":
+			v, _ := doc.Data[fl.Attribute].(string)
+			if len(fl.Values) == 0 || v != fl.Values[0] {
+				return false
+			}
+		case "notEqual":
+			v, _ := doc.Data[fl.Attribute].(string)
+			if len(fl.Values) > 0 && v == fl.Values[0] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (f *fakeDocDB) UpdateDocument(_ context.Context, _, _, collectionID string, update databases.DocumentUpdate, _ databases.Principal) (databases.Document, error) {
+	doc, ok := f.docs[collectionID][update.Document.ID]
+	if !ok {
+		return databases.Document{}, errors.New("document not found")
+	}
+	for k, v := range update.Document.Data {
+		doc.Data[k] = v
+	}
+	f.docs[collectionID][doc.ID] = doc
+	return doc, nil
+}
+
+func (f *fakeDocDB) CreateDocument(_ context.Context, _, _, collectionID string, doc databases.Document, _ []databases.Permission, _ databases.Principal) (databases.Document, error) {
+	if f.docs[collectionID] == nil {
+		f.docs[collectionID] = map[string]databases.Document{}
+	}
+	f.docs[collectionID][doc.ID] = doc
+	return doc, nil
+}
+
+func (f *fakeDocDB) DeleteDocument(_ context.Context, _, _, collectionID, docID string, _ databases.Principal) error {
+	delete(f.docs[collectionID], docID)
+	return nil
+}
+
+func (f *fakeDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+
+func (f *fakeDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
+func (f *fakeDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+	return nil, nil
+}
+func (f *fakeDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+	return nil, nil
+}
+func (f *fakeDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
+func (f *fakeDocDB) CreateCollection(context.Context, string, string, string, string, []databases.Attribute, []databases.Index, []databases.Permission, bool) error {
+	return nil
+}
+func (f *fakeDocDB) GetCollection(context.Context, string, string, string) (*databases.Collection, error) {
+	return nil, nil
+}
+func (f *fakeDocDB) ListCollections(context.Context, string, string, databases.ListQuery) ([]databases.Collection, databases.ListMeta, error) {
+	return nil, databases.ListMeta{}, nil
+}
+func (f *fakeDocDB) DeleteCollection(context.Context, string, string, string) error { return nil }
+func (f *fakeDocDB) UpdateCollection(context.Context, string, string, string, databases.CollectionPatch) error {
+	return nil
+}
+func (f *fakeDocDB) CreateAttribute(context.Context, string, string, string, databases.Attribute) error {
+	return nil
+}
+func (f *fakeDocDB) DeleteAttribute(context.Context, string, string, string, string) error { return nil }
+func (f *fakeDocDB) CreateIndex(context.Context, string, string, string, databases.Index) error {
+	return nil
+}
+func (f *fakeDocDB) DeleteIndex(context.Context, string, string, string, string) error { return nil }
+func (f *fakeDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
+	return databases.Document{}, nil
+}
+func (f *fakeDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+	return 0, nil
+}
+func (f *fakeDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {
+	return 0, nil
+}
+func (f *fakeDocDB) BulkUpdateDocuments(context.Context, string, string, string, []string, map[string]any, []databases.Permission, databases.Principal) (int64, error) {
+	return 0, nil
+}
+func (f *fakeDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+	return 0, nil
+}
+
+func fakeMembership(id, teamID, userID, statusVal string, roles []string) databases.Document {
+	return databases.Document{
+		ID: id,
+		Data: map[string]any{
+			"team_id": teamID,
+			"user_id": userID,
+			"status":  statusVal,
+			"roles":   roles,
+		},
+	}
+}
+
+// TestTeams_LastOwnerProtection_DeleteMembership: 删除唯一 accepted owner → 拒绝；
+// 删除非 owner 或存在第二 owner 时放行。
+func TestTeams_LastOwnerProtection_DeleteMembership(t *testing.T) {
+	t.Run("last owner rejected", func(t *testing.T) {
+		db := newFakeDocDB()
+		db.seed("memberships",
+			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-member", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleMember}),
+		)
+		uc := NewTeams(fakeProjectRepo{}, db)
+
+		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-owner", databases.Principal{Roles: []string{"admin"}})
+		require.Error(t, err)
+		require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	})
+
+	t.Run("second owner allows removal", func(t *testing.T) {
+		db := newFakeDocDB()
+		db.seed("teams", databases.Document{ID: "team-1", Data: map[string]any{"total": int64(2)}})
+		db.seed("memberships",
+			fakeMembership("m-owner1", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-owner2", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleOwner}),
+		)
+		uc := NewTeams(fakeProjectRepo{}, db)
+
+		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-owner1", databases.Principal{Roles: []string{"admin"}})
+		require.NoError(t, err)
+		require.NotContains(t, db.docs["memberships"], "m-owner1")
+	})
+
+	t.Run("pending owner removal allowed", func(t *testing.T) {
+		db := newFakeDocDB()
+		db.seed("memberships",
+			fakeMembership("m-pending", "team-1", "user-a", teams.StatusPending, []string{teams.RoleOwner}),
+		)
+		uc := NewTeams(fakeProjectRepo{}, db)
+
+		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-pending", databases.Principal{Roles: []string{"admin"}})
+		require.NoError(t, err)
+	})
+
+	t.Run("non-owner removal allowed", func(t *testing.T) {
+		db := newFakeDocDB()
+		db.seed("teams", databases.Document{ID: "team-1", Data: map[string]any{"total": int64(2)}})
+		db.seed("memberships",
+			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-member", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleMember}),
+		)
+		uc := NewTeams(fakeProjectRepo{}, db)
+
+		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-member", databases.Principal{Roles: []string{"admin"}})
+		require.NoError(t, err)
+	})
+}
+
+// TestTeams_LastOwnerProtection_UpdateMembership: 唯一 owner 降级 → 拒绝；
+// 有第二 owner 时降级放行；仍保留 owner 角色时放行。
+func TestTeams_LastOwnerProtection_UpdateMembership(t *testing.T) {
+	t.Run("downgrade last owner rejected", func(t *testing.T) {
+		db := newFakeDocDB()
+		db.seed("memberships",
+			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-member", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleMember}),
+		)
+		uc := NewTeams(fakeProjectRepo{}, db)
+
+		_, err := uc.UpdateMembership(context.Background(), "proj-1", "team-1", "m-owner",
+			UpdateMembershipCommand{Roles: []string{teams.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
+		require.Error(t, err)
+		require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	})
+
+	t.Run("downgrade with second owner allowed", func(t *testing.T) {
+		db := newFakeDocDB()
+		db.seed("memberships",
+			fakeMembership("m-owner1", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-owner2", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleOwner}),
+		)
+		uc := NewTeams(fakeProjectRepo{}, db)
+
+		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "team-1", "m-owner1",
+			UpdateMembershipCommand{Roles: []string{teams.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
+		require.NoError(t, err)
+		require.Equal(t, []string{teams.RoleMember}, updated.Data["roles"])
+	})
+
+	t.Run("keep owner role allowed", func(t *testing.T) {
+		db := newFakeDocDB()
+		db.seed("memberships",
+			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
+		)
+		uc := NewTeams(fakeProjectRepo{}, db)
+
+		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "team-1", "m-owner",
+			UpdateMembershipCommand{Roles: []string{teams.RoleOwner, teams.RoleAdmin}}, databases.Principal{Roles: []string{"admin"}})
+		require.NoError(t, err)
+		require.Equal(t, []string{teams.RoleOwner, teams.RoleAdmin}, updated.Data["roles"])
+	})
+}
+
+// TestUsers_UpdateUserEmailUniqueness: 改邮箱撞他人邮箱 → AlreadyExists；
+// 改回自身邮箱或新唯一邮箱 → 成功。
+func TestUsers_UpdateUserEmailUniqueness(t *testing.T) {
+	docDB := newFakeDocDB()
+	docDB.seed("users",
+		databases.Document{ID: "user-a", Data: map[string]any{"email": "a@torchwood.local"}},
+		databases.Document{ID: "user-b", Data: map[string]any{"email": "b@torchwood.local"}},
+	)
+	uc := NewUsers(fakeProjectRepo{}, docDB, nil, &clients.Database{})
+
+	t.Run("duplicate email rejected", func(t *testing.T) {
+		_, err := uc.UpdateUser(context.Background(), "proj-1", "user-a", map[string]any{"email": "B@Torchwood.Local"},
+			databases.Principal{Roles: []string{"keys"}})
+		require.Error(t, err)
+		require.Equal(t, codes.AlreadyExists, status.Code(err))
+	})
+
+	t.Run("own email unchanged allowed", func(t *testing.T) {
+		_, err := uc.UpdateUser(context.Background(), "proj-1", "user-a", map[string]any{"email": "A@torchwood.local"},
+			databases.Principal{Roles: []string{"keys"}})
+		require.NoError(t, err)
+	})
+
+	t.Run("new unique email allowed", func(t *testing.T) {
+		updated, err := uc.UpdateUser(context.Background(), "proj-1", "user-a", map[string]any{"email": "c@torchwood.local"},
+			databases.Principal{Roles: []string{"keys"}})
+		require.NoError(t, err)
+		require.Equal(t, "c@torchwood.local", updated.Data["email"])
+		require.Equal(t, false, updated.Data["email_verified"])
+	})
+}
