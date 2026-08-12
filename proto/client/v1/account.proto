@@ -128,6 +128,19 @@ service AccountService {
     };
   }
 
+  // 确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换
+  //（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。
+  rpc ConfirmEmailChange(ConfirmEmailChangeRequest) returns (Account) {
+    option (google.api.http) = { put: "/v1/account/email-change", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "permission" }
+      }
+    };
+  }
+
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
     option (google.api.http) = { get: "/v1/account/sessions" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
@@ -525,6 +538,14 @@ message UpdateAccountRequest {
   optional string email = 2;
   string password = 3;
   string old_password = 4;
+  // 改邮箱时必填：用于拼接新邮箱验证链接（语义同 CreateVerificationRequest.url）。
+  string url = 5;
+}
+
+message ConfirmEmailChangeRequest {
+  string project_id = 1;
+  string user_id = 2;
+  string secret = 3;
 }
 
 message Session {

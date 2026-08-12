@@ -112,3 +112,45 @@ func TestRedisAccountTokenStore_MagicURLExpiry(t *testing.T) {
 	require.NoError(t, err)
 	require.Error(t, store.VerifyMagicURLToken(ctx, "proj-1", "user-1", recoverySecret))
 }
+
+// TestRedisAccountTokenStore_EmailChange（R05-P1-2 A 档）：创建/消费返回新
+// 邮箱 + 一次性消费 + purpose 隔离（email_change 的 token 不能当 verification 用）。
+func TestRedisAccountTokenStore_EmailChange(t *testing.T) {
+	t.Parallel()
+
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := auth.NewRedisAccountTokenStore(rdb)
+	ctx := context.Background()
+
+	secret, expireAt, err := store.CreateEmailChangeToken(ctx, "proj-1", "user-1", "new-mail@example.com")
+	require.NoError(t, err)
+	require.NotEmpty(t, secret)
+	require.False(t, expireAt.IsZero())
+
+	// 消费返回 record 中的新邮箱。
+	email, err := store.VerifyEmailChangeToken(ctx, "proj-1", "user-1", secret)
+	require.NoError(t, err)
+	require.Equal(t, "new-mail@example.com", email)
+
+	// 一次性消费：二次使用拒绝。
+	_, err = store.VerifyEmailChangeToken(ctx, "proj-1", "user-1", secret)
+	require.Error(t, err)
+
+	// purpose 隔离：email_change token 不能当 verification 用，反之亦然。
+	secret2, _, err := store.CreateEmailChangeToken(ctx, "proj-1", "user-1", "another@example.com")
+	require.NoError(t, err)
+	require.Error(t, store.VerifyVerificationToken(ctx, "proj-1", "user-1", secret2))
+
+	verificationSecret, _, err := store.CreateVerificationToken(ctx, "proj-1", "user-1", "user@example.com")
+	require.NoError(t, err)
+	_, err = store.VerifyEmailChangeToken(ctx, "proj-1", "user-1", verificationSecret)
+	require.Error(t, err)
+
+	// 错误 secret 拒绝（消费后记录已删除，同样拒绝）。
+	secret3, _, _ := store.CreateEmailChangeToken(ctx, "proj-1", "user-1", "wrong@example.com")
+	_, err = store.VerifyEmailChangeToken(ctx, "proj-1", "user-1", secret3+"0")
+	require.Error(t, err)
+}

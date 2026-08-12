@@ -372,6 +372,65 @@ func TestAccountService_DeleteSessions_KeepCurrentPassthrough(t *testing.T) {
 	require.Nil(t, docDB.sessions[projectID][currentSessionID])
 }
 
+// TestAccountService_ConfirmEmailChange_Passthrough（R05-P1-2 A 档）：
+// handler 薄透传 + staging 端到端（内存 fakeDocDB + miniredis，-short 可跑）：
+// 改邮箱只写 pending_email → 消费邮件 secret 确认后 email 才切换。
+func TestAccountService_ConfirmEmailChange_Passthrough(t *testing.T) {
+	ctx, s, docDB, mailer, projectID := setupClientGRPC(t)
+	userID := signUpViaHandler(t, ctx, s, projectID, "grpc-stage@torchwood.local")
+	authCtx := principalCtx(ctx, projectID, userID, "session-1")
+
+	// 未设置 url 改邮箱 → InvalidArgument（handler 透传 use-case 校验）。
+	newEmail := "grpc-stage-new@torchwood.local"
+	_, err := s.UpdateAccount(authCtx, &clientv1.UpdateAccountRequest{
+		Email:       &newEmail,
+		OldPassword: "User@123",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// user_id 不等于 principal → PermissionDenied（token 不被消费）。
+	_, err = s.ConfirmEmailChange(authCtx, &clientv1.ConfirmEmailChangeRequest{
+		ProjectId: projectID,
+		UserId:    "other-user",
+		Secret:    "whatever",
+	})
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+
+	_, err = s.UpdateAccount(authCtx, &clientv1.UpdateAccountRequest{
+		Email:       &newEmail,
+		OldPassword: "User@123",
+		Url:         "http://localhost/confirm-email",
+	})
+	require.NoError(t, err)
+	// staging：email 保持旧值，仅写入 pending_email。
+	require.Equal(t, "grpc-stage@torchwood.local", docDB.users[projectID][userID]["email"])
+	require.Equal(t, newEmail, docDB.users[projectID][userID]["pending_email"])
+
+	// 从新邮箱收到的验证邮件提取一次性 secret。
+	re := regexp.MustCompile(`secret=([a-f0-9]+)`)
+	matches := re.FindStringSubmatch(mailer.body[0])
+	require.Len(t, matches, 2, "新邮箱验证邮件必须携带 secret")
+
+	resp, err := s.ConfirmEmailChange(authCtx, &clientv1.ConfirmEmailChangeRequest{
+		ProjectId: projectID,
+		UserId:    userID,
+		Secret:    matches[1],
+	})
+	require.NoError(t, err)
+	require.Equal(t, newEmail, resp.GetEmail())
+	require.True(t, resp.GetEmailVerified())
+	// 确认后 pending_email 清空（写 NULL，key 保留但值 nil）。
+	require.Nil(t, docDB.users[projectID][userID]["pending_email"])
+
+	// token 一次性：二次使用 → Unauthenticated。
+	_, err = s.ConfirmEmailChange(authCtx, &clientv1.ConfirmEmailChangeRequest{
+		ProjectId: projectID,
+		UserId:    userID,
+		Secret:    matches[1],
+	})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
 // TestAccountService_ErrorCodeMapping（R04-P1-1）：handler 错误码映射。
 func TestAccountService_ErrorCodeMapping(t *testing.T) {
 	ctx, s, _, _, projectID := setupClientGRPC(t)

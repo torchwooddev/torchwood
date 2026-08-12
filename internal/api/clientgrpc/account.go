@@ -88,8 +88,21 @@ func (s *AccountService) UpdateAccount(ctx context.Context, req *clientv1.Update
 	user, err := s.account.UpdateAccount(ctx, client.UpdateAccountCommand{
 		Name:        req.GetName(),
 		Email:       req.GetEmail(),
+		URL:         req.GetUrl(),
 		Password:    req.GetPassword(),
 		OldPassword: req.GetOldPassword(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mapUser(user), nil
+}
+
+func (s *AccountService) ConfirmEmailChange(ctx context.Context, req *clientv1.ConfirmEmailChangeRequest) (*clientv1.Account, error) {
+	user, err := s.account.ConfirmEmailChange(ctx, client.ConfirmEmailChangeCommand{
+		ProjectID: req.GetProjectId(),
+		UserID:    req.GetUserId(),
+		Secret:    req.GetSecret(),
 	})
 	if err != nil {
 		return nil, err

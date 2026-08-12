@@ -49,6 +49,40 @@
         "x-torchwood-access": "permission"
       }
     },
+    "/v1/account/email-change": {
+      "put": {
+        "summary": "确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换\r\n（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。",
+        "operationId": "AccountService_ConfirmEmailChange",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Account"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ConfirmEmailChangeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AccountService"
+        ],
+        "x-torchwood-access": "permission"
+      }
+    },
     "/v1/account/jwt": {
       "post": {
         "summary": "一次性 JWT",
@@ -1421,6 +1455,20 @@
         }
       }
     },
+    "v1ConfirmEmailChangeRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "secret": {
+          "type": "string"
+        }
+      }
+    },
     "v1CreateAnonymousSessionRequest": {
       "type": "object",
       "properties": {
@@ -1724,6 +1772,10 @@
         },
         "oldPassword": {
           "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "title": "改邮箱时必填：用于拼接新邮箱验证链接（语义同 CreateVerificationRequest.url）。"
         }
       }
     },

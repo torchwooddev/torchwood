@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -139,8 +140,15 @@ type Session struct {
 type UpdateAccountCommand struct {
 	Name        string
 	Email       string
+	URL         string // 改邮箱时必填：新邮箱验证链接模板（语义同 CreateVerificationRequest.url）
 	Password    string
 	OldPassword string
+}
+
+type ConfirmEmailChangeCommand struct {
+	ProjectID string
+	UserID    string
+	Secret    string
 }
 
 // SignUp 频控：每 IP 每小时最多 10 次。
@@ -443,6 +451,18 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		if err := validateEmail(email); err != nil {
 			return nil, err
 		}
+		// 邮箱变更走 staging（R05-P1-2，A 档）：新邮箱验证通过前 email 保持
+		// 旧值（旧邮箱仍可登录/找回），仅写入 pending_email + 签发 email_change
+		// token + 向新邮箱发验证邮件；验证通过（ConfirmEmailChange）才切换。
+		if cmd.URL == "" {
+			return nil, status.Error(codes.InvalidArgument, "url is required when changing email")
+		}
+		if err := validateRedirectURL(cmd.URL); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid url: %v", err)
+		}
+		if err := a.validateProjectOAuthRedirectURLs(ctx, p.ProjectID, cmd.URL, cmd.URL); err != nil {
+			return nil, err
+		}
 		list, err := a.docDB.ListDocuments(ctx, p.ProjectID, "default", "users", databases.Query{
 			Queries:  []string{query.BuildEqual("email", email)},
 			PageSize: 1,
@@ -453,8 +473,7 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		if len(list.Documents) > 0 && list.Documents[0].ID != p.UserID {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
-		updates["email"] = email
-		updates["email_verified"] = false
+		updates["pending_email"] = email
 		emailChanging = true
 	}
 	if cmd.Password != "" {
@@ -481,11 +500,31 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		return mapUserDoc(doc), nil
 	}
 
-	// R05-P1-3：敏感变更先撤销全部会话、再提交资料；撤会话失败时资料保持
-	// 原样（不做半提交），避免"密码/邮箱已改但旧会话仍存活"的窗口。
-	if _, passwordChanged := updates["password_hash"]; passwordChanged || emailChanging {
+	// 先撤会话、后提交：撤会话失败即返回，无"密码已改但旧会话仍存活"窗口。
+	// 邮箱变更走 staging：pending 阶段不撤会话（旧邮箱仍可登录），撤会话
+	// 时机推迟到 ConfirmEmailChange 成功时（G3-3 语义在确认路径保持）。
+	if _, passwordChanged := updates["password_hash"]; passwordChanged {
 		if err := a.sessions.DeleteSessionsByUser(ctx, p.ProjectID, p.UserID); err != nil {
 			return nil, fmt.Errorf("delete sessions after account change: %w", err)
+		}
+	}
+
+	// R05-P1-2（A 档 staging）：先签发 email_change token 并向**新邮箱**发送
+	// 验证邮件（失败则变更不落库，无副作用），提交后才向**旧邮箱**发安全通知
+	//（B 档成果保留），让被劫持者第一时间察觉并止损。
+	if emailChanging {
+		if a.tokens == nil || a.mailer == nil {
+			return nil, status.Error(codes.Unimplemented, "email delivery is not configured")
+		}
+		secret, expireAt, err := a.tokens.CreateEmailChangeToken(ctx, p.ProjectID, p.UserID, normalizeEmail(cmd.Email))
+		if err != nil {
+			return nil, err
+		}
+		link := buildAccountActionURL(cmd.URL, p.UserID, secret)
+		subject := "Confirm your Torchwood email change"
+		body := fmt.Sprintf("Click the link below to confirm your new email address:\n\n%s\n\nThis link expires at %s.", link, expireAt.Format("2006-01-02 15:04 MST"))
+		if err := a.mailer.Send(ctx, normalizeEmail(cmd.Email), subject, body); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to send email change confirmation: %v", err)
 		}
 	}
 
@@ -499,17 +538,82 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		}
 		return nil, fmt.Errorf("update account: %w", err)
 	}
-	// R05-P1-2（B 档最小缓解）：邮箱变更后向旧邮箱发送安全通知（含撤销指引），
-	// 让被劫持者第一时间察觉并止损；新邮箱验证走既有 CreateVerification 流程
-	//（email_verified=false 已置位）。通知失败仅 Warn，不回滚合法变更。
-	// 完整 pending_email staging 档（A）需 proto 增加验证 URL 字段，
-	// 见 fix-plan §3 G3-2 备注。
 	if emailChanging && oldEmail != "" && a.mailer != nil {
-		subject := "Your Torchwood email address was changed"
-		body := fmt.Sprintf("Your Torchwood account email was changed to %s.\n\nIf you did not make this change, sign in to your account and update your email or contact support immediately.", updates["email"])
+		subject := "Your Torchwood email address is being changed"
+		body := fmt.Sprintf("Your Torchwood account email is pending change to %s. The change takes effect only after confirmation from the new address.\n\nIf you did not make this change, sign in to your account and update your email or contact support immediately.", normalizeEmail(cmd.Email))
 		if err := a.mailer.Send(ctx, oldEmail, subject, body); err != nil {
 			slog.Warn("email change notification failed", "user_id", p.UserID, "error", err)
 		}
+	}
+	return mapUserDoc(&updated), nil
+}
+
+// ConfirmEmailChange 消费 email_change 一次性 token（GETDEL 原子）并校验新
+// 邮箱未被他人占用，通过后切换 email、清除 pending_email、置 email_verified，
+// 并先撤全部会话再提交（G3-3 语义）。
+func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChangeCommand) (*User, error) {
+	if a.tokens == nil {
+		return nil, status.Error(codes.Unimplemented, "account verification is not configured")
+	}
+	p, err := a.requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	projectID := strings.TrimSpace(cmd.ProjectID)
+	userID := strings.TrimSpace(cmd.UserID)
+	secret := strings.TrimSpace(cmd.Secret)
+	if projectID == "" {
+		return nil, status.Error(codes.InvalidArgument, "project_id is required")
+	}
+	if userID == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id is required")
+	}
+	if secret == "" {
+		return nil, status.Error(codes.InvalidArgument, "secret is required")
+	}
+	if userID != p.UserID {
+		return nil, status.Error(codes.PermissionDenied, "cannot confirm email change for another user")
+	}
+	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+		return nil, err
+	}
+	newEmail, err := a.tokens.VerifyEmailChangeToken(ctx, projectID, userID, secret)
+	if err != nil {
+		return nil, err
+	}
+	// 新邮箱在 token 有效期内可能已被他人注册（并发创建）：复用 ListDocuments
+	// 查重，被占用则 AlreadyExists（token 已被原子消费，不可重试）。
+	list, err := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+		Queries:  []string{query.BuildEqual("email", newEmail)},
+		PageSize: 1,
+	}, databases.SystemPrincipal)
+	if err != nil {
+		return nil, err
+	}
+	if len(list.Documents) > 0 && list.Documents[0].ID != userID {
+		return nil, status.Error(codes.AlreadyExists, "email already registered")
+	}
+	doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, status.Error(codes.NotFound, "user not found")
+	}
+	// 先撤会话、后提交：撤会话失败即返回，无"邮箱已改但旧会话仍存活"窗口。
+	if err := a.sessions.DeleteSessionsByUser(ctx, projectID, userID); err != nil {
+		return nil, fmt.Errorf("delete sessions after email change: %w", err)
+	}
+	updated, err := a.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+		ID: userID,
+		Data: map[string]any{
+			"email":          newEmail,
+			"pending_email":  nil,
+			"email_verified": true,
+		},
+	}, nil), databases.SystemPrincipal)
+	if err != nil {
+		return nil, fmt.Errorf("confirm email change: %w", err)
 	}
 	return mapUserDoc(&updated), nil
 }

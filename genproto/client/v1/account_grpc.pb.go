@@ -26,6 +26,7 @@ const (
 	AccountService_RefreshToken_FullMethodName                   = "/torchwood.client.v1.AccountService/RefreshToken"
 	AccountService_Me_FullMethodName                             = "/torchwood.client.v1.AccountService/Me"
 	AccountService_UpdateAccount_FullMethodName                  = "/torchwood.client.v1.AccountService/UpdateAccount"
+	AccountService_ConfirmEmailChange_FullMethodName             = "/torchwood.client.v1.AccountService/ConfirmEmailChange"
 	AccountService_ListSessions_FullMethodName                   = "/torchwood.client.v1.AccountService/ListSessions"
 	AccountService_DeleteSession_FullMethodName                  = "/torchwood.client.v1.AccountService/DeleteSession"
 	AccountService_DeleteSessions_FullMethodName                 = "/torchwood.client.v1.AccountService/DeleteSessions"
@@ -66,6 +67,9 @@ type AccountServiceClient interface {
 	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*RefreshTokenResponse, error)
 	Me(ctx context.Context, in *MeRequest, opts ...grpc.CallOption) (*Account, error)
 	UpdateAccount(ctx context.Context, in *UpdateAccountRequest, opts ...grpc.CallOption) (*Account, error)
+	// 确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换
+	//（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。
+	ConfirmEmailChange(ctx context.Context, in *ConfirmEmailChangeRequest, opts ...grpc.CallOption) (*Account, error)
 	ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*ListSessionsResponse, error)
 	DeleteSession(ctx context.Context, in *DeleteSessionRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	DeleteSessions(ctx context.Context, in *DeleteSessionsRequest, opts ...grpc.CallOption) (*v1.Empty, error)
@@ -162,6 +166,16 @@ func (c *accountServiceClient) UpdateAccount(ctx context.Context, in *UpdateAcco
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Account)
 	err := c.cc.Invoke(ctx, AccountService_UpdateAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountServiceClient) ConfirmEmailChange(ctx context.Context, in *ConfirmEmailChangeRequest, opts ...grpc.CallOption) (*Account, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Account)
+	err := c.cc.Invoke(ctx, AccountService_ConfirmEmailChange_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -458,6 +472,9 @@ type AccountServiceServer interface {
 	RefreshToken(context.Context, *RefreshTokenRequest) (*RefreshTokenResponse, error)
 	Me(context.Context, *MeRequest) (*Account, error)
 	UpdateAccount(context.Context, *UpdateAccountRequest) (*Account, error)
+	// 确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换
+	//（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。
+	ConfirmEmailChange(context.Context, *ConfirmEmailChangeRequest) (*Account, error)
 	ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error)
 	DeleteSession(context.Context, *DeleteSessionRequest) (*v1.Empty, error)
 	DeleteSessions(context.Context, *DeleteSessionsRequest) (*v1.Empty, error)
@@ -517,6 +534,9 @@ func (UnimplementedAccountServiceServer) Me(context.Context, *MeRequest) (*Accou
 }
 func (UnimplementedAccountServiceServer) UpdateAccount(context.Context, *UpdateAccountRequest) (*Account, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateAccount not implemented")
+}
+func (UnimplementedAccountServiceServer) ConfirmEmailChange(context.Context, *ConfirmEmailChangeRequest) (*Account, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConfirmEmailChange not implemented")
 }
 func (UnimplementedAccountServiceServer) ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSessions not implemented")
@@ -727,6 +747,24 @@ func _AccountService_UpdateAccount_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AccountServiceServer).UpdateAccount(ctx, req.(*UpdateAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountService_ConfirmEmailChange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmEmailChangeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountServiceServer).ConfirmEmailChange(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountService_ConfirmEmailChange_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountServiceServer).ConfirmEmailChange(ctx, req.(*ConfirmEmailChangeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1265,6 +1303,10 @@ var AccountService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateAccount",
 			Handler:    _AccountService_UpdateAccount_Handler,
+		},
+		{
+			MethodName: "ConfirmEmailChange",
+			Handler:    _AccountService_ConfirmEmailChange_Handler,
 		},
 		{
 			MethodName: "ListSessions",

@@ -114,6 +114,11 @@ func (f *fakeAccount) UpdateAccount(ctx context.Context, req *clientv1.UpdateAcc
 	return &clientv1.Account{Id: "acc-1", Name: name, Email: email}, nil
 }
 
+func (f *fakeAccount) ConfirmEmailChange(ctx context.Context, req *clientv1.ConfirmEmailChangeRequest) (*clientv1.Account, error) {
+	f.storeReq(req)
+	return &clientv1.Account{Id: "acc-1", Email: "changed@example.com", EmailVerified: true}, nil
+}
+
 func (f *fakeAccount) ListSessions(ctx context.Context, _ *clientv1.ListSessionsRequest) (*clientv1.ListSessionsResponse, error) {
 	return &clientv1.ListSessionsResponse{Sessions: []*clientv1.Session{{Id: "s1", Current: true}, {Id: "s2"}}}, nil
 }

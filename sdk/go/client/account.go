@@ -80,12 +80,24 @@ func (a *AccountService) SignOut(ctx context.Context) error {
 }
 
 // UpdateAccount 更新账户资料；name/email 传 nil 表示不修改，传指针（含空串）表示更新/清空。
-func (a *AccountService) UpdateAccount(ctx context.Context, name, email *string, password, oldPassword string) (*clientv1.Account, error) {
+// 修改 email 时 url 必填（新邮箱验证链接模板，staging：验证通过前 email 保持旧值）。
+func (a *AccountService) UpdateAccount(ctx context.Context, name, email *string, password, oldPassword, url string) (*clientv1.Account, error) {
 	return a.c.account.UpdateAccount(ctx, &clientv1.UpdateAccountRequest{
 		Name:        name,
 		Email:       email,
 		Password:    password,
 		OldPassword: oldPassword,
+		Url:         url,
+	})
+}
+
+// ConfirmEmailChange 消费邮件链接中的一次性 secret 完成邮箱变更（验证通过后
+// email 才切换；需登录态，user_id 必须等于当前用户）。
+func (a *AccountService) ConfirmEmailChange(ctx context.Context, userID, secret string) (*clientv1.Account, error) {
+	return a.c.account.ConfirmEmailChange(ctx, &clientv1.ConfirmEmailChangeRequest{
+		ProjectId: a.c.cfg.ProjectID,
+		UserId:    userID,
+		Secret:    secret,
 	})
 }
 

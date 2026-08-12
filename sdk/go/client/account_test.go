@@ -137,7 +137,7 @@ func TestClientAccount_UpdateAccount(t *testing.T) {
 	name := "New Name"
 	email := "new@example.com"
 
-	acc, err := c.Account.UpdateAccount(context.Background(), &name, &email, "", "")
+	acc, err := c.Account.UpdateAccount(context.Background(), &name, &email, "", "", "https://app.example.com/confirm")
 	require.NoError(t, err)
 	require.Equal(t, "New Name", acc.Name)
 
@@ -147,9 +147,10 @@ func TestClientAccount_UpdateAccount(t *testing.T) {
 	require.Equal(t, "New Name", *req.Name)
 	require.NotNil(t, req.Email)
 	require.Equal(t, "new@example.com", *req.Email)
+	require.Equal(t, "https://app.example.com/confirm", req.Url, "改邮箱时 url 必须透传")
 
 	// nil 字段表示不修改
-	_, err = c.Account.UpdateAccount(context.Background(), nil, nil, "pw", "old")
+	_, err = c.Account.UpdateAccount(context.Background(), nil, nil, "pw", "old", "")
 	require.NoError(t, err)
 	req, ok = fake.lastRequest().(*clientv1.UpdateAccountRequest)
 	require.True(t, ok)
@@ -157,6 +158,21 @@ func TestClientAccount_UpdateAccount(t *testing.T) {
 	require.Nil(t, req.Email)
 	require.Equal(t, "pw", req.Password)
 	require.Equal(t, "old", req.OldPassword)
+}
+
+func TestClientAccount_ConfirmEmailChange(t *testing.T) {
+	c, fake := newTestClient(t, WithProjectID("proj-1"))
+
+	acc, err := c.Account.ConfirmEmailChange(context.Background(), "acc-1", "secret-1")
+	require.NoError(t, err)
+	require.Equal(t, "changed@example.com", acc.Email)
+	require.True(t, acc.EmailVerified)
+
+	req, ok := fake.lastRequest().(*clientv1.ConfirmEmailChangeRequest)
+	require.True(t, ok)
+	require.Equal(t, "proj-1", req.ProjectId)
+	require.Equal(t, "acc-1", req.UserId)
+	require.Equal(t, "secret-1", req.Secret)
 }
 
 func TestClientAccount_SessionsLifecycle(t *testing.T) {

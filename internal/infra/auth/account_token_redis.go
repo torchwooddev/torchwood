@@ -75,6 +75,15 @@ func (s *RedisAccountTokenStore) VerifyMagicURLToken(ctx context.Context, projec
 	return s.verifyToken(ctx, projectID, userID, secret, domainauth.AccountTokenPurposeMagicURL)
 }
 
+func (s *RedisAccountTokenStore) CreateEmailChangeToken(ctx context.Context, projectID, userID, email string) (string, time.Time, error) {
+	return s.createToken(ctx, projectID, userID, email, domainauth.AccountTokenPurposeEmailChange, verificationTokenTTL)
+}
+
+// VerifyEmailChangeToken 原子消费邮箱变更 token 并返回 record 中的新邮箱。
+func (s *RedisAccountTokenStore) VerifyEmailChangeToken(ctx context.Context, projectID, userID, secret string) (string, error) {
+	return s.verifyTokenWithEmail(ctx, projectID, userID, secret, domainauth.AccountTokenPurposeEmailChange)
+}
+
 func (s *RedisAccountTokenStore) createToken(ctx context.Context, projectID, userID, email, purpose string, ttl time.Duration) (string, time.Time, error) {
 	secret, err := generateAccountTokenSecret()
 	if err != nil {
@@ -102,25 +111,32 @@ func (s *RedisAccountTokenStore) createToken(ctx context.Context, projectID, use
 // verifyToken 通过 GETDEL 原子消费：校验与删除一体，杜绝并发双消费
 // （recovery 双重置 / magic URL 双会话）。
 func (s *RedisAccountTokenStore) verifyToken(ctx context.Context, projectID, userID, secret, purpose string) error {
+	_, err := s.verifyTokenWithEmail(ctx, projectID, userID, secret, purpose)
+	return err
+}
+
+// verifyTokenWithEmail 同 verifyToken，额外返回 record 中携带的 email
+// （email_change 消费后需要新邮箱地址）。
+func (s *RedisAccountTokenStore) verifyTokenWithEmail(ctx context.Context, projectID, userID, secret, purpose string) (string, error) {
 	key := accountTokenKey(purpose, projectID, userID)
 	raw, err := s.rdb.GetDel(ctx, key).Bytes()
 	if err == redis.Nil {
-		return status.Error(codes.Unauthenticated, "invalid or expired account token")
+		return "", status.Error(codes.Unauthenticated, "invalid or expired account token")
 	}
 	if err != nil {
-		return status.Error(codes.Internal, "account token lookup failed")
+		return "", status.Error(codes.Internal, "account token lookup failed")
 	}
 	var record accountTokenRecord
 	if err := json.Unmarshal(raw, &record); err != nil {
-		return status.Error(codes.Internal, "account token decode failed")
+		return "", status.Error(codes.Internal, "account token decode failed")
 	}
 	if record.ProjectID != projectID || record.UserID != userID || record.Purpose != purpose {
-		return status.Error(codes.Unauthenticated, "invalid or expired account token")
+		return "", status.Error(codes.Unauthenticated, "invalid or expired account token")
 	}
 	if record.SecretHash != HashOTP(secret) {
-		return status.Error(codes.Unauthenticated, "invalid or expired account token")
+		return "", status.Error(codes.Unauthenticated, "invalid or expired account token")
 	}
-	return nil
+	return record.Email, nil
 }
 
 func accountTokenKey(purpose, projectID, userID string) string {

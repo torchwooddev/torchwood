@@ -645,10 +645,12 @@ func (x *RefreshTokenResponse) GetTokens() *TokenBundle {
 type UpdateAccountRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// name/email 为 optional：未设置 = 不修改；设置（含空串）= 更新/清空。
-	Name          *string `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
-	Email         *string `protobuf:"bytes,2,opt,name=email,proto3,oneof" json:"email,omitempty"`
-	Password      string  `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
-	OldPassword   string  `protobuf:"bytes,4,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
+	Name        *string `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Email       *string `protobuf:"bytes,2,opt,name=email,proto3,oneof" json:"email,omitempty"`
+	Password    string  `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
+	OldPassword string  `protobuf:"bytes,4,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
+	// 改邮箱时必填：用于拼接新邮箱验证链接（语义同 CreateVerificationRequest.url）。
+	Url           string `protobuf:"bytes,5,opt,name=url,proto3" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -711,6 +713,73 @@ func (x *UpdateAccountRequest) GetOldPassword() string {
 	return ""
 }
 
+func (x *UpdateAccountRequest) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+type ConfirmEmailChangeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Secret        string                 `protobuf:"bytes,3,opt,name=secret,proto3" json:"secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmEmailChangeRequest) Reset() {
+	*x = ConfirmEmailChangeRequest{}
+	mi := &file_client_v1_account_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmEmailChangeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmEmailChangeRequest) ProtoMessage() {}
+
+func (x *ConfirmEmailChangeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_client_v1_account_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmEmailChangeRequest.ProtoReflect.Descriptor instead.
+func (*ConfirmEmailChangeRequest) Descriptor() ([]byte, []int) {
+	return file_client_v1_account_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ConfirmEmailChangeRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ConfirmEmailChangeRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *ConfirmEmailChangeRequest) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
 type Session struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -727,7 +796,7 @@ type Session struct {
 
 func (x *Session) Reset() {
 	*x = Session{}
-	mi := &file_client_v1_account_proto_msgTypes[11]
+	mi := &file_client_v1_account_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -739,7 +808,7 @@ func (x *Session) String() string {
 func (*Session) ProtoMessage() {}
 
 func (x *Session) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[11]
+	mi := &file_client_v1_account_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -752,7 +821,7 @@ func (x *Session) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Session.ProtoReflect.Descriptor instead.
 func (*Session) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{11}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Session) GetId() string {
@@ -819,7 +888,7 @@ type ListSessionsRequest struct {
 
 func (x *ListSessionsRequest) Reset() {
 	*x = ListSessionsRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[12]
+	mi := &file_client_v1_account_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +900,7 @@ func (x *ListSessionsRequest) String() string {
 func (*ListSessionsRequest) ProtoMessage() {}
 
 func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[12]
+	mi := &file_client_v1_account_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -844,7 +913,7 @@ func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{12}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{13}
 }
 
 type ListSessionsResponse struct {
@@ -856,7 +925,7 @@ type ListSessionsResponse struct {
 
 func (x *ListSessionsResponse) Reset() {
 	*x = ListSessionsResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[13]
+	mi := &file_client_v1_account_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -868,7 +937,7 @@ func (x *ListSessionsResponse) String() string {
 func (*ListSessionsResponse) ProtoMessage() {}
 
 func (x *ListSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[13]
+	mi := &file_client_v1_account_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -881,7 +950,7 @@ func (x *ListSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionsResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{13}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListSessionsResponse) GetSessions() []*Session {
@@ -900,7 +969,7 @@ type DeleteSessionRequest struct {
 
 func (x *DeleteSessionRequest) Reset() {
 	*x = DeleteSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[14]
+	mi := &file_client_v1_account_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -912,7 +981,7 @@ func (x *DeleteSessionRequest) String() string {
 func (*DeleteSessionRequest) ProtoMessage() {}
 
 func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[14]
+	mi := &file_client_v1_account_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -925,7 +994,7 @@ func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{14}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DeleteSessionRequest) GetSessionId() string {
@@ -944,7 +1013,7 @@ type DeleteSessionsRequest struct {
 
 func (x *DeleteSessionsRequest) Reset() {
 	*x = DeleteSessionsRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[15]
+	mi := &file_client_v1_account_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -956,7 +1025,7 @@ func (x *DeleteSessionsRequest) String() string {
 func (*DeleteSessionsRequest) ProtoMessage() {}
 
 func (x *DeleteSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[15]
+	mi := &file_client_v1_account_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -969,7 +1038,7 @@ func (x *DeleteSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionsRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{15}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DeleteSessionsRequest) GetKeepCurrent() bool {
@@ -987,7 +1056,7 @@ type GetPrefsRequest struct {
 
 func (x *GetPrefsRequest) Reset() {
 	*x = GetPrefsRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[16]
+	mi := &file_client_v1_account_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -999,7 +1068,7 @@ func (x *GetPrefsRequest) String() string {
 func (*GetPrefsRequest) ProtoMessage() {}
 
 func (x *GetPrefsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[16]
+	mi := &file_client_v1_account_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1012,7 +1081,7 @@ func (x *GetPrefsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPrefsRequest.ProtoReflect.Descriptor instead.
 func (*GetPrefsRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{16}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{17}
 }
 
 type GetPrefsResponse struct {
@@ -1024,7 +1093,7 @@ type GetPrefsResponse struct {
 
 func (x *GetPrefsResponse) Reset() {
 	*x = GetPrefsResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[17]
+	mi := &file_client_v1_account_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1036,7 +1105,7 @@ func (x *GetPrefsResponse) String() string {
 func (*GetPrefsResponse) ProtoMessage() {}
 
 func (x *GetPrefsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[17]
+	mi := &file_client_v1_account_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1049,7 +1118,7 @@ func (x *GetPrefsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPrefsResponse.ProtoReflect.Descriptor instead.
 func (*GetPrefsResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{17}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetPrefsResponse) GetPrefs() *structpb.Struct {
@@ -1068,7 +1137,7 @@ type UpdatePrefsRequest struct {
 
 func (x *UpdatePrefsRequest) Reset() {
 	*x = UpdatePrefsRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[18]
+	mi := &file_client_v1_account_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +1149,7 @@ func (x *UpdatePrefsRequest) String() string {
 func (*UpdatePrefsRequest) ProtoMessage() {}
 
 func (x *UpdatePrefsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[18]
+	mi := &file_client_v1_account_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1093,7 +1162,7 @@ func (x *UpdatePrefsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePrefsRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePrefsRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{18}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UpdatePrefsRequest) GetPrefs() *structpb.Struct {
@@ -1113,7 +1182,7 @@ type CreateEmailOTPRequest struct {
 
 func (x *CreateEmailOTPRequest) Reset() {
 	*x = CreateEmailOTPRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[19]
+	mi := &file_client_v1_account_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1125,7 +1194,7 @@ func (x *CreateEmailOTPRequest) String() string {
 func (*CreateEmailOTPRequest) ProtoMessage() {}
 
 func (x *CreateEmailOTPRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[19]
+	mi := &file_client_v1_account_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1138,7 +1207,7 @@ func (x *CreateEmailOTPRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateEmailOTPRequest.ProtoReflect.Descriptor instead.
 func (*CreateEmailOTPRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{19}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CreateEmailOTPRequest) GetProjectId() string {
@@ -1167,7 +1236,7 @@ type CreateEmailOTPSessionRequest struct {
 
 func (x *CreateEmailOTPSessionRequest) Reset() {
 	*x = CreateEmailOTPSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[20]
+	mi := &file_client_v1_account_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +1248,7 @@ func (x *CreateEmailOTPSessionRequest) String() string {
 func (*CreateEmailOTPSessionRequest) ProtoMessage() {}
 
 func (x *CreateEmailOTPSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[20]
+	mi := &file_client_v1_account_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +1261,7 @@ func (x *CreateEmailOTPSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateEmailOTPSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateEmailOTPSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{20}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CreateEmailOTPSessionRequest) GetProjectId() string {
@@ -1233,7 +1302,7 @@ type ChallengeResponse struct {
 
 func (x *ChallengeResponse) Reset() {
 	*x = ChallengeResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[21]
+	mi := &file_client_v1_account_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1245,7 +1314,7 @@ func (x *ChallengeResponse) String() string {
 func (*ChallengeResponse) ProtoMessage() {}
 
 func (x *ChallengeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[21]
+	mi := &file_client_v1_account_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1258,7 +1327,7 @@ func (x *ChallengeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChallengeResponse.ProtoReflect.Descriptor instead.
 func (*ChallengeResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{21}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ChallengeResponse) GetChallengeId() string {
@@ -1287,7 +1356,7 @@ type CreateOAuth2SessionRequest struct {
 
 func (x *CreateOAuth2SessionRequest) Reset() {
 	*x = CreateOAuth2SessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[22]
+	mi := &file_client_v1_account_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1299,7 +1368,7 @@ func (x *CreateOAuth2SessionRequest) String() string {
 func (*CreateOAuth2SessionRequest) ProtoMessage() {}
 
 func (x *CreateOAuth2SessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[22]
+	mi := &file_client_v1_account_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1312,7 +1381,7 @@ func (x *CreateOAuth2SessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOAuth2SessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateOAuth2SessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{22}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CreateOAuth2SessionRequest) GetProvider() string {
@@ -1352,7 +1421,7 @@ type CreateOAuth2SessionResponse struct {
 
 func (x *CreateOAuth2SessionResponse) Reset() {
 	*x = CreateOAuth2SessionResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[23]
+	mi := &file_client_v1_account_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1364,7 +1433,7 @@ func (x *CreateOAuth2SessionResponse) String() string {
 func (*CreateOAuth2SessionResponse) ProtoMessage() {}
 
 func (x *CreateOAuth2SessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[23]
+	mi := &file_client_v1_account_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1377,7 +1446,7 @@ func (x *CreateOAuth2SessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOAuth2SessionResponse.ProtoReflect.Descriptor instead.
 func (*CreateOAuth2SessionResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{23}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CreateOAuth2SessionResponse) GetRedirectUrl() string {
@@ -1401,7 +1470,7 @@ type CreateOAuth2TokenSessionRequest struct {
 
 func (x *CreateOAuth2TokenSessionRequest) Reset() {
 	*x = CreateOAuth2TokenSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[24]
+	mi := &file_client_v1_account_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1413,7 +1482,7 @@ func (x *CreateOAuth2TokenSessionRequest) String() string {
 func (*CreateOAuth2TokenSessionRequest) ProtoMessage() {}
 
 func (x *CreateOAuth2TokenSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[24]
+	mi := &file_client_v1_account_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1426,7 +1495,7 @@ func (x *CreateOAuth2TokenSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOAuth2TokenSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateOAuth2TokenSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{24}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CreateOAuth2TokenSessionRequest) GetProvider() string {
@@ -1481,7 +1550,7 @@ type CreatePhoneOTPRequest struct {
 
 func (x *CreatePhoneOTPRequest) Reset() {
 	*x = CreatePhoneOTPRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[25]
+	mi := &file_client_v1_account_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1493,7 +1562,7 @@ func (x *CreatePhoneOTPRequest) String() string {
 func (*CreatePhoneOTPRequest) ProtoMessage() {}
 
 func (x *CreatePhoneOTPRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[25]
+	mi := &file_client_v1_account_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1506,7 +1575,7 @@ func (x *CreatePhoneOTPRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePhoneOTPRequest.ProtoReflect.Descriptor instead.
 func (*CreatePhoneOTPRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{25}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *CreatePhoneOTPRequest) GetProjectId() string {
@@ -1535,7 +1604,7 @@ type CreatePhoneOTPSessionRequest struct {
 
 func (x *CreatePhoneOTPSessionRequest) Reset() {
 	*x = CreatePhoneOTPSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[26]
+	mi := &file_client_v1_account_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1547,7 +1616,7 @@ func (x *CreatePhoneOTPSessionRequest) String() string {
 func (*CreatePhoneOTPSessionRequest) ProtoMessage() {}
 
 func (x *CreatePhoneOTPSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[26]
+	mi := &file_client_v1_account_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1560,7 +1629,7 @@ func (x *CreatePhoneOTPSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePhoneOTPSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreatePhoneOTPSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{26}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CreatePhoneOTPSessionRequest) GetProjectId() string {
@@ -1601,7 +1670,7 @@ type CreateWeChatMiniProgramSessionRequest struct {
 
 func (x *CreateWeChatMiniProgramSessionRequest) Reset() {
 	*x = CreateWeChatMiniProgramSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[27]
+	mi := &file_client_v1_account_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1613,7 +1682,7 @@ func (x *CreateWeChatMiniProgramSessionRequest) String() string {
 func (*CreateWeChatMiniProgramSessionRequest) ProtoMessage() {}
 
 func (x *CreateWeChatMiniProgramSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[27]
+	mi := &file_client_v1_account_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1626,7 +1695,7 @@ func (x *CreateWeChatMiniProgramSessionRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use CreateWeChatMiniProgramSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateWeChatMiniProgramSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{27}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CreateWeChatMiniProgramSessionRequest) GetProjectId() string {
@@ -1652,7 +1721,7 @@ type CreateAnonymousSessionRequest struct {
 
 func (x *CreateAnonymousSessionRequest) Reset() {
 	*x = CreateAnonymousSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[28]
+	mi := &file_client_v1_account_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1664,7 +1733,7 @@ func (x *CreateAnonymousSessionRequest) String() string {
 func (*CreateAnonymousSessionRequest) ProtoMessage() {}
 
 func (x *CreateAnonymousSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[28]
+	mi := &file_client_v1_account_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1677,7 +1746,7 @@ func (x *CreateAnonymousSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAnonymousSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateAnonymousSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{28}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CreateAnonymousSessionRequest) GetProjectId() string {
@@ -1699,7 +1768,7 @@ type CreateOAuth2LinkSessionRequest struct {
 
 func (x *CreateOAuth2LinkSessionRequest) Reset() {
 	*x = CreateOAuth2LinkSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[29]
+	mi := &file_client_v1_account_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1711,7 +1780,7 @@ func (x *CreateOAuth2LinkSessionRequest) String() string {
 func (*CreateOAuth2LinkSessionRequest) ProtoMessage() {}
 
 func (x *CreateOAuth2LinkSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[29]
+	mi := &file_client_v1_account_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1724,7 +1793,7 @@ func (x *CreateOAuth2LinkSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOAuth2LinkSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateOAuth2LinkSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{29}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CreateOAuth2LinkSessionRequest) GetProvider() string {
@@ -1767,7 +1836,7 @@ type CreateOAuth2LinkTokenSessionRequest struct {
 
 func (x *CreateOAuth2LinkTokenSessionRequest) Reset() {
 	*x = CreateOAuth2LinkTokenSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[30]
+	mi := &file_client_v1_account_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1779,7 +1848,7 @@ func (x *CreateOAuth2LinkTokenSessionRequest) String() string {
 func (*CreateOAuth2LinkTokenSessionRequest) ProtoMessage() {}
 
 func (x *CreateOAuth2LinkTokenSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[30]
+	mi := &file_client_v1_account_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1792,7 +1861,7 @@ func (x *CreateOAuth2LinkTokenSessionRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CreateOAuth2LinkTokenSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateOAuth2LinkTokenSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{30}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CreateOAuth2LinkTokenSessionRequest) GetProvider() string {
@@ -1833,7 +1902,7 @@ type CreateVerificationRequest struct {
 
 func (x *CreateVerificationRequest) Reset() {
 	*x = CreateVerificationRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[31]
+	mi := &file_client_v1_account_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1845,7 +1914,7 @@ func (x *CreateVerificationRequest) String() string {
 func (*CreateVerificationRequest) ProtoMessage() {}
 
 func (x *CreateVerificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[31]
+	mi := &file_client_v1_account_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1858,7 +1927,7 @@ func (x *CreateVerificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateVerificationRequest.ProtoReflect.Descriptor instead.
 func (*CreateVerificationRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{31}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *CreateVerificationRequest) GetProjectId() string {
@@ -1885,7 +1954,7 @@ type CreateVerificationResponse struct {
 
 func (x *CreateVerificationResponse) Reset() {
 	*x = CreateVerificationResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[32]
+	mi := &file_client_v1_account_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1897,7 +1966,7 @@ func (x *CreateVerificationResponse) String() string {
 func (*CreateVerificationResponse) ProtoMessage() {}
 
 func (x *CreateVerificationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[32]
+	mi := &file_client_v1_account_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1910,7 +1979,7 @@ func (x *CreateVerificationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateVerificationResponse.ProtoReflect.Descriptor instead.
 func (*CreateVerificationResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{32}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *CreateVerificationResponse) GetUserId() string {
@@ -1938,7 +2007,7 @@ type UpdateVerificationRequest struct {
 
 func (x *UpdateVerificationRequest) Reset() {
 	*x = UpdateVerificationRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[33]
+	mi := &file_client_v1_account_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1950,7 +2019,7 @@ func (x *UpdateVerificationRequest) String() string {
 func (*UpdateVerificationRequest) ProtoMessage() {}
 
 func (x *UpdateVerificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[33]
+	mi := &file_client_v1_account_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1963,7 +2032,7 @@ func (x *UpdateVerificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateVerificationRequest.ProtoReflect.Descriptor instead.
 func (*UpdateVerificationRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{33}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *UpdateVerificationRequest) GetProjectId() string {
@@ -1998,7 +2067,7 @@ type CreateRecoveryRequest struct {
 
 func (x *CreateRecoveryRequest) Reset() {
 	*x = CreateRecoveryRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[34]
+	mi := &file_client_v1_account_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2010,7 +2079,7 @@ func (x *CreateRecoveryRequest) String() string {
 func (*CreateRecoveryRequest) ProtoMessage() {}
 
 func (x *CreateRecoveryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[34]
+	mi := &file_client_v1_account_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2023,7 +2092,7 @@ func (x *CreateRecoveryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRecoveryRequest.ProtoReflect.Descriptor instead.
 func (*CreateRecoveryRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{34}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *CreateRecoveryRequest) GetProjectId() string {
@@ -2059,7 +2128,7 @@ type UpdateRecoveryRequest struct {
 
 func (x *UpdateRecoveryRequest) Reset() {
 	*x = UpdateRecoveryRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[35]
+	mi := &file_client_v1_account_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2071,7 +2140,7 @@ func (x *UpdateRecoveryRequest) String() string {
 func (*UpdateRecoveryRequest) ProtoMessage() {}
 
 func (x *UpdateRecoveryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[35]
+	mi := &file_client_v1_account_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2084,7 +2153,7 @@ func (x *UpdateRecoveryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRecoveryRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRecoveryRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{35}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *UpdateRecoveryRequest) GetProjectId() string {
@@ -2128,7 +2197,7 @@ type Factor struct {
 
 func (x *Factor) Reset() {
 	*x = Factor{}
-	mi := &file_client_v1_account_proto_msgTypes[36]
+	mi := &file_client_v1_account_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2140,7 +2209,7 @@ func (x *Factor) String() string {
 func (*Factor) ProtoMessage() {}
 
 func (x *Factor) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[36]
+	mi := &file_client_v1_account_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2153,7 +2222,7 @@ func (x *Factor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Factor.ProtoReflect.Descriptor instead.
 func (*Factor) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{36}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *Factor) GetId() string {
@@ -2192,7 +2261,7 @@ type ListFactorsRequest struct {
 
 func (x *ListFactorsRequest) Reset() {
 	*x = ListFactorsRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[37]
+	mi := &file_client_v1_account_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2204,7 +2273,7 @@ func (x *ListFactorsRequest) String() string {
 func (*ListFactorsRequest) ProtoMessage() {}
 
 func (x *ListFactorsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[37]
+	mi := &file_client_v1_account_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2217,7 +2286,7 @@ func (x *ListFactorsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFactorsRequest.ProtoReflect.Descriptor instead.
 func (*ListFactorsRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{37}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{38}
 }
 
 type ListFactorsResponse struct {
@@ -2229,7 +2298,7 @@ type ListFactorsResponse struct {
 
 func (x *ListFactorsResponse) Reset() {
 	*x = ListFactorsResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[38]
+	mi := &file_client_v1_account_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2310,7 @@ func (x *ListFactorsResponse) String() string {
 func (*ListFactorsResponse) ProtoMessage() {}
 
 func (x *ListFactorsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[38]
+	mi := &file_client_v1_account_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2254,7 +2323,7 @@ func (x *ListFactorsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFactorsResponse.ProtoReflect.Descriptor instead.
 func (*ListFactorsResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{38}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListFactorsResponse) GetFactors() []*Factor {
@@ -2272,7 +2341,7 @@ type CreateTOTPFactorRequest struct {
 
 func (x *CreateTOTPFactorRequest) Reset() {
 	*x = CreateTOTPFactorRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[39]
+	mi := &file_client_v1_account_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2284,7 +2353,7 @@ func (x *CreateTOTPFactorRequest) String() string {
 func (*CreateTOTPFactorRequest) ProtoMessage() {}
 
 func (x *CreateTOTPFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[39]
+	mi := &file_client_v1_account_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2297,7 +2366,7 @@ func (x *CreateTOTPFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTOTPFactorRequest.ProtoReflect.Descriptor instead.
 func (*CreateTOTPFactorRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{39}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{40}
 }
 
 type TOTPFactor struct {
@@ -2311,7 +2380,7 @@ type TOTPFactor struct {
 
 func (x *TOTPFactor) Reset() {
 	*x = TOTPFactor{}
-	mi := &file_client_v1_account_proto_msgTypes[40]
+	mi := &file_client_v1_account_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2323,7 +2392,7 @@ func (x *TOTPFactor) String() string {
 func (*TOTPFactor) ProtoMessage() {}
 
 func (x *TOTPFactor) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[40]
+	mi := &file_client_v1_account_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2336,7 +2405,7 @@ func (x *TOTPFactor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TOTPFactor.ProtoReflect.Descriptor instead.
 func (*TOTPFactor) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{40}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *TOTPFactor) GetFactor() *Factor {
@@ -2370,7 +2439,7 @@ type VerifyTOTPFactorRequest struct {
 
 func (x *VerifyTOTPFactorRequest) Reset() {
 	*x = VerifyTOTPFactorRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[41]
+	mi := &file_client_v1_account_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2382,7 +2451,7 @@ func (x *VerifyTOTPFactorRequest) String() string {
 func (*VerifyTOTPFactorRequest) ProtoMessage() {}
 
 func (x *VerifyTOTPFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[41]
+	mi := &file_client_v1_account_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2395,7 +2464,7 @@ func (x *VerifyTOTPFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyTOTPFactorRequest.ProtoReflect.Descriptor instead.
 func (*VerifyTOTPFactorRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{41}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *VerifyTOTPFactorRequest) GetFactorId() string {
@@ -2425,7 +2494,7 @@ type DeleteFactorRequest struct {
 
 func (x *DeleteFactorRequest) Reset() {
 	*x = DeleteFactorRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[42]
+	mi := &file_client_v1_account_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2437,7 +2506,7 @@ func (x *DeleteFactorRequest) String() string {
 func (*DeleteFactorRequest) ProtoMessage() {}
 
 func (x *DeleteFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[42]
+	mi := &file_client_v1_account_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2450,7 +2519,7 @@ func (x *DeleteFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFactorRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFactorRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{42}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *DeleteFactorRequest) GetFactorId() string {
@@ -2479,7 +2548,7 @@ type CreateMFASessionRequest struct {
 
 func (x *CreateMFASessionRequest) Reset() {
 	*x = CreateMFASessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[43]
+	mi := &file_client_v1_account_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2491,7 +2560,7 @@ func (x *CreateMFASessionRequest) String() string {
 func (*CreateMFASessionRequest) ProtoMessage() {}
 
 func (x *CreateMFASessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[43]
+	mi := &file_client_v1_account_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2504,7 +2573,7 @@ func (x *CreateMFASessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateMFASessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateMFASessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{43}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *CreateMFASessionRequest) GetProjectId() string {
@@ -2544,7 +2613,7 @@ type CreateJWTRequest struct {
 
 func (x *CreateJWTRequest) Reset() {
 	*x = CreateJWTRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[44]
+	mi := &file_client_v1_account_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2556,7 +2625,7 @@ func (x *CreateJWTRequest) String() string {
 func (*CreateJWTRequest) ProtoMessage() {}
 
 func (x *CreateJWTRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[44]
+	mi := &file_client_v1_account_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2569,7 +2638,7 @@ func (x *CreateJWTRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateJWTRequest.ProtoReflect.Descriptor instead.
 func (*CreateJWTRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{44}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{45}
 }
 
 type CreateJWTResponse struct {
@@ -2581,7 +2650,7 @@ type CreateJWTResponse struct {
 
 func (x *CreateJWTResponse) Reset() {
 	*x = CreateJWTResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[45]
+	mi := &file_client_v1_account_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2593,7 +2662,7 @@ func (x *CreateJWTResponse) String() string {
 func (*CreateJWTResponse) ProtoMessage() {}
 
 func (x *CreateJWTResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[45]
+	mi := &file_client_v1_account_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2606,7 +2675,7 @@ func (x *CreateJWTResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateJWTResponse.ProtoReflect.Descriptor instead.
 func (*CreateJWTResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{45}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *CreateJWTResponse) GetToken() string {
@@ -2628,7 +2697,7 @@ type CreateMagicURLSessionRequest struct {
 
 func (x *CreateMagicURLSessionRequest) Reset() {
 	*x = CreateMagicURLSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[46]
+	mi := &file_client_v1_account_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2640,7 +2709,7 @@ func (x *CreateMagicURLSessionRequest) String() string {
 func (*CreateMagicURLSessionRequest) ProtoMessage() {}
 
 func (x *CreateMagicURLSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[46]
+	mi := &file_client_v1_account_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2653,7 +2722,7 @@ func (x *CreateMagicURLSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateMagicURLSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateMagicURLSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{46}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *CreateMagicURLSessionRequest) GetProjectId() string {
@@ -2688,7 +2757,7 @@ type UpdateMagicURLSessionRequest struct {
 
 func (x *UpdateMagicURLSessionRequest) Reset() {
 	*x = UpdateMagicURLSessionRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[47]
+	mi := &file_client_v1_account_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2700,7 +2769,7 @@ func (x *UpdateMagicURLSessionRequest) String() string {
 func (*UpdateMagicURLSessionRequest) ProtoMessage() {}
 
 func (x *UpdateMagicURLSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[47]
+	mi := &file_client_v1_account_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2713,7 +2782,7 @@ func (x *UpdateMagicURLSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMagicURLSessionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMagicURLSessionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{47}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *UpdateMagicURLSessionRequest) GetProjectId() string {
@@ -2747,7 +2816,7 @@ type ListLogsRequest struct {
 
 func (x *ListLogsRequest) Reset() {
 	*x = ListLogsRequest{}
-	mi := &file_client_v1_account_proto_msgTypes[48]
+	mi := &file_client_v1_account_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2759,7 +2828,7 @@ func (x *ListLogsRequest) String() string {
 func (*ListLogsRequest) ProtoMessage() {}
 
 func (x *ListLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[48]
+	mi := &file_client_v1_account_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2772,7 +2841,7 @@ func (x *ListLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLogsRequest.ProtoReflect.Descriptor instead.
 func (*ListLogsRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{48}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListLogsRequest) GetLimit() int32 {
@@ -2797,7 +2866,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_client_v1_account_proto_msgTypes[49]
+	mi := &file_client_v1_account_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2809,7 +2878,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[49]
+	mi := &file_client_v1_account_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2822,7 +2891,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{49}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *LogEntry) GetId() string {
@@ -2883,7 +2952,7 @@ type ListLogsResponse struct {
 
 func (x *ListLogsResponse) Reset() {
 	*x = ListLogsResponse{}
-	mi := &file_client_v1_account_proto_msgTypes[50]
+	mi := &file_client_v1_account_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2895,7 +2964,7 @@ func (x *ListLogsResponse) String() string {
 func (*ListLogsResponse) ProtoMessage() {}
 
 func (x *ListLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_account_proto_msgTypes[50]
+	mi := &file_client_v1_account_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2908,7 +2977,7 @@ func (x *ListLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLogsResponse.ProtoReflect.Descriptor instead.
 func (*ListLogsResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_account_proto_rawDescGZIP(), []int{50}
+	return file_client_v1_account_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ListLogsResponse) GetLogs() []*LogEntry {
@@ -2972,14 +3041,20 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"P\n" +
 	"\x14RefreshTokenResponse\x128\n" +
-	"\x06tokens\x18\x01 \x01(\v2 .torchwood.client.v1.TokenBundleR\x06tokens\"\x9c\x01\n" +
+	"\x06tokens\x18\x01 \x01(\v2 .torchwood.client.v1.TokenBundleR\x06tokens\"\xae\x01\n" +
 	"\x14UpdateAccountRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x19\n" +
 	"\x05email\x18\x02 \x01(\tH\x01R\x05email\x88\x01\x01\x12\x1a\n" +
 	"\bpassword\x18\x03 \x01(\tR\bpassword\x12!\n" +
-	"\fold_password\x18\x04 \x01(\tR\voldPasswordB\a\n" +
+	"\fold_password\x18\x04 \x01(\tR\voldPassword\x12\x10\n" +
+	"\x03url\x18\x05 \x01(\tR\x03urlB\a\n" +
 	"\x05_nameB\b\n" +
-	"\x06_email\"\x8b\x02\n" +
+	"\x06_email\"k\n" +
+	"\x19ConfirmEmailChangeRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x16\n" +
+	"\x06secret\x18\x03 \x01(\tR\x06secret\"\x8b\x02\n" +
 	"\aSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1a\n" +
@@ -3140,7 +3215,7 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"E\n" +
 	"\x10ListLogsResponse\x121\n" +
-	"\x04logs\x18\x01 \x03(\v2\x1d.torchwood.client.v1.LogEntryR\x04logs2\xea1\n" +
+	"\x04logs\x18\x01 \x03(\v2\x1d.torchwood.client.v1.LogEntryR\x04logs2\xa83\n" +
 	"\x0eAccountService\x12\x9c\x01\n" +
 	"\x06SignUp\x12\".torchwood.client.v1.SignUpRequest\x1a#.torchwood.client.v1.SignUpResponse\"I\x92A\"b\x00j\x1e\n" +
 	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/sign-up\x12\x9c\x01\n" +
@@ -3156,7 +3231,10 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/account/me\x12\xa4\x01\n" +
 	"\rUpdateAccount\x12).torchwood.client.v1.UpdateAccountRequest\x1a\x1c.torchwood.client.v1.Account\"J\x92A$j\"\n" +
 	"\x12x-torchwood-access\x12\f\x1a\n" +
-	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10:\x01*2\v/v1/account\x12\xb5\x01\n" +
+	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10:\x01*2\v/v1/account\x12\xbb\x01\n" +
+	"\x12ConfirmEmailChange\x12..torchwood.client.v1.ConfirmEmailChangeRequest\x1a\x1c.torchwood.client.v1.Account\"W\x92A$j\"\n" +
+	"\x12x-torchwood-access\x12\f\x1a\n" +
+	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/account/email-change\x12\xb5\x01\n" +
 	"\fListSessions\x12(.torchwood.client.v1.ListSessionsRequest\x1a).torchwood.client.v1.ListSessionsResponse\"P\x92A$j\"\n" +
 	"\x12x-torchwood-access\x12\f\x1a\n" +
 	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/account/sessions\x12\xb5\x01\n" +
@@ -3250,7 +3328,7 @@ func file_client_v1_account_proto_rawDescGZIP() []byte {
 	return file_client_v1_account_proto_rawDescData
 }
 
-var file_client_v1_account_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_client_v1_account_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_client_v1_account_proto_goTypes = []any{
 	(*SignUpRequest)(nil),                         // 0: torchwood.client.v1.SignUpRequest
 	(*SignInRequest)(nil),                         // 1: torchwood.client.v1.SignInRequest
@@ -3263,143 +3341,146 @@ var file_client_v1_account_proto_goTypes = []any{
 	(*RefreshTokenRequest)(nil),                   // 8: torchwood.client.v1.RefreshTokenRequest
 	(*RefreshTokenResponse)(nil),                  // 9: torchwood.client.v1.RefreshTokenResponse
 	(*UpdateAccountRequest)(nil),                  // 10: torchwood.client.v1.UpdateAccountRequest
-	(*Session)(nil),                               // 11: torchwood.client.v1.Session
-	(*ListSessionsRequest)(nil),                   // 12: torchwood.client.v1.ListSessionsRequest
-	(*ListSessionsResponse)(nil),                  // 13: torchwood.client.v1.ListSessionsResponse
-	(*DeleteSessionRequest)(nil),                  // 14: torchwood.client.v1.DeleteSessionRequest
-	(*DeleteSessionsRequest)(nil),                 // 15: torchwood.client.v1.DeleteSessionsRequest
-	(*GetPrefsRequest)(nil),                       // 16: torchwood.client.v1.GetPrefsRequest
-	(*GetPrefsResponse)(nil),                      // 17: torchwood.client.v1.GetPrefsResponse
-	(*UpdatePrefsRequest)(nil),                    // 18: torchwood.client.v1.UpdatePrefsRequest
-	(*CreateEmailOTPRequest)(nil),                 // 19: torchwood.client.v1.CreateEmailOTPRequest
-	(*CreateEmailOTPSessionRequest)(nil),          // 20: torchwood.client.v1.CreateEmailOTPSessionRequest
-	(*ChallengeResponse)(nil),                     // 21: torchwood.client.v1.ChallengeResponse
-	(*CreateOAuth2SessionRequest)(nil),            // 22: torchwood.client.v1.CreateOAuth2SessionRequest
-	(*CreateOAuth2SessionResponse)(nil),           // 23: torchwood.client.v1.CreateOAuth2SessionResponse
-	(*CreateOAuth2TokenSessionRequest)(nil),       // 24: torchwood.client.v1.CreateOAuth2TokenSessionRequest
-	(*CreatePhoneOTPRequest)(nil),                 // 25: torchwood.client.v1.CreatePhoneOTPRequest
-	(*CreatePhoneOTPSessionRequest)(nil),          // 26: torchwood.client.v1.CreatePhoneOTPSessionRequest
-	(*CreateWeChatMiniProgramSessionRequest)(nil), // 27: torchwood.client.v1.CreateWeChatMiniProgramSessionRequest
-	(*CreateAnonymousSessionRequest)(nil),         // 28: torchwood.client.v1.CreateAnonymousSessionRequest
-	(*CreateOAuth2LinkSessionRequest)(nil),        // 29: torchwood.client.v1.CreateOAuth2LinkSessionRequest
-	(*CreateOAuth2LinkTokenSessionRequest)(nil),   // 30: torchwood.client.v1.CreateOAuth2LinkTokenSessionRequest
-	(*CreateVerificationRequest)(nil),             // 31: torchwood.client.v1.CreateVerificationRequest
-	(*CreateVerificationResponse)(nil),            // 32: torchwood.client.v1.CreateVerificationResponse
-	(*UpdateVerificationRequest)(nil),             // 33: torchwood.client.v1.UpdateVerificationRequest
-	(*CreateRecoveryRequest)(nil),                 // 34: torchwood.client.v1.CreateRecoveryRequest
-	(*UpdateRecoveryRequest)(nil),                 // 35: torchwood.client.v1.UpdateRecoveryRequest
-	(*Factor)(nil),                                // 36: torchwood.client.v1.Factor
-	(*ListFactorsRequest)(nil),                    // 37: torchwood.client.v1.ListFactorsRequest
-	(*ListFactorsResponse)(nil),                   // 38: torchwood.client.v1.ListFactorsResponse
-	(*CreateTOTPFactorRequest)(nil),               // 39: torchwood.client.v1.CreateTOTPFactorRequest
-	(*TOTPFactor)(nil),                            // 40: torchwood.client.v1.TOTPFactor
-	(*VerifyTOTPFactorRequest)(nil),               // 41: torchwood.client.v1.VerifyTOTPFactorRequest
-	(*DeleteFactorRequest)(nil),                   // 42: torchwood.client.v1.DeleteFactorRequest
-	(*CreateMFASessionRequest)(nil),               // 43: torchwood.client.v1.CreateMFASessionRequest
-	(*CreateJWTRequest)(nil),                      // 44: torchwood.client.v1.CreateJWTRequest
-	(*CreateJWTResponse)(nil),                     // 45: torchwood.client.v1.CreateJWTResponse
-	(*CreateMagicURLSessionRequest)(nil),          // 46: torchwood.client.v1.CreateMagicURLSessionRequest
-	(*UpdateMagicURLSessionRequest)(nil),          // 47: torchwood.client.v1.UpdateMagicURLSessionRequest
-	(*ListLogsRequest)(nil),                       // 48: torchwood.client.v1.ListLogsRequest
-	(*LogEntry)(nil),                              // 49: torchwood.client.v1.LogEntry
-	(*ListLogsResponse)(nil),                      // 50: torchwood.client.v1.ListLogsResponse
-	(*timestamppb.Timestamp)(nil),                 // 51: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                       // 52: google.protobuf.Struct
-	(*v1.Empty)(nil),                              // 53: torchwood.shared.v1.Empty
+	(*ConfirmEmailChangeRequest)(nil),             // 11: torchwood.client.v1.ConfirmEmailChangeRequest
+	(*Session)(nil),                               // 12: torchwood.client.v1.Session
+	(*ListSessionsRequest)(nil),                   // 13: torchwood.client.v1.ListSessionsRequest
+	(*ListSessionsResponse)(nil),                  // 14: torchwood.client.v1.ListSessionsResponse
+	(*DeleteSessionRequest)(nil),                  // 15: torchwood.client.v1.DeleteSessionRequest
+	(*DeleteSessionsRequest)(nil),                 // 16: torchwood.client.v1.DeleteSessionsRequest
+	(*GetPrefsRequest)(nil),                       // 17: torchwood.client.v1.GetPrefsRequest
+	(*GetPrefsResponse)(nil),                      // 18: torchwood.client.v1.GetPrefsResponse
+	(*UpdatePrefsRequest)(nil),                    // 19: torchwood.client.v1.UpdatePrefsRequest
+	(*CreateEmailOTPRequest)(nil),                 // 20: torchwood.client.v1.CreateEmailOTPRequest
+	(*CreateEmailOTPSessionRequest)(nil),          // 21: torchwood.client.v1.CreateEmailOTPSessionRequest
+	(*ChallengeResponse)(nil),                     // 22: torchwood.client.v1.ChallengeResponse
+	(*CreateOAuth2SessionRequest)(nil),            // 23: torchwood.client.v1.CreateOAuth2SessionRequest
+	(*CreateOAuth2SessionResponse)(nil),           // 24: torchwood.client.v1.CreateOAuth2SessionResponse
+	(*CreateOAuth2TokenSessionRequest)(nil),       // 25: torchwood.client.v1.CreateOAuth2TokenSessionRequest
+	(*CreatePhoneOTPRequest)(nil),                 // 26: torchwood.client.v1.CreatePhoneOTPRequest
+	(*CreatePhoneOTPSessionRequest)(nil),          // 27: torchwood.client.v1.CreatePhoneOTPSessionRequest
+	(*CreateWeChatMiniProgramSessionRequest)(nil), // 28: torchwood.client.v1.CreateWeChatMiniProgramSessionRequest
+	(*CreateAnonymousSessionRequest)(nil),         // 29: torchwood.client.v1.CreateAnonymousSessionRequest
+	(*CreateOAuth2LinkSessionRequest)(nil),        // 30: torchwood.client.v1.CreateOAuth2LinkSessionRequest
+	(*CreateOAuth2LinkTokenSessionRequest)(nil),   // 31: torchwood.client.v1.CreateOAuth2LinkTokenSessionRequest
+	(*CreateVerificationRequest)(nil),             // 32: torchwood.client.v1.CreateVerificationRequest
+	(*CreateVerificationResponse)(nil),            // 33: torchwood.client.v1.CreateVerificationResponse
+	(*UpdateVerificationRequest)(nil),             // 34: torchwood.client.v1.UpdateVerificationRequest
+	(*CreateRecoveryRequest)(nil),                 // 35: torchwood.client.v1.CreateRecoveryRequest
+	(*UpdateRecoveryRequest)(nil),                 // 36: torchwood.client.v1.UpdateRecoveryRequest
+	(*Factor)(nil),                                // 37: torchwood.client.v1.Factor
+	(*ListFactorsRequest)(nil),                    // 38: torchwood.client.v1.ListFactorsRequest
+	(*ListFactorsResponse)(nil),                   // 39: torchwood.client.v1.ListFactorsResponse
+	(*CreateTOTPFactorRequest)(nil),               // 40: torchwood.client.v1.CreateTOTPFactorRequest
+	(*TOTPFactor)(nil),                            // 41: torchwood.client.v1.TOTPFactor
+	(*VerifyTOTPFactorRequest)(nil),               // 42: torchwood.client.v1.VerifyTOTPFactorRequest
+	(*DeleteFactorRequest)(nil),                   // 43: torchwood.client.v1.DeleteFactorRequest
+	(*CreateMFASessionRequest)(nil),               // 44: torchwood.client.v1.CreateMFASessionRequest
+	(*CreateJWTRequest)(nil),                      // 45: torchwood.client.v1.CreateJWTRequest
+	(*CreateJWTResponse)(nil),                     // 46: torchwood.client.v1.CreateJWTResponse
+	(*CreateMagicURLSessionRequest)(nil),          // 47: torchwood.client.v1.CreateMagicURLSessionRequest
+	(*UpdateMagicURLSessionRequest)(nil),          // 48: torchwood.client.v1.UpdateMagicURLSessionRequest
+	(*ListLogsRequest)(nil),                       // 49: torchwood.client.v1.ListLogsRequest
+	(*LogEntry)(nil),                              // 50: torchwood.client.v1.LogEntry
+	(*ListLogsResponse)(nil),                      // 51: torchwood.client.v1.ListLogsResponse
+	(*timestamppb.Timestamp)(nil),                 // 52: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                       // 53: google.protobuf.Struct
+	(*v1.Empty)(nil),                              // 54: torchwood.shared.v1.Empty
 }
 var file_client_v1_account_proto_depIdxs = []int32{
-	51, // 0: torchwood.client.v1.Account.created_at:type_name -> google.protobuf.Timestamp
-	51, // 1: torchwood.client.v1.Account.updated_at:type_name -> google.protobuf.Timestamp
-	51, // 2: torchwood.client.v1.TokenBundle.expires_at:type_name -> google.protobuf.Timestamp
+	52, // 0: torchwood.client.v1.Account.created_at:type_name -> google.protobuf.Timestamp
+	52, // 1: torchwood.client.v1.Account.updated_at:type_name -> google.protobuf.Timestamp
+	52, // 2: torchwood.client.v1.TokenBundle.expires_at:type_name -> google.protobuf.Timestamp
 	4,  // 3: torchwood.client.v1.SignUpResponse.account:type_name -> torchwood.client.v1.Account
 	5,  // 4: torchwood.client.v1.SignUpResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
-	36, // 5: torchwood.client.v1.SignUpResponse.factors:type_name -> torchwood.client.v1.Factor
+	37, // 5: torchwood.client.v1.SignUpResponse.factors:type_name -> torchwood.client.v1.Factor
 	4,  // 6: torchwood.client.v1.SignInResponse.account:type_name -> torchwood.client.v1.Account
 	5,  // 7: torchwood.client.v1.SignInResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
-	36, // 8: torchwood.client.v1.SignInResponse.factors:type_name -> torchwood.client.v1.Factor
+	37, // 8: torchwood.client.v1.SignInResponse.factors:type_name -> torchwood.client.v1.Factor
 	5,  // 9: torchwood.client.v1.RefreshTokenResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
-	51, // 10: torchwood.client.v1.Session.expire_at:type_name -> google.protobuf.Timestamp
-	51, // 11: torchwood.client.v1.Session.created_at:type_name -> google.protobuf.Timestamp
-	11, // 12: torchwood.client.v1.ListSessionsResponse.sessions:type_name -> torchwood.client.v1.Session
-	52, // 13: torchwood.client.v1.GetPrefsResponse.prefs:type_name -> google.protobuf.Struct
-	52, // 14: torchwood.client.v1.UpdatePrefsRequest.prefs:type_name -> google.protobuf.Struct
-	51, // 15: torchwood.client.v1.ChallengeResponse.expire_at:type_name -> google.protobuf.Timestamp
-	51, // 16: torchwood.client.v1.CreateVerificationResponse.expire_at:type_name -> google.protobuf.Timestamp
-	51, // 17: torchwood.client.v1.Factor.created_at:type_name -> google.protobuf.Timestamp
-	36, // 18: torchwood.client.v1.ListFactorsResponse.factors:type_name -> torchwood.client.v1.Factor
-	36, // 19: torchwood.client.v1.TOTPFactor.factor:type_name -> torchwood.client.v1.Factor
-	51, // 20: torchwood.client.v1.LogEntry.created_at:type_name -> google.protobuf.Timestamp
-	49, // 21: torchwood.client.v1.ListLogsResponse.logs:type_name -> torchwood.client.v1.LogEntry
+	52, // 10: torchwood.client.v1.Session.expire_at:type_name -> google.protobuf.Timestamp
+	52, // 11: torchwood.client.v1.Session.created_at:type_name -> google.protobuf.Timestamp
+	12, // 12: torchwood.client.v1.ListSessionsResponse.sessions:type_name -> torchwood.client.v1.Session
+	53, // 13: torchwood.client.v1.GetPrefsResponse.prefs:type_name -> google.protobuf.Struct
+	53, // 14: torchwood.client.v1.UpdatePrefsRequest.prefs:type_name -> google.protobuf.Struct
+	52, // 15: torchwood.client.v1.ChallengeResponse.expire_at:type_name -> google.protobuf.Timestamp
+	52, // 16: torchwood.client.v1.CreateVerificationResponse.expire_at:type_name -> google.protobuf.Timestamp
+	52, // 17: torchwood.client.v1.Factor.created_at:type_name -> google.protobuf.Timestamp
+	37, // 18: torchwood.client.v1.ListFactorsResponse.factors:type_name -> torchwood.client.v1.Factor
+	37, // 19: torchwood.client.v1.TOTPFactor.factor:type_name -> torchwood.client.v1.Factor
+	52, // 20: torchwood.client.v1.LogEntry.created_at:type_name -> google.protobuf.Timestamp
+	50, // 21: torchwood.client.v1.ListLogsResponse.logs:type_name -> torchwood.client.v1.LogEntry
 	0,  // 22: torchwood.client.v1.AccountService.SignUp:input_type -> torchwood.client.v1.SignUpRequest
 	1,  // 23: torchwood.client.v1.AccountService.SignIn:input_type -> torchwood.client.v1.SignInRequest
 	2,  // 24: torchwood.client.v1.AccountService.SignOut:input_type -> torchwood.client.v1.SignOutRequest
 	8,  // 25: torchwood.client.v1.AccountService.RefreshToken:input_type -> torchwood.client.v1.RefreshTokenRequest
 	3,  // 26: torchwood.client.v1.AccountService.Me:input_type -> torchwood.client.v1.MeRequest
 	10, // 27: torchwood.client.v1.AccountService.UpdateAccount:input_type -> torchwood.client.v1.UpdateAccountRequest
-	12, // 28: torchwood.client.v1.AccountService.ListSessions:input_type -> torchwood.client.v1.ListSessionsRequest
-	14, // 29: torchwood.client.v1.AccountService.DeleteSession:input_type -> torchwood.client.v1.DeleteSessionRequest
-	15, // 30: torchwood.client.v1.AccountService.DeleteSessions:input_type -> torchwood.client.v1.DeleteSessionsRequest
-	16, // 31: torchwood.client.v1.AccountService.GetPrefs:input_type -> torchwood.client.v1.GetPrefsRequest
-	18, // 32: torchwood.client.v1.AccountService.UpdatePrefs:input_type -> torchwood.client.v1.UpdatePrefsRequest
-	19, // 33: torchwood.client.v1.AccountService.CreateEmailOTP:input_type -> torchwood.client.v1.CreateEmailOTPRequest
-	20, // 34: torchwood.client.v1.AccountService.CreateEmailOTPSession:input_type -> torchwood.client.v1.CreateEmailOTPSessionRequest
-	22, // 35: torchwood.client.v1.AccountService.CreateOAuth2Session:input_type -> torchwood.client.v1.CreateOAuth2SessionRequest
-	24, // 36: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:input_type -> torchwood.client.v1.CreateOAuth2TokenSessionRequest
-	25, // 37: torchwood.client.v1.AccountService.CreatePhoneOTP:input_type -> torchwood.client.v1.CreatePhoneOTPRequest
-	26, // 38: torchwood.client.v1.AccountService.CreatePhoneOTPSession:input_type -> torchwood.client.v1.CreatePhoneOTPSessionRequest
-	27, // 39: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:input_type -> torchwood.client.v1.CreateWeChatMiniProgramSessionRequest
-	28, // 40: torchwood.client.v1.AccountService.CreateAnonymousSession:input_type -> torchwood.client.v1.CreateAnonymousSessionRequest
-	29, // 41: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:input_type -> torchwood.client.v1.CreateOAuth2LinkSessionRequest
-	30, // 42: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:input_type -> torchwood.client.v1.CreateOAuth2LinkTokenSessionRequest
-	31, // 43: torchwood.client.v1.AccountService.CreateVerification:input_type -> torchwood.client.v1.CreateVerificationRequest
-	33, // 44: torchwood.client.v1.AccountService.UpdateVerification:input_type -> torchwood.client.v1.UpdateVerificationRequest
-	34, // 45: torchwood.client.v1.AccountService.CreateRecovery:input_type -> torchwood.client.v1.CreateRecoveryRequest
-	35, // 46: torchwood.client.v1.AccountService.UpdateRecovery:input_type -> torchwood.client.v1.UpdateRecoveryRequest
-	37, // 47: torchwood.client.v1.AccountService.ListFactors:input_type -> torchwood.client.v1.ListFactorsRequest
-	39, // 48: torchwood.client.v1.AccountService.CreateTOTPFactor:input_type -> torchwood.client.v1.CreateTOTPFactorRequest
-	41, // 49: torchwood.client.v1.AccountService.VerifyTOTPFactor:input_type -> torchwood.client.v1.VerifyTOTPFactorRequest
-	42, // 50: torchwood.client.v1.AccountService.DeleteFactor:input_type -> torchwood.client.v1.DeleteFactorRequest
-	43, // 51: torchwood.client.v1.AccountService.CreateMFASession:input_type -> torchwood.client.v1.CreateMFASessionRequest
-	44, // 52: torchwood.client.v1.AccountService.CreateJWT:input_type -> torchwood.client.v1.CreateJWTRequest
-	46, // 53: torchwood.client.v1.AccountService.CreateMagicURLSession:input_type -> torchwood.client.v1.CreateMagicURLSessionRequest
-	47, // 54: torchwood.client.v1.AccountService.UpdateMagicURLSession:input_type -> torchwood.client.v1.UpdateMagicURLSessionRequest
-	48, // 55: torchwood.client.v1.AccountService.ListLogs:input_type -> torchwood.client.v1.ListLogsRequest
-	6,  // 56: torchwood.client.v1.AccountService.SignUp:output_type -> torchwood.client.v1.SignUpResponse
-	7,  // 57: torchwood.client.v1.AccountService.SignIn:output_type -> torchwood.client.v1.SignInResponse
-	53, // 58: torchwood.client.v1.AccountService.SignOut:output_type -> torchwood.shared.v1.Empty
-	9,  // 59: torchwood.client.v1.AccountService.RefreshToken:output_type -> torchwood.client.v1.RefreshTokenResponse
-	4,  // 60: torchwood.client.v1.AccountService.Me:output_type -> torchwood.client.v1.Account
-	4,  // 61: torchwood.client.v1.AccountService.UpdateAccount:output_type -> torchwood.client.v1.Account
-	13, // 62: torchwood.client.v1.AccountService.ListSessions:output_type -> torchwood.client.v1.ListSessionsResponse
-	53, // 63: torchwood.client.v1.AccountService.DeleteSession:output_type -> torchwood.shared.v1.Empty
-	53, // 64: torchwood.client.v1.AccountService.DeleteSessions:output_type -> torchwood.shared.v1.Empty
-	17, // 65: torchwood.client.v1.AccountService.GetPrefs:output_type -> torchwood.client.v1.GetPrefsResponse
-	17, // 66: torchwood.client.v1.AccountService.UpdatePrefs:output_type -> torchwood.client.v1.GetPrefsResponse
-	21, // 67: torchwood.client.v1.AccountService.CreateEmailOTP:output_type -> torchwood.client.v1.ChallengeResponse
-	7,  // 68: torchwood.client.v1.AccountService.CreateEmailOTPSession:output_type -> torchwood.client.v1.SignInResponse
-	23, // 69: torchwood.client.v1.AccountService.CreateOAuth2Session:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
-	7,  // 70: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:output_type -> torchwood.client.v1.SignInResponse
-	21, // 71: torchwood.client.v1.AccountService.CreatePhoneOTP:output_type -> torchwood.client.v1.ChallengeResponse
-	7,  // 72: torchwood.client.v1.AccountService.CreatePhoneOTPSession:output_type -> torchwood.client.v1.SignInResponse
-	7,  // 73: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:output_type -> torchwood.client.v1.SignInResponse
-	7,  // 74: torchwood.client.v1.AccountService.CreateAnonymousSession:output_type -> torchwood.client.v1.SignInResponse
-	23, // 75: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
-	4,  // 76: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:output_type -> torchwood.client.v1.Account
-	32, // 77: torchwood.client.v1.AccountService.CreateVerification:output_type -> torchwood.client.v1.CreateVerificationResponse
-	4,  // 78: torchwood.client.v1.AccountService.UpdateVerification:output_type -> torchwood.client.v1.Account
-	53, // 79: torchwood.client.v1.AccountService.CreateRecovery:output_type -> torchwood.shared.v1.Empty
-	53, // 80: torchwood.client.v1.AccountService.UpdateRecovery:output_type -> torchwood.shared.v1.Empty
-	38, // 81: torchwood.client.v1.AccountService.ListFactors:output_type -> torchwood.client.v1.ListFactorsResponse
-	40, // 82: torchwood.client.v1.AccountService.CreateTOTPFactor:output_type -> torchwood.client.v1.TOTPFactor
-	36, // 83: torchwood.client.v1.AccountService.VerifyTOTPFactor:output_type -> torchwood.client.v1.Factor
-	53, // 84: torchwood.client.v1.AccountService.DeleteFactor:output_type -> torchwood.shared.v1.Empty
-	7,  // 85: torchwood.client.v1.AccountService.CreateMFASession:output_type -> torchwood.client.v1.SignInResponse
-	45, // 86: torchwood.client.v1.AccountService.CreateJWT:output_type -> torchwood.client.v1.CreateJWTResponse
-	21, // 87: torchwood.client.v1.AccountService.CreateMagicURLSession:output_type -> torchwood.client.v1.ChallengeResponse
-	7,  // 88: torchwood.client.v1.AccountService.UpdateMagicURLSession:output_type -> torchwood.client.v1.SignInResponse
-	50, // 89: torchwood.client.v1.AccountService.ListLogs:output_type -> torchwood.client.v1.ListLogsResponse
-	56, // [56:90] is the sub-list for method output_type
-	22, // [22:56] is the sub-list for method input_type
+	11, // 28: torchwood.client.v1.AccountService.ConfirmEmailChange:input_type -> torchwood.client.v1.ConfirmEmailChangeRequest
+	13, // 29: torchwood.client.v1.AccountService.ListSessions:input_type -> torchwood.client.v1.ListSessionsRequest
+	15, // 30: torchwood.client.v1.AccountService.DeleteSession:input_type -> torchwood.client.v1.DeleteSessionRequest
+	16, // 31: torchwood.client.v1.AccountService.DeleteSessions:input_type -> torchwood.client.v1.DeleteSessionsRequest
+	17, // 32: torchwood.client.v1.AccountService.GetPrefs:input_type -> torchwood.client.v1.GetPrefsRequest
+	19, // 33: torchwood.client.v1.AccountService.UpdatePrefs:input_type -> torchwood.client.v1.UpdatePrefsRequest
+	20, // 34: torchwood.client.v1.AccountService.CreateEmailOTP:input_type -> torchwood.client.v1.CreateEmailOTPRequest
+	21, // 35: torchwood.client.v1.AccountService.CreateEmailOTPSession:input_type -> torchwood.client.v1.CreateEmailOTPSessionRequest
+	23, // 36: torchwood.client.v1.AccountService.CreateOAuth2Session:input_type -> torchwood.client.v1.CreateOAuth2SessionRequest
+	25, // 37: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:input_type -> torchwood.client.v1.CreateOAuth2TokenSessionRequest
+	26, // 38: torchwood.client.v1.AccountService.CreatePhoneOTP:input_type -> torchwood.client.v1.CreatePhoneOTPRequest
+	27, // 39: torchwood.client.v1.AccountService.CreatePhoneOTPSession:input_type -> torchwood.client.v1.CreatePhoneOTPSessionRequest
+	28, // 40: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:input_type -> torchwood.client.v1.CreateWeChatMiniProgramSessionRequest
+	29, // 41: torchwood.client.v1.AccountService.CreateAnonymousSession:input_type -> torchwood.client.v1.CreateAnonymousSessionRequest
+	30, // 42: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:input_type -> torchwood.client.v1.CreateOAuth2LinkSessionRequest
+	31, // 43: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:input_type -> torchwood.client.v1.CreateOAuth2LinkTokenSessionRequest
+	32, // 44: torchwood.client.v1.AccountService.CreateVerification:input_type -> torchwood.client.v1.CreateVerificationRequest
+	34, // 45: torchwood.client.v1.AccountService.UpdateVerification:input_type -> torchwood.client.v1.UpdateVerificationRequest
+	35, // 46: torchwood.client.v1.AccountService.CreateRecovery:input_type -> torchwood.client.v1.CreateRecoveryRequest
+	36, // 47: torchwood.client.v1.AccountService.UpdateRecovery:input_type -> torchwood.client.v1.UpdateRecoveryRequest
+	38, // 48: torchwood.client.v1.AccountService.ListFactors:input_type -> torchwood.client.v1.ListFactorsRequest
+	40, // 49: torchwood.client.v1.AccountService.CreateTOTPFactor:input_type -> torchwood.client.v1.CreateTOTPFactorRequest
+	42, // 50: torchwood.client.v1.AccountService.VerifyTOTPFactor:input_type -> torchwood.client.v1.VerifyTOTPFactorRequest
+	43, // 51: torchwood.client.v1.AccountService.DeleteFactor:input_type -> torchwood.client.v1.DeleteFactorRequest
+	44, // 52: torchwood.client.v1.AccountService.CreateMFASession:input_type -> torchwood.client.v1.CreateMFASessionRequest
+	45, // 53: torchwood.client.v1.AccountService.CreateJWT:input_type -> torchwood.client.v1.CreateJWTRequest
+	47, // 54: torchwood.client.v1.AccountService.CreateMagicURLSession:input_type -> torchwood.client.v1.CreateMagicURLSessionRequest
+	48, // 55: torchwood.client.v1.AccountService.UpdateMagicURLSession:input_type -> torchwood.client.v1.UpdateMagicURLSessionRequest
+	49, // 56: torchwood.client.v1.AccountService.ListLogs:input_type -> torchwood.client.v1.ListLogsRequest
+	6,  // 57: torchwood.client.v1.AccountService.SignUp:output_type -> torchwood.client.v1.SignUpResponse
+	7,  // 58: torchwood.client.v1.AccountService.SignIn:output_type -> torchwood.client.v1.SignInResponse
+	54, // 59: torchwood.client.v1.AccountService.SignOut:output_type -> torchwood.shared.v1.Empty
+	9,  // 60: torchwood.client.v1.AccountService.RefreshToken:output_type -> torchwood.client.v1.RefreshTokenResponse
+	4,  // 61: torchwood.client.v1.AccountService.Me:output_type -> torchwood.client.v1.Account
+	4,  // 62: torchwood.client.v1.AccountService.UpdateAccount:output_type -> torchwood.client.v1.Account
+	4,  // 63: torchwood.client.v1.AccountService.ConfirmEmailChange:output_type -> torchwood.client.v1.Account
+	14, // 64: torchwood.client.v1.AccountService.ListSessions:output_type -> torchwood.client.v1.ListSessionsResponse
+	54, // 65: torchwood.client.v1.AccountService.DeleteSession:output_type -> torchwood.shared.v1.Empty
+	54, // 66: torchwood.client.v1.AccountService.DeleteSessions:output_type -> torchwood.shared.v1.Empty
+	18, // 67: torchwood.client.v1.AccountService.GetPrefs:output_type -> torchwood.client.v1.GetPrefsResponse
+	18, // 68: torchwood.client.v1.AccountService.UpdatePrefs:output_type -> torchwood.client.v1.GetPrefsResponse
+	22, // 69: torchwood.client.v1.AccountService.CreateEmailOTP:output_type -> torchwood.client.v1.ChallengeResponse
+	7,  // 70: torchwood.client.v1.AccountService.CreateEmailOTPSession:output_type -> torchwood.client.v1.SignInResponse
+	24, // 71: torchwood.client.v1.AccountService.CreateOAuth2Session:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
+	7,  // 72: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:output_type -> torchwood.client.v1.SignInResponse
+	22, // 73: torchwood.client.v1.AccountService.CreatePhoneOTP:output_type -> torchwood.client.v1.ChallengeResponse
+	7,  // 74: torchwood.client.v1.AccountService.CreatePhoneOTPSession:output_type -> torchwood.client.v1.SignInResponse
+	7,  // 75: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:output_type -> torchwood.client.v1.SignInResponse
+	7,  // 76: torchwood.client.v1.AccountService.CreateAnonymousSession:output_type -> torchwood.client.v1.SignInResponse
+	24, // 77: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
+	4,  // 78: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:output_type -> torchwood.client.v1.Account
+	33, // 79: torchwood.client.v1.AccountService.CreateVerification:output_type -> torchwood.client.v1.CreateVerificationResponse
+	4,  // 80: torchwood.client.v1.AccountService.UpdateVerification:output_type -> torchwood.client.v1.Account
+	54, // 81: torchwood.client.v1.AccountService.CreateRecovery:output_type -> torchwood.shared.v1.Empty
+	54, // 82: torchwood.client.v1.AccountService.UpdateRecovery:output_type -> torchwood.shared.v1.Empty
+	39, // 83: torchwood.client.v1.AccountService.ListFactors:output_type -> torchwood.client.v1.ListFactorsResponse
+	41, // 84: torchwood.client.v1.AccountService.CreateTOTPFactor:output_type -> torchwood.client.v1.TOTPFactor
+	37, // 85: torchwood.client.v1.AccountService.VerifyTOTPFactor:output_type -> torchwood.client.v1.Factor
+	54, // 86: torchwood.client.v1.AccountService.DeleteFactor:output_type -> torchwood.shared.v1.Empty
+	7,  // 87: torchwood.client.v1.AccountService.CreateMFASession:output_type -> torchwood.client.v1.SignInResponse
+	46, // 88: torchwood.client.v1.AccountService.CreateJWT:output_type -> torchwood.client.v1.CreateJWTResponse
+	22, // 89: torchwood.client.v1.AccountService.CreateMagicURLSession:output_type -> torchwood.client.v1.ChallengeResponse
+	7,  // 90: torchwood.client.v1.AccountService.UpdateMagicURLSession:output_type -> torchwood.client.v1.SignInResponse
+	51, // 91: torchwood.client.v1.AccountService.ListLogs:output_type -> torchwood.client.v1.ListLogsResponse
+	57, // [57:92] is the sub-list for method output_type
+	22, // [22:57] is the sub-list for method input_type
 	22, // [22:22] is the sub-list for extension type_name
 	22, // [22:22] is the sub-list for extension extendee
 	0,  // [0:22] is the sub-list for field type_name
@@ -3417,7 +3498,7 @@ func file_client_v1_account_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_client_v1_account_proto_rawDesc), len(file_client_v1_account_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   51,
+			NumMessages:   52,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -87,8 +87,24 @@ export class AccountService {
     email?: string;
     password?: string;
     old_password?: string;
+    // 改邮箱时必填：新邮箱验证链接模板（staging：验证通过前 email 保持旧值）。
+    url?: string;
   }): Promise<Account> {
     return this.http.request<Account>("PATCH", "/v1/account", { body: input });
+  }
+
+  // 消费邮件链接中的一次性 secret 完成邮箱变更（需登录态，user_id 必须为当前用户）。
+  async confirmEmailChange(input: {
+    user_id: string;
+    secret: string;
+  }): Promise<Account> {
+    return this.http.request<Account>("PUT", "/v1/account/email-change", {
+      body: {
+        project_id: this.http.getProjectId(),
+        user_id: input.user_id,
+        secret: input.secret,
+      },
+    });
   }
 
   async listSessions(): Promise<Session[]> {

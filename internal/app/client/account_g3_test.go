@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -118,9 +120,9 @@ func signUpG3User(t *testing.T, ctx context.Context, account *Account, projectID
 	return user, user.ID
 }
 
-// TestAccount_EmailChangeNotifiesOldEmail（R05-P1-2，B 档）：邮箱变更生效后
-// 必须向旧邮箱发送安全通知（含撤销指引）；新邮箱收到验证邮件由既有
-// CreateVerification 流程覆盖（email_verified=false 已置位）。
+// TestAccount_EmailChangeNotifiesOldEmail（R05-P1-2，A 档 staging）：改邮箱
+// 走 pending：email 保持旧值，新邮箱收到验证邮件、旧邮箱收到安全通知；
+// 验证通过（ConfirmEmailChange）后才切换。
 func TestAccount_EmailChangeNotifiesOldEmail(t *testing.T) {
 	ctx, account, projectID, _, _, mailer := setupG3Account(t)
 
@@ -134,16 +136,20 @@ func TestAccount_EmailChangeNotifiesOldEmail(t *testing.T) {
 
 	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
 		Email:       "new-mail@torchwood.local",
+		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
 	require.NoError(t, err)
-	require.Equal(t, "new-mail@torchwood.local", updated.Email)
-	require.False(t, updated.EmailVerified, "新邮箱未验证前 email_verified 必须为 false")
+	require.Equal(t, "old-mail@torchwood.local", updated.Email, "验证通过前 email 必须保持旧值")
+	require.False(t, updated.EmailVerified)
 
-	// 旧邮箱收到安全通知。
-	require.Equal(t, []string{"old-mail@torchwood.local"}, mailer.To)
-	require.Contains(t, mailer.Subjects[0], "email address was changed")
-	require.Contains(t, mailer.Bodies[0], "did not make this change")
+	// 新邮箱收到验证邮件（含确认链接）。
+	require.Equal(t, []string{"new-mail@torchwood.local", "old-mail@torchwood.local"}, mailer.To)
+	require.Contains(t, mailer.Subjects[0], "Confirm your Torchwood email change")
+	require.Contains(t, mailer.Bodies[0], "http://localhost/confirm-email")
+	// 旧邮箱收到安全通知（B 档成果保留）。
+	require.Contains(t, mailer.Subjects[1], "email address is being changed")
+	require.Contains(t, mailer.Bodies[1], "did not make this change")
 }
 
 // TestAccount_UpdateAccount_SessionRevocationFailureLeavesCredentials（R05-P1-3）：
@@ -176,13 +182,16 @@ func TestAccount_UpdateAccount_SessionRevocationFailureLeavesCredentials(t *test
 	require.NoError(t, err)
 	require.NotEmpty(t, tokens.AccessToken)
 
-	// 邮箱变更同样不提交。
+	// 邮箱变更走 staging：pending 阶段不撤会话，UpdateAccount 不再因撤会话
+	// 失败而报错；撤会话语义由 ConfirmEmailChange 的故障注入测试覆盖。
 	sessions.fail = true
 	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "never-applied@torchwood.local",
+		Email:       "staged@torchwood.local",
+		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
-	require.Error(t, err)
+	require.NoError(t, err)
+	// 邮箱仍为旧值（staging 未切换），且旧密码仍可登录。
 	sessions.fail = false
 	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
@@ -249,4 +258,239 @@ func TestAccount_UnregisteredEmailFailuresDoNotTriggerLockout(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, tokens.AccessToken)
+}
+
+// ---- R05-P1-2 A 档 staging：ConfirmEmailChange ----
+
+// confirmEmailChangeSecret 从验证邮件 body 中提取确认链接里的 secret
+// （模拟真实用户点击邮件链接）。
+func confirmEmailChangeSecret(t *testing.T, body string) string {
+	t.Helper()
+	for _, field := range strings.Fields(body) {
+		if strings.HasPrefix(field, "http") {
+			u, err := url.Parse(field)
+			require.NoError(t, err)
+			secret := u.Query().Get("secret")
+			require.NotEmpty(t, secret, "确认链接必须携带 secret")
+			return secret
+		}
+	}
+	t.Fatal("验证邮件中找不到确认链接")
+	return ""
+}
+
+// TestAccount_EmailChangeStaging_OldEmailWorksUntilConfirm（R05-P1-2 验收）：
+// SignUp → UpdateAccount 改邮箱 → 旧邮箱仍可登录、新邮箱登录失败 →
+// ConfirmEmailChange → 新邮箱生效、旧邮箱失效。
+func TestAccount_EmailChangeStaging_OldEmailWorksUntilConfirm(t *testing.T) {
+	ctx, account, projectID, _, _, mailer := setupG3Account(t)
+
+	user, userID := signUpG3User(t, ctx, account, projectID, "stage-old@torchwood.local")
+	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    userID,
+		Email:     user.Email,
+		Roles:     []string{"users", "user:" + userID},
+	})
+
+	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "stage-new@torchwood.local",
+		URL:         "http://localhost/confirm-email",
+		OldPassword: "User@123",
+	})
+	require.NoError(t, err)
+
+	// 未验证前：旧邮箱可登录，新邮箱不可。
+	_, tokens, _, _, err := account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "stage-old@torchwood.local",
+		Password:  "User@123",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens.AccessToken)
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "stage-new@torchwood.local",
+		Password:  "User@123",
+	})
+	require.Error(t, err)
+
+	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
+	confirmed, err := account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+		ProjectID: projectID,
+		UserID:    userID,
+		Secret:    secret,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "stage-new@torchwood.local", confirmed.Email)
+	require.True(t, confirmed.EmailVerified)
+
+	// 切换后：新邮箱可登录，旧邮箱失效。
+	_, tokens, _, _, err = account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "stage-new@torchwood.local",
+		Password:  "User@123",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens.AccessToken)
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "stage-old@torchwood.local",
+		Password:  "User@123",
+	})
+	require.Error(t, err)
+}
+
+// TestAccount_ConfirmEmailChange_TokenOneTime：token 一次性——二次使用返回
+// Unauthenticated。
+func TestAccount_ConfirmEmailChange_TokenOneTime(t *testing.T) {
+	ctx, account, projectID, _, _, mailer := setupG3Account(t)
+
+	user, userID := signUpG3User(t, ctx, account, projectID, "onetime@torchwood.local")
+	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    userID,
+		Email:     user.Email,
+		Roles:     []string{"users", "user:" + userID},
+	})
+
+	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "onetime-new@torchwood.local",
+		URL:         "http://localhost/confirm-email",
+		OldPassword: "User@123",
+	})
+	require.NoError(t, err)
+
+	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
+	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+		ProjectID: projectID,
+		UserID:    userID,
+		Secret:    secret,
+	})
+	require.NoError(t, err)
+
+	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+		ProjectID: projectID,
+		UserID:    userID,
+		Secret:    secret,
+	})
+	require.Equal(t, codes.Unauthenticated, status.Code(err), "token 二次使用必须拒绝")
+}
+
+// TestAccount_ConfirmEmailChange_NewEmailTaken：新邮箱已被他人占用 →
+// AlreadyExists。
+func TestAccount_ConfirmEmailChange_NewEmailTaken(t *testing.T) {
+	ctx, account, projectID, _, _, mailer := setupG3Account(t)
+
+	signUpG3User(t, ctx, account, projectID, "taken@torchwood.local")
+	user, userID := signUpG3User(t, ctx, account, projectID, "changer@torchwood.local")
+	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    userID,
+		Email:     user.Email,
+		Roles:     []string{"users", "user:" + userID},
+	})
+
+	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "taken@torchwood.local",
+		URL:         "http://localhost/confirm-email",
+		OldPassword: "User@123",
+	})
+	require.NoError(t, err)
+
+	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
+	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+		ProjectID: projectID,
+		UserID:    userID,
+		Secret:    secret,
+	})
+	require.Equal(t, codes.AlreadyExists, status.Code(err))
+}
+
+// TestAccount_ConfirmEmailChange_SessionRevocationFailureLeavesOldEmail（G3-3
+// 语义在确认路径）：撤会话失败时邮箱保持旧值、不提交。
+func TestAccount_ConfirmEmailChange_SessionRevocationFailureLeavesOldEmail(t *testing.T) {
+	ctx, account, projectID, sessions, _, mailer := setupG3Account(t)
+
+	user, userID := signUpG3User(t, ctx, account, projectID, "revoke-confirm@torchwood.local")
+	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    userID,
+		Email:     user.Email,
+		Roles:     []string{"users", "user:" + userID},
+	})
+
+	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "revoke-confirm-new@torchwood.local",
+		URL:         "http://localhost/confirm-email",
+		OldPassword: "User@123",
+	})
+	require.NoError(t, err)
+
+	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
+	sessions.fail = true
+	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+		ProjectID: projectID,
+		UserID:    userID,
+		Secret:    secret,
+	})
+	require.Error(t, err)
+
+	// 邮箱未切换，旧邮箱仍可登录。
+	sessions.fail = false
+	_, tokens, _, _, err := account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "revoke-confirm@torchwood.local",
+		Password:  "User@123",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens.AccessToken)
+}
+
+// TestAccount_ConfirmEmailChange_RequiresOwnUser：user_id 必须等于
+// principal.UserID，否则 PermissionDenied。
+func TestAccount_ConfirmEmailChange_RequiresOwnUser(t *testing.T) {
+	ctx, account, projectID, _, _, mailer := setupG3Account(t)
+
+	user, userID := signUpG3User(t, ctx, account, projectID, "own-check@torchwood.local")
+	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    userID,
+		Email:     user.Email,
+		Roles:     []string{"users", "user:" + userID},
+	})
+
+	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "own-check-new@torchwood.local",
+		URL:         "http://localhost/confirm-email",
+		OldPassword: "User@123",
+	})
+	require.NoError(t, err)
+
+	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
+	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+		ProjectID: projectID,
+		UserID:    "someone-else",
+		Secret:    secret,
+	})
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+// TestAccount_UpdateAccount_EmailChangeRequiresURL：改邮箱时 url 必填。
+func TestAccount_UpdateAccount_EmailChangeRequiresURL(t *testing.T) {
+	ctx, account, projectID, _, _, _ := setupG3Account(t)
+
+	user, userID := signUpG3User(t, ctx, account, projectID, "need-url@torchwood.local")
+	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    userID,
+		Email:     user.Email,
+		Roles:     []string{"users", "user:" + userID},
+	})
+
+	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "need-url-new@torchwood.local",
+		OldPassword: "User@123",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "改邮箱不带 url 必须拒绝")
 }
