@@ -41,14 +41,14 @@ func (r *stubRepo) UpdateFunction(_ context.Context, fn *domainfunctions.Functio
 }
 func (r *stubRepo) DeleteFunction(context.Context, string, string) error                { return nil }
 func (r *stubRepo) CreateDeployment(context.Context, *domainfunctions.Deployment) error { return nil }
-func (r *stubRepo) GetDeployment(context.Context, string, string) (*domainfunctions.Deployment, error) {
+func (r *stubRepo) GetDeployment(context.Context, string, string, string) (*domainfunctions.Deployment, error) {
 	return nil, nil
 }
 func (r *stubRepo) ListDeployments(context.Context, string, string) ([]domainfunctions.Deployment, error) {
 	return nil, nil
 }
 func (r *stubRepo) UpdateDeployment(context.Context, *domainfunctions.Deployment) error { return nil }
-func (r *stubRepo) DeleteDeployment(context.Context, string, string) error              { return nil }
+func (r *stubRepo) DeleteDeployment(context.Context, string, string, string) error      { return nil }
 func (r *stubRepo) SetVariables(context.Context, string, string, map[string]string) error {
 	return nil
 }
