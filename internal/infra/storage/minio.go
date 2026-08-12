@@ -45,7 +45,7 @@ func NewMinioObjectStore(cfg *config.AppConfig) (storage.ObjectStore, error) {
 	bucket := s.GetBucket()
 	if bucket == "" {
 		// S3/MinIO bucket 命名规范要求全小写（大写名 MakeBucket 会失败）。
-		bucket = "torchwood-files"
+		bucket = storage.DefaultBucketName
 	}
 
 	return &minioObjectStore{client: client, bucket: bucket}, nil
@@ -127,7 +127,7 @@ func (m *minioObjectStore) bucketName() string {
 	if m.bucket != "" {
 		return m.bucket
 	}
-	return "Torchwood-files"
+	return storage.DefaultBucketName
 }
 
 // DefaultBucket returns the configured default bucket name.

@@ -11,6 +11,7 @@ type UploadSession struct {
 	ProjectID   string
 	BucketID    string
 	FileID      string // 预生成，complete 时创建文件文档
+	OwnerUserID string // 创建者用户 ID；API key 创建为空串（此时不做 owner 校验）
 	Name        string
 	MimeType    string // 已归一化（normalizeMimeType）
 	Size        int64
@@ -32,8 +33,13 @@ type UploadSessionStore interface {
 	// CountChunks 返回已收分片数（原子；会话不存在返回 0）。
 	CountChunks(ctx context.Context, uploadID string) (int, error)
 	Delete(ctx context.Context, uploadID string) error
-	// LockComplete 尝试获取 complete 互斥锁（SETNX，5min TTL）；已持有返回 false。
-	LockComplete(ctx context.Context, uploadID string) (bool, error)
+	// LockComplete 尝试获取 complete 互斥锁（SETNX，1h TTL；超时自动释放防宕机死锁）。
+	// 返回锁 token 与是否获取成功（已持有返回 ok=false）。token 供后续 IsLockOwner
+	// 二次确认（回滚删对象前确认锁仍归自己持有，防误删其他 complete 的成果）。
+	LockComplete(ctx context.Context, uploadID string) (token string, ok bool, err error)
+	// IsLockOwner 校验 uploadID 的 complete 锁仍由 token 持有者持有（锁未过期且
+	// 未被其他 complete 重新获取）。
+	IsLockOwner(ctx context.Context, uploadID, token string) (bool, error)
 	// UnlockComplete 释放 complete 锁。
 	UnlockComplete(ctx context.Context, uploadID string) error
 }

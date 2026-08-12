@@ -2,7 +2,10 @@ package storage
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -15,13 +18,14 @@ import (
 //   - `torchwood:upload:{uploadID}` Hash：全部元数据字段（metadata/permissions JSON 序列化）；
 //   - `torchwood:upload:{uploadID}:parts` Set：已收分片号；
 //   - TTL 24h，Create 与 MarkChunk 都刷新 EXPIRE；
-//   - complete 互斥锁：`torchwood:upload:{uploadID}:lock` SETNX 5min。
+//   - complete 互斥锁：`torchwood:upload:{uploadID}:lock` SETNX 1h（随机 token 校验持有者）。
 type redisUploadSessionStore struct {
 	rdb *redis.Client
 }
 
-// completeLockTTL 是 complete 互斥锁的持有时间（超时自动释放，防宕机死锁）。
-const completeLockTTL = 5 * time.Minute
+// completeLockTTL 是 complete 互斥锁的持有时间（超时自动释放，防宕机死锁；
+// 1h 需覆盖最坏情况的长 Compose 时间，配合 IsLockOwner 二次确认防止误删）。
+const completeLockTTL = time.Hour
 
 // NewRedisUploadSessionStore creates a Redis-backed upload session store.
 func NewRedisUploadSessionStore(rdb *redis.Client) storage.UploadSessionStore {
@@ -52,18 +56,19 @@ func (s *redisUploadSessionStore) Create(ctx context.Context, up *storage.Upload
 	key := uploadSessionKey(up.ID)
 	_, err = s.rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.HSet(ctx, key, map[string]any{
-			"project_id":  up.ProjectID,
-			"bucket_id":   up.BucketID,
-			"file_id":     up.FileID,
-			"name":        up.Name,
-			"mime_type":   up.MimeType,
-			"size":        up.Size,
-			"metadata":    string(metadata),
-			"permissions": string(permissions),
-			"chunk_size":  up.ChunkSize,
-			"part_count":  up.PartCount,
-			"created_at":  up.CreatedAt.UTC().Format(time.RFC3339Nano),
-			"expires_at":  up.ExpiresAt.UTC().Format(time.RFC3339Nano),
+			"project_id":    up.ProjectID,
+			"bucket_id":     up.BucketID,
+			"file_id":       up.FileID,
+			"owner_user_id": up.OwnerUserID,
+			"name":          up.Name,
+			"mime_type":     up.MimeType,
+			"size":          up.Size,
+			"metadata":      string(metadata),
+			"permissions":   string(permissions),
+			"chunk_size":    up.ChunkSize,
+			"part_count":    up.PartCount,
+			"created_at":    up.CreatedAt.UTC().Format(time.RFC3339Nano),
+			"expires_at":    up.ExpiresAt.UTC().Format(time.RFC3339Nano),
 		})
 		pipe.Expire(ctx, key, storage.UploadSessionTTL)
 		return nil
@@ -85,13 +90,14 @@ func (s *redisUploadSessionStore) Get(ctx context.Context, uploadID string) (*st
 		return nil, err
 	}
 	up := &storage.UploadSession{
-		ID:        uploadID,
-		ProjectID: m["project_id"],
-		BucketID:  m["bucket_id"],
-		FileID:    m["file_id"],
-		Name:      m["name"],
-		MimeType:  m["mime_type"],
-		Received:  map[int]bool{},
+		ID:          uploadID,
+		ProjectID:   m["project_id"],
+		BucketID:    m["bucket_id"],
+		FileID:      m["file_id"],
+		OwnerUserID: m["owner_user_id"],
+		Name:        m["name"],
+		MimeType:    m["mime_type"],
+		Received:    map[int]bool{},
 	}
 	if up.Size, err = strconv.ParseInt(m["size"], 10, 64); err != nil {
 		return nil, fmt.Errorf("parse size: %w", err)
@@ -159,12 +165,35 @@ func (s *redisUploadSessionStore) Delete(ctx context.Context, uploadID string) e
 	return err
 }
 
-func (s *redisUploadSessionStore) LockComplete(ctx context.Context, uploadID string) (bool, error) {
-	ok, err := s.rdb.SetNX(ctx, uploadLockKey(uploadID), 1, completeLockTTL).Result()
-	return ok, err
+func (s *redisUploadSessionStore) LockComplete(ctx context.Context, uploadID string) (string, bool, error) {
+	token := randomLockToken()
+	ok, err := s.rdb.SetNX(ctx, uploadLockKey(uploadID), token, completeLockTTL).Result()
+	return token, ok, err
+}
+
+// IsLockOwner 校验锁仍由 token 持有者持有（锁不存在或已被其他 complete 以新 token
+// 重新获取时返回 false）。
+func (s *redisUploadSessionStore) IsLockOwner(ctx context.Context, uploadID, token string) (bool, error) {
+	v, err := s.rdb.Get(ctx, uploadLockKey(uploadID)).Result()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return v == token, nil
 }
 
 func (s *redisUploadSessionStore) UnlockComplete(ctx context.Context, uploadID string) error {
 	_, err := s.rdb.Del(ctx, uploadLockKey(uploadID)).Result()
 	return err
+}
+
+// randomLockToken 生成 complete 锁随机 token（16 字节随机数 hex）。
+func randomLockToken() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
 }

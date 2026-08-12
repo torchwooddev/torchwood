@@ -43,6 +43,11 @@ type ObjectMeta struct {
 	LastModified time.Time
 }
 
+// DefaultBucketName 是未配置 storage.s3.bucket 时的默认 bucket 名。
+// S3/MinIO bucket 命名规范要求全小写（大写名 MakeBucket 会失败），
+// app 层 defaultBucketName 与 infra 层默认值共用此单一常量。
+const DefaultBucketName = "torchwood-files"
+
 // ObjectStore abstracts binary object storage (S3 / MinIO).
 type ObjectStore interface {
 	// EnsureBucket creates the underlying S3 bucket if it does not exist.

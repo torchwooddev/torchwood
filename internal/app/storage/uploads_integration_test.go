@@ -68,7 +68,7 @@ func uploadFullChunks(t *testing.T, ctx context.Context, uc *Storage, projectID 
 		if end > len(content) {
 			end = len(content)
 		}
-		_, err := uc.UploadChunk(ctx, projectID, session.ID, i, bytes.NewReader(content[start:end]), int64(end-start), principal)
+		_, err := uc.UploadChunk(ctx, projectID, session.ID, i, bytes.NewReader(content[start:end]), int64(end-start), "", principal)
 		require.NoError(t, err)
 	}
 }
@@ -147,7 +147,7 @@ func TestUploads_ResumeAfterMissingChunks(t *testing.T) {
 	require.NoError(t, err)
 
 	// 只传第 1 片（16MiB）。
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(content[:16<<20]), 16<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(content[:16<<20]), 16<<20, "", principal)
 	require.NoError(t, err)
 
 	_, err = uc.CompleteUpload(ctx, projectID, session.ID, "", principal)
@@ -161,7 +161,7 @@ func TestUploads_ResumeAfterMissingChunks(t *testing.T) {
 	require.Equal(t, map[int]bool{1: true}, s2.Received)
 
 	// 补第 2 片（8MiB）后 complete 成功。
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(content[16<<20:]), 8<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(content[16<<20:]), 8<<20, "", principal)
 	require.NoError(t, err)
 	file, err := uc.CompleteUpload(ctx, projectID, session.ID, "", principal)
 	require.NoError(t, err)
@@ -195,31 +195,31 @@ func TestUploads_Validation(t *testing.T) {
 	require.NoError(t, err)
 
 	// 分片号越界（0 与 partCount+1）。
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 0, bytes.NewReader(nil), 0, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 0, bytes.NewReader(nil), 0, "", principal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 3, bytes.NewReader(nil), 0, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 3, bytes.NewReader(nil), 0, "", principal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 非末片 size != chunkSize（第 1 片传 1MiB）。
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(content[:1<<20]), 1<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(content[:1<<20]), 1<<20, "", principal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, err.Error(), "non-final")
 
 	// 超大 chunk（> 16MiB）。
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(content[:16<<20]), 16<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(content[:16<<20]), 16<<20, "", principal)
 	require.NoError(t, err)
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(content[16<<20:]), (8<<20)+(16<<20), principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(content[16<<20:]), (8<<20)+(16<<20), "", principal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, err.Error(), "exceeds maximum size")
 
 	// 末片越界 size（0 与 > chunkSize）。
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(nil), 0, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(nil), 0, "", principal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(nil), (16<<20)+1, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(nil), (16<<20)+1, "", principal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 大小 < 5MiB 的末片合法（5MiB 约束仅对非末片）。
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(content[16<<20:16<<20+100]), 100, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 2, bytes.NewReader(content[16<<20:16<<20+100]), 100, "", principal)
 	require.NoError(t, err)
 
 	// size > MaxUploadSize → InvalidArgument。
@@ -265,7 +265,7 @@ func TestUploads_SessionNotFoundAndExpired(t *testing.T) {
 	mr.FastForward(25 * time.Hour)
 	_, err = uc.GetUploadSession(ctx, projectID, session.ID, principal)
 	require.Equal(t, codes.NotFound, status.Code(err))
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, "", principal)
 	require.Equal(t, codes.NotFound, status.Code(err))
 	_, err = uc.CompleteUpload(ctx, projectID, session.ID, "", principal)
 	require.Equal(t, codes.NotFound, status.Code(err))
@@ -288,7 +288,7 @@ func TestUploads_AbortCleansSessionAndChunks(t *testing.T) {
 	require.NoError(t, err)
 	uploadFullChunks(t, ctx, uc, projectID, session, make([]byte, 12<<20))
 
-	require.NoError(t, uc.AbortUpload(ctx, projectID, session.ID, principal))
+	require.NoError(t, uc.AbortUpload(ctx, projectID, session.ID, "", principal))
 
 	// 会话已删。
 	_, err = uc.GetUploadSession(ctx, projectID, session.ID, principal)
@@ -296,7 +296,7 @@ func TestUploads_AbortCleansSessionAndChunks(t *testing.T) {
 
 	// 分片对象已清。
 	for i := 1; i <= session.PartCount; i++ {
-		_, err := objStore.Get(ctx, "Torchwood-files", chunkKey(projectID, bucketID, session.FileID, i))
+		_, err := objStore.Get(ctx, domainstorage.DefaultBucketName, chunkKey(projectID, bucketID, session.FileID, i))
 		require.Error(t, err, "abort 后分片对象应删除")
 	}
 }
@@ -318,11 +318,11 @@ func TestUploads_DuplicateChunkIdempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	first := bytes.Repeat([]byte("a"), 6<<20)
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(first), 6<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(first), 6<<20, "", principal)
 	require.NoError(t, err)
 	// 同号覆盖（幂等）：第二次上传不同内容，最终以最后一次为准。
 	second := bytes.Repeat([]byte("b"), 6<<20)
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(second), 6<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(second), 6<<20, "", principal)
 	require.NoError(t, err)
 
 	file, err := uc.CompleteUpload(ctx, projectID, session.ID, "", principal)
@@ -350,11 +350,11 @@ func TestUploads_CompleteMutex(t *testing.T) {
 		Size:      6 << 20,
 	}, principal)
 	require.NoError(t, err)
-	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(make([]byte, 6<<20)), 6<<20, principal)
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(make([]byte, 6<<20)), 6<<20, "", principal)
 	require.NoError(t, err)
 
 	// 先手动持有锁 → CompleteUpload 返回 FailedPrecondition。
-	locked, err := uc.uploads.LockComplete(ctx, session.ID)
+	_, locked, err := uc.uploads.LockComplete(ctx, session.ID)
 	require.NoError(t, err)
 	require.True(t, locked)
 	_, err = uc.CompleteUpload(ctx, projectID, session.ID, "", principal)
@@ -387,8 +387,73 @@ func TestUploads_ProjectMismatchDenied(t *testing.T) {
 	// 另一项目 ID 访问 → PermissionDenied（纵深防御）。
 	_, err = uc.GetUploadSession(ctx, "other-project", session.ID, principal)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
-	_, err = uc.UploadChunk(ctx, "other-project", session.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, principal)
+	_, err = uc.UploadChunk(ctx, "other-project", session.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, "", principal)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 	_, err = uc.CompleteUpload(ctx, "other-project", session.ID, "", principal)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+// TestUploads_OwnerBinding 会话 owner 校验：非 owner 端用户被拒；owner 本人通过；
+// keys/admin 豁免；API key 创建的空 owner 会话不受约束。
+func TestUploads_OwnerBinding(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx, uc, projectID, _, _ := newUploadsUC(t)
+	bucketID := mustCreateBucket(t, ctx, uc, projectID)
+
+	// 端用户（owner="user-1"）创建会话。
+	session, err := uc.CreateUploadSession(ctx, CreateUploadCommand{
+		ProjectID:   projectID,
+		BucketID:    bucketID,
+		Name:        "owner.bin",
+		Size:        1 << 20,
+		OwnerUserID: "user-1",
+	}, databases.Principal{Roles: []string{"users", "user:user-1"}})
+	require.NoError(t, err)
+	require.Equal(t, "user-1", session.OwnerUserID)
+
+	// 非 owner 端用户：UploadChunk/Complete/Abort 全部 PermissionDenied。
+	other := databases.Principal{Roles: []string{"users", "user:user-2"}}
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, "user-2", other)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	_, err = uc.CompleteUpload(ctx, projectID, session.ID, "user-2", other)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	abortErr := uc.AbortUpload(ctx, projectID, session.ID, "user-2", other)
+	require.Equal(t, codes.PermissionDenied, status.Code(abortErr))
+
+	// 会话保留（非 owner 拒绝不破坏会话）。
+	_, err = uc.GetUploadSession(ctx, projectID, session.ID, databases.Principal{Roles: []string{"keys"}})
+	require.NoError(t, err)
+
+	// owner 本人可上传/complete。
+	_, err = uc.UploadChunk(ctx, projectID, session.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, "user-1", databases.Principal{Roles: []string{"users", "user:user-1"}})
+	require.NoError(t, err)
+	_, err = uc.CompleteUpload(ctx, projectID, session.ID, "user-1", databases.Principal{Roles: []string{"users", "user:user-1"}})
+	require.NoError(t, err)
+
+	// API key（owner 空）创建的会话不受 owner 约束：端用户以 keys 角色可操作。
+	keySession, err := uc.CreateUploadSession(ctx, CreateUploadCommand{
+		ProjectID: projectID,
+		BucketID:  bucketID,
+		Name:      "key.bin",
+		Size:      1 << 20,
+	}, databases.Principal{Roles: []string{"keys"}})
+	require.NoError(t, err)
+	require.Empty(t, keySession.OwnerUserID)
+	_, err = uc.UploadChunk(ctx, projectID, keySession.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, "some-user", databases.Principal{Roles: []string{"keys"}})
+	require.NoError(t, err)
+	require.NoError(t, uc.AbortUpload(ctx, projectID, keySession.ID, "some-user", databases.Principal{Roles: []string{"keys"}}))
+
+	// keys 豁免：他人创建的会话 keys 角色可操作。
+	session2, err := uc.CreateUploadSession(ctx, CreateUploadCommand{
+		ProjectID:   projectID,
+		BucketID:    bucketID,
+		Name:        "keys-exempt.bin",
+		Size:        1 << 20,
+		OwnerUserID: "user-9",
+	}, databases.Principal{Roles: []string{"users", "user:user-9"}})
+	require.NoError(t, err)
+	_, err = uc.UploadChunk(ctx, projectID, session2.ID, 1, bytes.NewReader(make([]byte, 1<<20)), 1<<20, "", databases.Principal{Roles: []string{"keys"}})
+	require.NoError(t, err)
 }

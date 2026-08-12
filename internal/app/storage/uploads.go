@@ -66,6 +66,7 @@ func (s *Storage) CreateUploadSession(ctx context.Context, cmd CreateUploadComma
 		ProjectID:   project.ID,
 		BucketID:    cmd.BucketID,
 		FileID:      idgen.UUID().String(),
+		OwnerUserID: cmd.OwnerUserID,
 		Name:        cmd.Name,
 		MimeType:    normalizeMimeType(cmd.MimeType),
 		Size:        cmd.Size,
@@ -108,7 +109,7 @@ func (s *Storage) GetUploadSession(ctx context.Context, projectID, uploadID stri
 // UploadChunk 上传一个分片（同号覆盖 = 幂等）。校验顺序：
 // size 上限 → part 越界 → 分片大小严格校验（非末片 == chunkSize，末片 1..chunkSize）。
 // 返回该会话已收分片总数（CountChunks，原子准确）。
-func (s *Storage) UploadChunk(ctx context.Context, projectID, uploadID string, partNumber int, content io.Reader, size int64, principal databases.Principal) (int, error) {
+func (s *Storage) UploadChunk(ctx context.Context, projectID, uploadID string, partNumber int, content io.Reader, size int64, ownerUserID string, principal databases.Principal) (int, error) {
 	session, err := s.uploads.Get(ctx, uploadID)
 	if err != nil {
 		return 0, err
@@ -118,6 +119,9 @@ func (s *Storage) UploadChunk(ctx context.Context, projectID, uploadID string, p
 	}
 	if session.ProjectID != projectID {
 		return 0, status.Error(codes.PermissionDenied, "upload session does not belong to project")
+	}
+	if err := checkUploadOwner(session, ownerUserID, principal); err != nil {
+		return 0, err
 	}
 	if partNumber < 1 || partNumber > session.PartCount {
 		return 0, status.Error(codes.InvalidArgument, "part number out of range")
@@ -134,6 +138,9 @@ func (s *Storage) UploadChunk(ctx context.Context, projectID, uploadID string, p
 	project, err := s.resolveProject(ctx, projectID)
 	if err != nil {
 		return 0, err
+	}
+	if err := s.store.EnsureBucket(ctx, defaultBucketName(s.cfg)); err != nil {
+		return 0, fmt.Errorf("ensure storage bucket: %w", err)
 	}
 	key := chunkKey(project.ID, session.BucketID, session.FileID, partNumber)
 	if err := s.store.Put(ctx, defaultBucketName(s.cfg), key, content, size, "application/octet-stream"); err != nil {
@@ -158,12 +165,15 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 	if session.ProjectID != projectID {
 		return nil, status.Error(codes.PermissionDenied, "upload session does not belong to project")
 	}
+	if err := checkUploadOwner(session, ownerUserID, principal); err != nil {
+		return nil, err
+	}
 	project, err := s.resolveProject(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	locked, err := s.uploads.LockComplete(ctx, uploadID)
+	token, locked, err := s.uploads.LockComplete(ctx, uploadID)
 	if err != nil {
 		return nil, fmt.Errorf("lock complete: %w", err)
 	}
@@ -211,10 +221,13 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 	}
 	perms := filePermissions(session.FileID, ownerUserID, session.Permissions)
 	if _, err := s.docDB.CreateDocument(ctx, project.ID, "default", "files", fileDoc, perms, principal); err != nil {
-		// 回滚：先二次确认会话仍存在（锁保护下并发 complete 已被互斥，双保险）
-		// 再删最终对象，防误删其他并发路径的成果。
-		if s2, gerr := s.uploads.Get(ctx, uploadID); gerr == nil && s2 != nil {
-			_ = s.store.Delete(ctx, defaultBucketName(s.cfg), dstKey)
+		// 回滚：确认「自己仍是锁持有者 + 会话仍存在」双重条件后才删最终对象。
+		// 锁 TTL（1h）若已过期，第二个 complete 可能已重新加锁并成功建文档，
+		// 此时无条件删对象会误删其成果 → 数据损坏。
+		if owner, oerr := s.uploads.IsLockOwner(ctx, uploadID, token); oerr == nil && owner {
+			if s2, gerr := s.uploads.Get(ctx, uploadID); gerr == nil && s2 != nil {
+				_ = s.store.Delete(ctx, defaultBucketName(s.cfg), dstKey)
+			}
 		}
 		return nil, fmt.Errorf("create file document: %w", err)
 	}
@@ -243,7 +256,7 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 }
 
 // AbortUpload 取消上传：删会话后清理全部暂存分片对象（逐片 Delete，幂等）。
-func (s *Storage) AbortUpload(ctx context.Context, projectID, uploadID string, principal databases.Principal) error {
+func (s *Storage) AbortUpload(ctx context.Context, projectID, uploadID, ownerUserID string, principal databases.Principal) error {
 	session, err := s.uploads.Get(ctx, uploadID)
 	if err != nil {
 		return err
@@ -253,6 +266,9 @@ func (s *Storage) AbortUpload(ctx context.Context, projectID, uploadID string, p
 	}
 	if session.ProjectID != projectID {
 		return status.Error(codes.PermissionDenied, "upload session does not belong to project")
+	}
+	if err := checkUploadOwner(session, ownerUserID, principal); err != nil {
+		return err
 	}
 	project, err := s.resolveProject(ctx, projectID)
 	if err != nil {
@@ -267,6 +283,23 @@ func (s *Storage) AbortUpload(ctx context.Context, projectID, uploadID string, p
 		}
 	}
 	return nil
+}
+
+// checkUploadOwner 校验调用方是否有权操作该上传会话：
+//   - 会话 OwnerUserID 为空（API key 创建）→ 仅走项目归属 + scope 门禁，不校验 owner；
+//   - 否则要求调用方 UserID 与会话 OwnerUserID 一致；admin/keys/system 主体豁免
+//     （与文件权限模型一致：keys/admin 具备 update/delete 权限）。
+func checkUploadOwner(session *storage.UploadSession, callerUserID string, principal databases.Principal) error {
+	if session.OwnerUserID == "" {
+		return nil
+	}
+	if callerUserID == session.OwnerUserID {
+		return nil
+	}
+	if principal.IsSystem() || principal.HasRole("keys") {
+		return nil
+	}
+	return status.Error(codes.PermissionDenied, "upload session does not belong to caller")
 }
 
 // chunkKey 分片对象 key：`{objectKey}/chunks/{part:03d}`，与最终对象 key 不冲突。

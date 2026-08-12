@@ -17,6 +17,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/jwtparser"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -152,21 +154,28 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 	if err != nil {
 		return err
 	}
-	// Delete all file objects in this bucket by paginating through every file.
+	// 删除该 bucket 的文件文档与对象（按 bucket_id 过滤分页循环；清理由
+	// SystemPrincipal 执行，避免调用方对个别文件无权限时留下孤儿文档）。
 	var pageToken string
 	for {
-		files, total, next, err := s.ListFiles(ctx, projectID, bucketID, databases.Query{PageSize: 1000, PageToken: pageToken}, principal)
+		q := databases.Query{PageSize: 1000, PageToken: pageToken}
+		q.Queries = []string{query.BuildEqual("bucket_id", bucketID)}
+		files, _, next, err := s.ListFiles(ctx, projectID, bucketID, q, databases.SystemPrincipal)
 		if err != nil {
 			return err
 		}
 		for _, f := range files {
-			_ = s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, f.ID))
+			if derr := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, f.ID)); derr != nil {
+				slog.Warn("delete file object failed", "bucket", bucketID, "file", f.ID, "error", derr)
+			}
+			if derr := s.docDB.DeleteDocument(ctx, project.ID, "default", "files", f.ID, databases.SystemPrincipal); derr != nil {
+				slog.Warn("delete file document failed", "bucket", bucketID, "file", f.ID, "error", derr)
+			}
 		}
 		if next == "" || len(files) == 0 {
 			break
 		}
 		pageToken = next
-		_ = total
 	}
 	// 按前缀清尾：删除 ListFiles 不可见的残留对象（孤儿分片、complete 失败遗留等）。
 	// 与上面的按文档删除有重叠，List+Delete 幂等。
@@ -411,12 +420,12 @@ func (s *Storage) CreateFileToken(ctx context.Context, projectID, bucketID, file
 	if expiresIn > maxFileTokenLifetime {
 		expiresIn = maxFileTokenLifetime
 	}
-	secret := s.cfg.GetSecurity().GetJwt().GetSecret()
-	if secret == "" {
+	master := s.cfg.GetSecurity().GetJwt().GetSecret()
+	if master == "" {
 		return nil, status.Error(codes.Internal, "file token secret is not configured")
 	}
 	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
-	token := signFileToken(secret, project.ID, bucketID, fileID, expiresAt.Unix())
+	token := signFileToken(fileTokenKey(master), project.ID, bucketID, fileID, expiresAt.Unix())
 	return &FileToken{Token: token, ExpiresAt: expiresAt}, nil
 }
 
@@ -424,8 +433,8 @@ func (s *Storage) CreateFileToken(ctx context.Context, projectID, bucketID, file
 // project/bucket/file。任何一项不符即返回错误（调用方仍需比对路径参数）。
 // token 格式："{expiresAt}.{projectID}.{bucketID}.{fileID}.{hex(hmac)}"。
 func (s *Storage) ParseFileToken(token string) (projectID, bucketID, fileID string, err error) {
-	secret := s.cfg.GetSecurity().GetJwt().GetSecret()
-	if secret == "" {
+	master := s.cfg.GetSecurity().GetJwt().GetSecret()
+	if master == "" {
 		return "", "", "", status.Error(codes.Internal, "file token secret is not configured")
 	}
 	parts := strings.Split(token, ".")
@@ -440,16 +449,22 @@ func (s *Storage) ParseFileToken(token string) (projectID, bucketID, fileID stri
 		return "", "", "", status.Error(codes.Unauthenticated, "file token expired")
 	}
 	pid, bid, fid := parts[1], parts[2], parts[3]
-	expected := signFileToken(secret, pid, bid, fid, expiresAt)
+	expected := signFileToken(fileTokenKey(master), pid, bid, fid, expiresAt)
 	if !hmac.Equal([]byte(expected), []byte(token)) {
 		return "", "", "", status.Error(codes.Unauthenticated, "invalid file token")
 	}
 	return pid, bid, fid, nil
 }
 
+// fileTokenKey 从主密钥派生 file token 专用密钥（域分离：file token 不与其他
+// JWT/会话凭证共用密钥材料；参考 pkg/jwtparser.DeriveKey 模式）。
+func fileTokenKey(master string) []byte {
+	return jwtparser.DeriveKey(master, jwtparser.PurposeFileToken)
+}
+
 // signFileToken 计算 token = "{expiresAt}.{projectID}.{bucketID}.{fileID}.{hex(hmac)}"。
-func signFileToken(secret, projectID, bucketID, fileID string, expiresAt int64) string {
-	mac := hmac.New(sha256.New, []byte(secret))
+func signFileToken(secret []byte, projectID, bucketID, fileID string, expiresAt int64) string {
+	mac := hmac.New(sha256.New, secret)
 	_, _ = fmt.Fprintf(mac, "%s.%s.%s.%d", projectID, bucketID, fileID, expiresAt)
 	return fmt.Sprintf("%d.%s.%s.%s.%s", expiresAt, projectID, bucketID, fileID, hex.EncodeToString(mac.Sum(nil)))
 }
@@ -482,11 +497,10 @@ func normalizeMimeType(mime string) string {
 }
 
 func defaultBucketName(cfg *config.AppConfig) string {
-	b := cfg.GetStorage().GetS3().GetBucket()
-	if b == "" {
-		return "Torchwood-files"
+	if b := cfg.GetStorage().GetS3().GetBucket(); b != "" {
+		return b
 	}
-	return b
+	return storage.DefaultBucketName
 }
 
 func objectKey(projectID, bucketID, fileID string) string {

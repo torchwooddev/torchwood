@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
@@ -343,7 +345,7 @@ func (h *FileHandler) uploadChunk(w http.ResponseWriter, r *http.Request, pathPa
 	}
 	defer f.Close()
 
-	received, err := h.storage.UploadChunk(ctx, projectID, uploadID, partNumber, f, fh[0].Size, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	received, err := h.storage.UploadChunk(ctx, projectID, uploadID, partNumber, f, fh[0].Size, principal.UserID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
 	if err != nil {
 		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
 		httpError(w, err)
@@ -435,7 +437,7 @@ func (h *FileHandler) abortUpload(w http.ResponseWriter, r *http.Request, pathPa
 		return
 	}
 
-	if err := h.storage.AbortUpload(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}); err != nil {
+	if err := h.storage.AbortUpload(ctx, projectID, uploadID, principal.UserID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}); err != nil {
 		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
 		httpError(w, err)
 		return
@@ -478,7 +480,7 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 		return
 	}
 
-	projectID, principal, actor, err := h.resolveReadContext(ctx, r, bucketID, fileID)
+	projectID, principal, actor, public, err := h.resolveReadContext(ctx, r, bucketID, fileID)
 	if err != nil {
 		h.logOp(r, "download", bucketID, fileID, nil, err)
 		httpError(w, err)
@@ -503,6 +505,12 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 	// 响应加固：禁止浏览器 MIME 嗅探，并把同源输出限制在沙箱内，杜绝存储型 XSS。
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	// 私有文件（凭证/token 路径）禁止缓存；仅公开 bucket 匿名路径允许公共缓存。
+	if public {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+	} else {
+		w.Header().Set("Cache-Control", "private, no-store")
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
 }
@@ -513,22 +521,23 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 //  3. 无凭证且 bucket 为 public（URL 需携带 project 参数定位项目），
 //     以匿名主体读取（文件文档级 read:any 权限兜底）。
 //
-// 返回项目 ID、文档层 principal 与用于日志的 actor（匿名路径为 nil）。
-func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, bucketID, fileID string) (string, databases.Principal, *shared.Principal, error) {
+// 返回项目 ID、文档层 principal、用于日志的 actor（匿名路径为 nil）以及
+// isPublicBucket（仅公开 bucket 匿名路径为 true，用于 Cache-Control 决策）。
+func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, bucketID, fileID string) (string, databases.Principal, *shared.Principal, bool, error) {
 	principal, err := h.authorize(r)
 	if err == nil {
 		projectID := h.projectID(r, principal)
 		if projectID == "" {
-			return "", databases.Principal{}, nil, status.Error(codes.Unauthenticated, "missing project context")
+			return "", databases.Principal{}, nil, false, status.Error(codes.Unauthenticated, "missing project context")
 		}
-		return projectID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}, principal, nil
+		return projectID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}, principal, false, nil
 	}
 
 	// File token 匿名下载：token 绑定 project/bucket/file 与过期时间。
 	if token := r.URL.Query().Get("token"); token != "" {
 		projectID, tokBucket, tokFile, verr := h.storage.ParseFileToken(token)
 		if verr == nil && tokBucket == bucketID && tokFile == fileID {
-			return projectID, databases.SystemPrincipal, nil, nil
+			return projectID, databases.SystemPrincipal, nil, false, nil
 		}
 	}
 
@@ -536,15 +545,15 @@ func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, b
 	projectID := strings.TrimSpace(r.URL.Query().Get("project"))
 	if projectID != "" {
 		buckets, _, berr := h.storage.ListBuckets(ctx, projectID, databases.Query{
-			Queries:  []string{"equal(\"$id\",\"" + bucketID + "\")"},
+			Queries:  []string{query.BuildEqual("$id", bucketID)},
 			PageSize: 1,
 		}, databases.GuestPrincipal)
 		if berr == nil && len(buckets) > 0 && buckets[0].Public {
-			return projectID, databases.GuestPrincipal, nil, nil
+			return projectID, databases.GuestPrincipal, nil, true, nil
 		}
 	}
 
-	return "", databases.Principal{}, nil, err
+	return "", databases.Principal{}, nil, false, err
 }
 
 // inlineSafeMime 判断文件 MIME 是否可安全以 inline 方式展示：
@@ -570,6 +579,9 @@ var previewImageMimeTypes = map[string]struct{}{
 // maxPreviewSourceBytes 限制预览源文件大小（防解压炸弹与内存耗尽）。
 const maxPreviewSourceBytes = 50 << 20 // 50 MiB
 
+// maxPreviewSourceDimension 限制预览源图片边长（防整图解压出超大位图导致 OOM）。
+const maxPreviewSourceDimension = 8192
+
 // maxPreviewDimension 限制缩放后的输出尺寸。
 const maxPreviewDimension = 4096
 
@@ -585,7 +597,7 @@ func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams
 		return
 	}
 
-	projectID, principal, actor, err := h.resolveReadContext(ctx, r, bucketID, fileID)
+	projectID, principal, actor, public, err := h.resolveReadContext(ctx, r, bucketID, fileID)
 	if err != nil {
 		h.logOp(r, "preview", bucketID, fileID, nil, err)
 		httpError(w, err)
@@ -615,13 +627,41 @@ func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams
 		return
 	}
 
+	cacheControl := "private, no-store"
+	if public {
+		cacheControl = "public, max-age=86400"
+	}
+
 	// 无缩放参数时回源（仍带安全响应头）。
 	if width <= 0 && height <= 0 {
-		serveImage(w, file, reader)
+		serveImage(w, file, reader, cacheControl)
 		return
 	}
 
-	src, err := imaging.Decode(reader, imaging.AutoOrientation(true))
+	// 解码前先读图像头部宽高（只读 header，不整图解压）：任一维度超限直接拒绝，
+	// 防 50MiB 压缩图解码出 ~600MB 位图的 OOM DoS。
+	// 注意：image.DecodeConfig 内部用独立 bufio 预读，会吸干传入 reader 的缓冲，
+	// 因此先整体读入内存（受 maxPreviewSourceBytes 限制），再对两个独立 reader 解码。
+	srcBytes, err := io.ReadAll(io.LimitReader(reader, maxPreviewSourceBytes+1))
+	if err != nil {
+		httpError(w, status.Error(codes.Internal, "cannot read image"))
+		return
+	}
+	if len(srcBytes) > maxPreviewSourceBytes {
+		httpError(w, status.Error(codes.InvalidArgument, "file too large to preview"))
+		return
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(srcBytes))
+	if err != nil {
+		httpError(w, status.Error(codes.Internal, "cannot decode image"))
+		return
+	}
+	if cfg.Width > maxPreviewSourceDimension || cfg.Height > maxPreviewSourceDimension {
+		httpError(w, status.Error(codes.InvalidArgument, "image dimensions too large to preview"))
+		return
+	}
+
+	src, err := imaging.Decode(bytes.NewReader(srcBytes), imaging.AutoOrientation(true))
 	if err != nil {
 		httpError(w, status.Error(codes.Internal, "cannot decode image"))
 		return
@@ -634,27 +674,25 @@ func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams
 	}
 	dst := imaging.Fit(src, width, height, imaging.Lanczos)
 
-	var buf bytes.Buffer
-	if err := imaging.Encode(&buf, dst, imagingFormat(file.MimeType)); err != nil {
-		httpError(w, status.Error(codes.Internal, "cannot encode image"))
+	// 流式编码：w 直接作为 Encoder 目标，避免整图 bytes.Buffer 峰值内存翻倍。
+	w.Header().Set("Content-Type", file.MimeType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Cache-Control", cacheControl)
+	w.WriteHeader(http.StatusOK)
+	if err := imaging.Encode(w, dst, imagingFormat(file.MimeType)); err != nil {
+		h.logger.Warn("preview encode failed", "bucket_id", bucketID, "file_id", fileID, "error", err)
 		return
 	}
 	h.logOp(r, "preview", bucketID, fileID, actor, nil)
-
-	w.Header().Set("Content-Type", file.MimeType)
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(buf.Bytes())
 }
 
 // serveImage 原样输出图片（带安全响应头）。
-func serveImage(w http.ResponseWriter, file *domainstorage.File, reader io.Reader) {
+func serveImage(w http.ResponseWriter, file *domainstorage.File, reader io.Reader, cacheControl string) {
 	w.Header().Set("Content-Type", file.MimeType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", cacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
 }

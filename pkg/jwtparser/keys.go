@@ -11,6 +11,7 @@ const (
 	PurposeEndUserJWT    = "end-user-jwt"
 	PurposeAdminJWT      = "admin-jwt"
 	PurposeSessionCookie = "session-cookie"
+	PurposeFileToken     = "file-token"
 )
 
 // DeriveKey derives a purpose-specific sub-key from the master secret using

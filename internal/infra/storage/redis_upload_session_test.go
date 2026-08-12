@@ -27,6 +27,7 @@ func sampleUploadSession() *storage.UploadSession {
 		ProjectID:   "project-1",
 		BucketID:    "bucket-1",
 		FileID:      "file-1",
+		OwnerUserID: "user-1",
 		Name:        "movie.mp4",
 		MimeType:    "video/mp4",
 		Size:        12 << 20,
@@ -54,6 +55,7 @@ func TestRedisUploadSession_CreateGetRoundtrip(t *testing.T) {
 	require.Equal(t, want.ProjectID, got.ProjectID)
 	require.Equal(t, want.BucketID, got.BucketID)
 	require.Equal(t, want.FileID, got.FileID)
+	require.Equal(t, want.OwnerUserID, got.OwnerUserID)
 	require.Equal(t, want.Name, got.Name)
 	require.Equal(t, want.MimeType, got.MimeType)
 	require.Equal(t, want.Size, got.Size)
@@ -179,32 +181,50 @@ func TestRedisUploadSession_LockCompleteMutex(t *testing.T) {
 	_, store := newRedisUploadSessionTestStore(t)
 	ctx := context.Background()
 
-	// 会话不存在也可加锁（锁与会话生命周期独立）。
-	locked, err := store.LockComplete(ctx, "upload-lock")
+	// 会话不存在也可加锁（锁与会话生命周期独立）；返回随机 token。
+	token, locked, err := store.LockComplete(ctx, "upload-lock")
 	require.NoError(t, err)
 	require.True(t, locked)
+	require.NotEmpty(t, token)
 
 	// 第二次加锁互斥。
-	locked, err = store.LockComplete(ctx, "upload-lock")
+	_, locked, err = store.LockComplete(ctx, "upload-lock")
 	require.NoError(t, err)
 	require.False(t, locked)
 
+	// 锁持有者二次确认通过；非持有者 token 被拒绝。
+	owner, err := store.IsLockOwner(ctx, "upload-lock", token)
+	require.NoError(t, err)
+	require.True(t, owner)
+	owner, err = store.IsLockOwner(ctx, "upload-lock", "wrong-token")
+	require.NoError(t, err)
+	require.False(t, owner)
+
 	// 释放后可再次加锁。
 	require.NoError(t, store.UnlockComplete(ctx, "upload-lock"))
-	locked, err = store.LockComplete(ctx, "upload-lock")
+	owner, err = store.IsLockOwner(ctx, "upload-lock", token)
+	require.NoError(t, err)
+	require.False(t, owner, "锁释放后原 token 不再持有")
+	token2, locked, err := store.LockComplete(ctx, "upload-lock")
 	require.NoError(t, err)
 	require.True(t, locked)
+	require.NotEqual(t, token, token2, "每次加锁生成新 token")
 }
 
 func TestRedisUploadSession_LockCompleteTTLExpiry(t *testing.T) {
 	mr, store := newRedisUploadSessionTestStore(t)
 	ctx := context.Background()
 
-	_, err := store.LockComplete(ctx, "upload-lock-ttl")
+	token, ok, err := store.LockComplete(ctx, "upload-lock-ttl")
 	require.NoError(t, err)
+	require.True(t, ok)
 
-	mr.FastForward(6 * time.Minute)
-	locked, err := store.LockComplete(ctx, "upload-lock-ttl")
+	mr.FastForward(2 * time.Hour)
+	// 锁 TTL 1h 已过期 → 原 token 不再是持有者，可重新获取。
+	owner, err := store.IsLockOwner(ctx, "upload-lock-ttl", token)
 	require.NoError(t, err)
-	require.True(t, locked, "锁 TTL 5min 过期后应可重新获取")
+	require.False(t, owner, "锁 TTL 过期后原 token 失效")
+	_, ok, err = store.LockComplete(ctx, "upload-lock-ttl")
+	require.NoError(t, err)
+	require.True(t, ok, "锁 TTL 1h 过期后应可重新获取")
 }
