@@ -58,9 +58,15 @@ func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", status.Error(codes.Internal, "jwt generation failed")
 	}
-	// 一次性消费记录：jti 在 TTL 内只能被消费一次。
+	// 一次性消费记录：jti 在 TTL 内只能被消费一次。存储值不能为空——
+	// 验证方以「GETDEL 返回空 = 未签发/已消费」做 fail-closed 判定，SessionID
+	// 为空时若原样写入空值会导致首次验证即被误拒。
+	value := p.SessionID
+	if value == "" {
+		value = jti
+	}
 	if a.oneTimeTokens != nil {
-		ok, err := a.oneTimeTokens.Register(ctx, domainauth.OneTimeJWTKeyPrefix+jti, p.SessionID, oneTimeJWTTTL)
+		ok, err := a.oneTimeTokens.Register(ctx, domainauth.OneTimeJWTKeyPrefix+jti, value, oneTimeJWTTTL)
 		if err != nil {
 			return "", err
 		}
