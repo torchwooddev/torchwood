@@ -51,7 +51,7 @@
     },
     "/v1/account/email-change": {
       "put": {
-        "summary": "确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换\r\n（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。",
+        "summary": "确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换\r\n（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。\r\nACCESS_PUBLIC：邮件链接点开即完成（与 recovery 同一安全模型——256-bit\r\n随机 secret + 24h TTL + GETDEL 一次性消费），点链接无需登录态。",
         "operationId": "AccountService_ConfirmEmailChange",
         "responses": {
           "200": {
@@ -80,7 +80,8 @@
         "tags": [
           "AccountService"
         ],
-        "x-torchwood-access": "permission"
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/jwt": {

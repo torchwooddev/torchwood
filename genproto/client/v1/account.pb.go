@@ -3215,7 +3215,7 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"E\n" +
 	"\x10ListLogsResponse\x121\n" +
-	"\x04logs\x18\x01 \x03(\v2\x1d.torchwood.client.v1.LogEntryR\x04logs2\xa83\n" +
+	"\x04logs\x18\x01 \x03(\v2\x1d.torchwood.client.v1.LogEntryR\x04logs2\x9f3\n" +
 	"\x0eAccountService\x12\x9c\x01\n" +
 	"\x06SignUp\x12\".torchwood.client.v1.SignUpRequest\x1a#.torchwood.client.v1.SignUpResponse\"I\x92A\"b\x00j\x1e\n" +
 	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/sign-up\x12\x9c\x01\n" +
@@ -3231,10 +3231,9 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/account/me\x12\xa4\x01\n" +
 	"\rUpdateAccount\x12).torchwood.client.v1.UpdateAccountRequest\x1a\x1c.torchwood.client.v1.Account\"J\x92A$j\"\n" +
 	"\x12x-torchwood-access\x12\f\x1a\n" +
-	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10:\x01*2\v/v1/account\x12\xbb\x01\n" +
-	"\x12ConfirmEmailChange\x12..torchwood.client.v1.ConfirmEmailChangeRequest\x1a\x1c.torchwood.client.v1.Account\"W\x92A$j\"\n" +
-	"\x12x-torchwood-access\x12\f\x1a\n" +
-	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/account/email-change\x12\xb5\x01\n" +
+	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10:\x01*2\v/v1/account\x12\xb2\x01\n" +
+	"\x12ConfirmEmailChange\x12..torchwood.client.v1.ConfirmEmailChangeRequest\x1a\x1c.torchwood.client.v1.Account\"N\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/account/email-change\x12\xb5\x01\n" +
 	"\fListSessions\x12(.torchwood.client.v1.ListSessionsRequest\x1a).torchwood.client.v1.ListSessionsResponse\"P\x92A$j\"\n" +
 	"\x12x-torchwood-access\x12\f\x1a\n" +
 	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/account/sessions\x12\xb5\x01\n" +

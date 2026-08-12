@@ -388,13 +388,14 @@ func TestAccountService_ConfirmEmailChange_Passthrough(t *testing.T) {
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	// user_id 不等于 principal → PermissionDenied（token 不被消费）。
-	_, err = s.ConfirmEmailChange(authCtx, &clientv1.ConfirmEmailChangeRequest{
+	// 免登录（ACCESS_PUBLIC）：不校验 principal，错误 secret → Unauthenticated
+	//（token 校验是唯一凭证，与 recovery 同一安全模型）。
+	_, err = s.ConfirmEmailChange(ctx, &clientv1.ConfirmEmailChangeRequest{
 		ProjectId: projectID,
 		UserId:    "other-user",
 		Secret:    "whatever",
 	})
-	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
 
 	_, err = s.UpdateAccount(authCtx, &clientv1.UpdateAccountRequest{
 		Email:       &newEmail,

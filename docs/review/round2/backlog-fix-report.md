@@ -33,11 +33,10 @@
    `CreateVerificationRequest.url`）；新增 RPC `ConfirmEmailChange(ConfirmEmailChangeRequest)
    returns (Account)`，REST `PUT /v1/account/email-change`（body `*`），请求
    `{project_id, user_id, secret}` 与 `UpdateVerification` 同形。
-2. **ConfirmEmailChange 需要登录态（USER 级）**：authz 注解 `ACCESS_PERMISSION +
-   permissions: ["users"]`（与 Me/UpdateAccount/CreateVerification 一致），use-case 强制
-   `user_id == principal.UserID`（否则 PermissionDenied）。含义：**点击邮件确认链接时用户
-   需已登录**——这正是 staging 的价值（确认前不撤会话，用户保持登录态可完成确认）；
-   如需「免登录确认」请产品再评估（改 `ACCESS_PUBLIC` + 去掉 user_id 校验即可，属小改动）。
+2. **ConfirmEmailChange 免登录（ACCESS_PUBLIC，已按产品决策落地）**：初始实现为
+   USER 级（需登录态确认），产品复核后改为免登录——点邮件链接即完成，与 recovery
+   同一安全模型（256-bit 随机 secret + 24h TTL + GETDEL 一次性消费）。use-case 不再
+   校验 principal/user_id 归属，token 本身是唯一凭证。
 3. **url 校验复用既有白名单**：`validateRedirectURL` + `validateProjectOAuthRedirectURLs`
    （与 CreateVerification/CreateMagicURLSession 相同语义）。
 4. **撤会话时机**：staging 阶段不撤（旧邮箱仍可登录）；`ConfirmEmailChange` 成功时
@@ -221,8 +220,8 @@ Docker，本地无环境，按约定交 CI。
 
 ## 6. 遗留问题
 
-1. **B1 免登录确认**：ConfirmEmailChange 要求登录态（USER 级，任务书推荐）；若产品希望
-   邮件链接免登录直达，需改 `ACCESS_PUBLIC` + 放开 user_id 校验（见 §1 决策 2）。
+1. ~~**B1 免登录确认**~~（已落地）：ConfirmEmailChange 已按产品决策改为 `ACCESS_PUBLIC`
+   （点链接即完成，recovery 同级安全模型），见 §1 决策 2。
 2. **Client API 保留字未迁移**：`/v1/databases/.../documents/count` 字面量路由仍在
    （B3 范围仅 Server API），`document_id="count"` 在 Client API 仍被保留字校验拒绝。
 3. **历史保留字 id 数据**：服务端校验上线前创建的数据不受限；升级指引已写——

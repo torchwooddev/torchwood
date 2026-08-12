@@ -550,14 +550,11 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 
 // ConfirmEmailChange 消费 email_change 一次性 token（GETDEL 原子）并校验新
 // 邮箱未被他人占用，通过后切换 email、清除 pending_email、置 email_verified，
-// 并先撤全部会话再提交（G3-3 语义）。
+// 并先撤全部会话再提交（G3-3 语义）。免登录（ACCESS_PUBLIC）：点邮件链接即完成，
+// 与 recovery 同一安全模型（随机 secret + TTL + 一次性消费）。
 func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChangeCommand) (*User, error) {
 	if a.tokens == nil {
 		return nil, status.Error(codes.Unimplemented, "account verification is not configured")
-	}
-	p, err := a.requireUser(ctx)
-	if err != nil {
-		return nil, err
 	}
 	projectID := strings.TrimSpace(cmd.ProjectID)
 	userID := strings.TrimSpace(cmd.UserID)
@@ -570,9 +567,6 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 	}
 	if secret == "" {
 		return nil, status.Error(codes.InvalidArgument, "secret is required")
-	}
-	if userID != p.UserID {
-		return nil, status.Error(codes.PermissionDenied, "cannot confirm email change for another user")
 	}
 	if err := a.ensureProjectReady(ctx, projectID); err != nil {
 		return nil, err

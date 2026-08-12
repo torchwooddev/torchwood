@@ -451,9 +451,10 @@ func TestAccount_ConfirmEmailChange_SessionRevocationFailureLeavesOldEmail(t *te
 	require.NotEmpty(t, tokens.AccessToken)
 }
 
-// TestAccount_ConfirmEmailChange_RequiresOwnUser：user_id 必须等于
-// principal.UserID，否则 PermissionDenied。
-func TestAccount_ConfirmEmailChange_RequiresOwnUser(t *testing.T) {
+// TestAccount_ConfirmEmailChange_PublicAccess：ConfirmEmailChange 为免登录
+// （ACCESS_PUBLIC，点邮件链接即完成）——无 principal 上下文也能确认成功，
+// 安全模型与 recovery 一致（随机 secret + TTL + GETDEL 一次性）。
+func TestAccount_ConfirmEmailChange_PublicAccess(t *testing.T) {
 	ctx, account, projectID, _, _, mailer := setupG3Account(t)
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "own-check@torchwood.local")
@@ -471,13 +472,29 @@ func TestAccount_ConfirmEmailChange_RequiresOwnUser(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// 无 principal 的裸上下文（模拟用户在新浏览器点开邮件链接）：确认成功。
 	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
-	_, err = account.ConfirmEmailChange(authCtx, ConfirmEmailChangeCommand{
+	confirmed, err := account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
-		UserID:    "someone-else",
+		UserID:    userID,
 		Secret:    secret,
 	})
-	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	require.NoError(t, err)
+	require.Equal(t, "own-check-new@torchwood.local", confirmed.Email)
+
+	// 新邮箱可登录、旧邮箱失效。
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "own-check-new@torchwood.local",
+		Password:  "User@123",
+	})
+	require.NoError(t, err)
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "own-check@torchwood.local",
+		Password:  "User@123",
+	})
+	require.Error(t, err)
 }
 
 // TestAccount_UpdateAccount_EmailChangeRequiresURL：改邮箱时 url 必填。

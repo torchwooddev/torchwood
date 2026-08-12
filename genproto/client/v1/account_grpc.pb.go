@@ -69,6 +69,8 @@ type AccountServiceClient interface {
 	UpdateAccount(ctx context.Context, in *UpdateAccountRequest, opts ...grpc.CallOption) (*Account, error)
 	// 确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换
 	//（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。
+	// ACCESS_PUBLIC：邮件链接点开即完成（与 recovery 同一安全模型——256-bit
+	// 随机 secret + 24h TTL + GETDEL 一次性消费），点链接无需登录态。
 	ConfirmEmailChange(ctx context.Context, in *ConfirmEmailChangeRequest, opts ...grpc.CallOption) (*Account, error)
 	ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*ListSessionsResponse, error)
 	DeleteSession(ctx context.Context, in *DeleteSessionRequest, opts ...grpc.CallOption) (*v1.Empty, error)
@@ -474,6 +476,8 @@ type AccountServiceServer interface {
 	UpdateAccount(context.Context, *UpdateAccountRequest) (*Account, error)
 	// 确认邮箱变更：消费邮件中的一次性 secret，验证通过后 email 才切换
 	//（staging：验证前 email 保持旧值，旧邮箱仍可登录/找回）。
+	// ACCESS_PUBLIC：邮件链接点开即完成（与 recovery 同一安全模型——256-bit
+	// 随机 secret + 24h TTL + GETDEL 一次性消费），点链接无需登录态。
 	ConfirmEmailChange(context.Context, *ConfirmEmailChangeRequest) (*Account, error)
 	ListSessions(context.Context, *ListSessionsRequest) (*ListSessionsResponse, error)
 	DeleteSession(context.Context, *DeleteSessionRequest) (*v1.Empty, error)
