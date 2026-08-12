@@ -12,8 +12,8 @@ require (
 	github.com/google/wire v0.7.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/joho/godotenv v1.5.1
-	github.com/lynx-go/lynx v1.2.0
-	github.com/lynx-go/lynx/contrib/zap v1.1.0
+	github.com/lynx-go/lynx v1.3.0
+	github.com/lynx-go/lynx/contrib/zap v1.3.0
 	github.com/minio/minio-go/v7 v7.2.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pquerna/otp v1.5.0
