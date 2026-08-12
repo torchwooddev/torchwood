@@ -63,11 +63,14 @@ jobs:
       - name: Format check (gofmt)
         run: test -z "$(gofmt -l .)"
 
+      - name: Prepare console embed stub
+        run: mkdir -p console/dist && touch console/dist/index.html
+
       - name: go vet
-        run: go vet $(go list ./... | grep -v '/console$')
+        run: go vet ./...
 
       - name: Tests (unit + integration)
-        run: go test $(go list ./... | grep -v '/console$')
+        run: go test ./...
 
       - name: SDK Go tests (independent module)
         working-directory: sdk/go
