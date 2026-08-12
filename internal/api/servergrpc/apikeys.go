@@ -37,8 +37,8 @@ func (s *APIKeysService) CreateAPIKey(ctx context.Context, req *serverv1.CreateA
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	var expireAt *time.Time
-	if req.GetExpireAt() > 0 {
-		t := time.Unix(req.GetExpireAt(), 0)
+	if ts := req.GetExpireAt(); ts != nil {
+		t := ts.AsTime()
 		expireAt = &t
 	}
 	key, secret, err := s.apiKeys.Create(ctx, appserver.CreateAPIKeyCommand{

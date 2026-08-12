@@ -166,7 +166,7 @@ export class AccountService {
 
   async createEmailOTP(input: {
     email: string;
-  }): Promise<{ challenge_id: string; expire_at: string | number }> {
+  }): Promise<{ challenge_id: string; expire_at: string }> {
     return this.http.request("POST", "/v1/account/sessions/email-otp", {
       auth: "none",
       body: {
@@ -200,7 +200,7 @@ export class AccountService {
 
   async createPhoneOTP(input: {
     phone: string;
-  }): Promise<{ challenge_id: string; expire_at: string | number }> {
+  }): Promise<{ challenge_id: string; expire_at: string }> {
     return this.http.request("POST", "/v1/account/sessions/phone-otp", {
       auth: "none",
       body: {
@@ -301,7 +301,7 @@ export class AccountService {
   // 发送邮箱验证邮件（url 为带 {{code}} 占位的确认链接模板）。
   async createVerification(input: {
     url: string;
-  }): Promise<{ user_id: string; expire_at: string | number }> {
+  }): Promise<{ user_id: string; expire_at: string }> {
     return this.http.request("POST", "/v1/account/verification", {
       body: {
         project_id: this.http.getProjectId(),
@@ -417,7 +417,7 @@ export class AccountService {
   async createMagicURLSession(input: {
     email: string;
     url: string;
-  }): Promise<{ challenge_id: string; expire_at: string | number }> {
+  }): Promise<{ challenge_id: string; expire_at: string }> {
     return this.http.request("POST", "/v1/account/sessions/magic-url", {
       auth: "none",
       body: {

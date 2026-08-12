@@ -3,15 +3,17 @@ package client
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func tokenBundle() *clientv1.TokenBundle {
-	return &clientv1.TokenBundle{AccessToken: "jwt-1", RefreshToken: "rt-1", ExpiresAt: 1893456000}
+	return &clientv1.TokenBundle{AccessToken: "jwt-1", RefreshToken: "rt-1", ExpiresAt: timestamppb.New(time.Unix(1893456000, 0))}
 }
 
 func TestNewClient_RequiresTarget(t *testing.T) {

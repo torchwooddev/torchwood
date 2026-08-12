@@ -2,10 +2,12 @@ package consolegrpc
 
 import (
 	"context"
+	"time"
 
 	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/torchwooddev/torchwood/internal/app/console"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type AuthService struct {
@@ -87,6 +89,6 @@ func mapSignInResponse(tokens *console.TokenPair) *consolev1.SignInResponse {
 	return &consolev1.SignInResponse{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
-		ExpiresAt:    tokens.ExpiresAt,
+		ExpiresAt:    timestamppb.New(time.Unix(tokens.ExpiresAt, 0)),
 	}
 }

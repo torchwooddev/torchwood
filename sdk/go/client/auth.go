@@ -51,7 +51,7 @@ func withBearer(ctx context.Context, tok *clientv1.TokenBundle) context.Context 
 }
 
 func tokenExpiring(t *clientv1.TokenBundle, now time.Time) bool {
-	return t != nil && t.ExpiresAt > 0 && time.Until(time.Unix(t.ExpiresAt, 0)) < refreshSkew
+	return t != nil && t.ExpiresAt != nil && t.ExpiresAt.AsTime().Before(now.Add(refreshSkew))
 }
 
 // refreshIfExpiring 主动刷新：token 距过期不足 refreshSkew 时用 refresh token 换新。

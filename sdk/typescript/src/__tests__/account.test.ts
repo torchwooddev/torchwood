@@ -38,7 +38,7 @@ describe("AccountService MFA 分支", () => {
       projectId: "default",
       fetch: stubFetch({
         account: { id: "u1" },
-        tokens: { access_token: "at-1", refresh_token: "rt-1", expires_at: "1800000" },
+        tokens: { access_token: "at-1", refresh_token: "rt-1", expires_at: "2026-08-13T06:00:00Z" },
       }),
     });
     const account = new AccountService(http);
@@ -46,7 +46,7 @@ describe("AccountService MFA 分支", () => {
     const res = await account.signUp({ email: "u@example.com", password: "pw", name: "User" });
     assert.equal(http.getAccessToken(), "at-1");
     assert.equal(res.tokens.access_token, "at-1");
-    assert.equal(res.tokens.expires_at, "1800000");
+    assert.equal(res.tokens.expires_at, "2026-08-13T06:00:00Z");
   });
 });
 

@@ -77,7 +77,8 @@ service APIKeysService {
 message CreateAPIKeyRequest {
   string name = 1;
   repeated string scopes = 2;
-  int64 expire_at = 3; // unix seconds, 0 = no expiry
+  // 过期时间；不设置 = 永不过期（RFC3339，经 gateway 序列化为字符串）。
+  optional google.protobuf.Timestamp expire_at = 3;
 }
 
 message GetAPIKeyRequest {

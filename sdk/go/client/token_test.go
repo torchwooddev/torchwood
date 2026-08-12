@@ -6,13 +6,15 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func bundle() *clientv1.TokenBundle {
-	return &clientv1.TokenBundle{AccessToken: "a", RefreshToken: "r", ExpiresAt: 1893456000}
+	return &clientv1.TokenBundle{AccessToken: "a", RefreshToken: "r", ExpiresAt: timestamppb.New(time.Unix(1893456000, 0))}
 }
 
 func TestMemoryStoreRoundTrip(t *testing.T) {
@@ -45,7 +47,8 @@ func TestFileStoreRoundTrip(t *testing.T) {
 	got, err = NewFileTokenStore(p).Load()
 	require.NoError(t, err)
 	require.Equal(t, "r", got.RefreshToken)
-	require.Equal(t, int64(1893456000), got.ExpiresAt)
+	require.NotNil(t, got.ExpiresAt)
+	require.Equal(t, int64(1893456000), got.ExpiresAt.AsTime().Unix())
 
 	require.NoError(t, s.Clear())
 	require.NoError(t, s.Clear()) // 幂等

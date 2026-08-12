@@ -45,7 +45,14 @@ func (s *fakeServices) ListUsers(ctx context.Context, _ *sharedv1.ListRequest) (
 }
 
 func (s *fakeServices) UpdateUser(ctx context.Context, req *serverv1.UpdateUserRequest) (*serverv1.User, error) {
-	return &serverv1.User{Id: req.Id, Name: req.Name, Status: req.Status}, nil
+	return &serverv1.User{Id: req.Id, Name: deref(req.Name), Status: deref(req.Status)}, nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (s *fakeServices) UpdateUserPassword(ctx context.Context, req *serverv1.UpdateUserPasswordRequest) (*serverv1.User, error) {

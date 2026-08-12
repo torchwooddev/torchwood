@@ -154,7 +154,7 @@
         },
         "clientSecret": {
           "type": "string",
-          "title": "OAuth client secret：仅写入（Upsert）时接受；响应不回显（OAuthProvider\r\n仅返回 has_client_secret 布尔）。空串语义 = 保持现有 secret 不变\r\n（不允许清空；如需轮换请写入新值）。"
+          "title": "OAuth client secret：仅写入（Upsert）时接受；响应不回显（OAuthProvider\r\n仅返回 has_client_secret 布尔）。optional：未设置 = 保持现有 secret 不变；\r\n设置为非空串 = 轮换为新值；空串 = 不允许清空（服务端按\"保持不变\"处理）。"
         },
         "scopes": {
           "type": "array",

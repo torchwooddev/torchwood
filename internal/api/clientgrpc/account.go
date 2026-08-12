@@ -2,6 +2,7 @@ package clientgrpc
 
 import (
 	"context"
+	"time"
 
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
@@ -161,7 +162,7 @@ func (s *AccountService) CreateEmailOTP(ctx context.Context, req *clientv1.Creat
 	}
 	return &clientv1.ChallengeResponse{
 		ChallengeId: challenge.ChallengeID,
-		ExpireAt:    challenge.ExpireAt.Unix(),
+		ExpireAt:    timestamppb.New(challenge.ExpireAt),
 	}, nil
 }
 
@@ -216,7 +217,7 @@ func (s *AccountService) CreatePhoneOTP(ctx context.Context, req *clientv1.Creat
 	}
 	return &clientv1.ChallengeResponse{
 		ChallengeId: challenge.ChallengeID,
-		ExpireAt:    challenge.ExpireAt.Unix(),
+		ExpireAt:    timestamppb.New(challenge.ExpireAt),
 	}, nil
 }
 
@@ -290,7 +291,7 @@ func (s *AccountService) CreateVerification(ctx context.Context, req *clientv1.C
 	}
 	return &clientv1.CreateVerificationResponse{
 		UserId:   challenge.UserID,
-		ExpireAt: challenge.ExpireAt,
+		ExpireAt: timestamppb.New(time.Unix(challenge.ExpireAt, 0)),
 	}, nil
 }
 
@@ -413,7 +414,7 @@ func (s *AccountService) CreateMagicURLSession(ctx context.Context, req *clientv
 	}
 	return &clientv1.ChallengeResponse{
 		ChallengeId: challenge.ChallengeID,
-		ExpireAt:    challenge.ExpireAt.Unix(),
+		ExpireAt:    timestamppb.New(challenge.ExpireAt),
 	}, nil
 }
 
@@ -554,6 +555,6 @@ func mapTokens(t *client.TokenBundle) *clientv1.TokenBundle {
 	return &clientv1.TokenBundle{
 		AccessToken:  t.AccessToken,
 		RefreshToken: t.RefreshToken,
-		ExpiresAt:    t.ExpiresAt,
+		ExpiresAt:    timestamppb.New(time.Unix(t.ExpiresAt, 0)),
 	}
 }

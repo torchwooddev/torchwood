@@ -157,15 +157,14 @@ func (x *CreateUserRequest) GetPrefs() *structpb.Struct {
 type UpdateUserRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// 以下字段当前为裸 string/Struct：proto3 下空串/空对象无法区分
-	// 「未提供」与「清空」。计划未来 optional 化（对齐 projects.proto 的
-	// optional 用法）以支持清空语义；属破坏性变更，需 SDK/Console 同步。
-	Status        string           `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	// status/name/email 为 optional：未设置 = 不修改；设置（含空串）= 更新/清空。
+	// labels/prefs 为 Struct：空对象 = 不修改（清空需置空对象键值，v2 再 optional 化）。
+	Status        *string          `protobuf:"bytes,2,opt,name=status,proto3,oneof" json:"status,omitempty"`
 	Labels        *structpb.Struct `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
 	Prefs         *structpb.Struct `protobuf:"bytes,4,opt,name=prefs,proto3" json:"prefs,omitempty"`
 	EmailVerified *bool            `protobuf:"varint,5,opt,name=email_verified,json=emailVerified,proto3,oneof" json:"email_verified,omitempty"`
-	Name          string           `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
-	Email         string           `protobuf:"bytes,7,opt,name=email,proto3" json:"email,omitempty"`
+	Name          *string          `protobuf:"bytes,6,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Email         *string          `protobuf:"bytes,7,opt,name=email,proto3,oneof" json:"email,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -208,8 +207,8 @@ func (x *UpdateUserRequest) GetId() string {
 }
 
 func (x *UpdateUserRequest) GetStatus() string {
-	if x != nil {
-		return x.Status
+	if x != nil && x.Status != nil {
+		return *x.Status
 	}
 	return ""
 }
@@ -236,15 +235,15 @@ func (x *UpdateUserRequest) GetEmailVerified() bool {
 }
 
 func (x *UpdateUserRequest) GetName() string {
-	if x != nil {
-		return x.Name
+	if x != nil && x.Name != nil {
+		return *x.Name
 	}
 	return ""
 }
 
 func (x *UpdateUserRequest) GetEmail() string {
-	if x != nil {
-		return x.Email
+	if x != nil && x.Email != nil {
+		return *x.Email
 	}
 	return ""
 }
@@ -704,9 +703,9 @@ func (x *CreateUserTokenResponse) GetTokens() *TokenBundle {
 type TokenBundle struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 令牌明文：仅生成时返回一次，之后任何接口不再回显（持久层仅存哈希）。
-	AccessToken   string `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
-	RefreshToken  string `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
-	ExpiresAt     int64  `protobuf:"varint,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // unix seconds
+	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -755,11 +754,11 @@ func (x *TokenBundle) GetRefreshToken() string {
 	return ""
 }
 
-func (x *TokenBundle) GetExpiresAt() int64 {
+func (x *TokenBundle) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
 	}
-	return 0
+	return nil
 }
 
 var File_server_v1_users_proto protoreflect.FileDescriptor
@@ -775,16 +774,19 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x16\n" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12/\n" +
 	"\x06labels\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x06labels\x12-\n" +
-	"\x05prefs\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"\x84\x02\n" +
+	"\x05prefs\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"\xb1\x02\n" +
 	"\x11UpdateUserRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\x12/\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
+	"\x06status\x18\x02 \x01(\tH\x00R\x06status\x88\x01\x01\x12/\n" +
 	"\x06labels\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x06labels\x12-\n" +
 	"\x05prefs\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x05prefs\x12*\n" +
-	"\x0eemail_verified\x18\x05 \x01(\bH\x00R\remailVerified\x88\x01\x01\x12\x12\n" +
-	"\x04name\x18\x06 \x01(\tR\x04name\x12\x14\n" +
-	"\x05email\x18\a \x01(\tR\x05emailB\x11\n" +
-	"\x0f_email_verified\"G\n" +
+	"\x0eemail_verified\x18\x05 \x01(\bH\x01R\remailVerified\x88\x01\x01\x12\x17\n" +
+	"\x04name\x18\x06 \x01(\tH\x02R\x04name\x88\x01\x01\x12\x19\n" +
+	"\x05email\x18\a \x01(\tH\x03R\x05email\x88\x01\x01B\t\n" +
+	"\a_statusB\x11\n" +
+	"\x0f_email_verifiedB\a\n" +
+	"\x05_nameB\b\n" +
+	"\x06_email\"G\n" +
 	"\x19UpdateUserPasswordRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"I\n" +
@@ -822,12 +824,12 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"S\n" +
 	"\x17CreateUserTokenResponse\x128\n" +
-	"\x06tokens\x18\x01 \x01(\v2 .torchwood.server.v1.TokenBundleR\x06tokens\"t\n" +
+	"\x06tokens\x18\x01 \x01(\v2 .torchwood.server.v1.TokenBundleR\x06tokens\"\x90\x01\n" +
 	"\vTokenBundle\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
-	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x129\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\x03R\texpiresAt2\x81\t\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2\x81\t\n" +
 	"\fUsersService\x12l\n" +
 	"\n" +
 	"CreateUser\x12&.torchwood.server.v1.CreateUserRequest\x1a\x19.torchwood.server.v1.User\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/server/users\x12o\n" +
@@ -898,29 +900,30 @@ var file_server_v1_users_proto_depIdxs = []int32{
 	13, // 11: torchwood.server.v1.Session.expire_at:type_name -> google.protobuf.Timestamp
 	13, // 12: torchwood.server.v1.Session.created_at:type_name -> google.protobuf.Timestamp
 	10, // 13: torchwood.server.v1.CreateUserTokenResponse.tokens:type_name -> torchwood.server.v1.TokenBundle
-	1,  // 14: torchwood.server.v1.UsersService.CreateUser:input_type -> torchwood.server.v1.CreateUserRequest
-	14, // 15: torchwood.server.v1.UsersService.ListUsers:input_type -> torchwood.shared.v1.ListRequest
-	0,  // 16: torchwood.server.v1.UsersService.GetUser:input_type -> torchwood.server.v1.GetUserRequest
-	2,  // 17: torchwood.server.v1.UsersService.UpdateUser:input_type -> torchwood.server.v1.UpdateUserRequest
-	3,  // 18: torchwood.server.v1.UsersService.UpdateUserPassword:input_type -> torchwood.server.v1.UpdateUserPasswordRequest
-	0,  // 19: torchwood.server.v1.UsersService.DeleteUser:input_type -> torchwood.server.v1.GetUserRequest
-	0,  // 20: torchwood.server.v1.UsersService.ListUserSessions:input_type -> torchwood.server.v1.GetUserRequest
-	4,  // 21: torchwood.server.v1.UsersService.DeleteUserSession:input_type -> torchwood.server.v1.DeleteUserSessionRequest
-	0,  // 22: torchwood.server.v1.UsersService.CreateUserToken:input_type -> torchwood.server.v1.GetUserRequest
-	7,  // 23: torchwood.server.v1.UsersService.CreateUser:output_type -> torchwood.server.v1.User
-	5,  // 24: torchwood.server.v1.UsersService.ListUsers:output_type -> torchwood.server.v1.ListUsersResponse
-	7,  // 25: torchwood.server.v1.UsersService.GetUser:output_type -> torchwood.server.v1.User
-	7,  // 26: torchwood.server.v1.UsersService.UpdateUser:output_type -> torchwood.server.v1.User
-	7,  // 27: torchwood.server.v1.UsersService.UpdateUserPassword:output_type -> torchwood.server.v1.User
-	15, // 28: torchwood.server.v1.UsersService.DeleteUser:output_type -> torchwood.shared.v1.Empty
-	6,  // 29: torchwood.server.v1.UsersService.ListUserSessions:output_type -> torchwood.server.v1.ListUserSessionsResponse
-	15, // 30: torchwood.server.v1.UsersService.DeleteUserSession:output_type -> torchwood.shared.v1.Empty
-	9,  // 31: torchwood.server.v1.UsersService.CreateUserToken:output_type -> torchwood.server.v1.CreateUserTokenResponse
-	23, // [23:32] is the sub-list for method output_type
-	14, // [14:23] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	13, // 14: torchwood.server.v1.TokenBundle.expires_at:type_name -> google.protobuf.Timestamp
+	1,  // 15: torchwood.server.v1.UsersService.CreateUser:input_type -> torchwood.server.v1.CreateUserRequest
+	14, // 16: torchwood.server.v1.UsersService.ListUsers:input_type -> torchwood.shared.v1.ListRequest
+	0,  // 17: torchwood.server.v1.UsersService.GetUser:input_type -> torchwood.server.v1.GetUserRequest
+	2,  // 18: torchwood.server.v1.UsersService.UpdateUser:input_type -> torchwood.server.v1.UpdateUserRequest
+	3,  // 19: torchwood.server.v1.UsersService.UpdateUserPassword:input_type -> torchwood.server.v1.UpdateUserPasswordRequest
+	0,  // 20: torchwood.server.v1.UsersService.DeleteUser:input_type -> torchwood.server.v1.GetUserRequest
+	0,  // 21: torchwood.server.v1.UsersService.ListUserSessions:input_type -> torchwood.server.v1.GetUserRequest
+	4,  // 22: torchwood.server.v1.UsersService.DeleteUserSession:input_type -> torchwood.server.v1.DeleteUserSessionRequest
+	0,  // 23: torchwood.server.v1.UsersService.CreateUserToken:input_type -> torchwood.server.v1.GetUserRequest
+	7,  // 24: torchwood.server.v1.UsersService.CreateUser:output_type -> torchwood.server.v1.User
+	5,  // 25: torchwood.server.v1.UsersService.ListUsers:output_type -> torchwood.server.v1.ListUsersResponse
+	7,  // 26: torchwood.server.v1.UsersService.GetUser:output_type -> torchwood.server.v1.User
+	7,  // 27: torchwood.server.v1.UsersService.UpdateUser:output_type -> torchwood.server.v1.User
+	7,  // 28: torchwood.server.v1.UsersService.UpdateUserPassword:output_type -> torchwood.server.v1.User
+	15, // 29: torchwood.server.v1.UsersService.DeleteUser:output_type -> torchwood.shared.v1.Empty
+	6,  // 30: torchwood.server.v1.UsersService.ListUserSessions:output_type -> torchwood.server.v1.ListUserSessionsResponse
+	15, // 31: torchwood.server.v1.UsersService.DeleteUserSession:output_type -> torchwood.shared.v1.Empty
+	9,  // 32: torchwood.server.v1.UsersService.CreateUserToken:output_type -> torchwood.server.v1.CreateUserTokenResponse
+	24, // [24:33] is the sub-list for method output_type
+	15, // [15:24] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_server_v1_users_proto_init() }

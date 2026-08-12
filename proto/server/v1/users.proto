@@ -110,15 +110,14 @@ message CreateUserRequest {
 
 message UpdateUserRequest {
   string id = 1;
-  // 以下字段当前为裸 string/Struct：proto3 下空串/空对象无法区分
-  // 「未提供」与「清空」。计划未来 optional 化（对齐 projects.proto 的
-  // optional 用法）以支持清空语义；属破坏性变更，需 SDK/Console 同步。
-  string status = 2;
+  // status/name/email 为 optional：未设置 = 不修改；设置（含空串）= 更新/清空。
+  // labels/prefs 为 Struct：空对象 = 不修改（清空需置空对象键值，v2 再 optional 化）。
+  optional string status = 2;
   google.protobuf.Struct labels = 3;
   google.protobuf.Struct prefs = 4;
   optional bool email_verified = 5;
-  string name = 6;
-  string email = 7;
+  optional string name = 6;
+  optional string email = 7;
 }
 
 message UpdateUserPasswordRequest {
@@ -171,5 +170,5 @@ message TokenBundle {
   // 令牌明文：仅生成时返回一次，之后任何接口不再回显（持久层仅存哈希）。
   string access_token = 1;
   string refresh_token = 2;
-  int64 expires_at = 3; // unix seconds
+  google.protobuf.Timestamp expires_at = 3;
 }

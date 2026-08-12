@@ -3,6 +3,7 @@ package servergrpc
 import (
 	"context"
 	"fmt"
+	"time"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
@@ -184,7 +185,7 @@ func (s *UsersService) CreateUserToken(ctx context.Context, req *serverv1.GetUse
 		Tokens: &serverv1.TokenBundle{
 			AccessToken:  bundle.AccessToken,
 			RefreshToken: bundle.RefreshToken,
-			ExpiresAt:    bundle.ExpiresAt,
+			ExpiresAt:    timestamppb.New(time.Unix(bundle.ExpiresAt, 0)),
 		},
 	}, nil
 }

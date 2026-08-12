@@ -26,7 +26,8 @@ export interface UserSession {
 export interface TokenBundle {
   access_token: string;
   refresh_token: string;
-  expires_at: number;
+  // RFC3339（Timestamp 经 gateway 序列化为字符串）
+  expires_at: string;
 }
 
 export interface ListUsersResponse {

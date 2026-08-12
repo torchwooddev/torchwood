@@ -10,14 +10,15 @@ import (
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func expiredBundle() *clientv1.TokenBundle {
-	return &clientv1.TokenBundle{AccessToken: "old", RefreshToken: "refresh-1", ExpiresAt: time.Now().Add(-time.Minute).Unix()}
+	return &clientv1.TokenBundle{AccessToken: "old", RefreshToken: "refresh-1", ExpiresAt: timestamppb.New(time.Now().Add(-time.Minute))}
 }
 
 func freshBundle() *clientv1.TokenBundle {
-	return &clientv1.TokenBundle{AccessToken: "fresh", RefreshToken: "refresh-1", ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	return &clientv1.TokenBundle{AccessToken: "fresh", RefreshToken: "refresh-1", ExpiresAt: timestamppb.New(time.Now().Add(time.Hour))}
 }
 
 func TestProactiveRefresh(t *testing.T) {
@@ -50,7 +51,7 @@ func TestRetryOnUnauthorized(t *testing.T) {
 	require.NoError(t, store.Save(freshBundle()))
 	c, fake := newTestClient(t, WithTokenStore(store))
 	fake.failFirstMe.Store(true)
-	fake.tokens = &clientv1.TokenBundle{AccessToken: "rotated", RefreshToken: "refresh-1", ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	fake.tokens = &clientv1.TokenBundle{AccessToken: "rotated", RefreshToken: "refresh-1", ExpiresAt: timestamppb.New(time.Now().Add(time.Hour))}
 
 	me, err := c.Account.Me(context.Background())
 	require.NoError(t, err)
@@ -62,7 +63,7 @@ func TestRetryOnUnauthorized(t *testing.T) {
 func TestRefreshUnauthenticatedClearsTokens(t *testing.T) {
 	var cb *clientv1.TokenBundle
 	store := NewMemoryTokenStore()
-	bad := &clientv1.TokenBundle{AccessToken: "old", RefreshToken: "bad", ExpiresAt: time.Now().Add(-time.Minute).Unix()}
+	bad := &clientv1.TokenBundle{AccessToken: "old", RefreshToken: "bad", ExpiresAt: timestamppb.New(time.Now().Add(-time.Minute))}
 	require.NoError(t, store.Save(bad))
 	c, _ := newTestClient(t, WithTokenStore(store), WithOnTokensChanged(func(b *clientv1.TokenBundle) { cb = b }))
 

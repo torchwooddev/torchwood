@@ -5,6 +5,7 @@ package torchwood.console.v1;
 option go_package = "github.com/torchwooddev/torchwood/genproto/console/v1;consolev1";
 
 import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 import "console/v1/admins.proto";
 import "shared/v1/authz.proto";
@@ -83,7 +84,7 @@ message SignInRequest {
 
 message SignInResponse {
   string access_token = 1;
-  int64 expires_at = 2;
+  google.protobuf.Timestamp expires_at = 2;
   string refresh_token = 3;
 }
 

@@ -83,9 +83,9 @@ type UpsertOAuthProviderRequest struct {
 	Enabled  bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	ClientId string                 `protobuf:"bytes,3,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
 	// OAuth client secret：仅写入（Upsert）时接受；响应不回显（OAuthProvider
-	// 仅返回 has_client_secret 布尔）。空串语义 = 保持现有 secret 不变
-	// （不允许清空；如需轮换请写入新值）。
-	ClientSecret  string   `protobuf:"bytes,4,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
+	// 仅返回 has_client_secret 布尔）。optional：未设置 = 保持现有 secret 不变；
+	// 设置为非空串 = 轮换为新值；空串 = 不允许清空（服务端按"保持不变"处理）。
+	ClientSecret  *string  `protobuf:"bytes,4,opt,name=client_secret,json=clientSecret,proto3,oneof" json:"client_secret,omitempty"`
 	Scopes        []string `protobuf:"bytes,5,rep,name=scopes,proto3" json:"scopes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -143,8 +143,8 @@ func (x *UpsertOAuthProviderRequest) GetClientId() string {
 }
 
 func (x *UpsertOAuthProviderRequest) GetClientSecret() string {
-	if x != nil {
-		return x.ClientSecret
+	if x != nil && x.ClientSecret != nil {
+		return *x.ClientSecret
 	}
 	return ""
 }
@@ -299,13 +299,14 @@ const file_server_v1_oauth_providers_proto_rawDesc = "" +
 	"\x1fserver/v1/oauth_providers.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xa4\x01\n" +
 	"\x1aListOAuthProvidersResponse\x12K\n" +
 	"\x0foauth_providers\x18\x01 \x03(\v2\".torchwood.server.v1.OAuthProviderR\x0eoauthProviders\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xac\x01\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xc3\x01\n" +
 	"\x1aUpsertOAuthProviderRequest\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\x12\x1b\n" +
-	"\tclient_id\x18\x03 \x01(\tR\bclientId\x12#\n" +
-	"\rclient_secret\x18\x04 \x01(\tR\fclientSecret\x12\x16\n" +
-	"\x06scopes\x18\x05 \x03(\tR\x06scopes\"8\n" +
+	"\tclient_id\x18\x03 \x01(\tR\bclientId\x12(\n" +
+	"\rclient_secret\x18\x04 \x01(\tH\x00R\fclientSecret\x88\x01\x01\x12\x16\n" +
+	"\x06scopes\x18\x05 \x03(\tR\x06scopesB\x10\n" +
+	"\x0e_client_secret\"8\n" +
 	"\x1aDeleteOAuthProviderRequest\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\"\x9c\x02\n" +
 	"\rOAuthProvider\x12\x1a\n" +
@@ -379,6 +380,7 @@ func file_server_v1_oauth_providers_proto_init() {
 	if File_server_v1_oauth_providers_proto != nil {
 		return
 	}
+	file_server_v1_oauth_providers_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

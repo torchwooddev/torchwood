@@ -12,6 +12,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -79,7 +80,7 @@ func (x *SignInRequest) GetPassword() string {
 type SignInResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
-	ExpiresAt     int64                  `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	RefreshToken  string                 `protobuf:"bytes,3,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -122,11 +123,11 @@ func (x *SignInResponse) GetAccessToken() string {
 	return ""
 }
 
-func (x *SignInResponse) GetExpiresAt() int64 {
+func (x *SignInResponse) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
 	}
-	return 0
+	return nil
 }
 
 func (x *SignInResponse) GetRefreshToken() string {
@@ -439,14 +440,14 @@ var File_console_v1_auth_proto protoreflect.FileDescriptor
 
 const file_console_v1_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x15console/v1/auth.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x17console/v1/admins.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
+	"\x15console/v1/auth.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x17console/v1/admins.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
 	"\rSignInRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"w\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x93\x01\n" +
 	"\x0eSignInResponse\x12!\n" +
-	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12\x1d\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x129\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\x03R\texpiresAt\x12#\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12#\n" +
 	"\rrefresh_token\x18\x03 \x01(\tR\frefreshToken\":\n" +
 	"\x13RefreshTokenRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"\x10\n" +
@@ -502,26 +503,28 @@ var file_console_v1_auth_proto_goTypes = []any{
 	(*GetSetupStatusResponse)(nil), // 5: torchwood.console.v1.GetSetupStatusResponse
 	(*SignUpRequest)(nil),          // 6: torchwood.console.v1.SignUpRequest
 	(*SignUpResponse)(nil),         // 7: torchwood.console.v1.SignUpResponse
-	(*Admin)(nil),                  // 8: torchwood.console.v1.Admin
-	(*v1.Empty)(nil),               // 9: torchwood.shared.v1.Empty
+	(*timestamppb.Timestamp)(nil),  // 8: google.protobuf.Timestamp
+	(*Admin)(nil),                  // 9: torchwood.console.v1.Admin
+	(*v1.Empty)(nil),               // 10: torchwood.shared.v1.Empty
 }
 var file_console_v1_auth_proto_depIdxs = []int32{
-	8, // 0: torchwood.console.v1.SignUpResponse.admin:type_name -> torchwood.console.v1.Admin
-	0, // 1: torchwood.console.v1.ConsoleAuthService.SignIn:input_type -> torchwood.console.v1.SignInRequest
-	2, // 2: torchwood.console.v1.ConsoleAuthService.RefreshToken:input_type -> torchwood.console.v1.RefreshTokenRequest
-	3, // 3: torchwood.console.v1.ConsoleAuthService.SignOut:input_type -> torchwood.console.v1.SignOutRequest
-	4, // 4: torchwood.console.v1.ConsoleAuthService.GetSetupStatus:input_type -> torchwood.console.v1.GetSetupStatusRequest
-	6, // 5: torchwood.console.v1.ConsoleAuthService.SignUp:input_type -> torchwood.console.v1.SignUpRequest
-	1, // 6: torchwood.console.v1.ConsoleAuthService.SignIn:output_type -> torchwood.console.v1.SignInResponse
-	1, // 7: torchwood.console.v1.ConsoleAuthService.RefreshToken:output_type -> torchwood.console.v1.SignInResponse
-	9, // 8: torchwood.console.v1.ConsoleAuthService.SignOut:output_type -> torchwood.shared.v1.Empty
-	5, // 9: torchwood.console.v1.ConsoleAuthService.GetSetupStatus:output_type -> torchwood.console.v1.GetSetupStatusResponse
-	7, // 10: torchwood.console.v1.ConsoleAuthService.SignUp:output_type -> torchwood.console.v1.SignUpResponse
-	6, // [6:11] is the sub-list for method output_type
-	1, // [1:6] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	8,  // 0: torchwood.console.v1.SignInResponse.expires_at:type_name -> google.protobuf.Timestamp
+	9,  // 1: torchwood.console.v1.SignUpResponse.admin:type_name -> torchwood.console.v1.Admin
+	0,  // 2: torchwood.console.v1.ConsoleAuthService.SignIn:input_type -> torchwood.console.v1.SignInRequest
+	2,  // 3: torchwood.console.v1.ConsoleAuthService.RefreshToken:input_type -> torchwood.console.v1.RefreshTokenRequest
+	3,  // 4: torchwood.console.v1.ConsoleAuthService.SignOut:input_type -> torchwood.console.v1.SignOutRequest
+	4,  // 5: torchwood.console.v1.ConsoleAuthService.GetSetupStatus:input_type -> torchwood.console.v1.GetSetupStatusRequest
+	6,  // 6: torchwood.console.v1.ConsoleAuthService.SignUp:input_type -> torchwood.console.v1.SignUpRequest
+	1,  // 7: torchwood.console.v1.ConsoleAuthService.SignIn:output_type -> torchwood.console.v1.SignInResponse
+	1,  // 8: torchwood.console.v1.ConsoleAuthService.RefreshToken:output_type -> torchwood.console.v1.SignInResponse
+	10, // 9: torchwood.console.v1.ConsoleAuthService.SignOut:output_type -> torchwood.shared.v1.Empty
+	5,  // 10: torchwood.console.v1.ConsoleAuthService.GetSetupStatus:output_type -> torchwood.console.v1.GetSetupStatusResponse
+	7,  // 11: torchwood.console.v1.ConsoleAuthService.SignUp:output_type -> torchwood.console.v1.SignUpResponse
+	7,  // [7:12] is the sub-list for method output_type
+	2,  // [2:7] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_console_v1_auth_proto_init() }

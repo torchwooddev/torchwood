@@ -225,7 +225,7 @@
         },
         "expiresAt": {
           "type": "string",
-          "format": "int64"
+          "format": "date-time"
         },
         "refreshToken": {
           "type": "string"

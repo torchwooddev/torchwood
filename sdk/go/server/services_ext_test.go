@@ -11,6 +11,8 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
+func strptr(s string) *string { return &s }
+
 // fakeExt 实现 Projects/Storage/Functions/OAuthProviders fake 服务。
 type fakeExt struct {
 	serverv1.UnimplementedProjectsServiceServer
@@ -228,7 +230,7 @@ func TestOAuthProvidersUpsert(t *testing.T) {
 		Enabled:      true,
 		ClientId:     "cid",
 		Scopes:       []string{"email"},
-		ClientSecret: "sec",
+		ClientSecret: strptr("sec"),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "google", got.Provider)

@@ -338,7 +338,7 @@ type TokenBundle struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
 	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
-	ExpiresAt     int64                  `protobuf:"varint,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -387,11 +387,11 @@ func (x *TokenBundle) GetRefreshToken() string {
 	return ""
 }
 
-func (x *TokenBundle) GetExpiresAt() int64 {
+func (x *TokenBundle) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
 	}
-	return 0
+	return nil
 }
 
 type SignUpResponse struct {
@@ -644,13 +644,11 @@ func (x *RefreshTokenResponse) GetTokens() *TokenBundle {
 
 type UpdateAccountRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 以下字段当前为裸 string：proto3 下空串无法区分「未提供」与「清空」。
-	// 计划未来 optional 化（对齐 projects.proto 的 optional 用法）以支持
-	// 清空语义；属破坏性变更，需 SDK/Console 同步后落地。
-	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Email         string `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
-	Password      string `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
-	OldPassword   string `protobuf:"bytes,4,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
+	// name/email 为 optional：未设置 = 不修改；设置（含空串）= 更新/清空。
+	Name          *string `protobuf:"bytes,1,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Email         *string `protobuf:"bytes,2,opt,name=email,proto3,oneof" json:"email,omitempty"`
+	Password      string  `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
+	OldPassword   string  `protobuf:"bytes,4,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -686,15 +684,15 @@ func (*UpdateAccountRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *UpdateAccountRequest) GetName() string {
-	if x != nil {
-		return x.Name
+	if x != nil && x.Name != nil {
+		return *x.Name
 	}
 	return ""
 }
 
 func (x *UpdateAccountRequest) GetEmail() string {
-	if x != nil {
-		return x.Email
+	if x != nil && x.Email != nil {
+		return *x.Email
 	}
 	return ""
 }
@@ -1228,7 +1226,7 @@ func (x *CreateEmailOTPSessionRequest) GetOtp() string {
 type ChallengeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChallengeId   string                 `protobuf:"bytes,1,opt,name=challenge_id,json=challengeId,proto3" json:"challenge_id,omitempty"`
-	ExpireAt      int64                  `protobuf:"varint,2,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
+	ExpireAt      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1270,11 +1268,11 @@ func (x *ChallengeResponse) GetChallengeId() string {
 	return ""
 }
 
-func (x *ChallengeResponse) GetExpireAt() int64 {
+func (x *ChallengeResponse) GetExpireAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpireAt
 	}
-	return 0
+	return nil
 }
 
 type CreateOAuth2SessionRequest struct {
@@ -1880,7 +1878,7 @@ func (x *CreateVerificationRequest) GetUrl() string {
 type CreateVerificationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	ExpireAt      int64                  `protobuf:"varint,2,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
+	ExpireAt      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1922,11 +1920,11 @@ func (x *CreateVerificationResponse) GetUserId() string {
 	return ""
 }
 
-func (x *CreateVerificationResponse) GetExpireAt() int64 {
+func (x *CreateVerificationResponse) GetExpireAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpireAt
 	}
-	return 0
+	return nil
 }
 
 type UpdateVerificationRequest struct {
@@ -2940,12 +2938,12 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"t\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x90\x01\n" +
 	"\vTokenBundle\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
-	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x129\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\x03R\texpiresAt\"\x85\x02\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x85\x02\n" +
 	"\x0eSignUpResponse\x126\n" +
 	"\aaccount\x18\x01 \x01(\v2\x1c.torchwood.client.v1.AccountR\aaccount\x128\n" +
 	"\x06tokens\x18\x02 \x01(\v2 .torchwood.client.v1.TokenBundleR\x06tokens\x12!\n" +
@@ -2963,12 +2961,14 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"P\n" +
 	"\x14RefreshTokenResponse\x128\n" +
-	"\x06tokens\x18\x01 \x01(\v2 .torchwood.client.v1.TokenBundleR\x06tokens\"\x7f\n" +
-	"\x14UpdateAccountRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05email\x18\x02 \x01(\tR\x05email\x12\x1a\n" +
+	"\x06tokens\x18\x01 \x01(\v2 .torchwood.client.v1.TokenBundleR\x06tokens\"\x9c\x01\n" +
+	"\x14UpdateAccountRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x19\n" +
+	"\x05email\x18\x02 \x01(\tH\x01R\x05email\x88\x01\x01\x12\x1a\n" +
 	"\bpassword\x18\x03 \x01(\tR\bpassword\x12!\n" +
-	"\fold_password\x18\x04 \x01(\tR\voldPassword\"\x8b\x02\n" +
+	"\fold_password\x18\x04 \x01(\tR\voldPasswordB\a\n" +
+	"\x05_nameB\b\n" +
+	"\x06_email\"\x8b\x02\n" +
 	"\aSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1a\n" +
@@ -3002,10 +3002,10 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
 	"\fchallenge_id\x18\x03 \x01(\tR\vchallengeId\x12\x10\n" +
-	"\x03otp\x18\x04 \x01(\tR\x03otp\"S\n" +
+	"\x03otp\x18\x04 \x01(\tR\x03otp\"o\n" +
 	"\x11ChallengeResponse\x12!\n" +
-	"\fchallenge_id\x18\x01 \x01(\tR\vchallengeId\x12\x1b\n" +
-	"\texpire_at\x18\x02 \x01(\x03R\bexpireAt\"\x8b\x01\n" +
+	"\fchallenge_id\x18\x01 \x01(\tR\vchallengeId\x127\n" +
+	"\texpire_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bexpireAt\"\x8b\x01\n" +
 	"\x1aCreateOAuth2SessionRequest\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x1d\n" +
 	"\n" +
@@ -3054,10 +3054,10 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"\x19CreateVerificationRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"R\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"n\n" +
 	"\x1aCreateVerificationResponse\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
-	"\texpire_at\x18\x02 \x01(\x03R\bexpireAt\"k\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x127\n" +
+	"\texpire_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bexpireAt\"k\n" +
 	"\x19UpdateVerificationRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x17\n" +
@@ -3264,96 +3264,99 @@ var file_client_v1_account_proto_goTypes = []any{
 var file_client_v1_account_proto_depIdxs = []int32{
 	51, // 0: torchwood.client.v1.Account.created_at:type_name -> google.protobuf.Timestamp
 	51, // 1: torchwood.client.v1.Account.updated_at:type_name -> google.protobuf.Timestamp
-	4,  // 2: torchwood.client.v1.SignUpResponse.account:type_name -> torchwood.client.v1.Account
-	5,  // 3: torchwood.client.v1.SignUpResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
-	36, // 4: torchwood.client.v1.SignUpResponse.factors:type_name -> torchwood.client.v1.Factor
-	4,  // 5: torchwood.client.v1.SignInResponse.account:type_name -> torchwood.client.v1.Account
-	5,  // 6: torchwood.client.v1.SignInResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
-	36, // 7: torchwood.client.v1.SignInResponse.factors:type_name -> torchwood.client.v1.Factor
-	5,  // 8: torchwood.client.v1.RefreshTokenResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
-	51, // 9: torchwood.client.v1.Session.expire_at:type_name -> google.protobuf.Timestamp
-	51, // 10: torchwood.client.v1.Session.created_at:type_name -> google.protobuf.Timestamp
-	11, // 11: torchwood.client.v1.ListSessionsResponse.sessions:type_name -> torchwood.client.v1.Session
-	52, // 12: torchwood.client.v1.GetPrefsResponse.prefs:type_name -> google.protobuf.Struct
-	52, // 13: torchwood.client.v1.UpdatePrefsRequest.prefs:type_name -> google.protobuf.Struct
-	51, // 14: torchwood.client.v1.Factor.created_at:type_name -> google.protobuf.Timestamp
-	36, // 15: torchwood.client.v1.ListFactorsResponse.factors:type_name -> torchwood.client.v1.Factor
-	36, // 16: torchwood.client.v1.TOTPFactor.factor:type_name -> torchwood.client.v1.Factor
-	51, // 17: torchwood.client.v1.LogEntry.created_at:type_name -> google.protobuf.Timestamp
-	49, // 18: torchwood.client.v1.ListLogsResponse.logs:type_name -> torchwood.client.v1.LogEntry
-	0,  // 19: torchwood.client.v1.AccountService.SignUp:input_type -> torchwood.client.v1.SignUpRequest
-	1,  // 20: torchwood.client.v1.AccountService.SignIn:input_type -> torchwood.client.v1.SignInRequest
-	2,  // 21: torchwood.client.v1.AccountService.SignOut:input_type -> torchwood.client.v1.SignOutRequest
-	8,  // 22: torchwood.client.v1.AccountService.RefreshToken:input_type -> torchwood.client.v1.RefreshTokenRequest
-	3,  // 23: torchwood.client.v1.AccountService.Me:input_type -> torchwood.client.v1.MeRequest
-	10, // 24: torchwood.client.v1.AccountService.UpdateAccount:input_type -> torchwood.client.v1.UpdateAccountRequest
-	12, // 25: torchwood.client.v1.AccountService.ListSessions:input_type -> torchwood.client.v1.ListSessionsRequest
-	14, // 26: torchwood.client.v1.AccountService.DeleteSession:input_type -> torchwood.client.v1.DeleteSessionRequest
-	15, // 27: torchwood.client.v1.AccountService.DeleteSessions:input_type -> torchwood.client.v1.DeleteSessionsRequest
-	16, // 28: torchwood.client.v1.AccountService.GetPrefs:input_type -> torchwood.client.v1.GetPrefsRequest
-	18, // 29: torchwood.client.v1.AccountService.UpdatePrefs:input_type -> torchwood.client.v1.UpdatePrefsRequest
-	19, // 30: torchwood.client.v1.AccountService.CreateEmailOTP:input_type -> torchwood.client.v1.CreateEmailOTPRequest
-	20, // 31: torchwood.client.v1.AccountService.CreateEmailOTPSession:input_type -> torchwood.client.v1.CreateEmailOTPSessionRequest
-	22, // 32: torchwood.client.v1.AccountService.CreateOAuth2Session:input_type -> torchwood.client.v1.CreateOAuth2SessionRequest
-	24, // 33: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:input_type -> torchwood.client.v1.CreateOAuth2TokenSessionRequest
-	25, // 34: torchwood.client.v1.AccountService.CreatePhoneOTP:input_type -> torchwood.client.v1.CreatePhoneOTPRequest
-	26, // 35: torchwood.client.v1.AccountService.CreatePhoneOTPSession:input_type -> torchwood.client.v1.CreatePhoneOTPSessionRequest
-	27, // 36: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:input_type -> torchwood.client.v1.CreateWeChatMiniProgramSessionRequest
-	28, // 37: torchwood.client.v1.AccountService.CreateAnonymousSession:input_type -> torchwood.client.v1.CreateAnonymousSessionRequest
-	29, // 38: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:input_type -> torchwood.client.v1.CreateOAuth2LinkSessionRequest
-	30, // 39: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:input_type -> torchwood.client.v1.CreateOAuth2LinkTokenSessionRequest
-	31, // 40: torchwood.client.v1.AccountService.CreateVerification:input_type -> torchwood.client.v1.CreateVerificationRequest
-	33, // 41: torchwood.client.v1.AccountService.UpdateVerification:input_type -> torchwood.client.v1.UpdateVerificationRequest
-	34, // 42: torchwood.client.v1.AccountService.CreateRecovery:input_type -> torchwood.client.v1.CreateRecoveryRequest
-	35, // 43: torchwood.client.v1.AccountService.UpdateRecovery:input_type -> torchwood.client.v1.UpdateRecoveryRequest
-	37, // 44: torchwood.client.v1.AccountService.ListFactors:input_type -> torchwood.client.v1.ListFactorsRequest
-	39, // 45: torchwood.client.v1.AccountService.CreateTOTPFactor:input_type -> torchwood.client.v1.CreateTOTPFactorRequest
-	41, // 46: torchwood.client.v1.AccountService.VerifyTOTPFactor:input_type -> torchwood.client.v1.VerifyTOTPFactorRequest
-	42, // 47: torchwood.client.v1.AccountService.DeleteFactor:input_type -> torchwood.client.v1.DeleteFactorRequest
-	43, // 48: torchwood.client.v1.AccountService.CreateMFASession:input_type -> torchwood.client.v1.CreateMFASessionRequest
-	44, // 49: torchwood.client.v1.AccountService.CreateJWT:input_type -> torchwood.client.v1.CreateJWTRequest
-	46, // 50: torchwood.client.v1.AccountService.CreateMagicURLSession:input_type -> torchwood.client.v1.CreateMagicURLSessionRequest
-	47, // 51: torchwood.client.v1.AccountService.UpdateMagicURLSession:input_type -> torchwood.client.v1.UpdateMagicURLSessionRequest
-	48, // 52: torchwood.client.v1.AccountService.ListLogs:input_type -> torchwood.client.v1.ListLogsRequest
-	6,  // 53: torchwood.client.v1.AccountService.SignUp:output_type -> torchwood.client.v1.SignUpResponse
-	7,  // 54: torchwood.client.v1.AccountService.SignIn:output_type -> torchwood.client.v1.SignInResponse
-	53, // 55: torchwood.client.v1.AccountService.SignOut:output_type -> torchwood.shared.v1.Empty
-	9,  // 56: torchwood.client.v1.AccountService.RefreshToken:output_type -> torchwood.client.v1.RefreshTokenResponse
-	4,  // 57: torchwood.client.v1.AccountService.Me:output_type -> torchwood.client.v1.Account
-	4,  // 58: torchwood.client.v1.AccountService.UpdateAccount:output_type -> torchwood.client.v1.Account
-	13, // 59: torchwood.client.v1.AccountService.ListSessions:output_type -> torchwood.client.v1.ListSessionsResponse
-	53, // 60: torchwood.client.v1.AccountService.DeleteSession:output_type -> torchwood.shared.v1.Empty
-	53, // 61: torchwood.client.v1.AccountService.DeleteSessions:output_type -> torchwood.shared.v1.Empty
-	17, // 62: torchwood.client.v1.AccountService.GetPrefs:output_type -> torchwood.client.v1.GetPrefsResponse
-	17, // 63: torchwood.client.v1.AccountService.UpdatePrefs:output_type -> torchwood.client.v1.GetPrefsResponse
-	21, // 64: torchwood.client.v1.AccountService.CreateEmailOTP:output_type -> torchwood.client.v1.ChallengeResponse
-	7,  // 65: torchwood.client.v1.AccountService.CreateEmailOTPSession:output_type -> torchwood.client.v1.SignInResponse
-	23, // 66: torchwood.client.v1.AccountService.CreateOAuth2Session:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
-	7,  // 67: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:output_type -> torchwood.client.v1.SignInResponse
-	21, // 68: torchwood.client.v1.AccountService.CreatePhoneOTP:output_type -> torchwood.client.v1.ChallengeResponse
-	7,  // 69: torchwood.client.v1.AccountService.CreatePhoneOTPSession:output_type -> torchwood.client.v1.SignInResponse
-	7,  // 70: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:output_type -> torchwood.client.v1.SignInResponse
-	7,  // 71: torchwood.client.v1.AccountService.CreateAnonymousSession:output_type -> torchwood.client.v1.SignInResponse
-	23, // 72: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
-	4,  // 73: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:output_type -> torchwood.client.v1.Account
-	32, // 74: torchwood.client.v1.AccountService.CreateVerification:output_type -> torchwood.client.v1.CreateVerificationResponse
-	4,  // 75: torchwood.client.v1.AccountService.UpdateVerification:output_type -> torchwood.client.v1.Account
-	53, // 76: torchwood.client.v1.AccountService.CreateRecovery:output_type -> torchwood.shared.v1.Empty
-	53, // 77: torchwood.client.v1.AccountService.UpdateRecovery:output_type -> torchwood.shared.v1.Empty
-	38, // 78: torchwood.client.v1.AccountService.ListFactors:output_type -> torchwood.client.v1.ListFactorsResponse
-	40, // 79: torchwood.client.v1.AccountService.CreateTOTPFactor:output_type -> torchwood.client.v1.TOTPFactor
-	36, // 80: torchwood.client.v1.AccountService.VerifyTOTPFactor:output_type -> torchwood.client.v1.Factor
-	53, // 81: torchwood.client.v1.AccountService.DeleteFactor:output_type -> torchwood.shared.v1.Empty
-	7,  // 82: torchwood.client.v1.AccountService.CreateMFASession:output_type -> torchwood.client.v1.SignInResponse
-	45, // 83: torchwood.client.v1.AccountService.CreateJWT:output_type -> torchwood.client.v1.CreateJWTResponse
-	21, // 84: torchwood.client.v1.AccountService.CreateMagicURLSession:output_type -> torchwood.client.v1.ChallengeResponse
-	7,  // 85: torchwood.client.v1.AccountService.UpdateMagicURLSession:output_type -> torchwood.client.v1.SignInResponse
-	50, // 86: torchwood.client.v1.AccountService.ListLogs:output_type -> torchwood.client.v1.ListLogsResponse
-	53, // [53:87] is the sub-list for method output_type
-	19, // [19:53] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	51, // 2: torchwood.client.v1.TokenBundle.expires_at:type_name -> google.protobuf.Timestamp
+	4,  // 3: torchwood.client.v1.SignUpResponse.account:type_name -> torchwood.client.v1.Account
+	5,  // 4: torchwood.client.v1.SignUpResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
+	36, // 5: torchwood.client.v1.SignUpResponse.factors:type_name -> torchwood.client.v1.Factor
+	4,  // 6: torchwood.client.v1.SignInResponse.account:type_name -> torchwood.client.v1.Account
+	5,  // 7: torchwood.client.v1.SignInResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
+	36, // 8: torchwood.client.v1.SignInResponse.factors:type_name -> torchwood.client.v1.Factor
+	5,  // 9: torchwood.client.v1.RefreshTokenResponse.tokens:type_name -> torchwood.client.v1.TokenBundle
+	51, // 10: torchwood.client.v1.Session.expire_at:type_name -> google.protobuf.Timestamp
+	51, // 11: torchwood.client.v1.Session.created_at:type_name -> google.protobuf.Timestamp
+	11, // 12: torchwood.client.v1.ListSessionsResponse.sessions:type_name -> torchwood.client.v1.Session
+	52, // 13: torchwood.client.v1.GetPrefsResponse.prefs:type_name -> google.protobuf.Struct
+	52, // 14: torchwood.client.v1.UpdatePrefsRequest.prefs:type_name -> google.protobuf.Struct
+	51, // 15: torchwood.client.v1.ChallengeResponse.expire_at:type_name -> google.protobuf.Timestamp
+	51, // 16: torchwood.client.v1.CreateVerificationResponse.expire_at:type_name -> google.protobuf.Timestamp
+	51, // 17: torchwood.client.v1.Factor.created_at:type_name -> google.protobuf.Timestamp
+	36, // 18: torchwood.client.v1.ListFactorsResponse.factors:type_name -> torchwood.client.v1.Factor
+	36, // 19: torchwood.client.v1.TOTPFactor.factor:type_name -> torchwood.client.v1.Factor
+	51, // 20: torchwood.client.v1.LogEntry.created_at:type_name -> google.protobuf.Timestamp
+	49, // 21: torchwood.client.v1.ListLogsResponse.logs:type_name -> torchwood.client.v1.LogEntry
+	0,  // 22: torchwood.client.v1.AccountService.SignUp:input_type -> torchwood.client.v1.SignUpRequest
+	1,  // 23: torchwood.client.v1.AccountService.SignIn:input_type -> torchwood.client.v1.SignInRequest
+	2,  // 24: torchwood.client.v1.AccountService.SignOut:input_type -> torchwood.client.v1.SignOutRequest
+	8,  // 25: torchwood.client.v1.AccountService.RefreshToken:input_type -> torchwood.client.v1.RefreshTokenRequest
+	3,  // 26: torchwood.client.v1.AccountService.Me:input_type -> torchwood.client.v1.MeRequest
+	10, // 27: torchwood.client.v1.AccountService.UpdateAccount:input_type -> torchwood.client.v1.UpdateAccountRequest
+	12, // 28: torchwood.client.v1.AccountService.ListSessions:input_type -> torchwood.client.v1.ListSessionsRequest
+	14, // 29: torchwood.client.v1.AccountService.DeleteSession:input_type -> torchwood.client.v1.DeleteSessionRequest
+	15, // 30: torchwood.client.v1.AccountService.DeleteSessions:input_type -> torchwood.client.v1.DeleteSessionsRequest
+	16, // 31: torchwood.client.v1.AccountService.GetPrefs:input_type -> torchwood.client.v1.GetPrefsRequest
+	18, // 32: torchwood.client.v1.AccountService.UpdatePrefs:input_type -> torchwood.client.v1.UpdatePrefsRequest
+	19, // 33: torchwood.client.v1.AccountService.CreateEmailOTP:input_type -> torchwood.client.v1.CreateEmailOTPRequest
+	20, // 34: torchwood.client.v1.AccountService.CreateEmailOTPSession:input_type -> torchwood.client.v1.CreateEmailOTPSessionRequest
+	22, // 35: torchwood.client.v1.AccountService.CreateOAuth2Session:input_type -> torchwood.client.v1.CreateOAuth2SessionRequest
+	24, // 36: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:input_type -> torchwood.client.v1.CreateOAuth2TokenSessionRequest
+	25, // 37: torchwood.client.v1.AccountService.CreatePhoneOTP:input_type -> torchwood.client.v1.CreatePhoneOTPRequest
+	26, // 38: torchwood.client.v1.AccountService.CreatePhoneOTPSession:input_type -> torchwood.client.v1.CreatePhoneOTPSessionRequest
+	27, // 39: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:input_type -> torchwood.client.v1.CreateWeChatMiniProgramSessionRequest
+	28, // 40: torchwood.client.v1.AccountService.CreateAnonymousSession:input_type -> torchwood.client.v1.CreateAnonymousSessionRequest
+	29, // 41: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:input_type -> torchwood.client.v1.CreateOAuth2LinkSessionRequest
+	30, // 42: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:input_type -> torchwood.client.v1.CreateOAuth2LinkTokenSessionRequest
+	31, // 43: torchwood.client.v1.AccountService.CreateVerification:input_type -> torchwood.client.v1.CreateVerificationRequest
+	33, // 44: torchwood.client.v1.AccountService.UpdateVerification:input_type -> torchwood.client.v1.UpdateVerificationRequest
+	34, // 45: torchwood.client.v1.AccountService.CreateRecovery:input_type -> torchwood.client.v1.CreateRecoveryRequest
+	35, // 46: torchwood.client.v1.AccountService.UpdateRecovery:input_type -> torchwood.client.v1.UpdateRecoveryRequest
+	37, // 47: torchwood.client.v1.AccountService.ListFactors:input_type -> torchwood.client.v1.ListFactorsRequest
+	39, // 48: torchwood.client.v1.AccountService.CreateTOTPFactor:input_type -> torchwood.client.v1.CreateTOTPFactorRequest
+	41, // 49: torchwood.client.v1.AccountService.VerifyTOTPFactor:input_type -> torchwood.client.v1.VerifyTOTPFactorRequest
+	42, // 50: torchwood.client.v1.AccountService.DeleteFactor:input_type -> torchwood.client.v1.DeleteFactorRequest
+	43, // 51: torchwood.client.v1.AccountService.CreateMFASession:input_type -> torchwood.client.v1.CreateMFASessionRequest
+	44, // 52: torchwood.client.v1.AccountService.CreateJWT:input_type -> torchwood.client.v1.CreateJWTRequest
+	46, // 53: torchwood.client.v1.AccountService.CreateMagicURLSession:input_type -> torchwood.client.v1.CreateMagicURLSessionRequest
+	47, // 54: torchwood.client.v1.AccountService.UpdateMagicURLSession:input_type -> torchwood.client.v1.UpdateMagicURLSessionRequest
+	48, // 55: torchwood.client.v1.AccountService.ListLogs:input_type -> torchwood.client.v1.ListLogsRequest
+	6,  // 56: torchwood.client.v1.AccountService.SignUp:output_type -> torchwood.client.v1.SignUpResponse
+	7,  // 57: torchwood.client.v1.AccountService.SignIn:output_type -> torchwood.client.v1.SignInResponse
+	53, // 58: torchwood.client.v1.AccountService.SignOut:output_type -> torchwood.shared.v1.Empty
+	9,  // 59: torchwood.client.v1.AccountService.RefreshToken:output_type -> torchwood.client.v1.RefreshTokenResponse
+	4,  // 60: torchwood.client.v1.AccountService.Me:output_type -> torchwood.client.v1.Account
+	4,  // 61: torchwood.client.v1.AccountService.UpdateAccount:output_type -> torchwood.client.v1.Account
+	13, // 62: torchwood.client.v1.AccountService.ListSessions:output_type -> torchwood.client.v1.ListSessionsResponse
+	53, // 63: torchwood.client.v1.AccountService.DeleteSession:output_type -> torchwood.shared.v1.Empty
+	53, // 64: torchwood.client.v1.AccountService.DeleteSessions:output_type -> torchwood.shared.v1.Empty
+	17, // 65: torchwood.client.v1.AccountService.GetPrefs:output_type -> torchwood.client.v1.GetPrefsResponse
+	17, // 66: torchwood.client.v1.AccountService.UpdatePrefs:output_type -> torchwood.client.v1.GetPrefsResponse
+	21, // 67: torchwood.client.v1.AccountService.CreateEmailOTP:output_type -> torchwood.client.v1.ChallengeResponse
+	7,  // 68: torchwood.client.v1.AccountService.CreateEmailOTPSession:output_type -> torchwood.client.v1.SignInResponse
+	23, // 69: torchwood.client.v1.AccountService.CreateOAuth2Session:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
+	7,  // 70: torchwood.client.v1.AccountService.CreateOAuth2TokenSession:output_type -> torchwood.client.v1.SignInResponse
+	21, // 71: torchwood.client.v1.AccountService.CreatePhoneOTP:output_type -> torchwood.client.v1.ChallengeResponse
+	7,  // 72: torchwood.client.v1.AccountService.CreatePhoneOTPSession:output_type -> torchwood.client.v1.SignInResponse
+	7,  // 73: torchwood.client.v1.AccountService.CreateWeChatMiniProgramSession:output_type -> torchwood.client.v1.SignInResponse
+	7,  // 74: torchwood.client.v1.AccountService.CreateAnonymousSession:output_type -> torchwood.client.v1.SignInResponse
+	23, // 75: torchwood.client.v1.AccountService.CreateOAuth2LinkSession:output_type -> torchwood.client.v1.CreateOAuth2SessionResponse
+	4,  // 76: torchwood.client.v1.AccountService.CreateOAuth2LinkTokenSession:output_type -> torchwood.client.v1.Account
+	32, // 77: torchwood.client.v1.AccountService.CreateVerification:output_type -> torchwood.client.v1.CreateVerificationResponse
+	4,  // 78: torchwood.client.v1.AccountService.UpdateVerification:output_type -> torchwood.client.v1.Account
+	53, // 79: torchwood.client.v1.AccountService.CreateRecovery:output_type -> torchwood.shared.v1.Empty
+	53, // 80: torchwood.client.v1.AccountService.UpdateRecovery:output_type -> torchwood.shared.v1.Empty
+	38, // 81: torchwood.client.v1.AccountService.ListFactors:output_type -> torchwood.client.v1.ListFactorsResponse
+	40, // 82: torchwood.client.v1.AccountService.CreateTOTPFactor:output_type -> torchwood.client.v1.TOTPFactor
+	36, // 83: torchwood.client.v1.AccountService.VerifyTOTPFactor:output_type -> torchwood.client.v1.Factor
+	53, // 84: torchwood.client.v1.AccountService.DeleteFactor:output_type -> torchwood.shared.v1.Empty
+	7,  // 85: torchwood.client.v1.AccountService.CreateMFASession:output_type -> torchwood.client.v1.SignInResponse
+	45, // 86: torchwood.client.v1.AccountService.CreateJWT:output_type -> torchwood.client.v1.CreateJWTResponse
+	21, // 87: torchwood.client.v1.AccountService.CreateMagicURLSession:output_type -> torchwood.client.v1.ChallengeResponse
+	7,  // 88: torchwood.client.v1.AccountService.UpdateMagicURLSession:output_type -> torchwood.client.v1.SignInResponse
+	50, // 89: torchwood.client.v1.AccountService.ListLogs:output_type -> torchwood.client.v1.ListLogsResponse
+	56, // [56:90] is the sub-list for method output_type
+	22, // [22:56] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_client_v1_account_proto_init() }
@@ -3361,6 +3364,7 @@ func file_client_v1_account_proto_init() {
 	if File_client_v1_account_proto != nil {
 		return
 	}
+	file_client_v1_account_proto_msgTypes[10].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -388,7 +388,7 @@ message Account {
 message TokenBundle {
   string access_token = 1;
   string refresh_token = 2;
-  int64 expires_at = 3;
+  google.protobuf.Timestamp expires_at = 3;
 }
 
 message SignUpResponse {
@@ -417,11 +417,9 @@ message RefreshTokenResponse {
 }
 
 message UpdateAccountRequest {
-  // 以下字段当前为裸 string：proto3 下空串无法区分「未提供」与「清空」。
-  // 计划未来 optional 化（对齐 projects.proto 的 optional 用法）以支持
-  // 清空语义；属破坏性变更，需 SDK/Console 同步后落地。
-  string name = 1;
-  string email = 2;
+  // name/email 为 optional：未设置 = 不修改；设置（含空串）= 更新/清空。
+  optional string name = 1;
+  optional string email = 2;
   string password = 3;
   string old_password = 4;
 }
@@ -475,7 +473,7 @@ message CreateEmailOTPSessionRequest {
 
 message ChallengeResponse {
   string challenge_id = 1;
-  int64 expire_at = 2;
+  google.protobuf.Timestamp expire_at = 2;
 }
 
 message CreateOAuth2SessionRequest {
@@ -540,7 +538,7 @@ message CreateVerificationRequest {
 
 message CreateVerificationResponse {
   string user_id = 1;
-  int64 expire_at = 2;
+  google.protobuf.Timestamp expire_at = 2;
 }
 
 message UpdateVerificationRequest {

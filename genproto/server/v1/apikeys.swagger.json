@@ -251,8 +251,8 @@
         },
         "expireAt": {
           "type": "string",
-          "format": "int64",
-          "title": "unix seconds, 0 = no expiry"
+          "format": "date-time",
+          "title": "过期时间；不设置 = 永不过期（RFC3339，经 gateway 序列化为字符串）。"
         }
       }
     },

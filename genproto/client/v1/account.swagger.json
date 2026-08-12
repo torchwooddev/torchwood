@@ -1353,7 +1353,7 @@
         },
         "expiresAt": {
           "type": "string",
-          "format": "int64"
+          "format": "date-time"
         }
       }
     },
@@ -1393,7 +1393,7 @@
         },
         "expireAt": {
           "type": "string",
-          "format": "int64"
+          "format": "date-time"
         }
       }
     },
@@ -1550,7 +1550,7 @@
         },
         "expireAt": {
           "type": "string",
-          "format": "int64"
+          "format": "date-time"
         }
       }
     },
@@ -1690,7 +1690,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "title": "以下字段当前为裸 string：proto3 下空串无法区分「未提供」与「清空」。\r\n计划未来 optional 化（对齐 projects.proto 的 optional 用法）以支持\r\n清空语义；属破坏性变更，需 SDK/Console 同步后落地。"
+          "title": "name/email 为 optional：未设置 = 不修改；设置（含空串）= 更新/清空。"
         },
         "email": {
           "type": "string"

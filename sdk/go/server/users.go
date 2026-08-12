@@ -45,8 +45,9 @@ func (u *UsersService) ListUsers(ctx context.Context, queries []string, pageSize
 	})
 }
 
-// UpdateUser 更新用户档案字段。
-func (u *UsersService) UpdateUser(ctx context.Context, userID, name, email, status string, labels, prefs map[string]any) (*serverv1.User, error) {
+// UpdateUser 更新用户档案字段；name/email/status 传 nil 表示不修改，
+// 传指针（含空串）表示更新/清空。
+func (u *UsersService) UpdateUser(ctx context.Context, userID string, name, email, status *string, labels, prefs map[string]any) (*serverv1.User, error) {
 	labelStruct, err := toStruct(labels)
 	if err != nil {
 		return nil, err

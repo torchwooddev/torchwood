@@ -24,7 +24,7 @@ export interface TokenBundle {
   access_token: string;
   refresh_token: string;
   // protojson 将 int64 序列化为字符串（如 "1800000"）；兼容旧 number 响应。
-  expires_at: string | number;
+  expires_at: string;
 }
 
 // SignUp/SignIn 等认证响应；mfa_required 时无 tokens，应先返回

@@ -340,7 +340,7 @@
       "properties": {
         "status": {
           "type": "string",
-          "title": "以下字段当前为裸 string/Struct：proto3 下空串/空对象无法区分\r\n「未提供」与「清空」。计划未来 optional 化（对齐 projects.proto 的\r\noptional 用法）以支持清空语义；属破坏性变更，需 SDK/Console 同步。"
+          "title": "status/name/email 为 optional：未设置 = 不修改；设置（含空串）= 更新/清空。\r\nlabels/prefs 为 Struct：空对象 = 不修改（清空需置空对象键值，v2 再 optional 化）。"
         },
         "labels": {
           "type": "object"
@@ -443,8 +443,7 @@
         },
         "expiresAt": {
           "type": "string",
-          "format": "int64",
-          "title": "unix seconds"
+          "format": "date-time"
         }
       }
     },
