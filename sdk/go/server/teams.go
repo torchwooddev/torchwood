@@ -23,6 +23,29 @@ func (t *TeamsService) GetTeam(ctx context.Context, teamID string) (*serverv1.Te
 	return t.c.teams.GetTeam(ctx, &serverv1.GetTeamRequest{Id: teamID})
 }
 
+// DeleteTeam 删除团队。
+func (t *TeamsService) DeleteTeam(ctx context.Context, teamID string) error {
+	_, err := t.c.teams.DeleteTeam(ctx, &serverv1.GetTeamRequest{Id: teamID})
+	return err
+}
+
+// GetTeamPrefs 获取团队偏好。
+func (t *TeamsService) GetTeamPrefs(ctx context.Context, teamID string) (*serverv1.GetTeamPrefsResponse, error) {
+	return t.c.teams.GetTeamPrefs(ctx, &serverv1.GetTeamRequest{Id: teamID})
+}
+
+// UpdateTeamPrefs 全量替换团队偏好。
+func (t *TeamsService) UpdateTeamPrefs(ctx context.Context, teamID string, prefs map[string]any) (*serverv1.GetTeamPrefsResponse, error) {
+	prefsStruct, err := toStruct(prefs)
+	if err != nil {
+		return nil, err
+	}
+	return t.c.teams.UpdateTeamPrefs(ctx, &serverv1.UpdateTeamPrefsRequest{
+		Id:    teamID,
+		Prefs: prefsStruct,
+	})
+}
+
 // ListTeams 按查询 DSL 列出团队。
 func (t *TeamsService) ListTeams(ctx context.Context, queries []string, pageSize int32, pageToken string) (*serverv1.ListTeamsResponse, error) {
 	return t.c.teams.ListTeams(ctx, &sharedv1.ListRequest{

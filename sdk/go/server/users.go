@@ -65,6 +65,14 @@ func (u *UsersService) UpdateUser(ctx context.Context, userID, name, email, stat
 	})
 }
 
+// UpdateUserPassword 更新用户密码（agent 账号重置密码）。
+func (u *UsersService) UpdateUserPassword(ctx context.Context, userID, password string) (*serverv1.User, error) {
+	return u.c.users.UpdateUserPassword(ctx, &serverv1.UpdateUserPasswordRequest{
+		Id:       userID,
+		Password: password,
+	})
+}
+
 // DeleteUser 删除用户。
 func (u *UsersService) DeleteUser(ctx context.Context, userID string) error {
 	_, err := u.c.users.DeleteUser(ctx, &serverv1.GetUserRequest{Id: userID})

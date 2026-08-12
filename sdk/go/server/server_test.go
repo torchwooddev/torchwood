@@ -15,11 +15,16 @@ import (
 
 // recorder 记录 fake 服务收到的 metadata 与关键请求，供断言使用。
 type recorder struct {
-	mu             sync.Mutex
-	md             metadata.MD
-	lastCollection *serverv1.CreateCollectionRequest
-	createdUser    *serverv1.CreateUserRequest
-	upserts        []*serverv1.UpsertDocumentRequest
+	mu                   sync.Mutex
+	md                   metadata.MD
+	lastCollection       *serverv1.CreateCollectionRequest
+	lastCollectionUpdate *serverv1.UpdateCollectionRequest
+	createdUser          *serverv1.CreateUserRequest
+	lastUserPassword     *serverv1.UpdateUserPasswordRequest
+	lastTeamPrefs        *serverv1.UpdateTeamPrefsRequest
+	deletedAttributeKey  string
+	deletedIndexID       string
+	upserts              []*serverv1.UpsertDocumentRequest
 }
 
 type fakeServer struct {

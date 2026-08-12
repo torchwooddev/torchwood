@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 func TestInvokeJSONRoundTrip(t *testing.T) {
@@ -42,21 +42,15 @@ func TestInvokeJSONBadJSON(t *testing.T) {
 	require.Error(t, err) // 未知字段报错（DiscardUnknown=false）
 }
 
-// TestInvokeJSONCompleteness 遍历 serverv1 全部方法（排除 APIKeysService），
-// 断言每个方法都能被解析并用空 JSON 构造请求——防包名白名单回归。
+// TestInvokeJSONCompleteness 遍历 protoregistry.GlobalFiles 中 torchwood.server.v1
+// 包的全部方法（排除 APIKeysService），断言每个方法都能被解析并用空 JSON 构造
+// 请求——防包名白名单/新增 proto 文件回归。
 func TestInvokeJSONCompleteness(t *testing.T) {
 	count := 0
-	for _, fd := range []protoreflect.FileDescriptor{
-		serverv1.File_server_v1_health_proto,
-		serverv1.File_server_v1_users_proto,
-		serverv1.File_server_v1_teams_proto,
-		serverv1.File_server_v1_databases_proto,
-		serverv1.File_server_v1_projects_proto,
-		serverv1.File_server_v1_storage_proto,
-		serverv1.File_server_v1_functions_proto,
-		serverv1.File_server_v1_oauth_providers_proto,
-		serverv1.File_server_v1_apikeys_proto,
-	} {
+	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		if fd.Package() != "torchwood.server.v1" {
+			return true
+		}
 		svcs := fd.Services()
 		for i := 0; i < svcs.Len(); i++ {
 			svc := svcs.Get(i)
@@ -74,6 +68,7 @@ func TestInvokeJSONCompleteness(t *testing.T) {
 				count++
 			}
 		}
-	}
+		return true
+	})
 	require.Greater(t, count, 60) // 当前 80 个（除 APIKeysService），留余量防误删
 }

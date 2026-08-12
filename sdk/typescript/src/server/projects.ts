@@ -16,10 +16,20 @@ export class ProjectsService {
     return this.http.request<Project>("GET", `/v1/server/projects/${id}`, { auth: "apiKey" });
   }
 
-  async create(input: { id: string; name: string }): Promise<Project> {
+  async create(input: { name: string; description?: string }): Promise<Project> {
     return this.http.request<Project>("POST", "/v1/server/projects", {
       auth: "apiKey",
       body: input,
+    });
+  }
+
+  async update(
+    id: string,
+    input: { name?: string; description?: string }
+  ): Promise<Project> {
+    return this.http.request<Project>("PATCH", `/v1/server/projects/${id}`, {
+      auth: "apiKey",
+      body: { id, ...input },
     });
   }
 }

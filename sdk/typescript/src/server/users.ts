@@ -9,15 +9,12 @@ export class UsersService {
     password: string;
     name?: string;
     status?: string;
-    labels?: string[];
+    labels?: Record<string, unknown>;
     prefs?: Record<string, unknown>;
   }): Promise<User> {
     return this.http.request<User>("POST", "/v1/server/users", {
       auth: "apiKey",
-      body: {
-        ...input,
-        labels: input.labels ? { values: input.labels } : undefined,
-      },
+      body: input,
     });
   }
 
@@ -40,16 +37,13 @@ export class UsersService {
       email?: string;
       status?: string;
       email_verified?: boolean;
-      labels?: string[];
+      labels?: Record<string, unknown>;
       prefs?: Record<string, unknown>;
     }
   ): Promise<User> {
     return this.http.request<User>("PATCH", `/v1/server/users/${id}`, {
       auth: "apiKey",
-      body: {
-        ...input,
-        labels: input.labels ? { values: input.labels } : undefined,
-      },
+      body: input,
     });
   }
 

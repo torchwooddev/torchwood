@@ -3,7 +3,9 @@ package client
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
@@ -55,8 +57,21 @@ type FileTokenStore struct {
 	path string
 }
 
-// NewFileTokenStore 创建绑定 path 的文件 TokenStore。
-func NewFileTokenStore(path string) *FileTokenStore { return &FileTokenStore{path: path} }
+// NewFileTokenStore 创建绑定 path 的文件 TokenStore；路径开头的 ~ 会展开为
+// 用户主目录（Save 时自动创建父目录，0700）。
+func NewFileTokenStore(path string) *FileTokenStore { return &FileTokenStore{path: expandHome(path)} }
+
+// expandHome 展开路径开头的 ~ 为用户主目录。
+func expandHome(path string) string {
+	if path == "~" || !strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	return filepath.Join(home, path[2:])
+}
 
 func (s *FileTokenStore) Load() (*clientv1.TokenBundle, error) {
 	s.mu.Lock()
@@ -81,6 +96,11 @@ func (s *FileTokenStore) Save(t *clientv1.TokenBundle) error {
 	b, err := protojson.Marshal(t)
 	if err != nil {
 		return fmt.Errorf("torchwood: encode token: %w", err)
+	}
+	if dir := filepath.Dir(s.path); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("torchwood: create token dir: %w", err)
+		}
 	}
 	tmp := s.path + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {

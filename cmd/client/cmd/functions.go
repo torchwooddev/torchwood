@@ -32,8 +32,8 @@ const (
 // deployments（create/list/get/delete）、variables（set/get）、
 // executions（create/list/get）。
 // deployments create 由 CLI 读取 zip 文件并 base64 编码后走 gRPC 纯消息
-// （bytes code，≤1MiB 建议；服务端上限 50MiB），更大的代码包拆分或走
-// multipart 上传（独立 HTTP handler，CLI 不提供）。
+// （bytes code，≤1MiB 建议；gRPC 通道上限 8MiB，与服务端 MaxRecvMsgSize
+// 对齐），更大的代码包走 multipart 上传（独立 HTTP handler，CLI 不提供）。
 func NewFunctionsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "functions",
@@ -222,7 +222,7 @@ func newFunctionsDeploymentsCreateCmd(g *globalFlags) *cobra.Command {
 			return printJSON(os.Stdout, resp)
 		},
 	}
-	cmd.Flags().StringVar(&code, "code", "", "zip 代码包路径（必填，≤50MiB）")
+	cmd.Flags().StringVar(&code, "code", "", "zip 代码包路径（必填；gRPC 消息通道上限 8MiB，建议 ≤1MiB，更大走 multipart 上传接口）")
 	return cmd
 }
 
@@ -429,8 +429,8 @@ func buildCreateDeploymentReq(functionID, codePath string) (map[string]any, erro
 	if len(code) == 0 {
 		return nil, fmt.Errorf("--code 为空文件")
 	}
-	if len(code) > 50<<20 {
-		return nil, fmt.Errorf("--code 超过 50MiB，请拆分或使用对象存储")
+	if len(code) > 8<<20 {
+		return nil, fmt.Errorf("--code 超过 8MiB（gRPC 通道上限，与服务端 MaxRecvMsgSize 对齐），建议 ≤1MiB 或走 multipart 上传接口")
 	}
 	return map[string]any{"functionId": functionID, "code": base64.StdEncoding.EncodeToString(code)}, nil
 }

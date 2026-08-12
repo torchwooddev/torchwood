@@ -14,6 +14,10 @@ func Dial(target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	if target == "" {
 		return nil, fmt.Errorf("torchwood: target is required")
 	}
-	all := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, opts...)
+	all := append([]grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// 与服务端 MaxRecvMsgSize(8<<20) 对齐（internal/infra/server/grpc.go）。
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(8 << 20)),
+	}, opts...)
 	return grpc.NewClient(target, all...)
 }

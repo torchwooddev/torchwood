@@ -281,8 +281,9 @@ export class ServerDatabasesService {
     databaseId: string,
     collectionId: string,
     params?: Pick<ListParams, "queries">
-  ): Promise<number> {
-    const res = await this.http.request<{ count: number }>(
+  ): Promise<string | number> {
+    // int64：网关序列化为字符串（如 "42"）；消费时建议 Number() 归一化。
+    const res = await this.http.request<{ count: string | number }>(
       "GET",
       `/v1/server/databases/${databaseId}/collections/${collectionId}/documents/count`,
       { auth: "apiKey", query: listQuery(params) }

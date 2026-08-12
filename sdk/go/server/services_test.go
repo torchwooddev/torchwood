@@ -9,6 +9,7 @@ import (
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // fakeServices 实现 Server API 的 Health/Users/Teams/Databases fake 服务。
@@ -47,6 +48,13 @@ func (s *fakeServices) UpdateUser(ctx context.Context, req *serverv1.UpdateUserR
 	return &serverv1.User{Id: req.Id, Name: req.Name, Status: req.Status}, nil
 }
 
+func (s *fakeServices) UpdateUserPassword(ctx context.Context, req *serverv1.UpdateUserPasswordRequest) (*serverv1.User, error) {
+	s.rec.mu.Lock()
+	s.rec.lastUserPassword = req
+	s.rec.mu.Unlock()
+	return &serverv1.User{Id: req.Id}, nil
+}
+
 func (s *fakeServices) DeleteUser(ctx context.Context, _ *serverv1.GetUserRequest) (*sharedv1.Empty, error) {
 	return &sharedv1.Empty{}, nil
 }
@@ -69,6 +77,21 @@ func (s *fakeServices) CreateTeam(ctx context.Context, req *serverv1.CreateTeamR
 
 func (s *fakeServices) GetTeam(ctx context.Context, req *serverv1.GetTeamRequest) (*serverv1.Team, error) {
 	return &serverv1.Team{Id: req.Id, Name: "Team One"}, nil
+}
+
+func (s *fakeServices) DeleteTeam(ctx context.Context, _ *serverv1.GetTeamRequest) (*sharedv1.Empty, error) {
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *fakeServices) GetTeamPrefs(ctx context.Context, _ *serverv1.GetTeamRequest) (*serverv1.GetTeamPrefsResponse, error) {
+	return &serverv1.GetTeamPrefsResponse{Prefs: &structpb.Struct{}}, nil
+}
+
+func (s *fakeServices) UpdateTeamPrefs(ctx context.Context, req *serverv1.UpdateTeamPrefsRequest) (*serverv1.GetTeamPrefsResponse, error) {
+	s.rec.mu.Lock()
+	s.rec.lastTeamPrefs = req
+	s.rec.mu.Unlock()
+	return &serverv1.GetTeamPrefsResponse{Prefs: req.Prefs}, nil
 }
 
 func (s *fakeServices) ListTeams(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListTeamsResponse, error) {
@@ -120,6 +143,31 @@ func (s *fakeServices) CreateCollection(ctx context.Context, req *serverv1.Creat
 
 func (s *fakeServices) GetCollection(ctx context.Context, req *serverv1.GetCollectionRequest) (*serverv1.Collection, error) {
 	return &serverv1.Collection{Id: req.CollectionId, DatabaseId: req.DatabaseId, Name: req.CollectionId}, nil
+}
+
+func (s *fakeServices) DeleteCollection(ctx context.Context, _ *serverv1.GetCollectionRequest) (*sharedv1.Empty, error) {
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *fakeServices) UpdateCollection(ctx context.Context, req *serverv1.UpdateCollectionRequest) (*serverv1.Collection, error) {
+	s.rec.mu.Lock()
+	s.rec.lastCollectionUpdate = req
+	s.rec.mu.Unlock()
+	return &serverv1.Collection{Id: req.CollectionId, DatabaseId: req.DatabaseId, Name: req.Name}, nil
+}
+
+func (s *fakeServices) DeleteAttribute(ctx context.Context, req *serverv1.DeleteAttributeRequest) (*sharedv1.Empty, error) {
+	s.rec.mu.Lock()
+	s.rec.deletedAttributeKey = req.Key
+	s.rec.mu.Unlock()
+	return &sharedv1.Empty{}, nil
+}
+
+func (s *fakeServices) DeleteIndex(ctx context.Context, req *serverv1.DeleteIndexRequest) (*sharedv1.Empty, error) {
+	s.rec.mu.Lock()
+	s.rec.deletedIndexID = req.IndexId
+	s.rec.mu.Unlock()
+	return &sharedv1.Empty{}, nil
 }
 
 func (s *fakeServices) ListCollections(ctx context.Context, _ *serverv1.ListCollectionsRequest) (*serverv1.ListCollectionsResponse, error) {
@@ -335,4 +383,77 @@ func TestDatabases_BulkOperations(t *testing.T) {
 	del, err := c.Databases.BulkDeleteDocuments(ctx, "members", []string{"m1"})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), del.Affected)
+}
+
+func TestUsers_UpdateUserPassword(t *testing.T) {
+	lis, rec := newServicesBufconn(t)
+	c := newTestClient(t, lis, WithAPIKey("key-1"))
+	ctx := context.Background()
+
+	user, err := c.Users.UpdateUserPassword(ctx, "user-1", "new-pw")
+	require.NoError(t, err)
+	require.Equal(t, "user-1", user.Id)
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	require.Equal(t, "user-1", rec.lastUserPassword.Id)
+	require.Equal(t, "new-pw", rec.lastUserPassword.Password)
+}
+
+func TestTeams_DeleteAndPrefs(t *testing.T) {
+	lis, rec := newServicesBufconn(t)
+	c := newTestClient(t, lis, WithAPIKey("key-1"))
+	ctx := context.Background()
+
+	require.NoError(t, c.Teams.DeleteTeam(ctx, "team-1"))
+
+	prefs, err := c.Teams.GetTeamPrefs(ctx, "team-1")
+	require.NoError(t, err)
+	require.NotNil(t, prefs.Prefs)
+
+	updated, err := c.Teams.UpdateTeamPrefs(ctx, "team-1", map[string]any{"locale": "zh-CN"})
+	require.NoError(t, err)
+	require.NotNil(t, updated.Prefs)
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	require.Equal(t, "team-1", rec.lastTeamPrefs.Id)
+	require.Equal(t, "zh-CN", rec.lastTeamPrefs.Prefs.Fields["locale"].GetStringValue())
+}
+
+func TestDatabases_UpdateAndDeleteSchema(t *testing.T) {
+	lis, rec := newServicesBufconn(t)
+	c := newTestClient(t, lis, WithAPIKey("key-1"), WithDatabaseID("app"))
+	ctx := context.Background()
+	db := c.Databases
+
+	disabled := true
+	security := false
+	updated, err := db.UpdateCollection(ctx, "members", "Members v2",
+		[]string{"read:all"}, &security, &disabled)
+	require.NoError(t, err)
+	require.Equal(t, "Members v2", updated.Name)
+
+	rec.mu.Lock()
+	require.Equal(t, "app", rec.lastCollectionUpdate.DatabaseId)
+	require.Equal(t, "members", rec.lastCollectionUpdate.CollectionId)
+	require.Equal(t, "Members v2", rec.lastCollectionUpdate.Name)
+	require.Equal(t, []string{"read:all"}, rec.lastCollectionUpdate.Permissions.Values)
+	require.NotNil(t, rec.lastCollectionUpdate.DocumentSecurity)
+	require.False(t, *rec.lastCollectionUpdate.DocumentSecurity)
+	require.NotNil(t, rec.lastCollectionUpdate.Disabled)
+	require.True(t, *rec.lastCollectionUpdate.Disabled)
+	rec.mu.Unlock()
+
+	require.NoError(t, db.DeleteCollection(ctx, "members"))
+
+	require.NoError(t, db.DeleteAttribute(ctx, "members", "channel_id"))
+	rec.mu.Lock()
+	require.Equal(t, "channel_id", rec.deletedAttributeKey)
+	rec.mu.Unlock()
+
+	require.NoError(t, db.DeleteIndex(ctx, "members", "members_channel_user"))
+	rec.mu.Lock()
+	require.Equal(t, "members_channel_user", rec.deletedIndexID)
+	rec.mu.Unlock()
 }

@@ -23,6 +23,24 @@ export class ServerTeamsService {
     return this.http.request<Team>("GET", `/v1/server/teams/${id}`, { auth: "apiKey" });
   }
 
+  async getPrefs(id: string): Promise<Record<string, unknown>> {
+    const res = await this.http.request<{ prefs: Record<string, unknown> }>(
+      "GET",
+      `/v1/server/teams/${id}/prefs`,
+      { auth: "apiKey" }
+    );
+    return res.prefs ?? {};
+  }
+
+  async updatePrefs(id: string, prefs: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const res = await this.http.request<{ prefs: Record<string, unknown> }>(
+      "PUT",
+      `/v1/server/teams/${id}/prefs`,
+      { auth: "apiKey", body: { id, prefs } }
+    );
+    return res.prefs ?? {};
+  }
+
   async delete(id: string): Promise<void> {
     await this.http.request<void>("DELETE", `/v1/server/teams/${id}`, { auth: "apiKey" });
   }

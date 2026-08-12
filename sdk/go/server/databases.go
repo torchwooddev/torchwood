@@ -61,6 +61,31 @@ func (d *DatabasesService) GetCollection(ctx context.Context, collectionID strin
 	})
 }
 
+// UpdateCollection 更新集合；name 空串与 permissions 为 nil 表示不修改，
+// documentSecurity/disabled 用指针区分「不修改」与「显式设 false」。
+func (d *DatabasesService) UpdateCollection(ctx context.Context, collectionID, name string, permissions []string, documentSecurity, disabled *bool) (*serverv1.Collection, error) {
+	req := &serverv1.UpdateCollectionRequest{
+		DatabaseId:       d.db,
+		CollectionId:     collectionID,
+		Name:             name,
+		DocumentSecurity: documentSecurity,
+		Disabled:         disabled,
+	}
+	if permissions != nil {
+		req.Permissions = &serverv1.PermissionsUpdate{Values: permissions}
+	}
+	return d.c.databases.UpdateCollection(ctx, req)
+}
+
+// DeleteCollection 删除集合。
+func (d *DatabasesService) DeleteCollection(ctx context.Context, collectionID string) error {
+	_, err := d.c.databases.DeleteCollection(ctx, &serverv1.GetCollectionRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+	})
+	return err
+}
+
 // ListCollections 按查询 DSL 列出集合。
 func (d *DatabasesService) ListCollections(ctx context.Context, queries []string, pageSize int32, pageToken string) (*serverv1.ListCollectionsResponse, error) {
 	return d.c.databases.ListCollections(ctx, &serverv1.ListCollectionsRequest{
@@ -84,6 +109,16 @@ func (d *DatabasesService) CreateAttribute(ctx context.Context, collectionID, ke
 	})
 }
 
+// DeleteAttribute 删除集合属性。
+func (d *DatabasesService) DeleteAttribute(ctx context.Context, collectionID, key string) error {
+	_, err := d.c.databases.DeleteAttribute(ctx, &serverv1.DeleteAttributeRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		Key:          key,
+	})
+	return err
+}
+
 // CreateIndex 为集合创建索引（type 支持 key/unique/fulltext）。
 func (d *DatabasesService) CreateIndex(ctx context.Context, collectionID, id, indexType string, attributes []string) (*serverv1.Index, error) {
 	return d.c.databases.CreateIndex(ctx, &serverv1.CreateIndexRequest{
@@ -93,6 +128,16 @@ func (d *DatabasesService) CreateIndex(ctx context.Context, collectionID, id, in
 		Type:         indexType,
 		Attributes:   attributes,
 	})
+}
+
+// DeleteIndex 删除集合索引。
+func (d *DatabasesService) DeleteIndex(ctx context.Context, collectionID, indexID string) error {
+	_, err := d.c.databases.DeleteIndex(ctx, &serverv1.DeleteIndexRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		IndexId:      indexID,
+	})
+	return err
 }
 
 // CreateDocument 在集合中创建文档。
