@@ -18,26 +18,32 @@ export async function refreshSession(): Promise<void> {
 }
 
 // logout revokes the admin token pair server-side and clears the session
-// cookies (best-effort: the call is skipped from the 401 retry flow).
+// cookies (skipped from the 401 retry flow). Errors propagate to the caller
+// so the UI can warn when the session may still be valid.
 export async function logout(): Promise<void> {
-  try {
-    const config: ApiRequestConfig = { __skipAuthRetry: true };
-    await api.post("/console/auth/sign-out", {}, config);
-  } catch {
-    // Ignore: sign-out is best-effort.
-  }
+  const config: ApiRequestConfig = { __skipAuthRetry: true };
+  await api.post("/console/auth/sign-out", {}, config);
+}
+
+export interface SetupStatus {
+  needs_setup: boolean;
+  // 部署方配置了 TORCHWOOD_SECURITY_SETUP_TOKEN 时为 true（登录页需
+  // 展示 setup token 输入框）。
+  setup_token_required: boolean;
 }
 
 // getSetupStatus 查询是否尚未初始化（needs_setup=true 时登录页切换为
 // 初始化设置表单）。
-export async function getSetupStatus(): Promise<boolean> {
-  const res = await api.get<{ needs_setup: boolean }>("/console/auth/setup-status");
-  return res.data.needs_setup;
+export async function getSetupStatus(): Promise<SetupStatus> {
+  const res = await api.get<SetupStatus>("/console/auth/setup-status");
+  return res.data;
 }
 
 export interface SignUpInput {
   email: string;
   password: string;
+  // 服务端配置了引导令牌时必填，否则注册被拒绝。
+  setup_token?: string;
 }
 
 export interface SignUpResult {

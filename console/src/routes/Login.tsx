@@ -23,6 +23,8 @@ export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [setupToken, setSetupToken] = useState("");
+  const [setupTokenRequired, setSetupTokenRequired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   // 未初始化时展示「初始化设置」表单，初始化完成后回到登录态。
@@ -39,9 +41,10 @@ export function Login() {
     }
     let cancelled = false;
     getSetupStatus()
-      .then((needsSetup) => {
+      .then((status) => {
         if (!cancelled) {
-          setSetupState(needsSetup ? "setup" : "login");
+          setSetupState(status.needs_setup ? "setup" : "login");
+          setSetupTokenRequired(status.setup_token_required);
         }
       })
       .catch(() => {
@@ -78,7 +81,11 @@ export function Login() {
     }
     setLoading(true);
     try {
-      const result = await signUp({ email, password });
+      const result = await signUp({
+        email,
+        password,
+        setup_token: setupTokenRequired ? setupToken : undefined,
+      });
       // 会话 cookie 已由服务端下发；展示一次默认 API Key secret。
       setApiKeySecret(result.default_api_key_secret);
     } catch (err) {
@@ -149,6 +156,19 @@ export function Login() {
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+            {isSetup && setupTokenRequired && (
+              <div className="space-y-2">
+                <Label htmlFor="setup-token">Setup Token</Label>
+                <Input
+                  id="setup-token"
+                  type="password"
+                  value={setupToken}
+                  onChange={(e) => setSetupToken(e.target.value)}
+                  placeholder="TORCHWOOD_SECURITY_SETUP_TOKEN"
                   required
                 />
               </div>

@@ -11,6 +11,7 @@ import {
   type APIKey,
 } from "@/api/apiKeys";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminRole, isPlatformAdmin } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,8 +55,10 @@ const columns: ColumnDef<APIKey>[] = [
 
 export function ApiKeysListPage() {
   const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const platformAdmin = isPlatformAdmin(role);
 
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ["api-keys", projectId],
@@ -79,8 +82,14 @@ export function ApiKeysListPage() {
   const handleBulkDelete = async (selected: APIKey[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((k) => deleteAPIKey(k.id)));
-      toast.success(`已删除 ${selected.length} 个 API Key`);
+      const results = await Promise.allSettled(selected.map((k) => deleteAPIKey(k.id)));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${selected.length} 个 API Key`);
+      }
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       clear();
     } finally {
@@ -99,32 +108,44 @@ export function ApiKeysListPage() {
       getSearchText={getSearchText}
       detailPath={(k) => `/console/api-keys/${k.id}`}
       toolbarActions={
-        <Button asChild>
-          <Link to="/console/api-keys/new">
-            <Plus className="h-4 w-4 mr-2" />
-            新建 API Key
-          </Link>
-        </Button>
+        platformAdmin ? (
+          <Button asChild>
+            <Link to="/console/api-keys/new">
+              <Plus className="h-4 w-4 mr-2" />
+              新建 API Key
+            </Link>
+          </Button>
+        ) : undefined
       }
-      selectionActions={(selected, clear) => (
-        <BulkDeleteButton
-          count={selected.length}
-          loading={bulkDeleting}
-          onConfirm={() => handleBulkDelete(selected, clear)}
-        />
-      )}
-      rowActions={(k) => (
-        <RowDeleteButton
-          onConfirm={() => remove.mutate(k.id)}
-          loading={remove.isPending}
-        />
-      )}
+      selectionActions={
+        platformAdmin
+          ? (selected, clear) => (
+              <BulkDeleteButton
+                count={selected.length}
+                loading={bulkDeleting}
+                onConfirm={() => handleBulkDelete(selected, clear)}
+              />
+            )
+          : undefined
+      }
+      rowActions={
+        platformAdmin
+          ? (k) => (
+              <RowDeleteButton
+                onConfirm={() => remove.mutate(k.id)}
+                loading={remove.isPending}
+              />
+            )
+          : undefined
+      }
       emptyTitle="暂无 API Key"
       emptyDescription="创建 API Key 以访问服务端 API"
       emptyAction={
-        <Button asChild>
-          <Link to="/console/api-keys/new">新建 API Key</Link>
-        </Button>
+        platformAdmin ? (
+          <Button asChild>
+            <Link to="/console/api-keys/new">新建 API Key</Link>
+          </Button>
+        ) : undefined
       }
     />
   );
@@ -133,6 +154,7 @@ export function ApiKeysListPage() {
 export function ApiKeyNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState("");
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
@@ -190,6 +212,7 @@ export function ApiKeyNewPage() {
         });
       }}
       loading={mutation.isPending}
+      submitDisabled={!isPlatformAdmin(role)}
     >
       <FormField id="name" label="名称" value={name} onChange={setName} required placeholder="Production API Key" />
       <FormField

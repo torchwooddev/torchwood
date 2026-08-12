@@ -19,6 +19,7 @@ import {
   type Membership,
 } from "@/api/teams";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminRole, canWrite } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,8 +83,10 @@ const teamColumns: ColumnDef<Team>[] = [
 
 export function TeamsListPage() {
   const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const writeable = canWrite(role);
 
   const { data: teams = [], isLoading } = useQuery({
     queryKey: ["teams", projectId],
@@ -104,8 +107,14 @@ export function TeamsListPage() {
   const handleBulkDelete = async (selected: Team[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((t) => deleteTeam(t.id)));
-      toast.success(`已删除 ${selected.length} 个团队`);
+      const results = await Promise.allSettled(selected.map((t) => deleteTeam(t.id)));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${selected.length} 个团队`);
+      }
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       clear();
     } finally {
@@ -124,29 +133,41 @@ export function TeamsListPage() {
       getSearchText={getSearchText}
       detailPath={(t) => `/console/teams/${t.id}`}
       toolbarActions={
-        <Button asChild>
-          <Link to="/console/teams/new">
-            <Plus className="h-4 w-4 mr-2" />
-            新建团队
-          </Link>
-        </Button>
+        writeable ? (
+          <Button asChild>
+            <Link to="/console/teams/new">
+              <Plus className="h-4 w-4 mr-2" />
+              新建团队
+            </Link>
+          </Button>
+        ) : undefined
       }
-      selectionActions={(selected, clear) => (
-        <BulkDeleteButton
-          count={selected.length}
-          loading={bulkDeleting}
-          onConfirm={() => handleBulkDelete(selected, clear)}
-        />
-      )}
-      rowActions={(t) => (
-        <RowDeleteButton onConfirm={() => remove.mutate(t.id)} loading={remove.isPending} />
-      )}
+      selectionActions={
+        writeable
+          ? (selected, clear) => (
+              <BulkDeleteButton
+                count={selected.length}
+                loading={bulkDeleting}
+                onConfirm={() => handleBulkDelete(selected, clear)}
+              />
+            )
+          : undefined
+      }
+      rowActions={
+        writeable
+          ? (t) => (
+              <RowDeleteButton onConfirm={() => remove.mutate(t.id)} loading={remove.isPending} />
+            )
+          : undefined
+      }
       emptyTitle="暂无团队"
       emptyDescription="创建团队并邀请成员协作"
       emptyAction={
-        <Button asChild>
-          <Link to="/console/teams/new">新建团队</Link>
-        </Button>
+        writeable ? (
+          <Button asChild>
+            <Link to="/console/teams/new">新建团队</Link>
+          </Button>
+        ) : undefined
       }
     />
   );
@@ -155,6 +176,7 @@ export function TeamsListPage() {
 export function TeamNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [name, setName] = useState("");
 
   const mutation = useMutation({
@@ -176,6 +198,7 @@ export function TeamNewPage() {
         mutation.mutate({ name });
       }}
       loading={mutation.isPending}
+      submitDisabled={!canWrite(role)}
     >
       <FormField id="name" label="团队名称" value={name} onChange={setName} required placeholder="Engineering" />
     </FormPageWrapper>
@@ -209,7 +232,9 @@ function MembershipRoleSelect({
 
 function TeamPrefsCard({ teamId }: { teamId: string }) {
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [prefsText, setPrefsText] = useState("{}");
+  const writeable = canWrite(role);
 
   const { data: prefs, isLoading } = useQuery({
     queryKey: ["teams", teamId, "prefs"],
@@ -271,7 +296,7 @@ function TeamPrefsCard({ teamId }: { teamId: string }) {
             onChange={setPrefsText}
             placeholder='{"theme":"dark"}'
           />
-          <Button type="submit" disabled={isLoading || save.isPending}>
+          <Button type="submit" disabled={!writeable || isLoading || save.isPending}>
             {save.isPending ? "保存中..." : "保存"}
           </Button>
         </form>
@@ -284,11 +309,13 @@ export function TeamDetailPage() {
   const { id: teamId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("member");
   const [inviteStatus, setInviteStatus] = useState<string>("pending");
+  const writeable = canWrite(role);
 
   const { data: team, isLoading: teamLoading } = useQuery({
     queryKey: ["teams", teamId],
@@ -371,29 +398,32 @@ export function TeamDetailPage() {
     {
       key: "roles",
       header: "角色",
-      cell: (m) => (
-        <Select
-          value={m.roles?.[0] ?? "member"}
-          onValueChange={(role) => setRole.mutate({ membershipId: m.id, roles: [role] })}
-        >
-          <SelectTrigger className="h-8 w-[108px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MEMBERSHIP_ROLES.map((role) => (
-              <SelectItem key={role} value={role}>
-                {role}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ),
+      cell: (m) =>
+        writeable ? (
+          <Select
+            value={m.roles?.[0] ?? "member"}
+            onValueChange={(role) => setRole.mutate({ membershipId: m.id, roles: [role] })}
+          >
+            <SelectTrigger className="h-8 w-[108px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MEMBERSHIP_ROLES.map((role) => (
+                <SelectItem key={role} value={role}>
+                  {role}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant="outline">{m.roles?.[0] ?? "member"}</Badge>
+        ),
     },
     {
       key: "status",
       header: "状态",
       cell: (m) =>
-        m.status === "pending" ? (
+        writeable && m.status === "pending" ? (
           <Select
             value={m.status}
             onValueChange={(status) => {
@@ -429,8 +459,16 @@ export function TeamDetailPage() {
   const handleBulkDeleteMemberships = async (selected: Membership[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((m) => deleteMembership(teamId!, m.id)));
-      toast.success(`已移除 ${selected.length} 个成员`);
+      const results = await Promise.allSettled(
+        selected.map((m) => deleteMembership(teamId!, m.id))
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`移除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已移除 ${selected.length} 个成员`);
+      }
       invalidateTeam();
       clear();
     } finally {
@@ -448,10 +486,12 @@ export function TeamDetailPage() {
         description="团队详情与成员管理"
         backTo="/console/teams"
         actions={
-          <DeleteButton
-            onConfirm={() => removeTeam.mutate(team.id)}
-            loading={removeTeam.isPending}
-          />
+          writeable ? (
+            <DeleteButton
+              onConfirm={() => removeTeam.mutate(team.id)}
+              loading={removeTeam.isPending}
+            />
+          ) : undefined
         }
       >
         <DetailGrid
@@ -525,7 +565,7 @@ export function TeamDetailPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" disabled={invite.isPending}>
+            <Button type="submit" disabled={!writeable || invite.isPending}>
               {invite.isPending ? "提交中..." : "发送邀请"}
             </Button>
           </form>
@@ -540,19 +580,27 @@ export function TeamDetailPage() {
         items={memberships}
         columns={membershipColumns}
         getSearchText={getMembershipSearchText}
-        selectionActions={(selected, clear) => (
-          <BulkDeleteButton
-            count={selected.length}
-            loading={bulkDeleting}
-            onConfirm={() => handleBulkDeleteMemberships(selected, clear)}
-          />
-        )}
-        rowActions={(m) => (
-          <RowDeleteButton
-            onConfirm={() => removeMembership.mutate(m.id)}
-            loading={removeMembership.isPending}
-          />
-        )}
+        selectionActions={
+          writeable
+            ? (selected, clear) => (
+                <BulkDeleteButton
+                  count={selected.length}
+                  loading={bulkDeleting}
+                  onConfirm={() => handleBulkDeleteMemberships(selected, clear)}
+                />
+              )
+            : undefined
+        }
+        rowActions={
+          writeable
+            ? (m) => (
+                <RowDeleteButton
+                  onConfirm={() => removeMembership.mutate(m.id)}
+                  loading={removeMembership.isPending}
+                />
+              )
+            : undefined
+        }
         emptyTitle="暂无成员"
         emptyDescription="使用上方表单邀请成员加入团队"
       />

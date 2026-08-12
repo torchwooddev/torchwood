@@ -26,6 +26,7 @@ import {
 } from "@/api/storage";
 import { ChunkedUploader } from "@/routes/storage/chunked-uploader";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminRole, canWrite } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,8 +103,10 @@ function UsageStatCard({
 
 export function StorageListPage() {
   const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const writeable = canWrite(role);
 
   const { data: buckets = [], isLoading } = useQuery({
     queryKey: ["buckets", projectId],
@@ -124,8 +127,14 @@ export function StorageListPage() {
   const handleBulkDelete = async (selected: Bucket[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((b) => deleteBucket(b.id)));
-      toast.success(`已删除 ${selected.length} 个 Bucket`);
+      const results = await Promise.allSettled(selected.map((b) => deleteBucket(b.id)));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${selected.length} 个 Bucket`);
+      }
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
       clear();
     } finally {
@@ -144,29 +153,41 @@ export function StorageListPage() {
       getSearchText={getSearchText}
       detailPath={(b) => `/console/storage/${b.id}`}
       toolbarActions={
-        <Button asChild>
-          <Link to="/console/storage/new">
-            <Plus className="h-4 w-4 mr-2" />
-            新建 Bucket
-          </Link>
-        </Button>
+        writeable ? (
+          <Button asChild>
+            <Link to="/console/storage/new">
+              <Plus className="h-4 w-4 mr-2" />
+              新建 Bucket
+            </Link>
+          </Button>
+        ) : undefined
       }
-      selectionActions={(selected, clear) => (
-        <BulkDeleteButton
-          count={selected.length}
-          loading={bulkDeleting}
-          onConfirm={() => handleBulkDelete(selected, clear)}
-        />
-      )}
-      rowActions={(b) => (
-        <RowDeleteButton onConfirm={() => remove.mutate(b.id)} loading={remove.isPending} />
-      )}
+      selectionActions={
+        writeable
+          ? (selected, clear) => (
+              <BulkDeleteButton
+                count={selected.length}
+                loading={bulkDeleting}
+                onConfirm={() => handleBulkDelete(selected, clear)}
+              />
+            )
+          : undefined
+      }
+      rowActions={
+        writeable
+          ? (b) => (
+              <RowDeleteButton onConfirm={() => remove.mutate(b.id)} loading={remove.isPending} />
+            )
+          : undefined
+      }
       emptyTitle="暂无 Bucket"
       emptyDescription="创建 Bucket 以上传文件"
       emptyAction={
-        <Button asChild>
-          <Link to="/console/storage/new">新建 Bucket</Link>
-        </Button>
+        writeable ? (
+          <Button asChild>
+            <Link to="/console/storage/new">新建 Bucket</Link>
+          </Button>
+        ) : undefined
       }
     />
   );
@@ -175,6 +196,7 @@ export function StorageListPage() {
 export function BucketNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [publicBucket, setPublicBucket] = useState(false);
 
@@ -197,6 +219,7 @@ export function BucketNewPage() {
         mutation.mutate({ name, public: publicBucket });
       }}
       loading={mutation.isPending}
+      submitDisabled={!canWrite(role)}
     >
       <FormField id="name" label="Bucket 名称" value={name} onChange={setName} required placeholder="uploads" />
       <label className="flex items-center gap-2 text-sm">
@@ -211,9 +234,12 @@ export function BucketDetailPage() {
   const { bucketId } = useParams<{ bucketId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const [bulkDeleting, setBulkDeleting] = useState(false);
   // 分片上传中的文件（>16MiB 走 ChunkedUploader）。
   const [chunkUpload, setChunkUpload] = useState<{ file: File; key: string } | null>(null);
+  const writeable = canWrite(role);
 
   const { data: bucket, isLoading: bucketLoading } = useQuery({
     queryKey: ["buckets", bucketId],
@@ -222,8 +248,9 @@ export function BucketDetailPage() {
   });
 
   const { data: usage } = useQuery({
-    queryKey: ["storage-usage"],
+    queryKey: ["storage-usage", projectId],
     queryFn: getStorageUsage,
+    enabled: !!projectId,
   });
 
   const { data: files = [], isLoading: filesLoading } = useQuery({
@@ -239,7 +266,7 @@ export function BucketDetailPage() {
       toast.success("Bucket 设置已更新");
       queryClient.invalidateQueries({ queryKey: ["buckets", bucketId] });
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
-      queryClient.invalidateQueries({ queryKey: ["storage-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["storage-usage", projectId] });
     },
   });
 
@@ -287,8 +314,16 @@ export function BucketDetailPage() {
   const handleBulkDeleteFiles = async (selected: FileItem[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((f) => deleteFile(bucketId!, f.id)));
-      toast.success(`已删除 ${selected.length} 个文件`);
+      const results = await Promise.allSettled(
+        selected.map((f) => deleteFile(bucketId!, f.id))
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${selected.length} 个文件`);
+      }
       queryClient.invalidateQueries({ queryKey: ["files", bucketId] });
       clear();
     } finally {
@@ -306,10 +341,12 @@ export function BucketDetailPage() {
         description="Bucket 详情与文件管理"
         backTo="/console/storage"
         actions={
-          <DeleteButton
-            onConfirm={() => removeBucket.mutate(bucket.id)}
-            loading={removeBucket.isPending}
-          />
+          writeable ? (
+            <DeleteButton
+              onConfirm={() => removeBucket.mutate(bucket.id)}
+              loading={removeBucket.isPending}
+            />
+          ) : undefined
         }
       >
         <DetailGrid
@@ -332,7 +369,7 @@ export function BucketDetailPage() {
           <CardContent className="flex items-center gap-2">
             <Checkbox
               checked={bucket.public ?? false}
-              disabled={updateBucketMutation.isPending}
+              disabled={!writeable || updateBucketMutation.isPending}
               onChange={(e) =>
                 updateBucketMutation.mutate({ public: e.target.checked })
               }
@@ -355,8 +392,8 @@ export function BucketDetailPage() {
               queryClient.invalidateQueries({ queryKey: ["files", bucketId] });
               setChunkUpload(null);
             }}
-            onError={(message) => {
-              toast.error(message);
+            onError={() => {
+              // 错误提示由 api 拦截器统一 toast，这里只做状态重置。
               setChunkUpload(null);
             }}
           />
@@ -373,35 +410,41 @@ export function BucketDetailPage() {
         getSearchText={getFileSearchText}
         detailPath={(f) => `/console/storage/${bucketId}/files/${f.id}`}
         toolbarActions={
-          <div className="flex items-center gap-2">
-            <UploadCloud className="h-4 w-4 text-muted-foreground" />
-            <Input
-              type="file"
-              className="max-w-xs"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                if (isTooLarge(file.size)) {
-                  toast.error("文件超过 156.25GB 分片上传上限");
-                  return;
-                }
-                if (shouldChunk(file.size)) {
-                  setChunkUpload({ file, key: `${file.name}:${file.size}:${Date.now()}` });
-                  return;
-                }
-                uploadMutation.mutate(file);
-              }}
-            />
-          </div>
+          writeable ? (
+            <div className="flex items-center gap-2">
+              <UploadCloud className="h-4 w-4 text-muted-foreground" />
+              <Input
+                type="file"
+                className="max-w-xs"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  if (isTooLarge(file.size)) {
+                    toast.error("文件超过 156.25GB 分片上传上限");
+                    return;
+                  }
+                  if (shouldChunk(file.size)) {
+                    setChunkUpload({ file, key: `${file.name}:${file.size}:${Date.now()}` });
+                    return;
+                  }
+                  uploadMutation.mutate(file);
+                }}
+              />
+            </div>
+          ) : undefined
         }
-        selectionActions={(selected, clear) => (
-          <BulkDeleteButton
-            count={selected.length}
-            loading={bulkDeleting}
-            onConfirm={() => handleBulkDeleteFiles(selected, clear)}
-          />
-        )}
+        selectionActions={
+          writeable
+            ? (selected, clear) => (
+                <BulkDeleteButton
+                  count={selected.length}
+                  loading={bulkDeleting}
+                  onConfirm={() => handleBulkDeleteFiles(selected, clear)}
+                />
+              )
+            : undefined
+        }
         rowActions={(f) => (
           <>
             <Button
@@ -412,10 +455,12 @@ export function BucketDetailPage() {
             >
               <Download className="h-4 w-4" />
             </Button>
-            <RowDeleteButton
-              onConfirm={() => deleteMutation.mutate(f.id)}
-              loading={deleteMutation.isPending}
-            />
+            {writeable && (
+              <RowDeleteButton
+                onConfirm={() => deleteMutation.mutate(f.id)}
+                loading={deleteMutation.isPending}
+              />
+            )}
           </>
         )}
         emptyTitle="暂无文件"
@@ -429,10 +474,12 @@ export function FileDetailPage() {
   const { bucketId, fileId } = useParams<{ bucketId: string; fileId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [shareOpen, setShareOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [shareExpires, setShareExpires] = useState("");
   const [shareLoading, setShareLoading] = useState(false);
+  const writeable = canWrite(role);
 
   const { data: file, isLoading } = useQuery({
     queryKey: ["files", bucketId, fileId],
@@ -456,7 +503,6 @@ export function FileDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["files", bucketId, fileId] });
       queryClient.invalidateQueries({ queryKey: ["files", bucketId] });
     },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   const [newName, setNewName] = useState("");
@@ -511,7 +557,9 @@ export function FileDetailPage() {
             <Download className="h-4 w-4 mr-2" />
             下载
           </Button>
-          <DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />
+          {writeable && (
+            <DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />
+          )}
         </div>
       }
     >
@@ -560,7 +608,7 @@ export function FileDetailPage() {
             />
           </div>
           <Button
-            disabled={!nameDirty || !newName.trim() || rename.isPending}
+            disabled={!writeable || !nameDirty || !newName.trim() || rename.isPending}
             onClick={() => rename.mutate(newName.trim())}
           >
             {rename.isPending ? "保存中..." : "保存"}

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FileText, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { getDatabase, getCollection, deleteCollection } from "@/api/databases";
+import { useAdminRole, isPlatformAdmin } from "@/hooks/useAdminRole";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,8 @@ export function CollectionLayout() {
   const { dbId, collId } = useParams<{ dbId: string; collId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
+  const platformAdmin = isPlatformAdmin(role);
 
   const { data: database } = useQuery({
     queryKey: ["databases", dbId],
@@ -67,7 +70,7 @@ export function CollectionLayout() {
         }
         description={database ? `${database.name} · ${collection.id}` : collection.id}
         actions={
-          collection.is_system ? undefined : (
+          collection.is_system || !platformAdmin ? undefined : (
             <DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />
           )
         }

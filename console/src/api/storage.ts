@@ -94,7 +94,9 @@ export async function uploadFile(
   return res.data;
 }
 
-// 分片上传常量：与后端 internal/domain/storage 的 DefaultChunkSize/MaxComposePartCount 一致。
+// 分片常量：与后端 internal/domain/storage 的 DefaultChunkSize/MaxComposePartCount
+// 一致，仅用于前端预检（shouldChunk/isTooLarge）；实际切片大小一律以服务端
+// 会话返回的 chunk_size 为准。
 export const CHUNK_SIZE = 16 * 1024 * 1024;
 export const MAX_UPLOAD_SIZE = 10000 * CHUNK_SIZE;
 
@@ -153,24 +155,28 @@ export async function uploadChunk(
   bucketId: string,
   uploadId: string,
   partNumber: number,
-  blob: Blob
+  blob: Blob,
+  signal?: AbortSignal
 ): Promise<{ part_number: number; received_count: number }> {
   const form = new FormData();
   form.append("chunk", blob);
   const res = await api.post(
     `/storage/buckets/${bucketId}/uploads/${uploadId}/chunks/${partNumber}`,
     form,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    { headers: { "Content-Type": "multipart/form-data" }, signal }
   );
   return res.data;
 }
 
 export async function completeUpload(
   bucketId: string,
-  uploadId: string
+  uploadId: string,
+  signal?: AbortSignal
 ): Promise<FileItem> {
   const res = await api.post<FileItem>(
-    `/storage/buckets/${bucketId}/uploads/${uploadId}/complete`
+    `/storage/buckets/${bucketId}/uploads/${uploadId}/complete`,
+    {},
+    { signal }
   );
   return res.data;
 }

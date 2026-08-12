@@ -53,6 +53,8 @@ import {
   DeleteButton,
   RowDeleteButton,
 } from "@/components/resource/shared";
+import { useAuth } from "@/hooks/useAuth";
+import { useAdminRole, canWrite, isPlatformAdmin } from "@/hooks/useAdminRole";
 import type { ColumnDef } from "@/components/list/DataTable";
 
 const functionColumns: ColumnDef<FunctionItem>[] = [
@@ -94,6 +96,8 @@ function formatBytes(bytes: number): string {
 }
 
 export function FunctionsListPage() {
+  const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -102,10 +106,12 @@ export function FunctionsListPage() {
   const [timeoutSeconds, setTimeoutSeconds] = useState("15");
   const [spec, setSpec] = useState("shared-1x");
   const [enabled, setEnabled] = useState(true);
+  const writeable = canWrite(role);
 
   const { data: functions = [], isLoading } = useQuery({
-    queryKey: ["functions"],
+    queryKey: ["functions", projectId],
     queryFn: listFunctions,
+    enabled: !!projectId,
   });
 
   const { data: runtimes = [] } = useQuery({
@@ -122,7 +128,7 @@ export function FunctionsListPage() {
     mutationFn: deleteFunction,
     onSuccess: () => {
       toast.success("函数已删除");
-      queryClient.invalidateQueries({ queryKey: ["functions"] });
+      queryClient.invalidateQueries({ queryKey: ["functions", projectId] });
     },
   });
 
@@ -130,7 +136,7 @@ export function FunctionsListPage() {
     mutationFn: createFunction,
     onSuccess: () => {
       toast.success("函数创建成功");
-      queryClient.invalidateQueries({ queryKey: ["functions"] });
+      queryClient.invalidateQueries({ queryKey: ["functions", projectId] });
       setCreateOpen(false);
       setName("");
       setRuntime("node-18.0");
@@ -148,9 +154,15 @@ export function FunctionsListPage() {
   const handleBulkDelete = async (selected: FunctionItem[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((f) => deleteFunction(f.id)));
-      toast.success(`已删除 ${selected.length} 个函数`);
-      queryClient.invalidateQueries({ queryKey: ["functions"] });
+      const results = await Promise.allSettled(selected.map((f) => deleteFunction(f.id)));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${selected.length} 个函数`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["functions", projectId] });
       clear();
     } finally {
       setBulkDeleting(false);
@@ -169,31 +181,43 @@ export function FunctionsListPage() {
         getSearchText={getSearchText}
         detailPath={(f) => `/console/functions/${f.id}`}
         toolbarActions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            新建函数
-          </Button>
+          writeable ? (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              新建函数
+            </Button>
+          ) : undefined
         }
-        selectionActions={(selected, clear) => (
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={selected.length === 0 || bulkDeleting}
-            onClick={() => handleBulkDelete(selected, clear)}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            删除 ({selected.length})
-          </Button>
-        )}
-        rowActions={(f) => (
-          <RowDeleteButton
-            onConfirm={() => remove.mutate(f.id)}
-            loading={remove.isPending}
-          />
-        )}
+        selectionActions={
+          writeable
+            ? (selected, clear) => (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={selected.length === 0 || bulkDeleting}
+                  onClick={() => handleBulkDelete(selected, clear)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  删除 ({selected.length})
+                </Button>
+              )
+            : undefined
+        }
+        rowActions={
+          writeable
+            ? (f) => (
+                <RowDeleteButton
+                  onConfirm={() => remove.mutate(f.id)}
+                  loading={remove.isPending}
+                />
+              )
+            : undefined
+        }
         emptyTitle="暂无函数"
         emptyDescription="创建函数并上传代码包开始使用"
-        emptyAction={<Button onClick={() => setCreateOpen(true)}>新建函数</Button>}
+        emptyAction={
+          writeable ? <Button onClick={() => setCreateOpen(true)}>新建函数</Button> : undefined
+        }
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -383,7 +407,11 @@ function ExecutionDialog({
 
 export function FunctionDetailPage() {
   const { functionId } = useParams<{ functionId: string }>();
+  const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
+  const writeable = canWrite(role);
+  const platformAdmin = isPlatformAdmin(role);
 
   const [name, setName] = useState("");
   const [entrypoint, setEntrypoint] = useState("");
@@ -485,16 +513,13 @@ export function FunctionDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["executions", functionId] });
       if (!asyncExec) setSelectedExecution(execution);
     },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "执行失败");
-    },
   });
 
   const removeFunction = useMutation({
     mutationFn: deleteFunction,
     onSuccess: () => {
       toast.success("函数已删除");
-      queryClient.invalidateQueries({ queryKey: ["functions"] });
+      queryClient.invalidateQueries({ queryKey: ["functions", projectId] });
       window.history.back();
     },
   });
@@ -515,10 +540,12 @@ export function FunctionDetailPage() {
         description={`${fn.runtime} · ${fn.id}`}
         backTo="/console/functions"
         actions={
-          <DeleteButton
-            onConfirm={() => removeFunction.mutate(fn.id)}
-            loading={removeFunction.isPending}
-          />
+          writeable ? (
+            <DeleteButton
+              onConfirm={() => removeFunction.mutate(fn.id)}
+              loading={removeFunction.isPending}
+            />
+          ) : undefined
         }
       >
         <DetailGrid
@@ -605,7 +632,7 @@ export function FunctionDetailPage() {
               启用函数
             </label>
             <div className="sm:col-span-2">
-              <Button type="submit" disabled={update.isPending}>
+              <Button type="submit" disabled={!writeable || update.isPending}>
                 {update.isPending ? "保存中..." : "保存设置"}
               </Button>
             </div>
@@ -661,7 +688,7 @@ export function FunctionDetailPage() {
               <Button
                 type="button"
                 size="sm"
-                disabled={saveVariables.isPending}
+                disabled={!platformAdmin || saveVariables.isPending}
                 onClick={() =>
                   saveVariables.mutate(
                     variables.filter((v) => v.key.trim() !== "")
@@ -686,6 +713,7 @@ export function FunctionDetailPage() {
               type="file"
               accept=".zip"
               className="max-w-sm"
+              disabled={!writeable}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
@@ -720,6 +748,7 @@ export function FunctionDetailPage() {
                   <RowDeleteButton
                     onConfirm={() => removeDeployment.mutate(d.id)}
                     loading={removeDeployment.isPending}
+                    disabled={!writeable}
                   />
                 </div>
               ))}
@@ -750,7 +779,7 @@ export function FunctionDetailPage() {
               />
               异步执行（推荐，规避网关超时）
             </label>
-            <Button onClick={() => run.mutate()} disabled={run.isPending}>
+            <Button onClick={() => run.mutate()} disabled={!writeable || run.isPending}>
               <Play className="h-4 w-4 mr-2" />
               {run.isPending ? "执行中..." : asyncExec ? "异步执行" : "同步执行"}
             </Button>

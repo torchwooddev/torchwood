@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { listProjects, getProject, createProject, type Project } from "@/api/projects";
+import { useAdminRole, isPlatformAdmin } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,9 @@ const columns: ColumnDef<Project>[] = [
 ];
 
 export function ProjectsListPage() {
+  const { role } = useAdminRole();
+  const platformAdmin = isPlatformAdmin(role);
+
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["projects"],
     queryFn: listProjects,
@@ -65,19 +69,23 @@ export function ProjectsListPage() {
       getSearchText={getSearchText}
       detailPath={(p) => `/console/projects/${p.id}`}
       toolbarActions={
-        <Button asChild>
-          <Link to="/console/projects/new">
-            <Plus className="h-4 w-4 mr-2" />
-            新建项目
-          </Link>
-        </Button>
+        platformAdmin ? (
+          <Button asChild>
+            <Link to="/console/projects/new">
+              <Plus className="h-4 w-4 mr-2" />
+              新建项目
+            </Link>
+          </Button>
+        ) : undefined
       }
       emptyTitle="暂无项目"
       emptyDescription="创建第一个项目以开始使用"
       emptyAction={
-        <Button asChild>
-          <Link to="/console/projects/new">新建项目</Link>
-        </Button>
+        platformAdmin ? (
+          <Button asChild>
+            <Link to="/console/projects/new">新建项目</Link>
+          </Button>
+        ) : undefined
       }
     />
   );
@@ -86,6 +94,7 @@ export function ProjectsListPage() {
 export function ProjectNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -109,6 +118,7 @@ export function ProjectNewPage() {
         mutation.mutate({ name, description: description || undefined });
       }}
       loading={mutation.isPending}
+      submitDisabled={!isPlatformAdmin(role)}
     >
       <FormField id="name" label="名称" value={name} onChange={setName} required placeholder="My Project" />
       <FormField

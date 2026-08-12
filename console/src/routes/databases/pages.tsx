@@ -42,6 +42,7 @@ import {
   type Document,
 } from "@/api/databases";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminRole, canWrite, isPlatformAdmin } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +100,24 @@ const STRING_LIKE_TYPES = new Set(["string", "email", "url"]);
 
 // 与 internal/app/server/databases.go 的 maxBulkOperations 保持一致
 const MAX_BULK_OPERATIONS = 1000;
+
+// documentToValues 将服务端文档反序列化为表单字符串值（与初始化守卫共用，
+// 保存成功后用响应文档重建表单，避免与服务端状态失同步）。
+function documentToValues(
+  attributes: Attribute[],
+  doc: Document
+): Record<string, string> {
+  const next: Record<string, string> = {};
+  if (attributes.length === 0) {
+    next.__json = JSON.stringify(doc.data ?? {}, null, 2);
+  } else {
+    for (const attr of attributes) {
+      const raw = doc.data?.[attr.key];
+      next[attr.key] = raw == null ? "" : String(raw);
+    }
+  }
+  return next;
+}
 
 function AttributeList({
   attributes,
@@ -612,8 +631,10 @@ const dbColumns: ColumnDef<Database>[] = [
 
 export function DatabasesListPage() {
   const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const platformAdmin = isPlatformAdmin(role);
 
   const { data: databases = [], isLoading } = useQuery({
     queryKey: ["databases", projectId],
@@ -634,8 +655,16 @@ export function DatabasesListPage() {
   const handleBulkDelete = async (selected: Database[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((d) => deleteDatabase(d.id)));
-      toast.success(`已删除 ${selected.length} 个 Database`);
+      const results = await Promise.allSettled(
+        selected.map((d) => deleteDatabase(d.id))
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${selected.length} 个 Database`);
+      }
       queryClient.invalidateQueries({ queryKey: ["databases"] });
       clear();
     } finally {
@@ -654,29 +683,41 @@ export function DatabasesListPage() {
       getSearchText={getSearchText}
       detailPath={(d) => `/console/databases/${d.id}`}
       toolbarActions={
-        <Button asChild>
-          <Link to="/console/databases/new">
-            <Plus className="h-4 w-4 mr-2" />
-            新建 Database
-          </Link>
-        </Button>
+        platformAdmin ? (
+          <Button asChild>
+            <Link to="/console/databases/new">
+              <Plus className="h-4 w-4 mr-2" />
+              新建 Database
+            </Link>
+          </Button>
+        ) : undefined
       }
-      selectionActions={(selected, clear) => (
-        <BulkDeleteButton
-          count={selected.length}
-          loading={bulkDeleting}
-          onConfirm={() => handleBulkDelete(selected, clear)}
-        />
-      )}
-      rowActions={(d) => (
-        <RowDeleteButton onConfirm={() => remove.mutate(d.id)} loading={remove.isPending} />
-      )}
+      selectionActions={
+        platformAdmin
+          ? (selected, clear) => (
+              <BulkDeleteButton
+                count={selected.length}
+                loading={bulkDeleting}
+                onConfirm={() => handleBulkDelete(selected, clear)}
+              />
+            )
+          : undefined
+      }
+      rowActions={
+        platformAdmin
+          ? (d) => (
+              <RowDeleteButton onConfirm={() => remove.mutate(d.id)} loading={remove.isPending} />
+            )
+          : undefined
+      }
       emptyTitle="暂无 Database"
       emptyDescription="创建第一个 Database"
       emptyAction={
-        <Button asChild>
-          <Link to="/console/databases/new">新建 Database</Link>
-        </Button>
+        platformAdmin ? (
+          <Button asChild>
+            <Link to="/console/databases/new">新建 Database</Link>
+          </Button>
+        ) : undefined
       }
     />
   );
@@ -685,6 +726,7 @@ export function DatabasesListPage() {
 export function DatabaseNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [id, setId] = useState("");
 
@@ -710,6 +752,7 @@ export function DatabaseNewPage() {
         });
       }}
       loading={mutation.isPending}
+      submitDisabled={!isPlatformAdmin(role)}
     >
       <FormField id="name" label="名称" value={name} onChange={setName} required placeholder="Production DB" />
       <FormField id="id" label="ID（可选）" value={id} onChange={setId} placeholder="production" />
@@ -721,7 +764,9 @@ export function DatabaseDetailPage() {
   const { dbId } = useParams<{ dbId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const platformAdmin = isPlatformAdmin(role);
 
   const { data: database, isLoading: dbLoading } = useQuery({
     queryKey: ["databases", dbId],
@@ -790,8 +835,16 @@ export function DatabaseDetailPage() {
         clear();
         return;
       }
-      await Promise.all(deletable.map((c) => deleteCollection(dbId!, c.id)));
-      toast.success(`已删除 ${deletable.length} 个 Collection`);
+      const results = await Promise.allSettled(
+        deletable.map((c) => deleteCollection(dbId!, c.id))
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${deletable.length} 个 Collection`);
+      }
       queryClient.invalidateQueries({ queryKey: ["collections", dbId] });
       clear();
     } finally {
@@ -809,10 +862,12 @@ export function DatabaseDetailPage() {
         description="Database 详情与 Collection 管理"
         backTo="/console/databases"
         actions={
-          <DeleteButton
-            onConfirm={() => removeDb.mutate(database.id)}
-            loading={removeDb.isPending}
-          />
+          platformAdmin ? (
+            <DeleteButton
+              onConfirm={() => removeDb.mutate(database.id)}
+              loading={removeDb.isPending}
+            />
+          ) : undefined
         }
       >
         <DetailGrid
@@ -835,34 +890,45 @@ export function DatabaseDetailPage() {
         isRowSelectable={(c) => !c.is_system}
         detailPath={(c) => `/console/databases/${dbId}/collections/${c.id}`}
         toolbarActions={
-          <Button asChild>
-            <Link to={`/console/databases/${dbId}/collections/new`}>
-              <Plus className="h-4 w-4 mr-2" />
-              新建 Collection
-            </Link>
-          </Button>
+          platformAdmin ? (
+            <Button asChild>
+              <Link to={`/console/databases/${dbId}/collections/new`}>
+                <Plus className="h-4 w-4 mr-2" />
+                新建 Collection
+              </Link>
+            </Button>
+          ) : undefined
         }
-        selectionActions={(selected, clear) => (
-          <BulkDeleteButton
-            count={selected.filter((c) => !c.is_system).length}
-            loading={bulkDeleting}
-            onConfirm={() => handleBulkDeleteColl(selected, clear)}
-          />
-        )}
-        rowActions={(c) =>
-          c.is_system ? null : (
-            <RowDeleteButton
-              onConfirm={() => removeColl.mutate(c.id)}
-              loading={removeColl.isPending}
-            />
-          )
+        selectionActions={
+          platformAdmin
+            ? (selected, clear) => (
+                <BulkDeleteButton
+                  count={selected.filter((c) => !c.is_system).length}
+                  loading={bulkDeleting}
+                  onConfirm={() => handleBulkDeleteColl(selected, clear)}
+                />
+              )
+            : undefined
+        }
+        rowActions={
+          platformAdmin
+            ? (c) =>
+                c.is_system ? null : (
+                  <RowDeleteButton
+                    onConfirm={() => removeColl.mutate(c.id)}
+                    loading={removeColl.isPending}
+                  />
+                )
+            : undefined
         }
         emptyTitle="暂无 Collection"
         emptyDescription="在此 Database 中创建 Collection"
         emptyAction={
-          <Button asChild>
-            <Link to={`/console/databases/${dbId}/collections/new`}>新建 Collection</Link>
-          </Button>
+          platformAdmin ? (
+            <Button asChild>
+              <Link to={`/console/databases/${dbId}/collections/new`}>新建 Collection</Link>
+            </Button>
+          ) : undefined
         }
       />
     </div>
@@ -873,6 +939,7 @@ export function CollectionNewPage() {
   const { dbId } = useParams<{ dbId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [id, setId] = useState("");
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -902,6 +969,7 @@ export function CollectionNewPage() {
         mutation.mutate();
       }}
       loading={mutation.isPending}
+      submitDisabled={!isPlatformAdmin(role)}
     >
       <FormField id="name" label="名称" value={name} onChange={setName} required placeholder="posts" />
       <FormField id="id" label="ID（可选）" value={id} onChange={setId} placeholder="posts" />
@@ -915,6 +983,7 @@ export function CollectionNewPage() {
 export function CollectionDetailPage() {
   const { dbId, collId } = useOutletContext<CollectionOutletContext>();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [attrDialogOpen, setAttrDialogOpen] = useState(false);
   const [indexDialogOpen, setIndexDialogOpen] = useState(false);
   const [permDialogOpen, setPermDialogOpen] = useState(false);
@@ -995,9 +1064,9 @@ export function CollectionDetailPage() {
   });
 
   if (isLoading) return <DetailSkeleton />;
-  if (!collection) return null;
+  if (!collection) return <NotFound backTo={`/console/databases/${dbId}`} />;
 
-  const readonly = collection.is_system;
+  const readonly = collection.is_system || !isPlatformAdmin(role);
 
   return (
     <>
@@ -1228,6 +1297,10 @@ function DocumentListSection({
     data: Record<string, unknown>,
     clear: () => void
   ) => {
+    if (ids.length > MAX_BULK_OPERATIONS) {
+      toast.error(`单次批量操作最多 ${MAX_BULK_OPERATIONS} 个 Document`);
+      return;
+    }
     setBulkUpdating(true);
     try {
       const affected = await bulkUpdateDocuments(dbId, collId, {
@@ -1394,6 +1467,7 @@ function BulkUpdateDialog({
 
 export function DocumentsListPage() {
   const { dbId, collId } = useOutletContext<CollectionOutletContext>();
+  const { role } = useAdminRole();
 
   const { data: collection, isLoading } = useQuery({
     queryKey: ["collections", dbId, collId],
@@ -1401,14 +1475,14 @@ export function DocumentsListPage() {
   });
 
   if (isLoading) return <DetailSkeleton />;
-  if (!collection) return null;
+  if (!collection) return <NotFound backTo={`/console/databases/${dbId}`} />;
 
   return (
     <DocumentListSection
       dbId={dbId}
       collId={collId}
       attributes={collection.attributes}
-      readonly={collection.is_system}
+      readonly={collection.is_system || !canWrite(role)}
     />
   );
 }
@@ -1490,6 +1564,7 @@ function buildDocumentData(
 export function DocumentNewPage() {
   const { dbId, collId } = useParams();
   const navigate = useNavigate();
+  const { role } = useAdminRole();
   const [values, setValues] = useState<Record<string, string>>({ __json: "{}" });
   const [permissions, setPermissions] = useState<string[]>([]);
 
@@ -1509,7 +1584,6 @@ export function DocumentNewPage() {
       toast.success("Document 已创建");
       navigate(`/console/databases/${dbId}/collections/${collId}/documents/${doc.id}`);
     },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   if (isLoading) return <DetailSkeleton />;
@@ -1527,6 +1601,7 @@ export function DocumentNewPage() {
       backLabel="返回文档列表"
       loading={create.isPending}
       submitLabel="创建"
+      submitDisabled={!canWrite(role)}
       onSubmit={(e) => {
         e.preventDefault();
         create.mutate();
@@ -1548,9 +1623,11 @@ export function DocumentDetailPage() {
   const { dbId, collId, docId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [values, setValues] = useState<Record<string, string>>({});
   const [increments, setIncrements] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
+  const writeable = canWrite(role);
 
   const { data: collection } = useQuery({
     queryKey: ["collections", dbId, collId],
@@ -1566,16 +1643,7 @@ export function DocumentDetailPage() {
 
   useEffect(() => {
     if (!document || initialized) return;
-    const next: Record<string, string> = {};
-    if ((collection?.attributes.length ?? 0) === 0) {
-      next.__json = JSON.stringify(document.data ?? {}, null, 2);
-    } else {
-      for (const attr of collection?.attributes ?? []) {
-        const raw = document.data?.[attr.key];
-        next[attr.key] = raw == null ? "" : String(raw);
-      }
-    }
-    setValues(next);
+    setValues(documentToValues(collection?.attributes ?? [], document));
     setInitialized(true);
   }, [collection, document, initialized]);
 
@@ -1596,13 +1664,14 @@ export function DocumentDetailPage() {
         increment: Object.keys(increment).length > 0 ? increment : undefined,
       });
     },
-    onSuccess: () => {
+    onSuccess: (doc) => {
       toast.success("Document 已更新");
       setIncrements({});
+      // 用响应文档重建表单，避免与（可能被自增/服务端归一化修改的）服务端状态失同步。
+      setValues(documentToValues(collection?.attributes ?? [], doc));
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId, docId] });
     },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   const remove = useMutation({
@@ -1627,7 +1696,7 @@ export function DocumentDetailPage() {
       backTo={documentsPath}
       backLabel="返回文档列表"
       actions={
-        collection.is_system ? null : (
+        collection.is_system || !writeable ? null : (
           <DeleteButton onConfirm={() => remove.mutate()} loading={remove.isPending} />
         )
       }
@@ -1680,7 +1749,7 @@ export function DocumentDetailPage() {
                 </div>
               </div>
             )}
-            <Button type="submit" disabled={save.isPending}>
+            <Button type="submit" disabled={!writeable || save.isPending}>
               {save.isPending ? "保存中..." : "保存"}
             </Button>
           </form>

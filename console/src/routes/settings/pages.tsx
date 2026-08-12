@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminRole, isPlatformAdmin } from "@/hooks/useAdminRole";
 import {
   OAUTH_PROVIDER_OPTIONS,
   deleteOAuthProvider,
@@ -80,6 +81,7 @@ export function SettingsPage() {
 
 function ProjectInfoPanel() {
   const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -155,7 +157,7 @@ function ProjectInfoPanel() {
           onChange={setDescription}
           placeholder="可选描述"
         />
-        <Button type="submit" disabled={update.isPending}>
+        <Button type="submit" disabled={!isPlatformAdmin(role) || update.isPending}>
           {update.isPending ? "保存中…" : "保存"}
         </Button>
       </form>
@@ -165,12 +167,14 @@ function ProjectInfoPanel() {
 
 function OAuthProvidersPanel() {
   const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [selectedProvider, setSelectedProvider] = useState<string>("google");
   const [enabled, setEnabled] = useState(true);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [scopesText, setScopesText] = useState("openid, email, profile");
+  const platformAdmin = isPlatformAdmin(role);
 
   const { data: providers = [], isLoading } = useQuery({
     queryKey: ["oauth-providers", projectId],
@@ -312,7 +316,7 @@ function OAuthProvidersPanel() {
           </code>
         </p>
 
-        <Button type="submit" disabled={save.isPending}>
+        <Button type="submit" disabled={!platformAdmin || save.isPending}>
           {save.isPending ? "保存中…" : "保存配置"}
         </Button>
       </form>
@@ -328,6 +332,7 @@ function OAuthProvidersPanel() {
             <ProviderCard
               key={p.provider}
               provider={p}
+              readonly={!platformAdmin}
               onEdit={() => loadProvider(p.provider)}
               onDelete={() => remove.mutate(p.provider)}
               deleting={remove.isPending}
@@ -344,11 +349,13 @@ function ProviderCard({
   onEdit,
   onDelete,
   deleting,
+  readonly,
 }: {
   provider: OAuthProvider;
   onEdit: () => void;
   onDelete: () => void;
   deleting: boolean;
+  readonly: boolean;
 }) {
   const label =
     OAUTH_PROVIDER_OPTIONS.find((o) => o.id === provider.provider)?.label ??
@@ -366,19 +373,21 @@ function ProviderCard({
         {provider.client_id}
       </p>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+        <Button type="button" variant="outline" size="sm" onClick={onEdit} disabled={readonly}>
           编辑
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-destructive"
-          disabled={deleting}
-          onClick={onDelete}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {!readonly && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-destructive"
+            disabled={deleting}
+            onClick={onDelete}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   );

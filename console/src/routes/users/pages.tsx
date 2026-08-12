@@ -16,6 +16,7 @@ import {
   type UserSession,
 } from "@/api/users";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminRole, canWrite, isPlatformAdmin } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -69,8 +70,11 @@ const columns: ColumnDef<User>[] = [
 
 export function UsersListPage() {
   const { projectId } = useAuth();
+  const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const writeable = canWrite(role);
+  const platformAdmin = isPlatformAdmin(role);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["users", projectId],
@@ -94,8 +98,14 @@ export function UsersListPage() {
   const handleBulkDelete = async (selected: User[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      await Promise.all(selected.map((u) => deleteUser(u.id)));
-      toast.success(`已删除 ${selected.length} 个用户`);
+      const results = await Promise.allSettled(selected.map((u) => deleteUser(u.id)));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
+      } else {
+        toast.success(`已删除 ${selected.length} 个用户`);
+      }
       queryClient.invalidateQueries({ queryKey: ["users"] });
       clear();
     } finally {
@@ -113,28 +123,40 @@ export function UsersListPage() {
       columns={columns}
       getSearchText={getSearchText}
       detailPath={(u) => `/console/users/${u.id}`}
-      editPath={(u) => `/console/users/${u.id}/edit`}
+      editPath={writeable ? (u) => `/console/users/${u.id}/edit` : undefined}
       toolbarActions={
-        <Button asChild size="sm">
-          <Link to="/console/users/new">创建用户</Link>
-        </Button>
+        writeable ? (
+          <Button asChild size="sm">
+            <Link to="/console/users/new">创建用户</Link>
+          </Button>
+        ) : undefined
       }
-      selectionActions={(selected, clear) => (
-        <BulkDeleteButton
-          count={selected.length}
-          loading={bulkDeleting}
-          onConfirm={() => handleBulkDelete(selected, clear)}
-        />
-      )}
-      rowActions={(u) => (
-        <RowDeleteButton onConfirm={() => remove.mutate(u.id)} loading={remove.isPending} />
-      )}
+      selectionActions={
+        platformAdmin
+          ? (selected, clear) => (
+              <BulkDeleteButton
+                count={selected.length}
+                loading={bulkDeleting}
+                onConfirm={() => handleBulkDelete(selected, clear)}
+              />
+            )
+          : undefined
+      }
+      rowActions={
+        platformAdmin
+          ? (u) => (
+              <RowDeleteButton onConfirm={() => remove.mutate(u.id)} loading={remove.isPending} />
+            )
+          : undefined
+      }
       emptyTitle="暂无用户"
       emptyDescription="用户注册后将显示在此"
       emptyAction={
-        <Button asChild variant="outline" size="sm">
-          <Link to="/console/users/new">创建用户</Link>
-        </Button>
+        writeable ? (
+          <Button asChild variant="outline" size="sm">
+            <Link to="/console/users/new">创建用户</Link>
+          </Button>
+        ) : undefined
       }
     />
   );
@@ -143,6 +165,7 @@ export function UsersListPage() {
 export function CreateUserPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -179,6 +202,7 @@ export function CreateUserPage() {
         mutation.mutate();
       }}
       loading={mutation.isPending}
+      submitDisabled={!canWrite(role)}
     >
       <FormField id="email" label="邮箱" value={email} onChange={setEmail} required type="email" />
       <FormField
@@ -217,6 +241,8 @@ export function CreateUserPage() {
 
 function SessionsCard({ user }: { user: User }) {
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
+  const writeable = canWrite(role);
 
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ["users", user.id, "sessions"],
@@ -264,7 +290,7 @@ function SessionsCard({ user }: { user: User }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={revoke.isPending}
+                  disabled={!writeable || revoke.isPending}
                   onClick={() => revoke.mutate(s.id)}
                 >
                   删除
@@ -282,10 +308,13 @@ export function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [resetOpen, setResetOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [tokenOpen, setTokenOpen] = useState(false);
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const writeable = canWrite(role);
+  const platformAdmin = isPlatformAdmin(role);
 
   const { data: user, isLoading } = useQuery({
     queryKey: ["users", id],
@@ -330,16 +359,24 @@ export function UserDetailPage() {
       backTo="/console/users"
       actions={
         <div className="flex gap-2">
-          <Button size="sm" onClick={() => issueToken.mutate(user.id)} disabled={issueToken.isPending}>
-            模拟登录
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setResetOpen(true)}>
-            重置密码
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link to={`/console/users/${user.id}/edit`}>编辑</Link>
-          </Button>
-          <DeleteButton onConfirm={() => remove.mutate(user.id)} loading={remove.isPending} />
+          {platformAdmin && (
+            <Button size="sm" onClick={() => issueToken.mutate(user.id)} disabled={issueToken.isPending}>
+              模拟登录
+            </Button>
+          )}
+          {platformAdmin && (
+            <Button size="sm" variant="outline" onClick={() => setResetOpen(true)}>
+              重置密码
+            </Button>
+          )}
+          {writeable && (
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/console/users/${user.id}/edit`}>编辑</Link>
+            </Button>
+          )}
+          {platformAdmin && (
+            <DeleteButton onConfirm={() => remove.mutate(user.id)} loading={remove.isPending} />
+          )}
         </div>
       }
     >
@@ -440,6 +477,7 @@ export function UserEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const [status, setStatus] = useState<string>("");
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
@@ -486,6 +524,7 @@ export function UserEditPage() {
         });
       }}
       loading={mutation.isPending}
+      submitDisabled={!canWrite(role)}
     >
       <FormField id="name" label="名称" value={name || user.name} onChange={setName} />
       <FormField id="email" label="邮箱" value={email || user.email} onChange={setEmail} type="email" />

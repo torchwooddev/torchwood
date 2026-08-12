@@ -17,6 +17,7 @@ export function FormPageWrapper({
   onSubmit,
   loading,
   submitLabel = "保存",
+  submitDisabled,
   children,
 }: {
   title: string;
@@ -26,6 +27,7 @@ export function FormPageWrapper({
   onSubmit: (e: React.FormEvent) => void;
   loading?: boolean;
   submitLabel?: string;
+  submitDisabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -34,7 +36,7 @@ export function FormPageWrapper({
         <CardContent className="pt-6">
           <form onSubmit={onSubmit} className="space-y-4 max-w-lg">
             {children}
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || submitDisabled}>
               {loading ? "保存中..." : submitLabel}
             </Button>
           </form>
@@ -209,14 +211,16 @@ export function BulkDeleteButton({
 export function RowDeleteButton({
   onConfirm,
   loading,
+  disabled,
 }: {
   onConfirm: () => void;
   loading?: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="ghost" size="icon" onClick={() => setOpen(true)} title="删除">
+      <Button variant="ghost" size="icon" onClick={() => setOpen(true)} title="删除" disabled={disabled}>
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
       <ConfirmDialog

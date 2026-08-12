@@ -6,6 +6,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { getProjectID, setProjectID } from "@/api/client";
 import {
   login as apiLogin,
@@ -19,7 +21,7 @@ interface AuthContextValue {
   // loading 为 true 表示正在用 refresh cookie 探测初始会话状态。
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   selectProject: (projectID: string) => void;
 }
 
@@ -28,6 +30,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 会话凭证在 HttpOnly cookie 里，JS 读不到；加载时用一次 refresh 探测
   // （成功即已登录并顺带续期），失败视为匿名。
+  const queryClient = useQueryClient();
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [projectId, setProjectIdState] = useState<string | null>(() => getProjectID());
@@ -60,14 +63,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthenticated(true);
   }, []);
 
-  const logout = useCallback(() => {
-    // Fire-and-forget: apiLogout revokes the session and clears the cookies
-    // server-side (best-effort); clear local state immediately either way.
-    void apiLogout();
+  const logout = useCallback(async () => {
+    // await 登出请求：失败说明会话可能仍有效（服务端未撤销），给出明确引导；
+    // 无论成败都清理本地状态与全部查询缓存。
+    try {
+      await apiLogout();
+    } catch {
+      toast.error("登出失败，会话可能仍有效，请重试");
+    }
     setProjectID(null);
     setProjectIdState(null);
     setAuthenticated(false);
-  }, []);
+    queryClient.clear();
+  }, [queryClient]);
 
   const selectProject = useCallback((projectID: string) => {
     setProjectID(projectID);
