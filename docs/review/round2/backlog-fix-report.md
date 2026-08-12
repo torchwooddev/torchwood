@@ -259,13 +259,18 @@ Docker，本地无环境，按约定交 CI。
 3. **ConfirmEmailChange 唯一索引兜底**：查重与写入间的 TOCTOU 竞态由 email 唯一索引兜底，
    `documentdb.ErrDuplicateKey` 映射为 AlreadyExists（与 UpdateAccount 一致）。
 
-修复后本地全量验证再次全绿，push 第二轮（run 见 §7）。
+修复后本地全量验证再次全绿；CI 第二轮/第三轮依次修复 authCtx 与 gofmt tab 问题后，
+最终 run 31605512363 全绿（详见 §7）。
 
 ---
 
 ## 7. CI 验证
 
-- Run 1（31603870245）：Backend 集成测试失败 → 修复见 §6a。
-- Run 2：`gh run watch` 最终结果待更新（push 后填写）。
-- 待 CI 覆盖：B1 staging 集成测试（真实 Postgres）、B3 保留字 id 文档 CRUD 集成测试、
-  REST 层（internal/api）与 Docker 集成测试、console embed 构建链路。
+| Run | commit | 结果 | 说明 |
+|-----|--------|------|------|
+| [31603870245](https://github.com/torchwooddev/torchwood/actions/runs/31603870245) | 3ece633 | ❌ Backend 失败 | pending_email 无物理列 + 既有集成测试未适配 staging（修复见 §6a） |
+| [31604815681](https://github.com/torchwooddev/torchwood/actions/runs/31604815681) | 117f960 | ❌ Backend 失败 | 集成测试以无 principal ctx 直调 ConfirmEmailChange → Unauthenticated（修复：改 authCtx） |
+| [31605239552](https://github.com/torchwooddev/torchwood/actions/runs/31605239552) | 1b36132 | ❌ Backend 失败 | gofmt 检查：replaceAll 引入多余 tab（修复：gofmt -w） |
+| [31605512363](https://github.com/torchwooddev/torchwood/actions/runs/31605512363) | 93f09e3 | ✅ **Backend + Frontend 全绿** | 最终全链路通过 |
+
+最终 run 覆盖：buf lint、gofmt、go vet、单元 + 集成测试（真实 PG/Redis/MinIO/Docker，含 B1 staging 全流程与 B3 保留字 id CRUD）、TS SDK test、console embed 构建、server/worker/client 二进制构建。
