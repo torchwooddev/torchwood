@@ -20,7 +20,7 @@ func TestSystemCollections_IsSystemFlag(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -72,7 +72,7 @@ func TestSystemCollections_SchemaOpsDenied(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -115,7 +115,7 @@ func TestSystemCollections_DocumentReadPolicy(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -237,7 +237,7 @@ func TestSystemCollections_DocumentWriteDenied(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -286,7 +286,7 @@ func TestSystemCollections_UpdateCollectionPermissionValidation(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 

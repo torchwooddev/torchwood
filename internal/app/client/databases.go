@@ -17,6 +17,10 @@ type Databases struct {
 	docDB       databases.DocumentDB
 }
 
+// clientDocumentIDReserved 是 Client API 的 REST 字面量路由段
+// （documents/count），document_id 不得取 count（F11-3，方案 B）。
+var clientDocumentIDReserved = map[string]struct{}{"count": {}}
+
 func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB) *Databases {
 	return &Databases{projectRepo: projectRepo, docDB: docDB}
 }
@@ -119,6 +123,9 @@ func (d *Databases) CreateDocument(
 	if err != nil {
 		return nil, err
 	}
+	if _, reserved := clientDocumentIDReserved[documentID]; reserved {
+		return nil, status.Errorf(codes.InvalidArgument, "document_id %q is reserved", documentID)
+	}
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")
 	}
@@ -137,14 +144,9 @@ func (d *Databases) CreateDocument(
 	if err != nil {
 		return nil, shared.MapDocumentDBError(fmt.Errorf("create document: %w", err))
 	}
-	got, err := d.docDB.GetDocument(ctx, projectID, databaseID, collectionID, created.ID, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(err)
-	}
-	if got == nil {
-		return nil, status.Error(codes.NotFound, "document not found after create")
-	}
-	return got, nil
+	// adapter 已用 SystemPrincipal 读回；不再以调用方 principal 重读，
+	// 避免文档权限不含调用方 read 时返回 403（数据已落库的半完成状态）。
+	return &created, nil
 }
 
 func (d *Databases) ListDocuments(

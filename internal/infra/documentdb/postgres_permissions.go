@@ -53,19 +53,25 @@ func (p *postgresDocumentDB) getDocumentPermissions(ctx context.Context, schema,
 	return perms, len(perms) > 0, nil
 }
 
+// checkDocumentPermission 校验文档级权限；coll 为调用方已获取的集合
+// （避免重复查询 N+1），nil 时内部获取。
 func (p *postgresDocumentDB) checkDocumentPermission(
 	ctx context.Context,
 	projectID, schema, collectionID, docID string,
 	tenant int64,
 	permType string,
 	principal databases.Principal,
+	coll *databases.Collection,
 ) error {
 	if principal.IsSystem() {
 		return nil
 	}
-	coll, err := p.getCollectionForAccess(ctx, projectID, schemaDatabaseID(schema), collectionID)
-	if err != nil {
-		return err
+	if coll == nil {
+		var err error
+		coll, err = p.getCollectionForAccess(ctx, projectID, schemaDatabaseID(schema), collectionID)
+		if err != nil {
+			return err
+		}
 	}
 	if err := p.ensureCollectionAccessible(coll, principal); err != nil {
 		return err
@@ -241,15 +247,17 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		return fmt.Errorf("invalid attribute key: %s", key)
 	}
 	schema := schemaName(internalID, databaseID)
-	if _, err := p.conn(ctx).ExecContext(ctx,
-		fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, collectionID), quoteIdent(key)),
-	); err != nil {
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if _, err := p.conn(txCtx).ExecContext(txCtx,
+			fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, collectionID), quoteIdent(key)),
+		); err != nil {
+			return err
+		}
+		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
+			Where("project_id = ? AND database_id = ? AND collection_id = ? AND key = ?", projectID, databaseID, collectionID, key).
+			Exec(txCtx)
 		return err
-	}
-	_, err = p.conn(ctx).NewDelete().Model((*model.DocumentAttribute)(nil)).
-		Where("project_id = ? AND database_id = ? AND collection_id = ? AND key = ?", projectID, databaseID, collectionID, key).
-		Exec(ctx)
-	return err
+	})
 }
 
 func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error {

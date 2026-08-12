@@ -179,6 +179,8 @@ func Parse(raw string) (*Query, error) {
 }
 
 // ParseMany parses multiple Appwrite-style query strings and merges them into one Query.
+// 未显式指定 limit 时 Limit 保持 0，默认页大小由 adapter 决定（ListDocuments 用
+// PageSize 回退），避免 DSL 层注入默认值掩盖调用方的分页参数。
 func ParseMany(raw []string) (*Query, error) {
 	merged := &Query{}
 	for _, r := range raw {
@@ -201,9 +203,6 @@ func ParseMany(raw []string) (*Query, error) {
 		if q.CursorBefore != "" {
 			merged.CursorBefore = q.CursorBefore
 		}
-	}
-	if merged.Limit == 0 {
-		merged.Limit = 50 // default page size
 	}
 	return merged, nil
 }

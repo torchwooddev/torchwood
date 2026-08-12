@@ -27,8 +27,14 @@ func InTx(ctx context.Context) bool {
 	return ok
 }
 
-// RunInTx runs fn inside a database transaction.
+// RunInTx runs fn inside a database transaction. When ctx already carries an
+// active transaction (see WithTx), fn runs on that transaction instead of
+// opening a nested one — nested transactions on separate connections would
+// deadlock on DDL locks held by the outer transaction.
 func (d *Database) RunInTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if InTx(ctx) {
+		return fn(ctx)
+	}
 	return d.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		return fn(WithTx(ctx, tx))
 	})

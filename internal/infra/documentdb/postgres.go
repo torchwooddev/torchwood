@@ -86,7 +86,7 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 		return err
 	}
 	schema := schemaName(internalID, id)
-	if _, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
+	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
 	if err := p.ensurePermsTable(ctx, schema); err != nil {
@@ -146,11 +146,26 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 		return err
 	}
 	schema := schemaName(internalID, id)
-	if _, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
+			return err
+		}
+		// F4-2：物理对象删除后必须清理元数据，否则同名库/集合无法重建。
+		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
+			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
+			return err
+		}
+		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
+			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
+			return err
+		}
+		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
+			return err
+		}
+		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentDatabase)(nil)).Where("id = ? AND project_id = ?", id, projectID).Exec(txCtx)
 		return err
-	}
-	_, err = p.db.NewDelete().Model((*model.DocumentDatabase)(nil)).Where("id = ? AND project_id = ?", id, projectID).Exec(ctx)
-	return err
+	})
 }
 
 func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
@@ -159,20 +174,23 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
-	if err := p.ensureSchemaAndPerms(ctx, schema); err != nil {
-		return err
-	}
 
-	if err := p.createCollectionTable(ctx, schema, collectionID, internalID, attrs); err != nil {
-		return err
-	}
-	for _, idx := range idxs {
-		if err := p.createCollectionIndex(ctx, schema, collectionID, idx); err != nil {
+	// DDL 与 document_* 元数据包进同一事务（PG 支持事务内 DDL），
+	// 任一步失败整体回滚，避免"物理表建成而元数据缺失"。
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := p.ensureSchemaAndPerms(txCtx, schema); err != nil {
 			return err
 		}
-	}
-
-	return p.createCollectionMetadata(ctx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
+		if err := p.createCollectionTable(txCtx, schema, collectionID, internalID, attrs); err != nil {
+			return err
+		}
+		for _, idx := range idxs {
+			if err := p.createCollectionIndex(txCtx, schema, collectionID, idx); err != nil {
+				return err
+			}
+		}
+		return p.createCollectionMetadata(txCtx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
+	})
 }
 
 func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
@@ -275,15 +293,26 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
-	if _, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
+			return err
+		}
+		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, collectionID))); err != nil {
+			return err
+		}
+		// F4-2：物理表删除后同步清理属性/索引元数据，否则删了建不回来。
+		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
+			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx); err != nil {
+			return err
+		}
+		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx); err != nil {
+			return err
+		}
+		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
+			Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Exec(txCtx)
 		return err
-	}
-	if _, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, collectionID))); err != nil {
-		return err
-	}
-	_, err = p.db.NewDelete().Model((*model.DocumentCollection)(nil)).
-		Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Exec(ctx)
-	return err
+	})
 }
 
 func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch databases.CollectionPatch) error {
@@ -331,25 +360,27 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if err != nil {
 		return err
 	}
-	if _, err := p.db.DB.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s`, tableName(schema, collectionID), colSQL)); err != nil {
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s`, tableName(schema, collectionID), colSQL)); err != nil {
+			return err
+		}
+		m := &model.DocumentAttribute{
+			ID:           attr.ID,
+			CollectionID: collectionID,
+			DatabaseID:   databaseID,
+			ProjectID:    projectID,
+			Key:          attr.Key,
+			Type:         attr.Type,
+			Required:     attr.Required,
+			IsArray:      attr.Array,
+			CreatedAt:    time.Now(),
+		}
+		if attr.Size > 0 {
+			m.Size = &attr.Size
+		}
+		_, err := p.conn(txCtx).NewInsert().Model(m).Exec(txCtx)
 		return err
-	}
-	m := &model.DocumentAttribute{
-		ID:           attr.ID,
-		CollectionID: collectionID,
-		DatabaseID:   databaseID,
-		ProjectID:    projectID,
-		Key:          attr.Key,
-		Type:         attr.Type,
-		Required:     attr.Required,
-		IsArray:      attr.Array,
-		CreatedAt:    time.Now(),
-	}
-	if attr.Size > 0 {
-		m.Size = &attr.Size
-	}
-	_, err = p.db.NewInsert().Model(m).Exec(ctx)
-	return err
+	})
 }
 
 func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
@@ -358,30 +389,54 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
-	if err := p.createCollectionIndex(ctx, schema, collectionID, idx); err != nil {
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := p.createCollectionIndex(txCtx, schema, collectionID, idx); err != nil {
+			return err
+		}
+		m := &model.DocumentIndex{
+			ID:           idx.ID,
+			CollectionID: collectionID,
+			DatabaseID:   databaseID,
+			ProjectID:    projectID,
+			Type:         idx.Type,
+			Attributes:   idx.Attributes,
+			Orders:       idx.Orders,
+			CreatedAt:    time.Now(),
+		}
+		_, err := p.conn(txCtx).NewInsert().Model(m).Exec(txCtx)
 		return err
-	}
-	m := &model.DocumentIndex{
-		ID:           idx.ID,
-		CollectionID: collectionID,
-		DatabaseID:   databaseID,
-		ProjectID:    projectID,
-		Type:         idx.Type,
-		Attributes:   idx.Attributes,
-		Orders:       idx.Orders,
-		CreatedAt:    time.Now(),
-	}
-	_, err = p.db.NewInsert().Model(m).Exec(ctx)
-	return err
+	})
 }
 
 func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
+	if clients.InTx(ctx) {
+		return p.createDocument(ctx, projectID, databaseID, collectionID, doc, perms, principal)
+	}
+	var out databases.Document
+	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		created, err := p.createDocument(txCtx, projectID, databaseID, collectionID, doc, perms, principal)
+		if err != nil {
+			return err
+		}
+		out = created
+		return nil
+	}); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// createDocument 是 CreateDocument 的事务体：数据行与 _perms 写入在同一事务内，
+// 任一步失败整体回滚，避免权限写入失败时文档数据 fail-open。
+func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
 		return doc, err
 	}
 	if doc.ID == "" {
 		doc.ID = idgen.UUID().String()
+	} else if err := validateDocID(doc.ID); err != nil {
+		return doc, err
 	}
 	schema := schemaName(internalID, databaseID)
 	tbl := tableName(schema, collectionID)
@@ -460,12 +515,60 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		}
 		conflictCols = append(conflictCols, quoteIdent(col))
 	}
+	if clients.InTx(ctx) {
+		return p.upsertDocument(ctx, projectID, databaseID, collectionID, doc, conflictCols, conflictColumns, perms, principal)
+	}
+	var out databases.Document
+	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		upserted, err := p.upsertDocument(txCtx, projectID, databaseID, collectionID, doc, conflictCols, conflictColumns, perms, principal)
+		if err != nil {
+			return err
+		}
+		out = upserted
+		return nil
+	}); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// upsertDocument 是 UpsertDocument 的事务体（P0-1 TOCTOU 修复）：
+// 预查与 INSERT ... ON CONFLICT DO UPDATE 包在同一事务，并对
+// (_tenant, 冲突列值) 取 pg_advisory_xact_lock 串行化并发 upsert——
+// 攻击者的预查发生在受害者提交之后（取锁后重查命中行），按 update
+// 权限拒绝，无法再借 create 权限改写他人行；权限替换与读回同事务。
+func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, conflictCols, conflictColumns []string, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
 		return doc, err
 	}
 	schema := schemaName(internalID, databaseID)
 	tbl := tableName(schema, collectionID)
+
+	conflictValues, err := conflictArgs(conflictColumns, doc.Data)
+	if err != nil {
+		return doc, err
+	}
+
+	// 串行化同一冲突值上的并发 upsert（锁键仅用于互斥，碰撞仅导致轻微串行）。
+	// 对所有主体（含 System）生效：System 并发插入若发生在预查与 INSERT 之间，
+	// 会令 DO UPDATE 分支静默命中他人行（P0-1 残余窗口）。
+	if _, err := p.conn(ctx).ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))`,
+		strconv.FormatInt(internalID, 10), conflictLockKey(conflictValues)); err != nil {
+		return doc, fmt.Errorf("acquire upsert lock: %w", err)
+	}
+
+	// 预查冲突目标行（所有主体）：命中的 _id 决定后续权限检查、权限替换与读回
+	// 的目标（P2-1：新 _id + 冲突值命中他人行时，数据/权限作用在目标行上）。
+	var targetID string
+	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(
+		`SELECT _id FROM %s WHERE _tenant = ? AND %s LIMIT 1`,
+		tbl, conflictWhereClause(conflictColumns)),
+		append([]any{internalID}, conflictValues...)...)
+	if err := row.Scan(&targetID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return doc, err
+	}
 
 	if !principal.IsSystem() {
 		if isWriteProtectedSystemCollection(databaseID, collectionID) {
@@ -481,29 +584,18 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		// 权限分叉以「conflictColumns 命中的目标行」为准，而非 doc.ID（P0-1）：
 		// 命中已存在行 → 对该行做文档级 update 检查（UpdateDocument 语义）；
 		// 未命中 → 纯插入 → 集合级 create 权限（CreateDocument 语义）。
-		// 此前按 _id 的 EXISTS 分叉，新 _id + 唯一键命中他人行时会以 create
-		// 权限放行，而 INSERT ... ON CONFLICT DO UPDATE 实际更新他人行。
-		// TOCTOU：预查与 upsert 之间的并发插入窗口在本场景可接受（注释），
-		// 不引入显式事务，保持与现有 p.conn(ctx) 风格一致。
-		var targetID string
-		conflictValues, err := conflictArgs(conflictColumns, doc.Data)
-		if err != nil {
-			return doc, err
-		}
-		row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(
-			`SELECT _id FROM %s WHERE _tenant = ? AND %s LIMIT 1`,
-			tbl, conflictWhereClause(conflictColumns)),
-			append([]any{internalID}, conflictValues...)...)
-		if err := row.Scan(&targetID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return doc, err
-		}
 		if targetID != "" {
-			if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, targetID, internalID, "update", principal); err != nil {
+			if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, targetID, internalID, "update", principal, coll); err != nil {
 				return doc, err
 			}
-		} else if coll != nil && !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
+		} else if !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
 			return doc, ErrPermissionDenied
 		}
+	}
+	// 目标行的实际 ID：预查命中用目标行，纯插入用 doc.ID。
+	effectiveID := doc.ID
+	if targetID != "" {
+		effectiveID = targetID
 	}
 
 	// INSERT 部分（含 _created_by/_updated_by 审计列，与 CreateDocument 一致）。
@@ -539,15 +631,16 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		return doc, fmt.Errorf("upsert document: %w", err)
 	}
 	// 文档级权限替换语义（与 UpdateDocument 一致）：非空时先清后写。
+	// 作用于目标行（effectiveID），而非调用方传入的 doc.ID。
 	if len(perms) > 0 {
-		if err := p.clearPermissions(ctx, schema, collectionID, doc.ID, internalID); err != nil {
+		if err := p.clearPermissions(ctx, schema, collectionID, effectiveID, internalID); err != nil {
 			return doc, err
 		}
-		if err := p.setPermissions(ctx, schema, collectionID, doc.ID, internalID, perms); err != nil {
+		if err := p.setPermissions(ctx, schema, collectionID, effectiveID, internalID, perms); err != nil {
 			return doc, err
 		}
 	}
-	upserted, err := p.GetDocument(ctx, projectID, databaseID, collectionID, doc.ID, databases.SystemPrincipal)
+	upserted, err := p.GetDocument(ctx, projectID, databaseID, collectionID, effectiveID, databases.SystemPrincipal)
 	if err != nil {
 		return doc, err
 	}
@@ -555,6 +648,28 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		return doc, errors.New("document not found after upsert")
 	}
 	return *upserted, nil
+}
+
+// escapeLikePattern 转义 ILIKE 模式中的通配符与转义符本身（配合 ESCAPE '\' 子句），
+// 使 contains/startsWith/endsWith 将用户输入按字面量匹配。
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
+// conflictLockKey 拼接冲突列值作为 advisory lock 键；仅用于互斥，
+// 拼接歧义导致的键碰撞只造成轻微串行化，不影响正确性。
+func conflictLockKey(values []any) string {
+	var b strings.Builder
+	for i, v := range values {
+		if i > 0 {
+			b.WriteString("\x00")
+		}
+		b.WriteString(fmt.Sprint(v))
+	}
+	return b.String()
 }
 
 func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) (*databases.Document, error) {
@@ -574,7 +689,7 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 	if doc == nil {
 		return nil, nil
 	}
-	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "read", principal); err != nil {
+	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "read", principal, nil); err != nil {
 		return nil, err
 	}
 	if err := p.attachDocumentPermissions(ctx, schema, collectionID, internalID, doc); err != nil {
@@ -584,6 +699,26 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 }
 
 func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, databaseID, collectionID string, update databases.DocumentUpdate, principal databases.Principal) (databases.Document, error) {
+	if clients.InTx(ctx) {
+		return p.updateDocument(ctx, projectID, databaseID, collectionID, update, principal)
+	}
+	var out databases.Document
+	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		updated, err := p.updateDocument(txCtx, projectID, databaseID, collectionID, update, principal)
+		if err != nil {
+			return err
+		}
+		out = updated
+		return nil
+	}); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// updateDocument 是 UpdateDocument 的事务体：数据语句与 _perms 替换在同一
+// 事务内，任一步失败整体回滚；目标文档不存在时返回 ErrDocumentNotFound。
+func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, databaseID, collectionID string, update databases.DocumentUpdate, principal databases.Principal) (databases.Document, error) {
 	doc := update.Document
 	if err := validateDocID(doc.ID); err != nil {
 		return doc, err
@@ -604,7 +739,7 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 	// D3：UpdateDocument 仅检查 update 权限，不再强制 read 预检
 	// （对齐 Appwrite/Supabase：update 策略独立于 select 策略；B1 文档级优先下
 	// "仅持 update 权限"的文档对持权者可用）。
-	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "update", principal); err != nil {
+	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "update", principal, nil); err != nil {
 		return doc, err
 	}
 	tbl := tableName(schema, collectionID)
@@ -641,7 +776,7 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 		return doc, err
 	}
 	if updated == nil {
-		return doc, errors.New("document not found after update")
+		return doc, fmt.Errorf("%w", databases.ErrDocumentNotFound)
 	}
 	return *updated, nil
 }
@@ -650,6 +785,17 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 	if err := validateDocID(docID); err != nil {
 		return err
 	}
+	if clients.InTx(ctx) {
+		return p.deleteDocument(ctx, projectID, databaseID, collectionID, docID, principal)
+	}
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		return p.deleteDocument(txCtx, projectID, databaseID, collectionID, docID, principal)
+	})
+}
+
+// deleteDocument 是 DeleteDocument 的事务体：_perms 清理与数据行删除在同一
+// 事务内，删除失败时不会残留权限行。
+func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) error {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
 		return err
@@ -658,7 +804,7 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 	if !principal.IsSystem() && isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return ErrPermissionDenied
 	}
-	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "delete", principal); err != nil {
+	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "delete", principal, nil); err != nil {
 		return err
 	}
 	if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
@@ -726,6 +872,8 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		args = append(args, filterArgs...)
 	}
 
+	// DSL 未显式指定 limit 时（ParseMany 不再注入默认值）用 q.PageSize，
+	// 仍为 0/负数则回退默认 50；显式 limit 保留上限 clamp（maxQueryLimit）。
 	limit := parsed.Limit
 	if limit == 0 {
 		limit = int(q.PageSize)
@@ -738,9 +886,11 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 	offset := parsed.Offset
 	if q.PageToken != "" {
-		if off, err := crud.DecodePageToken(q.PageToken); err == nil {
-			offset = int(off)
+		off, err := crud.DecodePageToken(q.PageToken)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid page token")
 		}
+		offset = int(off)
 	}
 	if offset > maxQueryOffset {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
@@ -922,15 +1072,28 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 	schema := schemaName(internalID, databaseID)
 	tbl := tableName(schema, collectionID)
 
-	var coll *databases.Collection
-	if !principal.IsSystem() {
-		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
-		if err != nil {
-			return 0, err
+	// 白名单校验：字段必须 ∈ 集合声明属性且为数值类型（integer/float），
+	// System 与普通主体一视同仁（防拼入任意列名）。
+	coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return 0, err
+	}
+	if coll == nil {
+		return 0, status.Error(codes.NotFound, "collection not found")
+	}
+	allowed := false
+	for _, attr := range coll.Attributes {
+		if attr.Key != field {
+			continue
 		}
-		if coll == nil {
-			return 0, status.Error(codes.NotFound, "collection not found")
+		switch strings.ToLower(attr.Type) {
+		case "integer", "float":
+			allowed = true
 		}
+		break
+	}
+	if !allowed {
+		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("field %s is not a numeric attribute", field))
 	}
 
 	whereParts := []string{"d._tenant = ?"}
@@ -1720,14 +1883,14 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 			conds = append(conds, fmt.Sprintf("%s >= ?", col))
 			args = append(args, f.Values[0])
 		case "contains":
-			conds = append(conds, fmt.Sprintf("%s ILIKE ?", col))
-			args = append(args, "%"+f.Values[0]+"%")
+			conds = append(conds, fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col))
+			args = append(args, "%"+escapeLikePattern(f.Values[0])+"%")
 		case "startsWith":
-			conds = append(conds, fmt.Sprintf("%s ILIKE ?", col))
-			args = append(args, f.Values[0]+"%")
+			conds = append(conds, fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col))
+			args = append(args, escapeLikePattern(f.Values[0])+"%")
 		case "endsWith":
-			conds = append(conds, fmt.Sprintf("%s ILIKE ?", col))
-			args = append(args, "%"+f.Values[0])
+			conds = append(conds, fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col))
+			args = append(args, "%"+escapeLikePattern(f.Values[0]))
 		case "search":
 			conds = append(conds, fmt.Sprintf("to_tsvector('simple', %s::text) @@ plainto_tsquery('simple', ?)", col))
 			args = append(args, f.Values[0])

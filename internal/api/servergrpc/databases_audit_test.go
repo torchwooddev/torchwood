@@ -41,8 +41,9 @@ func TestDatabasesService_AuditResource(t *testing.T) {
 	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	svc := NewDatabasesService(uc)
 
-	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+	adminCtx := auditAdminCtx(ctx)
+	require.NoError(t, uc.CreateDatabase(adminCtx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(adminCtx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, nil, true))
 
@@ -95,8 +96,9 @@ func TestDatabasesService_UpsertDocumentAuditResource(t *testing.T) {
 	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	svc := NewDatabasesService(uc)
 
-	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+	adminCtx := auditAdminCtx(ctx)
+	require.NoError(t, uc.CreateDatabase(adminCtx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(adminCtx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, []databases.Index{
 		{ID: "uq_title", Type: "unique", Attributes: []string{"title"}},
@@ -134,4 +136,13 @@ func mapStringToStruct(t *testing.T, m map[string]any) *structpb.Struct {
 	s, err := structpb.NewStruct(m)
 	require.NoError(t, err)
 	return s
+}
+
+// auditAdminCtx 返回携带平台 admin principal 的上下文（DDL 写方法仅限平台 admin）。
+func auditAdminCtx(ctx context.Context) context.Context {
+	return contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:         "admin-1",
+		ActorKind:       shared.ActorKindAdmin,
+		IsPlatformAdmin: true,
+	})
 }

@@ -41,13 +41,13 @@ func TestValidateIdentifier(t *testing.T) {
 func TestCreateDatabase_InvalidID(t *testing.T) {
 	d := &Databases{}
 	for _, id := range []string{"bad-id", "bad id", "1starts_with_digit"} {
-		st, _ := status.FromError(d.CreateDatabase(context.Background(), "proj", id, "name"))
+		st, _ := status.FromError(d.CreateDatabase(platformAdminCtx(context.Background()), "proj", id, "name"))
 		require.Equal(t, codes.InvalidArgument, st.Code(), "id %q should be rejected", id)
 	}
 }
 
 func TestCreateDatabase_DefaultRejected(t *testing.T) {
 	d := &Databases{}
-	st, _ := status.FromError(d.CreateDatabase(context.Background(), "proj", "default", "name"))
+	st, _ := status.FromError(d.CreateDatabase(platformAdminCtx(context.Background()), "proj", "default", "name"))
 	require.Equal(t, codes.InvalidArgument, st.Code())
 }

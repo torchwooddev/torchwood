@@ -18,6 +18,14 @@ var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 // maxBulkOperations 是 Bulk 写入单次条数上限（A4）。
 const maxBulkOperations = 1000
 
+// documentIDReserved 是 REST 字面量路由段，document_id 不得取这些值：
+// documents/count、documents/bulk（+bulk/delete）为字面量路由，grpc-gateway
+// 字面量优先匹配，同名 document 经 REST 永远无法访问（F11-3，方案 B）。
+var documentIDReserved = map[string]struct{}{
+	"count": {},
+	"bulk":  {},
+}
+
 // serverSensitiveCollectionFields 是高敏系统集合（users/sessions/identities）
 // 经 Server Databases API 读取时的脱敏字段清单；专用 API 不公开这些字段。
 var serverSensitiveCollectionFields = map[string][]string{
@@ -47,6 +55,9 @@ func (d *Databases) resolveProject(ctx context.Context, projectID string) (*proj
 }
 
 func (d *Databases) CreateDatabase(ctx context.Context, projectID, id, name string) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if err := d.ValidateIdentifier(id); err != nil {
 		return status.Error(codes.InvalidArgument, "id is required")
 	}
@@ -77,6 +88,9 @@ func (d *Databases) GetDatabase(ctx context.Context, projectID, databaseID strin
 }
 
 func (d *Databases) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	// "default" 库承载全部系统集合，删除会破坏"项目存在 ⇒ schema 存在"不变式
 	// （安全评审 M6 配套），禁止删除。
 	if databaseID == "default" {
@@ -89,6 +103,9 @@ func (d *Databases) DeleteDatabase(ctx context.Context, projectID, databaseID st
 }
 
 func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
 		return status.Error(codes.InvalidArgument, "database_id is required")
 	}
@@ -129,6 +146,9 @@ func (d *Databases) GetCollection(ctx context.Context, projectID, databaseID, co
 }
 
 func (d *Databases) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
@@ -139,6 +159,9 @@ func (d *Databases) DeleteCollection(ctx context.Context, projectID, databaseID,
 }
 
 func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch databases.CollectionPatch, principal databases.Principal) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
 		return status.Error(codes.InvalidArgument, "database_id is required")
 	}
@@ -160,6 +183,9 @@ func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID,
 }
 
 func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, collectionID string, attr databases.Attribute) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
 		return status.Error(codes.InvalidArgument, "database_id is required")
 	}
@@ -183,6 +209,9 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 }
 
 func (d *Databases) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
 		return status.Error(codes.InvalidArgument, "database_id is required")
 	}
@@ -202,6 +231,9 @@ func (d *Databases) CreateIndex(ctx context.Context, projectID, databaseID, coll
 }
 
 func (d *Databases) DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
 		return status.Error(codes.InvalidArgument, "database_id is required")
 	}
@@ -218,6 +250,9 @@ func (d *Databases) DeleteAttribute(ctx context.Context, projectID, databaseID, 
 }
 
 func (d *Databases) DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
 		return status.Error(codes.InvalidArgument, "database_id is required")
 	}
@@ -318,6 +353,9 @@ func (d *Databases) CreateDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
+	if _, reserved := documentIDReserved[documentID]; reserved {
+		return nil, status.Errorf(codes.InvalidArgument, "document_id %q is reserved", documentID)
+	}
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")
 	}
@@ -326,18 +364,13 @@ func (d *Databases) CreateDocument(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	doc := databases.Document{ID: documentID, Data: data}
+	// adapter 已用 SystemPrincipal 读回完整文档（含审计列）；此处不再以调用方
+	// principal 重读，避免权限不含调用方时返回 403（数据已落库的半完成状态）。
 	created, err := d.docDB.CreateDocument(ctx, projectID, databaseID, collectionID, doc, perms, principal)
 	if err != nil {
 		return nil, shared.MapDocumentDBError(fmt.Errorf("create document: %w", err))
 	}
-	got, err := d.docDB.GetDocument(ctx, projectID, databaseID, collectionID, created.ID, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(err)
-	}
-	if got == nil {
-		return nil, status.Error(codes.NotFound, "document not found after create")
-	}
-	return got, nil
+	return &created, nil
 }
 
 func (d *Databases) ListDocuments(

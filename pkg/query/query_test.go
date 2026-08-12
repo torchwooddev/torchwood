@@ -79,6 +79,22 @@ func TestParseMany(t *testing.T) {
 	require.Equal(t, 20, q.Offset)
 }
 
+// TestParseMany_NoDefaultLimit (F3-2)：未显式指定 limit 时 Limit 保持 0，
+// 默认页大小交由 adapter 决定（ListDocuments 用 PageSize 回退）。
+func TestParseMany_NoDefaultLimit(t *testing.T) {
+	q, err := ParseMany([]string{`equal("status","active")`})
+	require.NoError(t, err)
+	require.Equal(t, 0, q.Limit)
+
+	q, err = ParseMany(nil)
+	require.NoError(t, err)
+	require.Equal(t, 0, q.Limit)
+
+	q, err = ParseMany([]string{`limit(0)`})
+	require.NoError(t, err)
+	require.Equal(t, 0, q.Limit)
+}
+
 // TestParse_NegativeLimitOffset (A1): 解析期 fail-fast，负数 limit/offset 直接报错，
 // 防止透传到 PG 变成 LIMIT -1（全表返回）。
 func TestParse_NegativeLimitOffset(t *testing.T) {

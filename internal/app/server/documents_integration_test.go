@@ -19,7 +19,7 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -83,7 +83,7 @@ func TestDatabases_UpsertDocument(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -130,7 +130,7 @@ func TestDatabases_UpsertDocument_Validation(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 

@@ -22,7 +22,7 @@ func TestDatabases_AcceptanceChain(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -100,7 +100,7 @@ func TestDatabases_CreateCollection_DocumentSecurityFalse(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -132,7 +132,7 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -170,7 +170,7 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -232,7 +232,7 @@ func TestDatabases_ListCollections_Pagination(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -286,7 +286,7 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -349,7 +349,7 @@ func TestDatabases_BulkDocuments_MaxOperations(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -385,7 +385,7 @@ func TestDatabases_CreateDocument_TypeMismatch(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -428,7 +428,7 @@ func TestDatabases_UpdateCollection(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -484,7 +484,7 @@ func TestDatabases_DeleteAttribute_DeleteIndex(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -547,7 +547,7 @@ func TestDatabases_Document_Increment(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 

@@ -216,6 +216,72 @@ func TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected(t *
 	require.Equal(t, "original", got.Data["name"])
 }
 
+// TestPostgresDocumentDatabase_UpsertDocument_ConcurrentRace (P0-1 并发版)：
+// victim 与 attacker 并发 upsert 同一冲突值。advisory lock 串行化后：
+// attacker 先执行 → 插入自己的行，随后 victim 的 upsert 覆盖为 victim 数据；
+// attacker 后执行 → 预查命中 victim 行 → update 权限拒绝（ErrPermissionDenied）。
+// 两种交错下最终数据都必须保持 victim 的值，attacker 无法改写。
+func TestPostgresDocumentDatabase_UpsertDocument_ConcurrentRace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "users", "Users", []databases.Attribute{
+		{ID: "email", Key: "email", Type: "string", Size: 256},
+		{ID: "name", Key: "name", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "email_key", Type: "unique", Attributes: []string{"email"}},
+	}, []databases.Permission{
+		{Type: "create", Role: "users"},
+	}, true))
+
+	start := make(chan struct{})
+	errCh := make(chan error, 2)
+	victim := func() {
+		<-start
+		_, err := docDB.UpsertDocument(ctx, projectID, "app", "users", databases.Document{
+			ID:   "victim-doc",
+			Data: map[string]any{"email": "race@x.com", "name": "original"},
+		}, []string{"email"}, nil, databases.SystemPrincipal)
+		errCh <- err
+	}
+	attacker := func() {
+		<-start
+		_, err := docDB.UpsertDocument(ctx, projectID, "app", "users", databases.Document{
+			ID:   "attacker-doc",
+			Data: map[string]any{"email": "race@x.com", "name": "hacked"},
+		}, []string{"email"}, nil, databases.Principal{Roles: []string{"users"}})
+		errCh <- err
+	}
+	go victim()
+	go attacker()
+	close(start)
+	victimErr := <-errCh
+	attackerErr := <-errCh
+
+	require.NoError(t, victimErr)
+	if attackerErr != nil {
+		require.ErrorIs(t, attackerErr, ErrPermissionDenied)
+	}
+
+	// 唯一键保证集合内仅一行，且数据必须保持 victim 的值。
+	list, err := docDB.ListDocuments(ctx, projectID, "app", "users", databases.Query{
+		Queries: []string{`equal("email","race@x.com")`},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list.Documents, 1)
+	require.Equal(t, "original", list.Documents[0].Data["name"])
+}
+
 func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -608,8 +674,10 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// TestListDocuments_PaginationGuards (A1): page_size 负数回退默认页大小；
-// DSL limit(-1) 在解析期报错（fail-fast）；offset 超上限 → InvalidArgument。
+// TestListDocuments_PaginationGuards (A1/F3-2): page_size 负数回退默认页大小；
+// DSL 未显式指定 limit 时 page_size 生效（此前 ParseMany 恒注入 50 掩盖该行为）；
+// DSL limit 优先于 page_size；DSL limit(-1)/offset(-1) 在解析期报错（fail-fast）；
+// offset 超上限 → InvalidArgument。
 func TestListDocuments_PaginationGuards(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -628,16 +696,47 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 		{ID: "n", Key: "n", Type: "integer"},
 	}, nil, nil, true))
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 7; i++ {
 		_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
 			Data: map[string]any{"n": i},
 		}, nil, databases.SystemPrincipal)
 		require.NoError(t, err)
 	}
 
-	// page_size=-1 → 回退默认页大小 50，3 条全部返回。
+	// page_size=5 且 DSL 未显式指定 limit → 返回 5 条，total=7，NextPageToken 非空。
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize: 5,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list.Documents, 5)
+	require.Equal(t, int64(7), list.TotalCount)
+	require.NotEmpty(t, list.NextPageToken)
+
+	// 第二页：剩余 2 条，无 NextPageToken。
+	list2, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize:  5,
+		PageToken: list.NextPageToken,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list2.Documents, 2)
+	require.Empty(t, list2.NextPageToken)
+
+	// page_size=-1 → 回退默认页大小 50，7 条全部返回。
+	list, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		PageSize: -1,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list.Documents, 7)
+
+	// page_size=0 → 同默认 50，7 条全部返回。
+	list, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list.Documents, 7)
+
+	// DSL limit 显式指定时优先于 page_size。
+	list, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize: 5,
+		Queries:  []string{`limit(3)`},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 3)
@@ -662,6 +761,13 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", []string{`offset(10001)`}, databases.SystemPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 非法 PageToken → InvalidArgument（对齐 ListCollections）。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageToken: "not-a-valid-token",
+	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
