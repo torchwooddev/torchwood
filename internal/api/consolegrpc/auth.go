@@ -62,7 +62,7 @@ func (s *AuthService) GetSetupStatus(ctx context.Context, _ *consolev1.GetSetupS
 		return nil, err
 	}
 	return &consolev1.GetSetupStatusResponse{
-		NeedsSetup:        needsSetup,
+		NeedsSetup:         needsSetup,
 		SetupTokenRequired: s.setup.SetupTokenConfigured(),
 	}, nil
 }

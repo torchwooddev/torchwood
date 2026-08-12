@@ -172,7 +172,9 @@ func (f *fakeDocDB) UpdateCollection(context.Context, string, string, string, da
 func (f *fakeDocDB) CreateAttribute(context.Context, string, string, string, databases.Attribute) error {
 	return nil
 }
-func (f *fakeDocDB) DeleteAttribute(context.Context, string, string, string, string) error { return nil }
+func (f *fakeDocDB) DeleteAttribute(context.Context, string, string, string, string) error {
+	return nil
+}
 func (f *fakeDocDB) CreateIndex(context.Context, string, string, string, databases.Index) error {
 	return nil
 }

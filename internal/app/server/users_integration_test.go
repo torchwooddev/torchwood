@@ -225,10 +225,10 @@ func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
 		_, err := docDB.CreateDocument(ctx, projectID, "default", "memberships", databases.Document{
 			ID: idgen.UUID().String(),
 			Data: map[string]any{
-				"team_id":  idgen.UUID().String(),
-				"user_id":  doc.ID,
-				"status":   teams.StatusAccepted,
-				"roles":    []string{teams.RoleMember},
+				"team_id":   idgen.UUID().String(),
+				"user_id":   doc.ID,
+				"status":    teams.StatusAccepted,
+				"roles":     []string{teams.RoleMember},
 				"joined_at": time.Now().Format(time.RFC3339Nano),
 			},
 		}, nil, databases.SystemPrincipal)
