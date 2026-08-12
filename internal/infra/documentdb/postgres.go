@@ -478,14 +478,27 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		if err := p.ensureCollectionAccessible(coll, principal); err != nil {
 			return doc, err
 		}
-		// 已存在文档（行存在）→ 按 UpdateDocument 语义做文档级 update 检查；
-		// 否则为插入路径 → 以集合级 create 权限为准（CreateDocument 语义）。
-		var exists bool
-		if err := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s WHERE _id = ? AND _tenant = ?)`, tbl), doc.ID, internalID).Scan(&exists); err != nil {
+		// 权限分叉以「conflictColumns 命中的目标行」为准，而非 doc.ID（P0-1）：
+		// 命中已存在行 → 对该行做文档级 update 检查（UpdateDocument 语义）；
+		// 未命中 → 纯插入 → 集合级 create 权限（CreateDocument 语义）。
+		// 此前按 _id 的 EXISTS 分叉，新 _id + 唯一键命中他人行时会以 create
+		// 权限放行，而 INSERT ... ON CONFLICT DO UPDATE 实际更新他人行。
+		// TOCTOU：预查与 upsert 之间的并发插入窗口在本场景可接受（注释），
+		// 不引入显式事务，保持与现有 p.conn(ctx) 风格一致。
+		var targetID string
+		conflictValues, err := conflictArgs(conflictColumns, doc.Data)
+		if err != nil {
 			return doc, err
 		}
-		if exists {
-			if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "update", principal); err != nil {
+		row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(
+			`SELECT _id FROM %s WHERE _tenant = ? AND %s LIMIT 1`,
+			tbl, conflictWhereClause(conflictColumns)),
+			append([]any{internalID}, conflictValues...)...)
+		if err := row.Scan(&targetID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return doc, err
+		}
+		if targetID != "" {
+			if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, targetID, internalID, "update", principal); err != nil {
 				return doc, err
 			}
 		} else if coll != nil && !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
@@ -1433,6 +1446,30 @@ func buildInsertParts(doc databases.Document) (columns string, placeholders stri
 		args = append(args, v)
 	}
 	return strings.Join(cols, ", "), strings.Join(phs, ", "), args
+}
+
+// conflictArgs extracts the conflict column values from doc.Data in
+// conflictColumns order; a missing value is an InvalidArgument error.
+func conflictArgs(conflictColumns []string, data map[string]any) ([]any, error) {
+	args := make([]any, 0, len(conflictColumns))
+	for _, col := range conflictColumns {
+		v, ok := data[col]
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("missing value for conflict column: %s", col))
+		}
+		args = append(args, v)
+	}
+	return args, nil
+}
+
+// conflictWhereClause builds an equality predicate matching rows on the
+// conflict columns, e.g. `"email" = ? AND "user_id" = ?`.
+func conflictWhereClause(conflictColumns []string) string {
+	parts := make([]string, 0, len(conflictColumns))
+	for _, col := range conflictColumns {
+		parts = append(parts, fmt.Sprintf("%s = ?", quoteIdent(col)))
+	}
+	return strings.Join(parts, " AND ")
 }
 
 func buildUpdateParts(doc databases.Document, updatedBy string) (setParts []string, args []any) {

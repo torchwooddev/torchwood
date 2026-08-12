@@ -155,6 +155,67 @@ func TestPostgresDocumentDatabase_UpsertDocument(t *testing.T) {
 	require.Equal(t, databases.Permission{Type: "read", Role: "user:u1"}, got.Permissions[0])
 }
 
+// TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected
+// (P0-1): a principal holding only collection-level create must not be able to
+// update another user's row by submitting a new _id whose conflict columns
+// collide with an existing row.
+func TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "users", "Users", []databases.Attribute{
+		{ID: "email", Key: "email", Type: "string", Size: 256},
+		{ID: "name", Key: "name", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "email_key", Type: "unique", Attributes: []string{"email"}},
+	}, []databases.Permission{
+		// 集合仅授予 create:users：攻击者（users）可创建新文档，但没有任何
+		// update 权限——越权路径若命中他人行，必须被文档级 update 校验拦下。
+		{Type: "create", Role: "users"},
+	}, true))
+
+	// 文档 A：系统主体创建，权限只授予 owner，不含攻击者。
+	_, err := docDB.CreateDocument(ctx, projectID, "app", "users", databases.Document{
+		ID: "doc-a",
+		Data: map[string]any{
+			"email": "a@x.com",
+			"name":  "original",
+		},
+	}, []databases.Permission{
+		{Type: "read", Role: "user:owner"},
+		{Type: "update", Role: "user:owner"},
+		{Type: "delete", Role: "user:owner"},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	// 攻击者：仅持集合级 create 权限（默认 create:users），无任何文档级权限。
+	attacker := databases.Principal{Roles: []string{"users"}}
+	_, err = docDB.UpsertDocument(ctx, projectID, "app", "users", databases.Document{
+		ID: "doc-b",
+		Data: map[string]any{
+			"email": "a@x.com", // 命中 doc-a 的唯一索引 → 实际会 UPDATE doc-a
+			"name":  "hacked",
+		},
+	}, []string{"email"}, nil, attacker)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	// 文档 A 必须未被修改。
+	got, err := docDB.GetDocument(ctx, projectID, "app", "users", "doc-a", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "original", got.Data["name"])
+}
+
 func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
