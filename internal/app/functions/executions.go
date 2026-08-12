@@ -51,11 +51,15 @@ type CreateExecutionCommand struct {
 // queueMessage 是入队 payload：execution_id + function_id + project_id + data。
 // （schema 无输入数据列，data 必须随队列传递；另含 project-scoped 访问所需 ID，
 // 见实现方案 §5.5 偏差说明。）
+// attempt 是 worker 重试计数（B2/R07-P3-8）：每次瞬时失败重抛回队前 +1，
+// 队列消息本身是唯一事实来源（跨重启/多 worker 副本正确）；旧消息无此字段
+// 时 json.Unmarshal 默认容忍，视为 0。
 type queueMessage struct {
 	ExecutionID string `json:"execution_id"`
 	FunctionID  string `json:"function_id"`
 	ProjectID   string `json:"project_id"`
 	Data        string `json:"data,omitempty"`
+	Attempt     int    `json:"attempt,omitempty"`
 }
 
 func (f *Functions) CreateExecution(ctx context.Context, cmd CreateExecutionCommand) (*domainfunctions.ExecutionRecord, error) {

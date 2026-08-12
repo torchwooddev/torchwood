@@ -34,9 +34,6 @@ type Worker struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-
-	attemptMu sync.Mutex
-	attempts  map[string]int
 }
 
 // NewWorker creates the functions execution queue consumer.
@@ -136,8 +133,8 @@ func (w *Worker) consume(ctx context.Context) {
 			}
 			w.logger.Error("process execution failed", "error", err)
 			// 瞬时失败重抛回队（LPUSH），最多 maxProcessAttempts 次；超限兜底标 failed。
-			if w.requeue(payload) {
-				if qerr := w.queue.Enqueue(ctx, domainshared.QueueFunctionsExecutions, payload); qerr != nil {
+			if next, ok := requeue(payload); ok {
+				if qerr := w.queue.Enqueue(ctx, domainshared.QueueFunctionsExecutions, next); qerr != nil {
 					w.logger.Error("re-enqueue failed", "error", qerr)
 				}
 			} else {
@@ -147,34 +144,39 @@ func (w *Worker) consume(ctx context.Context) {
 	}
 }
 
-// requeue 记录 payload 的重试次数（进程内存，best-effort）；超过上限返回 false。
-// ⚠️ 已知限制（R07-P3-8，本轮选择不做持久化）：重试计数仅存于进程内存，
-// worker 重启会清零，瞬时失败任务可能被重试超过 maxProcessAttempts 次；
-// 因队列消息被重新入队，重启后计数丢失无法从 ExecutionRecord 恢复
-// （schema 无重试计数字段）。超限兜底 MarkExecutionFailed 仍保证任务最终失败
-// 标记，不会无限重试（每次重启仅多出 ≤ maxProcessAttempts 次）。
-// 未来可改为：ExecutionRecord 增加 retry_count 列 + 每失败原子自增，
-// 或队列 payload 内嵌 attempt 计数。
-func (w *Worker) requeue(payload []byte) bool {
-	key := string(payload)
-	w.attemptMu.Lock()
-	defer w.attemptMu.Unlock()
-	if w.attempts == nil {
-		w.attempts = make(map[string]int)
+// requeue 将瞬时失败的任务重抛回队：解析 payload 内嵌 attempt 计数并 +1，
+// 重新 marshal 后由调用方 Enqueue。队列消息是重试计数的唯一事实来源，
+// worker 重启/多副本不会清零或重复计数（B2/R07-P3-8，替代旧的进程内存 map）。
+// 超限（attempt > maxProcessAttempts）返回 ok=false，由调用方走 failPayload
+// 兜底标记 failed；旧消息无 attempt 字段（json.Unmarshal 视为 0）时首次重试
+// 即为 attempt=1。
+func requeue(payload []byte) (next []byte, ok bool) {
+	var m retryMessage
+	if err := json.Unmarshal(payload, &m); err != nil {
+		// 防御分支：consume 仅对 ProcessExecutionPayload 解析成功的 payload
+		// 调用本函数，正常不可达；视为超限避免坏消息无限重试。
+		return nil, false
 	}
-	w.attempts[key]++
-	if w.attempts[key] > maxProcessAttempts {
-		delete(w.attempts, key)
-		return false
+	m.Attempt++
+	if m.Attempt > maxProcessAttempts {
+		return nil, false
 	}
-	return true
+	next, err := json.Marshal(m)
+	if err != nil {
+		return nil, false
+	}
+	return next, true
 }
 
-// retryMessage 是 worker 侧解析队列 payload 的最小字段集合（用于兜底标记 failed）。
+// retryMessage 是 worker 侧解析队列 payload 的完整字段集合（与 functions 包
+// queueMessage 的 json 字段名一致，JSON 往返无损：execution_id/function_id/
+// project_id/data/attempt；用于 requeue 重抛与 failPayload 兜底标记 failed）。
 type retryMessage struct {
 	ExecutionID string `json:"execution_id"`
 	FunctionID  string `json:"function_id"`
 	ProjectID   string `json:"project_id"`
+	Data        string `json:"data,omitempty"`
+	Attempt     int    `json:"attempt,omitempty"`
 }
 
 // failPayload 解析 payload 并兜底标记执行失败（best-effort）。

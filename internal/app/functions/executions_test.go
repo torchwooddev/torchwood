@@ -111,6 +111,7 @@ func TestCreateExecution_AsyncEnqueues(t *testing.T) {
 	require.Equal(t, "fn_1", msg.FunctionID)
 	require.Equal(t, "p1", msg.ProjectID)
 	require.Equal(t, `{"x":1}`, msg.Data, "data 随队列 payload 传递")
+	require.Equal(t, 0, msg.Attempt, "新入队 payload 无 attempt 字段（首次重试从 1 开始）")
 }
 
 func TestCreateExecution_EnqueueFailureMarksFailed(t *testing.T) {
