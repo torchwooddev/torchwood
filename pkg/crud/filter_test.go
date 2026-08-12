@@ -996,3 +996,87 @@ func TestBuildSingleCondition_SafeMappingWorks(t *testing.T) {
 		t.Errorf("safe mapping produced %q, want to contain %q", where, "u.status = ?")
 	}
 }
+
+// TestBuildSQLWhere_LikeEscaping (R08-P2-2): contains/notContains 必须转义
+// LIKE 通配符（%/_\），配合 ESCAPE '\' 子句按字面量匹配。
+func TestBuildSQLWhere_LikeEscaping(t *testing.T) {
+	tests := []struct {
+		name       string
+		operator   string
+		value      string
+		wantArg    string
+		wantSQL    string
+		wantNotSQL bool
+	}{
+		{
+			name:     "contains percent",
+			operator: ":", value: "100%",
+			wantArg: "%100\\%%",
+			wantSQL: "LIKE ? ESCAPE '\\'",
+		},
+		{
+			name:     "contains underscore",
+			operator: ":", value: "a_b",
+			wantArg: "%a\\_b%",
+			wantSQL: "LIKE ? ESCAPE '\\'",
+		},
+		{
+			name:     "contains backslash",
+			operator: ":", value: `a\b`,
+			wantArg: `%a\\b%`,
+			wantSQL: "LIKE ? ESCAPE '\\'",
+		},
+		{
+			name:     "contains mixed wildcards",
+			operator: ":", value: "50%_x\\y",
+			wantArg: `%50\%\_x\\y%`,
+			wantSQL: "LIKE ? ESCAPE '\\'",
+		},
+		{
+			name:     "not contains percent",
+			operator: "!:", value: "100%",
+			wantArg:    "%100\\%%",
+			wantSQL:    "NOT LIKE ? ESCAPE '\\'",
+			wantNotSQL: true,
+		},
+		{
+			name:     "not contains underscore",
+			operator: "!:", value: "a_b",
+			wantArg:    "%a\\_b%",
+			wantSQL:    "NOT LIKE ? ESCAPE '\\'",
+			wantNotSQL: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filter, err := ParseFilter("name " + tt.operator + " \"" + tt.value + "\"")
+			if err != nil {
+				t.Fatalf("ParseFilter() error = %v", err)
+			}
+			var args []interface{}
+			where := BuildSQLWhere(filter, nil, &args)
+			if !strings.Contains(where, tt.wantSQL) {
+				t.Errorf("SQL %q should contain %q", where, tt.wantSQL)
+			}
+			if len(args) != 1 || args[0] != tt.wantArg {
+				t.Errorf("args = %v, want [%q]", args, tt.wantArg)
+			}
+		})
+	}
+
+	// 转义不改变无通配符输入的行为（回归）。
+	filter, err := ParseFilter("name : \"John\"")
+	if err != nil {
+		t.Fatalf("ParseFilter() error = %v", err)
+	}
+	var args []interface{}
+	where := BuildSQLWhere(filter, nil, &args)
+	requireLike := strings.Contains(where, "ESCAPE '\\'")
+	if !requireLike {
+		t.Errorf("SQL %q should carry ESCAPE clause", where)
+	}
+	if len(args) != 1 || args[0] != "%John%" {
+		t.Errorf("args = %v, want [%q]", args, "%John%")
+	}
+}

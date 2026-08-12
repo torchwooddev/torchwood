@@ -829,7 +829,7 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x129\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2\x81\t\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2\x87\t\n" +
 	"\fUsersService\x12l\n" +
 	"\n" +
 	"CreateUser\x12&.torchwood.server.v1.CreateUserRequest\x1a\x19.torchwood.server.v1.User\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/server/users\x12o\n" +
@@ -841,8 +841,8 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
 	"DeleteUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x12\x8e\x01\n" +
 	"\x10ListUserSessions\x12#.torchwood.server.v1.GetUserRequest\x1a-.torchwood.server.v1.ListUserSessionsResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/server/users/{id}/sessions\x12\x93\x01\n" +
-	"\x11DeleteUserSession\x12-.torchwood.server.v1.DeleteUserSessionRequest\x1a\x1a.torchwood.shared.v1.Empty\"3\x82\xd3\xe4\x93\x02-*+/v1/server/users/{id}/sessions/{session_id}\x12\x8a\x01\n" +
-	"\x0fCreateUserToken\x12#.torchwood.server.v1.GetUserRequest\x1a,.torchwood.server.v1.CreateUserTokenResponse\"$\x82\xd3\xe4\x93\x02\x1e\"\x1c/v1/server/users/{id}/tokens\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"\x11DeleteUserSession\x12-.torchwood.server.v1.DeleteUserSessionRequest\x1a\x1a.torchwood.shared.v1.Empty\"3\x82\xd3\xe4\x93\x02-*+/v1/server/users/{id}/sessions/{session_id}\x12\x90\x01\n" +
+	"\x0fCreateUserToken\x12#.torchwood.server.v1.GetUserRequest\x1a,.torchwood.server.v1.CreateUserTokenResponse\"*\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x1e\"\x1c/v1/server/users/{id}/tokens\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\\\n" +

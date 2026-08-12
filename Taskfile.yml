@@ -104,6 +104,7 @@ tasks:
     deps:
       - sdk-build
     cmds:
+      - npm ci
       - npm run build
 
   dev-server:
@@ -137,9 +138,16 @@ tasks:
     cmds:
       - go test -v ./... -cover
 
+  test-sdk-ts:
+    dir: '{{.USER_WORKING_DIR}}/sdk/typescript'
+    cmds:
+      - npm ci
+      - npm run test
+
   test:
     deps:
       - test-sdk-go
+      - test-sdk-ts
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - go test -v ./... -cover

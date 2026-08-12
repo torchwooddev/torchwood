@@ -208,7 +208,7 @@ func newFunctionsDeploymentsCreateCmd(g *globalFlags) *cobra.Command {
 	var code string
 	cmd := &cobra.Command{
 		Use:   "create <function-id> --code <zip-file>",
-		Short: "上传 zip 代码包创建部署（gRPC 纯消息通道，建议 ≤1MiB）",
+		Short: "上传 zip 代码包创建部署（gRPC 纯消息通道，上限 8MiB）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			req, err := buildCreateDeploymentReq(args[0], code)
@@ -222,7 +222,7 @@ func newFunctionsDeploymentsCreateCmd(g *globalFlags) *cobra.Command {
 			return printJSON(os.Stdout, resp)
 		},
 	}
-	cmd.Flags().StringVar(&code, "code", "", "zip 代码包路径（必填；gRPC 消息通道上限 8MiB，建议 ≤1MiB，更大走 multipart 上传接口）")
+	cmd.Flags().StringVar(&code, "code", "", "zip 代码包路径（必填；gRPC 消息通道上限 8MiB，建议单包 ≤1MiB；更大的代码包请走 multipart 上传接口，上限 50MiB）")
 	return cmd
 }
 
@@ -430,7 +430,7 @@ func buildCreateDeploymentReq(functionID, codePath string) (map[string]any, erro
 		return nil, fmt.Errorf("--code 为空文件")
 	}
 	if len(code) > 8<<20 {
-		return nil, fmt.Errorf("--code 超过 8MiB（gRPC 通道上限，与服务端 MaxRecvMsgSize 对齐），建议 ≤1MiB 或走 multipart 上传接口")
+		return nil, fmt.Errorf("--code 超过 8MiB（gRPC 消息通道上限，与服务端 MaxRecvMsgSize 对齐）；更大的代码包请走 multipart 上传接口（上限 50MiB）")
 	}
 	return map[string]any{"functionId": functionID, "code": base64.StdEncoding.EncodeToString(code)}, nil
 }

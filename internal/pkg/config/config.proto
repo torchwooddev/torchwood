@@ -51,6 +51,10 @@ message Security {
   message ApiKey {
     string header = 1;
   }
+  message Sessions {
+    // 单用户最大并发会话数（end-user sessions）；未配置/0 = 默认 50；-1 = 不限。
+    int32 max_per_user = 1;
+  }
   Jwt jwt = 1;
   ApiKey api_key = 2;
   // Trusted proxy CIDRs (e.g. 10.0.0.0/8). Only peers matching these ranges
@@ -59,6 +63,7 @@ message Security {
   // Console bootstrap token required to sign up the first admin. When empty,
   // Console SignUp is rejected (prevents setup takeover).
   string setup_token = 4;
+  Sessions sessions = 5;
 }
 
 message Database {

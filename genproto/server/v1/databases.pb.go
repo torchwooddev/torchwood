@@ -439,13 +439,15 @@ func (x *GetCollectionRequest) GetCollectionId() string {
 }
 
 type UpdateCollectionRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId       string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId     string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Name             string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Permissions      *PermissionsUpdate     `protobuf:"bytes,4,opt,name=permissions,proto3,oneof" json:"permissions,omitempty"`
-	DocumentSecurity *bool                  `protobuf:"varint,5,opt,name=document_security,json=documentSecurity,proto3,oneof" json:"document_security,omitempty"`
-	Disabled         *bool                  `protobuf:"varint,6,opt,name=disabled,proto3,oneof" json:"disabled,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	// optional：未设置（或空串）= 不修改；设置非空串 = 更新（R10-P1-6；
+	// adapter 对空串同样按不修改处理，清空 name 的语义暂不支持）。
+	Name             *string            `protobuf:"bytes,3,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Permissions      *PermissionsUpdate `protobuf:"bytes,4,opt,name=permissions,proto3,oneof" json:"permissions,omitempty"`
+	DocumentSecurity *bool              `protobuf:"varint,5,opt,name=document_security,json=documentSecurity,proto3,oneof" json:"document_security,omitempty"`
+	Disabled         *bool              `protobuf:"varint,6,opt,name=disabled,proto3,oneof" json:"disabled,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -495,8 +497,8 @@ func (x *UpdateCollectionRequest) GetCollectionId() string {
 }
 
 func (x *UpdateCollectionRequest) GetName() string {
-	if x != nil {
-		return x.Name
+	if x != nil && x.Name != nil {
+		return *x.Name
 	}
 	return ""
 }
@@ -1978,15 +1980,16 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x14GetCollectionRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\"\xc8\x02\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\"\xd6\x02\n" +
 	"\x17UpdateCollectionRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12M\n" +
-	"\vpermissions\x18\x04 \x01(\v2&.torchwood.server.v1.PermissionsUpdateH\x00R\vpermissions\x88\x01\x01\x120\n" +
-	"\x11document_security\x18\x05 \x01(\bH\x01R\x10documentSecurity\x88\x01\x01\x12\x1f\n" +
-	"\bdisabled\x18\x06 \x01(\bH\x02R\bdisabled\x88\x01\x01B\x0e\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x17\n" +
+	"\x04name\x18\x03 \x01(\tH\x00R\x04name\x88\x01\x01\x12M\n" +
+	"\vpermissions\x18\x04 \x01(\v2&.torchwood.server.v1.PermissionsUpdateH\x01R\vpermissions\x88\x01\x01\x120\n" +
+	"\x11document_security\x18\x05 \x01(\bH\x02R\x10documentSecurity\x88\x01\x01\x12\x1f\n" +
+	"\bdisabled\x18\x06 \x01(\bH\x03R\bdisabled\x88\x01\x01B\a\n" +
+	"\x05_nameB\x0e\n" +
 	"\f_permissionsB\x14\n" +
 	"\x12_document_securityB\v\n" +
 	"\t_disabled\"+\n" +

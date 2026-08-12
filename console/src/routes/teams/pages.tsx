@@ -95,10 +95,10 @@ export function TeamsListPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteTeam,
+    mutationFn: (id: string) => deleteTeam(id),
     onSuccess: () => {
       toast.success("团队已删除");
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
     },
   });
 
@@ -107,7 +107,10 @@ export function TeamsListPage() {
   const handleBulkDelete = async (selected: Team[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      const results = await Promise.allSettled(selected.map((t) => deleteTeam(t.id)));
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
+      const results = await Promise.allSettled(
+        selected.map((t) => deleteTeam(t.id, { __skipToast: true }))
+      );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
       if (failed > 0) {
@@ -115,7 +118,7 @@ export function TeamsListPage() {
       } else {
         toast.success(`已删除 ${selected.length} 个团队`);
       }
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
       clear();
     } finally {
       setBulkDeleting(false);
@@ -176,6 +179,7 @@ export function TeamsListPage() {
 export function TeamNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [name, setName] = useState("");
 
@@ -183,7 +187,7 @@ export function TeamNewPage() {
     mutationFn: createTeam,
     onSuccess: (team) => {
       toast.success("团队创建成功");
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
       navigate(`/console/teams/${team.id}`);
     },
   });
@@ -309,6 +313,7 @@ export function TeamDetailPage() {
   const { id: teamId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -331,15 +336,15 @@ export function TeamDetailPage() {
 
   const invalidateTeam = () => {
     queryClient.invalidateQueries({ queryKey: ["teams", teamId] });
-    queryClient.invalidateQueries({ queryKey: ["teams"] });
+    queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
     queryClient.invalidateQueries({ queryKey: ["memberships", teamId] });
   };
 
   const removeTeam = useMutation({
-    mutationFn: deleteTeam,
+    mutationFn: (id: string) => deleteTeam(id),
     onSuccess: () => {
       toast.success("团队已删除");
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
       navigate("/console/teams");
     },
   });
@@ -459,8 +464,9 @@ export function TeamDetailPage() {
   const handleBulkDeleteMemberships = async (selected: Membership[], clear: () => void) => {
     setBulkDeleting(true);
     try {
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
       const results = await Promise.allSettled(
-        selected.map((m) => deleteMembership(teamId!, m.id))
+        selected.map((m) => deleteMembership(teamId!, m.id, { __skipToast: true }))
       );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;

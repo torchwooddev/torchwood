@@ -28,6 +28,7 @@ type Validator struct {
 	docDB            databases.DocumentDB
 	roleResolver     domainauth.UserRoleResolver
 	sessionCodec     *SessionCookieCodec
+	oneTimeTokens    domainauth.OneTimeTokenStore
 }
 
 func NewValidator(
@@ -39,6 +40,21 @@ func NewValidator(
 	docDB databases.DocumentDB,
 	roleResolver domainauth.UserRoleResolver,
 ) *Validator {
+	return NewValidatorWithOneTimeTokens(cfg, apiKeyRepo, adminRepo, adminProjectRepo, adminRevokeStore, docDB, roleResolver, nil)
+}
+
+// NewValidatorWithOneTimeTokens 额外装配一次性 token 消费存储（CreateJWT
+// 签发的一次性 JWT 验证时必须原子消费，防重放；未装配时此类 token 一律拒绝）。
+func NewValidatorWithOneTimeTokens(
+	cfg *config.AppConfig,
+	apiKeyRepo projects.APIKeyRepository,
+	adminRepo projects.AdminRepository,
+	adminProjectRepo projects.AdminProjectRepository,
+	adminRevokeStore domainauth.AdminTokenRevokeStore,
+	docDB databases.DocumentDB,
+	roleResolver domainauth.UserRoleResolver,
+	oneTimeTokens domainauth.OneTimeTokenStore,
+) *Validator {
 	return &Validator{
 		cfg:              cfg,
 		apiKeyRepo:       apiKeyRepo,
@@ -48,6 +64,7 @@ func NewValidator(
 		docDB:            docDB,
 		roleResolver:     roleResolver,
 		sessionCodec:     NewSessionCookieCodec(string(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeSessionCookie))),
+		oneTimeTokens:    oneTimeTokens,
 	}
 }
 
@@ -141,6 +158,17 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 			Permissions:     []string{"console"},
 		}, nil
 	default:
+		if claims.OneTime {
+			// 一次性 JWT（CreateJWT 签发）：验证侧原子消费，二次使用或
+			// 未装配消费存储一律拒绝（fail-closed），普通 access token 不受影响。
+			if v.oneTimeTokens == nil || claims.TokenID == "" {
+				return nil, status.Error(codes.Unauthenticated, "invalid or expired token")
+			}
+			consumed, err := v.oneTimeTokens.Consume(ctx, domainauth.OneTimeJWTKeyPrefix+claims.TokenID)
+			if err != nil || consumed == "" {
+				return nil, status.Error(codes.Unauthenticated, "invalid or expired token")
+			}
+		}
 		if claims.SessionID != "" && claims.ProjectID != "" {
 			if err := v.validateEndUserSession(ctx, claims.ProjectID, claims.SessionID, claims.UserID); err != nil {
 				return nil, err

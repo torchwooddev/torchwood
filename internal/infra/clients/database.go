@@ -74,8 +74,9 @@ func newDatabase(cfg *config.Database, logger *slog.Logger) (*Database, func(), 
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(source)))
 	if pool := cfg.GetPool(); pool != nil {
-		sqldb.SetMaxIdleConns(int(pool.GetMaxIdleConns()))
-		sqldb.SetMaxOpenConns(int(pool.GetMaxOpenConns()))
+		maxOpen, maxIdle := normalizePoolSizes(int(pool.GetMaxOpenConns()), int(pool.GetMaxIdleConns()), logger)
+		sqldb.SetMaxOpenConns(maxOpen)
+		sqldb.SetMaxIdleConns(maxIdle)
 		if d, err := time.ParseDuration(pool.GetConnMaxIdleTime()); err == nil {
 			sqldb.SetConnMaxIdleTime(d)
 		}
@@ -108,4 +109,26 @@ func newRedis(cfg *config.Redis) *redis.Client {
 		Password: cfg.GetPassword(),
 		DB:       int(cfg.GetDb()),
 	})
+}
+
+// normalizePoolSizes 将 pool 配置的 ≤0 值落为安全默认并 Warn：
+//   - max_open ≤ 0 时取 4*GOMAXPROCS——database/sql 的 0 表示无上限，
+//     长期运行下会积累远超实际需要的连接数，属于零值陷阱；
+//   - max_idle ≤ 0 时取 max_open——database/sql 的 0 表示不保留空闲连接，
+//     每次请求都重新建连，短查询场景性能劣化明显。
+func normalizePoolSizes(maxOpen, maxIdle int, logger *slog.Logger) (int, int) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if maxOpen <= 0 {
+		logger.Warn("data.database.pool.max_open_conns <= 0, falling back to safe default",
+			slog.Int("configured", maxOpen), slog.Int("effective", 4*runtime.GOMAXPROCS(0)))
+		maxOpen = 4 * runtime.GOMAXPROCS(0)
+	}
+	if maxIdle <= 0 {
+		logger.Warn("data.database.pool.max_idle_conns <= 0, falling back to safe default",
+			slog.Int("configured", maxIdle), slog.Int("effective", maxOpen))
+		maxIdle = maxOpen
+	}
+	return maxOpen, maxIdle
 }

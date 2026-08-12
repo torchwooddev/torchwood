@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -29,16 +29,16 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   // 未初始化时展示「初始化设置」表单，初始化完成后回到登录态。
   const [setupState, setSetupState] = useState<SetupState>("loading");
+  // setup-status 探测失败时展示错误 + 重试按钮，同时退回登录表单不阻塞登录。
+  const [setupProbeError, setSetupProbeError] = useState<string | null>(null);
   // 默认 API Key 明文 secret 仅展示一次，不持久化。
   const [apiKeySecret, setApiKeySecret] = useState<string | null>(null);
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/console", { replace: true });
-      return;
-    }
+  const probeSetup = useCallback(() => {
+    setSetupProbeError(null);
+    setSetupState("loading");
     let cancelled = false;
     getSetupStatus()
       .then((status) => {
@@ -48,15 +48,23 @@ export function Login() {
         }
       })
       .catch(() => {
-        // 探测失败时退回登录表单，不阻塞登录入口。
         if (!cancelled) {
           setSetupState("login");
+          setSetupProbeError("无法获取初始化状态，可重试或直接登录");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, navigate]);
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/console", { replace: true });
+      return;
+    }
+    return probeSetup();
+  }, [isAuthenticated, navigate, probeSetup]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +109,10 @@ export function Login() {
   const enterConsole = async () => {
     try {
       await login(email, password);
+    } catch (err) {
+      // login 已跳过全局 toast，错误需由本页展示。
+      const msg = extractErrorMessage(err);
+      toast.error(msg || "登录失败，请重试");
     } finally {
       navigate("/console", { replace: true });
     }
@@ -171,6 +183,19 @@ export function Login() {
                   placeholder="TORCHWOOD_SECURITY_SETUP_TOKEN"
                   required
                 />
+              </div>
+            )}
+            {setupProbeError && (
+              <div className="flex items-center justify-between gap-2 rounded-md bg-destructive/10 px-3 py-2">
+                <p className="text-sm text-destructive">{setupProbeError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={probeSetup}
+                >
+                  重试
+                </Button>
               </div>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}

@@ -8,10 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/password"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// adminActorCtx 返回携带 console admin actor principal 的上下文（G2-4 后
+// Admins 写方法要求 admin actor，测试需显式注入）。
+func adminActorCtx(ctx context.Context) context.Context {
+	return contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:   "admin-1",
+		ActorKind: shared.ActorKindAdmin,
+		UserID:    "admin-1",
+	})
+}
 
 type memAdminRepo struct {
 	admins []projects.Admin
@@ -102,13 +114,13 @@ func TestAdmins_Create_ValidatesInput(t *testing.T) {
 	t.Parallel()
 	uc := console.NewAdmins(newAdminRepo())
 
-	_, err := uc.Create(context.Background(), console.CreateAdminCommand{Email: "", Password: "Passw0rd", Role: "owner"})
+	_, err := uc.Create(adminActorCtx(context.Background()), console.CreateAdminCommand{Email: "", Password: "Passw0rd", Role: "owner"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	_, err = uc.Create(context.Background(), console.CreateAdminCommand{Email: "a@b.c", Password: "Passw0rd", Role: "superuser"})
+	_, err = uc.Create(adminActorCtx(context.Background()), console.CreateAdminCommand{Email: "a@b.c", Password: "Passw0rd", Role: "superuser"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	_, err = uc.Create(context.Background(), console.CreateAdminCommand{Email: "a@b.c", Password: "short", Role: "owner"})
+	_, err = uc.Create(adminActorCtx(context.Background()), console.CreateAdminCommand{Email: "a@b.c", Password: "short", Role: "owner"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
@@ -117,7 +129,7 @@ func TestAdmins_Create_HashesPasswordAndNormalizesEmail(t *testing.T) {
 	repo := newAdminRepo()
 	uc := console.NewAdmins(repo)
 
-	created, err := uc.Create(context.Background(), console.CreateAdminCommand{
+	created, err := uc.Create(adminActorCtx(context.Background()), console.CreateAdminCommand{
 		Email: "  Ops@Example.COM ", Password: "Passw0rd", Role: "member",
 	})
 	require.NoError(t, err)
@@ -128,7 +140,7 @@ func TestAdmins_Create_HashesPasswordAndNormalizesEmail(t *testing.T) {
 	require.True(t, ok)
 
 	// Duplicate email.
-	_, err = uc.Create(context.Background(), console.CreateAdminCommand{Email: "ops@example.com", Password: "Passw0rd", Role: "member"})
+	_, err = uc.Create(adminActorCtx(context.Background()), console.CreateAdminCommand{Email: "ops@example.com", Password: "Passw0rd", Role: "member"})
 	require.Equal(t, codes.AlreadyExists, status.Code(err))
 }
 
@@ -137,7 +149,7 @@ func TestAdmins_Update_RejectsSelfDemotion(t *testing.T) {
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"), mkAdmin("a2", "admin@x.com", "admin"))
 	uc := console.NewAdmins(repo)
 
-	_, err := uc.Update(context.Background(), console.UpdateAdminCommand{ID: "a1", CallerID: "a1", Role: "member"})
+	_, err := uc.Update(adminActorCtx(context.Background()), console.UpdateAdminCommand{ID: "a1", CallerID: "a1", Role: "member"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
@@ -146,7 +158,7 @@ func TestAdmins_Update_RejectsDemotingLastOwner(t *testing.T) {
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
 	uc := console.NewAdmins(repo)
 
-	_, err := uc.Update(context.Background(), console.UpdateAdminCommand{ID: "a1", CallerID: "a2", Role: "member"})
+	_, err := uc.Update(adminActorCtx(context.Background()), console.UpdateAdminCommand{ID: "a1", CallerID: "a2", Role: "member"})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 
@@ -158,7 +170,7 @@ func TestAdmins_Update_AllowsRoleChangeAndPasswordReset(t *testing.T) {
 	)
 	uc := console.NewAdmins(repo)
 
-	updated, err := uc.Update(context.Background(), console.UpdateAdminCommand{
+	updated, err := uc.Update(adminActorCtx(context.Background()), console.UpdateAdminCommand{
 		ID: "a2", CallerID: "a1", Role: "member", Password: "NewPassw0rd",
 	})
 	require.NoError(t, err)
@@ -173,7 +185,7 @@ func TestAdmins_Delete_RejectsSelfDeletion(t *testing.T) {
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
 	uc := console.NewAdmins(repo)
 
-	err := uc.Delete(context.Background(), "a1", "a1")
+	err := uc.Delete(adminActorCtx(context.Background()), "a1", "a1")
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Len(t, repo.admins, 1)
 }
@@ -183,7 +195,7 @@ func TestAdmins_Delete_RejectsDeletingLastOwner(t *testing.T) {
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
 	uc := console.NewAdmins(repo)
 
-	err := uc.Delete(context.Background(), "a1", "a2")
+	err := uc.Delete(adminActorCtx(context.Background()), "a1", "a2")
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Len(t, repo.admins, 1)
 }
@@ -197,6 +209,44 @@ func TestAdmins_Delete_AllowsWithSecondOwner(t *testing.T) {
 	)
 	uc := console.NewAdmins(repo)
 
-	require.NoError(t, uc.Delete(context.Background(), "a3", "a1"))
+	require.NoError(t, uc.Delete(adminActorCtx(context.Background()), "a3", "a1"))
 	require.Len(t, repo.admins, 2)
+}
+
+// TestAdmins_WriteMethods_RequireAdminActor（G2-4/R04-P2-2 纵深防御）：
+// Create/Update/Delete 对非 admin actor（API key/端用户/匿名）一律
+// PermissionDenied，对齐 handler 层 requireAdminActor。
+func TestAdmins_WriteMethods_RequireAdminActor(t *testing.T) {
+	t.Parallel()
+	repo := newAdminRepo(
+		mkAdmin("a1", "owner@x.com", "owner"),
+		mkAdmin("a2", "admin@x.com", "admin"),
+	)
+	uc := console.NewAdmins(repo)
+
+	denied := []*shared.Principal{
+		{ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"}, Permissions: []string{"*"}},
+		{ActorID: "user-1", ActorKind: shared.ActorKindEndUser, UserID: "user-1"},
+	}
+	for _, p := range denied {
+		ctx := contexts.WithPrincipal(context.Background(), p)
+		_, err := uc.Create(ctx, console.CreateAdminCommand{Email: "a@b.c", Password: "Passw0rd", Role: "member"})
+		require.Equal(t, codes.PermissionDenied, status.Code(err), "%+v Create 应被拒", p)
+		_, err = uc.Update(ctx, console.UpdateAdminCommand{ID: "a2", CallerID: "a1", Role: "member"})
+		require.Equal(t, codes.PermissionDenied, status.Code(err), "%+v Update 应被拒", p)
+		err = uc.Delete(ctx, "a2", "a1")
+		require.Equal(t, codes.PermissionDenied, status.Code(err), "%+v Delete 应被拒", p)
+	}
+
+	// 匿名 → PermissionDenied（与 handler 层 requireAdminActor 语义一致）。
+	_, err := uc.Create(context.Background(), console.CreateAdminCommand{Email: "a@b.c", Password: "Passw0rd", Role: "member"})
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	err = uc.Delete(context.Background(), "a2", "a1")
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	_, err = uc.Update(context.Background(), console.UpdateAdminCommand{ID: "a2", CallerID: "a1", Role: "member"})
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+
+	// admin actor 放行进入业务校验（业务规则仍生效：改自己角色被拒）。
+	_, err = uc.Update(adminActorCtx(context.Background()), console.UpdateAdminCommand{ID: "a1", CallerID: "a1", Role: "member"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "admin actor 应通过 actor 守卫，随后触发自我保护业务规则")
 }

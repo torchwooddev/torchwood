@@ -164,14 +164,23 @@ func extractCredential(md metadata.MD) (shared.CredentialType, string, error) {
 		token          string
 		seen           bool
 	)
-	if raw := firstMetadataValue(md, "authorization"); raw != "" {
+	// R01-P2-2：凭证类 key 同 key 多值一律拒绝（防头部注入/解析歧义）。
+	raw, err := credentialMetadataValue(md, "authorization")
+	if err != nil {
+		return "", "", err
+	}
+	if raw != "" {
 		ct, tok, ok := ParseAuthorizationHeader(raw)
 		if !ok {
 			return "", "", errors.New("invalid authorization header")
 		}
 		credentialType, token, seen = ct, tok, true
 	}
-	if raw := firstMetadataValue(md, "cookie"); raw != "" {
+	raw, err = credentialMetadataValue(md, "cookie")
+	if err != nil {
+		return "", "", err
+	}
+	if raw != "" {
 		if _, tok, ok := parseSessionCookie(raw); ok {
 			if seen {
 				return "", "", errors.New("multiple credentials provided")
@@ -179,7 +188,11 @@ func extractCredential(md metadata.MD) (shared.CredentialType, string, error) {
 			credentialType, token, seen = shared.CredentialTypeSession, tok, true
 		}
 	}
-	if raw := firstMetadataValue(md, "x-api-key"); raw != "" {
+	raw, err = credentialMetadataValue(md, "x-api-key")
+	if err != nil {
+		return "", "", err
+	}
+	if raw != "" {
 		if seen {
 			return "", "", errors.New("multiple credentials provided")
 		}
@@ -189,6 +202,19 @@ func extractCredential(md metadata.MD) (shared.CredentialType, string, error) {
 		return credentialType, token, nil
 	}
 	return "", "", errors.New("no credential")
+}
+
+// credentialMetadataValue 读取单个凭证值；同一 key 出现多个值时拒绝
+// （"multiple credentials provided"），防止多值头部导致的解析歧义。
+func credentialMetadataValue(md metadata.MD, key string) (string, error) {
+	values := md.Get(key)
+	if len(values) > 1 {
+		return "", errors.New("multiple credentials provided")
+	}
+	if len(values) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(values[0]), nil
 }
 
 // ParseAuthorizationHeader 解析 Authorization 头，支持 Bearer / Session / ApiKey 三种 scheme；

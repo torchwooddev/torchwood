@@ -8,8 +8,10 @@ export interface LoginInput {
 
 // login 成功后会话凭证由服务端通过 HttpOnly cookie 下发，响应体中的 token
 // 仅供直连 gRPC 客户端使用，浏览器端不保存。
+// __skipToast：登录页自行渲染错误（见 routes/Login.tsx），避免全局 toast 双显。
 export async function login(input: LoginInput): Promise<void> {
-  await api.post("/console/auth/sign-in", input);
+  const config: ApiRequestConfig = { __skipToast: true };
+  await api.post("/console/auth/sign-in", input, config);
 }
 
 // refreshSession 用 refresh cookie 探测/续期会话，成功即处于已登录状态。
@@ -33,9 +35,10 @@ export interface SetupStatus {
 }
 
 // getSetupStatus 查询是否尚未初始化（needs_setup=true 时登录页切换为
-// 初始化设置表单）。
+// 初始化设置表单）。__skipToast：探测失败由登录页内联展示错误 + 重试。
 export async function getSetupStatus(): Promise<SetupStatus> {
-  const res = await api.get<SetupStatus>("/console/auth/setup-status");
+  const config: ApiRequestConfig = { __skipToast: true };
+  const res = await api.get<SetupStatus>("/console/auth/setup-status", config);
   return res.data;
 }
 
@@ -54,7 +57,9 @@ export interface SignUpResult {
 
 // signUp 注册首个管理员（owner）。成功后服务端通过 HttpOnly cookie 下发
 // 会话凭证，浏览器端无需再次登录。
+// __skipToast：初始化页自行渲染错误，避免全局 toast 双显。
 export async function signUp(input: SignUpInput): Promise<SignUpResult> {
-  const res = await api.post<SignUpResult>("/console/auth/sign-up", input);
+  const config: ApiRequestConfig = { __skipToast: true };
+  const res = await api.post<SignUpResult>("/console/auth/sign-up", input, config);
   return res.data;
 }

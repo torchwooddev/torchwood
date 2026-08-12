@@ -58,9 +58,7 @@ func (s *AccountService) SignIn(ctx context.Context, req *clientv1.SignInRequest
 }
 
 func (s *AccountService) SignOut(ctx context.Context, _ *clientv1.SignOutRequest) (*sharedv1.Empty, error) {
-	if _, ok := contexts.Principal(ctx); !ok {
-		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
-	}
+	// R04-P2-4：use-case 已容忍无 principal（幂等登出），这里不再重复校验。
 	if err := s.account.SignOut(ctx); err != nil {
 		return nil, err
 	}
@@ -112,6 +110,10 @@ func (s *AccountService) ListSessions(ctx context.Context, _ *clientv1.ListSessi
 }
 
 func (s *AccountService) DeleteSession(ctx context.Context, req *clientv1.DeleteSessionRequest) (*sharedv1.Empty, error) {
+	// R04-P3-2：空 session_id 直接 InvalidArgument，不落到 use-case。
+	if req.GetSessionId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "session_id is required")
+	}
 	if err := s.account.DeleteSession(ctx, req.GetSessionId()); err != nil {
 		return nil, err
 	}
@@ -379,9 +381,9 @@ func (s *AccountService) DeleteFactor(ctx context.Context, req *clientv1.DeleteF
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, p.UserID)
-	// proto 暂无 code 字段（见 F11 契约修复批次）；verified 因子删除需二次验证，
-	// 未携带 code 时 use-case 会以 InvalidArgument 拒绝（fail-closed）。
-	if err := s.account.DeleteFactor(ctx, p.ProjectID, p.UserID, req.GetFactorId(), ""); err != nil {
+	// code 为删除 verified 因子时的 TOTP 二次验证码（REST 经 query 传 ?code=...）；
+	// 未携带时 use-case 对 verified 因子以 InvalidArgument 拒绝（fail-closed，R05-P1-4）。
+	if err := s.account.DeleteFactor(ctx, p.ProjectID, p.UserID, req.GetFactorId(), req.GetCode()); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil

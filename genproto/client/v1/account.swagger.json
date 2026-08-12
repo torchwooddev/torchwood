@@ -45,7 +45,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/jwt": {
@@ -78,7 +79,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/logs": {
@@ -110,7 +112,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/me": {
@@ -140,7 +143,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/mfa": {
@@ -163,7 +167,8 @@
         },
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/mfa/challenge": {
@@ -229,7 +234,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       },
       "put": {
         "operationId": "AccountService_VerifyTOTPFactor",
@@ -259,7 +265,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/mfa/{factorId}": {
@@ -285,11 +292,19 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "code",
+            "description": "删除 verified 因子时的 TOTP 二次验证码（REST 经 query 传 ?code=...，\r\nDELETE 不带 body）；pending 因子无需提供。未提供时 verified 因子\r\n拒绝删除（InvalidArgument，R05-P1-4）。",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/prefs": {
@@ -311,7 +326,8 @@
         },
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       },
       "put": {
         "operationId": "AccountService_UpdatePrefs",
@@ -341,7 +357,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/recovery": {
@@ -463,7 +480,8 @@
         },
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       },
       "delete": {
         "operationId": "AccountService_DeleteSessions",
@@ -491,7 +509,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/sessions/anonymous": {
@@ -758,7 +777,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/sessions/oauth2/{provider}/link/token": {
@@ -796,7 +816,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/sessions/oauth2/{provider}/token": {
@@ -968,7 +989,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/sign-in": {
@@ -1034,7 +1056,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       }
     },
     "/v1/account/sign-up": {
@@ -1100,7 +1123,8 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "x-torchwood-access": "permission"
       },
       "put": {
         "operationId": "AccountService_UpdateVerification",

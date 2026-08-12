@@ -8,7 +8,9 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -140,7 +142,16 @@ func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) 
 		if len(admins) > 0 {
 			return status.Error(codes.FailedPrecondition, "setup already completed")
 		}
-		admin, err = s.admins.Create(txCtx, CreateAdminCommand{
+		// Admins.Create 要求 admin actor（G2-4 纵深防御）；SignUp 是公开
+		// 引导端点，由本 use-case 完成 setup token 授权后代表平台执行首个
+		// owner 创建，故注入 bootstrap principal 表明授权来源。
+		bootstrapCtx := contexts.WithPrincipal(txCtx, &shared.Principal{
+			ActorID:         "setup",
+			ActorKind:       shared.ActorKindAdmin,
+			IsPlatformAdmin: true,
+			UserID:          "setup",
+		})
+		admin, err = s.admins.Create(bootstrapCtx, CreateAdminCommand{
 			Email:    email,
 			Password: password,
 			Role:     AdminRoleOwner,

@@ -30,6 +30,7 @@ type Claims struct {
 	TokenType string   `json:"ttp,omitempty"` // access / refresh
 	Roles     []string `json:"rls,omitempty"`
 	Scopes    []string `json:"scp,omitempty"`
+	OneTime   bool     `json:"one_time,omitempty"` // 一次性 JWT：验证方必须消费后放行
 	ExpiresAt int64    `json:"exp,omitempty"`
 	IssuedAt  int64    `json:"iat,omitempty"`
 }

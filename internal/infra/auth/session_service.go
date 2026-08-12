@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
@@ -17,6 +18,10 @@ import (
 )
 
 const defaultSessionTTL = 7 * 24 * time.Hour
+
+// defaultMaxSessionsPerUser 是 security.sessions.max_per_user 未配置（0）时的
+// 单用户会话上限默认值。
+const defaultMaxSessionsPerUser = 50
 
 // SessionService implements domainauth.SessionService.
 type SessionService struct {
@@ -47,6 +52,15 @@ func (s *SessionService) CreateSessionAndTokens(ctx context.Context, projectID, 
 		provider = domainauth.ProviderEmail
 	}
 	client := contexts.ClientInfoFrom(ctx)
+
+	// R05-P1-6：会话数量上限（security.sessions.max_per_user，未配置/0 = 默认
+	// 50；-1 = 不限）。超限时先淘汰最旧会话（按 expire_at 升序）再创建，
+	// 保证并发登录不越界。
+	if max := s.maxSessionsPerUser(); max > 0 {
+		if err := s.evictOldestSessions(ctx, projectID, userID, max); err != nil {
+			return nil, "", err
+		}
+	}
 
 	expireAt := time.Now().Add(defaultSessionTTL)
 	sessionID := idgen.UUID().String()
@@ -154,9 +168,11 @@ func (s *SessionService) EnsureActiveSession(ctx context.Context, projectID, ses
 }
 
 // DeleteSessionsByUser removes every session document owned by the user.
-// 循环分页（PageSize=1000）直至 NextPageToken 空，避免默认 50 条截断。
+// 循环分页收集全部会话 ID 后以 BulkDeleteDocuments 批量删除（documentdb 侧
+// 包事务，中途失败整体回滚，替代逐条删除的部分成功行为——R05-P2-7）。
 func (s *SessionService) DeleteSessionsByUser(ctx context.Context, projectID, userID string) error {
 	pageToken := ""
+	var ids []string
 	for {
 		list, err := s.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
 			Queries:   []string{query.BuildEqual("user_id", userID)},
@@ -167,15 +183,71 @@ func (s *SessionService) DeleteSessionsByUser(ctx context.Context, projectID, us
 			return err
 		}
 		for i := range list.Documents {
-			if err := s.docDB.DeleteDocument(ctx, projectID, "default", "sessions", list.Documents[i].ID, databases.SystemPrincipal); err != nil {
-				return err
-			}
+			ids = append(ids, list.Documents[i].ID)
 		}
 		if list.NextPageToken == "" {
-			return nil
+			break
 		}
 		pageToken = list.NextPageToken
 	}
+	if len(ids) == 0 {
+		return nil
+	}
+	deleted, err := s.docDB.BulkDeleteDocuments(ctx, projectID, "default", "sessions", ids, databases.SystemPrincipal)
+	if err != nil {
+		slog.Warn("delete sessions by user failed", "project_id", projectID, "user_id", userID, "deleted", deleted, "error", err)
+		return err
+	}
+	return nil
+}
+
+// maxSessionsPerUser 返回单用户会话上限：未配置（0 值）回退默认 50；
+// -1 表示不限（返回 0，调用方跳过淘汰）。
+func (s *SessionService) maxSessionsPerUser() int {
+	if s.cfg == nil || s.cfg.GetSecurity() == nil || s.cfg.GetSecurity().GetSessions() == nil {
+		return defaultMaxSessionsPerUser
+	}
+	switch v := s.cfg.GetSecurity().GetSessions().GetMaxPerUser(); {
+	case v < 0:
+		return 0 // -1 = 不限
+	case v == 0:
+		return defaultMaxSessionsPerUser
+	default:
+		return int(v)
+	}
+}
+
+// evictOldestSessions 当会话数达到上限时，淘汰最旧（expire_at 最早）的
+// （总数-max+1）个会话，为本次新建腾出位置。
+func (s *SessionService) evictOldestSessions(ctx context.Context, projectID, userID string, max int) error {
+	pageToken := ""
+	var ids []string
+	for {
+		list, err := s.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+			Queries:   []string{query.BuildEqual("user_id", userID), query.BuildFilter("orderAsc", "expire_at")},
+			PageSize:  1000,
+			PageToken: pageToken,
+		}, databases.SystemPrincipal)
+		if err != nil {
+			return err
+		}
+		for i := range list.Documents {
+			ids = append(ids, list.Documents[i].ID)
+		}
+		if list.NextPageToken == "" {
+			break
+		}
+		pageToken = list.NextPageToken
+	}
+	if len(ids) < max {
+		return nil
+	}
+	evict := ids[:len(ids)-max+1]
+	if _, err := s.docDB.BulkDeleteDocuments(ctx, projectID, "default", "sessions", evict, databases.SystemPrincipal); err != nil {
+		slog.Warn("evict old sessions failed", "project_id", projectID, "user_id", userID, "error", err)
+		return err
+	}
+	return nil
 }
 
 func sessionPermissions(userID string) []databases.Permission {

@@ -183,6 +183,14 @@ CREATE TABLE IF NOT EXISTS "TORCHWOOD_1_default"."_perms" (
 
 `pkg/crud` 提供 AIP-132 风格的游标编码（`crud.EncodePageToken` / `DecodePageToken`，offset 整数编码），List 返回 `totalCount` + `nextPageToken`；collection 列表与 document 列表复用同一抽象。
 
+### 4.4 Count 与 List 非原子快照（R02-P2-1 已知行为）
+
+`ListDocuments` 在同一查询内先执行 `COUNT(*)` 再执行主查询（两条独立语句），`CountDocuments` 更是完全独立的查询。在 PostgreSQL 默认的 `READ COMMITTED` 隔离级别下，两次查询**不保证同一快照**：并发写入时可能出现 `totalCount` 与返回行数不一致（能 count 不能 list，或反之）。这是与 Appwrite 一致的已知弱一致性行为：
+
+- 客户端续页基于 offset 游标（`NextPageToken`），不受该差异影响；
+- `totalCount` 仅作为参考值，客户端不应将其与 `len(documents)` 做强一致断言；
+- 如需强一致快照，需将 COUNT 与主查询包进同一事务并使用 `REPEATABLE READ`——当前不实现，保持弱一致性语义。
+
 ---
 
 ## 5. Attribute / Index 动态管理

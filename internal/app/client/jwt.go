@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
@@ -48,6 +49,7 @@ func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 		SessionID: p.SessionID,
 		TokenType: jwtparser.TokenTypeAccess,
 		Roles:     roles,
+		OneTime:   true,
 		ExpiresAt: now.Add(oneTimeJWTTTL).Unix(),
 		IssuedAt:  now.Unix(),
 	}
@@ -58,7 +60,7 @@ func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 	}
 	// 一次性消费记录：jti 在 TTL 内只能被消费一次。
 	if a.oneTimeTokens != nil {
-		ok, err := a.oneTimeTokens.Register(ctx, "Torchwood:jwt:one-time:"+jti, p.SessionID, oneTimeJWTTTL)
+		ok, err := a.oneTimeTokens.Register(ctx, domainauth.OneTimeJWTKeyPrefix+jti, p.SessionID, oneTimeJWTTTL)
 		if err != nil {
 			return "", err
 		}

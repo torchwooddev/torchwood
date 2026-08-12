@@ -9,7 +9,7 @@ import "protoc-gen-openapiv2/options/annotations.proto";
 import "shared/v1/authz.proto";
 
 // 服务默认 access=public：swagger 顶层不声明全局 security（匿名可达），
-// 仅声明 securityDefinitions 供统一引用（详见 shared/v1/openapi.proto）。
+// 仅声明 securityDefinitions 供统一引用（详见 docs/developer/09-api-guide.md §1.4）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {

@@ -59,7 +59,10 @@ func (r *functionRepo) ListFunctions(ctx context.Context, projectID string) ([]d
 
 func (r *functionRepo) UpdateFunction(ctx context.Context, fn *domainfunctions.Function) error {
 	m := mapFunctionToModel(fn)
-	_, err := r.db.NewUpdate().Model(m).WherePK().Exec(ctx)
+	// 写路径带 project_id 过滤（G6-5/R07-P2-3）：防跨项目更新同 id 函数。
+	_, err := r.db.NewUpdate().Model(m).WherePK().
+		Where("f.project_id = ?", fn.ProjectID).
+		Exec(ctx)
 	return err
 }
 
@@ -112,7 +115,12 @@ func (r *functionRepo) ListDeployments(ctx context.Context, projectID, functionI
 
 func (r *functionRepo) UpdateDeployment(ctx context.Context, d *domainfunctions.Deployment) error {
 	m := mapDeploymentToModel(d)
-	_, err := r.db.NewUpdate().Model(m).WherePK().Exec(ctx)
+	// 写路径带 project_id + function_id 过滤（G6-5/R08-P2-3）：防跨项目/跨函数
+	// 更新同 id 部署。
+	_, err := r.db.NewUpdate().Model(m).WherePK().
+		Where("fd.project_id = ?", d.ProjectID).
+		Where("fd.function_id = ?", d.FunctionID).
+		Exec(ctx)
 	return err
 }
 
@@ -133,6 +141,7 @@ func (r *functionRepo) SetVariables(ctx context.Context, projectID, functionID s
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.NewDelete().Model((*model.FunctionVariable)(nil)).
+		Where("project_id = ?", projectID).
 		Where("function_id = ?", functionID).
 		Exec(ctx); err != nil {
 		return err

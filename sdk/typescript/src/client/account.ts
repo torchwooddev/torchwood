@@ -380,8 +380,12 @@ export class AccountService {
     });
   }
 
-  async deleteFactor(factorId: string): Promise<void> {
-    await this.http.request<void>("DELETE", `/v1/account/mfa/${factorId}`);
+  // 删除 MFA 因子：pending 因子直接删除；verified 因子必须携带 TOTP code
+  // 二次验证（code 经 query 传递：DELETE ?code=...，R05-P1-4）。
+  async deleteFactor(factorId: string, code?: string): Promise<void> {
+    await this.http.request<void>("DELETE", `/v1/account/mfa/${factorId}`, {
+      query: code ? { code } : undefined,
+    });
   }
 
   // 登录二次验证：携带 signIn/signUp 返回的 challenge_token 完成挑战，

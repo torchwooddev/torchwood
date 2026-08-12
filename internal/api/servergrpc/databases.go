@@ -122,14 +122,15 @@ func (s *DatabasesService) CreateCollection(ctx context.Context, req *serverv1.C
 	if err := s.databases.CreateCollection(ctx, projectID, req.GetDatabaseId(), req.GetId(), req.GetName(), nil, nil, perms, documentSecurity); err != nil {
 		return nil, err
 	}
-	col, err := s.databases.GetCollection(ctx, projectID, req.GetDatabaseId(), req.GetId())
-	if err != nil {
-		return nil, err
-	}
-	if col == nil {
-		return nil, status.Error(codes.Internal, "collection not found after create")
-	}
-	return mapCollection(col), nil
+	// R02-P3-1：移除尾随 GetCollection 重查（adapter 已完成元数据写入），
+	// 直接基于请求构造响应（与 CreateDatabase handler 模式一致）。
+	return &serverv1.Collection{
+		Id:               req.GetId(),
+		DatabaseId:       req.GetDatabaseId(),
+		Name:             req.GetName(),
+		DocumentSecurity: documentSecurity,
+		Permissions:      formatPermissionStrings(perms),
+	}, nil
 }
 
 func (s *DatabasesService) ListCollections(ctx context.Context, req *serverv1.ListCollectionsRequest) (*serverv1.ListCollectionsResponse, error) {
@@ -189,7 +190,12 @@ func (s *DatabasesService) UpdateCollection(ctx context.Context, req *serverv1.U
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	patch := databases.CollectionPatch{Name: req.GetName()}
+	patch := databases.CollectionPatch{}
+	// name 为 optional（R10-P1-6）：未设置 = 不修改；设置非空串 = 更新
+	// （adapter 对空串同样按不修改处理，清空语义暂不支持）。
+	if req.Name != nil {
+		patch.Name = req.GetName()
+	}
 	if req.Permissions != nil {
 		perms, err := databases.ParsePermissionStrings(req.GetPermissions().GetValues())
 		if err != nil {

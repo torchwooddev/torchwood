@@ -16,7 +16,7 @@ import (
 func TestCreateFunction_RejectsMaliciousIDs(t *testing.T) {
 	repo := newMockRepo()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
-	ctx := context.Background()
+	ctx := platformAdminCtx()
 
 	for _, id := range []string{
 		"../../etc/passwd", // 路径穿越
@@ -28,6 +28,7 @@ func TestCreateFunction_RejectsMaliciousIDs(t *testing.T) {
 		"fn.x",
 		"-bad",                  // 必须以字母数字开头
 		"_bad",                  // 下划线不能开头
+		"Fn-1",                  // 大写非法（Docker 镜像名只允许小写，G6-3）
 		strings.Repeat("a", 65), // 超长
 		"runtimes",              // REST 字面量路由保留字（F11-3）
 		"specifications",
@@ -38,8 +39,8 @@ func TestCreateFunction_RejectsMaliciousIDs(t *testing.T) {
 		require.Equal(t, codes.InvalidArgument, status.Code(err), "id %q 应被拒绝", id)
 	}
 
-	// 合法 ID 仍可创建。
-	for _, id := range []string{"fn_1", "Fn-1", "a", "0", strings.Repeat("a", 64)} {
+	// 合法 ID 仍可创建（全小写）。
+	for _, id := range []string{"fn_1", "fn-1", "a", "0", strings.Repeat("a", 64)} {
 		fn, err := uc.CreateFunction(ctx, CreateFunctionCommand{
 			ID: id, ProjectID: "p1", Name: "f", Runtime: "node-18.0", TimeoutSeconds: timeoutPtr(15),
 		})
@@ -90,7 +91,7 @@ func TestWriteZipRemoveZip_RoundTripInRoot(t *testing.T) {
 func TestGetDeployment_RejectsCrossProject(t *testing.T) {
 	repo := newMockRepo()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
-	ctx := context.Background()
+	ctx := platformAdminCtx()
 
 	seedReadyFunction(repo, "p2", "fn_2", true, 15)
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
@@ -116,7 +117,7 @@ func TestDeleteDeployment_RejectsCrossProject(t *testing.T) {
 	repo := newMockRepo()
 	seedReadyFunction(repo, "p2", "fn_2", true, 15)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
-	ctx := context.Background()
+	ctx := platformAdminCtx()
 
 	err := uc.DeleteDeployment(ctx, "p1", "fn_2", "dep_ready")
 	require.Equal(t, codes.NotFound, status.Code(err))
@@ -155,7 +156,7 @@ func TestSetVariables_MissingFunctionNotFound(t *testing.T) {
 	repo := newMockRepo()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.SetVariables(context.Background(), "p1", "nope", map[string]string{"A": "1"})
+	_, err := uc.SetVariables(platformAdminCtx(), "p1", "nope", map[string]string{"A": "1"})
 	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
@@ -175,7 +176,7 @@ func TestCreateExecution_CombinedDataAndEnvBudget(t *testing.T) {
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
 	// 各自单独都未超限（20KB env + 20KB data），合并后超 32KB → 拒绝。
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{
 		ProjectID: "p1", FunctionID: "fn_1",
 		Data: `{"v":"` + strings.Repeat("v", 20<<10) + `"}`,
 	})
@@ -197,7 +198,7 @@ func TestCreateDeployment_BuildSemaphoreFullCleansUp(t *testing.T) {
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateDeployment(context.Background(), CreateDeploymentCommand{
+	_, err := uc.CreateDeployment(platformAdminCtx(), CreateDeploymentCommand{
 		ProjectID:  "p1",
 		FunctionID: "fn_1",
 		Code:       []byte("PK\x03\x04code"),

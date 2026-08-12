@@ -8,6 +8,8 @@ import (
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -56,6 +58,9 @@ func deref(s *string) string {
 }
 
 func (s *fakeServices) UpdateUserPassword(ctx context.Context, req *serverv1.UpdateUserPasswordRequest) (*serverv1.User, error) {
+	if err := s.rec.fail("UpdateUserPassword"); err != nil {
+		return nil, err
+	}
 	s.rec.mu.Lock()
 	s.rec.lastUserPassword = req
 	s.rec.mu.Unlock()
@@ -87,14 +92,23 @@ func (s *fakeServices) GetTeam(ctx context.Context, req *serverv1.GetTeamRequest
 }
 
 func (s *fakeServices) DeleteTeam(ctx context.Context, _ *serverv1.GetTeamRequest) (*sharedv1.Empty, error) {
+	if err := s.rec.fail("DeleteTeam"); err != nil {
+		return nil, err
+	}
 	return &sharedv1.Empty{}, nil
 }
 
 func (s *fakeServices) GetTeamPrefs(ctx context.Context, _ *serverv1.GetTeamRequest) (*serverv1.GetTeamPrefsResponse, error) {
+	if err := s.rec.fail("GetTeamPrefs"); err != nil {
+		return nil, err
+	}
 	return &serverv1.GetTeamPrefsResponse{Prefs: &structpb.Struct{}}, nil
 }
 
 func (s *fakeServices) UpdateTeamPrefs(ctx context.Context, req *serverv1.UpdateTeamPrefsRequest) (*serverv1.GetTeamPrefsResponse, error) {
+	if err := s.rec.fail("UpdateTeamPrefs"); err != nil {
+		return nil, err
+	}
 	s.rec.mu.Lock()
 	s.rec.lastTeamPrefs = req
 	s.rec.mu.Unlock()
@@ -153,17 +167,26 @@ func (s *fakeServices) GetCollection(ctx context.Context, req *serverv1.GetColle
 }
 
 func (s *fakeServices) DeleteCollection(ctx context.Context, _ *serverv1.GetCollectionRequest) (*sharedv1.Empty, error) {
+	if err := s.rec.fail("DeleteCollection"); err != nil {
+		return nil, err
+	}
 	return &sharedv1.Empty{}, nil
 }
 
 func (s *fakeServices) UpdateCollection(ctx context.Context, req *serverv1.UpdateCollectionRequest) (*serverv1.Collection, error) {
+	if err := s.rec.fail("UpdateCollection"); err != nil {
+		return nil, err
+	}
 	s.rec.mu.Lock()
 	s.rec.lastCollectionUpdate = req
 	s.rec.mu.Unlock()
-	return &serverv1.Collection{Id: req.CollectionId, DatabaseId: req.DatabaseId, Name: req.Name}, nil
+	return &serverv1.Collection{Id: req.CollectionId, DatabaseId: req.DatabaseId, Name: req.GetName()}, nil
 }
 
 func (s *fakeServices) DeleteAttribute(ctx context.Context, req *serverv1.DeleteAttributeRequest) (*sharedv1.Empty, error) {
+	if err := s.rec.fail("DeleteAttribute"); err != nil {
+		return nil, err
+	}
 	s.rec.mu.Lock()
 	s.rec.deletedAttributeKey = req.Key
 	s.rec.mu.Unlock()
@@ -171,6 +194,9 @@ func (s *fakeServices) DeleteAttribute(ctx context.Context, req *serverv1.Delete
 }
 
 func (s *fakeServices) DeleteIndex(ctx context.Context, req *serverv1.DeleteIndexRequest) (*sharedv1.Empty, error) {
+	if err := s.rec.fail("DeleteIndex"); err != nil {
+		return nil, err
+	}
 	s.rec.mu.Lock()
 	s.rec.deletedIndexID = req.IndexId
 	s.rec.mu.Unlock()
@@ -444,7 +470,8 @@ func TestDatabases_UpdateAndDeleteSchema(t *testing.T) {
 	rec.mu.Lock()
 	require.Equal(t, "app", rec.lastCollectionUpdate.DatabaseId)
 	require.Equal(t, "members", rec.lastCollectionUpdate.CollectionId)
-	require.Equal(t, "Members v2", rec.lastCollectionUpdate.Name)
+	require.NotNil(t, rec.lastCollectionUpdate.Name)
+	require.Equal(t, "Members v2", *rec.lastCollectionUpdate.Name)
 	require.Equal(t, []string{"read:all"}, rec.lastCollectionUpdate.Permissions.Values)
 	require.NotNil(t, rec.lastCollectionUpdate.DocumentSecurity)
 	require.False(t, *rec.lastCollectionUpdate.DocumentSecurity)
@@ -463,4 +490,53 @@ func TestDatabases_UpdateAndDeleteSchema(t *testing.T) {
 	rec.mu.Lock()
 	require.Equal(t, "members_channel_user", rec.deletedIndexID)
 	rec.mu.Unlock()
+}
+
+// TestF84Methods_ErrorPropagation 覆盖 F8-4 新增 8 个类型化方法的错误路径：
+// 服务端返回 NotFound/PermissionDenied 时 SDK 必须原样透传（不吞错、不改码）。
+func TestF84Methods_ErrorPropagation(t *testing.T) {
+	lis, rec := newServicesBufconn(t)
+	c := newTestClient(t, lis, WithAPIKey("key-1"), WithDatabaseID("app"))
+	ctx := context.Background()
+
+	notFound := status.Error(codes.NotFound, "resource not found")
+	denied := status.Error(codes.PermissionDenied, "permission denied")
+
+	cases := []struct {
+		name string
+		rpc  string
+		err  error
+		call func() error
+	}{
+		{name: "UpdateUserPassword NotFound", rpc: "UpdateUserPassword", err: notFound,
+			call: func() error { _, err := c.Users.UpdateUserPassword(ctx, "user-1", "pw"); return err }},
+		{name: "DeleteTeam NotFound", rpc: "DeleteTeam", err: notFound,
+			call: func() error { return c.Teams.DeleteTeam(ctx, "team-1") }},
+		{name: "GetTeamPrefs PermissionDenied", rpc: "GetTeamPrefs", err: denied,
+			call: func() error { _, err := c.Teams.GetTeamPrefs(ctx, "team-1"); return err }},
+		{name: "UpdateTeamPrefs NotFound", rpc: "UpdateTeamPrefs", err: notFound,
+			call: func() error {
+				_, err := c.Teams.UpdateTeamPrefs(ctx, "team-1", map[string]any{"locale": "zh"})
+				return err
+			}},
+		{name: "UpdateCollection NotFound", rpc: "UpdateCollection", err: notFound,
+			call: func() error { _, err := c.Databases.UpdateCollection(ctx, "members", "M", nil, nil, nil); return err }},
+		{name: "DeleteCollection PermissionDenied", rpc: "DeleteCollection", err: denied,
+			call: func() error { return c.Databases.DeleteCollection(ctx, "members") }},
+		{name: "DeleteAttribute NotFound", rpc: "DeleteAttribute", err: notFound,
+			call: func() error { return c.Databases.DeleteAttribute(ctx, "members", "channel_id") }},
+		{name: "DeleteIndex NotFound", rpc: "DeleteIndex", err: notFound,
+			call: func() error { return c.Databases.DeleteIndex(ctx, "members", "idx-1") }},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec.setErr(tc.rpc, tc.err)
+			defer rec.setErr(tc.rpc, nil)
+			err := tc.call()
+			require.Error(t, err)
+			require.Equal(t, tc.err.Error(), err.Error())
+			require.Equal(t, status.Code(tc.err), status.Code(err))
+		})
+	}
 }

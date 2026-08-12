@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { ApiRequestConfig } from "./client";
 
 export interface APIKey {
   id: string;
@@ -36,6 +37,6 @@ export async function createAPIKey(input: {
   return res.data;
 }
 
-export async function deleteAPIKey(id: string): Promise<void> {
-  await api.delete(`/server/api-keys/${id}`);
+export async function deleteAPIKey(id: string, config?: ApiRequestConfig): Promise<void> {
+  await api.delete(`/server/api-keys/${id}`, config);
 }

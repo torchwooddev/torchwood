@@ -162,6 +162,71 @@ func TestFunctionRepository_PruneOldExecutions(t *testing.T) {
 	require.Len(t, recs, 3, "仅保留最近 3 条")
 }
 
+// TestFunctionRepository_WritePathsAreProjectScoped 写路径带 project_id 过滤
+// （G6-5/R07-P2-3、R08-P2-3）：跨项目 UpdateFunction / UpdateDeployment /
+// SetVariables 不得影响本项目的行（即使 function/deployment id 相同）。
+func TestFunctionRepository_WritePathsAreProjectScoped(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	repo := bunrepo.NewFunctionRepository(db)
+	fn := seedFunctionRow(t, ctx, repo, projectID)
+	dep := seedDeploymentRow(t, ctx, repo, fn, domainfunctions.DeploymentStatusReady)
+	require.NoError(t, repo.SetVariables(ctx, projectID, fn.ID, map[string]string{"A": "1"}))
+
+	// 跨项目 SetVariables 全量替换不得清掉本项目的变量。
+	require.NoError(t, repo.SetVariables(ctx, "other-project", fn.ID, map[string]string{"B": "2"}))
+	vars, err := repo.GetVariables(ctx, projectID, fn.ID)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"A": "1"}, vars, "跨项目 SetVariables 不得影响本项目变量")
+
+	// 跨项目 UpdateFunction 不得改名/更新。
+	crossFn := *fn
+	crossFn.ProjectID = "other-project"
+	crossFn.Name = "hijacked"
+	crossFn.UpdatedAt = time.Now()
+	require.NoError(t, repo.UpdateFunction(ctx, &crossFn))
+	got, err := repo.GetFunction(ctx, projectID, fn.ID)
+	require.NoError(t, err)
+	require.Equal(t, "hello", got.Name, "跨项目 UpdateFunction 不得生效")
+
+	// 跨项目 UpdateDeployment（同 function id）不得改状态。
+	crossDep := *dep
+	crossDep.ProjectID = "other-project"
+	crossDep.Status = domainfunctions.DeploymentStatusFailed
+	require.NoError(t, repo.UpdateDeployment(ctx, &crossDep))
+	gotDep, err := repo.GetDeployment(ctx, projectID, fn.ID, dep.ID)
+	require.NoError(t, err)
+	require.Equal(t, domainfunctions.DeploymentStatusReady, gotDep.Status, "跨项目 UpdateDeployment 不得生效")
+
+	// 同项目内写路径仍正常（对照）。
+	fn.Name = "renamed"
+	fn.UpdatedAt = time.Now()
+	require.NoError(t, repo.UpdateFunction(ctx, fn))
+	got, err = repo.GetFunction(ctx, projectID, fn.ID)
+	require.NoError(t, err)
+	require.Equal(t, "renamed", got.Name)
+
+	dep.Status = domainfunctions.DeploymentStatusFailed
+	dep.UpdatedAt = time.Now()
+	require.NoError(t, repo.UpdateDeployment(ctx, dep))
+	gotDep, err = repo.GetDeployment(ctx, projectID, fn.ID, dep.ID)
+	require.NoError(t, err)
+	require.Equal(t, domainfunctions.DeploymentStatusFailed, gotDep.Status)
+
+	require.NoError(t, repo.SetVariables(ctx, projectID, fn.ID, map[string]string{"C": "3"}))
+	vars, err = repo.GetVariables(ctx, projectID, fn.ID)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"C": "3"}, vars)
+}
+
 func TestFunctionRepository_RecoverOrphanExecutions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

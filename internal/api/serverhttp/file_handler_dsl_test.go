@@ -1,6 +1,7 @@
 package serverhttp
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,4 +27,31 @@ func TestPublicBucketDSLBuildEqual(t *testing.T) {
 	parsed, err = query.Parse(dsl)
 	require.NoError(t, err)
 	require.Equal(t, "3fa85f64-5717-4562-b3fc-2c963f66afa6", parsed.Filters[0].Values[0])
+}
+
+// TestIsValidBucketID（G4-3）：公开 bucket 匿名路径在 resolve 前校验 bucketID
+// 格式（非空 + 字符集/长度），DSL 注入串/空白/超长一律拒绝。
+func TestIsValidBucketID(t *testing.T) {
+	valid := []string{
+		"3fa85f64-5717-4562-b3fc-2c963f66afa6",
+		"bucket-01_abc",
+		"BUCKET42",
+	}
+	for _, id := range valid {
+		require.Truef(t, isValidBucketID(id), "应合法: %q", id)
+	}
+
+	invalid := []string{
+		"",
+		"   ",
+		`x",equal("public","true");limit(1)//`,
+		"a b",
+		"a/b",
+		"a\\b",
+		"a\nb",
+		strings.Repeat("a", 65),
+	}
+	for _, id := range invalid {
+		require.Falsef(t, isValidBucketID(id), "应非法: %q", id)
+	}
 }

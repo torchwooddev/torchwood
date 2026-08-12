@@ -80,3 +80,27 @@ func TestFileStoreConcurrent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "a", got.AccessToken)
 }
+
+func TestFileTokenStoreExpandsTildeHome(t *testing.T) {
+	home := t.TempDir()
+	// os.UserHomeDir 在 Windows 取 USERPROFILE，在 unix 取 HOME。
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+
+	// NewFileTokenStore("~/tokens.json") 应展开到主目录下并落盘。
+	s := NewFileTokenStore("~/tokens.json")
+	require.NoError(t, s.Save(bundle()))
+	require.FileExists(t, filepath.Join(home, "tokens.json"))
+	got, err := s.Load()
+	require.NoError(t, err)
+	require.Equal(t, "a", got.AccessToken)
+
+	// 仅支持 ~ 与 ~/（含 Windows 反斜杠写法）；~user/ 等其他形式原样返回。
+	require.Equal(t, home, expandHome("~"))
+	require.Equal(t, filepath.Join(home, "a", "b.json"), expandHome("~/a/b.json"))
+	require.Equal(t, filepath.Join(home, "x.json"), expandHome(`~\x.json`))
+	require.Equal(t, "~alice/tokens.json", expandHome("~alice/tokens.json"))
+	require.Equal(t, "~alice", expandHome("~alice"))
+	require.Equal(t, "/abs/path.json", expandHome("/abs/path.json"))
+	require.Equal(t, "rel/path.json", expandHome("rel/path.json"))
+}

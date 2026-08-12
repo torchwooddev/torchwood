@@ -162,7 +162,8 @@
       "type": "object",
       "properties": {
         "role": {
-          "type": "string"
+          "type": "string",
+          "title": "optional：未设置（或空串）= 不修改；设置合法角色值 = 更新（R10-P1-6）。"
         },
         "password": {
           "type": "string",

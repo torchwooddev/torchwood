@@ -909,7 +909,7 @@
         },
         "value": {
           "type": "string",
-          "title": "环境变量明文值：SetVariables 请求透传、GetVariables 响应回显\n（函数运行期注入）；属敏感数据，前端/日志不得持久化明文。"
+          "title": "环境变量值：SetVariables 请求透传明文；GetVariables 与 SetVariables\n响应统一返回掩码（\"******\"），真实值仅在 SetVariables 请求中可见一次\n（对齐 internal/app/functions/variables.go 的 secretMask 约定）。"
         }
       }
     },

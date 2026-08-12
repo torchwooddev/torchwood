@@ -11,7 +11,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 // 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
-// shared/v1/openapi.proto 的建模约定；本服务全部方法继承，无需逐方法覆盖）。
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承，无需逐方法覆盖）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {

@@ -255,6 +255,15 @@ func BuildSQLWhere(filter *Filter, fieldMappings map[string]string, args *[]inte
 // against accidental injection via developer-controlled mapping values.
 var safeFieldNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_.]*$`)
 
+// escapeLikePattern 转义 LIKE 模式中的通配符与转义符本身（配合 ESCAPE '\' 子句），
+// 使 contains/notContains 将用户输入按字面量匹配（对齐 documentdb 的既有实现）。
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
 // IsTrustedSQLMappingFragment reports whether the resolved mapping is a full SQL
 // expression built server-side (Data Platform JSON path under alias "or").
 // Such fragments skip identifier-only validation; user input still flows only through bound parameters.
@@ -304,12 +313,12 @@ func buildSingleCondition(expr FilterExpression, fieldMappings map[string]string
 		return fmt.Sprintf("%s >= ?", fieldSQL)
 
 	case OperatorContains:
-		*args = append(*args, "%"+expr.Value+"%")
-		return fmt.Sprintf("%s LIKE ?", fieldSQL)
+		*args = append(*args, "%"+escapeLikePattern(expr.Value)+"%")
+		return fmt.Sprintf("%s LIKE ? ESCAPE '\\'", fieldSQL)
 
 	case OperatorNotContains:
-		*args = append(*args, "%"+expr.Value+"%")
-		return fmt.Sprintf("%s NOT LIKE ?", fieldSQL)
+		*args = append(*args, "%"+escapeLikePattern(expr.Value)+"%")
+		return fmt.Sprintf("%s NOT LIKE ? ESCAPE '\\'", fieldSQL)
 
 	case OperatorIn:
 		// Parse comma-separated values

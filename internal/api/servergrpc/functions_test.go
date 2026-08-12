@@ -92,8 +92,16 @@ func newTestService(repo *stubRepo) *FunctionsService {
 	return NewFunctionsService(uc)
 }
 
+// principalCtx 返回携带平台 admin principal 的上下文（G2-1 后 functions
+// 写方法 use-case 层要求平台 admin，handler 层测试需注入真实凭证形态）。
 func principalCtx(projectID string) context.Context {
-	return contexts.WithPrincipal(context.Background(), &shared.Principal{ProjectID: projectID})
+	return contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorID:         "admin-1",
+		ActorKind:       shared.ActorKindAdmin,
+		IsPlatformAdmin: true,
+		UserID:          "admin-1",
+		ProjectID:       projectID,
+	})
 }
 
 func TestFunctionsService_MissingProjectID(t *testing.T) {

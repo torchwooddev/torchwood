@@ -3,6 +3,8 @@ package health
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -88,4 +90,90 @@ func TestCheckers_Deps(t *testing.T) {
 	deps := c.Deps()
 	require.Len(t, deps, 1)
 	require.NoError(t, deps[0].CheckHealth())
+}
+
+func TestDetails_SingleflightOnCacheMiss(t *testing.T) {
+	var calls atomic.Int64
+	release := make(chan struct{})
+	c := &Checkers{
+		deps: []*DependencyChecker{
+			{Name: "a", Check: func(ctx context.Context) error {
+				calls.Add(1)
+				<-release
+				return nil
+			}},
+		},
+	}
+
+	const n = 16
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			st := c.Details(context.Background())
+			if len(st) != 1 || st[0].GetStatus() != "ok" {
+				errs <- errors.New("unexpected details result")
+			}
+		}()
+	}
+	// 等待所有调用者到达并至少有一个开始探测。
+	waitForCalls(t, &calls, 1)
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, int64(1), calls.Load(), "concurrent cache-miss callers must share one refresh")
+}
+
+func TestDetails_CacheHitServesWithoutProbe(t *testing.T) {
+	var calls atomic.Int64
+	c := &Checkers{deps: []*DependencyChecker{
+		{Name: "a", Check: func(ctx context.Context) error {
+			calls.Add(1)
+			return nil
+		}},
+	}}
+	require.Len(t, c.Details(context.Background()), 1)
+	require.Equal(t, int64(1), calls.Load())
+	require.Len(t, c.Details(context.Background()), 1)
+	require.Equal(t, int64(1), calls.Load(), "TTL 内不应重新探测")
+}
+
+func TestDetails_CacheTTLExpiryRefreshes(t *testing.T) {
+	var calls atomic.Int64
+	c := &Checkers{
+		CacheTTL: 30 * time.Millisecond,
+		deps: []*DependencyChecker{
+			{Name: "a", Check: func(ctx context.Context) error {
+				calls.Add(1)
+				return nil
+			}},
+		},
+	}
+	require.Len(t, c.Details(context.Background()), 1)
+	time.Sleep(60 * time.Millisecond)
+	require.Len(t, c.Details(context.Background()), 1)
+	require.Equal(t, int64(2), calls.Load(), "TTL 过期后应重新探测")
+}
+
+func TestDetails_DefaultCacheTTL(t *testing.T) {
+	c := &Checkers{}
+	require.Equal(t, resultCacheTTL, c.cacheTTL())
+	c.CacheTTL = 5 * time.Second
+	require.Equal(t, 5*time.Second, c.cacheTTL())
+}
+
+func waitForCalls(t *testing.T, calls *atomic.Int64, want int64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for calls.Load() < want && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	require.GreaterOrEqual(t, calls.Load(), want, "probe did not start in time")
 }

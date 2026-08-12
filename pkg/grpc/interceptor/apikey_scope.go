@@ -1,6 +1,10 @@
 package interceptor
 
-import "strings"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // StorageServiceCreateFile is the gRPC method used for HTTP storage scope checks.
 const StorageServiceCreateFile = "/torchwood.server.v1.StorageService/CreateFile"
@@ -16,7 +20,8 @@ type apiKeyScopeRule struct {
 
 // apiKeyScopeRules 显式映射全部 8 个 ACCESS_API_KEY 服务的方法（Health 是
 // ACCESS_PUBLIC，不映射）。读方法 = List/Get/Count 类，其余一律 write。
-// 新增 ACCESS_API_KEY 方法必须在此登记，否则 APIKeyScopeAllowed 对其 fail-closed。
+// 新增 ACCESS_API_KEY 方法必须在此登记，否则 APIKeyScopeAllowed 对其 fail-closed；
+// 一致性由 AssertAPIKeyScopeCoverage 在启动期校验（R10-P1-5）。
 var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	// DatabasesService
 	"/torchwood.server.v1.DatabasesService/CreateDatabase":      {"databases", "write"},
@@ -165,4 +170,52 @@ func IsAPIKeysServiceMethod(fullMethod string) bool {
 		return false
 	}
 	return strings.Contains(parts[len(parts)-2], "APIKeys")
+}
+
+// APIKeyScopeRule 是单个 gRPC 方法对应的 scope 资源名与读写方向（B2），
+// 导出供启动期一致性断言与工具使用。
+type APIKeyScopeRule struct {
+	Resource string // scope 资源名（databases/users/teams/storage/projects/oauthproviders/apikeys/functions）
+	Op       string // "read" 或 "write"
+}
+
+// APIKeyScopeRules 返回 apiKeyScopeRules 的副本（导出访问器）。
+func APIKeyScopeRules() map[string]APIKeyScopeRule {
+	out := make(map[string]APIKeyScopeRule, len(apiKeyScopeRules))
+	for m, r := range apiKeyScopeRules {
+		out[m] = APIKeyScopeRule{Resource: r.resource, Op: r.op}
+	}
+	return out
+}
+
+// AssertAPIKeyScopeCoverage 断言 apiKeyScopeRules 覆盖集合与 proto 注解推导出的
+// ACCESS_API_KEY 方法集合完全一致（R10-P1-5，fail-closed）：
+// 不一致直接 panic，并列出缺失（proto 新增方法未登记 scope 规则）与多余
+// （规则表残留已删除/改级的方法）。由 server 启动路径调用
+// （internal/infra/server/grpc.go NewGRPCServer）。
+func AssertAPIKeyScopeCoverage(apiKeyMethods []string) {
+	expected := make(map[string]struct{}, len(apiKeyMethods))
+	for _, m := range apiKeyMethods {
+		expected[m] = struct{}{}
+	}
+	actual := apiKeyScopeRules
+
+	var missing, extra []string
+	for m := range expected {
+		if _, ok := actual[m]; !ok {
+			missing = append(missing, m)
+		}
+	}
+	for m := range actual {
+		if _, ok := expected[m]; !ok {
+			extra = append(extra, m)
+		}
+	}
+	if len(missing) == 0 && len(extra) == 0 {
+		return
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+	panic(fmt.Sprintf("apiKeyScopeRules 与 ACCESS_API_KEY 方法集合不一致 (fail-closed): "+
+		"proto 声明但规则表缺失=%v; 规则表多余=%v", missing, extra))
 }

@@ -79,12 +79,17 @@ func (s *AdminsService) UpdateAdmin(ctx context.Context, req *consolev1.UpdateAd
 	if err := requireAdminActor(ctx); err != nil {
 		return nil, err
 	}
-	admin, err := s.admins.Update(ctx, console.UpdateAdminCommand{
+	// role 为 optional（R10-P1-6）：未设置 = 不修改；设置（含空串）= 更新/清空。
+	// use-case 对空串同样按"不修改"处理（UpdateAdminCommand.Role=="" 跳过）。
+	cmd := console.UpdateAdminCommand{
 		ID:       req.GetId(),
 		CallerID: callerID(ctx),
-		Role:     req.GetRole(),
 		Password: req.GetPassword(),
-	})
+	}
+	if req.Role != nil {
+		cmd.Role = req.GetRole()
+	}
+	admin, err := s.admins.Update(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}

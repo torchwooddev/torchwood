@@ -69,6 +69,9 @@ func NewGRPCServer(
 	if err != nil {
 		return nil, err
 	}
+	// fail-closed（R10-P1-5）：proto 注解推导的 ACCESS_API_KEY 方法集合必须与
+	// apiKeyScopeRules 完全一致，不一致直接 panic（见 AssertAPIKeyScopeCoverage）。
+	interceptor.AssertAPIKeyScopeCoverage(apiKeyMethods)
 
 	authInterceptor, err := interceptor.NewAuthInterceptor(validator, publicMethods, apiKeyMethods, permissionMethods)
 	if err != nil {

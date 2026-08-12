@@ -57,6 +57,13 @@ jobs:
         with:
           version: 3.x
 
+      - uses: bufbuild/setup-buf@v1
+        with:
+          version: v1.65.0
+
+      - name: Buf lint
+        run: buf lint
+
       - name: Pre-pull function runtime base images
         run: docker pull node:18-alpine && docker pull python:3.11-alpine
 
@@ -83,6 +90,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: TS SDK test
+        working-directory: sdk/typescript
+        run: npm ci && npm run test
+
+      - name: SDK demo build
+        run: task sdk-demo-build
 
       - name: Build (console + server embed)
         run: task build

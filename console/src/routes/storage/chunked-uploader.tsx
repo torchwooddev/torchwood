@@ -62,6 +62,13 @@ export function ChunkedUploader({ bucketId, file, onSuccess, onError }: ChunkedU
   const mountedRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
   const keyRef = useRef("");
+  // 进度与回调走 ref，避免 run 闭包捕获过期状态/过期 props（stale closure）。
+  const uploadedRef = useRef(0);
+  const totalRef = useRef(0);
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+  onSuccessRef.current = onSuccess;
+  onErrorRef.current = onError;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -80,6 +87,7 @@ export function ChunkedUploader({ bucketId, file, onSuccess, onError }: ChunkedU
           const progress: UploadProgress = await getUploadSession(bucketId, uploadId);
           const expectedParts = Math.ceil(file.size / progress.chunk_size);
           if (progress.part_count === expectedParts) {
+            totalRef.current = progress.part_count;
             setTotal(progress.part_count);
             return {
               upload_id: uploadId,
@@ -101,6 +109,7 @@ export function ChunkedUploader({ bucketId, file, onSuccess, onError }: ChunkedU
         size: file.size,
       });
       localStorage.setItem(key, session.upload_id);
+      totalRef.current = session.part_count;
       setTotal(session.part_count);
       return {
         upload_id: session.upload_id,
@@ -125,6 +134,7 @@ export function ChunkedUploader({ bucketId, file, onSuccess, onError }: ChunkedU
         if (controller.signal.aborted) return;
         if (received.has(part)) {
           done++;
+          uploadedRef.current = done;
           setUploaded(done);
           continue;
         }
@@ -145,24 +155,25 @@ export function ChunkedUploader({ bucketId, file, onSuccess, onError }: ChunkedU
           }
         }
         done++;
+        uploadedRef.current = done;
         setUploaded(done);
       }
 
       if (controller.signal.aborted) return;
       const completed = await completeUpload(bucketId, uid, controller.signal);
       localStorage.removeItem(key);
-      onSuccess(completed);
+      onSuccessRef.current(completed);
     } catch (err) {
       if (mountedRef.current && !cancelledRef.current) {
         setFailed(true);
-        onError(
+        onErrorRef.current(
           err instanceof Error && err.message
             ? err.message
-            : `上传中断：已上传 ${uploaded}/${total || "?"} 片，可重新选择文件续传`
+            : `上传中断：已上传 ${uploadedRef.current}/${totalRef.current || "?"} 片，可重新选择文件续传`
         );
       }
     }
-  }, [bucketId, file, start, onSuccess, onError, uploaded, total]);
+  }, [bucketId, file, start]);
 
   useEffect(() => {
     if (startedRef.current) return;

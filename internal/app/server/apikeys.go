@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
@@ -38,10 +40,34 @@ type CreateAPIKeyCommand struct {
 // Create 创建 API Key；平台级写操作，仅限平台 admin（安全评审 M7）。
 // 引导（console setup）等系统路径请调用 CreateInternal，调用方负责授权。
 func (a *APIKeys) Create(ctx context.Context, cmd CreateAPIKeyCommand) (*projects.APIKey, string, error) {
-	if err := requirePlatformAdmin(ctx); err != nil {
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return nil, "", err
+	}
+	// G2-5（R06-P3）：cmd.Scopes 不得超出调用者自身权限——当前入口仅平台
+	// admin 可达（恒放行），该校验是纵深防御：未来若放宽为受限 admin 可
+	// 创建 key，受限主体不得铸出超出自身 scope 的 key。
+	if err := ensureScopesWithinCaller(ctx, cmd.Scopes); err != nil {
 		return nil, "", err
 	}
 	return a.CreateInternal(ctx, cmd)
+}
+
+// ensureScopesWithinCaller 校验 scopes 全部包含于调用者 principal.Permissions；
+// 平台 admin 放行（其会话权限不按 scope 建模）。匿名/无权限主体拒绝。
+func ensureScopesWithinCaller(ctx context.Context, scopes []string) error {
+	principal, ok := contexts.Principal(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+	if principal.IsPlatformAdmin {
+		return nil
+	}
+	for _, s := range scopes {
+		if !principal.HasPermission(s) {
+			return status.Errorf(codes.PermissionDenied, "scope %q exceeds caller permissions", s)
+		}
+	}
+	return nil
 }
 
 // CreateInternal 执行 API Key 创建（不做 principal 检查）。

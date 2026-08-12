@@ -62,7 +62,14 @@ export function LoginPage() {
 function useSignInSuccess() {
   const { setAuth } = useTorchwood();
   const navigate = useNavigate();
-  return (res: { account: { id: string; email: string; name: string }; tokens: { access_token: string; refresh_token: string } }) => {
+  return (res: {
+    account: { id: string; email: string; name: string };
+    tokens?: { access_token: string; refresh_token: string };
+  }) => {
+    if (!res.tokens) {
+      // MFA 分支无 tokens：引导二次认证（demo 暂不实现，直接返回）。
+      return;
+    }
     setAuth({
       accessToken: res.tokens.access_token,
       refreshToken: res.tokens.refresh_token,

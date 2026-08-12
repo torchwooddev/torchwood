@@ -98,3 +98,33 @@ func TestAPIKeys_Create_RequiresPlatformAdmin(t *testing.T) {
 	_, _, err := uc.Create(platformAdminCtx(context.Background()), CreateAPIKeyCommand{Name: "k", Scopes: []string{"*"}})
 	require.NoError(t, err)
 }
+
+// TestAPIKeys_EnsureScopesWithinCaller（G2-5/R06-P3）：cmd.Scopes 必须 ⊆
+// 调用者 principal.Permissions，超出返回 PermissionDenied；平台 admin 放行。
+func TestAPIKeys_EnsureScopesWithinCaller(t *testing.T) {
+	// 平台 admin（会话权限不按 scope 建模）恒放行。
+	require.NoError(t, ensureScopesWithinCaller(platformAdminCtx(context.Background()), []string{"*", "users.write"}))
+
+	// 受限主体：scope 全部包含于自身 Permissions 时放行。
+	restrictedCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorID:     "admin-2",
+		ActorKind:   shared.ActorKindAdmin,
+		Roles:       []string{"member"},
+		Permissions: []string{"users.read", "storage.write"},
+	})
+	require.NoError(t, ensureScopesWithinCaller(restrictedCtx, []string{"users.read"}))
+
+	// 超范围 scope → PermissionDenied（含通配符与部分超范围）。
+	for _, scopes := range [][]string{
+		{"users.write"},
+		{"users.read", "storage.write", "databases"},
+		{"*"},
+	} {
+		err := ensureScopesWithinCaller(restrictedCtx, scopes)
+		require.Equal(t, codes.PermissionDenied, status.Code(err), "scopes %v 超出调用者权限必须拒绝", scopes)
+	}
+
+	// 匿名 → Unauthenticated。
+	err := ensureScopesWithinCaller(context.Background(), []string{"users.read"})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}

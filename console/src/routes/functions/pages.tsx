@@ -16,6 +16,7 @@ import {
   deleteDeployment,
   getVariables,
   setVariables,
+  SECRET_MASK,
   createExecution,
   listExecutions,
   type FunctionItem,
@@ -125,7 +126,7 @@ export function FunctionsListPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteFunction,
+    mutationFn: (id: string) => deleteFunction(id),
     onSuccess: () => {
       toast.success("函数已删除");
       queryClient.invalidateQueries({ queryKey: ["functions", projectId] });
@@ -154,7 +155,10 @@ export function FunctionsListPage() {
   const handleBulkDelete = async (selected: FunctionItem[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      const results = await Promise.allSettled(selected.map((f) => deleteFunction(f.id)));
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
+      const results = await Promise.allSettled(
+        selected.map((f) => deleteFunction(f.id, { __skipToast: true }))
+      );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
       if (failed > 0) {
@@ -484,6 +488,7 @@ export function FunctionDetailPage() {
     mutationFn: (vars: Variable[]) => setVariables(functionId!, vars),
     onSuccess: (vars) => {
       toast.success("环境变量已保存");
+      // 响应为掩码视图（非空值一律脱敏），回填后仍显示占位符。
       setVariablesState(vars);
     },
   });
@@ -516,7 +521,7 @@ export function FunctionDetailPage() {
   });
 
   const removeFunction = useMutation({
-    mutationFn: deleteFunction,
+    mutationFn: (id: string) => deleteFunction(id),
     onSuccess: () => {
       toast.success("函数已删除");
       queryClient.invalidateQueries({ queryKey: ["functions", projectId] });
@@ -532,6 +537,11 @@ export function FunctionDetailPage() {
       prev.map((v, i) => (i === idx ? { key, value } : v))
     );
   };
+
+  // isMaskedVariable 判断变量是否处于「已设置，仅设置时可见」的掩码态：
+  // 值为 SECRET_MASK 时输入框显示为空 + 占位提示；用户编辑后写入真实值，
+  // 保存时未触碰的掩码项仍以 SECRET_MASK 提交，后端保留旧值不覆盖。
+  const isMaskedVariable = (v: Variable) => v.value === SECRET_MASK;
 
   return (
     <div className="space-y-6">
@@ -656,8 +666,8 @@ export function FunctionDetailPage() {
                 />
                 <Input
                   className="font-mono text-xs"
-                  placeholder="VALUE"
-                  value={v.value}
+                  placeholder={isMaskedVariable(v) ? "已设置，仅设置时可见" : "VALUE"}
+                  value={isMaskedVariable(v) ? "" : v.value}
                   onChange={(e) => setVariable(idx, v.key, e.target.value)}
                 />
                 <Button
@@ -695,7 +705,7 @@ export function FunctionDetailPage() {
                   )
                 }
               >
-                {saveVariables.isPending ? "保存中..." : "保存变量（全量替换）"}
+                {saveVariables.isPending ? "保存中..." : "保存变量"}
               </Button>
             </div>
           </div>

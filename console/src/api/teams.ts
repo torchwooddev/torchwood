@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { ApiRequestConfig } from "./client";
 
 export interface Team {
   id: string;
@@ -38,8 +39,8 @@ export async function createTeam(input: { name: string }): Promise<Team> {
   return res.data;
 }
 
-export async function deleteTeam(id: string): Promise<void> {
-  await api.delete(`/server/teams/${id}`);
+export async function deleteTeam(id: string, config?: ApiRequestConfig): Promise<void> {
+  await api.delete(`/server/teams/${id}`, config);
 }
 
 export async function getTeamPrefs(id: string): Promise<Record<string, unknown>> {
@@ -113,6 +114,10 @@ export async function updateMembershipStatus(
   return res.data;
 }
 
-export async function deleteMembership(teamId: string, membershipId: string): Promise<void> {
-  await api.delete(`/server/teams/${teamId}/memberships/${membershipId}`);
+export async function deleteMembership(
+  teamId: string,
+  membershipId: string,
+  config?: ApiRequestConfig
+): Promise<void> {
+  await api.delete(`/server/teams/${teamId}/memberships/${membershipId}`, config);
 }

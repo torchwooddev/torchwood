@@ -111,7 +111,8 @@ func (r *mockRepo) DeleteDeployment(_ context.Context, projectID, functionID, de
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	d := r.deployments[deploymentID]
-	if d != nil && d.FunctionID != functionID {
+	// projectID 断言（R08-P3-5）：跨项目/跨函数同 id 部署不得被删除。
+	if d != nil && (d.FunctionID != functionID || d.ProjectID != projectID) {
 		return nil
 	}
 	delete(r.deployments, deploymentID)

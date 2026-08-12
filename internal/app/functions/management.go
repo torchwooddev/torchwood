@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
@@ -13,8 +14,9 @@ import (
 )
 
 // functionIDPattern 限制 Function ID 字符集与长度（防路径穿越拼入 zip 路径
-// 与镜像名；须以字母数字开头，仅含字母数字/下划线/连字符，最长 64）。
-var functionIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
+// 与镜像名；须以小写字母/数字开头，仅含小写字母/数字/下划线/连字符，最长 64；
+// 大写禁用：Docker 镜像仓库/标签名只允许小写，见 G6-3/R08-P1-1）。
+var functionIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
 // functionIDReserved 是 REST 字面量路由段，function_id 不得取这些值：
 // GET /v1/server/functions/runtimes、/specifications 为字面量路由，grpc-gateway
@@ -57,11 +59,16 @@ type UpdateFunctionCommand struct {
 }
 
 func (f *Functions) CreateFunction(ctx context.Context, cmd CreateFunctionCommand) (*domainfunctions.Function, error) {
+	// 纵深防御（G2-1/R06-P0）：函数写操作仅限平台 admin（owner/admin 会话）；
+	// 拦截器 adminRoleMethodRules 已收口，此处兜底防止绕过拦截器的直接调用。
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if !idgen.ID(cmd.ID).IsValid() {
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 	if !functionIDPattern.MatchString(cmd.ID) {
-		return nil, status.Error(codes.InvalidArgument, "invalid function id: must match ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+		return nil, status.Error(codes.InvalidArgument, "invalid function id: must match ^[a-z0-9][a-z0-9_-]{0,63}$")
 	}
 	if _, reserved := functionIDReserved[cmd.ID]; reserved {
 		return nil, status.Errorf(codes.InvalidArgument, "function id %q is reserved", cmd.ID)
@@ -127,6 +134,9 @@ func (f *Functions) GetFunction(ctx context.Context, projectID, functionID strin
 }
 
 func (f *Functions) UpdateFunction(ctx context.Context, cmd UpdateFunctionCommand) (*domainfunctions.Function, error) {
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	fn, err := f.repo.GetFunction(ctx, cmd.ProjectID, cmd.FunctionID)
 	if err != nil {
 		return nil, err
@@ -166,6 +176,9 @@ func (f *Functions) UpdateFunction(ctx context.Context, cmd UpdateFunctionComman
 }
 
 func (f *Functions) DeleteFunction(ctx context.Context, projectID, functionID string) error {
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	fn, err := f.repo.GetFunction(ctx, projectID, functionID)
 	if err != nil {
 		return err

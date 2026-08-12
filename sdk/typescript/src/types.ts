@@ -27,11 +27,12 @@ export interface TokenBundle {
   expires_at: string;
 }
 
-// SignUp/SignIn 等认证响应；mfa_required 时无 tokens，应先返回
-// challenge_token 引导二次认证（调用方不得在 mfa_required 分支访问 tokens）。
+// SignUp/SignIn 等认证响应；mfa_required=true 时服务端不返回 tokens，
+// 只返回 challenge_token 与 factors 引导二次认证（调用方不得在该分支访问 tokens）。
 export interface AuthResult {
   account: Account;
-  tokens: TokenBundle;
+  // 仅当 mfa_required 为 false 时存在；mfa_required=true 时无 tokens，访问前必须先判空。
+  tokens?: TokenBundle;
   mfa_required?: boolean;
   challenge_token?: string;
   factors?: Factor[];

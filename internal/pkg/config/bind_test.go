@@ -30,6 +30,8 @@ security:
   api_key:
     header: X-API-Key
   trusted_proxies: ["127.0.0.1/32"]
+  sessions:
+    max_per_user: 50
 data:
   database:
     source: postgres://localhost:5432/torchwood
@@ -114,6 +116,7 @@ func TestUnmarshalConfig(t *testing.T) {
 	require.Equal(t, "15m", out.GetSecurity().GetJwt().GetAccessTtl())
 	require.Equal(t, "X-API-Key", out.GetSecurity().GetApiKey().GetHeader())
 	require.Equal(t, []string{"127.0.0.1/32"}, out.GetSecurity().GetTrustedProxies())
+	require.EqualValues(t, 50, out.GetSecurity().GetSessions().GetMaxPerUser())
 
 	require.Equal(t, "postgres://localhost:5432/torchwood", out.GetData().GetDatabase().GetSource())
 	require.True(t, out.GetData().GetDatabase().GetDebug())
@@ -159,6 +162,7 @@ func TestConfigureViperEnvBinding(t *testing.T) {
 	t.Setenv("TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY", "")
 	t.Setenv("TORCHWOOD_SERVER_GRPC_ADDR", ":10001")
 	t.Setenv("TORCHWOOD_SECURITY_TRUSTED_PROXIES", "10.0.0.0/8,192.168.0.0/16")
+	t.Setenv("TORCHWOOD_SECURITY_SESSIONS_MAX_PER_USER", "3")
 
 	require.NoError(t, ConfigureViper(f, lynx.NewViperConfig(v)))
 
@@ -166,6 +170,7 @@ func TestConfigureViperEnvBinding(t *testing.T) {
 	require.Equal(t, "env-access-key", v.GetString("storage.s3.access_key_id"))
 	require.Equal(t, "10.0.0.0/8,192.168.0.0/16", v.GetString("security.trusted_proxies"))
 	require.Empty(t, v.GetString("storage.s3.secret_access_key"))
+	require.Equal(t, 3, v.GetInt("security.sessions.max_per_user"))
 }
 
 func TestConfigureViperEnvBindingUnmarshal(t *testing.T) {

@@ -86,26 +86,30 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 		return err
 	}
 	schema := schemaName(internalID, id)
-	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
-		return fmt.Errorf("create schema: %w", err)
-	}
-	if err := p.ensurePermsTable(ctx, schema); err != nil {
+	// R02-P1-2：schema / _perms 表与 document_databases 元数据包进同一事务，
+	// 任一步失败整体回滚，避免"schema 已建而元数据缺失"。
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
+			return fmt.Errorf("create schema: %w", err)
+		}
+		if err := p.ensurePermsTable(txCtx, schema); err != nil {
+			return err
+		}
+		m := &model.DocumentDatabase{
+			ID:        id,
+			ProjectID: projectID,
+			Name:      name,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		_, err := p.conn(txCtx).NewInsert().Model(m).Exec(txCtx)
 		return err
-	}
-	m := &model.DocumentDatabase{
-		ID:        id,
-		ProjectID: projectID,
-		Name:      name,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	_, err = p.db.NewInsert().Model(m).Exec(ctx)
-	return err
+	})
 }
 
 func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Collection, error) {
 	m := new(model.DocumentDatabase)
-	err := p.db.NewSelect().Model(m).Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
+	err := p.conn(ctx).NewSelect().Model(m).Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -123,7 +127,7 @@ func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id stri
 
 func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Collection, error) {
 	var ms []model.DocumentDatabase
-	err := p.db.NewSelect().Model(&ms).Where("project_id = ?", projectID).Order("created_at DESC").Scan(ctx)
+	err := p.conn(ctx).NewSelect().Model(&ms).Where("project_id = ?", projectID).Order("created_at DESC").Scan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +228,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 	}
 
 	var total int64
-	count, err := p.db.NewSelect().Model((*model.DocumentCollection)(nil)).
+	count, err := p.conn(ctx).NewSelect().Model((*model.DocumentCollection)(nil)).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).Count(ctx)
 	if err != nil {
 		return nil, databases.ListMeta{}, err
@@ -232,7 +236,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 	total = int64(count)
 
 	var ms []model.DocumentCollection
-	err = p.db.NewSelect().Model(&ms).
+	err = p.conn(ctx).NewSelect().Model(&ms).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Order("created_at DESC").
 		Limit(pageSize).Offset(offset).Scan(ctx)
@@ -659,17 +663,18 @@ func escapeLikePattern(s string) string {
 	return s
 }
 
-// conflictLockKey 拼接冲突列值作为 advisory lock 键；仅用于互斥，
-// 拼接歧义导致的键碰撞只造成轻微串行化，不影响正确性。
+// conflictLockKey 序列化冲突列值作为 advisory lock 键；仅用于互斥，
+// 碰撞只造成轻微串行化，不影响正确性。采用 JSON 编码（而非分隔符拼接）：
+// 拼接 + "\x00" 分隔在值本身含 \x00 或空串时存在歧义（R02-P2-2），
+// JSON 对字符串转义与类型（int64 vs 字符串 "1"）均无歧义。
 func conflictLockKey(values []any) string {
-	var b strings.Builder
-	for i, v := range values {
-		if i > 0 {
-			b.WriteString("\x00")
-		}
-		b.WriteString(fmt.Sprint(v))
+	b, err := json.Marshal(values)
+	if err != nil {
+		// 文档数据理论上均为 JSON 兼容类型；失败时回退空串，
+		// 仅导致这些值共享同一锁键（轻微串行化），不影响正确性。
+		return ""
 	}
-	return b.String()
+	return string(b)
 }
 
 func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) (*databases.Document, error) {
@@ -743,12 +748,23 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 		return doc, err
 	}
 	tbl := tableName(schema, collectionID)
-	setParts, args := buildUpdateParts(doc, userIDFromPrincipal(principal))
+	updatedBy := userIDFromPrincipal(principal)
+	setParts, args := buildUpdateParts(doc, updatedBy)
 	incParts, incArgs := buildIncrementParts(update.Increment)
 	setParts = append(setParts, incParts...)
 	args = append(args, incArgs...)
 	if len(setParts) == 0 && len(update.Permissions) == 0 {
 		return doc, fmt.Errorf("%w", databases.ErrNoFieldsToUpdate)
+	}
+	if len(setParts) == 0 {
+		// R02-P1-4：仅权限变更时同样刷新审计列，保证 _updated_at/_updated_by
+		// 反映"最后修改"语义（buildUpdateParts 对空 Data 返回空 setParts）。
+		setParts = append(setParts, "_updated_at = ?")
+		args = append(args, time.Now())
+		if updatedBy != "" {
+			setParts = append(setParts, quoteIdent("_updated_by")+" = ?")
+			args = append(args, updatedBy)
+		}
 	}
 	if len(setParts) > 0 {
 		args = append(args, doc.ID, internalID)
@@ -1909,7 +1925,8 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 		}
 	}
 
-	orderSQL := "ORDER BY d._created_at DESC"
+	// R08-P2-4：默认排序带 _id tiebreaker，同 _created_at 的多行分页保持稳定。
+	orderSQL := "ORDER BY d._created_at DESC, d._id DESC"
 	if len(parsed.Orders) > 0 {
 		var parts []string
 		for _, o := range parsed.Orders {

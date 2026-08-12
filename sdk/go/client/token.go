@@ -58,12 +58,21 @@ type FileTokenStore struct {
 }
 
 // NewFileTokenStore 创建绑定 path 的文件 TokenStore；路径开头的 ~ 会展开为
-// 用户主目录（Save 时自动创建父目录，0700）。
+// 用户主目录（仅支持 ~ 与 ~/ 形式，不支持 ~user/；Save 时自动创建父目录，0700）。
 func NewFileTokenStore(path string) *FileTokenStore { return &FileTokenStore{path: expandHome(path)} }
 
-// expandHome 展开路径开头的 ~ 为用户主目录。
+// expandHome 展开路径开头的 ~ 与 ~/ 为用户主目录。
+// 仅支持这两种形式；"~user/" 等其他形式不支持，原样返回。
+// Windows 上同时接受 "~/" 与 "~\"（用户习惯两种写法）。
 func expandHome(path string) string {
-	if path == "~" || !strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+	if path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return path
+		}
+		return home
+	}
+	if !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
 		return path
 	}
 	home, err := os.UserHomeDir()

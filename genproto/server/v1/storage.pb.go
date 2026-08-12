@@ -1063,7 +1063,7 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"\abuckets\x18\x01 \x01(\x03R\abuckets\x12\x14\n" +
 	"\x05files\x18\x02 \x01(\x03R\x05files\x12\x1d\n" +
 	"\n" +
-	"total_size\x18\x03 \x01(\x03R\ttotalSize2\x8f\r\n" +
+	"total_size\x18\x03 \x01(\x03R\ttotalSize2\x95\r\n" +
 	"\x0eStorageService\x12|\n" +
 	"\fCreateBucket\x12(.torchwood.server.v1.CreateBucketRequest\x1a\x1b.torchwood.server.v1.Bucket\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/server/storage/buckets\x12}\n" +
 	"\vListBuckets\x12 .torchwood.shared.v1.ListRequest\x1a(.torchwood.server.v1.ListBucketsResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/storage/buckets\x12x\n" +
@@ -1077,8 +1077,8 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"\n" +
 	"DeleteFile\x12#.torchwood.server.v1.GetFileRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\x92\x01\n" +
 	"\n" +
-	"UpdateFile\x12&.torchwood.server.v1.UpdateFileRequest\x1a\x19.torchwood.server.v1.File\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\xa8\x01\n" +
-	"\x0fCreateFileToken\x12+.torchwood.server.v1.CreateFileTokenRequest\x1a\x1e.torchwood.server.v1.FileToken\"H\x82\xd3\xe4\x93\x02B:\x01*\"=/v1/server/storage/buckets/{bucket_id}/files/{file_id}/tokens\x12\x83\x01\n" +
+	"UpdateFile\x12&.torchwood.server.v1.UpdateFileRequest\x1a\x19.torchwood.server.v1.File\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\xae\x01\n" +
+	"\x0fCreateFileToken\x12+.torchwood.server.v1.CreateFileTokenRequest\x1a\x1e.torchwood.server.v1.FileToken\"N\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02B:\x01*\"=/v1/server/storage/buckets/{bucket_id}/files/{file_id}/tokens\x12\x83\x01\n" +
 	"\x0fGetStorageUsage\x12+.torchwood.server.v1.GetStorageUsageRequest\x1a!.torchwood.server.v1.StorageUsage\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/storage/usage\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +

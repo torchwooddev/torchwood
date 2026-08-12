@@ -13,7 +13,7 @@ import "shared/v1/common.proto";
 
 // 服务默认 access=authenticated：swagger 顶层声明 Bearer security；
 // ACCESS_PUBLIC 方法逐方法声明 security: [] + x-torchwood-access: "public"
-// （详见 shared/v1/openapi.proto 的建模约定）。
+// （详见 docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {

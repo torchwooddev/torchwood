@@ -2,12 +2,14 @@ package auth_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -62,4 +64,180 @@ func TestProviderConstants(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "email", domainauth.ProviderEmail)
 	require.Equal(t, "wechat_web", domainauth.ProviderWeChatWeb)
+}
+
+// g3SessionData 构造会话文档数据（expire_at 为 RFC3339Nano，字符串序=时间序）。
+func g3SessionData(expireAt time.Time) map[string]any {
+	return map[string]any{
+		"user_id":     "user-1",
+		"expire_at":   expireAt.Format(time.RFC3339Nano),
+		"provider":    "email",
+		"secret_hash": "secret",
+	}
+}
+
+// TestSessionService_EvictsOldestSessionsOverLimit（R05-P1-6）：max_per_user=2
+// 且已有 3 个会话时，CreateSessionAndTokens 必须先淘汰最旧 2 个再创建。
+func TestSessionService_EvictsOldestSessionsOverLimit(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	now := time.Now()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": {
+			"sess-oldest": g3SessionData(now.Add(-3 * time.Hour)),
+			"sess-middle": g3SessionData(now.Add(-2 * time.Hour)),
+			"sess-newest": g3SessionData(now.Add(-time.Hour)),
+		},
+	}}
+	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 2}}}
+	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+
+	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
+	require.NoError(t, err)
+
+	// 3 个既有 + 1 新建 → 淘汰最旧 2 个 → 剩 2 个。
+	require.Len(t, docDB.sessions["proj-1"], 2)
+	_, ok := docDB.sessions["proj-1"]["sess-oldest"]
+	require.False(t, ok, "最旧会话必须被淘汰")
+	_, ok = docDB.sessions["proj-1"]["sess-middle"]
+	require.False(t, ok, "次旧会话必须被淘汰")
+	_, ok = docDB.sessions["proj-1"]["sess-newest"]
+	require.True(t, ok, "最新会话必须保留")
+}
+
+// TestSessionService_NoEvictionUnderLimit（R05-P1-6）：未超限时不淘汰。
+func TestSessionService_NoEvictionUnderLimit(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": {
+			"sess-a": g3SessionData(time.Now().Add(-time.Hour)),
+		},
+	}}
+	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 5}}}
+	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+
+	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
+	require.NoError(t, err)
+	require.Len(t, docDB.sessions["proj-1"], 2)
+	_, ok := docDB.sessions["proj-1"]["sess-a"]
+	require.True(t, ok)
+}
+
+// g3Sessions 构造 count 个会话文档，编号越大 expire_at 越新（sess-0 最旧）。
+func g3Sessions(now time.Time, count int) map[string]map[string]any {
+	sessions := make(map[string]map[string]any, count)
+	for i := 0; i < count; i++ {
+		sessions[fmt.Sprintf("sess-%d", i)] = g3SessionData(now.Add(-time.Duration(count-i) * time.Hour))
+	}
+	return sessions
+}
+
+// TestSessionService_DefaultLimitAppliedWhenUnset（G11-5）：未配置
+// （max_per_user=0）回退默认 50——51 个会话（50 旧 + 1 新建）时淘汰 1 个最旧，
+// 总上限保持 50，不再视为不限。
+func TestSessionService_DefaultLimitAppliedWhenUnset(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": g3Sessions(time.Now(), 50),
+	}}
+	svc := auth.NewSessionService(&config.AppConfig{}, docDB, stubRoleResolver{}, nil)
+
+	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
+	require.NoError(t, err)
+	require.Len(t, docDB.sessions["proj-1"], 50, "未配置时必须按默认 50 淘汰")
+	_, ok := docDB.sessions["proj-1"]["sess-0"]
+	require.False(t, ok, "最旧会话必须被淘汰")
+}
+
+// TestSessionService_ExplicitZeroUsesDefaultLimit（G11-5）：显式配置 0 与未配置
+// 语义一致（默认 50）。
+func TestSessionService_ExplicitZeroUsesDefaultLimit(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": g3Sessions(time.Now(), 51),
+	}}
+	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 0}}}
+	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+
+	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
+	require.NoError(t, err)
+	require.Len(t, docDB.sessions["proj-1"], 50, "显式 0 必须回退默认 50")
+}
+
+// TestSessionService_ExplicitMinusOneUnlimited（G11-5）：显式 -1 = 不限，
+// 任何数量会话都不淘汰。
+func TestSessionService_ExplicitMinusOneUnlimited(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": g3Sessions(time.Now(), 55),
+	}}
+	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: -1}}}
+	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+
+	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
+	require.NoError(t, err)
+	require.Len(t, docDB.sessions["proj-1"], 56, "-1 = 不限，不得淘汰")
+}
+
+// TestSessionService_ExplicitLimitEvictsOldest（G11-5）：显式 10——15 个既有
+// 会话 + 1 新建 → 淘汰最旧 6 个 → 剩 10。
+func TestSessionService_ExplicitLimitEvictsOldest(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": g3Sessions(time.Now(), 15),
+	}}
+	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 10}}}
+	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+
+	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
+	require.NoError(t, err)
+	require.Len(t, docDB.sessions["proj-1"], 10, "显式 10 必须淘汰至上限")
+	_, ok := docDB.sessions["proj-1"]["sess-0"]
+	require.False(t, ok, "最旧会话必须被淘汰")
+	_, ok = docDB.sessions["proj-1"]["sess-14"]
+	require.True(t, ok, "最新会话必须保留")
+}
+
+// TestSessionService_DeleteSessionsByUser_BulkDelete（R05-P2-7）：批量删除
+// 替代逐条循环——只删目标用户会话，其他用户会话保留。
+func TestSessionService_DeleteSessionsByUser_BulkDelete(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": {
+			"sess-1": g3SessionData(time.Now()),
+			"sess-2": g3SessionData(time.Now()),
+			"sess-3": {
+				"user_id":   "user-2",
+				"expire_at": time.Now().Add(time.Hour).Format(time.RFC3339Nano),
+			},
+		},
+	}}
+	svc := auth.NewSessionService(nil, docDB, nil, nil)
+
+	require.NoError(t, svc.DeleteSessionsByUser(ctx, "proj-1", "user-1"))
+	require.Len(t, docDB.sessions["proj-1"], 1)
+	_, ok := docDB.sessions["proj-1"]["sess-3"]
+	require.True(t, ok, "其他用户的会话不得被误删")
+}
+
+// TestSessionService_DeleteSessionsByUser_BulkDeleteFailure（R05-P2-7）：
+// 批量删除失败必须返回错误（调用方据此不提交凭据变更）。
+func TestSessionService_DeleteSessionsByUser_BulkDeleteFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
+		"proj-1": {"sess-1": g3SessionData(time.Now())},
+	}}
+	docDB.failBulkDelete = true
+	svc := auth.NewSessionService(nil, docDB, nil, nil)
+
+	err := svc.DeleteSessionsByUser(ctx, "proj-1", "user-1")
+	require.Error(t, err)
+	require.Len(t, docDB.sessions["proj-1"], 1, "失败时不得部分删除")
 }

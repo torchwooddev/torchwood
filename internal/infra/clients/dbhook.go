@@ -79,18 +79,28 @@ func (h *SlowQueryHook) AfterQuery(_ context.Context, e *bun.QueryEvent) {
 
 // sensitiveColumnPattern 匹配敏感列的赋值/比较片段，命中即整体替换为
 // '[REDACTED]'，兜底防御 QueryTemplate 缺失时回退内联 SQL 的泄漏。
-var sensitiveColumnPattern = regexp.MustCompile(`(?i)\b(password_hash|password|secret|secret_hash|token|access_token|refresh_token|auth_token|otp|otp_code|api_key)\s*(=|<>|IN|LIKE|ILIKE)\s*(?:'[^']*'|"[^"]*"|\([^)]*\)|\S+)`)
+var sensitiveColumnPattern = regexp.MustCompile(`(?i)\b(password_hash|password|secret|secret_hash|setup_token|token|access_token|refresh_token|auth_token|otp|otp_code|api_key)\s*(=|<>|IN|LIKE|ILIKE)\s*(?:'[^']*'|"[^"]*"|\([^)]*\)|\S+)`)
+
+// sensitiveInsertPattern 匹配 INSERT 列清单含敏感列、VALUES 以内联字面量
+// 出现的场景（INSERT INTO t (password_hash) VALUES ('x') 不会被上面的赋值
+// 正则命中，属于脱敏绕过形式），命中时整个 VALUES 元组序列（含批量多行
+// 元组 VALUES ('a'), ('b'), ...）替换为 '[REDACTED]'，保证每一行元组的
+// 敏感值都不残留。值段按引号感知消费，字符串内的 ')' 不会截断匹配导致
+// 残留值泄露。
+var sensitiveInsertPattern = regexp.MustCompile(`(?i)\(([^()]*\b(password_hash|password|secret|secret_hash|setup_token|token|access_token|refresh_token|auth_token|otp|otp_code|api_key)\b[^()]*)\)\s+VALUES\s+\((?:'[^']*'|"[^"]*"|[^()'"]*)+\)(?:\s*,\s*\((?:'[^']*'|"[^"]*"|[^()'"]*)+\))*`)
 
 // tablePattern 提取主操作表名（FROM/INTO/UPDATE/JOIN 后首个标识符）。
 var tablePattern = regexp.MustCompile(`(?i)\b(?:FROM|INTO|UPDATE|JOIN)\s+"?([a-z_][a-z0-9_]*)`)
 
 // redactQuery 返回日志安全的 SQL：优先使用占位符模板（不含内联参数）；
-// 兜底使用内联 SQL 时先对敏感列值做强制掩码。
+// 兜底使用内联 SQL 时先对敏感列值做强制掩码（INSERT VALUES 形式优先处理，
+// 避免其列清单被赋值正则按普通文本放过）。
 func redactQuery(e *bun.QueryEvent) string {
 	q := e.QueryTemplate
 	if q == "" {
 		q = e.Query
 	}
+	q = sensitiveInsertPattern.ReplaceAllString(q, "($1) VALUES ([REDACTED])")
 	return sensitiveColumnPattern.ReplaceAllString(q, "$1 $2 '[REDACTED]'")
 }
 

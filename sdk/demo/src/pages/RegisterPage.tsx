@@ -19,6 +19,10 @@ export function RegisterPage() {
       const res = await run(() =>
         client.account.signUp({ email, password, name: name || "SDK User" })
       );
+      if (res.mfa_required || !res.tokens) {
+        setError("该账号已启用 MFA：请前往登录页完成二次验证。");
+        return;
+      }
       setAuth({
         accessToken: res.tokens.access_token,
         refreshToken: res.tokens.refresh_token,

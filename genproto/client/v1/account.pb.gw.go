@@ -889,6 +889,8 @@ func local_request_AccountService_VerifyTOTPFactor_0(ctx context.Context, marsha
 	return msg, metadata, err
 }
 
+var filter_AccountService_DeleteFactor_0 = &utilities.DoubleArray{Encoding: map[string]int{"factor_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+
 func request_AccountService_DeleteFactor_0(ctx context.Context, marshaler runtime.Marshaler, client AccountServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq DeleteFactorRequest
@@ -905,6 +907,12 @@ func request_AccountService_DeleteFactor_0(ctx context.Context, marshaler runtim
 	protoReq.FactorId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "factor_id", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_AccountService_DeleteFactor_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := client.DeleteFactor(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -923,6 +931,12 @@ func local_request_AccountService_DeleteFactor_0(ctx context.Context, marshaler 
 	protoReq.FactorId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "factor_id", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_AccountService_DeleteFactor_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := server.DeleteFactor(ctx, &protoReq)
 	return msg, metadata, err

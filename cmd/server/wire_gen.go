@@ -53,7 +53,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	redisAdminTokenRevokeStore := auth.NewRedisAdminTokenRevokeStore(redisClient)
 	documentDB := documentdb.NewPostgresDocumentDB(database)
 	userRoles := client.NewUserRoles(documentDB)
-	validator := auth.NewValidator(appConfig, apiKeyRepository, adminRepository, adminProjectRepository, redisAdminTokenRevokeStore, documentDB, userRoles)
+	redisOneTimeTokenStore := auth.NewRedisOneTimeTokenStore(redisClient)
+	validator := auth.NewValidatorWithOneTimeTokens(appConfig, apiKeyRepository, adminRepository, adminProjectRepository, redisAdminTokenRevokeStore, documentDB, userRoles, redisOneTimeTokenStore)
 	repository := bunrepo.NewAuditRepository(database)
 	objectStore, err := storage.NewMinioObjectStore(appConfig)
 	if err != nil {
@@ -79,7 +80,6 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	redisRateLimiter := auth.NewRedisRateLimiter(redisClient)
 	mfaService := auth.NewTOTPService(appConfig, redisClient)
 	mfaChallengeStore := auth.NewRedisMFAChallengeStore(redisClient)
-	redisOneTimeTokenStore := auth.NewRedisOneTimeTokenStore(redisClient)
 	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter, userRoles, mfaService, mfaChallengeStore, redisOneTimeTokenStore, repository)
 	accountService := clientgrpc.NewAccountService(account)
 	databases := client.NewDatabases(projectsRepository, documentDB)

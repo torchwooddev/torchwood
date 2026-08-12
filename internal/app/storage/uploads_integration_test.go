@@ -35,7 +35,7 @@ func newTestUploadSessionStore(t *testing.T) (*miniredis.Miniredis, domainstorag
 
 func newUploadsUC(t *testing.T) (context.Context, *Storage, string, *miniredis.Miniredis, *testutil.MemObjectStore) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := serverWriteCtx() // G6-4：CreateBucket 需要 Server API 写主体
 	db := testutil.SetupTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 

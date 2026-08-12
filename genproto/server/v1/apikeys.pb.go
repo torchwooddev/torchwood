@@ -356,12 +356,12 @@ const file_server_v1_apikeys_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xf9\x03\n" +
-	"\x0eAPIKeysService\x12\x7f\n" +
-	"\fCreateAPIKey\x12(.torchwood.server.v1.CreateAPIKeyRequest\x1a%.torchwood.server.v1.APIKeyWithSecret\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/server/api-keys\x12v\n" +
-	"\vListAPIKeys\x12 .torchwood.shared.v1.ListRequest\x1a(.torchwood.server.v1.ListAPIKeysResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/server/api-keys\x12q\n" +
-	"\tGetAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1b.torchwood.server.v1.APIKey\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/api-keys/{id}\x12s\n" +
-	"\fDeleteAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1a.torchwood.shared.v1.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/api-keys/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\x92\x04\n" +
+	"\x0eAPIKeysService\x12\x85\x01\n" +
+	"\fCreateAPIKey\x12(.torchwood.server.v1.CreateAPIKeyRequest\x1a%.torchwood.server.v1.APIKeyWithSecret\"$\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/server/api-keys\x12|\n" +
+	"\vListAPIKeys\x12 .torchwood.shared.v1.ListRequest\x1a(.torchwood.server.v1.ListAPIKeysResponse\"!\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/server/api-keys\x12w\n" +
+	"\tGetAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1b.torchwood.server.v1.APIKey\"&\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/api-keys/{id}\x12y\n" +
+	"\fDeleteAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1a.torchwood.shared.v1.Empty\"&\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/api-keys/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\\\n" +

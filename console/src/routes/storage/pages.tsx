@@ -115,10 +115,10 @@ export function StorageListPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteBucket,
+    mutationFn: (id: string) => deleteBucket(id),
     onSuccess: () => {
       toast.success("Bucket 已删除");
-      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets", projectId] });
     },
   });
 
@@ -127,7 +127,10 @@ export function StorageListPage() {
   const handleBulkDelete = async (selected: Bucket[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      const results = await Promise.allSettled(selected.map((b) => deleteBucket(b.id)));
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
+      const results = await Promise.allSettled(
+        selected.map((b) => deleteBucket(b.id, { __skipToast: true }))
+      );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
       if (failed > 0) {
@@ -135,7 +138,7 @@ export function StorageListPage() {
       } else {
         toast.success(`已删除 ${selected.length} 个 Bucket`);
       }
-      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets", projectId] });
       clear();
     } finally {
       setBulkDeleting(false);
@@ -196,6 +199,7 @@ export function StorageListPage() {
 export function BucketNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [publicBucket, setPublicBucket] = useState(false);
@@ -204,7 +208,7 @@ export function BucketNewPage() {
     mutationFn: createBucket,
     onSuccess: (bucket) => {
       toast.success("Bucket 创建成功");
-      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets", projectId] });
       navigate(`/console/storage/${bucket.id}`);
     },
   });
@@ -265,16 +269,16 @@ export function BucketDetailPage() {
     onSuccess: () => {
       toast.success("Bucket 设置已更新");
       queryClient.invalidateQueries({ queryKey: ["buckets", bucketId] });
-      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets", projectId] });
       queryClient.invalidateQueries({ queryKey: ["storage-usage", projectId] });
     },
   });
 
   const removeBucket = useMutation({
-    mutationFn: deleteBucket,
+    mutationFn: (id: string) => deleteBucket(id),
     onSuccess: () => {
       toast.success("Bucket 已删除");
-      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets", projectId] });
       navigate("/console/storage");
     },
   });
@@ -314,8 +318,9 @@ export function BucketDetailPage() {
   const handleBulkDeleteFiles = async (selected: FileItem[], clear: () => void) => {
     setBulkDeleting(true);
     try {
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
       const results = await Promise.allSettled(
-        selected.map((f) => deleteFile(bucketId!, f.id))
+        selected.map((f) => deleteFile(bucketId!, f.id, { __skipToast: true }))
       );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
@@ -512,7 +517,13 @@ export function FileDetailPage() {
     if (!bucketId || !fileId) return;
     setShareLoading(true);
     try {
-      const { token, expires_at } = await createFileToken(bucketId, fileId);
+      // 失败由页面 toast 统一展示，跳过全局 toast 避免双显（R11-P1-4）。
+      const { token, expires_at } = await createFileToken(
+        bucketId,
+        fileId,
+        undefined,
+        { __skipToast: true }
+      );
       setShareUrl(`${fileViewUrl(bucketId, fileId)}?token=${encodeURIComponent(token)}`);
       setShareExpires(new Date(expires_at).toLocaleString());
       setShareOpen(true);

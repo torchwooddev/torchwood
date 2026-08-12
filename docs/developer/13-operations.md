@@ -137,6 +137,24 @@ security:
   （OTP/SMS 打印到 stdout）。
 - `idgen.default_strategy`：`uuid`（默认）/ `ulid` / `snowflake` / `sequence` / `random`。
 
+### 4.4 ID 生成策略的显式失败语义（重要）
+
+当项目启用 `random`/`sequence` 等需要读取项目级设置的策略时，生成路径会先
+读取项目设置（`settings.idgen.*`，带 30s 短缓存），**读取失败（如数据库
+抖动/不可用）时 ID 生成显式返回错误，不会静默回退**到平台默认策略——这是
+既定设计（R09-P2-1）：策略不一致会破坏 ID 的全局唯一性/顺序语义，宁可
+让生成请求失败也不悄悄产出错误策略的 ID。
+
+- 现象：create user/document 等写入请求报错，错误日志含
+  `resolve idgen strategy` 字样，`/v1/server/health` 的 postgres 依赖
+  可能同时显示 `unavailable`。
+- 处理：确认 `TORCHWOOD_DATA_DATABASE_SOURCE` 指向的 Postgres 连通性；
+  数据库恢复后自动恢复，无需重启进程。
+- 配置了 `random` 策略时另注意：ID 保留集合在 Redis 中有容量上限
+  （100 万/集合，`internal/infra/idgen/random_redis.go`），达到上限后生成
+  会被拒绝并输出 Warn 日志；正常规模下不会触及，异常增长时需排查为何
+  集合未随 30 天 TTL 释放。
+
 ---
 
 ## 5. 健康检查与观测

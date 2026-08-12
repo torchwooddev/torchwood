@@ -643,10 +643,10 @@ export function DatabasesListPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteDatabase,
+    mutationFn: (id: string) => deleteDatabase(id),
     onSuccess: () => {
       toast.success("Database 已删除");
-      queryClient.invalidateQueries({ queryKey: ["databases"] });
+      queryClient.invalidateQueries({ queryKey: ["databases", projectId] });
     },
   });
 
@@ -655,8 +655,9 @@ export function DatabasesListPage() {
   const handleBulkDelete = async (selected: Database[], clear: () => void) => {
     setBulkDeleting(true);
     try {
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
       const results = await Promise.allSettled(
-        selected.map((d) => deleteDatabase(d.id))
+        selected.map((d) => deleteDatabase(d.id, { __skipToast: true }))
       );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
@@ -665,7 +666,7 @@ export function DatabasesListPage() {
       } else {
         toast.success(`已删除 ${selected.length} 个 Database`);
       }
-      queryClient.invalidateQueries({ queryKey: ["databases"] });
+      queryClient.invalidateQueries({ queryKey: ["databases", projectId] });
       clear();
     } finally {
       setBulkDeleting(false);
@@ -726,6 +727,7 @@ export function DatabasesListPage() {
 export function DatabaseNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [id, setId] = useState("");
@@ -734,7 +736,7 @@ export function DatabaseNewPage() {
     mutationFn: createDatabase,
     onSuccess: (db) => {
       toast.success("Database 创建成功");
-      queryClient.invalidateQueries({ queryKey: ["databases"] });
+      queryClient.invalidateQueries({ queryKey: ["databases", projectId] });
       navigate(`/console/databases/${db.id}`);
     },
   });
@@ -764,6 +766,7 @@ export function DatabaseDetailPage() {
   const { dbId } = useParams<{ dbId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const platformAdmin = isPlatformAdmin(role);
@@ -781,10 +784,10 @@ export function DatabaseDetailPage() {
   });
 
   const removeDb = useMutation({
-    mutationFn: deleteDatabase,
+    mutationFn: (id: string) => deleteDatabase(id),
     onSuccess: () => {
       toast.success("Database 已删除");
-      queryClient.invalidateQueries({ queryKey: ["databases"] });
+      queryClient.invalidateQueries({ queryKey: ["databases", projectId] });
       navigate("/console/databases");
     },
   });
@@ -835,8 +838,9 @@ export function DatabaseDetailPage() {
         clear();
         return;
       }
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
       const results = await Promise.allSettled(
-        deletable.map((c) => deleteCollection(dbId!, c.id))
+        deletable.map((c) => deleteCollection(dbId!, c.id, { __skipToast: true }))
       );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
@@ -944,6 +948,13 @@ export function CollectionNewPage() {
   const [id, setId] = useState("");
   const [permissions, setPermissions] = useState<string[]>([]);
 
+  // 父资源（Database）不存在时渲染 NotFound（R11-P2-9）。
+  const { data: database, isLoading: dbLoading, isError: dbError } = useQuery({
+    queryKey: ["databases", dbId],
+    queryFn: () => getDatabase(dbId!),
+    enabled: !!dbId,
+  });
+
   const mutation = useMutation({
     mutationFn: () =>
       createCollection(dbId!, {
@@ -957,6 +968,9 @@ export function CollectionNewPage() {
       navigate(`/console/databases/${dbId}/collections/${coll.id}`);
     },
   });
+
+  if (dbLoading) return <DetailSkeleton />;
+  if (dbError || !database) return <NotFound backTo="/console/databases" />;
 
   return (
     <FormPageWrapper

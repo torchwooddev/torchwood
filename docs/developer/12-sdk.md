@@ -312,6 +312,13 @@ try {
 
 ### 7.2 类型说明（如实说明）
 
+> **⚠️ Breaking change（时间戳 wire 格式）**：自 `c4d0bcb`（proto 时间戳统一）起，
+> 所有时间字段（`created_at`/`updated_at`/`expires_at`/`expire_at`/`invited_at`/
+> `joined_at` 等）的 HTTP JSON 表示从 **int64 unix 毫秒** 变更为 **RFC3339 字符串**
+> （`google.protobuf.Timestamp` 的标准 JSON 映射，如 `"2026-08-13T00:00:00Z"`）。
+> 旧客户端若仍按数字解析会失败；新集成一律按 RFC3339 解析（`new Date(ts)` 可直接消费），
+> 与 swagger 中 `"type": "string", "format": "date-time"` 一致。
+
 SDK 类型为**手写维护**（`src/types.ts`），并非由 proto 自动生成：`Account`、`Document`、
 `User`、`Team`、`Membership`、`Project`、`APIKey`、`Database`、`Collection`、
 `Attribute`、`Index`、`Bucket`、`FileItem`、`TokenBundle`、`Session`、`ListMeta`、
@@ -319,6 +326,37 @@ SDK 类型为**手写维护**（`src/types.ts`），并非由 proto 自动生成
 响应一一对应（snake_case 字段，与 proto JSON 映射一致）。若服务端字段演进，需同步
 更新 `types.ts`；Agent 集成建议以 `genproto/**/*.swagger.json` 为 schema 权威来源，
 SDK 类型仅作便捷参考。
+
+### 7.3 RPC ↔ SDK 方法名映射表
+
+proto RPC（swagger `operationId` 为 `{Service}_{RPC}`）与 TS SDK 方法并非一一同名，
+SDK 采用简短命名。下表为全量映射（权威来源：`sdk/typescript/src/__tests__/contract.test.ts`
+的 `RPC_TO_METHOD`，新增 RPC 后契约测试会强制要求补登映射与方法实现）：
+
+**Server API**
+
+| 服务 | RPC → 方法 |
+|------|------------|
+| UsersService | `CreateUser→create`、`ListUsers→list`、`GetUser→get`、`UpdateUser→update`、`UpdateUserPassword→updatePassword`、`DeleteUser→delete`、`ListUserSessions→listSessions`、`DeleteUserSession→deleteSession`、`CreateUserToken→createToken` |
+| TeamsService | `CreateTeam→create`、`ListTeams→list`、`GetTeam→get`、`DeleteTeam→delete`、`GetTeamPrefs→getPrefs`、`UpdateTeamPrefs→updatePrefs`、`CreateMembership→createMembership`、`ListMemberships→listMemberships`、`GetMembership→getMembership`、`UpdateMembership→updateMembership`、`UpdateMembershipStatus→updateMembershipStatus`、`DeleteMembership→deleteMembership` |
+| DatabasesService | `CreateDatabase→createDatabase`、`ListDatabases→listDatabases`、`GetDatabase→getDatabase`、`DeleteDatabase→deleteDatabase`、`CreateCollection→createCollection`、`ListCollections→listCollections`、`GetCollection→getCollection`、`DeleteCollection→deleteCollection`、`UpdateCollection→updateCollection`、`CreateAttribute→createAttribute`、`DeleteAttribute→deleteAttribute`、`CreateIndex→createIndex`、`DeleteIndex→deleteIndex`、`CreateDocument→createDocument`、`ListDocuments→listDocuments`、`GetDocument→getDocument`、`UpdateDocument→updateDocument`、`UpsertDocument→upsertDocument`、`DeleteDocument→deleteDocument`、`CountDocuments→countDocuments`、`BulkUpdateDocuments→bulkUpdateDocuments`、`BulkDeleteDocuments→bulkDeleteDocuments` |
+| FunctionsService | `ListRuntimes→listRuntimes`、`ListSpecifications→listSpecifications`、`CreateFunction→create`、`ListFunctions→list`、`GetFunction→get`、`UpdateFunction→update`、`DeleteFunction→delete`、`CreateDeployment→createDeployment`、`ListDeployments→listDeployments`、`GetDeployment→getDeployment`、`DeleteDeployment→deleteDeployment`、`SetVariables→setVariables`、`GetVariables→getVariables`、`CreateExecution→createExecution`、`ListExecutions→listExecutions`、`GetExecution→getExecution` |
+| StorageService | `CreateBucket→createBucket`、`ListBuckets→listBuckets`、`GetBucket→getBucket`、`DeleteBucket→deleteBucket`、`UpdateBucket→updateBucket`、`CreateFile→uploadFile`、`ListFiles→listFiles`、`GetFile→getFile`、`DeleteFile→deleteFile`、`UpdateFile→updateFile`、`CreateFileToken→createFileToken`、`GetStorageUsage→getStorageUsage` |
+| APIKeysService | `CreateAPIKey→create`、`ListAPIKeys→list`、`GetAPIKey→get`、`DeleteAPIKey→delete` |
+| OAuthProvidersService | `ListOAuthProviders→list`、`UpsertOAuthProvider→upsert`、`DeleteOAuthProvider→delete` |
+| ProjectsService | `CreateProject→create`、`ListProjects→list`、`GetProject→get`、`UpdateProject→update` |
+| HealthService | `Check→check`（含 additional_bindings 的 `Check2`）、`GetVersion→getVersion` |
+
+**Client API**（AccountService；`tw.account.*`）
+
+| RPC → 方法 |
+|------------|
+| `SignUp→signUp`、`SignIn→signIn`、`SignOut→signOut`、`RefreshToken→refresh`、`Me→me`、`UpdateAccount→updateAccount`、`ListSessions→listSessions`、`DeleteSession→deleteSession`、`DeleteSessions→deleteSessions`、`GetPrefs→getPrefs`、`UpdatePrefs→updatePrefs`、`CreateEmailOTP→createEmailOTP`、`CreateEmailOTPSession→createEmailOTPSession`、`CreateOAuth2Session→createOAuth2Session`、`CreateOAuth2TokenSession→createOAuth2TokenSession`、`CreatePhoneOTP→createPhoneOTP`、`CreatePhoneOTPSession→createPhoneOTPSession`、`CreateWeChatMiniProgramSession→createWeChatMiniProgramSession`、`CreateAnonymousSession→createAnonymousSession`、`CreateOAuth2LinkSession→createOAuth2LinkSession`、`CreateOAuth2LinkTokenSession→createOAuth2LinkTokenSession`、`CreateVerification→createVerification`、`UpdateVerification→updateVerification`、`CreateRecovery→createRecovery`、`UpdateRecovery→updateRecovery`、`ListFactors→listFactors`、`CreateTOTPFactor→createTOTPFactor`、`VerifyTOTPFactor→verifyTOTPFactor`、`DeleteFactor→deleteFactor`、`CreateMFASession→createMFASession`、`CreateJWT→createJWT`、`CreateMagicURLSession→createMagicURLSession`、`UpdateMagicURLSession→updateMagicURLSession`、`ListLogs→listLogs` |
+
+Client 的 DatabasesService / TeamsService 使用同名映射（`createDocument`、`listDocuments`、
+`getDocument`、`updateDocument`、`upsertDocument`、`deleteDocument`、`countDocuments`；
+`createTeam`、`listTeams`、`getTeam`、`deleteTeam`、`createMembership`、`listMemberships`、
+`updateMembershipStatus`、`deleteMembership`）。
 
 ---
 

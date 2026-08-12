@@ -24,6 +24,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
@@ -31,8 +32,18 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
+
+// serverWriteCtx 返回带 Server API 写主体（API key 类型）principal 的上下文：
+// G6-4 后 CreateBucket use-case 要求 RequireServerWriteActor，测试直接调
+// use-case 需注入主体。
+func serverWriteCtx() context.Context {
+	return contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorID: "test-key", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
+	})
+}
 
 // newUploadSessionStoreForTest 返回 miniredis 支撑的 UploadSessionStore。
 func newUploadSessionStoreForTest(t *testing.T) domainstorage.UploadSessionStore {
@@ -87,7 +98,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	handler.Register(mux)
 	server := httptest.NewServer(mux)
 
-	bucket, err := storageUC.CreateBucket(ctx, appstorage.CreateBucketCommand{
+	bucket, err := storageUC.CreateBucket(serverWriteCtx(), appstorage.CreateBucketCommand{
 		ProjectID: projectID,
 		Name:      "http-test-bucket",
 	})
@@ -283,12 +294,12 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	bucketA, err := storageUC.CreateBucket(ctx, appstorage.CreateBucketCommand{
+	bucketA, err := storageUC.CreateBucket(serverWriteCtx(), appstorage.CreateBucketCommand{
 		ProjectID: projectA,
 		Name:      "bucket-a",
 	})
 	require.NoError(t, err)
-	bucketB, err := storageUC.CreateBucket(ctx, appstorage.CreateBucketCommand{
+	bucketB, err := storageUC.CreateBucket(serverWriteCtx(), appstorage.CreateBucketCommand{
 		ProjectID: projectB,
 		Name:      "bucket-b",
 	})
@@ -411,7 +422,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 	handler.Register(mux)
 	server := httptest.NewServer(mux)
 
-	bucket, err := storageUC.CreateBucket(ctx, appstorage.CreateBucketCommand{
+	bucket, err := storageUC.CreateBucket(serverWriteCtx(), appstorage.CreateBucketCommand{
 		ProjectID: projectID,
 		Name:      "scope-test-bucket",
 	})
@@ -473,7 +484,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	handler.Register(mux)
 	server := httptest.NewServer(mux)
 
-	bucket, err := storageUC.CreateBucket(ctx, appstorage.CreateBucketCommand{
+	bucket, err := storageUC.CreateBucket(serverWriteCtx(), appstorage.CreateBucketCommand{
 		ProjectID: otherProjectID,
 		Name:      "foreign-bucket",
 	})
@@ -514,11 +525,10 @@ func TestFileHandler_PublicBucketAnonymousRead(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
 	f := setupStorageHTTPFixture(t)
 
 	// 建 public bucket 并上传文件。
-	bucket, err := f.handler.storage.CreateBucket(ctx, appstorage.CreateBucketCommand{
+	bucket, err := f.handler.storage.CreateBucket(serverWriteCtx(), appstorage.CreateBucketCommand{
 		ProjectID: f.projectID,
 		Name:      "public-bucket",
 		Public:    true,

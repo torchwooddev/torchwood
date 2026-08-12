@@ -132,8 +132,40 @@ message UpdateProjectRequest {
 }
 ```
 
-- 时间字段用 `google.protobuf.Timestamp`；
+- **删除字段一律 `reserved`**：禁止直接删除或复用已发布的字段号/字段名；
+  删除时声明 `reserved 5;`（字段号）与 `reserved "old_name";`（字段名），
+  buf breaking（`buf.yaml` 已启用 `breaking: use: FILE`）据此拦截破坏性变更。
+- 时间字段用 `google.protobuf.Timestamp`（HTTP JSON 映射为 RFC3339 字符串）；
 - 生成的 Go 代码在 `genproto/`，**禁止手工编辑**。
+
+---
+
+## 1.4 OpenAPI 认证建模约定
+
+所有 service proto 通过 `grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger`
+文件选项声明 `securityDefinitions` 与全局 `security`，使生成的 swagger.json 可被
+外部 Agent 直接用于鉴权调用（roadmap §0 验收标准）。
+
+三个统一 security scheme（所有文件保持一致）：
+
+| scheme | 传输方式 | 适用面 |
+|--------|----------|--------|
+| `apiKey` | 请求头 `X-API-Key` | Server API / Agent 调用（access=api_key） |
+| `Bearer` | `Authorization: Bearer <jwt>` | Client API 登录态（access=authenticated/permission） |
+| `cookie` | `Cookie: TORCHWOOD_session_console=<sid>` | Console admin 会话 |
+
+`method_auth` 的 access level 以 `x-torchwood-access` 扩展透传到 swagger 顶层
+与 operation 级（值域 = AccessLevel 小写：`public`/`authenticated`/`permission`/`api_key`）：
+
+- operation 未显式声明时继承 swagger 顶层（服务默认）值；
+- `ACCESS_PUBLIC` 方法必须声明 `security: []`（匿名可达，覆盖全局 security）；
+- 顶层扩展必须等于服务默认 access（`service_auth.default_access`），operation 级
+  有效值必须等于 `method_auth` 的 access——由 `internal/infra/server/grpc_swagger_test.go`
+  的 `TestSwaggerAccessExtensionMatchesCollectMethodsByAccess` 启动期断言。
+
+新增服务/方法的规范：文件级设置 `openapiv2_swagger`（`security_definitions` +
+`security` + `extensions.x-torchwood-access`）；与方法级 `method_auth` 不一致的
+方法用 `openapiv2_operation` 覆盖（`security` + `extensions.x-torchwood-access`）。
 
 ---
 

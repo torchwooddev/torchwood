@@ -47,7 +47,7 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	if err := config.UnmarshalConfig(app.Config(), &c); err != nil {
 		return nil, err
 	}
-	if err := validateJWTSecret(c.GetSecurity().GetJwt().GetSecret(), app.Logger()); err != nil {
+	if err := validateJWTSecret(c.GetSecurity().GetJwt().GetSecret()); err != nil {
 		return nil, err
 	}
 	return &c, nil
@@ -66,9 +66,10 @@ var weakJWTSecretTokens = []string{
 // minJWTSecretLen 是 JWT 主密钥的最小长度（HS256 密钥熵下界）。
 const minJWTSecretLen = 32
 
-// validateJWTSecret 拒绝空值、已知弱默认值与过短密钥；命中弱模式但通过
-// 长度检查的密钥仅 Warn（不阻断，便于自定义强密钥仍含常见词的情形）。
-func validateJWTSecret(secret string, logger *slog.Logger) error {
+// validateJWTSecret 拒绝空值、过短密钥与任何含已知弱子串的密钥：命中弱
+// 子串即整体拒绝（而不只是 Warn），否则 "change-me" 之类的占位默认值只要
+// 拼够长度就能绕过长度检查，弱密钥子串是实际绕过手法中最常见的一类。
+func validateJWTSecret(secret string) error {
 	s := strings.TrimSpace(secret)
 	if s == "" {
 		return errors.New("security.jwt.secret must be set (env TORCHWOOD_SECURITY_JWT_SECRET)")
@@ -78,13 +79,8 @@ func validateJWTSecret(secret string, logger *slog.Logger) error {
 	}
 	lower := strings.ToLower(s)
 	for _, w := range weakJWTSecretTokens {
-		if lower == w {
-			return fmt.Errorf("security.jwt.secret is a known weak default value %q; generate a strong random secret (env TORCHWOOD_SECURITY_JWT_SECRET)", w)
-		}
 		if strings.Contains(lower, w) {
-			logger.Warn("security.jwt.secret contains a known weak value; make sure a strong random secret is set",
-				"secret_length", len(s))
-			break
+			return fmt.Errorf("security.jwt.secret contains known weak value %q; generate a strong random secret (env TORCHWOOD_SECURITY_JWT_SECRET)", w)
 		}
 	}
 	return nil
@@ -95,6 +91,16 @@ func NewBuildInfo() buildinfo.BuildInfo {
 	return buildinfo.BuildInfo{Version: version, Commit: commit, Date: date}
 }
 
+// NewComponents 返回服务注册顺序：grpc → gateway → metrics。
+//
+// 关停顺序说明（R09-P2-4）：Lynx v1.2.0 经 oklog/run 停止服务——正常关停
+// 路径按注册顺序（而非逆序）逐个有界停止，即 grpc → gateway → metrics；
+// 逆序停止仅用于框架内部 Init/OnStart 失败路径的资源清理（stopServices）。
+// 依赖方向为 gateway → grpc，理想顺序应先停 gateway 再停 grpc；但关停前
+// 已有 30s 排水窗口（readiness 摘流 + LB 摘除），且各服务 Stop 均有界，
+// 故 grpc 先停仅影响窗口内剩余的少量在途转发请求，可接受。metrics 最后
+// 停，Prometheus 采集在关停全程可用。cleanup（DB/Redis 等底层资源）不
+// 注册进 Lynx，在 runner.RunE() 返回后由 main 统一执行。
 func NewComponents(
 	grpcServer *lynxgrpc.Server,
 	gatewayServer *server.GRPCGatewayServer,

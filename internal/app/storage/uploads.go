@@ -183,6 +183,17 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 	// 锁在会话删除之后释放（defer 在函数返回时执行）。
 	defer func() { _ = s.uploads.UnlockComplete(ctx, uploadID) }()
 
+	// 竞态修复（G6-6/R07-P2-4）：加锁成功后重新读取会话——锁前快照可能已过期
+	// （并发 UploadChunk 在快照后补传了缺片，或并发 AbortUpload 已删除会话）。
+	// 缺片判定必须基于锁内最新状态。
+	session, err = s.uploads.Get(ctx, uploadID)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, status.Error(codes.NotFound, "upload session not found")
+	}
+
 	// 缺片校验：锁在缺片时释放，会话保留可继续传（续传关键）。
 	missing := make([]int, 0, session.PartCount)
 	for i := 1; i <= session.PartCount; i++ {
@@ -256,6 +267,9 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 }
 
 // AbortUpload 取消上传：删会话后清理全部暂存分片对象（逐片 Delete，幂等）。
+// 竞态修复（G6-6/R07-P2-5）：先尝试获取 complete 互斥锁——complete 进行中
+// （Compose 合并分片）时 abort 删除会话/分片会破坏其输出；锁获取失败返回
+// FailedPrecondition 提示重试。
 func (s *Storage) AbortUpload(ctx context.Context, projectID, uploadID, ownerUserID string, principal databases.Principal) error {
 	session, err := s.uploads.Get(ctx, uploadID)
 	if err != nil {
@@ -274,6 +288,16 @@ func (s *Storage) AbortUpload(ctx context.Context, projectID, uploadID, ownerUse
 	if err != nil {
 		return err
 	}
+	_, locked, err := s.uploads.LockComplete(ctx, uploadID)
+	if err != nil {
+		return fmt.Errorf("lock complete: %w", err)
+	}
+	if !locked {
+		return status.Error(codes.FailedPrecondition, "upload is being completed, retry later")
+	}
+	// abort 删除会话时 Redis 实现会一并删除锁 key，defer 释放为幂等兜底。
+	defer func() { _ = s.uploads.UnlockComplete(ctx, uploadID) }()
+
 	if err := s.uploads.Delete(ctx, uploadID); err != nil {
 		return fmt.Errorf("delete upload session: %w", err)
 	}

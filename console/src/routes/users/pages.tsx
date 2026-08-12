@@ -83,10 +83,10 @@ export function UsersListPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteUser,
+    mutationFn: (id: string) => deleteUser(id),
     onSuccess: () => {
       toast.success("用户已删除");
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["users", projectId] });
     },
   });
 
@@ -98,7 +98,10 @@ export function UsersListPage() {
   const handleBulkDelete = async (selected: User[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      const results = await Promise.allSettled(selected.map((u) => deleteUser(u.id)));
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
+      const results = await Promise.allSettled(
+        selected.map((u) => deleteUser(u.id, { __skipToast: true }))
+      );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
       if (failed > 0) {
@@ -106,7 +109,7 @@ export function UsersListPage() {
       } else {
         toast.success(`已删除 ${selected.length} 个用户`);
       }
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["users", projectId] });
       clear();
     } finally {
       setBulkDeleting(false);
@@ -165,6 +168,7 @@ export function UsersListPage() {
 export function CreateUserPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -186,7 +190,7 @@ export function CreateUserPage() {
       }),
     onSuccess: (user) => {
       toast.success("用户已创建");
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["users", projectId] });
       navigate(`/console/users/${user.id}`);
     },
   });
@@ -308,6 +312,7 @@ export function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [resetOpen, setResetOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -323,10 +328,10 @@ export function UserDetailPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteUser,
+    mutationFn: (id: string) => deleteUser(id),
     onSuccess: () => {
       toast.success("用户已删除");
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["users", projectId] });
       navigate("/console/users");
     },
   });
@@ -337,7 +342,7 @@ export function UserDetailPage() {
       toast.success("密码已重置，该用户全部会话已失效");
       setResetOpen(false);
       setNewPassword("");
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["users", projectId] });
     },
   });
 
@@ -477,6 +482,7 @@ export function UserEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [status, setStatus] = useState<string>("");
   const [name, setName] = useState<string>("");
@@ -496,9 +502,14 @@ export function UserEditPage() {
       email?: string;
       email_verified?: boolean;
     }) => updateUser(id!, input),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success("用户已更新");
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      // 用响应重建表单，避免与（可能被服务端归一化/回写修改的）服务端状态失同步（R11-P3-11）。
+      setStatus(updated.status);
+      setName(updated.name ?? "");
+      setEmail(updated.email);
+      setEmailVerified(updated.email_verified);
+      queryClient.invalidateQueries({ queryKey: ["users", projectId] });
       navigate(`/console/users/${id}`);
     },
   });

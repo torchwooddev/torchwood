@@ -25,6 +25,28 @@ type recorder struct {
 	deletedAttributeKey  string
 	deletedIndexID       string
 	upserts              []*serverv1.UpsertDocumentRequest
+	errs                 map[string]error // RPC 名 → 注入错误（fake 方法据此返回）
+}
+
+// setErr 为指定 RPC 注入错误（传 nil 清除）。
+func (r *recorder) setErr(rpc string, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err == nil {
+		delete(r.errs, rpc)
+		return
+	}
+	if r.errs == nil {
+		r.errs = make(map[string]error)
+	}
+	r.errs[rpc] = err
+}
+
+// fail 返回该 RPC 注入的错误；无注入返回 nil。
+func (r *recorder) fail(rpc string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.errs[rpc]
 }
 
 type fakeServer struct {

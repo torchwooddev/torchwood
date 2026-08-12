@@ -70,7 +70,12 @@ var userUpdateProtectedFields = map[string]struct{}{
 
 // CreateUser 服务端创建用户：校验 email 唯一性与密码强度，写入 users 文档。
 // 与 Client SignUp 共用同一套权限与存储语义。
+// 纵深防御（G2-2）：业务写主体（console admin 会话 / API key）才允许经
+// SystemPrincipal 写库；viewer 角色细粒度由拦截器 adminRoleMethodRules 把关。
 func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUserCommand) (*databases.Document, error) {
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
+		return nil, err
+	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -196,7 +201,7 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 // UpdateUserPassword 服务端直接重置密码，并撤销该用户全部会话（与客户端
 // 改密后清会话语义一致），避免旧令牌继续有效。
 func (u *Users) UpdateUserPassword(ctx context.Context, projectID, userID, newPassword string) (*databases.Document, error) {
-	if err := requirePlatformAdmin(ctx); err != nil {
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
 		return nil, err
 	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
@@ -252,6 +257,11 @@ func (u *Users) ListUserSessions(ctx context.Context, projectID, userID string) 
 }
 
 func (u *Users) DeleteUserSession(ctx context.Context, projectID, userID, sessionID string) error {
+	// 纵深防御（G2-2）：管理员会话 / API key 主体才允许以 SystemPrincipal
+	// 删除会话文档；owner/admin 角色细粒度由拦截器 adminRoleMethodRules 把关。
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
+		return err
+	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
@@ -272,7 +282,7 @@ func (u *Users) DeleteUserSession(ctx context.Context, projectID, userID, sessio
 // 注意：签发的 token 生命周期为默认会话 TTL（7 天），仅供调试使用，
 // 不应作为长期凭证用于生产路径。
 func (u *Users) CreateUserToken(ctx context.Context, projectID, userID string) (*domainauth.TokenBundle, error) {
-	if err := requirePlatformAdmin(ctx); err != nil {
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
 		return nil, err
 	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
@@ -307,7 +317,7 @@ func (u *Users) CreateUserToken(ctx context.Context, projectID, userID string) (
 }
 
 func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, principal databases.Principal) error {
-	if err := requirePlatformAdmin(ctx); err != nil {
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
 		return err
 	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {

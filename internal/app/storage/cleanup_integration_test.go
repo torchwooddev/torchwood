@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestCleanupOrphanChunks 造一个 >48h 的孤儿分片对象 + 一个 <24h 活跃分片
@@ -56,7 +58,8 @@ func TestCleanupOrphanChunks(t *testing.T) {
 	require.NoError(t, err, "无 /chunks/ 段的对象不应被清理")
 }
 
-// TestDeleteBucket_RemovesOrphanChunks DeleteBucket 后残留分片对象被同步清理。
+// TestDeleteBucket_RemovesOrphanChunks DeleteBucket 后残留分片对象被同步清理，
+// 且文件元数据文档（files 集合）一并删除（R07 结论 3）。
 func TestDeleteBucket_RemovesOrphanChunks(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -79,11 +82,29 @@ func TestDeleteBucket_RemovesOrphanChunks(t *testing.T) {
 	_, err = objStore.Get(ctx, domainstorage.DefaultBucketName, chunk)
 	require.NoError(t, err)
 
+	// 已 complete 的完整文件（文档 + 对象）。
+	file, err := uc.CreateFile(ctx, CreateFileCommand{
+		ProjectID: projectID,
+		BucketID:  bucketID,
+		Name:      "complete.txt",
+		MimeType:  "text/plain",
+	}, bytes.NewReader([]byte("hello")), 5, principal)
+	require.NoError(t, err)
+	_, _, err = uc.GetFile(ctx, projectID, bucketID, file.ID, principal)
+	require.NoError(t, err, "DeleteBucket 前文件可读")
+
 	require.NoError(t, uc.DeleteBucket(ctx, projectID, bucketID, principal))
 
 	// 分片对象被同步清理。
 	_, err = objStore.Get(ctx, domainstorage.DefaultBucketName, chunk)
 	require.Error(t, err, "DeleteBucket 应清理残留分片对象")
+
+	// files 文档已删（显式断言，R07 结论 3）：GetFile 必须 NotFound 而非孤儿残留。
+	_, _, err = uc.GetFile(ctx, projectID, bucketID, file.ID, principal)
+	require.Equal(t, codes.NotFound, status.Code(err), "DeleteBucket 应删除 files 文档")
+	// 文件对象已删。
+	_, err = objStore.Get(ctx, domainstorage.DefaultBucketName, objectKey(projectID, bucketID, file.ID))
+	require.Error(t, err, "DeleteBucket 应删除文件对象")
 
 	// bucket 元数据已删（ListBuckets 不再返回）。
 	buckets, _, err := uc.ListBuckets(ctx, projectID, databases.Query{}, principal)

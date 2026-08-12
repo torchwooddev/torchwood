@@ -32,7 +32,7 @@ func TestCreateExecution_SyncWritesResult(t *testing.T) {
 	}, nil)
 	uc := newTestUC(executor, repo, newMockQueue())
 
-	rec, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{
+	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{
 		ProjectID:  "p1",
 		FunctionID: "fn_1",
 		Data:       `{"a":1}`,
@@ -55,7 +55,7 @@ func TestCreateExecution_SyncTruncatesOutput(t *testing.T) {
 	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0, Stdout: big}, nil)
 	uc := newTestUC(executor, repo, newMockQueue())
 
-	rec, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.NoError(t, err)
 	require.Equal(t, domainfunctions.ExecutionStatusCompleted, rec.Status)
 	require.Len(t, rec.Stdout, maxOutputBytes)
@@ -69,7 +69,7 @@ func TestCreateExecution_SyncTimeoutMarksFailed(t *testing.T) {
 	executor := newMockExecutor(nil, context.DeadlineExceeded)
 	uc := newTestUC(executor, repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Len(t, repo.executions, 1)
 	for _, e := range repo.executions {
@@ -84,7 +84,7 @@ func TestCreateExecution_SyncExitCodeNonZeroFails(t *testing.T) {
 	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 1, Stderr: "boom"}, nil)
 	uc := newTestUC(executor, repo, newMockQueue())
 
-	rec, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.NoError(t, err)
 	require.Equal(t, domainfunctions.ExecutionStatusFailed, rec.Status)
 	require.Equal(t, "boom", rec.Error)
@@ -96,7 +96,7 @@ func TestCreateExecution_AsyncEnqueues(t *testing.T) {
 	q := newMockQueue()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, q)
 
-	rec, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{
+	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{
 		ProjectID:  "p1",
 		FunctionID: "fn_1",
 		Data:       `{"x":1}`,
@@ -120,7 +120,7 @@ func TestCreateExecution_EnqueueFailureMarksFailed(t *testing.T) {
 	q.err = errors.New("redis down")
 	uc := newTestUC(newMockExecutor(nil, nil), repo, q)
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{
 		ProjectID:  "p1",
 		FunctionID: "fn_1",
 		Async:      true,
@@ -143,7 +143,7 @@ func TestCreateExecution_NoReadyDeployment(t *testing.T) {
 	require.NoError(t, repo.DeleteDeployment(context.Background(), "p1", fn.ID, "dep_ready"))
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.ErrorContains(t, err, "no ready deployment")
 }
@@ -156,7 +156,7 @@ func TestCreateExecution_ExplicitDeploymentNotReady(t *testing.T) {
 	}))
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{
 		ProjectID: "p1", FunctionID: "fn_1", DeploymentID: "dep_pending",
 	})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
@@ -169,7 +169,7 @@ func TestCreateExecution_DataTooLarge(t *testing.T) {
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
 	big := make([]byte, maxExecutionDataBytes+1)
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{
 		ProjectID: "p1", FunctionID: "fn_1", Data: string(big),
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -180,10 +180,42 @@ func TestCreateExecution_InvalidJSON(t *testing.T) {
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{
 		ProjectID: "p1", FunctionID: "fn_1", Data: "{not json",
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// G6-8/R07-P3-7：data 必须是 JSON object——数组/标量/字面量 null 一律拒绝。
+func TestCreateExecution_DataMustBeJSONObject(t *testing.T) {
+	repo := newMockRepo()
+	seedReadyFunction(repo, "p1", "fn_1", true, 15)
+	uc := newTestUC(newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0}, nil), repo, newMockQueue())
+	ctx := platformAdminCtx()
+
+	for _, data := range []string{
+		`[]`,    // 数组
+		`"str"`, // 字符串
+		`123`,   // 数字
+		`true`,  // 布尔
+		`null`,  // 字面量 null（解码成功但非 object）
+		`[1,2]`, // 非空数组
+		`"{}"`,  // 字符串化的 object 也不接受
+	} {
+		_, err := uc.CreateExecution(ctx, CreateExecutionCommand{
+			ProjectID: "p1", FunctionID: "fn_1", Data: data,
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err), "data %q 必须被拒绝", data)
+		require.ErrorContains(t, err, "JSON object")
+	}
+
+	// 空串（未提供）与合法 object 放行进入后续校验/执行。
+	_, err := uc.CreateExecution(ctx, CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1", Data: ""})
+	require.NoError(t, err)
+	_, err = uc.CreateExecution(ctx, CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1", Data: `{"a":1}`})
+	require.NoError(t, err)
+	_, err = uc.CreateExecution(ctx, CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1", Data: `{}`})
+	require.NoError(t, err)
 }
 
 func TestCreateExecution_SyncTimeoutOver30Rejected(t *testing.T) {
@@ -191,12 +223,12 @@ func TestCreateExecution_SyncTimeoutOver30Rejected(t *testing.T) {
 	seedReadyFunction(repo, "p1", "fn_1", true, 60)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.ErrorContains(t, err, "use async")
 
 	// 异步不受 30s 限制。
-	rec, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1", Async: true})
+	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1", Async: true})
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 }
@@ -206,7 +238,7 @@ func TestCreateExecution_DisabledFunction(t *testing.T) {
 	seedReadyFunction(repo, "p1", "fn_1", false, 15)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 
@@ -214,7 +246,7 @@ func TestCreateExecution_NotFound(t *testing.T) {
 	repo := newMockRepo()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "nope"})
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "nope"})
 	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
@@ -233,7 +265,7 @@ func TestCreateExecution_ResourceExhausted(t *testing.T) {
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
-	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.Equal(t, codes.ResourceExhausted, status.Code(err))
 	require.Len(t, repo.executions, 1)
 	for _, e := range repo.executions {
@@ -245,7 +277,7 @@ func TestCreateExecution_ResourceExhausted(t *testing.T) {
 func TestCreateFunction_Validation(t *testing.T) {
 	repo := newMockRepo()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
-	ctx := context.Background()
+	ctx := platformAdminCtx()
 
 	_, err := uc.CreateFunction(ctx, CreateFunctionCommand{ID: "fn_x", ProjectID: "p1", Name: "f", Runtime: "bogus", TimeoutSeconds: timeoutPtr(15)})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -279,7 +311,7 @@ func TestCreateFunction_Validation(t *testing.T) {
 func TestCreateFunction_TimeoutDefault(t *testing.T) {
 	repo := newMockRepo()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
-	ctx := context.Background()
+	ctx := platformAdminCtx()
 
 	fn, err := uc.CreateFunction(ctx, CreateFunctionCommand{
 		ID: "fn_default", ProjectID: "p1", Name: "f", Runtime: "node-18.0",
@@ -292,7 +324,7 @@ func TestCreateFunction_TimeoutDefault(t *testing.T) {
 func TestCreateFunction_EnabledFalsePersists(t *testing.T) {
 	repo := newMockRepo()
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
-	ctx := context.Background()
+	ctx := platformAdminCtx()
 
 	disabled := false
 	fn, err := uc.CreateFunction(ctx, CreateFunctionCommand{

@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { ApiRequestConfig } from "./client";
 
 export interface User {
   id: string;
@@ -83,8 +84,8 @@ export async function updateUserPassword(id: string, password: string): Promise<
   return res.data;
 }
 
-export async function deleteUser(id: string): Promise<void> {
-  await api.delete(`/server/users/${id}`);
+export async function deleteUser(id: string, config?: ApiRequestConfig): Promise<void> {
+  await api.delete(`/server/users/${id}`, config);
 }
 
 export async function listUserSessions(id: string): Promise<UserSession[]> {

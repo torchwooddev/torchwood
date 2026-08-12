@@ -400,8 +400,9 @@ func (x *Variables) GetVariables() []*Variable {
 type Variable struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Key   string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	// 环境变量明文值：SetVariables 请求透传、GetVariables 响应回显
-	// （函数运行期注入）；属敏感数据，前端/日志不得持久化明文。
+	// 环境变量值：SetVariables 请求透传明文；GetVariables 与 SetVariables
+	// 响应统一返回掩码（"******"），真实值仅在 SetVariables 请求中可见一次
+	// （对齐 internal/app/functions/variables.go 的 secretMask 约定）。
 	Value         string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1479,7 +1480,7 @@ const file_server_v1_functions_proto_rawDesc = "" +
 	"\x16ListExecutionsResponse\x12>\n" +
 	"\n" +
 	"executions\x18\x01 \x03(\v2\x1e.torchwood.server.v1.ExecutionR\n" +
-	"executions2\xc5\x12\n" +
+	"executions2\xd1\x12\n" +
 	"\x10FunctionsService\x12|\n" +
 	"\fListRuntimes\x12\x1a.torchwood.shared.v1.Empty\x1a).torchwood.server.v1.ListRuntimesResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/server/functions/runtimes\x12\x8e\x01\n" +
 	"\x12ListSpecifications\x12\x1a.torchwood.shared.v1.Empty\x1a/.torchwood.server.v1.ListSpecificationsResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/server/functions/specifications\x12|\n" +
@@ -1491,9 +1492,9 @@ const file_server_v1_functions_proto_rawDesc = "" +
 	"\x10CreateDeployment\x12,.torchwood.server.v1.CreateDeploymentRequest\x1a\x1f.torchwood.server.v1.Deployment\"9\x82\xd3\xe4\x93\x023:\x01*\"./v1/server/functions/{function_id}/deployments\x12\xa0\x01\n" +
 	"\x0fListDeployments\x12'.torchwood.server.v1.GetFunctionRequest\x1a,.torchwood.server.v1.ListDeploymentsResponse\"6\x82\xd3\xe4\x93\x020\x12./v1/server/functions/{function_id}/deployments\x12\xa3\x01\n" +
 	"\rGetDeployment\x12).torchwood.server.v1.GetDeploymentRequest\x1a\x1f.torchwood.server.v1.Deployment\"F\x82\xd3\xe4\x93\x02@\x12>/v1/server/functions/{function_id}/deployments/{deployment_id}\x12\xa1\x01\n" +
-	"\x10DeleteDeployment\x12).torchwood.server.v1.GetDeploymentRequest\x1a\x1a.torchwood.shared.v1.Empty\"F\x82\xd3\xe4\x93\x02@*>/v1/server/functions/{function_id}/deployments/{deployment_id}\x12\x91\x01\n" +
-	"\fSetVariables\x12(.torchwood.server.v1.SetVariablesRequest\x1a\x1e.torchwood.server.v1.Variables\"7\x82\xd3\xe4\x93\x021:\x01*\x1a,/v1/server/functions/{function_id}/variables\x12\x8d\x01\n" +
-	"\fGetVariables\x12'.torchwood.server.v1.GetFunctionRequest\x1a\x1e.torchwood.server.v1.Variables\"4\x82\xd3\xe4\x93\x02.\x12,/v1/server/functions/{function_id}/variables\x12\x98\x01\n" +
+	"\x10DeleteDeployment\x12).torchwood.server.v1.GetDeploymentRequest\x1a\x1a.torchwood.shared.v1.Empty\"F\x82\xd3\xe4\x93\x02@*>/v1/server/functions/{function_id}/deployments/{deployment_id}\x12\x97\x01\n" +
+	"\fSetVariables\x12(.torchwood.server.v1.SetVariablesRequest\x1a\x1e.torchwood.server.v1.Variables\"=\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x021:\x01*\x1a,/v1/server/functions/{function_id}/variables\x12\x93\x01\n" +
+	"\fGetVariables\x12'.torchwood.server.v1.GetFunctionRequest\x1a\x1e.torchwood.server.v1.Variables\":\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02.\x12,/v1/server/functions/{function_id}/variables\x12\x98\x01\n" +
 	"\x0fCreateExecution\x12+.torchwood.server.v1.CreateExecutionRequest\x1a\x1e.torchwood.server.v1.Execution\"8\x82\xd3\xe4\x93\x022:\x01*\"-/v1/server/functions/{function_id}/executions\x12\x9d\x01\n" +
 	"\x0eListExecutions\x12'.torchwood.server.v1.GetFunctionRequest\x1a+.torchwood.server.v1.ListExecutionsResponse\"5\x82\xd3\xe4\x93\x02/\x12-/v1/server/functions/{function_id}/executions\x12\x9e\x01\n" +
 	"\fGetExecution\x12(.torchwood.server.v1.GetExecutionRequest\x1a\x1e.torchwood.server.v1.Execution\"D\x82\xd3\xe4\x93\x02>\x12</v1/server/functions/{function_id}/executions/{execution_id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +

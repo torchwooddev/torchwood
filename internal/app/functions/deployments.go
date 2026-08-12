@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
@@ -28,6 +29,10 @@ type CreateDeploymentCommand struct {
 }
 
 func (f *Functions) CreateDeployment(ctx context.Context, cmd CreateDeploymentCommand) (*domainfunctions.Deployment, error) {
+	// 纵深防御（G2-1/R06-P0）：部署写操作仅限平台 admin。
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if len(cmd.Code) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "code is required")
 	}
@@ -139,6 +144,9 @@ func (f *Functions) GetDeployment(ctx context.Context, projectID, functionID, de
 // DeleteDeployment 删除顺序：先 DB 级联删除 → 再 docker image rm → 最后删本地 zip
 // （全部幂等，失败仅记日志），避免进行中构建/执行读到半删除状态。
 func (f *Functions) DeleteDeployment(ctx context.Context, projectID, functionID, deploymentID string) error {
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	fn, err := f.repo.GetFunction(ctx, projectID, functionID)
 	if err != nil {
 		return err

@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -37,6 +40,37 @@ type memAdminRevokeStore struct {
 func newMemAdminRevokeStore() *memAdminRevokeStore {
 	return &memAdminRevokeStore{revoked: map[string]time.Time{}}
 }
+
+// memOneTimeTokenStore 是内存版 OneTimeTokenStore 桩：Register 记录，
+// Consume 原子取删；记录消费次数以便断言普通 token 不触碰消费路径。
+type memOneTimeTokenStore struct {
+	records  map[string]string
+	consumed int
+}
+
+func newMemOneTimeTokenStore() *memOneTimeTokenStore {
+	return &memOneTimeTokenStore{records: map[string]string{}}
+}
+
+func (s *memOneTimeTokenStore) Register(_ context.Context, key, value string, _ time.Duration) (bool, error) {
+	if _, exists := s.records[key]; exists {
+		return false, nil
+	}
+	s.records[key] = value
+	return true, nil
+}
+
+func (s *memOneTimeTokenStore) Consume(_ context.Context, key string) (string, error) {
+	value, ok := s.records[key]
+	if !ok {
+		return "", nil
+	}
+	delete(s.records, key)
+	s.consumed++
+	return value, nil
+}
+
+var _ domainauth.OneTimeTokenStore = (*memOneTimeTokenStore)(nil)
 
 func (s *memAdminRevokeStore) RevokeBefore(_ context.Context, adminID string, revokedAt time.Time, _ time.Duration) error {
 	if existing, ok := s.revoked[adminID]; !ok || revokedAt.After(existing) {
@@ -111,8 +145,9 @@ func (r *stubAdminProjectRepo) HasProjectAccess(_ context.Context, adminID, proj
 func (r *stubAdminProjectRepo) GrantProjectAccess(context.Context, string, string) error { return nil }
 
 type stubDocDB struct {
-	users    map[string]map[string]map[string]any
-	sessions map[string]map[string]map[string]any
+	users          map[string]map[string]map[string]any
+	sessions       map[string]map[string]map[string]any
+	failBulkDelete bool
 }
 
 func (d *stubDocDB) GetDocument(_ context.Context, projectID, _, collectionID, docID string, _ databases.Principal) (*databases.Document, error) {
@@ -127,6 +162,71 @@ func (d *stubDocDB) GetDocument(_ context.Context, projectID, _, collectionID, d
 		}
 	}
 	return nil, nil
+}
+
+// CreateDocument 只支持 sessions 集合（会话测试桩）。
+func (d *stubDocDB) CreateDocument(_ context.Context, projectID, _, collectionID string, doc databases.Document, _ []databases.Permission, _ databases.Principal) (databases.Document, error) {
+	if collectionID == "sessions" {
+		if d.sessions == nil {
+			d.sessions = map[string]map[string]map[string]any{}
+		}
+		if d.sessions[projectID] == nil {
+			d.sessions[projectID] = map[string]map[string]any{}
+		}
+		d.sessions[projectID][doc.ID] = doc.Data
+		return doc, nil
+	}
+	return doc, nil
+}
+
+// ListDocuments 只支持 sessions 集合：equal("user_id") 过滤 +
+// orderAsc("expire_at") 升序（RFC3339Nano 字符串序 == 时间序），
+// 不做分页（测试数据均为单页）。
+func (d *stubDocDB) ListDocuments(_ context.Context, projectID, _, collectionID string, q databases.Query, _ databases.Principal) (*databases.DocumentList, error) {
+	if collectionID != "sessions" {
+		return &databases.DocumentList{}, nil
+	}
+	parsed, err := query.ParseMany(q.Queries)
+	if err != nil {
+		return nil, err
+	}
+	var docs []databases.Document
+	for id, data := range d.sessions[projectID] {
+		match := true
+		for _, f := range parsed.Filters {
+			if f.Op == "equal" && len(f.Values) > 0 && fmt.Sprint(data[f.Attribute]) != f.Values[0] {
+				match = false
+			}
+		}
+		if match {
+			docs = append(docs, databases.Document{ID: id, Data: data})
+		}
+	}
+	sort.SliceStable(docs, func(i, j int) bool {
+		return fmt.Sprint(docs[i].Data["expire_at"]) < fmt.Sprint(docs[j].Data["expire_at"])
+	})
+	if parsed.Limit > 0 && len(docs) > parsed.Limit {
+		docs = docs[:parsed.Limit]
+	}
+	return &databases.DocumentList{Documents: docs}, nil
+}
+
+// BulkDeleteDocuments 支持 sessions 集合；failBulkDelete 置位时注入故障。
+func (d *stubDocDB) BulkDeleteDocuments(_ context.Context, projectID, _, collectionID string, documentIDs []string, _ databases.Principal) (int64, error) {
+	if d.failBulkDelete {
+		return 0, fmt.Errorf("injected bulk delete failure")
+	}
+	if collectionID != "sessions" {
+		return 0, nil
+	}
+	var deleted int64
+	for _, id := range documentIDs {
+		if _, ok := d.sessions[projectID][id]; ok {
+			delete(d.sessions[projectID], id)
+			deleted++
+		}
+	}
+	return deleted, nil
 }
 
 func (d *stubDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
@@ -160,9 +260,6 @@ func (d *stubDocDB) CreateIndex(context.Context, string, string, string, databas
 	return nil
 }
 func (d *stubDocDB) DeleteIndex(context.Context, string, string, string, string) error { return nil }
-func (d *stubDocDB) CreateDocument(context.Context, string, string, string, databases.Document, []databases.Permission, databases.Principal) (databases.Document, error) {
-	return databases.Document{}, nil
-}
 func (d *stubDocDB) UpdateDocument(context.Context, string, string, string, databases.DocumentUpdate, databases.Principal) (databases.Document, error) {
 	return databases.Document{}, nil
 }
@@ -171,9 +268,6 @@ func (d *stubDocDB) UpsertDocument(context.Context, string, string, string, data
 }
 func (d *stubDocDB) DeleteDocument(context.Context, string, string, string, string, databases.Principal) error {
 	return nil
-}
-func (d *stubDocDB) ListDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (*databases.DocumentList, error) {
-	return nil, nil
 }
 func (d *stubDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
 	return 0, nil
@@ -184,11 +278,7 @@ func (d *stubDocDB) SumDocumentField(context.Context, string, string, string, st
 func (d *stubDocDB) BulkUpdateDocuments(context.Context, string, string, string, []string, map[string]any, []databases.Permission, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (d *stubDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
-	return 0, nil
-}
 func (d *stubDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
-
 func hashSecret(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
@@ -480,4 +570,113 @@ func TestValidator_CrossPurposeTokenRejected(t *testing.T) {
 	require.NoError(t, err)
 	_, err = v.ValidateToken(ctx, rawToken)
 	requireCode(t, err, codes.Unauthenticated)
+}
+
+// oneTimeJWTValidator 组装带一次性 token 存储的 validator（end-user 路径），
+// 用户文档使用调用方传入的 projectID/userID。
+func oneTimeJWTValidator(t *testing.T, store domainauth.OneTimeTokenStore, projectID, userID string) *auth.Validator {
+	t.Helper()
+	docDB := &stubDocDB{
+		users: map[string]map[string]map[string]any{
+			projectID: {userID: {"status": "active"}},
+		},
+	}
+	return auth.NewValidatorWithOneTimeTokens(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, docDB, nil, store)
+}
+
+func oneTimeJWTSign(t *testing.T, projectID, userID, jti string) string {
+	t.Helper()
+	token, err := jwtparser.Generate(jwtparser.DeriveKey(testJWTSecret, jwtparser.PurposeEndUserJWT), jwtparser.Claims{
+		TokenID:   jti,
+		UserID:    userID,
+		Username:  "user@example.com",
+		ActorKind: "end_user",
+		ProjectID: projectID,
+		TokenType: jwtparser.TokenTypeAccess,
+		OneTime:   true,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(5 * time.Minute).Unix(),
+	})
+	require.NoError(t, err)
+	return token
+}
+
+// TestValidator_OneTimeJWT_SecondUseRejected（R05-P2-8）：同一一次性 JWT
+// 二次使用必须 Unauthenticated；首次使用正常放行。
+func TestValidator_OneTimeJWT_SecondUseRejected(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	projectID := idgen.UUID().String()
+	userID := idgen.UUID().String()
+	store := newMemOneTimeTokenStore()
+	v := oneTimeJWTValidator(t, store, projectID, userID)
+
+	jti := idgen.UUID().String()
+	// 模拟签发方 CreateJWT 的注册记录。
+	ok, err := store.Register(ctx, domainauth.OneTimeJWTKeyPrefix+jti, "session-1", time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	token := oneTimeJWTSign(t, projectID, userID, jti)
+
+	p, err := v.ValidateToken(ctx, token)
+	require.NoError(t, err)
+	require.Equal(t, shared.ActorKindEndUser, p.ActorKind)
+	require.Equal(t, userID, p.UserID)
+
+	// 同一 token 二次使用：消费记录已被 GETDEL，必须拒绝。
+	_, err = v.ValidateToken(ctx, token)
+	requireCode(t, err, codes.Unauthenticated)
+}
+
+// TestValidator_OneTimeJWT_WithoutConsumptionRecord：未登记消费记录（或已
+// 过期/从未签发）的一次性 JWT 必须拒绝，防伪造。
+func TestValidator_OneTimeJWT_WithoutConsumptionRecord(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	projectID := idgen.UUID().String()
+	userID := idgen.UUID().String()
+	v := oneTimeJWTValidator(t, newMemOneTimeTokenStore(), projectID, userID)
+
+	token := oneTimeJWTSign(t, projectID, userID, idgen.UUID().String())
+	_, err := v.ValidateToken(ctx, token)
+	requireCode(t, err, codes.Unauthenticated)
+}
+
+// TestValidator_OneTimeJWT_WithoutStoreFailsClosed：验证侧未装配一次性存储时
+// 一次性 JWT 一律拒绝（fail-closed），不得静默放行。
+func TestValidator_OneTimeJWT_WithoutStoreFailsClosed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	projectID := idgen.UUID().String()
+	userID := idgen.UUID().String()
+	v := oneTimeJWTValidator(t, nil, projectID, userID)
+
+	token := oneTimeJWTSign(t, projectID, userID, idgen.UUID().String())
+	_, err := v.ValidateToken(ctx, token)
+	requireCode(t, err, codes.Unauthenticated)
+}
+
+// TestValidator_NormalAccessToken_DoesNotTouchOneTimeStore：普通 access token
+// 不得触发一次性消费（区分路径，防止误伤常规模拟）。
+func TestValidator_NormalAccessToken_DoesNotTouchOneTimeStore(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	projectID := idgen.UUID().String()
+	userID := idgen.UUID().String()
+	store := newMemOneTimeTokenStore()
+	v := oneTimeJWTValidator(t, store, projectID, userID)
+
+	token := signToken(t, jwtparser.Claims{
+		TokenID:   idgen.UUID().String(),
+		UserID:    userID,
+		ProjectID: projectID,
+		ActorKind: "end_user",
+		TokenType: jwtparser.TokenTypeAccess,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	})
+	_, err := v.ValidateToken(ctx, token)
+	require.NoError(t, err)
+	require.Zero(t, store.consumed, "normal access token must not consume one-time records")
 }

@@ -12,7 +12,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 // 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
-// shared/v1/openapi.proto 的建模约定；本服务全部方法继承，无需逐方法覆盖）。
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承，无需逐方法覆盖）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {
@@ -194,7 +194,9 @@ message GetCollectionRequest {
 message UpdateCollectionRequest {
   string database_id = 1;
   string collection_id = 2;
-  string name = 3;
+  // optional：未设置（或空串）= 不修改；设置非空串 = 更新（R10-P1-6；
+  // adapter 对空串同样按不修改处理，清空 name 的语义暂不支持）。
+  optional string name = 3;
   optional PermissionsUpdate permissions = 4;
   optional bool document_security = 5;
   optional bool disabled = 6;

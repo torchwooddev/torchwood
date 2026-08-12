@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -58,6 +59,10 @@ type queueMessage struct {
 }
 
 func (f *Functions) CreateExecution(ctx context.Context, cmd CreateExecutionCommand) (*domainfunctions.ExecutionRecord, error) {
+	// 纵深防御（G2-1/R06-P0）：执行创建（同步/异步）仅限平台 admin。
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	fn, err := f.repo.GetFunction(ctx, cmd.ProjectID, cmd.FunctionID)
 	if err != nil {
 		return nil, err
@@ -77,8 +82,13 @@ func (f *Functions) CreateExecution(ctx context.Context, cmd CreateExecutionComm
 	if len(cmd.Data) > maxExecutionDataBytes {
 		return nil, status.Errorf(codes.InvalidArgument, "data exceeds maximum size of %d bytes", maxExecutionDataBytes)
 	}
-	if cmd.Data != "" && !json.Valid([]byte(cmd.Data)) {
-		return nil, status.Error(codes.InvalidArgument, "data must be valid JSON")
+	// data 必须是 JSON object（R07-P3-7）：数组/标量/字面量 null 一律拒绝——
+	// 执行体以 JSON object 语义读取 TW_DATA，非 object 会导致运行时解析异常。
+	if cmd.Data != "" {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(cmd.Data), &obj); err != nil || obj == nil {
+			return nil, status.Error(codes.InvalidArgument, "data must be a JSON object")
+		}
 	}
 	vars, err := f.repo.GetVariables(ctx, cmd.ProjectID, cmd.FunctionID)
 	if err != nil {

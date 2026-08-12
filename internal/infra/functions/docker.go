@@ -35,10 +35,46 @@ const (
 	maxZipEntryBytes    = 100 << 20 // 单条 ≤ 100 MiB
 	maxZipTotalBytes    = 200 << 20 // 总解压 ≤ 200 MiB
 	maxBuildLogBytes    = 64 << 10  // 构建日志截断 64KB
+	maxBuildLogLine     = 4 << 20   // 单行构建日志上限（Scanner 缓冲，超长即报错）
 	maxContainerOutSize = 1 << 20   // stdout/stderr 缓冲上限（结果在 app 层再截断 64KB）
 	// maxExecEnvBudgetBytes 是 data + env 合并预算（execve 32KiB 单参数硬限制）。
 	maxExecEnvBudgetBytes = 32 << 10
 )
+
+// zipExtractLimits 是 extractZip 的解压预算（防 zip 炸弹）。
+// 校验分两层：声明侧（UncompressedSize64，快速拒绝）+ 写入侧（按实际写入
+// 字节计数，防声明大小与实际内容不符的伪造 zip）。
+type zipExtractLimits struct {
+	maxEntries    int
+	maxEntryBytes int64
+	maxTotalBytes int64
+}
+
+var defaultZipExtractLimits = zipExtractLimits{
+	maxEntries:    maxZipEntries,
+	maxEntryBytes: maxZipEntryBytes,
+	maxTotalBytes: maxZipTotalBytes,
+}
+
+// errZipBudgetExceeded 表示按实际字节计数的解压预算超限（写入侧兜底）。
+var errZipBudgetExceeded = errors.New("extracted size exceeds budget")
+
+// budgetWriter 包装目标 writer，按实际写入字节计数；超预算拒绝写入并返回
+// errZipBudgetExceeded（调用方负责清理半成品文件）。
+type budgetWriter struct {
+	dst     io.Writer
+	limit   int64
+	written int64
+}
+
+func (b *budgetWriter) Write(p []byte) (int, error) {
+	if b.limit-b.written < int64(len(p)) {
+		return 0, errZipBudgetExceeded
+	}
+	n, err := b.dst.Write(p)
+	b.written += int64(n)
+	return n, err
+}
 
 // specResources 是资源规格 → 容器配额映射（与 app 层 runtimes 表一致，
 // infra 不依赖 app 包，自持一份兜底）。
@@ -92,7 +128,8 @@ func (d *dockerExecutor) imageName(functionID, deploymentID string) string {
 	if registry == "" {
 		registry = "torchwood-funcs"
 	}
-	return fmt.Sprintf("%s/func-%s-%s", registry, functionID, deploymentID)
+	// 兜底兼容历史大写 functionID（Docker 镜像仓库/标签名只允许小写，G6-3）。
+	return fmt.Sprintf("%s/func-%s-%s", registry, strings.ToLower(functionID), deploymentID)
 }
 
 // ensureNetwork 检查配置的 bridge 网络存在，不存在则创建（幂等；失败不缓存）。
@@ -307,16 +344,25 @@ func (d *dockerExecutor) RemoveImage(ctx context.Context, functionID, deployment
 
 // extractZip 解压 zip 到 destDir（防 zip 炸弹与路径穿越），返回 runtime ID。
 func extractZip(zipPath, destDir string) (string, error) {
+	return extractZipWithLimits(zipPath, destDir, defaultZipExtractLimits)
+}
+
+// extractZipWithLimits 是 extractZip 的可注入预算版本（测试用）：除声明侧
+// UncompressedSize64 预检外，写入侧按实际字节计数强制预算，超限清理半成品。
+func extractZipWithLimits(zipPath, destDir string, limits zipExtractLimits) (string, error) {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return "", status.Error(codes.InvalidArgument, "invalid zip file")
 	}
 	defer zr.Close()
 
-	if len(zr.File) > maxZipEntries {
-		return "", status.Errorf(codes.InvalidArgument, "zip contains too many entries (max %d)", maxZipEntries)
+	if len(zr.File) > limits.maxEntries {
+		return "", status.Errorf(codes.InvalidArgument, "zip contains too many entries (max %d)", limits.maxEntries)
 	}
-	var total uint64
+	// declaredTotal 基于声明大小快速预检（低成本拒绝明显超限）；
+	// actualTotal 按实际写入字节累计（防御声明大小与实际不符的伪造 zip）。
+	var declaredTotal uint64
+	var actualTotal int64
 	hasIndexJS := false
 	hasMainPy := false
 	root := filepath.Clean(destDir)
@@ -328,12 +374,14 @@ func extractZip(zipPath, destDir string) (string, error) {
 		if f.FileInfo().IsDir() {
 			continue
 		}
-		if f.UncompressedSize64 > maxZipEntryBytes {
-			return "", status.Errorf(codes.InvalidArgument, "zip entry %q exceeds %d bytes", f.Name, maxZipEntryBytes)
+		if f.UncompressedSize64 > uint64(limits.maxEntryBytes) {
+			_ = os.RemoveAll(destDir)
+			return "", status.Errorf(codes.InvalidArgument, "zip entry %q exceeds %d bytes", f.Name, limits.maxEntryBytes)
 		}
-		total += f.UncompressedSize64
-		if total > maxZipTotalBytes {
-			return "", status.Errorf(codes.InvalidArgument, "zip total uncompressed size exceeds %d bytes", maxZipTotalBytes)
+		declaredTotal += f.UncompressedSize64
+		if declaredTotal > uint64(limits.maxTotalBytes) {
+			_ = os.RemoveAll(destDir)
+			return "", status.Errorf(codes.InvalidArgument, "zip total uncompressed size exceeds %d bytes", limits.maxTotalBytes)
 		}
 
 		// zip slip：Clean 后必须仍位于解压根目录内。
@@ -357,12 +405,25 @@ func extractZip(zipPath, destDir string) (string, error) {
 			src.Close()
 			return "", fmt.Errorf("write zip entry %q: %w", f.Name, err)
 		}
-		_, copyErr := io.Copy(dst, src)
-		src.Close()
-		closeErr := dst.Close()
-		if copyErr != nil {
-			return "", fmt.Errorf("extract zip entry %q: %w", f.Name, copyErr)
+	// 写入侧按实际字节计数（不再仅信任 UncompressedSize64 声明值），
+	// 预算（单条目或总预算）超限报错并清理整个解压目标目录——RemoveAll
+	// 仅作用于本函数持有的 destDir 子树（zip-slip 校验保证条目写入始终
+	// 位于其内），不会误删目录外内容，也不残留已解压的前序条目。
+	n, copyErr := io.Copy(&budgetWriter{dst: dst, limit: limits.maxEntryBytes}, src)
+	actualTotal += n
+	src.Close()
+	closeErr := dst.Close()
+	if copyErr != nil {
+		_ = os.RemoveAll(destDir)
+		if errors.Is(copyErr, errZipBudgetExceeded) {
+			return "", status.Errorf(codes.InvalidArgument, "zip entry %q exceeds %d byte extraction budget", f.Name, limits.maxEntryBytes)
 		}
+		return "", fmt.Errorf("extract zip entry %q: %w", f.Name, copyErr)
+	}
+	if actualTotal > limits.maxTotalBytes {
+		_ = os.RemoveAll(destDir)
+		return "", status.Errorf(codes.InvalidArgument, "zip total uncompressed size exceeds %d bytes", limits.maxTotalBytes)
+	}
 		if closeErr != nil {
 			return "", fmt.Errorf("close zip entry %q: %w", f.Name, closeErr)
 		}
@@ -478,7 +539,7 @@ func readBuildOutput(r io.Reader) (string, error) {
 	var log tailBuffer
 	var buildErr error
 	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 512*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxBuildLogLine)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		log.Write(append(line, '\n'))

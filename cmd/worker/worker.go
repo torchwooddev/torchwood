@@ -148,6 +148,13 @@ func (w *Worker) consume(ctx context.Context) {
 }
 
 // requeue 记录 payload 的重试次数（进程内存，best-effort）；超过上限返回 false。
+// ⚠️ 已知限制（R07-P3-8，本轮选择不做持久化）：重试计数仅存于进程内存，
+// worker 重启会清零，瞬时失败任务可能被重试超过 maxProcessAttempts 次；
+// 因队列消息被重新入队，重启后计数丢失无法从 ExecutionRecord 恢复
+// （schema 无重试计数字段）。超限兜底 MarkExecutionFailed 仍保证任务最终失败
+// 标记，不会无限重试（每次重启仅多出 ≤ maxProcessAttempts 次）。
+// 未来可改为：ExecutionRecord 增加 retry_count 列 + 每失败原子自增，
+// 或队列 payload 内嵌 attempt 计数。
 func (w *Worker) requeue(payload []byte) bool {
 	key := string(payload)
 	w.attemptMu.Lock()

@@ -11,13 +11,24 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// serverWriteCtx 返回带 Server API 写主体（API key 类型）principal 的上下文：
+// G6-4 后 CreateBucket use-case 要求 RequireServerWriteActor，直接调 use-case
+// 的集成测试需注入主体。
+func serverWriteCtx() context.Context {
+	return contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorID: "test-key", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
+	})
+}
 
 // TestStorage_Acceptance_ServerAPI covers manual checklist §4.11–4.13:
 // create bucket, create/list/get/delete file via use-case (gRPC 小文件路径).
@@ -26,7 +37,7 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx := context.Background()
+	ctx := serverWriteCtx()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
@@ -82,7 +93,7 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 
 func newStorageUC(t *testing.T) (context.Context, *Storage, string, *config.AppConfig) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := serverWriteCtx()
 	db := testutil.SetupTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 

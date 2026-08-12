@@ -1,55 +1,108 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, type ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Layout } from "@/components/Layout";
-import { Login } from "@/routes/Login";
-import { Dashboard } from "@/routes/Dashboard";
-import {
-  ProjectsListPage,
-  ProjectNewPage,
-  ProjectDetailPage,
-} from "@/routes/projects/pages";
-import {
-  ApiKeysListPage,
-  ApiKeyNewPage,
-  ApiKeyDetailPage,
-} from "@/routes/api-keys/pages";
-import {
-  UsersListPage,
-  UserDetailPage,
-  UserEditPage,
-  CreateUserPage,
-} from "@/routes/users/pages";
-import {
-  StorageListPage,
-  BucketNewPage,
-  BucketDetailPage,
-  FileDetailPage,
-} from "@/routes/storage/pages";
-import {
-  FunctionsListPage,
-  FunctionDetailPage,
-} from "@/routes/functions/pages";
-import {
-  TeamsListPage,
-  TeamNewPage,
-  TeamDetailPage,
-} from "@/routes/teams/pages";
-import {
-  DatabasesListPage,
-  DatabaseNewPage,
-  DatabaseDetailPage,
-  CollectionNewPage,
-  CollectionDetailPage,
-  DocumentsListPage,
-  DocumentNewPage,
-  DocumentDetailPage,
-} from "@/routes/databases/pages";
-import { SettingsPage } from "@/routes/settings/pages";
-import { AdminsListPage } from "@/routes/admins/pages";
-import { CollectionLayout } from "@/routes/databases/CollectionLayout";
+import { useAdminRole, canWrite, isPlatformAdmin } from "@/hooks/useAdminRole";
+
+const Login = lazy(() =>
+  import("@/routes/Login").then((m) => ({ default: m.Login }))
+);
+const Dashboard = lazy(() =>
+  import("@/routes/Dashboard").then((m) => ({ default: m.Dashboard }))
+);
+const ProjectsListPage = lazy(() =>
+  import("@/routes/projects/pages").then((m) => ({ default: m.ProjectsListPage }))
+);
+const ProjectNewPage = lazy(() =>
+  import("@/routes/projects/pages").then((m) => ({ default: m.ProjectNewPage }))
+);
+const ProjectDetailPage = lazy(() =>
+  import("@/routes/projects/pages").then((m) => ({ default: m.ProjectDetailPage }))
+);
+const ApiKeysListPage = lazy(() =>
+  import("@/routes/api-keys/pages").then((m) => ({ default: m.ApiKeysListPage }))
+);
+const ApiKeyNewPage = lazy(() =>
+  import("@/routes/api-keys/pages").then((m) => ({ default: m.ApiKeyNewPage }))
+);
+const ApiKeyDetailPage = lazy(() =>
+  import("@/routes/api-keys/pages").then((m) => ({ default: m.ApiKeyDetailPage }))
+);
+const UsersListPage = lazy(() =>
+  import("@/routes/users/pages").then((m) => ({ default: m.UsersListPage }))
+);
+const UserDetailPage = lazy(() =>
+  import("@/routes/users/pages").then((m) => ({ default: m.UserDetailPage }))
+);
+const UserEditPage = lazy(() =>
+  import("@/routes/users/pages").then((m) => ({ default: m.UserEditPage }))
+);
+const CreateUserPage = lazy(() =>
+  import("@/routes/users/pages").then((m) => ({ default: m.CreateUserPage }))
+);
+const StorageListPage = lazy(() =>
+  import("@/routes/storage/pages").then((m) => ({ default: m.StorageListPage }))
+);
+const BucketNewPage = lazy(() =>
+  import("@/routes/storage/pages").then((m) => ({ default: m.BucketNewPage }))
+);
+const BucketDetailPage = lazy(() =>
+  import("@/routes/storage/pages").then((m) => ({ default: m.BucketDetailPage }))
+);
+const FileDetailPage = lazy(() =>
+  import("@/routes/storage/pages").then((m) => ({ default: m.FileDetailPage }))
+);
+const FunctionsListPage = lazy(() =>
+  import("@/routes/functions/pages").then((m) => ({ default: m.FunctionsListPage }))
+);
+const FunctionDetailPage = lazy(() =>
+  import("@/routes/functions/pages").then((m) => ({ default: m.FunctionDetailPage }))
+);
+const TeamsListPage = lazy(() =>
+  import("@/routes/teams/pages").then((m) => ({ default: m.TeamsListPage }))
+);
+const TeamNewPage = lazy(() =>
+  import("@/routes/teams/pages").then((m) => ({ default: m.TeamNewPage }))
+);
+const TeamDetailPage = lazy(() =>
+  import("@/routes/teams/pages").then((m) => ({ default: m.TeamDetailPage }))
+);
+const DatabasesListPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.DatabasesListPage }))
+);
+const DatabaseNewPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.DatabaseNewPage }))
+);
+const DatabaseDetailPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.DatabaseDetailPage }))
+);
+const CollectionNewPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.CollectionNewPage }))
+);
+const CollectionDetailPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.CollectionDetailPage }))
+);
+const DocumentsListPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.DocumentsListPage }))
+);
+const DocumentNewPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.DocumentNewPage }))
+);
+const DocumentDetailPage = lazy(() =>
+  import("@/routes/databases/pages").then((m) => ({ default: m.DocumentDetailPage }))
+);
+const CollectionLayout = lazy(() =>
+  import("@/routes/databases/CollectionLayout").then((m) => ({ default: m.CollectionLayout }))
+);
+const SettingsPage = lazy(() =>
+  import("@/routes/settings/pages").then((m) => ({ default: m.SettingsPage }))
+);
+const AdminsListPage = lazy(() =>
+  import("@/routes/admins/pages").then((m) => ({ default: m.AdminsListPage }))
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,7 +113,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function RequireAuth({ children }: { children: React.ReactNode }) {
+function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
   if (loading) {
     // 正在用 refresh cookie 探测初始会话状态，避免闪现登录页。
@@ -72,10 +125,46 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// G8-1 路由级权限守卫：viewer 访问写路由、非平台 admin 访问平台级写路由时
+// 重定向回首页（与各页面按钮 gating 对齐）。角色查询中返回 null 避免误跳转；
+// 查询失败（role 为 undefined）时 fail-closed 拒绝。
+function RequireRole({
+  children,
+  mode = "write",
+}: {
+  children: ReactNode;
+  mode?: "write" | "platformAdmin";
+}) {
+  const { role, isLoading } = useAdminRole();
+  if (isLoading) {
+    return null;
+  }
+  const allowed =
+    role !== undefined && (mode === "write" ? canWrite(role) : isPlatformAdmin(role));
+  if (!allowed) {
+    return <Navigate to="/console" replace />;
+  }
+  return <>{children}</>;
+}
+
+// RouteErrorBoundary：按路径分段重置错误边界，单页崩溃不影响其他路由；
+// 同时兜住 React.lazy 分包加载失败（chunk 加载错误）。
+function RouteErrorBoundary({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>;
+}
+
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/console/login" element={<Login />} />
+      <Route
+        path="/console/login"
+        element={
+          <RouteErrorBoundary>
+            <Login />
+          </RouteErrorBoundary>
+        }
+      />
       <Route
         path="/console"
         element={
@@ -84,47 +173,282 @@ function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route
+          index
+          element={
+            <RouteErrorBoundary>
+              <Dashboard />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="projects" element={<ProjectsListPage />} />
-        <Route path="projects/new" element={<ProjectNewPage />} />
-        <Route path="projects/:id" element={<ProjectDetailPage />} />
+        <Route
+          path="projects"
+          element={
+            <RouteErrorBoundary>
+              <ProjectsListPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="projects/new"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <ProjectNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="projects/:id"
+          element={
+            <RouteErrorBoundary>
+              <ProjectDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="settings" element={<SettingsPage />} />
+        <Route
+          path="settings"
+          element={
+            <RouteErrorBoundary>
+              <SettingsPage />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="admins" element={<AdminsListPage />} />
+        <Route
+          path="admins"
+          element={
+            <RouteErrorBoundary>
+              <AdminsListPage />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="api-keys" element={<ApiKeysListPage />} />
-        <Route path="api-keys/new" element={<ApiKeyNewPage />} />
-        <Route path="api-keys/:id" element={<ApiKeyDetailPage />} />
+        <Route
+          path="api-keys"
+          element={
+            <RouteErrorBoundary>
+              <ApiKeysListPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="api-keys/new"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <ApiKeyNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="api-keys/:id"
+          element={
+            <RouteErrorBoundary>
+              <ApiKeyDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="users" element={<UsersListPage />} />
-        <Route path="users/new" element={<CreateUserPage />} />
-        <Route path="users/:id" element={<UserDetailPage />} />
-        <Route path="users/:id/edit" element={<UserEditPage />} />
+        <Route
+          path="users"
+          element={
+            <RouteErrorBoundary>
+              <UsersListPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="users/new"
+          element={
+            <RequireRole>
+              <RouteErrorBoundary>
+                <CreateUserPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="users/:id"
+          element={
+            <RouteErrorBoundary>
+              <UserDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="users/:id/edit"
+          element={
+            <RequireRole>
+              <RouteErrorBoundary>
+                <UserEditPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
 
-        <Route path="teams" element={<TeamsListPage />} />
-        <Route path="teams/new" element={<TeamNewPage />} />
-        <Route path="teams/:id" element={<TeamDetailPage />} />
+        <Route
+          path="teams"
+          element={
+            <RouteErrorBoundary>
+              <TeamsListPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="teams/new"
+          element={
+            <RequireRole>
+              <RouteErrorBoundary>
+                <TeamNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="teams/:id"
+          element={
+            <RouteErrorBoundary>
+              <TeamDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="storage" element={<StorageListPage />} />
-        <Route path="storage/new" element={<BucketNewPage />} />
-        <Route path="storage/:bucketId" element={<BucketDetailPage />} />
-        <Route path="storage/:bucketId/files/:fileId" element={<FileDetailPage />} />
+        <Route
+          path="storage"
+          element={
+            <RouteErrorBoundary>
+              <StorageListPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="storage/new"
+          element={
+            <RequireRole>
+              <RouteErrorBoundary>
+                <BucketNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="storage/:bucketId"
+          element={
+            <RouteErrorBoundary>
+              <BucketDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="storage/:bucketId/files/:fileId"
+          element={
+            <RouteErrorBoundary>
+              <FileDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="functions" element={<FunctionsListPage />} />
-        <Route path="functions/:functionId" element={<FunctionDetailPage />} />
+        <Route
+          path="functions"
+          element={
+            <RouteErrorBoundary>
+              <FunctionsListPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="functions/:functionId"
+          element={
+            <RouteErrorBoundary>
+              <FunctionDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
 
-        <Route path="databases" element={<DatabasesListPage />} />
-        <Route path="databases/new" element={<DatabaseNewPage />} />
-        <Route path="databases/:dbId" element={<DatabaseDetailPage />} />
-        <Route path="databases/:dbId/collections/new" element={<CollectionNewPage />} />
-        <Route path="databases/:dbId/collections/:collId" element={<CollectionLayout />}>
-          <Route index element={<CollectionDetailPage />} />
-          <Route path="documents" element={<DocumentsListPage />} />
+        <Route
+          path="databases"
+          element={
+            <RouteErrorBoundary>
+              <DatabasesListPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="databases/new"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <DatabaseNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="databases/:dbId"
+          element={
+            <RouteErrorBoundary>
+              <DatabaseDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
+        <Route
+          path="databases/:dbId/collections/new"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <CollectionNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="databases/:dbId/collections/:collId"
+          element={
+            <RouteErrorBoundary>
+              <CollectionLayout />
+            </RouteErrorBoundary>
+          }
+        >
+          <Route
+            index
+            element={
+              <RouteErrorBoundary>
+                <CollectionDetailPage />
+              </RouteErrorBoundary>
+            }
+          />
+          <Route
+            path="documents"
+            element={
+              <RouteErrorBoundary>
+                <DocumentsListPage />
+              </RouteErrorBoundary>
+            }
+          />
         </Route>
-        <Route path="databases/:dbId/collections/:collId/documents/new" element={<DocumentNewPage />} />
-        <Route path="databases/:dbId/collections/:collId/documents/:docId" element={<DocumentDetailPage />} />
+        <Route
+          path="databases/:dbId/collections/:collId/documents/new"
+          element={
+            <RequireRole>
+              <RouteErrorBoundary>
+                <DocumentNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="databases/:dbId/collections/:collId/documents/:docId"
+          element={
+            <RouteErrorBoundary>
+              <DocumentDetailPage />
+            </RouteErrorBoundary>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/console" replace />} />
     </Routes>
@@ -137,7 +461,15 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <ErrorBoundary>
-            <AppRoutes />
+            <Suspense
+              fallback={
+                <div className="flex justify-center py-16 text-sm text-muted-foreground">
+                  加载中…
+                </div>
+              }
+            >
+              <AppRoutes />
+            </Suspense>
           </ErrorBoundary>
         </BrowserRouter>
         <Toaster position="top-right" />

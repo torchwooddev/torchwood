@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/storage"
@@ -59,6 +60,13 @@ type CreateFileCommand struct {
 }
 
 func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*storage.Bucket, error) {
+	// 纵深防御（G6-4/R06-P1）：CreateBucket 是 Server API 业务写操作，与
+	// CreateUser 对齐使用 RequireServerWriteActor（console admin 会话或 API key
+	// 主体；viewer 角色细粒度由拦截器 adminRoleMethodRules 把关）。RequirePlatformAdmin
+	// 过严：会拒绝拦截器已放行的 member/owner/admin 会话与 API key 写路径。
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
+		return nil, err
+	}
 	if cmd.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -229,13 +237,14 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 			"metadata":  cmd.Metadata,
 		},
 	}
+	// 顺序修复（G6-2/R07-P1-2）：EnsureBucket 必须在创建文档之前——否则
+	// EnsureBucket 失败会在文档库留下无对象的孤儿元数据。
+	if err := s.store.EnsureBucket(ctx, defaultBucketName(s.cfg)); err != nil {
+		return nil, fmt.Errorf("ensure storage bucket: %w", err)
+	}
 	perms := filePermissions(fileID, cmd.OwnerUserID, cmd.Permissions)
 	if _, err := s.docDB.CreateDocument(ctx, project.ID, "default", "files", fileDoc, perms, principal); err != nil {
 		return nil, fmt.Errorf("create file document: %w", err)
-	}
-
-	if err := s.store.EnsureBucket(ctx, defaultBucketName(s.cfg)); err != nil {
-		return nil, fmt.Errorf("ensure storage bucket: %w", err)
 	}
 	if err := s.store.Put(ctx, defaultBucketName(s.cfg), objectKey(project.ID, cmd.BucketID, fileID), content, size, cmd.MimeType); err != nil {
 		// Attempt rollback metadata.

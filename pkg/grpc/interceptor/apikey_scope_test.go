@@ -222,3 +222,71 @@ func TestIsAPIKeysServiceMethod(t *testing.T) {
 		t.Fatal("malformed method should not be detected")
 	}
 }
+
+// mustPanic 断言 fn 触发 panic 并返回 panic 值（测试内联辅助）。
+func mustPanic(t *testing.T, fn func()) (v any) {
+	t.Helper()
+	defer func() {
+		v = recover()
+		if v == nil {
+			t.Fatal("expected panic, got none")
+		}
+	}()
+	fn()
+	return nil
+}
+
+// TestAssertAPIKeyScopeCoverage 直接测断言函数本身：集合一致不 panic；
+// 缺一条（新增 ACCESS_API_KEY 方法未登记）或多余一条（规则表残留）都 panic。
+func TestAssertAPIKeyScopeCoverage(t *testing.T) {
+	t.Parallel()
+
+	ruleMethods := make([]string, 0, len(apiKeyScopeRules))
+	for m := range apiKeyScopeRules {
+		ruleMethods = append(ruleMethods, m)
+	}
+	if len(ruleMethods) == 0 {
+		t.Fatal("apiKeyScopeRules must not be empty")
+	}
+
+	t.Run("exact match does not panic", func(t *testing.T) {
+		t.Parallel()
+		AssertAPIKeyScopeCoverage(ruleMethods)
+	})
+
+	t.Run("missing rule for proto method panics", func(t *testing.T) {
+		t.Parallel()
+		missing := ruleMethods[:len(ruleMethods)-1]
+		v := mustPanic(t, func() { AssertAPIKeyScopeCoverage(missing) })
+		if msg, ok := v.(string); !ok || msg == "" {
+			t.Fatalf("panic value should be a non-empty message, got %#v", v)
+		}
+	})
+
+	t.Run("extra rule panics", func(t *testing.T) {
+		t.Parallel()
+		extra := append([]string{"/torchwood.server.v1.StaleService/RemovedMethod"}, ruleMethods...)
+		v := mustPanic(t, func() { AssertAPIKeyScopeCoverage(extra) })
+		msg, ok := v.(string)
+		if !ok || msg == "" {
+			t.Fatalf("panic value should be a non-empty message, got %#v", v)
+		}
+	})
+
+	t.Run("APIKeyScopeRules returns full exported copy", func(t *testing.T) {
+		t.Parallel()
+		exported := APIKeyScopeRules()
+		if len(exported) != len(apiKeyScopeRules) {
+			t.Fatalf("exported rules size %d != internal %d", len(exported), len(apiKeyScopeRules))
+		}
+		for m, r := range apiKeyScopeRules {
+			er, ok := exported[m]
+			if !ok {
+				t.Fatalf("exported rules missing %s", m)
+			}
+			if er.Resource != r.resource || er.Op != r.op {
+				t.Fatalf("exported rule %s = %+v, want %+v", m, er, r)
+			}
+		}
+	})
+}

@@ -3,6 +3,7 @@ package interceptor
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -67,7 +68,11 @@ func (a *AuditInterceptor) UnaryAuditMiddleware(ctx context.Context, req any, in
 	if resID := contexts.AuditResource(ctx); resID != "" {
 		entry.ResourceID = resID
 	}
-	if logErr := a.repo.Insert(context.Background(), entry); logErr != nil {
+	// R01-F7-6：审计落库带 3s 超时且不继承 RPC 取消（WithoutCancel），
+	// 失败只 Warn，不得阻塞或影响 RPC 响应。
+	insertCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	if logErr := a.repo.Insert(insertCtx, entry); logErr != nil {
 		a.logger.WarnContext(ctx, "audit log insert failed",
 			slog.String("method", info.FullMethod),
 			slog.String("error", logErr.Error()))

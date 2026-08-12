@@ -106,6 +106,9 @@ func TestAccount_CreateTOTPFactor_SecretEncrypted(t *testing.T) {
 }
 
 func TestAccount_CreateTOTPFactor_RequiresJWTSecret(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)

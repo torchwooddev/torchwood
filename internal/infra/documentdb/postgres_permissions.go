@@ -266,14 +266,18 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
-	idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, indexID))
-	if _, err := p.conn(ctx).ExecContext(ctx,
-		fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
-	); err != nil {
+	// R02-P1-1：DROP INDEX 与 document_indexes 元数据删除包进同一事务，
+	// 任一步失败整体回滚，避免"物理索引已删而 catalog 仍记录"。
+	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, indexID))
+		if _, err := p.conn(txCtx).ExecContext(txCtx,
+			fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
+		); err != nil {
+			return err
+		}
+		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+			Where("project_id = ? AND database_id = ? AND collection_id = ? AND id = ?", projectID, databaseID, collectionID, indexID).
+			Exec(txCtx)
 		return err
-	}
-	_, err = p.conn(ctx).NewDelete().Model((*model.DocumentIndex)(nil)).
-		Where("project_id = ? AND database_id = ? AND collection_id = ? AND id = ?", projectID, databaseID, collectionID, indexID).
-		Exec(ctx)
-	return err
+	})
 }

@@ -67,9 +67,12 @@ func (d *DatabasesService) UpdateCollection(ctx context.Context, collectionID, n
 	req := &serverv1.UpdateCollectionRequest{
 		DatabaseId:       d.db,
 		CollectionId:     collectionID,
-		Name:             name,
 		DocumentSecurity: documentSecurity,
 		Disabled:         disabled,
+	}
+	// name 为 proto3 optional（R10-P1-6）：空串 = 不修改（保持旧签名语义）。
+	if name != "" {
+		req.Name = &name
 	}
 	if permissions != nil {
 		req.Permissions = &serverv1.PermissionsUpdate{Values: permissions}

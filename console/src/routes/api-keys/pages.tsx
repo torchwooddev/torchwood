@@ -67,10 +67,10 @@ export function ApiKeysListPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteAPIKey,
+    mutationFn: (id: string) => deleteAPIKey(id),
     onSuccess: () => {
       toast.success("API Key 已删除");
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["api-keys", projectId] });
     },
   });
 
@@ -82,7 +82,10 @@ export function ApiKeysListPage() {
   const handleBulkDelete = async (selected: APIKey[], clear: () => void) => {
     setBulkDeleting(true);
     try {
-      const results = await Promise.allSettled(selected.map((k) => deleteAPIKey(k.id)));
+      // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
+      const results = await Promise.allSettled(
+        selected.map((k) => deleteAPIKey(k.id, { __skipToast: true }))
+      );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
       if (failed > 0) {
@@ -90,7 +93,7 @@ export function ApiKeysListPage() {
       } else {
         toast.success(`已删除 ${selected.length} 个 API Key`);
       }
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["api-keys", projectId] });
       clear();
     } finally {
       setBulkDeleting(false);
@@ -154,6 +157,7 @@ export function ApiKeysListPage() {
 export function ApiKeyNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
   const { role } = useAdminRole();
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState("");
@@ -164,7 +168,7 @@ export function ApiKeyNewPage() {
     onSuccess: (data) => {
       setCreatedSecret(data.secret);
       toast.success("API Key 创建成功，请立即复制 Secret");
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["api-keys", projectId] });
     },
   });
 
@@ -230,6 +234,8 @@ export function ApiKeyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { projectId } = useAuth();
+  const { role } = useAdminRole();
 
   const { data: key, isLoading } = useQuery({
     queryKey: ["api-keys", id],
@@ -238,10 +244,10 @@ export function ApiKeyDetailPage() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteAPIKey,
+    mutationFn: (id: string) => deleteAPIKey(id),
     onSuccess: () => {
       toast.success("API Key 已删除");
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["api-keys", projectId] });
       navigate("/console/api-keys");
     },
   });
@@ -255,7 +261,10 @@ export function ApiKeyDetailPage() {
       description="API Key 详情"
       backTo="/console/api-keys"
       actions={
-        <DeleteButton onConfirm={() => remove.mutate(key.id)} loading={remove.isPending} />
+        // 与列表页一致：仅平台 admin 可删除 API Key（G8-5，R11-P1-2）。
+        isPlatformAdmin(role) ? (
+          <DeleteButton onConfirm={() => remove.mutate(key.id)} loading={remove.isPending} />
+        ) : undefined
       }
     >
       <DetailGrid

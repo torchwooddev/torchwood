@@ -1066,7 +1066,8 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
+          "type": "string",
+          "title": "optional：未设置（或空串）= 不修改；设置非空串 = 更新（R10-P1-6；\r\nadapter 对空串同样按不修改处理，清空 name 的语义暂不支持）。"
         },
         "permissions": {
           "$ref": "#/definitions/v1PermissionsUpdate"

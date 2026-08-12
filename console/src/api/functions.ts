@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { ApiRequestConfig } from "./client";
 
 export interface FunctionItem {
   id: string;
@@ -58,6 +59,11 @@ export interface Variable {
   value: string;
 }
 
+// SECRET_MASK 与后端 internal/app/functions/variables.go 的 secretMask 一致：
+// GetVariables/SetVariables 响应中非空值以该串脱敏；SetVariables 请求中值等于
+// 该串的 key 表示「保留旧值」，后端不覆盖。
+export const SECRET_MASK = "******";
+
 export async function listRuntimes(): Promise<RuntimeInfo[]> {
   const res = await api.get<{ runtimes: RuntimeInfo[] }>("/server/functions/runtimes");
   return res.data.runtimes ?? [];
@@ -107,8 +113,8 @@ export async function updateFunction(
   return res.data;
 }
 
-export async function deleteFunction(id: string): Promise<void> {
-  await api.delete(`/server/functions/${id}`);
+export async function deleteFunction(id: string, config?: ApiRequestConfig): Promise<void> {
+  await api.delete(`/server/functions/${id}`, config);
 }
 
 export async function listDeployments(functionId: string): Promise<Deployment[]> {

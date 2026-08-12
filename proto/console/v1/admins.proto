@@ -12,7 +12,7 @@ import "shared/v1/common.proto";
 
 // 服务默认 access=permission（console admin 角色）：swagger 顶层声明
 // cookie security（TORCHWOOD_session_console 会话）；方法级角色以
-// method_auth.permissions 声明（详见 shared/v1/openapi.proto）。
+// method_auth.permissions 声明（详见 docs/developer/09-api-guide.md §1.4）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {
@@ -118,7 +118,8 @@ message CreateAdminRequest {
 
 message UpdateAdminRequest {
   string id = 1;
-  string role = 2;
+  // optional：未设置（或空串）= 不修改；设置合法角色值 = 更新（R10-P1-6）。
+  optional string role = 2;
   string password = 3; // 非空则重置密码
 }
 

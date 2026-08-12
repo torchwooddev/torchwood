@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/query"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
@@ -46,11 +48,11 @@ var inlineSafeMimeTypes = map[string]struct{}{
 
 // FileHandler provides HTTP multipart upload/download for storage.
 type FileHandler struct {
-	cfg       *config.AppConfig
-	validator *auth.Validator
-	storage   *appstorage.Storage
-	trusted   *interceptor.TrustedProxies
-	logger    *slog.Logger
+	cfg     *config.AppConfig
+	auth    *httpAuth
+	storage *appstorage.Storage
+	trusted *interceptor.TrustedProxies
+	logger  *slog.Logger
 }
 
 // NewFileHandler creates a new file HTTP handler.
@@ -67,7 +69,7 @@ func NewFileHandler(
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
-	return &FileHandler{cfg: cfg, validator: validator, storage: storage, trusted: trusted, logger: logger}, nil
+	return &FileHandler{cfg: cfg, auth: newHTTPAuth(validator), storage: storage, trusted: trusted, logger: logger}, nil
 }
 
 // clientIP 与 gRPC ClientInfoInterceptor 走同一 trusted-proxy 规则。
@@ -135,7 +137,7 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 		httpError(w, err)
 		return
 	}
-	projectID := h.projectID(r, principal)
+	projectID := h.auth.projectID(r, principal)
 	if projectID == "" {
 		err := status.Error(codes.Unauthenticated, "missing project context")
 		h.logOp(r, "upload", bucketID, "", principal, err)
@@ -196,7 +198,7 @@ func (h *FileHandler) createUpload(w http.ResponseWriter, r *http.Request, pathP
 		httpError(w, err)
 		return
 	}
-	projectID := h.projectID(r, principal)
+	projectID := h.auth.projectID(r, principal)
 	if projectID == "" {
 		err := status.Error(codes.Unauthenticated, "missing project context")
 		h.logOp(r, "create-upload", bucketID, "", principal, err)
@@ -252,7 +254,7 @@ func (h *FileHandler) getUpload(w http.ResponseWriter, r *http.Request, pathPara
 		httpError(w, err)
 		return
 	}
-	projectID := h.projectID(r, principal)
+	projectID := h.auth.projectID(r, principal)
 	if projectID == "" {
 		err := status.Error(codes.Unauthenticated, "missing project context")
 		h.logOp(r, "get-upload", bucketID, uploadID, principal, err)
@@ -302,7 +304,7 @@ func (h *FileHandler) uploadChunk(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, err)
 		return
 	}
-	projectID := h.projectID(r, principal)
+	projectID := h.auth.projectID(r, principal)
 	if projectID == "" {
 		err := status.Error(codes.Unauthenticated, "missing project context")
 		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
@@ -368,7 +370,7 @@ func (h *FileHandler) completeUpload(w http.ResponseWriter, r *http.Request, pat
 		httpError(w, err)
 		return
 	}
-	projectID := h.projectID(r, principal)
+	projectID := h.auth.projectID(r, principal)
 	if projectID == "" {
 		err := status.Error(codes.Unauthenticated, "missing project context")
 		h.logOp(r, "complete-upload", bucketID, uploadID, principal, err)
@@ -417,7 +419,7 @@ func (h *FileHandler) abortUpload(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, err)
 		return
 	}
-	projectID := h.projectID(r, principal)
+	projectID := h.auth.projectID(r, principal)
 	if projectID == "" {
 		err := status.Error(codes.Unauthenticated, "missing project context")
 		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
@@ -526,7 +528,7 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, bucketID, fileID string) (string, databases.Principal, *shared.Principal, bool, error) {
 	principal, err := h.authorize(r)
 	if err == nil {
-		projectID := h.projectID(r, principal)
+		projectID := h.auth.projectID(r, principal)
 		if projectID == "" {
 			return "", databases.Principal{}, nil, false, status.Error(codes.Unauthenticated, "missing project context")
 		}
@@ -544,6 +546,11 @@ func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, b
 	// 公开 bucket 匿名读：需要 project 参数定位项目。
 	projectID := strings.TrimSpace(r.URL.Query().Get("project"))
 	if projectID != "" {
+		// bucketID 直接拼入 query DSL（BuildEqual），resolve 前必须先校验格式：
+		// 非法 ID 直接 400，不进入查询（防 DSL 注入与恶意长串探测）。
+		if !isValidBucketID(bucketID) {
+			return "", databases.Principal{}, nil, false, status.Error(codes.InvalidArgument, "invalid bucket id")
+		}
 		buckets, _, berr := h.storage.ListBuckets(ctx, projectID, databases.Query{
 			Queries:  []string{query.BuildEqual("$id", bucketID)},
 			PageSize: 1,
@@ -579,11 +586,35 @@ var previewImageMimeTypes = map[string]struct{}{
 // maxPreviewSourceBytes 限制预览源文件大小（防解压炸弹与内存耗尽）。
 const maxPreviewSourceBytes = 50 << 20 // 50 MiB
 
+// maxPreviewHeaderBytes 限制预览头部解码阶段的读取上限（覆盖 PNG IHDR / JPEG
+// SOF / GIF 逻辑屏幕描述 / WebP 头等解码器所需的最小字节数）。
+const maxPreviewHeaderBytes = 512 << 10 // 512 KiB
+
 // maxPreviewSourceDimension 限制预览源图片边长（防整图解压出超大位图导致 OOM）。
 const maxPreviewSourceDimension = 8192
 
 // maxPreviewDimension 限制缩放后的输出尺寸。
 const maxPreviewDimension = 4096
+
+// previewSourceConfig 只读有限 header 解析并校验预览源图像：
+// 先读最多 maxPreviewHeaderBytes 字节解析宽高，任一维度超限直接拒绝（不读全量）；
+// 非图片/损坏图片返回 InvalidArgument（400），读源失败返回 Internal。
+// 注意：header 先整体读入自有缓冲再交给 image.DecodeConfig，其内部 bufio
+// 预读只作用于该缓冲，不会污染后续的全文件读取。
+func previewSourceConfig(src io.Reader) (image.Config, error) {
+	header, err := io.ReadAll(io.LimitReader(src, maxPreviewHeaderBytes))
+	if err != nil {
+		return image.Config{}, status.Error(codes.Internal, "cannot read image")
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(header))
+	if err != nil {
+		return image.Config{}, status.Error(codes.InvalidArgument, "cannot decode image")
+	}
+	if cfg.Width > maxPreviewSourceDimension || cfg.Height > maxPreviewSourceDimension {
+		return image.Config{}, status.Error(codes.InvalidArgument, "image dimensions too large to preview")
+	}
+	return cfg, nil
+}
 
 // preview 生成图片缩略图：GET /v1/storage/buckets/{bucketId}/files/{fileId}/preview?width=&height=
 // 鉴权与 download 一致（凭证 / file token / public bucket），仅支持图片类型，
@@ -638,10 +669,12 @@ func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams
 		return
 	}
 
-	// 解码前先读图像头部宽高（只读 header，不整图解压）：任一维度超限直接拒绝，
-	// 防 50MiB 压缩图解码出 ~600MB 位图的 OOM DoS。
-	// 注意：image.DecodeConfig 内部用独立 bufio 预读，会吸干传入 reader 的缓冲，
-	// 因此先整体读入内存（受 maxPreviewSourceBytes 限制），再对两个独立 reader 解码。
+	// 解码前先读有限 header（512KB，不读全量）解析图像宽高：任一维度超限直接
+	// 拒绝，防 50MiB 压缩图解码出 ~600MB 位图的 OOM DoS；通过后才受限读取全文件。
+	if _, err := previewSourceConfig(reader); err != nil {
+		httpError(w, err)
+		return
+	}
 	srcBytes, err := io.ReadAll(io.LimitReader(reader, maxPreviewSourceBytes+1))
 	if err != nil {
 		httpError(w, status.Error(codes.Internal, "cannot read image"))
@@ -651,19 +684,11 @@ func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams
 		httpError(w, status.Error(codes.InvalidArgument, "file too large to preview"))
 		return
 	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(srcBytes))
-	if err != nil {
-		httpError(w, status.Error(codes.Internal, "cannot decode image"))
-		return
-	}
-	if cfg.Width > maxPreviewSourceDimension || cfg.Height > maxPreviewSourceDimension {
-		httpError(w, status.Error(codes.InvalidArgument, "image dimensions too large to preview"))
-		return
-	}
 
 	src, err := imaging.Decode(bytes.NewReader(srcBytes), imaging.AutoOrientation(true))
 	if err != nil {
-		httpError(w, status.Error(codes.Internal, "cannot decode image"))
+		// 头部解析通过但整图解码失败 = 损坏图片，属客户端输入问题，返回 400。
+		httpError(w, status.Error(codes.InvalidArgument, "cannot decode image"))
 		return
 	}
 	if width > maxPreviewDimension {
@@ -695,6 +720,16 @@ func serveImage(w http.ResponseWriter, file *domainstorage.File, reader io.Reade
 	w.Header().Set("Cache-Control", cacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, reader)
+}
+
+// validBucketIDPattern 校验路径参数 bucketID 的字符集与长度（公开匿名路径会
+// 将 bucketID 拼入 query DSL，必须防注入；bucketID 由 idgen.UUID 生成，兼容
+// 历史短 ID）。
+var validBucketIDPattern = regexp.MustCompile(`^[0-9a-zA-Z_-]{1,64}$`)
+
+// isValidBucketID 判断 bucketID 是否合法：非空 + 字符集/长度约束。
+func isValidBucketID(id string) bool {
+	return idgen.ID(id).IsValid() && validBucketIDPattern.MatchString(id)
 }
 
 // parsePreviewDimensions 解析 width/height query 参数（正整数）。
@@ -735,73 +770,16 @@ func imagingFormat(mime string) imaging.Format {
 	}
 }
 
+// authorize 认证并做方法级授权：API key 按方法区分 CreateFile（POST）/
+// GetFile（GET）scope；admin 走 X-Torchwood-Project + ValidateAdminProjectAccess。
+// 认证/项目解析等公共逻辑见 httpAuth（auth.go）。
 func (h *FileHandler) authorize(r *http.Request) (*shared.Principal, error) {
-	ctx := r.Context()
-	principal, err := h.authenticate(r)
-	if err != nil {
-		return nil, err
-	}
-	if principal.CredentialType == shared.CredentialTypeAPIKey {
-		// upload 用 CreateFile scope；download 用 GetFile scope，
-		// 避免 storage.read 只读 scope 的 key 越权上传。
-		check := interceptor.StorageServiceCreateFile
+	return h.auth.authorize(r, func(r *http.Request) string {
 		if r.Method == http.MethodGet {
-			check = interceptor.StorageServiceGetFile
+			return interceptor.StorageServiceGetFile
 		}
-		if !interceptor.APIKeyScopeAllowed(check, principal.Permissions) {
-			return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
-		}
-	}
-	if principal.ActorKind == shared.ActorKindAdmin {
-		if projectID := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); projectID != "" {
-			principal.ProjectID = projectID
-		}
-		if err := h.validator.ValidateAdminProjectAccess(ctx, principal); err != nil {
-			return nil, err
-		}
-	}
-	return principal, nil
-}
-
-func (h *FileHandler) authenticate(r *http.Request) (*shared.Principal, error) {
-	ctx := r.Context()
-	if key := r.Header.Get("X-Api-Key"); key != "" {
-		return h.validator.ValidateCredential(ctx, key, shared.CredentialTypeAPIKey)
-	}
-	if authz := r.Header.Get("Authorization"); authz != "" {
-		// 与 gRPC 认证拦截器走同一解析逻辑：支持 Bearer / Session / ApiKey scheme，
-		// scheme 不识别时直接拒绝，而不是把整串当 token 校验。
-		credentialType, token, ok := interceptor.ParseAuthorizationHeader(authz)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "invalid authorization header")
-		}
-		return h.validator.ValidateCredential(ctx, token, credentialType)
-	}
-	for _, c := range r.Cookies() {
-		if strings.HasPrefix(c.Name, "TORCHWOOD_session_") {
-			return h.validator.ValidateCredential(ctx, c.Value, shared.CredentialTypeSession)
-		}
-	}
-	return nil, status.Error(codes.Unauthenticated, "authentication credential is not provided")
-}
-
-func (h *FileHandler) projectID(r *http.Request, p *shared.Principal) string {
-	if p == nil {
-		return ""
-	}
-	switch p.CredentialType {
-	case shared.CredentialTypeAPIKey:
-		return p.ProjectID
-	case shared.CredentialTypeToken, shared.CredentialTypeSession:
-		if p.ActorKind == shared.ActorKindAdmin {
-			if pid := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); pid != "" {
-				return pid
-			}
-		}
-		return p.ProjectID
-	default:
-		return p.ProjectID
-	}
+		return interceptor.StorageServiceCreateFile
+	})
 }
 
 func safeFilename(name string) string {

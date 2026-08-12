@@ -23,7 +23,7 @@ var ProviderSet = wire.NewSet(
 	clients.NewRedis,
 	health.NewCheckers,
 
-	auth.NewValidator,
+	auth.NewValidatorWithOneTimeTokens,
 	auth.NewSessionService,
 	auth.NewRedisOTPChallengeStore,
 	auth.NewRedisOAuthStateStore,

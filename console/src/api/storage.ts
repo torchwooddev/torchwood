@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { ApiRequestConfig } from "./client";
 
 export interface Bucket {
   id: string;
@@ -52,8 +53,8 @@ export async function createBucket(input: {
   return normalizeBucket(res.data);
 }
 
-export async function deleteBucket(id: string): Promise<void> {
-  await api.delete(`/server/storage/buckets/${id}`);
+export async function deleteBucket(id: string, config?: ApiRequestConfig): Promise<void> {
+  await api.delete(`/server/storage/buckets/${id}`, config);
 }
 
 export async function updateBucket(
@@ -225,8 +226,12 @@ export async function downloadFile(
   URL.revokeObjectURL(url);
 }
 
-export async function deleteFile(bucketId: string, fileId: string): Promise<void> {
-  await api.delete(`/server/storage/buckets/${bucketId}/files/${fileId}`);
+export async function deleteFile(
+  bucketId: string,
+  fileId: string,
+  config?: ApiRequestConfig
+): Promise<void> {
+  await api.delete(`/server/storage/buckets/${bucketId}/files/${fileId}`, config);
 }
 
 export async function updateFile(
@@ -248,11 +253,13 @@ export async function updateFile(
 export async function createFileToken(
   bucketId: string,
   fileId: string,
-  expiresIn?: number
+  expiresIn?: number,
+  config?: ApiRequestConfig
 ): Promise<{ token: string; expires_at: string }> {
   const res = await api.post<{ token: string; expires_at: string }>(
     `/server/storage/buckets/${bucketId}/files/${fileId}/tokens`,
-    { expires_in: expiresIn }
+    { expires_in: expiresIn },
+    config
   );
   return res.data;
 }

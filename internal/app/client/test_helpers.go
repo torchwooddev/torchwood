@@ -69,11 +69,13 @@ func NewTestAccountWithDeps(
 
 // CaptureMailer records sent messages for tests.
 type CaptureMailer struct {
+	To       []string
 	Subjects []string
 	Bodies   []string
 }
 
-func (m *CaptureMailer) Send(_ context.Context, _, subject, body string) error {
+func (m *CaptureMailer) Send(_ context.Context, to, subject, body string) error {
+	m.To = append(m.To, to)
 	m.Subjects = append(m.Subjects, subject)
 	m.Bodies = append(m.Bodies, body)
 	return nil

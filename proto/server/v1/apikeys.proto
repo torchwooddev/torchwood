@@ -11,7 +11,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 // 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
-// shared/v1/openapi.proto 的建模约定；本服务全部方法继承，无需逐方法覆盖）。
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承，无需逐方法覆盖）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {
@@ -57,20 +57,26 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
 service APIKeysService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
 
+  // API key 凭证禁止调用本服务（IsAPIKeysServiceMethod 拦截，防自铸 key 提权），
+  // 仅 admin console session 可管理；全部方法显式声明 method_auth（R10-P1-1）。
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (APIKeyWithSecret) {
     option (google.api.http) = { post: "/v1/server/api-keys", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
 
   rpc ListAPIKeys(shared.v1.ListRequest) returns (ListAPIKeysResponse) {
     option (google.api.http) = { get: "/v1/server/api-keys" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
 
   rpc GetAPIKey(GetAPIKeyRequest) returns (APIKey) {
     option (google.api.http) = { get: "/v1/server/api-keys/{id}" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
 
   rpc DeleteAPIKey(GetAPIKeyRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/server/api-keys/{id}" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
 }
 

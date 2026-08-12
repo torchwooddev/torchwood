@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -158,12 +159,16 @@ var dummyPasswordHash = sync.OnceValue(func() string {
 	return h
 })
 
-func (a *Account) checkSignUpRateLimit(ctx context.Context, ip string) error {
+// init 预热 dummyPasswordHash，消除首次 SignIn 用户不存在路径的时序差异
+// （R05-P2-9：包初始化时即完成 bcrypt 预热）。
+func init() { dummyPasswordHash() }
+
+func (a *Account) checkSignUpRateLimit(ctx context.Context, projectID, ip string) error {
 	// nil 容忍：未装配限流器或拿不到客户端 IP 时不做限制。
 	if a.rateLimiter == nil || ip == "" {
 		return nil
 	}
-	return a.rateLimiter.Allow(ctx, "signup:ip:"+ip, signUpIPLimit, signUpIPWindow)
+	return a.rateLimiter.Allow(ctx, "signup:ip:"+projectID+":"+ip, signUpIPLimit, signUpIPWindow)
 }
 
 func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
@@ -181,15 +186,17 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 		return nil, nil, "", nil, err
 	}
 	clientInfo := contexts.ClientInfoFrom(ctx)
-	if err := a.checkSignUpRateLimit(ctx, clientInfo.IP); err != nil {
-		return nil, nil, "", nil, err
-	}
 	project, err := a.projectRepo.GetProject(ctx, cmd.ProjectID)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
 	if project == nil {
 		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
+	}
+	// 频控放在 project 校验之后并按 project 维度计数：无效 project 不污染
+	// 频控键，不同 project 各自独立计数（R05-P3-11）。
+	if err := a.checkSignUpRateLimit(ctx, project.ID, clientInfo.IP); err != nil {
+		return nil, nil, "", nil, err
 	}
 	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
 		return nil, nil, "", nil, fmt.Errorf("ensure system collections: %w", err)
@@ -275,7 +282,6 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 		return nil, nil, "", nil, err
 	}
 	invalidCredentials := func() (*User, *TokenBundle, string, *MFASignInChallenge, error) {
-		a.recordLoginFailure(ctx, email, clientInfo.IP)
 		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
 	project, err := a.projectRepo.GetProject(ctx, cmd.ProjectID)
@@ -300,11 +306,14 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 		// 用户不存在时对固定哑哈希执行一次 Verify，抹平"不存在"与"密码错误"
 		// 两条路径的响应时序差异（防枚举）。
 		_, _ = password.Verify(cmd.Password, dummyPasswordHash())
+		// 未注册邮箱不记录失败计数：既不影响真实用户邮箱键，也不污染 IP 键
+		// （R05-P1-5：未注册邮箱连续失败不得触发锁定）。
 		return invalidCredentials()
 	}
 	userDoc := list.Documents[0]
 	hash, _ := userDoc.Data["password_hash"].(string)
 	if ok, _ := password.Verify(cmd.Password, hash); !ok {
+		a.recordLoginFailure(ctx, email, clientInfo.IP)
 		return invalidCredentials()
 	}
 
@@ -428,8 +437,9 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		updates["name"] = cmd.Name
 	}
 	hash, _ := doc.Data["password_hash"].(string)
+	oldEmail := normalizeEmail(stringValue(doc.Data["email"]))
 	emailChanging := false
-	if email := normalizeEmail(cmd.Email); email != "" && email != stringValue(doc.Data["email"]) {
+	if email := normalizeEmail(cmd.Email); email != "" && email != oldEmail {
 		if err := validateEmail(email); err != nil {
 			return nil, err
 		}
@@ -471,6 +481,14 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		return mapUserDoc(doc), nil
 	}
 
+	// R05-P1-3：敏感变更先撤销全部会话、再提交资料；撤会话失败时资料保持
+	// 原样（不做半提交），避免"密码/邮箱已改但旧会话仍存活"的窗口。
+	if _, passwordChanged := updates["password_hash"]; passwordChanged || emailChanging {
+		if err := a.sessions.DeleteSessionsByUser(ctx, p.ProjectID, p.UserID); err != nil {
+			return nil, fmt.Errorf("delete sessions after account change: %w", err)
+		}
+	}
+
 	updated, err := a.docDB.UpdateDocument(ctx, p.ProjectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   p.UserID,
 		Data: updates,
@@ -481,10 +499,16 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		}
 		return nil, fmt.Errorf("update account: %w", err)
 	}
-	if _, passwordChanged := updates["password_hash"]; passwordChanged || emailChanging {
-		// 敏感信息变更后撤销该用户全部会话（含当前会话）。
-		if err := a.sessions.DeleteSessionsByUser(ctx, p.ProjectID, p.UserID); err != nil {
-			return nil, fmt.Errorf("delete sessions after account change: %w", err)
+	// R05-P1-2（B 档最小缓解）：邮箱变更后向旧邮箱发送安全通知（含撤销指引），
+	// 让被劫持者第一时间察觉并止损；新邮箱验证走既有 CreateVerification 流程
+	//（email_verified=false 已置位）。通知失败仅 Warn，不回滚合法变更。
+	// 完整 pending_email staging 档（A）需 proto 增加验证 URL 字段，
+	// 见 fix-plan §3 G3-2 备注。
+	if emailChanging && oldEmail != "" && a.mailer != nil {
+		subject := "Your Torchwood email address was changed"
+		body := fmt.Sprintf("Your Torchwood account email was changed to %s.\n\nIf you did not make this change, sign in to your account and update your email or contact support immediately.", updates["email"])
+		if err := a.mailer.Send(ctx, oldEmail, subject, body); err != nil {
+			slog.Warn("email change notification failed", "user_id", p.UserID, "error", err)
 		}
 	}
 	return mapUserDoc(&updated), nil

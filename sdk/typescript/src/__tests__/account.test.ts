@@ -45,8 +45,8 @@ describe("AccountService MFA 分支", () => {
 
     const res = await account.signUp({ email: "u@example.com", password: "pw", name: "User" });
     assert.equal(http.getAccessToken(), "at-1");
-    assert.equal(res.tokens.access_token, "at-1");
-    assert.equal(res.tokens.expires_at, "2026-08-13T06:00:00Z");
+    assert.equal(res.tokens?.access_token, "at-1");
+    assert.equal(res.tokens?.expires_at, "2026-08-13T06:00:00Z");
   });
 });
 
@@ -69,5 +69,33 @@ describe("AccountService.deleteSessions", () => {
     const url = new URL(calls[0]);
     assert.equal(url.pathname, "/v1/account/sessions");
     assert.equal(url.searchParams.get("keep_current"), "true");
+  });
+});
+
+describe("AccountService.deleteFactor", () => {
+  it("携带 code 时经 query 传递；未携带时无 query", async () => {
+    const calls: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return new Response(null, { status: 204 });
+    };
+    const http = new HttpTransport({
+      endpoint: "http://localhost:9080",
+      projectId: "default",
+      fetch: fetchImpl,
+    });
+    const account = new AccountService(http);
+
+    await account.deleteFactor("f1", "123456");
+    assert.equal(calls.length, 1);
+    let url = new URL(calls[0]);
+    assert.equal(url.pathname, "/v1/account/mfa/f1");
+    assert.equal(url.searchParams.get("code"), "123456");
+
+    await account.deleteFactor("f2");
+    assert.equal(calls.length, 2);
+    url = new URL(calls[1]);
+    assert.equal(url.pathname, "/v1/account/mfa/f2");
+    assert.equal(url.searchParams.has("code"), false);
   });
 });

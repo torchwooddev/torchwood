@@ -11,7 +11,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 // 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
-// shared/v1/openapi.proto 的建模约定；本服务全部方法继承，无需逐方法覆盖）。
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承，无需逐方法覆盖）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {
@@ -99,9 +99,13 @@ service FunctionsService {
   }
   rpc SetVariables(SetVariablesRequest) returns (Variables) {
     option (google.api.http) = { put: "/v1/server/functions/{function_id}/variables", body: "*" };
+    // 敏感方法显式声明 method_auth（R10-P1-1），不依赖服务级默认值。
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
   rpc GetVariables(GetFunctionRequest) returns (Variables) {
     option (google.api.http) = { get: "/v1/server/functions/{function_id}/variables" };
+    // 敏感方法显式声明 method_auth（R10-P1-1），不依赖服务级默认值。
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
   rpc CreateExecution(CreateExecutionRequest) returns (Execution) {
     option (google.api.http) = { post: "/v1/server/functions/{function_id}/executions", body: "*" };
@@ -155,8 +159,9 @@ message Variables {
 
 message Variable {
   string key = 1;
-  // 环境变量明文值：SetVariables 请求透传、GetVariables 响应回显
-  // （函数运行期注入）；属敏感数据，前端/日志不得持久化明文。
+  // 环境变量值：SetVariables 请求透传明文；GetVariables 与 SetVariables
+  // 响应统一返回掩码（"******"），真实值仅在 SetVariables 请求中可见一次
+  // （对齐 internal/app/functions/variables.go 的 secretMask 约定）。
   string value = 2;
 }
 

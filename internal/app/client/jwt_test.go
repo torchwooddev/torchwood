@@ -9,6 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -122,4 +123,73 @@ func TestAccount_CreateJWT_Unauthenticated(t *testing.T) {
 	require.Error(t, err)
 	st, _ = status.FromError(err)
 	require.Equal(t, codes.NotFound, st.Code())
+}
+
+// TestAccount_CreateJWT_SecondUseRejected（R05-P2-8 端到端）：签发方
+// Register 的消费记录必须被验证方 Consume 原子消费——同一 JWT 二次
+// 提交给 Validator 必须 Unauthenticated，普通 access token 不受影响。
+func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	projectRepo := bunrepo.NewProjectRepository(db)
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, rdb)
+
+	user, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{
+		ProjectID: projectID,
+		Email:     "jwt-onetime@torchwood.local",
+		Password:  "User@123",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, tokens)
+
+	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ProjectID: projectID,
+		UserID:    user.ID,
+		Email:     user.Email,
+		Roles:     []string{"users", "user:" + user.ID},
+	})
+
+	oneTime, err := account.CreateJWT(userCtx)
+	require.NoError(t, err)
+
+	validator := auth.NewValidatorWithOneTimeTokens(
+		jwtTestConfig(),
+		bunrepo.NewAPIKeyRepository(db),
+		bunrepo.NewAdminRepository(db),
+		bunrepo.NewAdminProjectRepository(db),
+		nil,
+		docDB,
+		nil,
+		auth.NewRedisOneTimeTokenStore(rdb),
+	)
+
+	// 第一次验证放行。
+	p, err := validator.ValidateToken(ctx, oneTime)
+	require.NoError(t, err)
+	require.Equal(t, user.ID, p.UserID)
+
+	// 同一 JWT 二次使用被拒（消费记录已 GETDEL）。
+	_, err = validator.ValidateToken(ctx, oneTime)
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.Unauthenticated, st.Code())
+
+	// 普通 access token（SignUp 签发）不受一次性消费路径影响。
+	_, err = validator.ValidateToken(ctx, tokens.AccessToken)
+	require.NoError(t, err)
 }

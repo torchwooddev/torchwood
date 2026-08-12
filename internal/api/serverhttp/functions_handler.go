@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	appfunctions "github.com/torchwooddev/torchwood/internal/app/functions"
@@ -28,7 +27,7 @@ const maxCodePackageBytes = 50 << 20
 // FunctionsHandler 提供 deployment 代码包 multipart 上传。
 type FunctionsHandler struct {
 	cfg       *config.AppConfig
-	validator *auth.Validator
+	auth      *httpAuth
 	functions *appfunctions.Functions
 	trusted   *interceptor.TrustedProxies
 	logger    *slog.Logger
@@ -48,7 +47,7 @@ func NewFunctionsHandler(
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
-	return &FunctionsHandler{cfg: cfg, validator: validator, functions: functions, trusted: trusted, logger: logger}, nil
+	return &FunctionsHandler{cfg: cfg, auth: newHTTPAuth(validator), functions: functions, trusted: trusted, logger: logger}, nil
 }
 
 // Register attaches the deployment upload route to the gateway mux.
@@ -100,7 +99,7 @@ func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, err)
 		return
 	}
-	projectID := h.projectID(r, principal)
+	projectID := h.auth.projectID(r, principal)
 	if projectID == "" {
 		err := status.Error(codes.Unauthenticated, "missing project context")
 		h.logOp(r, "deployment-upload", functionID, "", principal, err)
@@ -169,73 +168,23 @@ func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathPa
 }
 
 // authorize 与 file_handler 一致：API key 走 FunctionsService/CreateDeployment
-// scope（functions.write），admin 走 X-Torchwood-Project + ValidateAdminProjectAccess。
+// scope（functions.write），admin 走 X-Torchwood-Project + ValidateAdminProjectAccess；
+// 认证/项目解析等公共逻辑见 httpAuth（auth.go）。端用户（Bearer JWT / 会话 cookie）
+// 一律禁止上传部署代码包：任意注册用户可借此触发 Docker 构建并部署恶意代码窃取
+// 函数环境变量（安全评审 03）。
 func (h *FunctionsHandler) authorize(r *http.Request) (*shared.Principal, error) {
-	ctx := r.Context()
-	principal, err := h.authenticate(r)
+	principal, err := h.auth.authorize(r, func(*http.Request) string {
+		return FunctionsServiceCreateDeployment
+	})
 	if err != nil {
 		return nil, err
 	}
-	if principal.CredentialType == shared.CredentialTypeAPIKey {
-		if !interceptor.APIKeyScopeAllowed(FunctionsServiceCreateDeployment, principal.Permissions) {
-			return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
-		}
-	}
-	// 端用户（Bearer JWT / 会话 cookie）一律禁止上传部署代码包：
-	// 任意注册用户可借此触发 Docker 构建并部署恶意代码窃取函数环境变量（安全评审 03）。
 	if principal.CredentialType == shared.CredentialTypeToken || principal.CredentialType == shared.CredentialTypeSession {
 		if principal.ActorKind != shared.ActorKindAdmin {
 			return nil, status.Error(codes.PermissionDenied, "end-user credentials cannot upload deployments")
 		}
 	}
-	if principal.ActorKind == shared.ActorKindAdmin {
-		if projectID := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); projectID != "" {
-			principal.ProjectID = projectID
-		}
-		if err := h.validator.ValidateAdminProjectAccess(ctx, principal); err != nil {
-			return nil, err
-		}
-	}
 	return principal, nil
-}
-
-func (h *FunctionsHandler) authenticate(r *http.Request) (*shared.Principal, error) {
-	ctx := r.Context()
-	if key := r.Header.Get("X-Api-Key"); key != "" {
-		return h.validator.ValidateCredential(ctx, key, shared.CredentialTypeAPIKey)
-	}
-	if authz := r.Header.Get("Authorization"); authz != "" {
-		credentialType, token, ok := interceptor.ParseAuthorizationHeader(authz)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "invalid authorization header")
-		}
-		return h.validator.ValidateCredential(ctx, token, credentialType)
-	}
-	for _, c := range r.Cookies() {
-		if strings.HasPrefix(c.Name, "TORCHWOOD_session_") {
-			return h.validator.ValidateCredential(ctx, c.Value, shared.CredentialTypeSession)
-		}
-	}
-	return nil, status.Error(codes.Unauthenticated, "authentication credential is not provided")
-}
-
-func (h *FunctionsHandler) projectID(r *http.Request, p *shared.Principal) string {
-	if p == nil {
-		return ""
-	}
-	switch p.CredentialType {
-	case shared.CredentialTypeAPIKey:
-		return p.ProjectID
-	case shared.CredentialTypeToken, shared.CredentialTypeSession:
-		if p.ActorKind == shared.ActorKindAdmin {
-			if pid := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); pid != "" {
-				return pid
-			}
-		}
-		return p.ProjectID
-	default:
-		return p.ProjectID
-	}
 }
 
 // isZipMagic 校验 zip 魔数 PK\x03\x04。

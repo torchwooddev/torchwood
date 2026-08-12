@@ -50,9 +50,29 @@ var _ lynx.Checker = (*DependencyChecker)(nil)
 type Checkers struct {
 	deps []*DependencyChecker
 
+	// CacheTTL 覆盖 Details 结果快照的缓存时长；0 使用默认 resultCacheTTL。
+	CacheTTL time.Duration
+
 	mu       sync.Mutex
 	cached   []*serverv1.DependencyStatus
 	cachedAt time.Time
+	// inFlight 非 nil 表示有刷新在途，后续调用者等待该 channel 关闭后
+	// 直接读取刷新结果，避免缓存失效时并发打穿下游依赖（singleflight）。
+	inFlight chan struct{}
+}
+
+func (c *Checkers) cacheTTL() time.Duration {
+	if c.CacheTTL > 0 {
+		return c.CacheTTL
+	}
+	return resultCacheTTL
+}
+
+// snapshot 返回当前缓存的一份拷贝；调用方须持有 c.mu。
+func (c *Checkers) snapshot() []*serverv1.DependencyStatus {
+	out := make([]*serverv1.DependencyStatus, len(c.cached))
+	copy(out, c.cached)
+	return out
 }
 
 // NewCheckers 构建依赖探测集合：Postgres（PingContext）、Redis（Ping）、
@@ -82,17 +102,33 @@ func (c *Checkers) Deps() []lynx.Checker {
 }
 
 // Details 并行探测各依赖（各自超时 + recover 兜底），返回逐依赖状态；
-// 探测失败不影响其他依赖。结果带 10s 快照缓存：TTL 内重复调用直接返回
-// 上次结果，避免被轮询打穿（readiness 语义仍由 lynx 聚合实时决定）。
+// 探测失败不影响其他依赖。结果带快照缓存（默认 10s，可用 CacheTTL 覆盖）：
+// TTL 内重复调用直接返回上次结果；缓存失效时并发调用共享同一次刷新
+// （singleflight），不会各自打穿下游依赖（readiness 语义仍由 lynx 聚合
+// 实时决定）。
 func (c *Checkers) Details(ctx context.Context) []*serverv1.DependencyStatus {
-	now := time.Now()
 	c.mu.Lock()
-	if c.cached != nil && now.Sub(c.cachedAt) < resultCacheTTL {
-		out := make([]*serverv1.DependencyStatus, len(c.cached))
-		copy(out, c.cached)
+	if c.cached != nil && time.Since(c.cachedAt) < c.cacheTTL() {
+		out := c.snapshot()
 		c.mu.Unlock()
 		return out
 	}
+	if c.inFlight != nil {
+		done := c.inFlight
+		c.mu.Unlock()
+		select {
+		case <-done:
+			// 刷新者已写入新快照，直接复用。
+		case <-ctx.Done():
+			// 等待期间调用方取消：返回当前（可能已过期）快照而非空结果。
+		}
+		c.mu.Lock()
+		out := c.snapshot()
+		c.mu.Unlock()
+		return out
+	}
+	done := make(chan struct{})
+	c.inFlight = done
 	c.mu.Unlock()
 
 	results := make([]*serverv1.DependencyStatus, len(c.deps))
@@ -109,7 +145,9 @@ func (c *Checkers) Details(ctx context.Context) []*serverv1.DependencyStatus {
 	c.mu.Lock()
 	c.cached = results
 	c.cachedAt = time.Now()
+	c.inFlight = nil
 	c.mu.Unlock()
+	close(done)
 	return results
 }
 

@@ -1138,3 +1138,247 @@ func TestCreateDocument_AuditColumns(t *testing.T) {
 	require.Empty(t, keysDoc.CreatedBy)
 	require.Empty(t, keysDoc.UpdatedBy)
 }
+
+// TestDeleteIndex_RecreateSameIndex (R02-P1-1)：DeleteIndex 事务化——删除后
+// catalog 与物理索引一致，同名索引可重建（不撞 document_indexes 唯一约束）。
+func TestDeleteIndex_RecreateSameIndex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "title_key", Type: "key", Attributes: []string{"title"}},
+	}, nil, true))
+
+	coll, err := docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, coll.Indexes, 1)
+
+	require.NoError(t, docDB.DeleteIndex(ctx, projectID, "app", "posts", "title_key"))
+
+	coll, err = docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Empty(t, coll.Indexes)
+
+	// 同名重建必须成功（物理索引 DROP 与元数据删除均已完成）。
+	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", "posts", databases.Index{
+		ID:         "title_key",
+		Type:       "key",
+		Attributes: []string{"title"},
+	}))
+	coll, err = docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, coll.Indexes, 1)
+	require.Equal(t, "title_key", coll.Indexes[0].ID)
+}
+
+// TestCreateDatabase_RollbackOnMetadataFailure (R02-P1-2)：CreateDatabase 整体
+// 事务化——元数据 INSERT 失败（预插同 PK 行）时，事务内已建的 schema 必须回滚，
+// 不允许出现"schema 存在而元数据缺失"。
+func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	// 预插同 (project_id, id) 元数据行，令 INSERT 撞复合主键。
+	_, err := db.DB.ExecContext(ctx,
+		`INSERT INTO document_databases (id, project_id, name, created_at, updated_at) VALUES ('app', ?, 'preexisting', NOW(), NOW())`,
+		projectID)
+	require.NoError(t, err)
+
+	err = docDB.CreateDatabase(ctx, projectID, "app", "Application DB")
+	require.Error(t, err)
+	require.True(t, isUniqueViolation(err), "expected unique violation, got: %v", err)
+
+	// 事务回滚后 schema 必须不存在（to_regnamespace 返回 NULL）。
+	var reg any
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT to_regnamespace(?)`, schemaName(internalID, "app")).Scan(&reg))
+	require.Nil(t, reg)
+
+	// 元数据未被篡改。
+	_, err = docDB.GetDatabase(ctx, projectID, "app")
+	require.NoError(t, err)
+}
+
+// TestUpdateDocument_PermissionsOnlyRefreshesAuditColumns (R02-P1-4)：仅变更
+// permissions 时同样刷新 _updated_at/_updated_by，数据字段保持不变。
+func TestUpdateDocument_PermissionsOnlyRefreshesAuditColumns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	perms := []databases.Permission{
+		{Type: "create", Role: "user:abc"}, {Type: "read", Role: "user:abc"}, {Type: "update", Role: "user:abc"},
+		{Type: "create", Role: "keys"}, {Type: "read", Role: "keys"}, {Type: "update", Role: "keys"},
+	}
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "audit", "Audit", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, perms, false))
+
+	created, err := docDB.CreateDocument(ctx, projectID, "app", "audit", databases.Document{
+		Data: map[string]any{"title": "t1"},
+	}, []databases.Permission{
+		{Type: "read", Role: "user:abc"}, {Type: "update", Role: "user:abc"},
+	}, databases.Principal{Roles: []string{"user:abc"}})
+	require.NoError(t, err)
+	require.NotEmpty(t, created.CreatedBy)
+
+	// 仅更新 permissions（无数据字段）：审计列必须刷新。
+	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "audit", databases.SimpleDocumentUpdate(databases.Document{
+		ID: created.ID,
+	}, []databases.Permission{
+		{Type: "read", Role: "user:abc"},
+	}), databases.Principal{Roles: []string{"user:abc"}})
+	require.NoError(t, err)
+	require.Equal(t, "abc", updated.UpdatedBy)
+	require.True(t, updated.UpdatedAt.After(created.UpdatedAt), "updated_at must be refreshed on permissions-only update")
+	require.Equal(t, "t1", updated.Data["title"])
+	require.Len(t, updated.Permissions, 1)
+	require.Equal(t, databases.Permission{Type: "read", Role: "user:abc"}, updated.Permissions[0])
+}
+
+// TestConflictLockKey_NoAmbiguity (R02-P2-2)：conflictLockKey 序列化无歧义——
+// 含 \x00 / 空串 / 类型不同的值组合不得生成相同锁键。
+func TestConflictLockKey_NoAmbiguity(t *testing.T) {
+	// 旧分隔符拼接实现下这两组值键相同（值内含 \x00 的经典碰撞）。
+	require.NotEqual(t,
+		conflictLockKey([]any{"a\x00b", "c"}),
+		conflictLockKey([]any{"a", "b\x00c"}))
+
+	// 空串与分隔符组合。
+	require.NotEqual(t,
+		conflictLockKey([]any{"ab", ""}),
+		conflictLockKey([]any{"a", "b"}))
+
+	// 顺序敏感。
+	require.NotEqual(t,
+		conflictLockKey([]any{"a", "b"}),
+		conflictLockKey([]any{"b", "a"}))
+
+	// 类型区分（int64 vs 字符串同数值）。
+	require.NotEqual(t,
+		conflictLockKey([]any{int64(1)}),
+		conflictLockKey([]any{"1"}))
+
+	// 确定性：相同输入产生相同键。
+	require.Equal(t,
+		conflictLockKey([]any{"x", int64(42), true}),
+		conflictLockKey([]any{"x", int64(42), true}))
+}
+
+// TestListDocuments_SameCreatedAtPaginationStable (R08-P2-4)：同 _created_at 的
+// 多行在默认排序下按 _id DESC 稳定分页，翻页无重复、无遗漏。
+func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "n", Key: "n", Type: "integer"},
+	}, nil, nil, true))
+
+	for i := 0; i < 5; i++ {
+		id := string(rune('a' + i))
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+			ID:   id,
+			Data: map[string]any{"n": i},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+	// 拉平 _created_at：全部改为同一时间戳，使默认排序只能依赖 _id tiebreaker。
+	ts := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
+		`UPDATE %s SET _created_at = ?`, tableName(schemaName(internalID, "app"), "docs")), ts)
+	require.NoError(t, err)
+
+	var got []string
+	token := ""
+	for {
+		list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+			PageSize:  2,
+			PageToken: token,
+		}, databases.SystemPrincipal)
+		require.NoError(t, err)
+		for _, d := range list.Documents {
+			got = append(got, d.ID)
+		}
+		token = list.NextPageToken
+		if token == "" {
+			break
+		}
+	}
+	require.Equal(t, []string{"e", "d", "c", "b", "a"}, got)
+}
+
+// TestListDocuments_PageSizeClamp (R08-P3-7)：page_size 超过 maxQueryLimit 时
+// clamp 到上限，返回条数不超过 maxQueryLimit 且仍有续页 token。
+func TestListDocuments_PageSizeClamp(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
+
+	for i := 0; i < maxQueryLimit+1; i++ {
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+			Data: map[string]any{},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+
+	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize: maxQueryLimit + 50,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, list.Documents, maxQueryLimit)
+	require.Equal(t, int64(maxQueryLimit+1), list.TotalCount)
+	require.NotEmpty(t, list.NextPageToken)
+}

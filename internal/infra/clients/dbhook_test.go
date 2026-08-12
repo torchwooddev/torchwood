@@ -113,3 +113,62 @@ func TestNewSlowQueryHook_DebugLogAll(t *testing.T) {
 	require.NotNil(t, h)
 	require.True(t, h.LogAll)
 }
+
+func TestRedactQuery_InsertValues(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "single sensitive column",
+			in:   "INSERT INTO users (password_hash) VALUES ('s3cret')",
+			want: "INSERT INTO users (password_hash) VALUES ([REDACTED])",
+		},
+		{
+			name: "setup_token in multi-column values",
+			in:   "INSERT INTO api_keys (name, setup_token) VALUES ('default-key', 't0k3n123')",
+			want: "INSERT INTO api_keys (name, setup_token) VALUES ([REDACTED])",
+		},
+		{
+			name: "sensitive column among others",
+			in:   "INSERT INTO users (id, email, password) VALUES (1, 'a@b.c', 'pw!')",
+			want: "INSERT INTO users (id, email, password) VALUES ([REDACTED])",
+		},
+		{
+			name: "paren inside quoted value stays fully redacted",
+			in:   "INSERT INTO t (secret) VALUES ('abc)def')",
+			want: "INSERT INTO t (secret) VALUES ([REDACTED])",
+		},
+		{
+			name: "value list with default keyword",
+			in:   "INSERT INTO t (token) VALUES (DEFAULT)",
+			want: "INSERT INTO t (token) VALUES ([REDACTED])",
+		},
+		{
+			name: "multi-row batch insert all tuples redacted",
+			in:   "INSERT INTO users (password_hash) VALUES ('a'), ('b'), ('c')",
+			want: "INSERT INTO users (password_hash) VALUES ([REDACTED])",
+		},
+		{
+			name: "multi-line batch insert spans lines",
+			in:   "INSERT INTO users (id, setup_token) VALUES (1, 't1'),\n(2, 't2'),\n(3, 't3')",
+			want: "INSERT INTO users (id, setup_token) VALUES ([REDACTED])",
+		},
+		{
+			name: "multi-row non-sensitive insert untouched",
+			in:   "INSERT INTO t (name) VALUES ('bob'), ('alice'), ('carol')",
+			want: "INSERT INTO t (name) VALUES ('bob'), ('alice'), ('carol')",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, redactQuery(&bun.QueryEvent{Query: tc.in}))
+		})
+	}
+}
+
+func TestRedactQuery_AssignmentFormsStillRedacted(t *testing.T) {
+	got := redactQuery(&bun.QueryEvent{Query: "UPDATE projects SET setup_token = 'x1' WHERE id = 'p' AND password = 'y'"})
+	require.Equal(t, "UPDATE projects SET setup_token = '[REDACTED]' WHERE id = 'p' AND password = '[REDACTED]'", got)
+}

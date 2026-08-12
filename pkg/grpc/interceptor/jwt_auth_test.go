@@ -278,3 +278,32 @@ func requireUnauthenticated(t *testing.T, err error) {
 		t.Fatalf("expected unauthenticated, got %v", err)
 	}
 }
+
+// TestAuthInterceptor_RejectsSameKeyMultipleCredentials（R01-P2-2）：同一
+// 凭证 key（authorization / x-api-key / cookie）出现多个值必须拒绝——
+// 防止多值头部导致的解析歧义与注入。
+func TestAuthInterceptor_RejectsSameKeyMultipleCredentials(t *testing.T) {
+	t.Parallel()
+
+	ic, err := NewAuthInterceptor(stubValidator{principal: &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
+		UserID:    "user-1",
+		Roles:     []string{"users"},
+	}}, nil, nil, nil)
+	requireNoError(t, err)
+
+	for _, md := range []metadata.MD{
+		metadata.Pairs("authorization", "Bearer a", "authorization", "Bearer b"),
+		metadata.Pairs("x-api-key", "k1", "x-api-key", "k2"),
+		metadata.Pairs("cookie", "TORCHWOOD_session_console=abc", "cookie", "TORCHWOOD_session_console=def"),
+	} {
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+		_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
+			FullMethod: "/torchwood.server.v1.UsersService/ListUsers",
+		}, func(context.Context, any) (any, error) {
+			t.Fatal("handler should not run")
+			return nil, nil
+		})
+		requireUnauthenticated(t, err)
+	}
+}

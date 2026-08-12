@@ -149,6 +149,13 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - 普通用户只能读写自己有权限的文档；admin/key 可绕过。
 - 删除 attribute 时同步清理 `document_attributes` 元数据与表结构。
 
+> **Backlog（R10-P1-3，本批次不做）**：REST 保留字自定义动词迁移——将字面量段
+> `documents/count`、`documents/bulk`（+`bulk/delete`）迁移为 `:count`/`:bulkUpdate`
+> 自定义方法风格（同 `functions/runtimes`、`functions/specifications`）。
+> 迁移时需同步清理历史保留字 id 数据（已存在 `document_id="count"` / `id="bulk"` 等
+> 文档与 `id="runtimes"` / `id="specifications"` 的函数，字面量路由优先会遮蔽这些
+> 资源的 Get/Update/Delete）。当前以服务端创建校验拒绝保留字 id 作为兜底。
+
 ---
 
 ### 2.5 Storage 文件交付

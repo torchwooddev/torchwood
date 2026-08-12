@@ -17,6 +17,9 @@ func (id ID) String() string {
 	return strings.TrimSpace(string(id))
 }
 
+// IsValid 仅校验 ID 非空（R08-P3-6）。字符集/长度/格式等语义校验归各 use-case
+// 负责（例如 functions 的 functionIDPattern、server 的 ID 格式校验），
+// 本方法不做全局限定，避免误导调用方以为任意 ID 类型都被完整校验。
 func (id ID) IsValid() bool {
 	return id.String() != ""
 }

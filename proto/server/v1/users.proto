@@ -12,7 +12,7 @@ import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
 
 // 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
-// shared/v1/openapi.proto 的建模约定；本服务全部方法继承，无需逐方法覆盖）。
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承，无需逐方法覆盖）。
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   security_definitions: {
     security: {
@@ -92,6 +92,8 @@ service UsersService {
 
   rpc CreateUserToken(GetUserRequest) returns (CreateUserTokenResponse) {
     option (google.api.http) = { post: "/v1/server/users/{id}/tokens" };
+    // 敏感方法显式声明 method_auth（R10-P1-1），不依赖服务级默认值。
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
 }
 

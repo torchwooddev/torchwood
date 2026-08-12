@@ -17,10 +17,13 @@ export const api = axios.create({
 
 // ApiRequestConfig carries internal flags understood by the response
 // interceptor: __skipAuthRetry opts a request out of the 401 refresh flow
-// (e.g. sign-out), __authRetried marks a request already retried once.
+// (e.g. sign-out), __authRetried marks a request already retried once,
+// __skipToast suppresses the global error toast (caller renders its own
+// error UI, e.g. login page / bulk operations / share-link generation).
 export interface ApiRequestConfig extends AxiosRequestConfig {
   __skipAuthRetry?: boolean;
   __authRetried?: boolean;
+  __skipToast?: boolean;
 }
 
 // refreshAuthTokenSingleFlight refreshes the console session via the
@@ -95,7 +98,9 @@ api.interceptors.response.use(
       const isLoginRequest = config?.url === "/console/auth/sign-in";
       const isMissingProject = message.includes("missing project context");
       if (isLoginRequest) {
-        toast.error(message);
+        if (!config?.__skipToast) {
+          toast.error(message);
+        }
       } else if (
         config &&
         !config.__skipAuthRetry &&
@@ -114,7 +119,7 @@ api.interceptors.response.use(
       } else if (!isMissingProject) {
         forceReLogin();
       }
-    } else if (status >= 400) {
+    } else if (status >= 400 && !config?.__skipToast) {
       toast.error(message);
     }
     return Promise.reject(error);

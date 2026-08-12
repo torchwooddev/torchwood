@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { ApiRequestConfig } from "./client";
 
 export interface Database {
   id: string;
@@ -81,8 +82,8 @@ export async function createDatabase(input: {
   return res.data;
 }
 
-export async function deleteDatabase(id: string): Promise<void> {
-  await api.delete(`/server/databases/${id}`);
+export async function deleteDatabase(id: string, config?: ApiRequestConfig): Promise<void> {
+  await api.delete(`/server/databases/${id}`, config);
 }
 
 export async function listCollections(databaseId: string): Promise<Collection[]> {
@@ -115,10 +116,12 @@ export async function createCollection(
 
 export async function deleteCollection(
   databaseId: string,
-  collectionId: string
+  collectionId: string,
+  config?: ApiRequestConfig
 ): Promise<void> {
   await api.delete(
-    `/server/databases/${databaseId}/collections/${collectionId}`
+    `/server/databases/${databaseId}/collections/${collectionId}`,
+    config
   );
 }
 

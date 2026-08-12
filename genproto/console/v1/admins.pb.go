@@ -202,10 +202,11 @@ func (x *CreateAdminRequest) GetRole() string {
 }
 
 type UpdateAdminRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
-	Password      string                 `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"` // 非空则重置密码
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// optional：未设置（或空串）= 不修改；设置合法角色值 = 更新（R10-P1-6）。
+	Role          *string `protobuf:"bytes,2,opt,name=role,proto3,oneof" json:"role,omitempty"`
+	Password      string  `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"` // 非空则重置密码
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -248,8 +249,8 @@ func (x *UpdateAdminRequest) GetId() string {
 }
 
 func (x *UpdateAdminRequest) GetRole() string {
-	if x != nil {
-		return x.Role
+	if x != nil && x.Role != nil {
+		return *x.Role
 	}
 	return ""
 }
@@ -393,11 +394,12 @@ const file_console_v1_admins_proto_rawDesc = "" +
 	"\x12CreateAdminRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x12\n" +
-	"\x04role\x18\x03 \x01(\tR\x04role\"T\n" +
+	"\x04role\x18\x03 \x01(\tR\x04role\"b\n" +
 	"\x12UpdateAdminRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04role\x18\x02 \x01(\tR\x04role\x12\x1a\n" +
-	"\bpassword\x18\x03 \x01(\tR\bpassword\"$\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\x04role\x18\x02 \x01(\tH\x00R\x04role\x88\x01\x01\x12\x1a\n" +
+	"\bpassword\x18\x03 \x01(\tR\bpasswordB\a\n" +
+	"\x05_role\"$\n" +
 	"\x12DeleteAdminRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\xb7\x01\n" +
 	"\x05Admin\x12\x0e\n" +
@@ -477,6 +479,7 @@ func file_console_v1_admins_proto_init() {
 	if File_console_v1_admins_proto != nil {
 		return
 	}
+	file_console_v1_admins_proto_msgTypes[4].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
