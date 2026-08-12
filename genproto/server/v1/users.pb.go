@@ -7,6 +7,7 @@
 package serverv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -154,14 +155,17 @@ func (x *CreateUserRequest) GetPrefs() *structpb.Struct {
 }
 
 type UpdateUserRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	Labels        *structpb.Struct       `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
-	Prefs         *structpb.Struct       `protobuf:"bytes,4,opt,name=prefs,proto3" json:"prefs,omitempty"`
-	EmailVerified *bool                  `protobuf:"varint,5,opt,name=email_verified,json=emailVerified,proto3,oneof" json:"email_verified,omitempty"`
-	Name          string                 `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
-	Email         string                 `protobuf:"bytes,7,opt,name=email,proto3" json:"email,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// 以下字段当前为裸 string/Struct：proto3 下空串/空对象无法区分
+	// 「未提供」与「清空」。计划未来 optional 化（对齐 projects.proto 的
+	// optional 用法）以支持清空语义；属破坏性变更，需 SDK/Console 同步。
+	Status        string           `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Labels        *structpb.Struct `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
+	Prefs         *structpb.Struct `protobuf:"bytes,4,opt,name=prefs,proto3" json:"prefs,omitempty"`
+	EmailVerified *bool            `protobuf:"varint,5,opt,name=email_verified,json=emailVerified,proto3,oneof" json:"email_verified,omitempty"`
+	Name          string           `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
+	Email         string           `protobuf:"bytes,7,opt,name=email,proto3" json:"email,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -698,10 +702,11 @@ func (x *CreateUserTokenResponse) GetTokens() *TokenBundle {
 }
 
 type TokenBundle struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
-	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
-	ExpiresAt     int64                  `protobuf:"varint,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 令牌明文：仅生成时返回一次，之后任何接口不再回显（持久层仅存哈希）。
+	AccessToken   string `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken  string `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	ExpiresAt     int64  `protobuf:"varint,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // unix seconds
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -761,7 +766,7 @@ var File_server_v1_users_proto protoreflect.FileDescriptor
 
 const file_server_v1_users_proto_rawDesc = "" +
 	"\n" +
-	"\x15server/v1/users.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\" \n" +
+	"\x15server/v1/users.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\" \n" +
 	"\x0eGetUserRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\xd1\x01\n" +
 	"\x11CreateUserRequest\x12\x14\n" +
@@ -835,7 +840,17 @@ const file_server_v1_users_proto_rawDesc = "" +
 	"DeleteUser\x12#.torchwood.server.v1.GetUserRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/users/{id}\x12\x8e\x01\n" +
 	"\x10ListUserSessions\x12#.torchwood.server.v1.GetUserRequest\x1a-.torchwood.server.v1.ListUserSessionsResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/server/users/{id}/sessions\x12\x93\x01\n" +
 	"\x11DeleteUserSession\x12-.torchwood.server.v1.DeleteUserSessionRequest\x1a\x1a.torchwood.shared.v1.Empty\"3\x82\xd3\xe4\x93\x02-*+/v1/server/users/{id}/sessions/{session_id}\x12\x8a\x01\n" +
-	"\x0fCreateUserToken\x12#.torchwood.server.v1.GetUserRequest\x1a,.torchwood.server.v1.CreateUserTokenResponse\"$\x82\xd3\xe4\x93\x02\x1e\"\x1c/v1/server/users/{id}/tokens\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x0fCreateUserToken\x12#.torchwood.server.v1.GetUserRequest\x1a,.torchwood.server.v1.CreateUserTokenResponse\"$\x82\xd3\xe4\x93\x02\x1e\"\x1c/v1/server/users/{id}/tokens\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"3\n" +
+	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
+	"\n" +
+	"\n" +
+	"\x06apiKey\x12\x00z\x1f\n" +
+	"\x12x-torchwood-access\x12\t\x1a\aapi_keyZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_users_proto_rawDescOnce sync.Once

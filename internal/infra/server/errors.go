@@ -25,14 +25,22 @@ var HTTPErrorHandler runtime.ErrorHandlerFunc = func(ctx context.Context, mux *r
 	switch st.Code() {
 	case codes.InvalidArgument:
 		errorCode = sharedv1.ErrorCode_ERROR_CODE_INVALID_REQUEST
+	case codes.FailedPrecondition:
+		errorCode = sharedv1.ErrorCode_ERROR_CODE_PRECONDITION_FAILED
 	case codes.NotFound:
 		errorCode = sharedv1.ErrorCode_ERROR_CODE_RESOURCE_NOT_FOUND
 	case codes.AlreadyExists:
 		errorCode = sharedv1.ErrorCode_ERROR_CODE_RESOURCE_CONFLICT
+	case codes.Aborted:
+		errorCode = sharedv1.ErrorCode_ERROR_CODE_CONCURRENT_MODIFICATION
 	case codes.Unauthenticated:
 		errorCode = sharedv1.ErrorCode_ERROR_CODE_INVALID_CREDENTIALS
 	case codes.PermissionDenied:
 		errorCode = sharedv1.ErrorCode_ERROR_CODE_PERMISSION_DENIED
+	case codes.ResourceExhausted:
+		errorCode = sharedv1.ErrorCode_ERROR_CODE_QUOTA_EXCEEDED
+	case codes.DeadlineExceeded:
+		errorCode = sharedv1.ErrorCode_ERROR_CODE_TIMEOUT
 	}
 
 	resp := &sharedv1.ErrorResponse{

@@ -7,6 +7,7 @@
 package serverv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1282,12 +1283,14 @@ func (x *Document) GetPermissions() []string {
 }
 
 type CreateDocumentRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	DocumentId    string                 `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
-	Data          *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
-	Permissions   []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	// 客户端自选 document_id；不得使用保留字 count / bulk（与
+	// documents/count、documents/bulk 字面量路由冲突，服务端校验拒绝）。
+	DocumentId    string           `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	Data          *structpb.Struct `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	Permissions   []string         `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1941,7 +1944,7 @@ var File_server_v1_databases_proto protoreflect.FileDescriptor
 
 const file_server_v1_databases_proto_rawDesc = "" +
 	"\n" +
-	"\x19server/v1/databases.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\";\n" +
+	"\x19server/v1/databases.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\";\n" +
 	"\x15CreateDatabaseRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"$\n" +
@@ -2148,7 +2151,17 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x0eDeleteDocument\x12'.torchwood.server.v1.GetDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"^\x82\xd3\xe4\x93\x02X*V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xc0\x01\n" +
 	"\x0eCountDocuments\x12).torchwood.server.v1.ListDocumentsRequest\x1a+.torchwood.server.v1.CountDocumentsResponse\"V\x82\xd3\xe4\x93\x02P\x12N/v1/server/databases/{database_id}/collections/{collection_id}/documents/count\x12\xcc\x01\n" +
 	"\x13BulkUpdateDocuments\x12/.torchwood.server.v1.BulkUpdateDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"X\x82\xd3\xe4\x93\x02R:\x01*2M/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk\x12\xd3\x01\n" +
-	"\x13BulkDeleteDocuments\x12/.torchwood.server.v1.BulkDeleteDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"_\x82\xd3\xe4\x93\x02Y:\x01*\"T/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x13BulkDeleteDocuments\x12/.torchwood.server.v1.BulkDeleteDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"_\x82\xd3\xe4\x93\x02Y:\x01*\"T/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"3\n" +
+	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
+	"\n" +
+	"\n" +
+	"\x06apiKey\x12\x00z\x1f\n" +
+	"\x12x-torchwood-access\x12\t\x1a\aapi_keyZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_databases_proto_rawDescOnce sync.Once

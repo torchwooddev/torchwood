@@ -1128,7 +1128,8 @@
       "type": "object",
       "properties": {
         "documentId": {
-          "type": "string"
+          "type": "string",
+          "title": "客户端自选 document_id；不得使用保留字 count / bulk（与\r\ndocuments/count、documents/bulk 字面量路由冲突，服务端校验拒绝）。"
         },
         "data": {
           "type": "object"
@@ -1425,5 +1426,31 @@
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "x-torchwood-access": "api_key"
 }

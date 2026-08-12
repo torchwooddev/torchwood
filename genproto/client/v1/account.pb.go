@@ -7,6 +7,7 @@
 package clientv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -642,11 +643,14 @@ func (x *RefreshTokenResponse) GetTokens() *TokenBundle {
 }
 
 type UpdateAccountRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
-	Password      string                 `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
-	OldPassword   string                 `protobuf:"bytes,4,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 以下字段当前为裸 string：proto3 下空串无法区分「未提供」与「清空」。
+	// 计划未来 optional 化（对齐 projects.proto 的 optional 用法）以支持
+	// 清空语义；属破坏性变更，需 SDK/Console 同步后落地。
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Email         string `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	Password      string `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
+	OldPassword   string `protobuf:"bytes,4,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2909,7 +2913,7 @@ var File_client_v1_account_proto protoreflect.FileDescriptor
 
 const file_client_v1_account_proto_rawDesc = "" +
 	"\n" +
-	"\x17client/v1/account.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"t\n" +
+	"\x17client/v1/account.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"t\n" +
 	"\rSignUpRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x12\n" +
@@ -3124,42 +3128,69 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"E\n" +
 	"\x10ListLogsResponse\x121\n" +
-	"\x04logs\x18\x01 \x03(\v2\x1d.torchwood.client.v1.LogEntryR\x04logs2\xd5'\n" +
-	"\x0eAccountService\x12w\n" +
-	"\x06SignUp\x12\".torchwood.client.v1.SignUpRequest\x1a#.torchwood.client.v1.SignUpResponse\"$\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/sign-up\x12w\n" +
-	"\x06SignIn\x12\".torchwood.client.v1.SignInRequest\x1a#.torchwood.client.v1.SignInResponse\"$\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/sign-in\x12x\n" +
-	"\aSignOut\x12#.torchwood.client.v1.SignOutRequest\x1a\x1a.torchwood.shared.v1.Empty\",\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/account/sign-out\x12\x89\x01\n" +
-	"\fRefreshToken\x12(.torchwood.client.v1.RefreshTokenRequest\x1a).torchwood.client.v1.RefreshTokenResponse\"$\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/refresh\x12g\n" +
+	"\x04logs\x18\x01 \x03(\v2\x1d.torchwood.client.v1.LogEntryR\x04logs2\xce,\n" +
+	"\x0eAccountService\x12\x9c\x01\n" +
+	"\x06SignUp\x12\".torchwood.client.v1.SignUpRequest\x1a#.torchwood.client.v1.SignUpResponse\"I\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/sign-up\x12\x9c\x01\n" +
+	"\x06SignIn\x12\".torchwood.client.v1.SignInRequest\x1a#.torchwood.client.v1.SignInResponse\"I\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/sign-in\x12x\n" +
+	"\aSignOut\x12#.torchwood.client.v1.SignOutRequest\x1a\x1a.torchwood.shared.v1.Empty\",\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/account/sign-out\x12\xae\x01\n" +
+	"\fRefreshToken\x12(.torchwood.client.v1.RefreshTokenRequest\x1a).torchwood.client.v1.RefreshTokenResponse\"I\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/account/refresh\x12g\n" +
 	"\x02Me\x12\x1e.torchwood.client.v1.MeRequest\x1a\x1c.torchwood.client.v1.Account\"#\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/account/me\x12}\n" +
 	"\rUpdateAccount\x12).torchwood.client.v1.UpdateAccountRequest\x1a\x1c.torchwood.client.v1.Account\"#\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x10:\x01*2\v/v1/account\x12\x8e\x01\n" +
 	"\fListSessions\x12(.torchwood.client.v1.ListSessionsRequest\x1a).torchwood.client.v1.ListSessionsResponse\")\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/account/sessions\x12\x8e\x01\n" +
 	"\rDeleteSession\x12).torchwood.client.v1.DeleteSessionRequest\x1a\x1a.torchwood.shared.v1.Empty\"6\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02#*!/v1/account/sessions/{session_id}\x12\x83\x01\n" +
 	"\x0eDeleteSessions\x12*.torchwood.client.v1.DeleteSessionsRequest\x1a\x1a.torchwood.shared.v1.Empty\")\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x16*\x14/v1/account/sessions\x12\x7f\n" +
 	"\bGetPrefs\x12$.torchwood.client.v1.GetPrefsRequest\x1a%.torchwood.client.v1.GetPrefsResponse\"&\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/account/prefs\x12\x88\x01\n" +
-	"\vUpdatePrefs\x12'.torchwood.client.v1.UpdatePrefsRequest\x1a%.torchwood.client.v1.GetPrefsResponse\")\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x16:\x01*\x1a\x11/v1/account/prefs\x12\x95\x01\n" +
-	"\x0eCreateEmailOTP\x12*.torchwood.client.v1.CreateEmailOTPRequest\x1a&.torchwood.client.v1.ChallengeResponse\"/\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/email-otp\x12\xa7\x01\n" +
-	"\x15CreateEmailOTPSession\x121.torchwood.client.v1.CreateEmailOTPSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"6\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/account/sessions/email-otp/verify\x12\xae\x01\n" +
-	"\x13CreateOAuth2Session\x12/.torchwood.client.v1.CreateOAuth2SessionRequest\x1a0.torchwood.client.v1.CreateOAuth2SessionResponse\"4\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02(\x12&/v1/account/sessions/oauth2/{provider}\x12\xb4\x01\n" +
-	"\x18CreateOAuth2TokenSession\x124.torchwood.client.v1.CreateOAuth2TokenSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"=\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x021:\x01*\",/v1/account/sessions/oauth2/{provider}/token\x12\x95\x01\n" +
-	"\x0eCreatePhoneOTP\x12*.torchwood.client.v1.CreatePhoneOTPRequest\x1a&.torchwood.client.v1.ChallengeResponse\"/\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/phone-otp\x12\xa7\x01\n" +
-	"\x15CreatePhoneOTPSession\x121.torchwood.client.v1.CreatePhoneOTPSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"6\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/account/sessions/phone-otp/verify\x12\xbb\x01\n" +
-	"\x1eCreateWeChatMiniProgramSession\x12:.torchwood.client.v1.CreateWeChatMiniProgramSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"8\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/account/sessions/wechat/miniprogram\x12\xa2\x01\n" +
-	"\x16CreateAnonymousSession\x122.torchwood.client.v1.CreateAnonymousSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"/\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/anonymous\x12\xc2\x01\n" +
+	"\vUpdatePrefs\x12'.torchwood.client.v1.UpdatePrefsRequest\x1a%.torchwood.client.v1.GetPrefsResponse\")\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x16:\x01*\x1a\x11/v1/account/prefs\x12\xba\x01\n" +
+	"\x0eCreateEmailOTP\x12*.torchwood.client.v1.CreateEmailOTPRequest\x1a&.torchwood.client.v1.ChallengeResponse\"T\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/email-otp\x12\xcc\x01\n" +
+	"\x15CreateEmailOTPSession\x121.torchwood.client.v1.CreateEmailOTPSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"[\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/account/sessions/email-otp/verify\x12\xd3\x01\n" +
+	"\x13CreateOAuth2Session\x12/.torchwood.client.v1.CreateOAuth2SessionRequest\x1a0.torchwood.client.v1.CreateOAuth2SessionResponse\"Y\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02(\x12&/v1/account/sessions/oauth2/{provider}\x12\xd9\x01\n" +
+	"\x18CreateOAuth2TokenSession\x124.torchwood.client.v1.CreateOAuth2TokenSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"b\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x021:\x01*\",/v1/account/sessions/oauth2/{provider}/token\x12\xba\x01\n" +
+	"\x0eCreatePhoneOTP\x12*.torchwood.client.v1.CreatePhoneOTPRequest\x1a&.torchwood.client.v1.ChallengeResponse\"T\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/phone-otp\x12\xcc\x01\n" +
+	"\x15CreatePhoneOTPSession\x121.torchwood.client.v1.CreatePhoneOTPSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"[\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/account/sessions/phone-otp/verify\x12\xe0\x01\n" +
+	"\x1eCreateWeChatMiniProgramSession\x12:.torchwood.client.v1.CreateWeChatMiniProgramSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"]\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/account/sessions/wechat/miniprogram\x12\xc7\x01\n" +
+	"\x16CreateAnonymousSession\x122.torchwood.client.v1.CreateAnonymousSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"T\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/anonymous\x12\xc2\x01\n" +
 	"\x17CreateOAuth2LinkSession\x123.torchwood.client.v1.CreateOAuth2LinkSessionRequest\x1a0.torchwood.client.v1.CreateOAuth2SessionResponse\"@\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02-\x12+/v1/account/sessions/oauth2/{provider}/link\x12\xc1\x01\n" +
 	"\x1cCreateOAuth2LinkTokenSession\x128.torchwood.client.v1.CreateOAuth2LinkTokenSessionRequest\x1a\x1c.torchwood.client.v1.Account\"I\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x026:\x01*\"1/v1/account/sessions/oauth2/{provider}/link/token\x12\xa7\x01\n" +
-	"\x12CreateVerification\x12..torchwood.client.v1.CreateVerificationRequest\x1a/.torchwood.client.v1.CreateVerificationResponse\"0\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/account/verification\x12\x8d\x01\n" +
-	"\x12UpdateVerification\x12..torchwood.client.v1.UpdateVerificationRequest\x1a\x1c.torchwood.client.v1.Account\")\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/account/verification\x12\x7f\n" +
-	"\x0eCreateRecovery\x12*.torchwood.client.v1.CreateRecoveryRequest\x1a\x1a.torchwood.shared.v1.Empty\"%\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/account/recovery\x12\x7f\n" +
-	"\x0eUpdateRecovery\x12*.torchwood.client.v1.UpdateRecoveryRequest\x1a\x1a.torchwood.shared.v1.Empty\"%\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x19:\x01*\x1a\x14/v1/account/recovery\x12\x86\x01\n" +
+	"\x12CreateVerification\x12..torchwood.client.v1.CreateVerificationRequest\x1a/.torchwood.client.v1.CreateVerificationResponse\"0\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/account/verification\x12\xb2\x01\n" +
+	"\x12UpdateVerification\x12..torchwood.client.v1.UpdateVerificationRequest\x1a\x1c.torchwood.client.v1.Account\"N\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/account/verification\x12\xa4\x01\n" +
+	"\x0eCreateRecovery\x12*.torchwood.client.v1.CreateRecoveryRequest\x1a\x1a.torchwood.shared.v1.Empty\"J\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/account/recovery\x12\xa4\x01\n" +
+	"\x0eUpdateRecovery\x12*.torchwood.client.v1.UpdateRecoveryRequest\x1a\x1a.torchwood.shared.v1.Empty\"J\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x19:\x01*\x1a\x14/v1/account/recovery\x12\x86\x01\n" +
 	"\vListFactors\x12'.torchwood.client.v1.ListFactorsRequest\x1a(.torchwood.client.v1.ListFactorsResponse\"$\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/account/mfa\x12\x8f\x01\n" +
 	"\x10CreateTOTPFactor\x12,.torchwood.client.v1.CreateTOTPFactorRequest\x1a\x1f.torchwood.client.v1.TOTPFactor\",\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/account/mfa/totp\x12\x8b\x01\n" +
 	"\x10VerifyTOTPFactor\x12,.torchwood.client.v1.VerifyTOTPFactorRequest\x1a\x1b.torchwood.client.v1.Factor\",\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x19:\x01*\x1a\x14/v1/account/mfa/totp\x12\x86\x01\n" +
-	"\fDeleteFactor\x12(.torchwood.client.v1.DeleteFactorRequest\x1a\x1a.torchwood.shared.v1.Empty\"0\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x1d*\x1b/v1/account/mfa/{factor_id}\x12\x91\x01\n" +
-	"\x10CreateMFASession\x12,.torchwood.client.v1.CreateMFASessionRequest\x1a#.torchwood.client.v1.SignInResponse\"*\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/account/mfa/challenge\x12\x83\x01\n" +
-	"\tCreateJWT\x12%.torchwood.client.v1.CreateJWTRequest\x1a&.torchwood.client.v1.CreateJWTResponse\"'\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/account/jwt\x12\xa3\x01\n" +
-	"\x15CreateMagicURLSession\x121.torchwood.client.v1.CreateMagicURLSessionRequest\x1a&.torchwood.client.v1.ChallengeResponse\"/\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/magic-url\x12\xa0\x01\n" +
-	"\x15UpdateMagicURLSession\x121.torchwood.client.v1.UpdateMagicURLSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"/\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\x1a\x1e/v1/account/sessions/magic-url\x12~\n" +
-	"\bListLogs\x12$.torchwood.client.v1.ListLogsRequest\x1a%.torchwood.client.v1.ListLogsResponse\"%\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/account/logs\x1a\x06\x92\xb2\x19\x02\b\x02B?Z=github.com/torchwooddev/torchwood/genproto/client/v1;clientv1b\x06proto3"
+	"\fDeleteFactor\x12(.torchwood.client.v1.DeleteFactorRequest\x1a\x1a.torchwood.shared.v1.Empty\"0\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x1d*\x1b/v1/account/mfa/{factor_id}\x12\xb6\x01\n" +
+	"\x10CreateMFASession\x12,.torchwood.client.v1.CreateMFASessionRequest\x1a#.torchwood.client.v1.SignInResponse\"O\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/account/mfa/challenge\x12\x83\x01\n" +
+	"\tCreateJWT\x12%.torchwood.client.v1.CreateJWTRequest\x1a&.torchwood.client.v1.CreateJWTResponse\"'\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/account/jwt\x12\xc8\x01\n" +
+	"\x15CreateMagicURLSession\x121.torchwood.client.v1.CreateMagicURLSessionRequest\x1a&.torchwood.client.v1.ChallengeResponse\"T\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/account/sessions/magic-url\x12\xc5\x01\n" +
+	"\x15UpdateMagicURLSession\x121.torchwood.client.v1.UpdateMagicURLSessionRequest\x1a#.torchwood.client.v1.SignInResponse\"T\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\x1a\x1e/v1/account/sessions/magic-url\x12~\n" +
+	"\bListLogs\x12$.torchwood.client.v1.ListLogsRequest\x1a%.torchwood.client.v1.ListLogsResponse\"%\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/account/logs\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
+	"M\n" +
+	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
+	"\n" +
+	"\n" +
+	"\x06Bearer\x12\x00z%\n" +
+	"\x12x-torchwood-access\x12\x0f\x1a\rauthenticatedZ=github.com/torchwooddev/torchwood/genproto/client/v1;clientv1b\x06proto3"
 
 var (
 	file_client_v1_account_proto_rawDescOnce sync.Once

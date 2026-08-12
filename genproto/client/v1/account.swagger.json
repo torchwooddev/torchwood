@@ -195,7 +195,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/mfa/totp": {
@@ -371,7 +373,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       },
       "put": {
         "operationId": "AccountService_UpdateRecovery",
@@ -401,7 +405,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/refresh": {
@@ -433,7 +439,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions": {
@@ -515,7 +523,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/email-otp": {
@@ -547,7 +557,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/email-otp/verify": {
@@ -579,7 +591,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/magic-url": {
@@ -612,7 +626,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       },
       "put": {
         "operationId": "AccountService_UpdateMagicURLSession",
@@ -642,7 +658,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/oauth2/{provider}": {
@@ -690,7 +708,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/oauth2/{provider}/link": {
@@ -814,7 +834,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/phone-otp": {
@@ -846,7 +868,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/phone-otp/verify": {
@@ -878,7 +902,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/wechat/miniprogram": {
@@ -910,7 +936,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sessions/{sessionId}": {
@@ -972,7 +1000,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/sign-out": {
@@ -1036,7 +1066,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/account/verification": {
@@ -1098,7 +1130,9 @@
         ],
         "tags": [
           "AccountService"
-        ]
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     }
   },
@@ -1655,7 +1689,8 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
+          "type": "string",
+          "title": "以下字段当前为裸 string：proto3 下空串无法区分「未提供」与「清空」。\r\n计划未来 optional 化（对齐 projects.proto 的 optional 用法）以支持\r\n清空语义；属破坏性变更，需 SDK/Console 同步后落地。"
         },
         "email": {
           "type": "string"
@@ -1732,5 +1767,31 @@
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e（Client API 登录态）",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "Bearer": []
+    }
+  ],
+  "x-torchwood-access": "authenticated"
 }

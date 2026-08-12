@@ -9,6 +9,19 @@ modules:
 lint:
   use:
     - STANDARD
+  # 以下规则与项目实际风格不符（Appwrite 风格契约，F11-4）：
+  # - PACKAGE_DIRECTORY_MATCH：包名 torchwood.*.v1 有意与目录 proto/{client,server,...}/v1
+  #   分离（模块化目录便于归类，重构目录将破坏全部 import）；
+  # - RPC_REQUEST_RESPONSE_UNIQUE / RPC_REQUEST_STANDARD_NAME / RPC_RESPONSE_STANDARD_NAME：
+  #   复用 shared.v1.Empty / shared.v1.ListRequest 及消息直出为响应（AIP-132 风格
+  #   ListRequest/ListResponse 复用），属既有契约，统一改造为破坏性变更；
+  # - ENUM_VALUE_PREFIX：ACCESS_* 枚举值为 authz 语义命名（与文档/拦截器一致）。
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - ENUM_VALUE_PREFIX
 breaking:
   use:
     - FILE

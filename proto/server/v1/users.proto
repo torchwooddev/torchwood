@@ -7,8 +7,53 @@ option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;server
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
+
+// 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
+// shared/v1/openapi.proto 的建模约定；本服务全部方法继承，无需逐方法覆盖）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "apiKey"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "api_key" }
+  }
+};
 
 service UsersService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
@@ -65,6 +110,9 @@ message CreateUserRequest {
 
 message UpdateUserRequest {
   string id = 1;
+  // 以下字段当前为裸 string/Struct：proto3 下空串/空对象无法区分
+  // 「未提供」与「清空」。计划未来 optional 化（对齐 projects.proto 的
+  // optional 用法）以支持清空语义；属破坏性变更，需 SDK/Console 同步。
   string status = 2;
   google.protobuf.Struct labels = 3;
   google.protobuf.Struct prefs = 4;
@@ -120,7 +168,8 @@ message CreateUserTokenResponse {
 }
 
 message TokenBundle {
+  // 令牌明文：仅生成时返回一次，之后任何接口不再回显（持久层仅存哈希）。
   string access_token = 1;
   string refresh_token = 2;
-  int64 expires_at = 3;
+  int64 expires_at = 3; // unix seconds
 }

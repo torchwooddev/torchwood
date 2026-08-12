@@ -7,6 +7,7 @@
 package serverv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -857,7 +858,7 @@ var File_server_v1_teams_proto protoreflect.FileDescriptor
 
 const file_server_v1_teams_proto_rawDesc = "" +
 	"\n" +
-	"\x15server/v1/teams.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"I\n" +
+	"\x15server/v1/teams.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"I\n" +
 	"\x11CreateTeamRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\" \n" +
@@ -938,7 +939,17 @@ const file_server_v1_teams_proto_rawDesc = "" +
 	"\rGetMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\">\x82\xd3\xe4\x93\x028\x126/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xa4\x01\n" +
 	"\x10UpdateMembership\x12,.torchwood.server.v1.UpdateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xb7\x01\n" +
 	"\x16UpdateMembershipStatus\x122.torchwood.server.v1.UpdateMembershipStatusRequest\x1a\x1f.torchwood.server.v1.Membership\"H\x82\xd3\xe4\x93\x02B:\x01*2=/v1/server/teams/{team_id}/memberships/{membership_id}/status\x12\x99\x01\n" +
-	"\x10DeleteMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/teams/{team_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x10DeleteMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/teams/{team_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"3\n" +
+	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
+	"\n" +
+	"\n" +
+	"\x06apiKey\x12\x00z\x1f\n" +
+	"\x12x-torchwood-access\x12\t\x1a\aapi_keyZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_teams_proto_rawDescOnce sync.Once

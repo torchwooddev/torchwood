@@ -6,8 +6,53 @@ option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;server
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
+
+// 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
+// shared/v1/openapi.proto 的建模约定；本服务全部方法继承，无需逐方法覆盖）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "apiKey"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "api_key" }
+  }
+};
 
 // FunctionsService manages functions, their code deployments, variables
 // and executions. Deployments are zip code packages built into Docker
@@ -16,6 +61,9 @@ import "shared/v1/common.proto";
 service FunctionsService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
 
+  // functions/runtimes、functions/specifications 为字面量路由，function_id
+  // 不得取 runtimes / specifications（CreateFunction 校验并拒绝，
+  // 返回 InvalidArgument）。
   rpc ListRuntimes(shared.v1.Empty) returns (ListRuntimesResponse) {
     option (google.api.http) = { get: "/v1/server/functions/runtimes" };
   }
@@ -107,6 +155,8 @@ message Variables {
 
 message Variable {
   string key = 1;
+  // 环境变量明文值：SetVariables 请求透传、GetVariables 响应回显
+  // （函数运行期注入）；属敏感数据，前端/日志不得持久化明文。
   string value = 2;
 }
 
@@ -129,6 +179,9 @@ message Execution {
 }
 
 message CreateFunctionRequest {
+  // 客户端自选 function_id；不得使用保留字 runtimes / specifications
+  // （与 functions/runtimes、functions/specifications 字面量路由冲突，
+  // 服务端校验拒绝，返回 InvalidArgument）。
   string id = 1;
   string name = 2;
   string runtime = 3;

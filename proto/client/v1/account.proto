@@ -7,8 +7,54 @@ option go_package = "github.com/torchwooddev/torchwood/genproto/client/v1;client
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
+
+// 服务默认 access=authenticated：swagger 顶层声明 Bearer security；
+// ACCESS_PUBLIC 方法逐方法声明 security: [] + x-torchwood-access: "public"
+// （详见 shared/v1/openapi.proto 的建模约定）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>（Client API 登录态）"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "Bearer"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "authenticated" }
+  }
+};
 
 service AccountService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
@@ -16,11 +62,25 @@ service AccountService {
   rpc SignUp(SignUpRequest) returns (SignUpResponse) {
     option (google.api.http) = { post: "/v1/account/sign-up", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc SignIn(SignInRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sign-in", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc SignOut(SignOutRequest) returns (shared.v1.Empty) {
@@ -31,6 +91,13 @@ service AccountService {
   rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {
     option (google.api.http) = { post: "/v1/account/refresh", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc Me(MeRequest) returns (Account) {
@@ -54,6 +121,7 @@ service AccountService {
   }
 
   rpc DeleteSessions(DeleteSessionsRequest) returns (shared.v1.Empty) {
+    // keep_current 由 grpc-gateway 绑定为查询参数（DELETE 不带 body，避免依赖 allow_delete_body）
     option (google.api.http) = { delete: "/v1/account/sessions" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PERMISSION, permissions: ["users"] };
   }
@@ -71,41 +139,97 @@ service AccountService {
   rpc CreateEmailOTP(CreateEmailOTPRequest) returns (ChallengeResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/email-otp", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreateEmailOTPSession(CreateEmailOTPSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/email-otp/verify", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreateOAuth2Session(CreateOAuth2SessionRequest) returns (CreateOAuth2SessionResponse) {
     option (google.api.http) = { get: "/v1/account/sessions/oauth2/{provider}" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreateOAuth2TokenSession(CreateOAuth2TokenSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/oauth2/{provider}/token", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreatePhoneOTP(CreatePhoneOTPRequest) returns (ChallengeResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/phone-otp", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreatePhoneOTPSession(CreatePhoneOTPSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/phone-otp/verify", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreateWeChatMiniProgramSession(CreateWeChatMiniProgramSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/wechat/miniprogram", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreateAnonymousSession(CreateAnonymousSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/anonymous", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreateOAuth2LinkSession(CreateOAuth2LinkSessionRequest) returns (CreateOAuth2SessionResponse) {
@@ -126,16 +250,37 @@ service AccountService {
   rpc UpdateVerification(UpdateVerificationRequest) returns (Account) {
     option (google.api.http) = { put: "/v1/account/verification", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc CreateRecovery(CreateRecoveryRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { post: "/v1/account/recovery", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc UpdateRecovery(UpdateRecoveryRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { put: "/v1/account/recovery", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   // MFA
@@ -162,6 +307,13 @@ service AccountService {
   rpc CreateMFASession(CreateMFASessionRequest) returns (SignInResponse) {
     option (google.api.http) = { post: "/v1/account/mfa/challenge", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   // 一次性 JWT
@@ -174,11 +326,25 @@ service AccountService {
   rpc CreateMagicURLSession(CreateMagicURLSessionRequest) returns (ChallengeResponse) {
     option (google.api.http) = { post: "/v1/account/sessions/magic-url", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc UpdateMagicURLSession(UpdateMagicURLSessionRequest) returns (SignInResponse) {
     option (google.api.http) = { put: "/v1/account/sessions/magic-url", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   // 账号日志
@@ -251,6 +417,9 @@ message RefreshTokenResponse {
 }
 
 message UpdateAccountRequest {
+  // 以下字段当前为裸 string：proto3 下空串无法区分「未提供」与「清空」。
+  // 计划未来 optional 化（对齐 projects.proto 的 optional 用法）以支持
+  // 清空语义；属破坏性变更，需 SDK/Console 同步后落地。
   string name = 1;
   string email = 2;
   string password = 3;

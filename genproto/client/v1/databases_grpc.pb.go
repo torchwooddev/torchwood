@@ -33,6 +33,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DatabasesServiceClient interface {
+	// 保留字说明：documents/{document_id} 与字面量路由 documents/count 冲突，
+	// document_id 不得取 count（服务端 Create 校验并拒绝，返回 InvalidArgument）。
 	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*ListDocumentsResponse, error)
 	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error)
@@ -124,6 +126,8 @@ func (c *databasesServiceClient) CountDocuments(ctx context.Context, in *ListDoc
 // All implementations must embed UnimplementedDatabasesServiceServer
 // for forward compatibility.
 type DatabasesServiceServer interface {
+	// 保留字说明：documents/{document_id} 与字面量路由 documents/count 冲突，
+	// document_id 不得取 count（服务端 Create 校验并拒绝，返回 InvalidArgument）。
 	CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
 	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)

@@ -153,7 +153,8 @@
           "type": "string"
         },
         "clientSecret": {
-          "type": "string"
+          "type": "string",
+          "title": "OAuth client secret：仅写入（Upsert）时接受；响应不回显（OAuthProvider\r\n仅返回 has_client_secret 布尔）。空串语义 = 保持现有 secret 不变\r\n（不允许清空；如需轮换请写入新值）。"
         },
         "scopes": {
           "type": "array",
@@ -259,5 +260,31 @@
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "x-torchwood-access": "api_key"
 }

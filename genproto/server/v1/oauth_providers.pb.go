@@ -7,6 +7,7 @@
 package serverv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -77,12 +78,15 @@ func (x *ListOAuthProvidersResponse) GetMeta() *v1.ListResponseMeta {
 }
 
 type UpsertOAuthProviderRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
-	Enabled       bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	ClientId      string                 `protobuf:"bytes,3,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	ClientSecret  string                 `protobuf:"bytes,4,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
-	Scopes        []string               `protobuf:"bytes,5,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Provider string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Enabled  bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	ClientId string                 `protobuf:"bytes,3,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	// OAuth client secret：仅写入（Upsert）时接受；响应不回显（OAuthProvider
+	// 仅返回 has_client_secret 布尔）。空串语义 = 保持现有 secret 不变
+	// （不允许清空；如需轮换请写入新值）。
+	ClientSecret  string   `protobuf:"bytes,4,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
+	Scopes        []string `protobuf:"bytes,5,rep,name=scopes,proto3" json:"scopes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -292,7 +296,7 @@ var File_server_v1_oauth_providers_proto protoreflect.FileDescriptor
 
 const file_server_v1_oauth_providers_proto_rawDesc = "" +
 	"\n" +
-	"\x1fserver/v1/oauth_providers.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xa4\x01\n" +
+	"\x1fserver/v1/oauth_providers.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xa4\x01\n" +
 	"\x1aListOAuthProvidersResponse\x12K\n" +
 	"\x0foauth_providers\x18\x01 \x03(\v2\".torchwood.server.v1.OAuthProviderR\x0eoauthProviders\x129\n" +
 	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xac\x01\n" +
@@ -317,7 +321,17 @@ const file_server_v1_oauth_providers_proto_rawDesc = "" +
 	"\x15OAuthProvidersService\x12\x8b\x01\n" +
 	"\x12ListOAuthProviders\x12 .torchwood.shared.v1.ListRequest\x1a/.torchwood.server.v1.ListOAuthProvidersResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/oauth-providers\x12\x9c\x01\n" +
 	"\x13UpsertOAuthProvider\x12/.torchwood.server.v1.UpsertOAuthProviderRequest\x1a\".torchwood.server.v1.OAuthProvider\"0\x82\xd3\xe4\x93\x02*:\x01*\x1a%/v1/server/oauth-providers/{provider}\x12\x91\x01\n" +
-	"\x13DeleteOAuthProvider\x12/.torchwood.server.v1.DeleteOAuthProviderRequest\x1a\x1a.torchwood.shared.v1.Empty\"-\x82\xd3\xe4\x93\x02'*%/v1/server/oauth-providers/{provider}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x13DeleteOAuthProvider\x12/.torchwood.server.v1.DeleteOAuthProviderRequest\x1a\x1a.torchwood.shared.v1.Empty\"-\x82\xd3\xe4\x93\x02'*%/v1/server/oauth-providers/{provider}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"3\n" +
+	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
+	"\n" +
+	"\n" +
+	"\x06apiKey\x12\x00z\x1f\n" +
+	"\x12x-torchwood-access\x12\t\x1a\aapi_keyZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_oauth_providers_proto_rawDescOnce sync.Once

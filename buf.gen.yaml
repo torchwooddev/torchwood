@@ -17,3 +17,5 @@ plugins:
 
   - remote: buf.build/grpc-ecosystem/openapiv2:v2.27.3
     out: genproto
+    opt:
+      - json_names_for_fields=true

@@ -339,7 +339,8 @@
       "type": "object",
       "properties": {
         "status": {
-          "type": "string"
+          "type": "string",
+          "title": "以下字段当前为裸 string/Struct：proto3 下空串/空对象无法区分\r\n「未提供」与「清空」。计划未来 optional 化（对齐 projects.proto 的\r\noptional 用法）以支持清空语义；属破坏性变更，需 SDK/Console 同步。"
         },
         "labels": {
           "type": "object"
@@ -434,14 +435,16 @@
       "type": "object",
       "properties": {
         "accessToken": {
-          "type": "string"
+          "type": "string",
+          "title": "令牌明文：仅生成时返回一次，之后任何接口不再回显（持久层仅存哈希）。"
         },
         "refreshToken": {
           "type": "string"
         },
         "expiresAt": {
           "type": "string",
-          "format": "int64"
+          "format": "int64",
+          "title": "unix seconds"
         }
       }
     },
@@ -562,5 +565,31 @@
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "x-torchwood-access": "api_key"
 }

@@ -21,6 +21,18 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ErrorCode 与 gRPC code 的映射（HTTPErrorHandler 单一事实来源，
+// 见 internal/infra/server/errors.go）：
+//   - InvalidArgument → ERROR_CODE_INVALID_REQUEST
+//   - FailedPrecondition → ERROR_CODE_PRECONDITION_FAILED
+//   - NotFound → ERROR_CODE_RESOURCE_NOT_FOUND
+//   - AlreadyExists → ERROR_CODE_RESOURCE_CONFLICT
+//   - Aborted → ERROR_CODE_CONCURRENT_MODIFICATION
+//   - Unauthenticated → ERROR_CODE_INVALID_CREDENTIALS
+//   - PermissionDenied → ERROR_CODE_PERMISSION_DENIED
+//   - ResourceExhausted → ERROR_CODE_QUOTA_EXCEEDED
+//   - DeadlineExceeded → ERROR_CODE_TIMEOUT
+//   - 其余 → ERROR_CODE_INTERNAL_ERROR
 type ErrorCode int32
 
 const (

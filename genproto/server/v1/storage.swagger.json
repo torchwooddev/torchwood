@@ -520,7 +520,8 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
+          "type": "string",
+          "title": "以下字段为 optional（支持清空 name / mime_type）；metadata 为 map，\r\n空 map 表示不修改（清空语义未来 optional 化，属破坏性变更，需 SDK\r\n/Console 同步后落地）。"
         },
         "mimeType": {
           "type": "string"
@@ -648,7 +649,8 @@
       "type": "object",
       "properties": {
         "token": {
-          "type": "string"
+          "type": "string",
+          "title": "短期文件访问令牌（HMAC 签名）：仅创建响应返回一次，之后任何接口\r\n不回显；可拼接到下载 URL（?token=）匿名换取文件，过期/篡改返回 401。"
         },
         "expiresAt": {
           "type": "string",
@@ -722,5 +724,31 @@
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "x-torchwood-access": "api_key"
 }

@@ -7,6 +7,7 @@
 package serverv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -681,12 +682,15 @@ func (x *File) GetUpdatedAt() *timestamppb.Timestamp {
 }
 
 type UpdateFileRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BucketId      string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
-	FileId        string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
-	Name          *string                `protobuf:"bytes,3,opt,name=name,proto3,oneof" json:"name,omitempty"`
-	MimeType      *string                `protobuf:"bytes,4,opt,name=mime_type,json=mimeType,proto3,oneof" json:"mime_type,omitempty"`
-	Metadata      map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	BucketId string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
+	FileId   string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	// 以下字段为 optional（支持清空 name / mime_type）；metadata 为 map，
+	// 空 map 表示不修改（清空语义未来 optional 化，属破坏性变更，需 SDK
+	// /Console 同步后落地）。
+	Name          *string           `protobuf:"bytes,3,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	MimeType      *string           `protobuf:"bytes,4,opt,name=mime_type,json=mimeType,proto3,oneof" json:"mime_type,omitempty"`
+	Metadata      map[string]string `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -818,7 +822,9 @@ func (x *CreateFileTokenRequest) GetExpiresIn() int64 {
 }
 
 type FileToken struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 短期文件访问令牌（HMAC 签名）：仅创建响应返回一次，之后任何接口
+	// 不回显；可拼接到下载 URL（?token=）匿名换取文件，过期/篡改返回 401。
 	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -969,7 +975,7 @@ var File_server_v1_storage_proto protoreflect.FileDescriptor
 
 const file_server_v1_storage_proto_rawDesc = "" +
 	"\n" +
-	"\x17server/v1/storage.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"c\n" +
+	"\x17server/v1/storage.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"c\n" +
 	"\x13CreateBucketRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vpermissions\x18\x02 \x03(\tR\vpermissions\x12\x16\n" +
@@ -1073,7 +1079,17 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"\n" +
 	"UpdateFile\x12&.torchwood.server.v1.UpdateFileRequest\x1a\x19.torchwood.server.v1.File\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/storage/buckets/{bucket_id}/files/{file_id}\x12\xa8\x01\n" +
 	"\x0fCreateFileToken\x12+.torchwood.server.v1.CreateFileTokenRequest\x1a\x1e.torchwood.server.v1.FileToken\"H\x82\xd3\xe4\x93\x02B:\x01*\"=/v1/server/storage/buckets/{bucket_id}/files/{file_id}/tokens\x12\x83\x01\n" +
-	"\x0fGetStorageUsage\x12+.torchwood.server.v1.GetStorageUsageRequest\x1a!.torchwood.server.v1.StorageUsage\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/storage/usage\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\x0fGetStorageUsage\x12+.torchwood.server.v1.GetStorageUsageRequest\x1a!.torchwood.server.v1.StorageUsage\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/storage/usage\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"3\n" +
+	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
+	"\n" +
+	"\n" +
+	"\x06apiKey\x12\x00z\x1f\n" +
+	"\x12x-torchwood-access\x12\t\x1a\aapi_keyZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_storage_proto_rawDescOnce sync.Once

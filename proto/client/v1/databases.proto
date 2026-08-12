@@ -7,12 +7,60 @@ option go_package = "github.com/torchwooddev/torchwood/genproto/client/v1;client
 import "google/api/annotations.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
+
+// 服务默认 access=authenticated：swagger 顶层声明 Bearer security；
+// ACCESS_PUBLIC 方法逐方法声明 security: [] + x-torchwood-access: "public"
+// （详见 shared/v1/openapi.proto 的建模约定）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>（Client API 登录态）"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "Bearer"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "authenticated" }
+  }
+};
 
 service DatabasesService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
 
+  // 保留字说明：documents/{document_id} 与字面量路由 documents/count 冲突，
+  // document_id 不得取 count（服务端 Create 校验并拒绝，返回 InvalidArgument）。
   rpc CreateDocument(CreateDocumentRequest) returns (Document) {
     option (google.api.http) = { post: "/v1/databases/{database_id}/collections/{collection_id}/documents", body: "*" };
   }
@@ -20,11 +68,25 @@ service DatabasesService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse) {
     option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc GetDocument(GetDocumentRequest) returns (Document) {
     option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 
   rpc UpdateDocument(UpdateDocumentRequest) returns (Document) {
@@ -42,6 +104,13 @@ service DatabasesService {
   rpc CountDocuments(ListDocumentsRequest) returns (CountDocumentsResponse) {
     option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents/count" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      security: {}
+      extensions: {
+        key: "x-torchwood-access"
+        value: { string_value: "public" }
+      }
+    };
   }
 }
 
@@ -56,6 +125,8 @@ message Document {
 message CreateDocumentRequest {
   string database_id = 1;
   string collection_id = 2;
+  // 客户端自选 document_id；不得使用保留字 count（与 documents/count
+  // 字面量路由冲突，服务端校验拒绝）。
   string document_id = 3;
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;

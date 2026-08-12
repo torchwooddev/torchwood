@@ -47,6 +47,9 @@ const (
 // images; executions run the built image synchronously or asynchronously
 // via a worker queue.
 type FunctionsServiceClient interface {
+	// functions/runtimes、functions/specifications 为字面量路由，function_id
+	// 不得取 runtimes / specifications（CreateFunction 校验并拒绝，
+	// 返回 InvalidArgument）。
 	ListRuntimes(ctx context.Context, in *v1.Empty, opts ...grpc.CallOption) (*ListRuntimesResponse, error)
 	ListSpecifications(ctx context.Context, in *v1.Empty, opts ...grpc.CallOption) (*ListSpecificationsResponse, error)
 	CreateFunction(ctx context.Context, in *CreateFunctionRequest, opts ...grpc.CallOption) (*Function, error)
@@ -242,6 +245,9 @@ func (c *functionsServiceClient) GetExecution(ctx context.Context, in *GetExecut
 // images; executions run the built image synchronously or asynchronously
 // via a worker queue.
 type FunctionsServiceServer interface {
+	// functions/runtimes、functions/specifications 为字面量路由，function_id
+	// 不得取 runtimes / specifications（CreateFunction 校验并拒绝，
+	// 返回 InvalidArgument）。
 	ListRuntimes(context.Context, *v1.Empty) (*ListRuntimesResponse, error)
 	ListSpecifications(context.Context, *v1.Empty) (*ListSpecificationsResponse, error)
 	CreateFunction(context.Context, *CreateFunctionRequest) (*Function, error)

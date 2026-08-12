@@ -107,6 +107,7 @@
     },
     "/v1/server/functions/runtimes": {
       "get": {
+        "summary": "functions/runtimes、functions/specifications 为字面量路由，function_id\n不得取 runtimes / specifications（CreateFunction 校验并拒绝，\n返回 InvalidArgument）。",
         "operationId": "FunctionsService_ListRuntimes",
         "responses": {
           "200": {
@@ -640,7 +641,8 @@
       "type": "object",
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "title": "客户端自选 function_id；不得使用保留字 runtimes / specifications\n（与 functions/runtimes、functions/specifications 字面量路由冲突，\n服务端校验拒绝，返回 InvalidArgument）。"
         },
         "name": {
           "type": "string"
@@ -906,7 +908,8 @@
           "type": "string"
         },
         "value": {
-          "type": "string"
+          "type": "string",
+          "title": "环境变量明文值：SetVariables 请求透传、GetVariables 响应回显\n（函数运行期注入）；属敏感数据，前端/日志不得持久化明文。"
         }
       }
     },
@@ -922,5 +925,31 @@
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "x-torchwood-access": "api_key"
 }

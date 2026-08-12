@@ -7,6 +7,7 @@
 package serverv1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -397,9 +398,11 @@ func (x *Variables) GetVariables() []*Variable {
 }
 
 type Variable struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Key   string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// 环境变量明文值：SetVariables 请求透传、GetVariables 响应回显
+	// （函数运行期注入）；属敏感数据，前端/日志不得持久化明文。
+	Value         string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -605,14 +608,17 @@ func (x *Execution) GetUpdatedAt() *timestamppb.Timestamp {
 }
 
 type CreateFunctionRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Runtime        string                 `protobuf:"bytes,3,opt,name=runtime,proto3" json:"runtime,omitempty"`
-	Entrypoint     string                 `protobuf:"bytes,4,opt,name=entrypoint,proto3" json:"entrypoint,omitempty"`
-	TimeoutSeconds *int32                 `protobuf:"varint,5,opt,name=timeout_seconds,json=timeoutSeconds,proto3,oneof" json:"timeout_seconds,omitempty"`
-	Spec           *string                `protobuf:"bytes,6,opt,name=spec,proto3,oneof" json:"spec,omitempty"`
-	Enabled        *bool                  `protobuf:"varint,7,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 客户端自选 function_id；不得使用保留字 runtimes / specifications
+	// （与 functions/runtimes、functions/specifications 字面量路由冲突，
+	// 服务端校验拒绝，返回 InvalidArgument）。
+	Id             string  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name           string  `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Runtime        string  `protobuf:"bytes,3,opt,name=runtime,proto3" json:"runtime,omitempty"`
+	Entrypoint     string  `protobuf:"bytes,4,opt,name=entrypoint,proto3" json:"entrypoint,omitempty"`
+	TimeoutSeconds *int32  `protobuf:"varint,5,opt,name=timeout_seconds,json=timeoutSeconds,proto3,oneof" json:"timeout_seconds,omitempty"`
+	Spec           *string `protobuf:"bytes,6,opt,name=spec,proto3,oneof" json:"spec,omitempty"`
+	Enabled        *bool   `protobuf:"varint,7,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1337,7 +1343,7 @@ var File_server_v1_functions_proto protoreflect.FileDescriptor
 
 const file_server_v1_functions_proto_rawDesc = "" +
 	"\n" +
-	"\x19server/v1/functions.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xd4\x02\n" +
+	"\x19server/v1/functions.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xd4\x02\n" +
 	"\bFunction\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1490,7 +1496,17 @@ const file_server_v1_functions_proto_rawDesc = "" +
 	"\fGetVariables\x12'.torchwood.server.v1.GetFunctionRequest\x1a\x1e.torchwood.server.v1.Variables\"4\x82\xd3\xe4\x93\x02.\x12,/v1/server/functions/{function_id}/variables\x12\x98\x01\n" +
 	"\x0fCreateExecution\x12+.torchwood.server.v1.CreateExecutionRequest\x1a\x1e.torchwood.server.v1.Execution\"8\x82\xd3\xe4\x93\x022:\x01*\"-/v1/server/functions/{function_id}/executions\x12\x9d\x01\n" +
 	"\x0eListExecutions\x12'.torchwood.server.v1.GetFunctionRequest\x1a+.torchwood.server.v1.ListExecutionsResponse\"5\x82\xd3\xe4\x93\x02/\x12-/v1/server/functions/{function_id}/executions\x12\x9e\x01\n" +
-	"\fGetExecution\x12(.torchwood.server.v1.GetExecutionRequest\x1a\x1e.torchwood.server.v1.Execution\"D\x82\xd3\xe4\x93\x02>\x12</v1/server/functions/{function_id}/executions/{execution_id}\x1a\x06\x92\xb2\x19\x02\b\x04B?Z=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
+	"\fGetExecution\x12(.torchwood.server.v1.GetExecutionRequest\x1a\x1e.torchwood.server.v1.Execution\"D\x82\xd3\xe4\x93\x02>\x12</v1/server/functions/{function_id}/executions/{execution_id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"3\n" +
+	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
+	"\n" +
+	"\n" +
+	"\x06apiKey\x12\x00z\x1f\n" +
+	"\x12x-torchwood-access\x12\t\x1a\aapi_keyZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
 	file_server_v1_functions_proto_rawDescOnce sync.Once
