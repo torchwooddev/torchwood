@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"encoding/base64"
@@ -34,7 +34,7 @@ const (
 // deployments create 由 CLI 读取 zip 文件并 base64 编码后走 gRPC 纯消息
 // （bytes code，≤1MiB 建议；服务端上限 50MiB），更大的代码包拆分或走
 // multipart 上传（独立 HTTP handler，CLI 不提供）。
-func newFunctionsCmd(g *globalFlags) *cobra.Command {
+func NewFunctionsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "functions",
 		Short: "函数管理（FunctionsService 全部方法）",

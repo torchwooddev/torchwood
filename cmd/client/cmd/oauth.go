@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ const (
 
 // newOAuthProvidersCmd 覆盖 OAuthProvidersService 全部 3 个方法：
 // list/upsert/delete（proto 无 get 方法；upsert 即 create+update 语义）。
-func newOAuthProvidersCmd(g *globalFlags) *cobra.Command {
+func NewOAuthProvidersCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "oauth-providers",
 		Short: "OAuth 提供商管理（OAuthProvidersService 全部方法）",

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -24,7 +24,7 @@ const (
 // update/delete）、files（list/get/update/delete）、usage。
 // 不做文件上传/下载（独立 HTTP handler）与分片上传会话；CreateFile（bytes
 // 上传）与 CreateFileToken 亦不提供（token 用途为 HTTP 下载签名）。
-func newStorageCmd(g *globalFlags) *cobra.Command {
+func NewStorageCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "storage",
 		Short: "存储管理（StorageService 元数据操作；上传/下载走独立 HTTP handler，CLI 不提供）",

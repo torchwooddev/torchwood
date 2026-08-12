@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 // newRPCCmd 是逃生舱命令：按完整 gRPC 方法名调用任意 Server API 方法，
 // --data 以 protojson 填充请求体（动态分发见 sdk/go/server.InvokeJSON，
 // 完整性由 SDK 测试保证）。
-func newRPCCmd(g *globalFlags) *cobra.Command {
+func NewRPCCmd(g *globalFlags) *cobra.Command {
 	var data string
 	cmd := &cobra.Command{
 		Use:   "rpc <full-method> [--data '<json>']",

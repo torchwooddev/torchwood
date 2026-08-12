@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"os"
@@ -13,7 +13,7 @@ const (
 
 // newProjectsCmd 提供 ProjectsService 的 list/get。
 // CreateProject/UpdateProject 限平台 admin（console session），API Key 无法调用，CLI 不提供。
-func newProjectsCmd(g *globalFlags) *cobra.Command {
+func NewProjectsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "projects",
 		Short: "项目管理（list/get；create/update 限平台 admin，CLI 不提供）",

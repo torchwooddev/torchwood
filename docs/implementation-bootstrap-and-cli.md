@@ -166,18 +166,20 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 
 ```
 cmd/client/
-  main.go            # root command、全局 flag、执行入口
-  conn.go            # 拨号 + x-api-key 注入的 unary client interceptor
-  output.go          # protojson 渲染（缩进、EmitUnpopulated=false）
-  cmd_health.go      # health get / version
-  cmd_projects.go    # projects list / get
-  cmd_users.go       # users 子命令
-  cmd_databases.go   # databases/collections/documents 子命令
-  cmd_teams.go       # teams/memberships 子命令
-  cmd_storage.go     # buckets 子命令
-  cmd_functions.go   # functions 子命令
-  cmd_oauth.go       # oauth-providers 子命令
-  cmd_rpc.go         # 通用调用：torchwood rpc <full-method> [--data JSON]
+  main.go            # 执行入口（godotenv + cmd.NewRootCmd）
+  cmd/
+    root.go          # root command、全局 flag、api-key 校验、根命令组装
+    output.go        # invoke（InvokeJSON）+ JSON 渲染
+    helpers.go       # JSON 解析/合并 helper
+    health.go        # health get / version
+    projects.go      # projects list / get
+    users.go         # users 子命令
+    databases.go     # databases/collections/documents 子命令
+    teams.go         # teams/memberships 子命令
+    storage.go       # buckets 子命令
+    functions.go     # functions 子命令
+    oauth.go         # oauth-providers 子命令
+    rpc.go           # 通用调用：torchwood rpc <full-method> [--data JSON]
 ```
 
 ### 4.3 全局参数与配置

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ const (
 // newTeamsCmd 覆盖 TeamsService 全部 12 个方法：
 // 团队（create/list/get/delete）、prefs（get/update）、
 // memberships（create/list/get/update/update-status/delete）。
-func newTeamsCmd(g *globalFlags) *cobra.Command {
+func NewTeamsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "teams",
 		Short: "团队管理（TeamsService 全部方法）",

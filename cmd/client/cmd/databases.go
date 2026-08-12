@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -37,7 +37,7 @@ const (
 // 属性（create/delete）、索引（create/delete）、文档（create/list/get/
 // update/upsert/delete/count/bulk-update/bulk-delete）。
 // 复杂结构（document data、queries、permissions 等）一律接受 JSON 字符串 flag。
-func newDatabasesCmd(g *globalFlags) *cobra.Command {
+func NewDatabasesCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "databases",
 		Short: "数据库管理（DatabasesService 全部方法：库/集合/属性/索引/文档）",

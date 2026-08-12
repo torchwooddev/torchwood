@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 
 // newHealthCmd 提供 HealthService 两个公开方法（ACCESS_PUBLIC，无需 API key）。
 // 整组命令标记 annotationNoKey，root 的 validate 据此豁免 api-key 必填校验。
-func newHealthCmd(g *globalFlags) *cobra.Command {
+func NewHealthCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "health",
 		Short:       "健康检查（公开接口，无需 API key）",

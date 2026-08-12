@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ const (
 // newUsersCmd 覆盖 UsersService 全部 9 个方法：
 // list/get/create/update/update-password/delete、sessions list/delete、tokens create。
 // 标量参数用具名 flag，labels/prefs 等 Struct 字段用 --data 传入 JSON 合并。
-func newUsersCmd(g *globalFlags) *cobra.Command {
+func NewUsersCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "users",
 		Short: "用户管理（UsersService 全部方法）",
