@@ -136,7 +136,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | Document 列表/计数 | 带 Appwrite DSL 查询、权限过滤 | `GET` / `count` | ✅ 完成 |
 | Client Database API | 终端用户在授权下读写文档 | `/v1/databases/{db}/collections/{coll}/documents/*` | ✅ 完成 |
 | Console 文档编辑器 | collection 下文档列表、新增/编辑/删除 | `/console/databases/.../documents` | ✅ 完成 |
-| 批量操作 | 批量更新、删除、upsert | `.../documents/bulk` | ✅ 完成（Console 文档列表批量更新/删除对话框） |
+| 批量操作 | 批量更新、删除、upsert | `.../documents:bulkUpdate` / `.../documents:bulkDelete`（REST 自定义动词，R10-P1-3/B3 后旧 `.../documents/bulk`、`.../documents/bulk/delete` 已废弃） | ✅ 完成（Console 文档列表批量更新/删除对话框） |
 | 字段自增/自减 | 对数值字段做原子增减 | `PATCH .../documents/{id}` | ✅ 完成（Document 详情页 Δ 增量输入） |
 | Attribute 删除 | 删除属性并同步 `ALTER TABLE DROP COLUMN` | `DELETE .../attributes/{key}` | ✅ 完成（Schema tab 行内删除按钮） |
 | Index 删除 | 删除索引 | `DELETE .../indexes/{id}` | ✅ 完成（Schema tab 行内删除按钮） |
@@ -149,12 +149,16 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - 普通用户只能读写自己有权限的文档；admin/key 可绕过。
 - 删除 attribute 时同步清理 `document_attributes` 元数据与表结构。
 
-> **Backlog（R10-P1-3，本批次不做）**：REST 保留字自定义动词迁移——将字面量段
-> `documents/count`、`documents/bulk`（+`bulk/delete`）迁移为 `:count`/`:bulkUpdate`
-> 自定义方法风格（同 `functions/runtimes`、`functions/specifications`）。
-> 迁移时需同步清理历史保留字 id 数据（已存在 `document_id="count"` / `id="bulk"` 等
-> 文档与 `id="runtimes"` / `id="specifications"` 的函数，字面量路由优先会遮蔽这些
-> 资源的 Get/Update/Delete）。当前以服务端创建校验拒绝保留字 id 作为兜底。
+> **Backlog（R10-P1-3，已迁移，B3）**：REST 保留字自定义动词迁移已完成（breaking change）。
+> 旧字面量路径 `documents/count`、`documents/bulk`、`documents/bulk/delete`、
+> `functions/runtimes`、`functions/specifications` 已废弃，新路径为自定义动词
+> `documents:count` / `documents:bulkUpdate` / `documents:bulkDelete` /
+> `functions:runtimes` / `functions:specifications`；`count`/`bulk`/`runtimes`/
+> `specifications` 现为合法 id（服务端保留字校验已移除），与 `{id}` 通配路由不再冲突。
+> **升级指引**：旧 REST 路径请求一律 404，客户端（TS SDK / Console）需随版本升级；
+> 若历史存在保留字 id（count/bulk/runtimes/specifications）的文档/函数
+> （仅保留字校验上线前创建的数据可能受影响），需在升级前先重命名或删除，
+> 否则这些资源经 REST 的 Get/Update/Delete 在旧版本上被字面量路由遮蔽。
 
 ---
 

@@ -18,14 +18,6 @@ import (
 // 大写禁用：Docker 镜像仓库/标签名只允许小写，见 G6-3/R08-P1-1）。
 var functionIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
-// functionIDReserved 是 REST 字面量路由段，function_id 不得取这些值：
-// GET /v1/server/functions/runtimes、/specifications 为字面量路由，grpc-gateway
-// 字面量优先匹配，同名 function 经 REST 永远无法访问（F11-3，方案 B）。
-var functionIDReserved = map[string]struct{}{
-	"runtimes":       {},
-	"specifications": {},
-}
-
 const (
 	// minTimeoutSeconds / maxTimeoutSeconds 是函数超时允许范围（§5.2）。
 	minTimeoutSeconds = 1
@@ -70,9 +62,6 @@ func (f *Functions) CreateFunction(ctx context.Context, cmd CreateFunctionComman
 	}
 	if !functionIDPattern.MatchString(cmd.ID) {
 		return nil, status.Error(codes.InvalidArgument, "invalid function id: must match ^[a-z0-9][a-z0-9_-]{0,63}$")
-	}
-	if _, reserved := functionIDReserved[cmd.ID]; reserved {
-		return nil, status.Errorf(codes.InvalidArgument, "function id %q is reserved", cmd.ID)
 	}
 	if strings.TrimSpace(cmd.Name) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")

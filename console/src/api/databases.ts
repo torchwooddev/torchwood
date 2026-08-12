@@ -274,7 +274,7 @@ export async function bulkUpdateDocuments(
   }
 ): Promise<number> {
   const res = await api.patch<{ affected: number }>(
-    `/server/databases/${databaseId}/collections/${collectionId}/documents/bulk`,
+    `/server/databases/${databaseId}/collections/${collectionId}/documents:bulkUpdate`,
     input
   );
   return res.data.affected ?? 0;
@@ -286,7 +286,7 @@ export async function bulkDeleteDocuments(
   documentIds: string[]
 ): Promise<number> {
   const res = await api.post<{ affected: number }>(
-    `/server/databases/${databaseId}/collections/${collectionId}/documents/bulk/delete`,
+    `/server/databases/${databaseId}/collections/${collectionId}/documents:bulkDelete`,
     { document_ids: documentIds }
   );
   return res.data.affected ?? 0;

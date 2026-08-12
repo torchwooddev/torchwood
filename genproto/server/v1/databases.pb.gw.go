@@ -1718,7 +1718,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents/count"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents:count"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1738,7 +1738,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkUpdate"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1758,7 +1758,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2139,7 +2139,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents/count"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents:count"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2156,7 +2156,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkUpdate"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2173,7 +2173,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments", runtime.WithHTTPPathPattern("/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2209,9 +2209,9 @@ var (
 	pattern_DatabasesService_UpdateDocument_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6, 1, 0, 4, 1, 5, 7}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
 	pattern_DatabasesService_UpsertDocument_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6, 1, 0, 4, 1, 5, 7}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
 	pattern_DatabasesService_DeleteDocument_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6, 1, 0, 4, 1, 5, 7}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
-	pattern_DatabasesService_CountDocuments_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6, 2, 7}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents", "count"}, ""))
-	pattern_DatabasesService_BulkUpdateDocuments_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6, 2, 7}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents", "bulk"}, ""))
-	pattern_DatabasesService_BulkDeleteDocuments_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6, 2, 7, 2, 8}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents", "bulk", "delete"}, ""))
+	pattern_DatabasesService_CountDocuments_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents"}, "count"))
+	pattern_DatabasesService_BulkUpdateDocuments_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents"}, "bulkUpdate"))
+	pattern_DatabasesService_BulkDeleteDocuments_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 5, 2, 6}, []string{"v1", "server", "databases", "database_id", "collections", "collection_id", "documents"}, "bulkDelete"))
 )
 
 var (

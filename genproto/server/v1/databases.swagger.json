@@ -493,153 +493,6 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents/bulk": {
-      "patch": {
-        "operationId": "DatabasesService_BulkUpdateDocuments",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1BulkDocumentsResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "databaseId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "collectionId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/DatabasesServiceBulkUpdateDocumentsBody"
-            }
-          }
-        ],
-        "tags": [
-          "DatabasesService"
-        ]
-      }
-    },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents/bulk/delete": {
-      "post": {
-        "operationId": "DatabasesService_BulkDeleteDocuments",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1BulkDocumentsResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "databaseId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "collectionId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/DatabasesServiceBulkDeleteDocumentsBody"
-            }
-          }
-        ],
-        "tags": [
-          "DatabasesService"
-        ]
-      }
-    },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents/count": {
-      "get": {
-        "operationId": "DatabasesService_CountDocuments",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/torchwoodserverv1CountDocumentsResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "databaseId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "collectionId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "queries",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "collectionFormat": "multi"
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "required": false,
-            "type": "integer",
-            "format": "int32"
-          },
-          {
-            "name": "pageToken",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "DatabasesService"
-        ]
-      }
-    },
     "/v1/server/databases/{databaseId}/collections/{collectionId}/documents/{documentId}": {
       "get": {
         "operationId": "DatabasesService_GetDocument",
@@ -811,6 +664,153 @@
             "schema": {
               "$ref": "#/definitions/torchwoodserverv1DatabasesServiceUpdateDocumentBody"
             }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents:bulkDelete": {
+      "post": {
+        "operationId": "DatabasesService_BulkDeleteDocuments",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BulkDocumentsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DatabasesServiceBulkDeleteDocumentsBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents:bulkUpdate": {
+      "patch": {
+        "operationId": "DatabasesService_BulkUpdateDocuments",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1BulkDocumentsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DatabasesServiceBulkUpdateDocumentsBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents:count": {
+      "get": {
+        "operationId": "DatabasesService_CountDocuments",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1CountDocumentsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -1130,7 +1130,7 @@
       "properties": {
         "documentId": {
           "type": "string",
-          "title": "客户端自选 document_id；不得使用保留字 count / bulk（与\r\ndocuments/count、documents/bulk 字面量路由冲突，服务端校验拒绝）。"
+          "title": "客户端自选 document_id；documents:count / documents:bulkUpdate /\r\ndocuments:bulkDelete 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间，可自由取任意合法值。"
         },
         "data": {
           "type": "object"

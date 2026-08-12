@@ -18,14 +18,6 @@ var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 // maxBulkOperations 是 Bulk 写入单次条数上限（A4）。
 const maxBulkOperations = 1000
 
-// documentIDReserved 是 REST 字面量路由段，document_id 不得取这些值：
-// documents/count、documents/bulk（+bulk/delete）为字面量路由，grpc-gateway
-// 字面量优先匹配，同名 document 经 REST 永远无法访问（F11-3，方案 B）。
-var documentIDReserved = map[string]struct{}{
-	"count": {},
-	"bulk":  {},
-}
-
 // serverSensitiveCollectionFields 是高敏系统集合（users/sessions/identities）
 // 经 Server Databases API 读取时的脱敏字段清单；专用 API 不公开这些字段。
 var serverSensitiveCollectionFields = map[string][]string{
@@ -352,9 +344,6 @@ func (d *Databases) CreateDocument(
 ) (*databases.Document, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
-	}
-	if _, reserved := documentIDReserved[documentID]; reserved {
-		return nil, status.Errorf(codes.InvalidArgument, "document_id %q is reserved", documentID)
 	}
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")

@@ -610,9 +610,9 @@ func (x *Execution) GetUpdatedAt() *timestamppb.Timestamp {
 
 type CreateFunctionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 客户端自选 function_id；不得使用保留字 runtimes / specifications
-	// （与 functions/runtimes、functions/specifications 字面量路由冲突，
-	// 服务端校验拒绝，返回 InvalidArgument）。
+	// 客户端自选 function_id；functions:runtimes / functions:specifications
+	// 为自定义方法段（REST 自定义动词），不再占用 function_id 命名空间，
+	// 可自由取任意合法值。
 	Id             string  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name           string  `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Runtime        string  `protobuf:"bytes,3,opt,name=runtime,proto3" json:"runtime,omitempty"`
@@ -1482,8 +1482,8 @@ const file_server_v1_functions_proto_rawDesc = "" +
 	"executions\x18\x01 \x03(\v2\x1e.torchwood.server.v1.ExecutionR\n" +
 	"executions2\xd1\x12\n" +
 	"\x10FunctionsService\x12|\n" +
-	"\fListRuntimes\x12\x1a.torchwood.shared.v1.Empty\x1a).torchwood.server.v1.ListRuntimesResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/server/functions/runtimes\x12\x8e\x01\n" +
-	"\x12ListSpecifications\x12\x1a.torchwood.shared.v1.Empty\x1a/.torchwood.server.v1.ListSpecificationsResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/server/functions/specifications\x12|\n" +
+	"\fListRuntimes\x12\x1a.torchwood.shared.v1.Empty\x1a).torchwood.server.v1.ListRuntimesResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/server/functions:runtimes\x12\x8e\x01\n" +
+	"\x12ListSpecifications\x12\x1a.torchwood.shared.v1.Empty\x1a/.torchwood.server.v1.ListSpecificationsResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/server/functions:specifications\x12|\n" +
 	"\x0eCreateFunction\x12*.torchwood.server.v1.CreateFunctionRequest\x1a\x1d.torchwood.server.v1.Function\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/server/functions\x12{\n" +
 	"\rListFunctions\x12 .torchwood.shared.v1.ListRequest\x1a*.torchwood.server.v1.ListFunctionsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/server/functions\x12\x81\x01\n" +
 	"\vGetFunction\x12'.torchwood.server.v1.GetFunctionRequest\x1a\x1d.torchwood.server.v1.Function\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/server/functions/{function_id}\x12\x8a\x01\n" +

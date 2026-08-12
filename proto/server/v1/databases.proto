@@ -112,9 +112,9 @@ service DatabasesService {
 
   rpc CreateDocument(CreateDocumentRequest) returns (Document) {
     option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/documents", body: "*" };
-    // 保留字说明：documents/{document_id} 与字面量路由 documents/count、
-    // documents/bulk 冲突，document_id 不得取 count/bulk（服务端 Create
-    // 校验并拒绝，返回 InvalidArgument）。
+    // 自定义方法说明：documents:count / documents:bulkUpdate /
+    // documents:bulkDelete 为自定义方法段（REST 自定义动词），不再占用
+    // document_id 命名空间；document_id 可自由取任意合法值。
   }
 
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse) {
@@ -138,15 +138,15 @@ service DatabasesService {
   }
 
   rpc CountDocuments(ListDocumentsRequest) returns (CountDocumentsResponse) {
-    option (google.api.http) = { get: "/v1/server/databases/{database_id}/collections/{collection_id}/documents/count" };
+    option (google.api.http) = { get: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:count" };
   }
 
   rpc BulkUpdateDocuments(BulkUpdateDocumentsRequest) returns (BulkDocumentsResponse) {
-    option (google.api.http) = { patch: "/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk", body: "*" };
+    option (google.api.http) = { patch: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkUpdate", body: "*" };
   }
 
   rpc BulkDeleteDocuments(BulkDeleteDocumentsRequest) returns (BulkDocumentsResponse) {
-    option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete", body: "*" };
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete", body: "*" };
   }
 }
 
@@ -285,8 +285,9 @@ message Document {
 message CreateDocumentRequest {
   string database_id = 1;
   string collection_id = 2;
-  // 客户端自选 document_id；不得使用保留字 count / bulk（与
-  // documents/count、documents/bulk 字面量路由冲突，服务端校验拒绝）。
+  // 客户端自选 document_id；documents:count / documents:bulkUpdate /
+  // documents:bulkDelete 为自定义方法段（REST 自定义动词），不再占用
+  // document_id 命名空间，可自由取任意合法值。
   string document_id = 3;
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;

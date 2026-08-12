@@ -61,14 +61,13 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
 service FunctionsService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
 
-  // functions/runtimes、functions/specifications 为字面量路由，function_id
-  // 不得取 runtimes / specifications（CreateFunction 校验并拒绝，
-  // 返回 InvalidArgument）。
+  // functions:runtimes / functions:specifications 为自定义方法段（REST
+  // 自定义动词），不再占用 function_id 命名空间；function_id 可自由取任意合法值。
   rpc ListRuntimes(shared.v1.Empty) returns (ListRuntimesResponse) {
-    option (google.api.http) = { get: "/v1/server/functions/runtimes" };
+    option (google.api.http) = { get: "/v1/server/functions:runtimes" };
   }
   rpc ListSpecifications(shared.v1.Empty) returns (ListSpecificationsResponse) {
-    option (google.api.http) = { get: "/v1/server/functions/specifications" };
+    option (google.api.http) = { get: "/v1/server/functions:specifications" };
   }
   rpc CreateFunction(CreateFunctionRequest) returns (Function) {
     option (google.api.http) = { post: "/v1/server/functions", body: "*" };
@@ -184,9 +183,9 @@ message Execution {
 }
 
 message CreateFunctionRequest {
-  // 客户端自选 function_id；不得使用保留字 runtimes / specifications
-  // （与 functions/runtimes、functions/specifications 字面量路由冲突，
-  // 服务端校验拒绝，返回 InvalidArgument）。
+  // 客户端自选 function_id；functions:runtimes / functions:specifications
+  // 为自定义方法段（REST 自定义动词），不再占用 function_id 命名空间，
+  // 可自由取任意合法值。
   string id = 1;
   string name = 2;
   string runtime = 3;

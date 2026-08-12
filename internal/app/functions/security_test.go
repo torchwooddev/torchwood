@@ -30,8 +30,6 @@ func TestCreateFunction_RejectsMaliciousIDs(t *testing.T) {
 		"_bad",                  // 下划线不能开头
 		"Fn-1",                  // 大写非法（Docker 镜像名只允许小写，G6-3）
 		strings.Repeat("a", 65), // 超长
-		"runtimes",              // REST 字面量路由保留字（F11-3）
-		"specifications",
 	} {
 		_, err := uc.CreateFunction(ctx, CreateFunctionCommand{
 			ID: id, ProjectID: "p1", Name: "f", Runtime: "node-18.0", TimeoutSeconds: timeoutPtr(15),
@@ -39,13 +37,35 @@ func TestCreateFunction_RejectsMaliciousIDs(t *testing.T) {
 		require.Equal(t, codes.InvalidArgument, status.Code(err), "id %q 应被拒绝", id)
 	}
 
-	// 合法 ID 仍可创建（全小写）。
-	for _, id := range []string{"fn_1", "fn-1", "a", "0", strings.Repeat("a", 64)} {
+	// 合法 ID 仍可创建（全小写）；runtimes/specifications 在 REST 自定义动词
+	// 迁移（R10-P1-3/B3）后不再是保留字，可作 function id 合法创建。
+	for _, id := range []string{"fn_1", "fn-1", "a", "0", "runtimes", "specifications", strings.Repeat("a", 64)} {
 		fn, err := uc.CreateFunction(ctx, CreateFunctionCommand{
 			ID: id, ProjectID: "p1", Name: "f", Runtime: "node-18.0", TimeoutSeconds: timeoutPtr(15),
 		})
 		require.NoError(t, err, "id %q 应被接受", id)
 		require.Equal(t, id, fn.ID)
+	}
+}
+
+// TestCreateFunction_FormerReservedIDsAreRegularIDs：REST 自定义动词迁移
+// （R10-P1-3/B3）后，旧字面量路由保留字（runtimes/specifications）成为合法
+// function_id，创建后可按普通函数读取。
+func TestCreateFunction_FormerReservedIDsAreRegularIDs(t *testing.T) {
+	repo := newMockRepo()
+	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
+	ctx := platformAdminCtx()
+
+	for _, id := range []string{"runtimes", "specifications"} {
+		fn, err := uc.CreateFunction(ctx, CreateFunctionCommand{
+			ID: id, ProjectID: "p1", Name: "f", Runtime: "node-18.0", TimeoutSeconds: timeoutPtr(15),
+		})
+		require.NoError(t, err, "function id %q 应可正常创建", id)
+		require.Equal(t, id, fn.ID)
+
+		got, err := uc.GetFunction(ctx, "p1", id)
+		require.NoError(t, err)
+		require.Equal(t, id, got.ID)
 	}
 }
 

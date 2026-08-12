@@ -138,6 +138,13 @@ message UpdateProjectRequest {
 - 时间字段用 `google.protobuf.Timestamp`（HTTP JSON 映射为 RFC3339 字符串）；
 - 生成的 Go 代码在 `genproto/`，**禁止手工编辑**。
 
+> **⚠️ Breaking change（REST 自定义动词迁移，R10-P1-3/B3）**：Server API 的字面量
+> 路由段 `documents/count`、`documents/bulk`、`documents/bulk/delete`、
+> `functions/runtimes`、`functions/specifications` 已废弃，改为自定义动词
+> `:count`/`:bulkUpdate`/`:bulkDelete`/`:runtimes`/`:specifications`（旧路径返回 404）。
+> `count`/`bulk`/`runtimes`/`specifications` 不再占用 id 命名空间，可作
+> document_id/function_id 使用；升级前请先重命名或删除历史保留字 id 资源。
+
 ---
 
 ## 1.4 OpenAPI 认证建模约定

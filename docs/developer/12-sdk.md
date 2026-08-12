@@ -252,6 +252,13 @@ tw.server.oauthProviders.delete(provider)
 | 文档 | `createDocument` / `listDocuments` / `getDocument` / `updateDocument`（支持 `increment`）/ `deleteDocument` / `countDocuments`（与 Client 版同名同签名，均带 `auth: "apiKey"`） |
 | 批量 | `bulkUpdateDocuments(databaseId, collectionId, {document_ids, data?, permissions?})`、`bulkDeleteDocuments(databaseId, collectionId, documentIds)`，返回 `{affected}` |
 
+> **⚠️ Breaking change（REST 自定义动词迁移，R10-P1-3/B3）**：TS SDK Server API 的
+> `countDocuments`/`bulkUpdateDocuments`/`bulkDeleteDocuments` 与 `listRuntimes`/
+> `listSpecifications` 内部路径已从字面量段切换为自定义动词（`.../documents:count`、
+> `.../documents:bulkUpdate`、`.../documents:bulkDelete`、`.../functions:runtimes`、
+> `.../functions:specifications`）。方法名与签名不变，但旧版本 SDK 或手写旧路径的
+> 请求在新服务端将返回 404，升级服务端时需同步升级 SDK。
+
 ### 5.4 Server Storage（`tw.server.storage`）
 
 | 方法 | 说明 |

@@ -6,12 +6,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // collectionDocDB 包装 fakeDocDB，使 GetCollection 返回可用集合，
-// 供 CreateDocument 保留字校验的单元测试使用。
+// 供 CreateDocument 的单元测试使用。
 type collectionDocDB struct {
 	*fakeDocDB
 }
@@ -20,19 +23,76 @@ func (collectionDocDB) GetCollection(context.Context, string, string, string) (*
 	return &databases.Collection{ID: "coll1"}, nil
 }
 
-func TestCreateDocument_RejectsReservedIDs(t *testing.T) {
+// TestCreateDocument_FormerReservedIDsAreRegularIDs：REST 自定义动词迁移
+// （R10-P1-3/B3）后，旧字面量路由保留字（count/bulk）成为合法 document_id，
+// 可正常创建并对 Get/Update/Delete 各验证一次成功路径。
+func TestCreateDocument_FormerReservedIDsAreRegularIDs(t *testing.T) {
 	d := &Databases{projectRepo: fakeProjectRepo{}, docDB: collectionDocDB{fakeDocDB: newFakeDocDB()}}
 	ctx := platformAdminCtx(context.Background())
 	principal := databases.Principal{PlatformAdmin: true}
 
-	// REST 字面量路由保留字（F11-3）：documents/count、documents/bulk(+delete)。
 	for _, id := range []string{"count", "bulk"} {
-		_, err := d.CreateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 1}, nil, principal)
-		require.Equal(t, codes.InvalidArgument, status.Code(err), "document_id %q 应被拒绝", id)
+		created, err := d.CreateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 1}, nil, principal)
+		require.NoError(t, err, "document_id %q 应可正常创建", id)
+		require.Equal(t, id, created.ID)
+
+		got, err := d.GetDocument(ctx, "p1", "db1", "coll1", id, principal)
+		require.NoError(t, err)
+		require.Equal(t, 1, got.Data["a"])
+
+		updated, err := d.UpdateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 2}, nil, nil, principal)
+		require.NoError(t, err)
+		require.Equal(t, 2, updated.Data["a"])
+
+		require.NoError(t, d.DeleteDocument(ctx, "p1", "db1", "coll1", id, principal))
+		_, err = d.GetDocument(ctx, "p1", "db1", "coll1", id, principal)
+		require.Equal(t, codes.NotFound, status.Code(err), "删除后 document_id %q 应不可再读", id)
 	}
 
-	// 非保留字 id 正常放行（文档写入 fakeDocDB 成功）。
+	// 普通 id 仍可正常创建（文档写入 fakeDocDB 成功）。
 	doc, err := d.CreateDocument(ctx, "p1", "db1", "coll1", "doc_1", map[string]any{"a": 1}, nil, principal)
 	require.NoError(t, err)
 	require.Equal(t, "doc_1", doc.ID)
+}
+
+// TestDatabases_ReservedIDDocumentCRUD：id="count" 的文档在真实 documentdb
+// adapter 上创建后 Get/Update/Delete 语义正常（REST 自定义动词迁移 B3）。
+func TestDatabases_ReservedIDDocumentCRUD(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := platformAdminCtx(context.Background())
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	created, err := uc.CreateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "reserved"}, nil, principal)
+	require.NoError(t, err)
+	require.Equal(t, "count", created.ID)
+
+	got, err := uc.GetDocument(ctx, projectID, "app", "posts", "count", principal)
+	require.NoError(t, err)
+	require.Equal(t, "reserved", got.Data["title"])
+
+	updated, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "renamed"}, nil, nil, principal)
+	require.NoError(t, err)
+	require.Equal(t, "renamed", updated.Data["title"])
+
+	require.NoError(t, uc.DeleteDocument(ctx, projectID, "app", "posts", "count", principal))
+	_, err = uc.GetDocument(ctx, projectID, "app", "posts", "count", principal)
+	require.Equal(t, codes.NotFound, status.Code(err))
 }

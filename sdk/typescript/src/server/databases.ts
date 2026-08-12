@@ -285,7 +285,7 @@ export class ServerDatabasesService {
     // int64：网关序列化为字符串（如 "42"）；消费时建议 Number() 归一化。
     const res = await this.http.request<{ count: string | number }>(
       "GET",
-      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents/count`,
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:count`,
       { auth: "apiKey", query: listQuery(params) }
     );
     return res.count ?? 0;
@@ -302,7 +302,7 @@ export class ServerDatabasesService {
   ): Promise<BulkDocumentsResponse> {
     return this.http.request<BulkDocumentsResponse>(
       "PATCH",
-      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents/bulk`,
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:bulkUpdate`,
       {
         auth: "apiKey",
         body: { database_id: databaseId, collection_id: collectionId, ...input },
@@ -317,7 +317,7 @@ export class ServerDatabasesService {
   ): Promise<BulkDocumentsResponse> {
     return this.http.request<BulkDocumentsResponse>(
       "POST",
-      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents/bulk/delete`,
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:bulkDelete`,
       {
         auth: "apiKey",
         body: {

@@ -1288,8 +1288,9 @@ type CreateDocumentRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	// 客户端自选 document_id；不得使用保留字 count / bulk（与
-	// documents/count、documents/bulk 字面量路由冲突，服务端校验拒绝）。
+	// 客户端自选 document_id；documents:count / documents:bulkUpdate /
+	// documents:bulkDelete 为自定义方法段（REST 自定义动词），不再占用
+	// document_id 命名空间，可自由取任意合法值。
 	DocumentId    string           `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
 	Data          *structpb.Struct `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	Permissions   []string         `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
@@ -2131,7 +2132,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12!\n" +
 	"\fdocument_ids\x18\x03 \x03(\tR\vdocumentIds\"3\n" +
 	"\x15BulkDocumentsResponse\x12\x1a\n" +
-	"\baffected\x18\x01 \x01(\x03R\baffected2\xd5\x1d\n" +
+	"\baffected\x18\x01 \x01(\x03R\baffected2\xda\x1d\n" +
 	"\x10DatabasesService\x12|\n" +
 	"\x0eCreateDatabase\x12*.torchwood.server.v1.CreateDatabaseRequest\x1a\x1d.torchwood.server.v1.Database\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/server/databases\x12{\n" +
 	"\rListDatabases\x12 .torchwood.shared.v1.ListRequest\x1a*.torchwood.server.v1.ListDatabasesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/server/databases\x12x\n" +
@@ -2152,9 +2153,9 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x0eUpdateDocument\x12*.torchwood.server.v1.UpdateDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"a\x82\xd3\xe4\x93\x02[:\x01*2V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xbe\x01\n" +
 	"\x0eUpsertDocument\x12*.torchwood.server.v1.UpsertDocumentRequest\x1a\x1d.torchwood.server.v1.Document\"a\x82\xd3\xe4\x93\x02[:\x01*\x1aV/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb5\x01\n" +
 	"\x0eDeleteDocument\x12'.torchwood.server.v1.GetDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"^\x82\xd3\xe4\x93\x02X*V/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xc0\x01\n" +
-	"\x0eCountDocuments\x12).torchwood.server.v1.ListDocumentsRequest\x1a+.torchwood.server.v1.CountDocumentsResponse\"V\x82\xd3\xe4\x93\x02P\x12N/v1/server/databases/{database_id}/collections/{collection_id}/documents/count\x12\xcc\x01\n" +
-	"\x13BulkUpdateDocuments\x12/.torchwood.server.v1.BulkUpdateDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"X\x82\xd3\xe4\x93\x02R:\x01*2M/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk\x12\xd3\x01\n" +
-	"\x13BulkDeleteDocuments\x12/.torchwood.server.v1.BulkDeleteDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"_\x82\xd3\xe4\x93\x02Y:\x01*\"T/v1/server/databases/{database_id}/collections/{collection_id}/documents/bulk/delete\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"\x0eCountDocuments\x12).torchwood.server.v1.ListDocumentsRequest\x1a+.torchwood.server.v1.CountDocumentsResponse\"V\x82\xd3\xe4\x93\x02P\x12N/v1/server/databases/{database_id}/collections/{collection_id}/documents:count\x12\xd2\x01\n" +
+	"\x13BulkUpdateDocuments\x12/.torchwood.server.v1.BulkUpdateDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"^\x82\xd3\xe4\x93\x02X:\x01*2S/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkUpdate\x12\xd2\x01\n" +
+	"\x13BulkDeleteDocuments\x12/.torchwood.server.v1.BulkDeleteDocumentsRequest\x1a*.torchwood.server.v1.BulkDocumentsResponse\"^\x82\xd3\xe4\x93\x02X:\x01*\"S/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\\\n" +

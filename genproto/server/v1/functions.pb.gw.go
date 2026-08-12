@@ -692,7 +692,7 @@ func RegisterFunctionsServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListRuntimes", runtime.WithHTTPPathPattern("/v1/server/functions/runtimes"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListRuntimes", runtime.WithHTTPPathPattern("/v1/server/functions:runtimes"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -712,7 +712,7 @@ func RegisterFunctionsServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListSpecifications", runtime.WithHTTPPathPattern("/v1/server/functions/specifications"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListSpecifications", runtime.WithHTTPPathPattern("/v1/server/functions:specifications"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1050,7 +1050,7 @@ func RegisterFunctionsServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListRuntimes", runtime.WithHTTPPathPattern("/v1/server/functions/runtimes"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListRuntimes", runtime.WithHTTPPathPattern("/v1/server/functions:runtimes"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1067,7 +1067,7 @@ func RegisterFunctionsServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListSpecifications", runtime.WithHTTPPathPattern("/v1/server/functions/specifications"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.server.v1.FunctionsService/ListSpecifications", runtime.WithHTTPPathPattern("/v1/server/functions:specifications"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1322,8 +1322,8 @@ func RegisterFunctionsServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 }
 
 var (
-	pattern_FunctionsService_ListRuntimes_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "server", "functions", "runtimes"}, ""))
-	pattern_FunctionsService_ListSpecifications_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "server", "functions", "specifications"}, ""))
+	pattern_FunctionsService_ListRuntimes_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "server", "functions"}, "runtimes"))
+	pattern_FunctionsService_ListSpecifications_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "server", "functions"}, "specifications"))
 	pattern_FunctionsService_CreateFunction_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "server", "functions"}, ""))
 	pattern_FunctionsService_ListFunctions_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "server", "functions"}, ""))
 	pattern_FunctionsService_GetFunction_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "server", "functions", "function_id"}, ""))

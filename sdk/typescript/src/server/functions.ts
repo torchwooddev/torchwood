@@ -16,7 +16,7 @@ export class FunctionsService {
   async listRuntimes(): Promise<RuntimeInfo[]> {
     const res = await this.http.request<{ runtimes: RuntimeInfo[] }>(
       "GET",
-      "/v1/server/functions/runtimes",
+      "/v1/server/functions:runtimes",
       { auth: "apiKey" }
     );
     return res.runtimes ?? [];
@@ -25,7 +25,7 @@ export class FunctionsService {
   async listSpecifications(): Promise<SpecificationInfo[]> {
     const res = await this.http.request<{ specifications: SpecificationInfo[] }>(
       "GET",
-      "/v1/server/functions/specifications",
+      "/v1/server/functions:specifications",
       { auth: "apiKey" }
     );
     return res.specifications ?? [];

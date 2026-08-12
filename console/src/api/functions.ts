@@ -65,13 +65,13 @@ export interface Variable {
 export const SECRET_MASK = "******";
 
 export async function listRuntimes(): Promise<RuntimeInfo[]> {
-  const res = await api.get<{ runtimes: RuntimeInfo[] }>("/server/functions/runtimes");
+  const res = await api.get<{ runtimes: RuntimeInfo[] }>("/server/functions:runtimes");
   return res.data.runtimes ?? [];
 }
 
 export async function listSpecifications(): Promise<SpecificationInfo[]> {
   const res = await api.get<{ specifications: SpecificationInfo[] }>(
-    "/server/functions/specifications"
+    "/server/functions:specifications"
   );
   return res.data.specifications ?? [];
 }

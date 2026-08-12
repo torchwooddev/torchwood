@@ -105,51 +105,6 @@
         ]
       }
     },
-    "/v1/server/functions/runtimes": {
-      "get": {
-        "summary": "functions/runtimes、functions/specifications 为字面量路由，function_id\n不得取 runtimes / specifications（CreateFunction 校验并拒绝，\n返回 InvalidArgument）。",
-        "operationId": "FunctionsService_ListRuntimes",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ListRuntimesResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "tags": [
-          "FunctionsService"
-        ]
-      }
-    },
-    "/v1/server/functions/specifications": {
-      "get": {
-        "operationId": "FunctionsService_ListSpecifications",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1ListSpecificationsResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "tags": [
-          "FunctionsService"
-        ]
-      }
-    },
     "/v1/server/functions/{functionId}": {
       "get": {
         "operationId": "FunctionsService_GetFunction",
@@ -547,6 +502,51 @@
           "FunctionsService"
         ]
       }
+    },
+    "/v1/server/functions:runtimes": {
+      "get": {
+        "summary": "functions:runtimes / functions:specifications 为自定义方法段（REST\n自定义动词），不再占用 function_id 命名空间；function_id 可自由取任意合法值。",
+        "operationId": "FunctionsService_ListRuntimes",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListRuntimesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "FunctionsService"
+        ]
+      }
+    },
+    "/v1/server/functions:specifications": {
+      "get": {
+        "operationId": "FunctionsService_ListSpecifications",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListSpecificationsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "FunctionsService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -642,7 +642,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "title": "客户端自选 function_id；不得使用保留字 runtimes / specifications\n（与 functions/runtimes、functions/specifications 字面量路由冲突，\n服务端校验拒绝，返回 InvalidArgument）。"
+          "title": "客户端自选 function_id；functions:runtimes / functions:specifications\n为自定义方法段（REST 自定义动词），不再占用 function_id 命名空间，\n可自由取任意合法值。"
         },
         "name": {
           "type": "string"
