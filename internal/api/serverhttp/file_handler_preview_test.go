@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/crc32"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +64,7 @@ func TestPreviewSourceConfig_OversizedDimensionRejectedWithoutFullRead(t *testin
 	stream := append(header, make([]byte, 1<<20)...) // 1MiB 填充模拟大文件剩余部分
 	counted := &countingReader{r: bytes.NewReader(stream)}
 
-	cfg, err := previewSourceConfig(counted)
+	cfg, _, err := previewSourceConfig(counted)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, err.Error(), "dimensions too large")
 	require.Equal(t, 0, cfg.Width, "失败时返回零值 config")
@@ -81,7 +83,7 @@ func TestPreviewSourceConfig_CorruptOrNonImageRejected(t *testing.T) {
 	t.Parallel()
 
 	t.Run("garbage bytes", func(t *testing.T) {
-		_, err := previewSourceConfig(bytes.NewReader([]byte("definitely not an image")))
+		_, _, err := previewSourceConfig(bytes.NewReader([]byte("definitely not an image")))
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 		require.Contains(t, err.Error(), "cannot decode image")
 	})
@@ -89,7 +91,7 @@ func TestPreviewSourceConfig_CorruptOrNonImageRejected(t *testing.T) {
 	t.Run("png header with corrupted ihdr crc", func(t *testing.T) {
 		header := pngHeaderWithDimensions(64, 64)
 		header[len(header)-1] ^= 0xFF // 破坏 IHDR CRC
-		_, err := previewSourceConfig(bytes.NewReader(header))
+		_, _, err := previewSourceConfig(bytes.NewReader(header))
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 		require.Contains(t, err.Error(), "cannot decode image")
 	})
@@ -104,8 +106,36 @@ func TestPreviewSourceConfig_CorruptOrNonImageRejected(t *testing.T) {
 func TestPreviewSourceConfig_ValidHeader(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := previewSourceConfig(bytes.NewReader(pngHeaderWithDimensions(100, 50)))
+	cfg, _, err := previewSourceConfig(bytes.NewReader(pngHeaderWithDimensions(100, 50)))
 	require.NoError(t, err)
 	require.Equal(t, 100, cfg.Width)
 	require.Equal(t, 50, cfg.Height)
+}
+
+// 回归（CI TestFileHandler_Preview 400）：header 阶段消费的字节必须可拼回——
+// 小图片会整个被 header 阶段读完，调用方用 MultiReader(header, 剩余流)
+// 必须还原出完整原始字节，否则整图解码拿到空流误报 400。
+func TestPreviewSourceConfig_HeaderBytesRejoinable(t *testing.T) {
+	t.Parallel()
+
+	// 完整合法小 PNG（非仅 header），模拟集成测试中的 40x20 上传文件。
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 40, 20))
+	require.NoError(t, png.Encode(&buf, img))
+	raw := buf.Bytes()
+	require.Less(t, len(raw), maxPreviewHeaderBytes, "小文件应整个落入 header 上限内")
+
+	counted := &countingReader{r: bytes.NewReader(raw)}
+	cfg, header, err := previewSourceConfig(counted)
+	require.NoError(t, err)
+	require.Equal(t, 40, cfg.Width)
+	require.Equal(t, 20, cfg.Height)
+	require.Equal(t, raw, header, "小文件的 header 阶段即读完整个文件")
+
+	// 拼回后必须还原完整流，且二次解码成功。
+	rejoined, err := io.ReadAll(io.MultiReader(bytes.NewReader(header), counted))
+	require.NoError(t, err)
+	require.Equal(t, raw, rejoined)
+	_, _, err = image.Decode(bytes.NewReader(rejoined))
+	require.NoError(t, err)
 }

@@ -599,21 +599,23 @@ const maxPreviewDimension = 4096
 // previewSourceConfig 只读有限 header 解析并校验预览源图像：
 // 先读最多 maxPreviewHeaderBytes 字节解析宽高，任一维度超限直接拒绝（不读全量）；
 // 非图片/损坏图片返回 InvalidArgument（400），读源失败返回 Internal。
+// 已读取的 header 字节会一并返回，调用方必须将其拼回后续的全文件读取
+// （小文件可能整个被 header 阶段读完，直接续读只剩空流）。
 // 注意：header 先整体读入自有缓冲再交给 image.DecodeConfig，其内部 bufio
 // 预读只作用于该缓冲，不会污染后续的全文件读取。
-func previewSourceConfig(src io.Reader) (image.Config, error) {
+func previewSourceConfig(src io.Reader) (image.Config, []byte, error) {
 	header, err := io.ReadAll(io.LimitReader(src, maxPreviewHeaderBytes))
 	if err != nil {
-		return image.Config{}, status.Error(codes.Internal, "cannot read image")
+		return image.Config{}, nil, status.Error(codes.Internal, "cannot read image")
 	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(header))
 	if err != nil {
-		return image.Config{}, status.Error(codes.InvalidArgument, "cannot decode image")
+		return image.Config{}, nil, status.Error(codes.InvalidArgument, "cannot decode image")
 	}
 	if cfg.Width > maxPreviewSourceDimension || cfg.Height > maxPreviewSourceDimension {
-		return image.Config{}, status.Error(codes.InvalidArgument, "image dimensions too large to preview")
+		return image.Config{}, nil, status.Error(codes.InvalidArgument, "image dimensions too large to preview")
 	}
-	return cfg, nil
+	return cfg, header, nil
 }
 
 // preview 生成图片缩略图：GET /v1/storage/buckets/{bucketId}/files/{fileId}/preview?width=&height=
@@ -671,11 +673,13 @@ func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams
 
 	// 解码前先读有限 header（512KB，不读全量）解析图像宽高：任一维度超限直接
 	// 拒绝，防 50MiB 压缩图解码出 ~600MB 位图的 OOM DoS；通过后才受限读取全文件。
-	if _, err := previewSourceConfig(reader); err != nil {
+	// header 阶段已消费的字节必须拼回（小文件可能整个在 header 阶段读完）。
+	_, header, err := previewSourceConfig(reader)
+	if err != nil {
 		httpError(w, err)
 		return
 	}
-	srcBytes, err := io.ReadAll(io.LimitReader(reader, maxPreviewSourceBytes+1))
+	srcBytes, err := io.ReadAll(io.LimitReader(io.MultiReader(bytes.NewReader(header), reader), maxPreviewSourceBytes+1))
 	if err != nil {
 		httpError(w, status.Error(codes.Internal, "cannot read image"))
 		return
