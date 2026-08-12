@@ -67,7 +67,10 @@ type dockerExecutor struct {
 func NewDockerExecutor(cfg *config.AppConfig) functions.Executor {
 	d := &dockerExecutor{cfg: cfg}
 	host := cfg.GetFunctions().GetDocker().GetHost()
-	cli, err := client.NewClientWithOpts(client.WithHost(host))
+	// WithAPIVersionNegotiation：与 daemon 协商 API 版本，避免客户端默认
+	// 版本高于 daemon（如 CI runner 上 daemon 1.48 vs 客户端 1.51）导致
+	// "client version is too new" 构建失败。
+	cli, err := client.NewClientWithOpts(client.WithHost(host), client.WithAPIVersionNegotiation())
 	if err != nil {
 		d.initErr = fmt.Errorf("create docker client: %w", err)
 		return d
