@@ -74,7 +74,7 @@ export function ChunkedUploader({ bucketId, file, onSuccess, onError }: ChunkedU
 
   const start = useCallback(
     async (key: string): Promise<StartedUpload> => {
-      let uploadId = localStorage.getItem(key);
+      const uploadId = localStorage.getItem(key);
       if (uploadId) {
         try {
           const progress: UploadProgress = await getUploadSession(bucketId, uploadId);
@@ -90,11 +90,9 @@ export function ChunkedUploader({ bucketId, file, onSuccess, onError }: ChunkedU
           }
           // size 不一致：旧会话属于其它文件（碰撞或 stale key），重建并清旧 key。
           localStorage.removeItem(key);
-          uploadId = null;
         } catch {
           // 会话过期/不存在：重建。
           localStorage.removeItem(key);
-          uploadId = null;
         }
       }
       const session = await createUploadSession(bucketId, {
