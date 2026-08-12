@@ -127,6 +127,11 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 
 	// Allow admin console sessions to target a specific project via header.
 	if principal.ActorKind == shared.ActorKindAdmin {
+		// 受限 admin（viewer/member）不得调用仅 owner/admin 的 Server API 写方法。
+		if perms := adminRoleMethodRules[info.FullMethod]; len(perms) > 0 && !principal.HasAnyPermission(perms) {
+			i.logAuthFailure(ctx, info.FullMethod, "admin_role_denied", credentialType)
+			return nil, status.Error(codes.PermissionDenied, "missing required admin role")
+		}
 		if projectID := firstMetadataValue(md, "X-Torchwood-Project"); projectID != "" {
 			principal.ProjectID = projectID
 		}
@@ -137,6 +142,12 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 	}
 
 	if perms := i.permissionMethods[info.FullMethod]; len(perms) > 0 {
+		// API Key 只允许经 apiKeyMethods 的 scope 门禁调用；console/owner 类
+		// 权限是 admin 会话专属，scope * / all 也不得放行（安全评审 M7）。
+		if principal.CredentialType == shared.CredentialTypeAPIKey {
+			i.logAuthFailure(ctx, info.FullMethod, "apikey_permission_method_denied", credentialType)
+			return nil, status.Error(codes.PermissionDenied, "api key credentials not allowed on permission-gated methods")
+		}
 		if !principal.HasAnyPermission(perms) {
 			i.logAuthFailure(ctx, info.FullMethod, "permission_denied", credentialType)
 			return nil, status.Error(codes.PermissionDenied, "missing required permission")
@@ -148,18 +159,34 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 }
 
 func extractCredential(md metadata.MD) (shared.CredentialType, string, error) {
+	var (
+		credentialType shared.CredentialType
+		token          string
+		seen           bool
+	)
 	if raw := firstMetadataValue(md, "authorization"); raw != "" {
-		if credentialType, token, ok := ParseAuthorizationHeader(raw); ok {
-			return credentialType, token, nil
+		ct, tok, ok := ParseAuthorizationHeader(raw)
+		if !ok {
+			return "", "", errors.New("invalid authorization header")
 		}
+		credentialType, token, seen = ct, tok, true
 	}
 	if raw := firstMetadataValue(md, "cookie"); raw != "" {
-		if _, token, ok := parseSessionCookie(raw); ok {
-			return shared.CredentialTypeSession, token, nil
+		if _, tok, ok := parseSessionCookie(raw); ok {
+			if seen {
+				return "", "", errors.New("multiple credentials provided")
+			}
+			credentialType, token, seen = shared.CredentialTypeSession, tok, true
 		}
 	}
 	if raw := firstMetadataValue(md, "x-api-key"); raw != "" {
+		if seen {
+			return "", "", errors.New("multiple credentials provided")
+		}
 		return shared.CredentialTypeAPIKey, raw, nil
+	}
+	if seen {
+		return credentialType, token, nil
 	}
 	return "", "", errors.New("no credential")
 }

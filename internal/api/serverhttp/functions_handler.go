@@ -181,6 +181,13 @@ func (h *FunctionsHandler) authorize(r *http.Request) (*shared.Principal, error)
 			return nil, status.Error(codes.PermissionDenied, "api key missing required scope")
 		}
 	}
+	// 端用户（Bearer JWT / 会话 cookie）一律禁止上传部署代码包：
+	// 任意注册用户可借此触发 Docker 构建并部署恶意代码窃取函数环境变量（安全评审 03）。
+	if principal.CredentialType == shared.CredentialTypeToken || principal.CredentialType == shared.CredentialTypeSession {
+		if principal.ActorKind != shared.ActorKindAdmin {
+			return nil, status.Error(codes.PermissionDenied, "end-user credentials cannot upload deployments")
+		}
+	}
 	if principal.ActorKind == shared.ActorKindAdmin {
 		if projectID := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); projectID != "" {
 			principal.ProjectID = projectID

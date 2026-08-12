@@ -35,7 +35,17 @@ type CreateAPIKeyCommand struct {
 	ExpireAt  *time.Time
 }
 
+// Create 创建 API Key；平台级写操作，仅限平台 admin（安全评审 M7）。
+// 引导（console setup）等系统路径请调用 CreateInternal，调用方负责授权。
 func (a *APIKeys) Create(ctx context.Context, cmd CreateAPIKeyCommand) (*projects.APIKey, string, error) {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return nil, "", err
+	}
+	return a.CreateInternal(ctx, cmd)
+}
+
+// CreateInternal 执行 API Key 创建（不做 principal 检查）。
+func (a *APIKeys) CreateInternal(ctx context.Context, cmd CreateAPIKeyCommand) (*projects.APIKey, string, error) {
 	if cmd.Name == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "name is required")
 	}

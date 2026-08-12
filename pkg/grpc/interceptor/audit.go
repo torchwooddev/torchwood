@@ -2,6 +2,7 @@ package interceptor
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -12,11 +13,20 @@ import (
 )
 
 type AuditInterceptor struct {
-	repo audit.Repository
+	repo   audit.Repository
+	logger *slog.Logger
 }
 
 func NewAuditInterceptor(repo audit.Repository) *AuditInterceptor {
-	return &AuditInterceptor{repo: repo}
+	return &AuditInterceptor{repo: repo, logger: slog.Default()}
+}
+
+// WithLogger 替换审计写入失败告警所用的 logger（默认 slog.Default()），返回自身便于链式调用。
+func (a *AuditInterceptor) WithLogger(l *slog.Logger) *AuditInterceptor {
+	if l != nil {
+		a.logger = l
+	}
+	return a
 }
 
 func (a *AuditInterceptor) UnaryAuditMiddleware(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
@@ -58,7 +68,9 @@ func (a *AuditInterceptor) UnaryAuditMiddleware(ctx context.Context, req any, in
 		entry.ResourceID = resID
 	}
 	if logErr := a.repo.Insert(context.Background(), entry); logErr != nil {
-		_ = logErr
+		a.logger.WarnContext(ctx, "audit log insert failed",
+			slog.String("method", info.FullMethod),
+			slog.String("error", logErr.Error()))
 	}
 	return resp, err
 }
