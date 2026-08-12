@@ -29,6 +29,7 @@ jobs:
           --health-retries 5
       minio:
         image: minio/minio:latest
+        command: server /data
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
