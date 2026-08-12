@@ -6,20 +6,21 @@ Torchwood 是一个受 Appwrite 启发、**AI/Agent-Native** 的后端即服务�
 
 ## 功能特性
 
-- **AI / Agent-Native**：Protobuf 定义 API，自动生成 OpenAPI/Swagger；细粒度 scope 的 API Key 供 Agent 与自动化调用 Server API；统一 JSON REST 面与结构化错误；TypeScript SDK 便于 Agent 工作流与 Tool 集成。
+- **AI / Agent-Native**：Protobuf 定义 API，自动生成 OpenAPI/Swagger；细粒度 scope 的 API Key 供 Agent 与自动化调用 Server API；统一 JSON REST 面与结构化错误；官方 TypeScript 与 Go SDK 便于 Agent 工作流与 Tool 集成。
 - **项目管理**：多项目隔离，每个项目拥有独立的数据库 schema。
-- **用户认证**：邮箱注册/登录、JWT access/refresh token、会话 Cookie、API Key 认证。
-- **动态文档数据库**：schema-per-database，支持 `_tenant`、`_perms`、动态属性/索引，查询语言兼容 Appwrite 风格 DSL。
-- **文件存储**：S3/MinIO 兼容的对象存储，支持 multipart 上传/下载，文件元数据以动态文档管理。
-- **函数执行**：基于 Docker 的真实执行器（构建/运行），配套异步 worker（`cmd/worker`）。
+- **用户认证**：邮箱注册/登录、JWT access/refresh token（含轮换）、会话 Cookie、Email/Phone OTP、OAuth2（Google/GitHub/WeChat）、匿名会话、Magic URL、一次性 JWT、TOTP MFA 登录挑战、邮箱变更两阶段确认。
+- **动态文档数据库**：schema-per-database，支持 `_tenant`、`_perms`、动态属性/索引，查询语言兼容 Appwrite 风格 DSL，支持批量操作与字段增量。
+- **文件存储**：S3/MinIO 兼容的对象存储，支持上传/下载/在线查看、预览缩略图、公开 bucket、HMAC File Token、分片上传与断点续传。
+- **函数执行**：基于 Docker 的真实执行器（构建/运行，含安全基线），支持同步/异步执行、异步 worker（`cmd/worker`）、执行历史与保留策略。
 - **Admin Console**：React + Vite + TanStack Query + shadcn/ui 管理后台，嵌入 Go 二进制，路径 `/console/`。
-- **Server API**：Project / API Key / User / Storage / Database / Collection / Attribute / Index 的 CRUD。
+- **Server API**：Project / API Key / User / Team / Storage / Database / Collection / Attribute / Index / Function / OAuth Provider 的 CRUD；健康与版本端点。
+- **可观测性**：依赖健康检查、版本端点、结构化 slog 日志、慢查询日志、Prometheus metrics。
 
 ## 技术栈
 
 ### 后端
 
-- Go 1.25
+- Go 1.26.5
 - [Lynx](https://github.com/lynx-go/lynx) 服务框架
 - gRPC + grpc-gateway
 - [Wire](https://github.com/google/wire) 依赖注入
@@ -42,7 +43,7 @@ Torchwood 是一个受 Appwrite 启发、**AI/Agent-Native** 的后端即服务�
 
 ### 前置要求
 
-- Go 1.25+
+- Go 1.26.5+
 - Node.js 22+ + pnpm
 - Docker + Docker Compose
 - [Task](https://taskfile.dev/)（`go install github.com/go-task/task/v3/cmd/task@latest`）
@@ -68,11 +69,14 @@ cp .env.example .env
 ```env
 TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
 TORCHWOOD_DATA_REDIS_PASSWORD=            # Redis 地址走 configs/config.yaml 的 data.redis.addr
-TORCHWOOD_SECURITY_JWT_SECRET=change-me-in-production
+TORCHWOOD_SECURITY_JWT_SECRET=dev-only-0123456789abcdef-0123456789abcdef
+TORCHWOOD_SECURITY_SETUP_TOKEN=dev-setup-0123456789abcdef0123456789abcdef
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
 TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
 TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 ```
+
+> `TORCHWOOD_SECURITY_JWT_SECRET` 至少 32 字符，且不得包含已知弱子串（`change-me`、`secret`、`password`、`torchwood`、`minioadmin` 等），否则服务拒绝启动。`TORCHWOOD_SECURITY_SETUP_TOKEN` 是首次引导的门禁：未设置时注册第一个管理员会被拒绝。生产环境请生成强随机值（如 `openssl rand -hex 32`）。
 
 ### 3. 运行数据库迁移
 
@@ -96,7 +100,7 @@ task generate-all
 ### 5. 构建并运行
 
 ```bash
-task build      # 会先执行 console-build，再编译 Go server
+task build      # 会先执行 console-build，再编译 server、worker 与 CLI 到 ./bin/
 ./bin/server.exe
 ```
 
@@ -109,7 +113,8 @@ task dev-server
 ### 6. 首次部署引导（bootstrap）
 
 全新数据库上启动后，打开 Admin Console `http://127.0.0.1:9080/console/`，
-登录页会自动切换为「初始化设置」表单。注册第一个管理员将自动：
+登录页会自动切换为「初始化设置」表单。使用你配置的 `TORCHWOOD_SECURITY_SETUP_TOKEN`
+注册第一个管理员将自动：
 
 - 创建 owner 管理员账户（首个管理员固定为 `owner`）；
 - 创建默认项目（id=`default`）与默认 API Key（scope=`all`）；
@@ -148,8 +153,8 @@ task console-dev       # pnpm run dev
 
 # 后端
 task dev-server        # go run ./cmd/server
-task test              # go test -v ./... -cover
-task build             # 构建完整二进制（含 console）
+task test              # SDK Go/TS 测试 + go test -v ./... -cover
+task build             # 构建 server、worker 与 CLI 二进制（含 console）
 ```
 
 ## 项目结构
@@ -158,7 +163,8 @@ task build             # 构建完整二进制（含 console）
 .
 ├── cmd/
 │   ├── server/            # 服务入口与 Wire 组装
-│   └── worker/            # 异步 worker（函数执行队列消费者）
+│   ├── worker/            # 异步 worker（函数执行队列消费者）
+│   └── client/            # Torchwood CLI（cobra；main.go + cmd/）
 ├── console/               # Admin Console React SPA
 │   ├── embed.go           # go:embed dist
 │   └── src/
@@ -168,53 +174,29 @@ task build             # 构建完整二进制（含 console）
 ├── docs/                  # 设计文档
 ├── genproto/              # 生成的 protobuf 代码
 ├── internal/
-│   ├── api/               # gRPC handler / 自定义 HTTP handler
-│   │   ├── clientgrpc/
-│   │   ├── consolegrpc/
-│   │   ├── servergrpc/
-│   │   └── serverhttp/
-│   ├── app/               # 用例层
-│   │   ├── client/        # Account sign-up/sign-in
-│   │   ├── console/       # Console auth
-│   │   ├── functions/     # Functions use-case
-│   │   ├── server/        # Projects / API keys / users / databases
-│   │   └── storage/       # File / bucket metadata
-│   ├── domain/            # 领域模型与端口
-│   │   ├── databases/
-│   │   ├── functions/
-│   │   ├── projects/
-│   │   ├── shared/
-│   │   └── storage/
-│   ├── infra/             # 适配器实现
-│   │   ├── auth/          # Principal/Validator
-│   │   ├── bun/           # 元数据 repositories
-│   │   ├── clients/       # PG/Redis/S3 客户端
-│   │   ├── documentdb/    # PostgreSQL 动态文档适配器
-│   │   ├── functions/     # Docker executor stub
-│   │   ├── server/        # gRPC/gateway/metrics/console 服务器
-│   │   └── storage/       # MinIO 对象存储
-│   ├── pkg/config/        # protobuf config schema
+│   ├── api/               # 传输层：gRPC handler + 自定义 HTTP handler
+│   │   ├── clientgrpc/    # Client API（Account / Databases / Teams）
+│   │   ├── consolegrpc/   # Console API（ConsoleAuth / Admins）
+│   │   ├── servergrpc/    # Server API（Projects / APIKeys / Users / Databases / ...）
+│   │   └── serverhttp/    # 自定义 HTTP：文件 multipart 上传、OAuth 回调、函数代码包
+│   ├── app/               # 用例层（client / console / functions / server / shared / storage）
+│   ├── domain/            # 领域模型与端口（audit / auth / databases / functions / idgen / messaging / projects / shared / storage / teams / users）
+│   ├── infra/             # 适配器层（auth / bun / clients / documentdb / functions / health / idgen / messaging / queue / server / storage）
+│   ├── pkg/               # 进程内共享包（buildinfo / config / contexts / database）
 │   └── testutil/          # 集成测试工具
-├── pkg/
-│   ├── crud/              # 列表/分页/排序工具
-│   ├── grpc/interceptor/  # 认证拦截器
-│   ├── idgen/             # ID 生成
-│   ├── jwtparser/         # JWT 签发/解析
-│   ├── password/          # 密码哈希
-│   └── query/             # Appwrite 风格查询 DSL
+├── pkg/                   # 可复用库（crud / grpc / idgen / jwtparser / password / query / secretbox）
 ├── proto/                 # protobuf 源文件
-├── sdk/                   # TypeScript SDK 与演示应用
+├── sdk/                   # 官方 SDK：typescript/ + go/ + demo/
 ├── buf.yaml / buf.gen.yaml
 ├── go.mod
 ├── Taskfile.yml
-├── README.md
-└── README_ZH.md
+└── README.md
 ```
 
 ## 架构说明
 
 - **Clean Architecture / DDD**：domain 定义端口，infra 提供实现，app 编排用例，api 负责传输。
-- **AI / Agent-Native API 设计**：Protobuf 为单一事实来源；`buf generate` 产出 gRPC stub、grpc-gateway handler 及 `genproto/` 下的 OpenAPI 规范。**Server API**（`/v1/server/*`）面向程序化与 Agent 访问，通过 API Key 鉴权；**Client API**（`/v1/account/*`、`/v1/databases/*` 等）服务终端用户流程。详见 [`sdk/README.md`](sdk/README.md)。
+- **AI / Agent-Native API 设计**：Protobuf 为单一事实来源；`buf generate` 产出 gRPC stub、grpc-gateway handler 及 `genproto/` 下的 OpenAPI 规范。**Server API**（`/v1/server/*`）面向程序化与 Agent 访问，通过 API Key 鉴权；**Client API**（`/v1/account/*`、`/v1/databases/*` 等）服务终端用户流程。详见 [`sdk/README.md`](sdk/README.md)（官方 TypeScript 与 Go SDK）。
 - **动态文档数据库**：每个 database 对应一个 PostgreSQL schema；集合是真实表；`_tenant` 用于项目隔离；`_perms` 表实现基于角色的文档权限。
 - **认证**：支持 end-user JWT、session Cookie、API Key、console admin JWT。API Key 不绕过 `_perms`，以 `keys` 角色参与权限检查；admin 可带 `X-Torchwood-Project` header 操作指定项目。
 - **REST API**：gRPC 方法通过 grpc-gateway 暴露为 JSON REST；文件上传/下载使用自定义 HTTP handler。
@@ -226,6 +208,8 @@ task build             # 构建完整二进制（含 console）
 # 单元/集成测试（需要本地 Postgres）
 task test
 ```
+
+`task test` 依次执行 Go SDK 测试（`sdk/go`）、TypeScript SDK 测试套件（`sdk/typescript`），再对整个仓库运行 `go test -v ./... -cover`。
 
 集成测试位于：
 
@@ -241,9 +225,12 @@ task test
 task test                     # 加载 .env 后运行全部测试
 ```
 
-## TypeScript SDK
+## SDK
 
-详见 [`sdk/README.md`](sdk/README.md) 中的 `@torchwood/sdk` 包与 Web 演示。
+详见 [`sdk/README.md`](sdk/README.md)，仓库提供两个官方 SDK：
+
+- **TypeScript SDK**（`sdk/typescript`，包名 `@torchwood/sdk`）—— 基于 HTTP（grpc-gateway）封装 Client API 与 Server API，附 Web 演示。
+- **Go SDK**（`sdk/go`，模块 `github.com/torchwooddev/torchwood/sdk/go`）—— gRPC 直连薄封装：`client`（终端用户认证，自动刷新 token）与 `server`（API Key 认证，含 `InvokeJSON` 动态分发）。CLI（`cmd/client`）即构建于 Go SDK 的 `server` 包之上。
 
 ```bash
 task sdk-install

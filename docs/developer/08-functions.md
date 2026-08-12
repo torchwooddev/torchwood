@@ -2,6 +2,7 @@
 
 > 本文描述 Torchwood 的 Serverless 函数子系统：Docker 真实执行器（构建/运行）、异步 worker（cmd/worker）、函数/部署/变量/执行 CRUD 与生命周期。
 > 相关代码：`internal/domain/functions/`、`internal/infra/functions/`、`internal/app/functions/`、`internal/infra/queue/`、`cmd/worker/`、`proto/server/v1/functions.proto`、`db/migrations/000010_functions.*.sql`。
+> 最新更新：2026-08-12
 
 ---
 
@@ -11,11 +12,11 @@
 gRPC FunctionsService ──→ app/functions (use-case)
                             ├─ FunctionRepo（bun 静态表：functions / function_deployments / function_variables / function_executions）
                             ├─ Executor（Docker：Build / Execute / RemoveImage）
-                            └─ Queue（Redis List）──→ cmd/worker（BRPOP 消费）──→ app/functions.ProcessExecution
+                            └─ Queue（Redis List）──→ cmd/worker（BRPOP 消费）──→ app/functions.ProcessExecutionPayload
 HTTP multipart (serverhttp.FunctionsHandler) ← deployment 代码包上传
 ```
 
-- **执行器为真实 Docker**（`internal/infra/functions/docker.go`）：`Build` 将 zip 代码包解压校验后按运行时生成 Dockerfile 构建镜像；`Execute` 运行容器并收集 stdout/stderr；`RemoveImage` 幂等删除镜像。**非 stub**（git 提交 `bc170ad`「Implement functions executor: Docker build/run, async worker, CRUD, console UI」已交付；`docs/implementation-functions-executor.md` 头部「待实现」标注为旧态，以代码为准）。
+- **执行器为真实 Docker**（`internal/infra/functions/docker.go`）：`Build` 将 zip 代码包解压校验后按运行时生成 Dockerfile 构建镜像；`Execute` 运行容器并收集 stdout/stderr；`RemoveImage` 幂等删除镜像。**非 stub**（`docs/implementation-functions-executor.md` 头部「待实现」标注为旧态，以代码为准）。
 - **持久化**：四张静态表（`000010_functions.up.sql`），bun + golang-migrate，与动态文档层无关。
 - **MVP 部署假设**：单机部署——server 与 worker 共享文件系统，zip 代码包存本地 `os.TempDir()/torchwood-functions/<projectID>/<functionID>/<deploymentID>.zip`。
 
@@ -33,7 +34,7 @@ HTTP multipart (serverhttp.FunctionsHandler) ← deployment 代码包上传
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `ListRuntimes` | `GET /v1/server/functions/runtimes` | `node-18.0`（入口 `index.js` 的 `main`）、`python-3.11`（入口 `main.py` 的 `main`） |
+| `ListRuntimes` | `GET /v1/server/functions/runtimes` | `node-18.0`（入口 `index.js` 的 `main`）、`python-3.11`（入口 `main.py` 的 `main`），名单见 `internal/app/functions/runtimes.go` |
 | `ListSpecifications` | `GET /v1/server/functions/specifications` | `shared-1x`（0.5 CPU / 256MB）、`shared-2x`（1 CPU / 512MB） |
 | `CreateFunction` | `POST /v1/server/functions` | 校验 runtime/spec 存在、`timeout_seconds` ∈ [1, 300]；缺省 spec `shared-1x`、`timeout_seconds` 15s、entrypoint 按 runtime 缺省 |
 | `ListFunctions` / `GetFunction` | `GET /v1/server/functions`、`GET /v1/server/functions/{function_id}` | |
@@ -45,7 +46,7 @@ HTTP multipart (serverhttp.FunctionsHandler) ← deployment 代码包上传
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `CreateDeployment` | `POST /v1/server/functions/{function_id}/deployments` | gRPC body 携带 `code`（zip 字节） |
-| 上传代码包 | `POST /v1/server/functions/{functionId}/deployments/code` | **multipart**（`functions_handler.go`，字段 `code`，≤ 50 MiB） |
+| 上传代码包 | `POST /v1/server/functions/{functionId}/deployments/code` | **multipart**（`functions_handler.go`，字段 `code`，≤ 50 MiB，`maxCodePackageBytes`） |
 | `ListDeployments` / `GetDeployment` / `DeleteDeployment` | `GET .../deployments`、`GET .../deployments/{deployment_id}`、`DELETE ...` | |
 
 构建流程（`app/functions/deployments.go`）：
@@ -58,12 +59,12 @@ HTTP multipart (serverhttp.FunctionsHandler) ← deployment 代码包上传
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `CreateExecution` | `POST /v1/server/functions/{function_id}/executions` | `async` 布尔；`data` ≤ 64 KB 且必须合法 JSON；`deployment_id` 缺省用最新 `ready` 部署 |
-| `ListExecutions` | `GET /v1/server/functions/{function_id}/executions` | 保留策略：每函数最多最近 100 条（`PruneOldExecutions`） |
+| `CreateExecution` | `POST /v1/server/functions/{function_id}/executions` | `async` 布尔；`data` ≤ 32 KB（`maxExecutionDataBytes`）且必须是合法 JSON object（数组/标量/null 拒绝）；`data` + 函数变量合并总量 ≤ 32 KB（`maxEnvBytes`）；`deployment_id` 缺省用最新 `ready` 部署 |
+| `ListExecutions` | `GET /v1/server/functions/{function_id}/executions` | 保留策略：每函数最多最近 100 条（`pruneKeepRecent`，`PruneOldExecutions`） |
 | `GetExecution` | `GET /v1/server/functions/{function_id}/executions/{execution_id}` | |
 
 - **同步**：`async=false`（默认）。`timeout_seconds` 超过 30s（`maxSyncTimeoutSeconds`，grpc-gateway WriteTimeout 余量）拒绝同步执行；占用运行信号量（并发上限 16，超限 `ResourceExhausted`）后请求内 `executor.Execute` 并写回结果。
-- **异步**：落库 `status=queued` → JSON payload（`execution_id` / `function_id` / `project_id` / `data`）入队 `torchwood:queue:functions-executions`（Redis List，LPUSH）→ worker 消费。
+- **异步**：落库 `status=queued` → JSON payload（`execution_id` / `function_id` / `project_id` / `data` / `attempt`）入队 `torchwood:queue:functions-executions`（Redis List，LPUSH）→ worker 消费。
 - **状态机**：`queued → building（deployment 非 ready 时补构建）→ running → completed | failed`；任何失败（超时 / 非零退出码 / 执行错误）写回 `failed` + `error`；记录级截断：stdout/stderr/response 各 ≤ 64 KB（`maxOutputBytes`，含截断标志位）。
 - **执行安全基线**（docker.go `Execute`）：`CapDrop: ALL`、`no-new-privileges`、只读根文件系统 + `/tmp` tmpfs、内存/CPU 按 spec、pids 上限 512、网络缺省 `none`（配置 `functions.docker.network` 时自动创建/接入 bridge 网络）；数据经 `TW_DATA` 环境变量传入（禁止拼进命令）；超时（默认 15s）→ 停止并强制删除容器，无残留。
 
@@ -113,6 +114,8 @@ CMD ["python","-c","import json,os,main;r=main.main(json.loads(os.environ.get('T
 | 并发 | 4 个消费 goroutine（`workerConcurrency`），BRPOP 轮询超时 1s（配合优雅退出） |
 | 启动对账 | `RecoverOrphanExecutions(1h)`：停留 `queued/building/running` 超过 1 小时的记录标记 `failed`（兜底 Redis 重启丢任务、worker 崩溃孤儿） |
 | 消费逻辑 | 加载 execution/function/deployment/variables → deployment 非 `ready` 先补构建 → `running` → 执行（超时 = `timeout_seconds`）→ 写回结果；单任务失败不影响消费循环 |
+| 瞬时失败重试 | 处理失败（非坏消息）→ 解析 payload 内嵌 `attempt` 计数 +1 后重新入队（LPUSH），`attempt` 超过 `maxProcessAttempts = 3` 时兜底标记 `failed`（`cmd/worker/worker.go` 的 `requeue` / `failPayload`）；**重试计数持久化在队列 payload**，worker 重启/多副本不会清零或重复计数 |
+| 坏消息处理 | payload 无法解析或缺失 ID（`ErrInvalidQueuePayload`）→ 永久丢弃不重试，仅记日志 |
 | 优雅退出 | `Stop` 取消 BRPOP 上下文并等待 goroutine 收敛 |
 
 ### 3.1 worker 与 server 的 Wire 注入差异
@@ -124,7 +127,7 @@ CMD ["python","-c","import json,os,main;r=main.main(json.loads(os.environ.get('T
 | 配置校验 | `security.jwt.secret` 必须设置（`TORCHWOOD_SECURITY_JWT_SECRET`） | `data.database.source` 必须设置（`TORCHWOOD_DATA_DATABASE_SOURCE`） |
 | 版本信息 | `NewBuildInfo`（ldflags 注入） | 无（wire 剪枝自动省略） |
 
-两者共用 `app.ProviderSet` / `infra.ProviderSet`，因此 **server 与 worker 都注入同一个 Docker executor 与 Redis queue**；server 负责入队，worker 负责消费。`task worker` 运行 `go run ./cmd/worker`，`task build` 同时产出 server 与 worker 二进制。
+两者共用 `app.ProviderSet` / `infra.ProviderSet`，因此 **server 与 worker 都注入同一个 Docker executor 与 Redis queue**；server 负责入队，worker 负责消费。`task worker` 运行 `go run ./cmd/worker`，`task build` 同时产出 server、worker 与 CLI 二进制。
 
 ---
 
@@ -141,7 +144,7 @@ CMD ["python","-c","import json,os,main;r=main.main(json.loads(os.environ.get('T
 
 ## 5. 变量与结果
 
-- **Variables**：`PUT /v1/server/functions/{function_id}/variables` / `GET ...`（`SetVariables` 整体替换）。MVP **明文存储**（`function_variables.value`，无 secretbox 加密）；执行时合并总量 ≤ 32 KB（`maxEnvBytes`），键含 `\n\r\0` 的条目被丢弃（`sanitizeEnv`）。
+- **Variables**：`PUT /v1/server/functions/{function_id}/variables` / `GET ...`（`SetVariables` 整体替换）。MVP **明文存储**（`function_variables.value`，无 secretbox 加密）；执行时变量总量 ≤ 32 KB（`maxEnvBytes`），且与 `data` 合并总量同样 ≤ 32 KB；键含 `\n\r\0` 的条目被丢弃（`sanitizeEnv`）。
 - **返回值约定**：`parseResponse` 取 stdout 末行，若为合法 JSON 则作为 `response` 返回（`console.log(JSON.stringify(...))` 协议）；非零退出码 → `failed`（`error` 取 stderr）。
 - **日志**：stdout/stderr 完整保存（64 KB 截断 + `*_truncated` 标志），Console Functions 页面可查看执行状态与日志。
 
@@ -149,15 +152,16 @@ CMD ["python","-c","import json,os,main;r=main.main(json.loads(os.environ.get('T
 
 ## 6. 测试
 
-- `internal/infra/functions/docker_integration_test.go`：Docker 构建/执行集成测试。
+- `internal/infra/functions/docker_integration_test.go`：Docker 构建/执行集成测试（`TORCHWOOD_RUN_DOCKER_TESTS=1` 时运行，CI backend job 预拉运行时基础镜像）。
 - `internal/app/functions/functions_test.go`、`executions_test.go`、`mocks_test.go`：use-case 单元测试（stubRepo + 信号量/超时/截断路径）。
 - `internal/infra/queue/redis_queue_test.go`：队列适配器测试。
+- `cmd/worker/consume_test.go`、`requeue_test.go`：worker 消费与重试语义测试。
 
 ---
 
 ## 7. 已知边界
 
 - 独立构建队列未实现：`CreateDeployment` 同步构建（roadmap §2.6 的偏离，worker 消费前对非 ready 部署补构建兜底）；
-- 无任务重试 / 死信队列 / ack 语义：失败即 `failed`，worker 崩溃由启动对账兜底；
+- **重试语义**：worker 对瞬时失败重抛回队，最多 `maxProcessAttempts = 3` 次（重试计数持久化在队列 payload，`cmd/worker/worker.go` 的 `requeue`）；无死信队列 / 消费端 ack，超限或坏消息由 `failPayload` / 丢弃兜底；
 - 变量明文存储；entrypoint 字段 MVP 仅占位（执行入口固定为 `index.js` / `main.py` 的 `main`）；
 - 单机文件系统假设：server 与 worker 必须共享 `os.TempDir()/torchwood-functions`（多机部署需对象存储承载代码包）。

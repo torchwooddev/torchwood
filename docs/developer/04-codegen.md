@@ -14,7 +14,7 @@ Torchwood 使用 **Task**（`Taskfile.yml`，version 3）作为主要工作流�
 | 任务 | 命令内容 | 用途 |
 |------|---------|------|
 | `install-tools` | `go install` protoc-gen-go / migrate / buf / wire | 安装代码生成与迁移工具链 |
-| `generate-proto` | `buf generate` | Buf 生成 gRPC stub / gateway / Swagger（见 §2） |
+| `generate-proto` | `buf lint` + `buf generate` | Buf 生成 gRPC stub / gateway / Swagger（见 §2） |
 | `generate-config` | `protoc` 在 `internal/pkg/config` 内生成 Go 代码（见 §3） |
 | `wire-server` | 在 `cmd/server` 运行 `go run github.com/google/wire/cmd/wire` | 重新生成 server 的 `wire_gen.go` |
 | `wire-worker` | 在 `cmd/worker` 运行 wire | 重新生成 worker 的 `wire_gen.go` |
@@ -26,9 +26,9 @@ Torchwood 使用 **Task**（`Taskfile.yml`，version 3）作为主要工作流�
 | `worker` | `go run ./cmd/worker` | 本地起 worker |
 | `console-install` / `console-build` / `console-dev` | pnpm 命令 | Console 前端安装 / 构建 / 开发 |
 | `sdk-install` / `sdk-build` / `sdk-demo` / `sdk-demo-build` | npm 命令 | TypeScript SDK 安装 / 构建 / demo |
-| `build` | `console-build` + `go build -ldflags "..." ./cmd/server ./cmd/worker` | 全量构建（注入 version/commit/date） |
-| `test` | `go test -v ./... -cover` | 全部测试（自动加载 `.env`） |
-| `lint-go` / `lint-console` / `lint` | `go vet` + `gofmt -l`；Console 侧 `pnpm lint` | 代码静态检查 |
+| `build` | `console-build` + `go build -ldflags "..." ./cmd/server ./cmd/worker ./cmd/client` | 全量构建（注入 version/commit/date，产出 server / worker / CLI 三个二进制） |
+| `test` | `test-sdk-go` + `test-sdk-ts` + `go test -v ./... -cover` | 全部测试（SDK 测试 + 仓库测试，自动加载 `.env`） |
+| `lint-go` / `lint-sdk-go` / `lint-console` / `lint` | `go vet` + `gofmt -l`；sdk/go 同款检查；Console 侧 `pnpm lint` | 代码静态检查 |
 | `build-docker` | `docker build -t torchwood:<ver>` | 构建 Docker 镜像 |
 
 > 常用组合：开发前 `task up` + `task migrate`；改动 proto/config/provider 后 `task generate-all`；修改 Console 后需先 `task console-build` 再 `task build`（Go embed 只会打进已构建的 `dist/`）。
@@ -52,6 +52,12 @@ modules:
 lint:
   use:
     - STANDARD
+  except:                 # 与项目既有契约不符的规则显式豁免
+    - PACKAGE_DIRECTORY_MATCH
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - ENUM_VALUE_PREFIX
 breaking:
   use:
     - FILE
@@ -59,7 +65,9 @@ breaking:
 
 - `modules.path: proto` 声明 `proto/` 为模块根；
 - `deps` 引入 googleapis（`google.api.http`）、protovalidate、grpc-gateway 的公共依赖；
-- `lint: STANDARD` 与 `breaking: FILE` 是 Buf 的 lint / breaking 规则集（`buf lint` / `buf breaking`）。
+- `lint: STANDARD` 与 `breaking: FILE` 是 Buf 的 lint / breaking 规则集（`buf lint` / `buf breaking`）；
+- 五项 lint 豁免均有理由注释（包名与目录有意分离、复用 `shared.v1.ListRequest`/`Empty`、
+  `ACCESS_*` 枚举语义命名），改动前先读 `buf.yaml` 注释。
 
 **`buf.gen.yaml`**（Buf v2，四个插件全部输出到 `genproto/`）：
 

@@ -379,7 +379,9 @@ task sdk-demo        # 自动先跑 sdk-build，然后 vite dev（http://localho
 ```
 
 启动前确认本地后端已就绪（`task up` + `task migrate` + `task dev-server`），
-并在全新数据库上先完成首次部署引导（打开 `/console/` 注册第一个管理员，展示的默认 API Key secret 用于 Server API），复制 `sdk/demo/.env.example` 为 `.env` 可覆盖默认值：
+并在全新数据库上先完成首次部署引导（打开 `/console/` 注册第一个管理员——需先
+配置 `TORCHWOOD_SECURITY_SETUP_TOKEN`；注册响应展示的默认 API Key secret 用于
+Server API），复制 `sdk/demo/.env.example` 为 `.env` 可覆盖默认值：
 
 ```dotenv
 VITE_TORCHWOOD_ENDPOINT=http://localhost:9080

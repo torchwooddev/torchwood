@@ -15,7 +15,7 @@ gRPC StorageService (proto/server/v1/storage.proto) ──→ app/storage.Storag
 ```
 
 - **元数据与对象分离**：bucket / file 的元数据存放在动态文档库 `default` 库的 `buckets`、`files` 系统集合中（`TORCHWOOD_<internalID>_default.buckets/files`），天然复用文档级权限与 Appwrite 查询 DSL；文件二进制存入对象存储。
-- **对象键**：`<projectID>/<bucketID>/<fileID>`（`objectKey`），全部文件落在同一个 S3 bucket（默认 `torchwood-files`）。
+- **对象键**：`<projectID>/<bucketID>/<fileID>`（`objectKey`），全部文件落在同一个 S3 bucket（`storage.s3.bucket`，未配置时回退 `torchwood-files`）。
 
 ### 1.1 端口与适配器
 
@@ -41,7 +41,7 @@ gRPC StorageService (proto/server/v1/storage.proto) ──→ app/storage.Storag
 | `storage.provider` | — | `s3` | 对象存储提供商 |
 | `storage.s3.endpoint` | `TORCHWOOD_STORAGE_S3_ENDPOINT` | 空 | MinIO/S3 地址 |
 | `storage.s3.region` | `TORCHWOOD_STORAGE_S3_REGION` | `us-east-1` | |
-| `storage.s3.bucket` | `TORCHWOOD_STORAGE_S3_BUCKET` | `torchwood-files` | 承载全部对象的 bucket（S3/MinIO 要求全小写） |
+| `storage.s3.bucket` | `TORCHWOOD_STORAGE_S3_BUCKET` | 模板 `torchwood-storage`；未配置时代码回退 `torchwood-files`（`internal/domain/storage/object.go` 的 `DefaultBucketName`） | 承载全部对象的 bucket（S3/MinIO 要求全小写） |
 | `storage.s3.access_key_id` | `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` | 空 | |
 | `storage.s3.secret_access_key` | `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY` | 空 | |
 | `storage.s3.use_ssl` | `TORCHWOOD_STORAGE_S3_USE_SSL` | false | |

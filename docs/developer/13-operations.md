@@ -4,18 +4,21 @@
 > 均已如实标注，以代码为准）。目标读者：部署与运维负责人。
 > 关联：`docs/implementation-health-observability.md`（Health & 可观测性实现细节）、
 > `docs/roadmap.md`、`AGENTS.md`。
+> 最新更新：2026-08-12
 
 ---
 
 ## 1. 运行形态：server 与 worker
 
-Torchwood 由两个可执行进程组成，均为 `cmd/` 下独立 `main` 包，运行时组合由
-Wire 注入（`cmd/server/provides.go` → `wire_gen.go`）：
+Torchwood 由两个服务进程组成，均为 `cmd/` 下独立 `main` 包，运行时组合由
+Wire 注入（`cmd/server/provides.go` → `wire_gen.go`）；另有第三个可执行
+`cmd/client`（Torchwood CLI）：
 
 | 进程 | 入口 | 职责 |
 |------|------|------|
 | **server** | `cmd/server/main.go` | gRPC 服务、grpc-gateway（HTTP `/v1/*`）、独立 HTTP handler（Storage 上传下载）、Metrics、Admin Console SPA（`console/embed.go` 嵌入）、健康/版本端点 |
-| **worker** | `cmd/worker/main.go` | 函数异步执行队列消费者：BRPOP 消费 `torchwood:queue:functions-executions`，单进程 4 个并发 goroutine；启动时对账——将停留 `queued/building/running` 超过 1h 的执行标记为 `failed`（兜底 Redis 重启丢任务、worker 崩溃孤儿） |
+| **worker** | `cmd/worker/main.go` | 函数异步执行队列消费者：BRPOP 消费 `torchwood:queue:functions-executions`，单进程 4 个并发 goroutine；启动时对账——将停留 `queued/building/running` 超过 1h 的执行标记为 `failed`（兜底 Redis 重启丢任务、worker 崩溃孤儿）；瞬时失败重抛回队最多 3 次（`maxProcessAttempts`，重试计数持久化在队列 payload） |
+| **CLI** | `cmd/client/main.go` | `bin/torchwood[.exe]`，运维/自动化工具，通过 API Key 走 gRPC 调用 Server API（见 `docs/developer/02-quickstart.md` §7） |
 
 本地开发：
 
@@ -33,7 +36,7 @@ task worker        # go run ./cmd/worker
 |------|------|--------|
 | `:9080` | HTTP（grpc-gateway + Console `/console/`） | `server.http.addr` |
 | `127.0.0.1:9060` | gRPC（仅本机回环，gateway 同机转发） | `server.grpc.addr` |
-| `:9040` | Prometheus metrics（`/metrics`） | `server.metrics.addr` |
+| `127.0.0.1:9040` | Prometheus metrics（`/metrics`；留空回退同值） | `server.metrics.addr` |
 
 ---
 
@@ -45,7 +48,7 @@ task worker        # go run ./cmd/worker
 | 依赖 | 镜像 | 端口 | 用途 |
 |------|------|------|------|
 | PostgreSQL | `postgres:18-alpine` | 5432 | 元数据静态表（bun + golang-migrate）与动态文档层（schema-per-database + `_tenant` + `_perms`） |
-| Redis | `redis:7-alpine` | 6379 | 队列（函数执行）、ID 生成 |
+| Redis | `redis:7-alpine` | 6379 | 队列（函数执行）、上传会话、ID 生成 |
 | MinIO | `minio/minio:RELEASE.2024-11-07T00-52-20Z` | 9000（API）/ 9001（Console） | S3 兼容对象存储 |
 
 三个容器均配置 healthcheck（`pg_isready` / `redis-cli ping` / MinIO live 端点）。
@@ -57,16 +60,19 @@ task worker        # go run ./cmd/worker
 
 ### 3.1 本机构建（`task build`）
 
+`task build` 先执行 `console-build`（pnpm），再编译三个产物到 `./bin/`：
+
 ```yaml
 build:
   deps: [console-build]          # 先构建 Console（pnpm run build），供 Go embed 打包
   cmds:
-    - go build -ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o ./bin/ ./cmd/server
-    - go build -ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o ./bin/ ./cmd/worker
+    - go build -ldflags "...-X main.version=... -X main.commit=... -X main.date=..." -o ./bin/ ./cmd/server
+    - go build -ldflags "...同上..." -o ./bin/ ./cmd/worker
+    - go build -ldflags "...同上..." -o ./bin/torchwood[.exe] ./cmd/client
 ```
 
-- 产物：Windows 下 `bin/server.exe`、`bin/worker.exe`；Linux/macOS 下 `bin/server`、
-  `bin/worker`。
+- 产物：Windows 下 `bin/server.exe`、`bin/worker.exe`、`bin/torchwood.exe`；Linux/macOS 下
+  `bin/server`、`bin/worker`、`bin/torchwood`。
 - 版本注入：`VERSION` = `git describe --tags --always`，`COMMIT` = `git rev-parse
   --short HEAD`，`DATE` = `yyyyMMddHHmmss`；通过 `-X main.version/commit/date`
   （全小写变量名）注入，由 `/v1/server/health/version` 端点暴露。
@@ -86,7 +92,7 @@ DOCKER_IMAGE: 'torchwood:{{.VERSION}}-{{.GIT_VERSION}}-{{.TIMESTAMP}}'
 
 > **现状说明（以代码为准）**：仓库当前**尚无 Dockerfile**（2026-08 核对根目录与
 > `docker/` 下均不存在）。`task build-docker` 已定义镜像名与构建命令，但需补充
-> 多阶段 Dockerfile（builder 阶段构建两个二进制 + console embed，runner 阶段
+> 多阶段 Dockerfile（builder 阶段构建二进制 + console embed，runner 阶段
 > 提供 Postgres/Redis/MinIO 连接）后方可使用，否则 `docker build` 会失败。
 
 ---
@@ -102,7 +108,8 @@ DOCKER_IMAGE: 'torchwood:{{.VERSION}}-{{.GIT_VERSION}}-{{.TIMESTAMP}}'
 
 | 配置 | 环境变量 | 说明 |
 |------|----------|------|
-| JWT secret | `TORCHWOOD_SECURITY_JWT_SECRET` | 签发 access/refresh token 的密钥，**必须替换为空值**；`access_ttl` 默认 `15m`、`refresh_ttl` 默认 `7d` |
+| JWT secret | `TORCHWOOD_SECURITY_JWT_SECRET` | 签发 access/refresh token 的密钥；**必须替换为强随机值**（≥32 字符，含弱子串如 `change-me`/`secret`/`torchwood`/`minioadmin` 会拒绝启动）；`access_ttl` 默认 `15m`、`refresh_ttl` 默认 `7d` |
+| Setup token | `TORCHWOOD_SECURITY_SETUP_TOKEN` | Console 首次引导令牌；**未设置时注册第一个管理员被拒绝**（`internal/app/console/setup.go` 的 `SignUp`）；生成方式：`openssl rand -hex 32` |
 | DB 连接串 | `TORCHWOOD_DATA_DATABASE_SOURCE` | Postgres DSN；`task migrate` 优先读取同一变量 |
 | S3 Access Key | `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` | MinIO/S3 访问密钥 |
 | S3 Secret Key | `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY` | MinIO/S3 密钥 |
@@ -174,7 +181,7 @@ panic 兜底为 `unavailable`。
 ### 5.1 Metrics
 
 `internal/infra/server/metrics.go`：独立 HTTP 服务，监听 `server.metrics.addr`
-（模板 `:9040`，留空默认 `:9100`），`GET /metrics` 为 Prometheus 格式
+（模板 `127.0.0.1:9040`，留空回退同值），`GET /metrics` 为 Prometheus 格式
 （`promhttp.Handler()`）。当前仅 runtime 采集器，**无自定义业务指标**。
 
 ### 5.2 日志
@@ -212,10 +219,12 @@ DSN 优先级：`TORCHWOOD_DATA_DATABASE_SOURCE` → 默认
 ### 6.2 首次部署引导（bootstrap）
 
 不再需要离线 seed 脚本：全新数据库上启动 server 后，打开 `/console/`，
-登录页会自动切换为「初始化设置」表单。注册第一个管理员将自动创建：
+登录页会自动切换为「初始化设置」表单。**前提：必须配置 `TORCHWOOD_SECURITY_SETUP_TOKEN`**
+（未配置时 `POST /v1/console/auth/sign-up` 返回 FailedPrecondition，`internal/app/console/setup.go`
+的 `Setup.SignUp`）。注册第一个管理员将自动创建：
 
 - **owner** 管理员账户（首个管理员固定为超管，仅当 `admins` 表为空
-  时可用；`POST /v1/console/auth/sign-up` 二次调用返回 `FailedPrecondition`）；
+  时可用；二次调用返回 `FailedPrecondition`）；
 - 默认项目（id = `default`）与默认 API Key（scope = `all`，明文 secret
   **仅注册响应展示一次**；轮换请在 Console 的 API Key 页面删除后重建）。
 
@@ -246,3 +255,5 @@ Console 与 SDK demo 的 Server API Key 均来自此引导流程。若需在空�
 - 反向代理后登录/会话异常：检查 `trusted_proxies` 是否包含代理网段。
 - Console 打开是旧页面：`task console-build` 后重新 `task build`。
 - 慢查询看不到：确认 `slow_query_threshold` 非 `"0"`、日志级别 ≥ Warn。
+- 首次引导被拒：确认 `TORCHWOOD_SECURITY_SETUP_TOKEN` 已配置（server 启动后
+  修改环境变量需重启进程生效）。

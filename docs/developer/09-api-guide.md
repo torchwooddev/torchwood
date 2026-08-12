@@ -5,7 +5,7 @@
 > 为真实范例，手把手走完「proto → 生成 → domain → app → infra → api → Wire」全流程。
 > 目标读者：新增资源 / 新增方法的后端开发者。
 > 关联：`AGENTS.md`（开发约定，必读）、`docs/roadmap.md` §0（Agent-Native API 定位）。
-> 修订记录：2026-08-09 初版（以 projects 全链路为范例；错误映射与分页约定按代码核实）。
+> 修订记录：2026-08-09 初版（以 projects 全链路为范例；错误映射与分页约定按代码核实）；2026-08-12 更新错误映射表与 CLI 章节（按代码核实）。
 
 ---
 
@@ -33,7 +33,7 @@ gRPC handler（internal/api/servergrpc）
 
 ## 1. 步骤 1：在 proto 中定义 RPC 与 message
 
-API 的单一事实来源是 `proto/` 下的 `.proto` 文件，分三组：
+API 的单一事实来源是 `proto/` 下的 `.proto` 文件，分四组：
 
 - `proto/server/v1/`：管理面（Agent / API Key / Console 调用），如 `projects.proto`、`users.proto`；
 - `proto/client/v1/`：终端用户面，如 `account.proto`、`databases.proto`；
@@ -42,7 +42,7 @@ API 的单一事实来源是 `proto/` 下的 `.proto` 文件，分三组：
 
 ### 1.1 服务与方法的骨架
 
-以 `proto/server/v1/projects.proto` 为模板（全文 59 行）：
+以 `proto/server/v1/projects.proto` 为模板：
 
 ```proto
 syntax = "proto3";
@@ -82,7 +82,7 @@ service ProjectsService {
 
 - 每个 RPC 必须声明 `google.api.http` 注解，grpc-gateway 据此生成 HTTP 路由（`POST/GET/PATCH/DELETE`）。
 - 路径字段用 `{id}` 语法绑定到请求 message 的同名字段（如 `GetProjectRequest.id`）。
-- **列表请求复用 `shared.v1.ListRequest`，响应 meta 复用 `shared.v1.ListResponseMeta`**（见 §6），不要为每个资源重造分页字段。
+- **列表请求复用 `shared.v1.ListRequest`，响应 meta 复用 `shared.v1.ListResponseMeta`**（见 §9），不要为每个资源重造分页字段。
 
 ### 1.2 authz 注解（强制）
 
@@ -117,7 +117,7 @@ rpc ListAdmins(ListAdminsRequest) returns (ListAdminsResponse) {
 }
 ```
 
-> **强约束**：所有 gRPC 方法必须能解析出 authz 注解，否则 server 启动即失败，见 §7。
+> **强约束**：所有 gRPC 方法必须能解析出 authz 注解，否则 server 启动即失败，见 §10。
 
 ### 1.3 message 定义约定
 
@@ -182,7 +182,7 @@ message UpdateProjectRequest {
 ## 2. 步骤 2：生成代码
 
 ```bash
-task generate-proto    # 即 cd 仓库根后执行 buf generate
+task generate-proto    # 即 cd 仓库根后执行 buf lint + buf generate
 ```
 
 `buf.gen.yaml`（v2 格式）声明四个远程插件，全部输出到 `genproto/`：
@@ -209,7 +209,7 @@ plugins:
   `RegisterProjectsServiceServer`；
 - `genproto/server/v1/projects.pb.gw.go` 提供 `RegisterProjectsServiceHandlerFromEndpoint`
   供 gateway 使用；
-- 每个 proto 文件还会生成 `File_server_v1_projects_proto` 描述符，供 §5.3 的鉴权收集使用。
+- 每个 proto 文件还会生成 `File_server_v1_projects_proto` 描述符，供 §10 的鉴权收集使用。
 
 ---
 
@@ -431,7 +431,7 @@ func (s *ProjectsService) ListProjects(ctx context.Context, req *sharedv1.ListRe
 }
 ```
 
-用例层负责真实分页（`internal/app/server/projects.go:ListProjects`）：
+用例层负责真实分页（`internal/app/server/projects.go` 的 `ListProjects`）：
 
 ```go
 params, err := crud.ParseListParams(pageSize, pageToken, filter, orderBy)
@@ -449,7 +449,7 @@ info := crud.BuildPaginationInfo(params, len(all), hasMore)
 3. 若该服务有新的 http 路由，同时在 `internal/infra/server/grpc_gateway.go` 的 `register` 列表追加
    `serverv1.RegisterProjectsServiceHandlerFromEndpoint`。
 
-> 启动期有两道 fail-closed 检查（§7.1），漏了注解或漏了注册都会直接报错退出，这是设计预期。
+> 启动期有两道 fail-closed 检查（§10），漏了注解或漏了注册都会直接报错退出，这是设计预期。
 
 ---
 
@@ -509,17 +509,22 @@ grpc-gateway 用自定义 `HTTPErrorHandler` 把 gRPC status 转为统一结构�
 ```
 
 - `error_id` 每次请求生成新 UUID，便于日志关联排障；
-- `error_code` 取自 `proto/shared/v1/error.proto` 的 `ErrorCode` 枚举，现有映射：
+- `error_code` 取自 `proto/shared/v1/error.proto` 的 `ErrorCode` 枚举，现有映射（`HTTPErrorHandler`
+  内 `switch st.Code()` + `grpcCodeToHTTP`）：
 
 | gRPC code | error_code | HTTP 状态码 |
 |-----------|-----------|-------------|
-| InvalidArgument / FailedPrecondition / OutOfRange | `ERROR_CODE_INVALID_REQUEST` | 400 |
+| InvalidArgument | `ERROR_CODE_INVALID_REQUEST` | 400 |
+| FailedPrecondition | `ERROR_CODE_PRECONDITION_FAILED` | 400 |
+| OutOfRange | `ERROR_CODE_INTERNAL_ERROR`（未显式映射，走默认） | 400 |
 | Unauthenticated | `ERROR_CODE_INVALID_CREDENTIALS` | 401 |
 | PermissionDenied | `ERROR_CODE_PERMISSION_DENIED` | 403 |
 | NotFound | `ERROR_CODE_RESOURCE_NOT_FOUND` | 404 |
-| AlreadyExists / Aborted | `ERROR_CODE_RESOURCE_CONFLICT` | 409 |
-| ResourceExhausted | `（默认 INTERNAL_ERROR）` | 429 |
-| 其他 | `ERROR_CODE_INTERNAL_ERROR` | 500（Unknown）/ 对应码 |
+| AlreadyExists | `ERROR_CODE_RESOURCE_CONFLICT` | 409 |
+| Aborted | `ERROR_CODE_CONCURRENT_MODIFICATION` | 409 |
+| ResourceExhausted | `ERROR_CODE_QUOTA_EXCEEDED` | 429 |
+| DeadlineExceeded | `ERROR_CODE_TIMEOUT` | 504 |
+| 其他（Unknown/Unimplemented/Unavailable/Canceled 等） | `ERROR_CODE_INTERNAL_ERROR` | 500（Canceled=499、Unavailable=503、Unimplemented=501 等对应码） |
 
 - `type` 字段：`invalid_request_error` / `authentication_error` / `permission_error` /
   `not_found_error` / `conflict_error` / `rate_limit_error` / `server_error`；
@@ -568,7 +573,7 @@ grpc-gateway 用自定义 `HTTPErrorHandler` 把 gRPC status 转为统一结构�
 ## 10. 强制约束清单（对应 AGENTS.md）
 
 1. **gRPC 方法必须带 authz 注解**：
-   - `collectMethodsByAccess`（`internal/infra/server/grpc.go:173`）对每个方法解析 `method_auth` 或
+   - `collectMethodsByAccess`（`internal/infra/server/grpc.go`）对每个方法解析 `method_auth` 或
      服务级 `service_auth`，解析不到（`UNSPECIFIED`）即报
      `missing auth policy for method <service>/<method>`；
    - `ACCESS_PERMISSION` 方法必须显式声明非空 `permissions`，否则报错；
@@ -634,14 +639,13 @@ oauth-providers list/upsert/delete（proto 无 get 方法）
 
 要点：
 
-- **新增 Server API 方法后**：同步登记 `cmd/client/registry.go`（用生成的
-  `XxxService_Method_FullMethodName` 常量做 key），完整性由
-  `cmd/client/registry_test.go` 的 `TestRPCRegistryCoverage` 保证（遍历
-  `protoregistry.GlobalFiles` 中 `server/v1/` 全部方法比对，含请求类型一致性）。
+- **动态分发机制**：`rpc` 逃生舱与全部具名命令最终都走 `sdk/go/server` 的
+  `InvokeJSON`——按 full method name 从 `protoregistry.GlobalFiles` 查找，限定
+  `torchwood.server.v1.*` 且排除 `APIKeysService`。**新增 Server API RPC 无需
+  在 CLI 登记**，proto 方法自动获得支持；`cmd/client/import_guard_test.go` 兜底
+  禁止 CLI 源码直接 import genproto/grpc/protobuf。
 - **具名命令**覆盖 `proto/server/v1` 全部资源（health/projects/users/databases/teams/
-  storage/functions/oauth-providers），方法级覆盖见上方命令树；注册表仍保留全部
-  方法（含 CLI 具名命令未暴露的 `storage files create`、`CreateFileToken` 等），
-  供 `rpc` 逃生舱复用。
+  storage/functions/oauth-providers），方法级覆盖见上方命令树。
 - **请求参数**：标量用具名 flag，复杂结构（labels/prefs 等 `Struct`、document data）
   用 `--data` 传 protojson（camelCase 字段名），与 flag 冲突时以 `--data` 为准。
 - **安全边界**：CLI 不提供 api-keys 命令（API Key 凭证被服务端拦截器禁止调用），

@@ -4,7 +4,7 @@
 > shadcn/ui 风格的管理后台，构建产物通过 `go:embed` 打进 Go 二进制，经 `/console/` 路径由 server 直接 serve。
 > 目标读者：前端开发者（新增管理页面）。
 > 关联：`AGENTS.md`（开发约定）、`docs/developer/09-api-guide.md`（后端 API 约定）。
-> 修订记录：2026-08-09 初版（目录结构、API client、会话 cookie、新增页面流程按代码核实）。
+> 修订记录：2026-08-09 初版（目录结构、API client、会话 cookie、新增页面流程按代码核实）；2026-08-12 更新构建产物说明。
 
 ---
 
@@ -186,7 +186,7 @@ export async function createProject(input: { name: string; description?: string 
 task console-install    # pnpm install（包管理器锁定 pnpm@11.20.0）
 task console-dev        # pnpm run dev → vite dev server
 task console-build      # pnpm run build → tsc -b && vite build，产出 dist/
-task build              # Go 侧：console-build（依赖）+ go build cmd/server + cmd/worker
+task build              # Go 侧：console-build（依赖）+ go build cmd/server + cmd/worker + cmd/client（CLI）
 ```
 
 - **dev 代理**（`vite.config.ts`）：`base: '/console/'`；`server.proxy` 把 `/v1` 代理到

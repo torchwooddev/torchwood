@@ -1,7 +1,7 @@
 # Torchwood 环境搭建与快速开始
 
 > 本文档指导从零搭建 Torchwood 本地开发环境并启动完整服务。
-> 最新更新：2026-08-09
+> 最新更新：2026-08-12
 
 ---
 
@@ -9,13 +9,13 @@
 
 | 依赖 | 版本要求 | 说明 |
 |------|----------|------|
-| Go | 1.25+ | 后端语言与运行时 |
+| Go | 1.26.5+ | 后端语言与运行时（`go.mod` 要求 Go 1.26.5） |
 | Node.js | 22+ | Console 前端构建 |
-| pnpm | 任意较新版本 | Console 依赖管理（`task console-install` 使用 `pnpm install`） |
+| pnpm | 任意较新版本 | Console 依赖管理（`console/package.json` 的 `packageManager` 锁定 pnpm@11.20.0，`task console-install` 使用 `pnpm install`） |
 | Docker + Docker Compose | 任意较新版本 | 本地基础设施（Postgres/Redis/MinIO） |
 | [Task](https://taskfile.dev/) | 最新 | 任务执行器，安装：`go install github.com/go-task/task/v3/cmd/task@latest` |
 
-> 代码生成工具（protoc-gen-go、migrate、buf、wire）不需要手工安装，由 `task install-tools` 统一安装。
+> 代码生成工具（protoc-gen-go、migrate、buf@v1.63.0、wire）不需要手工安装，由 `task install-tools` 统一安装。
 
 ---
 
@@ -52,8 +52,11 @@ TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/tor
 # Redis（本仓库 .env.example 中只有 password，addr 走 configs/config.yaml 的 data.redis.addr）
 TORCHWOOD_DATA_REDIS_PASSWORD=
 
-# JWT / Session
-TORCHWOOD_SECURITY_JWT_SECRET=change-me-in-production
+# JWT / Session（≥32 字符，且不得包含弱子串，否则拒绝启动）
+TORCHWOOD_SECURITY_JWT_SECRET=dev-only-0123456789abcdef-0123456789abcdef
+
+# Console 首次引导令牌（未设置时注册第一个管理员被拒绝）
+TORCHWOOD_SECURITY_SETUP_TOKEN=dev-setup-0123456789abcdef0123456789abcdef
 
 # Object Storage (MinIO example)
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
@@ -75,7 +78,7 @@ TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:54
 cp .env.example .env
 ```
 
-> 建议在 `.env` 中修改 `TORCHWOOD_SECURITY_JWT_SECRET`（生产环境必须替换）。
+> 建议在 `.env` 中修改 `TORCHWOOD_SECURITY_JWT_SECRET`（生产环境必须替换为强随机值）并生成 `TORCHWOOD_SECURITY_SETUP_TOKEN`（如 `openssl rand -hex 32`）。
 
 ### 步骤 1：启动本地基础设施
 
@@ -106,21 +109,21 @@ task console-install
 ### 步骤 4：生成代码
 
 ```bash
-task generate-all    # = generate-proto（buf generate）+ generate-config（config.proto → go）+ wire-all
+task generate-all    # = generate-proto（buf lint + buf generate）+ generate-config（config.proto → go）+ wire-all
 ```
 
 `generate-all` 依次执行：
 
 | 任务 | 生成内容 |
 |------|----------|
-| `generate-proto` | `genproto/`：gRPC stub、gateway handler、Swagger JSON |
+| `generate-proto` | `buf lint` + `buf generate` → `genproto/`：gRPC stub、gateway handler、Swagger JSON |
 | `generate-config` | `internal/pkg/config/config.pb.go` |
 | `wire-all` | `cmd/server/wire_gen.go` + `cmd/worker/wire_gen.go` |
 
 ### 步骤 5：构建并启动
 
 ```bash
-task build         # 先 console-build，再编译 server 与 worker 到 ./bin/
+task build         # 先 console-build，再编译 server / worker / CLI 到 ./bin/
 ./bin/server.exe   # Windows；Linux/macOS 为 ./bin/server
 ```
 
@@ -133,12 +136,15 @@ task dev-server    # go run ./cmd/server
 ### 步骤 6：首次部署引导（bootstrap）
 
 全新数据库上，浏览器打开 Console 地址 → 登录页会自动切换为「初始化设置」
-表单。注册第一个管理员将自动：
+表单。**前提：必须已配置 `TORCHWOOD_SECURITY_SETUP_TOKEN`**（未配置时注册
+被拒绝，`internal/app/console/setup.go` 的 `SignUp` 直接返回 FailedPrecondition）。
+注册第一个管理员将自动：
 
-- 创建 **owner** 管理员账户（首个管理员固定为超管）；
-- 创建默认项目（id = `default`）与默认 API Key（scope = `all`）；
-- 注册成功后页面**仅展示一次**默认 API Key secret（请立即复制，此后无法
-  再读取），并直接进入 Console（会话为 HttpOnly cookie
+- 创建 **owner** 管理员账户（首个管理员固定为超管，仅当 `admins` 表为空
+  时可用；`POST /v1/console/auth/sign-up` 二次调用返回 `FailedPrecondition`）；
+- 创建默认项目（id = `default`）与默认 API Key（scope = `all`，明文 secret
+  **仅注册响应展示一次**；请立即复制，此后无法再读取）；
+- 注册成功后直接进入 Console（会话为 HttpOnly cookie
   `TORCHWOOD_session_console`，前端不存储 token）。
 
 用该 secret 以 `x-api-key` metadata 调用 Server API 即可（如
@@ -158,9 +164,9 @@ task dev-server    # go run ./cmd/server
 | gRPC（仅回环） | `127.0.0.1:9060` |
 | 健康检查 | `http://127.0.0.1:9080/healthz/liveness`、`/healthz/readiness` |
 
-> **端口说明**：HTTP/API 与 Metrics 端口并非硬编码。HTTP 监听地址由 `configs/config.yaml` 的 `server.http.addr` 决定（默认 `:9080`），Metrics 由 `server.metrics.addr` 决定（默认 `:9040`，配置为空时 Metrics 回退到 `:9100`，见 `internal/infra/server/metrics.go`）。
+> **端口说明**：HTTP/API 与 Metrics 端口并非硬编码。HTTP 监听地址由 `configs/config.yaml` 的 `server.http.addr` 决定（默认 `:9080`），Metrics 由 `server.metrics.addr` 决定（默认 `127.0.0.1:9040`；配置为空时回退到 `127.0.0.1:9040`，见 `internal/infra/server/metrics.go` 的 `NewMetricsServer`）。
 >
-> **注意仓库内遗留的 9099 引用**：README 与部分文件仍沿用旧端口 —— CORS `allow_origins` 写的是 `http://torchwood.local:9099`，`console/vite.config.ts` 的 dev 代理也指向 `http://localhost:9099`，而当前配置模板默认是 `:9080`。若按默认端口运行：
+> **注意仓库内遗留的 9099 引用**：部分文件仍沿用旧端口 —— CORS `allow_origins` 写的是 `http://torchwood.local:9099`，`console/vite.config.ts` 的 dev 代理也指向 `http://localhost:9099`，而当前配置模板默认是 `:9080`。若按默认端口运行：
 > - 直接在浏览器访问 `http://127.0.0.1:9080/console/`（Console 与 API 同源，CORS 不生效）；
 > - 使用 `task console-dev` 时请先把 `console/vite.config.ts` 的代理目标改为 `http://localhost:9080`；
 > - 若坚持使用 `http://torchwood.local:9099`，需修改本地 `configs/config.yaml` 的 `server.http.addr` 与 `allow_origins`，并把 `torchwood.local` 在 hosts 中解析到 127.0.0.1。
@@ -171,15 +177,15 @@ task dev-server    # go run ./cmd/server
 
 | 任务 | 命令 | 用途 |
 |------|------|------|
-| `install-tools` | `go install protoc-gen-go / migrate / buf / wire` | 安装代码生成与迁移工具（首次执行） |
+| `install-tools` | `go install protoc-gen-go / migrate / buf@v1.63.0 / wire` | 安装代码生成与迁移工具（首次执行） |
 | `up` | `docker compose up -d`（docker/local） | 启动 Postgres/Redis/MinIO |
 | `down` | `docker compose down` | 停止基础设施（保留数据卷） |
 | `clean` | `docker compose down -v` | 停止并**删除数据卷**（数据全清） |
-| `migrate` | `migrate -path ./db/migrations up` | 执行 SQL 迁移 |
-| `generate-proto` | `buf generate` | 生成 gRPC / gateway / Swagger 代码 |
+| `migrate` | `migrate -path ./db/migrations -database <DSN> up` | 执行 SQL 迁移（DSN 优先取 `TORCHWOOD_DATA_DATABASE_SOURCE`） |
+| `generate-proto` | `buf lint` + `buf generate` | 生成 gRPC / gateway / Swagger 代码 |
 | `generate-config` | `protoc config.proto` | 生成 Go 配置代码 |
-| `wire-server` | `go run wire ./cmd/server` | 重新生成 server 的 Wire 注入代码 |
-| `wire-worker` | `go run wire ./cmd/worker` | 重新生成 worker 的 Wire 注入代码 |
+| `wire-server` | `go run github.com/google/wire/cmd/wire`（cmd/server） | 重新生成 server 的 Wire 注入代码 |
+| `wire-worker` | `go run github.com/google/wire/cmd/wire`（cmd/worker） | 重新生成 worker 的 Wire 注入代码 |
 | `wire-all` | 上面两个 | 重新生成全部 Wire 代码 |
 | `generate-all` | 上述三个生成任务 | 一键生成 proto + config + wire |
 | `console-install` | `pnpm install`（console/） | 安装 Console 依赖 |
@@ -187,15 +193,16 @@ task dev-server    # go run ./cmd/server
 | `console-dev` | `pnpm run dev`（console/） | 启动 Vite dev server（代理 `/v1` 到本地 Go server） |
 | `dev-server` | `go run ./cmd/server` | 开发模式启动服务器 |
 | `worker` | `go run ./cmd/worker` | 启动 Worker 进程 |
-| `build` | `console-build` + `go build ./cmd/server ./cmd/worker` | 构建完整二进制到 `./bin/`（含 Console embed） |
-| `test` | `go test -v ./... -cover` | 运行全部测试（含集成测试，自动从 `.env` 加载测试 DSN） |
+| `build` | `console-build` + `go build` server / worker / CLI | 构建三个二进制到 `./bin/`（含 Console embed） |
+| `test` | `test-sdk-go` + `test-sdk-ts` + `go test -v ./... -cover` | 运行全部测试（SDK 测试 + 集成测试，自动从 `.env` 加载测试 DSN） |
 | `lint-go` | `go vet ./...` + `gofmt -l .` | Go 静态检查与格式检查 |
+| `lint-sdk-go` | `go vet ./...` + `gofmt -l .`（sdk/go） | Go SDK 检查 |
 | `lint-console` | `pnpm lint`（console/） | Console lint |
-| `lint` | 上面两个 | 全量 lint |
+| `lint` | lint-go + lint-sdk-go + lint-console | 全量 lint |
 | `build-docker` | `docker build` | 构建 `torchwood:<version>-<git>-<ts>` 镜像 |
 | `sdk-install` | `npm install`（sdk/typescript + demo） | 安装 TypeScript SDK 依赖 |
 | `sdk-build` | `npm run build`（sdk/typescript） | 构建 SDK |
-| `sdk-demo` | `npm run dev`（sdk/demo） | 启动 SDK demo（`http://localhost:5174`） |
+| `sdk-demo` | `npm run dev`（sdk/demo，自动先 `sdk-build`） | 启动 SDK demo（`http://localhost:5174`） |
 
 ---
 
@@ -226,7 +233,8 @@ task build           # 重新编译 Go 二进制
 
 ### 登录/API Key 鉴权失败
 
-- 检查 `TORCHWOOD_SECURITY_JWT_SECRET` 是否已设置（.env）；
+- 检查 `TORCHWOOD_SECURITY_JWT_SECRET` 是否已设置（.env，且 ≥32 字符、不含弱子串）；
+- 首次引导失败：检查 `TORCHWOOD_SECURITY_SETUP_TOKEN` 是否已配置；
 - API Key 需带 `x-api-key` header（或 `Authorization: Bearer`）；访问多项目数据时，API Key 指定目标项目需带 `X-Torchwood-Project` header；
 - API Key 以 `keys` 角色参与 `_perms` 文档权限，不默认绕过文档级权限。
 
@@ -296,4 +304,8 @@ torchwood
 | `--timeout` | `TORCHWOOD_CLI_TIMEOUT` | `30s` | 单次调用超时 |
 | `--output` | `TORCHWOOD_CLI_OUTPUT` | `json` | 输出格式（MVP 仅 json） |
 
-`rpc` 命令的方法注册表（`cmd/client/registry.go`）覆盖 `proto/server/v1` 全部方法（除 `APIKeysService`），新增 Server API 方法需同步登记并跑 `go test ./cmd/client/...` 校验。完整命令树见 `torchwood --help`。
+> **CLI 如何覆盖 Server API 方法**：`rpc` 逃生舱与全部具名命令最终都走
+> `sdk/go/server` 的 `InvokeJSON`（按 full method name 从
+> `protoregistry.GlobalFiles` 动态分发），**新增 Server API RPC 无需在 CLI
+> 登记**；`cmd/client/import_guard_test.go` 兜底禁止 CLI 源码直接 import
+> genproto/grpc。完整命令树见 `torchwood --help`。

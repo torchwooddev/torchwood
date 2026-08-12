@@ -76,7 +76,7 @@ UnaryAuthMiddleware(ctx, req)
   └─ contexts.WithPrincipal(ctx, principal) → handler
 ```
 
-**Admin console session 指定项目**：仅针对 `ActorKind == Admin`，当请求带 `X-Torchwood-Project` header 时把该值写入 `principal.ProjectID`，随后 `ValidateAdminProjectAccess` 校验此管理员是否有权访问该项目（owner/admin 平台级豁免，`internal/infra/auth/validator.go:268`）。这也是 console 多项目访问的载体。
+**Admin console session 指定项目**：仅针对 `ActorKind == Admin`，当请求带 `X-Torchwood-Project` header 时把该值写入 `principal.ProjectID`，随后 `ValidateAdminProjectAccess` 校验此管理员是否有权访问该项目（owner/admin 平台级豁免，`internal/infra/auth/validator.go`）。这也是 console 多项目访问的载体。
 
 ### 2.2 Validator
 
@@ -109,13 +109,13 @@ UnaryAuthMiddleware(ctx, req)
 | 刷新 | `POST /v1/console/auth/refresh`；`refresh_token` 为空时从 refresh cookie 读取（cookie-only 浏览器流，`refreshTokenFromCookie`） |
 | 登出 | `Max-Age=0` 清除两个 cookie，并撤销该 admin 此前签发的全部 token（`RevokeBefore`） |
 
-刷新令牌采用 **rotation + 重用检测**：`RefreshToken` 通过 `RefreshRotationStore.Rotate` 校验 `jti`，旧 refresh token 被再次使用 → `RotateMismatch` → 撤销该 admin 全部 token 并返回 Unauthenticated（`internal/app/console/auth.go:93`）。Console admin 的 access/refresh 均用 `admin-jwt` 派生密钥签发（HS256）。
+刷新令牌采用 **rotation + 重用检测**：`RefreshToken` 通过 `RefreshRotationStore.Rotate` 校验 `jti`，旧 refresh token 被再次使用 → `RotateMismatch` → 撤销该 admin 全部 token 并返回 Unauthenticated（`internal/app/console/auth.go`）。Console admin 的 access/refresh 均用 `admin-jwt` 派生密钥签发（HS256）。
 
 ### 3.2 End-user session cookie
 
 - 浏览器端 Client API 可用 `TORCHWOOD_session_<projectID>` cookie 认证。
 - 另一种形式是**不透明 session cookie**：`SessionCookieCodec.Sign` 生成 `base64url(projectID:sessionID):hmac-sha256`（密钥由 `jwt.secret` 经 `PurposeSessionCookie` 派生，`internal/infra/auth/session_cookie.go`）；验证时先验签名，再查 `sessions` 文档确认存在、未过期、`user_id` 匹配。
-- refresh token 换新、重用即删会话：`POST /v1/account/refresh` 在 `RotateMismatch` 时直接删除该 sessions 文档，使该会话全部 token 失效（`internal/app/client/account.go:324`）。
+- refresh token 换新、重用即删会话：`POST /v1/account/refresh` 在 `RotateMismatch` 时直接删除该 sessions 文档，使该会话全部 token 失效（`internal/app/client/account.go`）。
 
 ---
 
@@ -153,7 +153,7 @@ UnaryAuthMiddleware(ctx, req)
 
 ### 4.3 API Key 以 keys 角色参与 _perms（不默认 bypass）
 
-- 校验成功后 Principal 的 `Roles = ["keys"]`（`validator.go:112`）；
+- 校验成功后 Principal 的 `Roles = ["keys"]`（`internal/infra/auth/validator.go` 的 `validateAPIKey`）；
 - 动态文档层把 `keys` 视为与 `users`、`user:{id}` 并列的角色参与 `_perms` 判定，**不默认绕过文档权限**：
   - `ExpandPermissionRoles` 只在调用方持 `keys` 角色时注入 `keys`（`postgres_permissions.go` / `internal/domain/databases/`）；
   - Server API 读写系统/用户文档时，文档 `_perms` 上需显式授予 `read:keys` / `write:keys` 等才可访问；

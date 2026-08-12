@@ -3,7 +3,7 @@
 > 本文说明测试分层、集成测试数据库约定、CI 流水线、Lint 与质量观测能力。
 > 目标读者：所有提交代码的开发者。
 > 关联：`AGENTS.md`、`docs/implementation-health-observability.md`（健康/日志/慢查询实现细节）。
-> 修订记录：2026-08-09 初版（testutil、CI、lint、可观测性按代码核实）。
+> 修订记录：2026-08-09 初版（testutil、CI、lint、可观测性按代码核实）；2026-08-12 更新 CI 步骤、test/lint 任务组成（按 `.github/workflows/ci.yml` 与 `Taskfile.yml` 核实）。
 
 ---
 
@@ -92,13 +92,16 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 
 ## 3. 直接 `go test` 会失败——用 `task test`
 
-`Taskfile.yml`：
+`Taskfile.yml` 中 `test` 任务带两个依赖并加载 `.env`：
 
 ```yaml
 version: '3'
 dotenv: ['.env']        # 所有 task 自动加载根目录 .env
 
 test:
+  deps:
+    - test-sdk-go       # sdk/go: go test -v ./... -cover
+    - test-sdk-ts       # sdk/typescript: npm ci && npm run test
   dir: '{{.USER_WORKING_DIR}}'
   cmds:
     - go test -v ./... -cover
@@ -122,12 +125,14 @@ test:
 
 ### 4.1 backend job（lint + test + build）
 
-- 环境：`ubuntu-latest`；services 起 `postgres:18-alpine`（`torchwood:torchwood`，暴露 5432）；
+- 环境：`ubuntu-latest`；services 起 `postgres:18-alpine`（`torchwood:torchwood`，暴露 5432）与
+  `minio/minio:latest`（`minioadmin:minioadmin`，暴露 9000）；
 - 环境变量：
 
 ```yaml
 TORCHWOOD_TEST_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/TORCHWOOD_test?sslmode=disable
 TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/postgres?sslmode=disable
+TORCHWOOD_TEST_MINIO_ENDPOINT: http://localhost:9000
 TORCHWOOD_RUN_DOCKER_TESTS: "1"
 ```
 
@@ -135,11 +140,18 @@ TORCHWOOD_RUN_DOCKER_TESTS: "1"
   1. checkout（actions/checkout@v4）；
   2. setup-go（`go-version-file: go.mod`，带缓存）；
   3. arduino/setup-task@v2（version 3.x）；
-  4. 预拉函数运行时镜像（`node:18-alpine`、`python:3.11-alpine`，供 Functions 集成测试用）；
-  5. 格式检查：`test -z "$(gofmt -l .)"`；
-  6. 静态检查：`go vet ./...`；
-  7. 测试：`go test ./...`（单元 + 集成，含 documentdb/app 集成测试）；
-  8. 构建：`task build`（先 console-build 再 go build，验证 embed 链路）。
+  4. buf-setup-action@v1（v1.65.0）→ **Buf lint**（`buf lint`）；
+  5. 预拉函数运行时基础镜像（`node:18-alpine`、`python:3.11-alpine`，供 Functions 集成测试用）；
+  6. 格式检查：`test -z "$(gofmt -l .)"`；
+  7. **Prepare console embed stub**：`mkdir -p console/dist && touch console/dist/index.html`
+     （保证 `go vet` / `go test` 阶段 `console/embed.go` 可编译）；
+  8. 静态检查：`go vet ./...`；
+  9. 测试：`go test ./...`（单元 + 集成，含 documentdb/app 集成测试）；
+  10. **SDK Go tests**（独立 module）：`working-directory: sdk/go` 下 `go test ./...`；
+  11. pnpm/action-setup（11.20.0）+ setup-node（22）；
+  12. **TS SDK test**：`working-directory: sdk/typescript` 下 `npm ci && npm run test`；
+  13. **SDK demo build**：`task sdk-demo-build`；
+  14. 构建：`task build`（先 console-build 再 go build server/worker/CLI，验证 embed 链路）。
 
 ### 4.2 frontend job（lint + build）
 
@@ -152,9 +164,10 @@ TORCHWOOD_RUN_DOCKER_TESTS: "1"
 
 | 命令 | 内容 |
 |------|------|
-| `task lint-go` | `go vet ./...` + `test -z "$(gofmt -l .)"`（gofmt 必须零差异，Windows 下 Taskfile 用 `-l .`） |
+| `task lint-go` | `go vet ./...` + `test -z "$(gofmt -l .)"`（gofmt 必须零差异） |
+| `task lint-sdk-go` | `sdk/go` 内 `go vet ./...` + `gofmt -l .` |
 | `task lint-console` | `pnpm lint`（eslint，`console/eslint.config.js`） |
-| `task lint` | 依次执行 lint-go + lint-console |
+| `task lint` | 依次执行 lint-go + lint-sdk-go + lint-console |
 
 提交前自检：`task lint && task test`（或至少 `task lint` + `go build ./...`）。
 
@@ -212,8 +225,8 @@ slow query  operation=SELECT query=... duration=812ms error=
 
 ```bash
 task up            # 启动本地 Postgres/Redis/MinIO
-task test          # 单元 + 集成（自动加载 .env）
-task lint          # go vet + gofmt + eslint
+task test          # SDK 测试 + 单元 + 集成（自动加载 .env）
+task lint          # go vet + gofmt + SDK go vet + eslint
 task build         # console-build + go build（ldflags 注入版本）
 ```
 

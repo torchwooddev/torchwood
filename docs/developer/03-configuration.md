@@ -1,7 +1,8 @@
 # Torchwood 配置体系
 
-> 本文描述 Torchwood 的**配置单一入口**：`config.proto` 定义 schema、`bind.go` 负责环境变量绑定、`config.yaml.template` 与 `.env` 的组合方式，以及若干关键配置项（可信代理、Console 会话 cookie、测试 DSN）。
+> 本文描述 Torchwood 的**配置单一入口**：`config.proto` 定义 schema、`bind.go` 负责环境变量绑定、`config.yaml.template` 与 `.env` 的组合方式，以及若干关键配置项（setup token、可信代理、Console 会话 cookie、测试 DSN）。
 > 相关代码：`internal/pkg/config/config.proto`、`internal/pkg/config/bind.go`、`cmd/server/main.go`、`cmd/worker/main.go`、`configs/config.yaml.template`、`.env.example`。
+> 最新更新：2026-08-12
 
 ---
 
@@ -14,7 +15,7 @@
 | 分组 | 对应 message | 说明 |
 |------|-------------|------|
 | `server` | `Server` | 监听与超时：`grpc`、`http`、`metrics` 三个子块 |
-| `security` | `Security` | JWT（secret / access_ttl / refresh_ttl）、API Key header、可信代理网段 |
+| `security` | `Security` | JWT（secret / access_ttl / refresh_ttl）、API Key header、setup token、会话上限、可信代理网段 |
 | `data` | `Data` | `database`（PG DSN / 连接池 / 慢查询阈值）、`redis`（addr / password / db） |
 | `storage` | `Storage` | 对象存储 provider（`s3` / `local`） |
 | `functions` | `Functions` | 函数执行器（`docker` host / network / registry） |
@@ -34,16 +35,18 @@
 | `server.http.timeout` | string | HTTP 超时（默认 `60s`） |
 | `server.http.public_url` | string | 公共 base URL，用于构造 OAuth 回调地址；同时决定 Console 会话 cookie 是否带 `Secure` 标记 |
 | `server.http.cors.*` | message | CORS：`allow_origins`、`allow_methods`、`allow_headers`、`expose_headers`、`allow_credentials`、`max_age`（`allow_credentials=true` 时 `*` 会被拒绝） |
-| `server.metrics.addr` | string | Metrics（Prometheus）监听地址（默认 `:9040`） |
+| `server.metrics.addr` | string | Metrics（Prometheus）监听地址（默认 `127.0.0.1:9040`；留空回退同值，`internal/infra/server/metrics.go` 的 `NewMetricsServer`） |
 
 **security**
 
 | 路径 | 类型 | 说明 |
 |------|------|------|
-| `security.jwt.secret` | string | JWT 主密钥；**必填**（启动校验，见 §4） |
+| `security.jwt.secret` | string | JWT 主密钥；**必填**（启动校验，见 §4；≥32 字符且不得含弱子串） |
 | `security.jwt.access_ttl` | string | access token 有效期（默认 `15m`） |
 | `security.jwt.refresh_ttl` | string | refresh token 有效期（默认 `7d`） |
 | `security.api_key.header` | string | API Key 请求头名（默认 `x-api-key`） |
+| `security.setup_token` | string | Console 首次引导令牌；**未配置时首个管理员注册被拒绝**（`internal/app/console/setup.go` 的 `Setup.SignUp`） |
+| `security.sessions.max_per_user` | int32 | 单用户最大并发会话数（end-user sessions）；未配置/0 = 默认 50；-1 = 不限 |
 | `security.trusted_proxies` | repeated string | 可信代理 CIDR 列表（见 §5.1） |
 
 **data**
@@ -51,7 +54,7 @@
 | 路径 | 类型 | 说明 |
 |------|------|------|
 | `data.database.source` | string | PostgreSQL DSN；**必填**（worker 启动校验） |
-| `data.database.debug` | bool | 打印 SQL 调试日志（默认模板 `true`） |
+| `data.database.debug` | bool | 打印全量 SQL 调试日志（模板默认 `false`） |
 | `data.database.slow_query_threshold` | string | 慢查询日志阈值，如 `500ms`；空串 = 默认 500ms，`"0"` = 禁用 |
 | `data.database.pool.*` | message | 连接池：`max_idle_conns`、`max_open_conns`、`conn_max_lifetime`、`conn_max_idle_time` |
 | `data.redis.addr` / `password` / `db` | - | Redis 连接（本地模板默认 `127.0.0.1:6379`、db 0） |
@@ -95,7 +98,7 @@
 
 1. **设置搜索路径**：`configureViper` 先调用 `lynx.DefaultBindConfigFunc`，再把 `extraPaths`（默认 `./configs`）加入搜索路径（`c.AddSearchPath`）。
 2. **环境变量前缀**：`c.SetEnvPrefix(EnvPrefix)`（`EnvPrefix = "TORCHWOOD"`），随后 `c.AutomaticEnv()`。
-3. **逐叶子显式绑定**：`configKeys()` 用反射遍历 `AppConfig` 的所有**叶子 json 键路径**（由 proto 生成的 json tag 推导），对每个键调用 `c.BindEnv(key, envNameForKey(key))`——即显式绑定字面量环境变量名，避免依赖 viper 的 KeyReplacer（lynx v1.0.0 不再暴露该能力），语义不变。
+3. **逐叶子显式绑定**：`configKeys()` 用反射遍历 `AppConfig` 的所有**叶子 json 键路径**（由 proto 生成的 json tag 推导），对每个键调用 `c.BindEnv(key, envNameForKey(key))`——即显式绑定字面量环境变量名，避免依赖 viper 的 KeyReplacer（lynx 不再暴露该能力），语义不变。
 4. **解码**：`unmarshalConfig` 用 mapstructure 以 `TagName = "json"` 逐叶子取值组装嵌套 map 后解码到 `AppConfig`；`WeaklyTypedInput: true` 允许宽松类型；`DecodeHook: StringToSliceHookFunc(",")` 让**逗号分隔的环境变量能解码为 repeated 字段**（如 `trusted_proxies`）。
 
 > 选记（`envBoundKeys` 变量仅供说明模板里出现过的关键敏感键，实际绑定以 `configKeys()` 反射结果为全集，即**所有叶子键都可被环境变量覆盖**）。
@@ -124,7 +127,9 @@
 
 | 配置键（点号路径） | 环境变量 | 来源/说明 |
 |-------------------|----------|-----------|
-| `security.jwt.secret` | `TORCHWOOD_SECURITY_JWT_SECRET` | JWT 主密钥（必填） |
+| `security.jwt.secret` | `TORCHWOOD_SECURITY_JWT_SECRET` | JWT 主密钥（必填，≥32 字符且不含弱子串） |
+| `security.setup_token` | `TORCHWOOD_SECURITY_SETUP_TOKEN` | Console 首次引导令牌（未配置拒绝注册首个管理员） |
+| `security.sessions.max_per_user` | `TORCHWOOD_SECURITY_SESSIONS_MAX_PER_USER` | 单用户最大并发会话数 |
 | `security.trusted_proxies` | `TORCHWOOD_SECURITY_TRUSTED_PROXIES` | 逗号分隔 CIDR 列表 |
 | `data.database.source` | `TORCHWOOD_DATA_DATABASE_SOURCE` | PG DSN（必填） |
 | `data.database.slow_query_threshold` | `TORCHWOOD_DATA_DATABASE_SLOW_QUERY_THRESHOLD` | 慢查询阈值 |
@@ -156,7 +161,7 @@
 | `configs/config.yaml` | 本地实际配置（**.gitignore**，不入库），随时可从模板复制 |
 | `.env` / `.env.example` | **环境变量**载体：`.env.example` 是示例与注释文档，`.env` 是本机实际值（`.gitignore`）；敏感信息一律走环境变量，不进 `config.yaml` |
 
-原则：**模板保留默认值，敏感信息（JWT secret、数据库密码、对象存储凭据、SMTP/Twilio 凭据）必须通过环境变量注入**，避免把密钥写进版本库。
+原则：**模板保留默认值，敏感信息（JWT secret、setup token、数据库密码、对象存储凭据、SMTP/Twilio 凭据）必须通过环境变量注入**，避免把密钥写进版本库。
 
 ### 4.2 cmd/server/main.go 加载顺序
 
@@ -166,7 +171,7 @@
 2. `lynx.NewRunner` 装配服务，注册 flag：`--config-dir`（默认 `./configs`）与 `--log-level`（默认 `info`）；
 3. `lynx.WithBindConfigFunc(config.NewBindConfigFunc())` 把键绑定到 viper/lynx 配置源（含环境变量覆盖）；
 4. Wire 构造阶段 `NewAppConfig` 调用 `config.UnmarshalConfig(app.Config(), &c)` 解码出 `*config.AppConfig`；
-5. **启动校验**：`cmd/server/provides.go:43` 若 `security.jwt.secret` 为空直接报错退出；`cmd/worker/provides.go:38` 若 `data.database.source` 为空直接报错退出。
+5. **启动校验**：`cmd/server/provides.go` 的 `NewAppConfig` 校验 `security.jwt.secret` 非空、≥32 字符且不含已知弱子串，否则直接报错退出；`cmd/worker/provides.go` 的 `NewAppConfig` 校验 `data.database.source` 非空，否则直接报错退出。
 
 ```
 cmd/server/main.go
@@ -179,7 +184,7 @@ cmd/server/main.go
   wireBootstrap → NewAppConfig
   │  config.UnmarshalConfig   # 4. 解码 + 环境变量覆盖
   ▼
-  校验 security.jwt.secret 非空   # 5. 失败即退出
+  校验 security.jwt.secret 非空/长度/弱子串   # 5. 失败即退出
 ```
 
 `cmd/worker/main.go` 也通过 `godotenv.Load()` 加载 `.env`。
@@ -188,7 +193,13 @@ cmd/server/main.go
 
 ## 5. 特殊配置项
 
-### 5.1 security.trusted_proxies（反向代理恢复真实 IP）
+### 5.1 security.setup_token（首次引导令牌）
+
+- 语义：Console「初始化设置」注册**第一个**管理员的门禁令牌。`Setup.SignUp` 先校验：token 未配置（空）→ 直接 `FailedPrecondition`；请求令牌与配置不一致 → `PermissionDenied`（`internal/app/console/setup.go` 的 `SignUp` / `setupTokenEqual`，常量时间比较）。
+- **默认空 = 引导入口关闭**，防无凭据抢占首个 owner。
+- 部署时生成强随机值：`openssl rand -hex 32`，经 `TORCHWOOD_SECURITY_SETUP_TOKEN` 注入。
+
+### 5.2 security.trusted_proxies（反向代理恢复真实 IP）
 
 - 语义：声明可信代理的 CIDR 网段（也接受裸 IP，按 `/32`、`/128` 处理）。**仅当 gRPC 直连 peer 命中这些网段时，才采纳其转发的 `X-Forwarded-For` 首跳或 `X-Real-Ip`**；否则一律使用 peer 自身地址（`pkg/grpc/interceptor/trusted_proxy.go`）。
 - **默认空列表 = 不信任任何代理**，此时 XFF/X-Real-Ip 一律忽略，防止客户端伪造来源绕过 IP 限流与审计。
@@ -200,7 +211,7 @@ security:
 # 环境变量：TORCHWOOD_SECURITY_TRUSTED_PROXIES=127.0.0.1/32,10.0.0.0/8
 ```
 
-### 5.2 Console 会话 cookie（TORCHWOOD_session_console / TORCHWOOD_console_refresh）
+### 5.3 Console 会话 cookie（TORCHWOOD_session_console / TORCHWOOD_console_refresh）
 
 见 `internal/api/consolegrpc/cookies.go` 与 `internal/app/console/auth.go`：
 
@@ -210,7 +221,7 @@ security:
 - 前端**不使用 localStorage 存 token**；`RefreshTokenRequest.refresh_token` 为空时走 cookie-only 浏览器流（`refreshTokenFromCookie` 从 cookie 读取，`internal/api/consolegrpc/auth.go`）；
 - `SignOut` 时以 `Max-Age=0`（秒数 -1）清除同名 cookie（Path 需与签发一致）。
 
-### 5.3 测试环境变量
+### 5.4 测试环境变量
 
 `TORCHWOOD_TEST_DATABASE_SOURCE` 与 `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` **不属于 `AppConfig` schema、不经 bind.go 绑定**，由 `internal/testutil/db.go` 用 `os.Getenv` 直接读取：
 
@@ -230,6 +241,7 @@ security:
 - `internal/pkg/config/bind.go`：环境变量绑定与解码。
 - `cmd/server/provides.go` / `cmd/worker/provides.go`：`NewAppConfig` 启动校验。
 - `configs/config.yaml.template`、`.env.example`：配置模板与环境变量示例。
+- `internal/app/console/setup.go`：setup token 校验与首次引导。
 - `pkg/grpc/interceptor/trusted_proxy.go`：可信代理解析与真实 IP 恢复。
 - `internal/api/consolegrpc/cookies.go`、`internal/app/console/auth.go`：Console 会话 cookie。
 - `internal/testutil/db.go`：测试 DSN 读取。
