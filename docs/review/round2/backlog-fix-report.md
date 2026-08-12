@@ -7,7 +7,7 @@
 > 仓库基线 `941ba14`；所有改动 commit 于本批次。
 >
 > **本批收尾**（总控分派两个子代理并行：Task 1 = Client API 保留字路由同步迁移，
-> Task 2 = 历史保留字 id 指引修正）：commit 于本批次，见 §3a 与 §6 遗留项 2/3。
+> Task 2 = 历史保留字 id 指引修正）：commit `637a922`，见 §3a 与 §6 遗留项 2/3。
 
 ---
 
@@ -326,5 +326,6 @@ Docker，本地无环境，按约定交 CI。
 | [31604815681](https://github.com/torchwooddev/torchwood/actions/runs/31604815681) | 117f960 | ❌ Backend 失败 | 集成测试以无 principal ctx 直调 ConfirmEmailChange → Unauthenticated（修复：改 authCtx） |
 | [31605239552](https://github.com/torchwooddev/torchwood/actions/runs/31605239552) | 1b36132 | ❌ Backend 失败 | gofmt 检查：replaceAll 引入多余 tab（修复：gofmt -w） |
 | [31605512363](https://github.com/torchwooddev/torchwood/actions/runs/31605512363) | 93f09e3 | ✅ **Backend + Frontend 全绿** | 最终全链路通过 |
+| [31610640773](https://github.com/torchwooddev/torchwood/actions/runs/31610640773) | 637a922 | ✅ **Backend + Frontend 全绿** | 本批收尾（Client API `:count` 迁移 + 历史保留字 id 指引修正），一次通过 |
 
 最终 run 覆盖：buf lint、gofmt、go vet、单元 + 集成测试（真实 PG/Redis/MinIO/Docker，含 B1 staging 全流程与 B3 保留字 id CRUD）、TS SDK test、console embed 构建、server/worker/client 二进制构建。
