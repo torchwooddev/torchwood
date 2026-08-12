@@ -378,7 +378,9 @@ func (s *AccountService) DeleteFactor(ctx context.Context, req *clientv1.DeleteF
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, p.UserID)
-	if err := s.account.DeleteFactor(ctx, p.ProjectID, p.UserID, req.GetFactorId()); err != nil {
+	// proto 暂无 code 字段（见 F11 契约修复批次）；verified 因子删除需二次验证，
+	// 未携带 code 时 use-case 会以 InvalidArgument 拒绝（fail-closed）。
+	if err := s.account.DeleteFactor(ctx, p.ProjectID, p.UserID, req.GetFactorId(), ""); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
