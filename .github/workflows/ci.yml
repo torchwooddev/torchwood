@@ -57,7 +57,7 @@ jobs:
         with:
           version: 3.x
 
-      - uses: bufbuild/setup-buf@v1
+      - uses: bufbuild/buf-setup-action@v1
         with:
           version: v1.65.0
 
