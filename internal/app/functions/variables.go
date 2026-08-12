@@ -8,10 +8,17 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// secretMask 是 GetVariables 返回的 secret 值掩码（值仅在 SetVariables 可见）。
+const secretMask = "******"
+
 // SetVariables 全量替换函数环境变量（校验键名与总量上限）。
 func (f *Functions) SetVariables(ctx context.Context, projectID, functionID string, vars map[string]string) (map[string]string, error) {
-	if _, err := f.repo.GetFunction(ctx, projectID, functionID); err != nil {
+	fn, err := f.repo.GetFunction(ctx, projectID, functionID)
+	if err != nil {
 		return nil, err
+	}
+	if fn == nil {
+		return nil, status.Error(codes.NotFound, "function not found")
 	}
 	if envSize(vars) > maxEnvBytes {
 		return nil, status.Errorf(codes.InvalidArgument, "environment variables exceed maximum total size of %d bytes", maxEnvBytes)
@@ -28,8 +35,21 @@ func (f *Functions) SetVariables(ctx context.Context, projectID, functionID stri
 }
 
 func (f *Functions) GetVariables(ctx context.Context, projectID, functionID string) (map[string]string, error) {
-	if _, err := f.repo.GetFunction(ctx, projectID, functionID); err != nil {
+	fn, err := f.repo.GetFunction(ctx, projectID, functionID)
+	if err != nil {
 		return nil, err
 	}
-	return f.repo.GetVariables(ctx, projectID, functionID)
+	if fn == nil {
+		return nil, status.Error(codes.NotFound, "function not found")
+	}
+	vars, err := f.repo.GetVariables(ctx, projectID, functionID)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range vars {
+		if v != "" {
+			vars[k] = secretMask
+		}
+	}
+	return vars, nil
 }

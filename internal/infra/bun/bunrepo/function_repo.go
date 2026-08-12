@@ -77,9 +77,10 @@ func (r *functionRepo) CreateDeployment(ctx context.Context, d *domainfunctions.
 	return err
 }
 
-func (r *functionRepo) GetDeployment(ctx context.Context, functionID, deploymentID string) (*domainfunctions.Deployment, error) {
+func (r *functionRepo) GetDeployment(ctx context.Context, projectID, functionID, deploymentID string) (*domainfunctions.Deployment, error) {
 	m := new(model.FunctionDeployment)
 	err := r.db.NewSelect().Model(m).
+		Where("fd.project_id = ?", projectID).
 		Where("fd.function_id = ?", functionID).
 		Where("fd.id = ?", deploymentID).
 		Scan(ctx)
@@ -115,8 +116,9 @@ func (r *functionRepo) UpdateDeployment(ctx context.Context, d *domainfunctions.
 	return err
 }
 
-func (r *functionRepo) DeleteDeployment(ctx context.Context, functionID, deploymentID string) error {
+func (r *functionRepo) DeleteDeployment(ctx context.Context, projectID, functionID, deploymentID string) error {
 	_, err := r.db.NewDelete().Model((*model.FunctionDeployment)(nil)).
+		Where("project_id = ?", projectID).
 		Where("function_id = ?", functionID).
 		Where("id = ?", deploymentID).
 		Exec(ctx)
@@ -220,8 +222,8 @@ func (r *functionRepo) RecoverOrphanExecutions(ctx context.Context, staleAfter t
 		Set("status = ?", domainfunctions.ExecutionStatusFailed).
 		Set("error = ?", "worker restarted").
 		Set("updated_at = NOW()").
+		// queued 任务仍在队列中（Redis 持久化），对账仅处理 building/running。
 		Where("status IN (?)", bun.In([]string{
-			domainfunctions.ExecutionStatusQueued,
 			domainfunctions.ExecutionStatusBuilding,
 			domainfunctions.ExecutionStatusRunning,
 		})).

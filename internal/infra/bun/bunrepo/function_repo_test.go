@@ -112,7 +112,7 @@ func TestFunctionRepository_CRUDAndRelations(t *testing.T) {
 	require.Equal(t, domainfunctions.ExecutionStatusQueued, gotRec.Status)
 
 	// 删除部署 → 执行记录级联删除。
-	require.NoError(t, repo.DeleteDeployment(ctx, fn.ID, dep.ID))
+	require.NoError(t, repo.DeleteDeployment(ctx, projectID, fn.ID, dep.ID))
 	gotRec, err = repo.GetExecution(ctx, projectID, fn.ID, "exe_1")
 	require.NoError(t, err)
 	require.Nil(t, gotRec, "FK 级联删除 execution")

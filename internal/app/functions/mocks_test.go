@@ -78,11 +78,11 @@ func (r *mockRepo) CreateDeployment(_ context.Context, d *domainfunctions.Deploy
 	return nil
 }
 
-func (r *mockRepo) GetDeployment(_ context.Context, functionID, deploymentID string) (*domainfunctions.Deployment, error) {
+func (r *mockRepo) GetDeployment(_ context.Context, projectID, functionID, deploymentID string) (*domainfunctions.Deployment, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	d := r.deployments[deploymentID]
-	if d == nil || d.FunctionID != functionID {
+	if d == nil || d.FunctionID != functionID || d.ProjectID != projectID {
 		return nil, nil
 	}
 	return d, nil
@@ -107,9 +107,13 @@ func (r *mockRepo) UpdateDeployment(_ context.Context, d *domainfunctions.Deploy
 	return nil
 }
 
-func (r *mockRepo) DeleteDeployment(_ context.Context, functionID, deploymentID string) error {
+func (r *mockRepo) DeleteDeployment(_ context.Context, projectID, functionID, deploymentID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	d := r.deployments[deploymentID]
+	if d != nil && d.FunctionID != functionID {
+		return nil
+	}
 	delete(r.deployments, deploymentID)
 	return nil
 }

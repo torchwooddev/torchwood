@@ -3,9 +3,11 @@ package functions
 import (
 	"archive/tar"
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -34,6 +36,8 @@ const (
 	maxZipTotalBytes    = 200 << 20 // 总解压 ≤ 200 MiB
 	maxBuildLogBytes    = 64 << 10  // 构建日志截断 64KB
 	maxContainerOutSize = 1 << 20   // stdout/stderr 缓冲上限（结果在 app 层再截断 64KB）
+	// maxExecEnvBudgetBytes 是 data + env 合并预算（execve 32KiB 单参数硬限制）。
+	maxExecEnvBudgetBytes = 32 << 10
 )
 
 // specResources 是资源规格 → 容器配额映射（与 app 层 runtimes 表一致，
@@ -54,8 +58,9 @@ type dockerExecutor struct {
 	// initErr 是 client 构造失败的错误（配置错误延迟到首次调用暴露）。
 	initErr error
 
-	netOnce sync.Once
-	netErr  error
+	// netMu/netReady 保护网络就绪状态：仅缓存成功，失败不缓存（可重试）。
+	netMu    sync.Mutex
+	netReady bool
 }
 
 // NewDockerExecutor creates a Docker-based functions executor.
@@ -87,29 +92,35 @@ func (d *dockerExecutor) imageName(functionID, deploymentID string) string {
 	return fmt.Sprintf("%s/func-%s-%s", registry, functionID, deploymentID)
 }
 
-// ensureNetwork 检查配置的 bridge 网络存在，不存在则创建（幂等）。
+// ensureNetwork 检查配置的 bridge 网络存在，不存在则创建（幂等；失败不缓存）。
 func (d *dockerExecutor) ensureNetwork(ctx context.Context) error {
 	cli, err := d.client()
 	if err != nil {
 		return err
 	}
-	d.netOnce.Do(func() {
-		name := d.cfg.GetFunctions().GetDocker().GetNetwork()
-		if name == "" {
-			return
+	name := d.cfg.GetFunctions().GetDocker().GetNetwork()
+	if name == "" {
+		return nil
+	}
+	d.netMu.Lock()
+	defer d.netMu.Unlock()
+	if d.netReady {
+		return nil
+	}
+	if _, err := cli.NetworkInspect(ctx, name, network.InspectOptions{}); err == nil {
+		d.netReady = true
+		return nil
+	}
+	if _, createErr := cli.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge"}); createErr != nil {
+		// 创建失败但网络可能已被并发创建。
+		if _, inspectErr := cli.NetworkInspect(ctx, name, network.InspectOptions{}); inspectErr == nil {
+			d.netReady = true
+			return nil
 		}
-		if _, err := cli.NetworkInspect(ctx, name, network.InspectOptions{}); err == nil {
-			return
-		}
-		_, createErr := cli.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge"})
-		if createErr != nil {
-			// 创建失败但网络可能已被并发创建。
-			if _, inspectErr := cli.NetworkInspect(ctx, name, network.InspectOptions{}); inspectErr != nil {
-				d.netErr = fmt.Errorf("ensure network %q: %w", name, createErr)
-			}
-		}
-	})
-	return d.netErr
+		return fmt.Errorf("ensure network %q: %w", name, createErr)
+	}
+	d.netReady = true
+	return nil
 }
 
 // Build 将 zip 代码包解压校验后构建为镜像 {registry}/func-{functionID}-{deploymentID}。
@@ -152,8 +163,12 @@ func (d *dockerExecutor) Build(ctx context.Context, functionID, deploymentID, zi
 		return fmt.Errorf("docker build failed: %s", truncateLog(err.Error()))
 	}
 	defer resp.Body.Close()
-	// 排空构建输出（成功时无保留，失败时日志在 error 中）。
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// 读取构建输出（保留尾部 64KB）并扫描流内 {"error":...} JSON：
+	// BuildKit 模式下构建失败不返回 Go error，只在流末尾携带 error 消息。
+	log, buildErr := readBuildOutput(resp.Body)
+	if buildErr != nil {
+		return buildError(buildErr, log)
+	}
 	return nil
 }
 
@@ -168,6 +183,15 @@ func (d *dockerExecutor) Execute(ctx context.Context, exec functions.Execution) 
 	}
 	if err := d.ensureNetwork(ctx); err != nil {
 		return nil, err
+	}
+
+	// execve 32KiB 单参数硬限制：data + env 合并预算兜底（app 层已校验）。
+	budget := len(exec.Data)
+	for k, v := range exec.Env {
+		budget += len(k) + len(v)
+	}
+	if budget > maxExecEnvBudgetBytes {
+		return nil, status.Errorf(codes.InvalidArgument, "data and environment variables exceed combined maximum of %d bytes", maxExecEnvBudgetBytes)
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, timeoutFromExec(exec))
@@ -325,7 +349,7 @@ func extractZip(zipPath, destDir string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("open zip entry %q: %w", f.Name, err)
 		}
-		dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 		if err != nil {
 			src.Close()
 			return "", fmt.Errorf("write zip entry %q: %w", f.Name, err)
@@ -444,6 +468,55 @@ func parseResponse(stdout string) string {
 	return ""
 }
 
+// readBuildOutput 逐行读取 docker build 输出流，保留尾部 maxBuildLogBytes 字节，
+// 并扫描 `{"error":...}` / `{"errorDetail":{"message":...}}` JSON（BuildKit 失败
+// 消息位于流末尾，不产生 Go error）。返回 (日志尾部, 构建错误)。
+func readBuildOutput(r io.Reader) (string, error) {
+	var log tailBuffer
+	var buildErr error
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 512*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		log.Write(append(line, '\n'))
+		var msg struct {
+			Error       string `json:"error"`
+			ErrorDetail struct {
+				Message string `json:"message"`
+			} `json:"errorDetail"`
+		}
+		if err := json.Unmarshal(line, &msg); err != nil {
+			continue
+		}
+		if msg.Error != "" {
+			buildErr = errors.New(msg.Error)
+			break
+		}
+		if msg.ErrorDetail.Message != "" {
+			buildErr = errors.New(msg.ErrorDetail.Message)
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return log.String(), err
+	}
+	return log.String(), buildErr
+}
+
+// buildError 组合构建失败错误：错误消息在前，日志尾部按总预算 64KB 裁剪在后。
+func buildError(buildErr error, log string) error {
+	msg := truncateLog(buildErr.Error())
+	header := "docker build failed: " + msg + "\nbuild log tail:\n"
+	room := maxBuildLogBytes - len(header)
+	if room < 0 {
+		room = 0
+	}
+	if len(log) > room {
+		log = log[len(log)-room:]
+	}
+	return errors.New(header + log)
+}
+
 func truncateLog(s string) string {
 	if len(s) <= maxBuildLogBytes {
 		return s
@@ -477,3 +550,23 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 }
 
 func (b *limitedBuffer) String() string { return b.buf.String() }
+
+// tailBuffer 仅保留最后 maxBuildLogBytes 字节（构建失败原因通常在输出末尾）。
+type tailBuffer struct {
+	buf []byte
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	b.buf = append(b.buf, p...)
+	if len(b.buf) > maxBuildLogBytes {
+		drop := len(b.buf) - maxBuildLogBytes
+		copy(b.buf, b.buf[drop:])
+		b.buf = b.buf[:maxBuildLogBytes]
+	}
+	return len(p), nil
+}
+
+func (b *tailBuffer) String() string { return string(b.buf) }

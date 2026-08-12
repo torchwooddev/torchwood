@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -19,6 +21,9 @@ const workerConcurrency = 4
 // dequeuePollInterval 是 BRPOP 轮询超时（配合优雅退出，取消后 1s 内返回）。
 const dequeuePollInterval = time.Second
 
+// maxProcessAttempts 是消费瞬时失败的最大重试次数（超限后兜底标 failed）。
+const maxProcessAttempts = 3
+
 // Worker 消费函数异步执行队列（torchwood:queue:functions-executions）。
 type Worker struct {
 	functions *appfunctions.Functions
@@ -29,6 +34,9 @@ type Worker struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	attemptMu sync.Mutex
+	attempts  map[string]int
 }
 
 // NewWorker creates the functions execution queue consumer.
@@ -121,7 +129,55 @@ func (w *Worker) consume(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
+			if errors.Is(err, appfunctions.ErrInvalidQueuePayload) {
+				// 坏消息永久失败：不重试，仅记日志。
+				w.logger.Error("discarding invalid queue payload", "error", err)
+				continue
+			}
 			w.logger.Error("process execution failed", "error", err)
+			// 瞬时失败重抛回队（LPUSH），最多 maxProcessAttempts 次；超限兜底标 failed。
+			if w.requeue(payload) {
+				if qerr := w.queue.Enqueue(ctx, domainshared.QueueFunctionsExecutions, payload); qerr != nil {
+					w.logger.Error("re-enqueue failed", "error", qerr)
+				}
+			} else {
+				w.failPayload(ctx, payload, "worker retries exhausted")
+			}
 		}
+	}
+}
+
+// requeue 记录 payload 的重试次数（进程内存，best-effort）；超过上限返回 false。
+func (w *Worker) requeue(payload []byte) bool {
+	key := string(payload)
+	w.attemptMu.Lock()
+	defer w.attemptMu.Unlock()
+	if w.attempts == nil {
+		w.attempts = make(map[string]int)
+	}
+	w.attempts[key]++
+	if w.attempts[key] > maxProcessAttempts {
+		delete(w.attempts, key)
+		return false
+	}
+	return true
+}
+
+// retryMessage 是 worker 侧解析队列 payload 的最小字段集合（用于兜底标记 failed）。
+type retryMessage struct {
+	ExecutionID string `json:"execution_id"`
+	FunctionID  string `json:"function_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+// failPayload 解析 payload 并兜底标记执行失败（best-effort）。
+func (w *Worker) failPayload(ctx context.Context, payload []byte, reason string) {
+	var m retryMessage
+	if err := json.Unmarshal(payload, &m); err != nil || m.ExecutionID == "" {
+		w.logger.Error("cannot parse payload to mark failed", "error", err, "payload", string(payload))
+		return
+	}
+	if err := w.functions.MarkExecutionFailed(ctx, m.ProjectID, m.FunctionID, m.ExecutionID, reason); err != nil {
+		w.logger.Error("mark execution failed", "execution_id", m.ExecutionID, "error", err)
 	}
 }

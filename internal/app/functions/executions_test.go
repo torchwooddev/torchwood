@@ -140,7 +140,7 @@ func TestCreateExecution_NoReadyDeployment(t *testing.T) {
 	repo := newMockRepo()
 	fn := seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	// 移除 ready 部署。
-	require.NoError(t, repo.DeleteDeployment(context.Background(), fn.ID, "dep_ready"))
+	require.NoError(t, repo.DeleteDeployment(context.Background(), "p1", fn.ID, "dep_ready"))
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 
 	_, err := uc.CreateExecution(context.Background(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
@@ -305,7 +305,7 @@ func TestCreateFunction_EnabledFalsePersists(t *testing.T) {
 func TestProcessExecution_RebuildsWhenDeploymentNotReady(t *testing.T) {
 	repo := newMockRepo()
 	fn := seedReadyFunction(repo, "p1", "fn_1", true, 15)
-	require.NoError(t, repo.DeleteDeployment(context.Background(), fn.ID, "dep_ready"))
+	require.NoError(t, repo.DeleteDeployment(context.Background(), "p1", fn.ID, "dep_ready"))
 	require.NoError(t, repo.CreateDeployment(context.Background(), &domainfunctions.Deployment{
 		ID: "dep_pending", FunctionID: "fn_1", ProjectID: "p1", Status: domainfunctions.DeploymentStatusPending,
 	}))
@@ -323,7 +323,7 @@ func TestProcessExecution_RebuildsWhenDeploymentNotReady(t *testing.T) {
 		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1","data":"{}"}`)))
 	require.NoError(t, err)
 	require.Equal(t, 1, executor.builds, "deployment 非 ready 时补构建")
-	dep, _ := repo.GetDeployment(context.Background(), "fn_1", "dep_pending")
+	dep, _ := repo.GetDeployment(context.Background(), "p1", "fn_1", "dep_pending")
 	require.Equal(t, domainfunctions.DeploymentStatusReady, dep.Status)
 	got, _ := repo.GetExecution(context.Background(), "p1", "fn_1", "e1")
 	require.Equal(t, domainfunctions.ExecutionStatusCompleted, got.Status)

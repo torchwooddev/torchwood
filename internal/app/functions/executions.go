@@ -17,11 +17,16 @@ import (
 
 // 执行限制（§5.3 / §9.6）。
 const (
-	maxExecutionDataBytes = 64 << 10 // data ≤ 64KB（execve 单变量硬上限）
-	maxEnvBytes           = 32 << 10 // 合并 env vars 总量 ≤ 32KB
+	maxExecutionDataBytes = 32 << 10 // data ≤ 32KB（execve 单变量硬限制余量）
+	maxEnvBytes           = 32 << 10 // env vars 总量 ≤ 32KB
 	maxOutputBytes        = 64 << 10 // stdout/stderr/response 截断上限
 	pruneKeepRecent       = 100      // 保留策略：每函数最多保留最近 100 条
+	// workerRebuildTimeout 是 worker 补构建的最长耗时（防挂死的 daemon 卡住消费）。
+	workerRebuildTimeout = 5 * time.Minute
 )
+
+// ErrInvalidQueuePayload 标识无法解析或缺失 ID 的队列消息（worker 不应重试）。
+var ErrInvalidQueuePayload = errors.New("invalid queue payload")
 
 // 执行信号量：同步执行与 worker 共用（§5.3）。
 const (
@@ -82,6 +87,9 @@ func (f *Functions) CreateExecution(ctx context.Context, cmd CreateExecutionComm
 	if envSize(vars) > maxEnvBytes {
 		return nil, status.Errorf(codes.InvalidArgument, "environment variables exceed maximum total size of %d bytes", maxEnvBytes)
 	}
+	if envSize(vars)+len(cmd.Data) > maxEnvBytes {
+		return nil, status.Errorf(codes.InvalidArgument, "data and environment variables exceed combined maximum of %d bytes", maxEnvBytes)
+	}
 
 	if !cmd.Async && fn.TimeoutSeconds > maxSyncTimeoutSeconds {
 		return nil, status.Errorf(codes.InvalidArgument, "timeout_seconds exceeds %d for synchronous execution, use async", maxSyncTimeoutSeconds)
@@ -134,7 +142,7 @@ func (f *Functions) CreateExecution(ctx context.Context, cmd CreateExecutionComm
 // selectDeployment 选定部署：显式指定（必须 ready）或最新 ready。
 func (f *Functions) selectDeployment(ctx context.Context, projectID, functionID, deploymentID string) (*domainfunctions.Deployment, error) {
 	if deploymentID != "" {
-		dep, err := f.repo.GetDeployment(ctx, functionID, deploymentID)
+		dep, err := f.repo.GetDeployment(ctx, projectID, functionID, deploymentID)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +235,7 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 	if fn == nil {
 		return nil
 	}
-	dep, err := f.repo.GetDeployment(ctx, msg.FunctionID, rec.DeploymentID)
+	dep, err := f.repo.GetDeployment(ctx, msg.ProjectID, msg.FunctionID, rec.DeploymentID)
 	if err != nil {
 		return err
 	}
@@ -244,19 +252,22 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 		return err
 	}
 
-	// deployment 非 ready 先补构建。
+	// deployment 非 ready 先补构建（5 分钟超时，防挂死的 daemon 卡住消费）。
 	if dep.Status != domainfunctions.DeploymentStatusReady {
 		rec.Status = domainfunctions.ExecutionStatusBuilding
 		rec.UpdatedAt = time.Now()
 		if err := f.repo.UpdateExecution(ctx, rec); err != nil {
 			return err
 		}
-		if err := f.buildDeployment(ctx, dep, zipPath(msg.ProjectID, msg.FunctionID, dep.ID)); err != nil {
+		buildCtx, cancel := context.WithTimeout(ctx, workerRebuildTimeout)
+		buildErr := f.buildDeployment(buildCtx, dep, zipPath(msg.ProjectID, msg.FunctionID, dep.ID))
+		cancel()
+		if buildErr != nil {
 			rec.Status = domainfunctions.ExecutionStatusFailed
 			rec.Error = "rebuild deployment failed"
 			rec.UpdatedAt = time.Now()
 			_ = f.repo.UpdateExecution(ctx, rec)
-			return err
+			return buildErr
 		}
 	}
 
@@ -334,12 +345,27 @@ func (f *Functions) GetExecution(ctx context.Context, projectID, functionID, exe
 func (f *Functions) ProcessExecutionPayload(ctx context.Context, payload []byte) error {
 	var msg queueMessage
 	if err := json.Unmarshal(payload, &msg); err != nil {
-		return fmt.Errorf("invalid queue payload: %w", err)
+		return fmt.Errorf("%w: %v", ErrInvalidQueuePayload, err)
 	}
 	if msg.ExecutionID == "" || msg.FunctionID == "" || msg.ProjectID == "" {
-		return errors.New("queue payload missing execution/function/project id")
+		return fmt.Errorf("%w: missing execution/function/project id", ErrInvalidQueuePayload)
 	}
 	return f.ProcessExecution(ctx, msg)
+}
+
+// MarkExecutionFailed 供 worker 在消费重试超限后兜底标记执行失败。
+func (f *Functions) MarkExecutionFailed(ctx context.Context, projectID, functionID, executionID, reason string) error {
+	rec, err := f.repo.GetExecution(ctx, projectID, functionID, executionID)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return nil
+	}
+	rec.Status = domainfunctions.ExecutionStatusFailed
+	rec.Error = reason
+	rec.UpdatedAt = time.Now()
+	return f.repo.UpdateExecution(ctx, rec)
 }
 
 // RecoverOrphanExecutions 将停留 queued/building/running 超过 staleAfter 的记录

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
@@ -65,6 +66,9 @@ func (f *Functions) CreateDeployment(ctx context.Context, cmd CreateDeploymentCo
 
 	// 同步构建（MVP 定案：不在独立构建队列，请求内完成）。
 	if err := f.buildDeployment(ctx, dep, path); err != nil {
+		// 信号量满或状态写回失败：删除 deployment 行与本地 zip，避免残留 pending 行。
+		_ = f.repo.DeleteDeployment(ctx, cmd.ProjectID, cmd.FunctionID, dep.ID)
+		_ = removeZip(cmd.ProjectID, cmd.FunctionID, dep.ID)
 		return nil, err
 	}
 	return dep, nil
@@ -76,6 +80,9 @@ func (f *Functions) buildDeployment(ctx context.Context, dep *domainfunctions.De
 	case buildSemaphore <- struct{}{}:
 		defer func() { <-buildSemaphore }()
 	default:
+		// 信号量满：删除 deployment 行与本地 zip（幂等）。
+		_ = f.repo.DeleteDeployment(ctx, dep.ProjectID, dep.FunctionID, dep.ID)
+		_ = removeZip(dep.ProjectID, dep.FunctionID, dep.ID)
 		return status.Error(codes.ResourceExhausted, "too many concurrent builds")
 	}
 
@@ -112,7 +119,14 @@ func (f *Functions) ListDeployments(ctx context.Context, projectID, functionID s
 }
 
 func (f *Functions) GetDeployment(ctx context.Context, projectID, functionID, deploymentID string) (*domainfunctions.Deployment, error) {
-	dep, err := f.repo.GetDeployment(ctx, functionID, deploymentID)
+	fn, err := f.repo.GetFunction(ctx, projectID, functionID)
+	if err != nil {
+		return nil, err
+	}
+	if fn == nil {
+		return nil, status.Error(codes.NotFound, "function not found")
+	}
+	dep, err := f.repo.GetDeployment(ctx, projectID, functionID, deploymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -125,14 +139,21 @@ func (f *Functions) GetDeployment(ctx context.Context, projectID, functionID, de
 // DeleteDeployment 删除顺序：先 DB 级联删除 → 再 docker image rm → 最后删本地 zip
 // （全部幂等，失败仅记日志），避免进行中构建/执行读到半删除状态。
 func (f *Functions) DeleteDeployment(ctx context.Context, projectID, functionID, deploymentID string) error {
-	dep, err := f.repo.GetDeployment(ctx, functionID, deploymentID)
+	fn, err := f.repo.GetFunction(ctx, projectID, functionID)
+	if err != nil {
+		return err
+	}
+	if fn == nil {
+		return status.Error(codes.NotFound, "function not found")
+	}
+	dep, err := f.repo.GetDeployment(ctx, projectID, functionID, deploymentID)
 	if err != nil {
 		return err
 	}
 	if dep == nil {
 		return status.Error(codes.NotFound, "deployment not found")
 	}
-	if err := f.repo.DeleteDeployment(ctx, functionID, deploymentID); err != nil {
+	if err := f.repo.DeleteDeployment(ctx, projectID, functionID, deploymentID); err != nil {
 		return err
 	}
 	_ = f.executor.RemoveImage(ctx, functionID, deploymentID)
@@ -140,12 +161,31 @@ func (f *Functions) DeleteDeployment(ctx context.Context, projectID, functionID,
 	return nil
 }
 
-// zipPath 返回本地 zip 代码包路径（单机部署假设）。
+// zipRoot 返回本地 zip 代码包根目录（单机部署假设）。
+func zipRoot() string {
+	return filepath.Join(os.TempDir(), zipDir)
+}
+
+// zipPath 返回本地 zip 代码包路径；functionID 等组件先 filepath.Base 消毒，
+// 防止 `../../` 等路径穿越逃逸 zip 根目录。
 func zipPath(projectID, functionID, deploymentID string) string {
-	return filepath.Join(os.TempDir(), zipDir, projectID, functionID, deploymentID+".zip")
+	return filepath.Join(zipRoot(), filepath.Base(projectID), filepath.Base(functionID), filepath.Base(deploymentID)+".zip")
+}
+
+// assertZipDir 断言 path 的父目录位于 zip 根目录前缀内（纵深防御）。
+func assertZipDir(path string) error {
+	root := filepath.Clean(zipRoot())
+	dir := filepath.Clean(filepath.Dir(path))
+	if dir != root && !strings.HasPrefix(dir, root+string(os.PathSeparator)) {
+		return fmt.Errorf("zip path escapes functions root: %q", path)
+	}
+	return nil
 }
 
 func writeZip(path string, code []byte) error {
+	if err := assertZipDir(path); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -153,7 +193,11 @@ func writeZip(path string, code []byte) error {
 }
 
 func removeZip(projectID, functionID, deploymentID string) error {
-	return os.Remove(zipPath(projectID, functionID, deploymentID))
+	path := zipPath(projectID, functionID, deploymentID)
+	if err := assertZipDir(path); err != nil {
+		return err
+	}
+	return os.Remove(path)
 }
 
 // isZip 校验 zip 魔数 PK\x03\x04（空 zip 为 PK\x05\x06，一并拒绝）。

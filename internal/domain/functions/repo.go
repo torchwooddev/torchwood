@@ -14,10 +14,10 @@ type FunctionRepo interface {
 	DeleteFunction(ctx context.Context, projectID, functionID string) error
 
 	CreateDeployment(ctx context.Context, d *Deployment) error
-	GetDeployment(ctx context.Context, functionID, deploymentID string) (*Deployment, error)
+	GetDeployment(ctx context.Context, projectID, functionID, deploymentID string) (*Deployment, error)
 	ListDeployments(ctx context.Context, projectID, functionID string) ([]Deployment, error)
 	UpdateDeployment(ctx context.Context, d *Deployment) error
-	DeleteDeployment(ctx context.Context, functionID, deploymentID string) error
+	DeleteDeployment(ctx context.Context, projectID, functionID, deploymentID string) error
 
 	SetVariables(ctx context.Context, projectID, functionID string, vars map[string]string) error
 	GetVariables(ctx context.Context, projectID, functionID string) (map[string]string, error)
@@ -26,8 +26,8 @@ type FunctionRepo interface {
 	GetExecution(ctx context.Context, projectID, functionID, executionID string) (*ExecutionRecord, error)
 	ListExecutions(ctx context.Context, projectID, functionID string, limit int) ([]ExecutionRecord, error)
 	UpdateExecution(ctx context.Context, e *ExecutionRecord) error
-	// RecoverOrphanExecutions 将停留 queued/building/running 超过 staleAfter 的记录
-	// 标记为 failed（worker 启动对账）。
+	// RecoverOrphanExecutions 将停留 building/running 超过 staleAfter 的记录
+	// 标记为 failed（worker 启动对账；queued 任务仍在队列中，不应标记）。
 	RecoverOrphanExecutions(ctx context.Context, staleAfter time.Duration) (int64, error)
 	// PruneOldExecutions 清理超过 keepRecent 条的最新之外记录（保留策略）。
 	PruneOldExecutions(ctx context.Context, functionID string, keepRecent int) error
