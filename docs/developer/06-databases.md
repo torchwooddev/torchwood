@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS "TORCHWOOD_1_default"."_perms" (
 
 | 集合 | 属性（节选） | 索引 | 独占管理服务 |
 |------|-------------|------|-------------|
-| `users` | email、password_hash、name、status、email_verified、phone、labels、prefs、factors | email 唯一、phone | Account / Server Users |
+| `users` | email、password_hash、name、status、email_verified、pending_email、phone、labels、prefs、factors | email 唯一、phone | Account / Server Users |
 | `sessions` | user_id、secret_hash、provider、user_agent、ip、expire_at | user_id | Account |
 | `identities` | user_id、provider、provider_uid、provider_email、provider_data | user_id、(provider,provider_uid) 唯一 | OAuth / OTP |
 | `teams` | name、permissions、total、prefs | name | Teams |

@@ -21,6 +21,9 @@ func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
 				{ID: "users_name", Key: "name", Type: "string", Size: 256},
 				{ID: "users_status", Key: "status", Type: "string", Size: 64, Default: "active"},
 				{ID: "users_email_verified", Key: "email_verified", Type: "boolean", Default: false},
+				// 邮箱变更 staging（B1/R05-P1-2）：新邮箱验证通过前暂存于此，
+				// 不暴露给 API 响应（mapUserDoc 不读取）。
+				{ID: "users_pending_email", Key: "pending_email", Type: "email", Size: 320},
 				{ID: "users_phone", Key: "phone", Type: "string", Size: 64},
 				{ID: "users_phone_verified", Key: "phone_verified", Type: "boolean", Default: false},
 				{ID: "users_labels", Key: "labels", Type: "json"},

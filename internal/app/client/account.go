@@ -613,6 +613,10 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 		},
 	}, nil), databases.SystemPrincipal)
 	if err != nil {
+		// 查重与写入之间存在竞态窗口（email 唯一索引兜底）。
+		if errors.Is(err, documentdb.ErrDuplicateKey) {
+			return nil, status.Error(codes.AlreadyExists, "email already registered")
+		}
 		return nil, fmt.Errorf("confirm email change: %w", err)
 	}
 	return mapUserDoc(&updated), nil

@@ -55,57 +55,76 @@ func securityTestConfig() *config.AppConfig {
 	}
 }
 
-func TestAccount_UpdateEmailRequiresOldPasswordAndRevokesSessions(t *testing.T) {
-	ctx, account, projectID, _ := setupAccountSecurity(t, false)
+// TestAccount_UpdateEmailRequiresOldPasswordAndStages（R05-P1-2 A 档）：改邮箱
+// 必须带 url + 旧密码（非匿名）；成功后走 staging——email 保持旧值、会话不撤销
+// （撤会话推迟到 ConfirmEmailChange），旧邮箱仍可登录、新邮箱不可。
+func TestAccount_UpdateEmailRequiresOldPasswordAndStages(t *testing.T) {
+	ctx, account, projectID, _, _, _ := setupG3Account(t)
 
-	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
-		ProjectID: projectID,
-		Email:     "email-change@torchwood.local",
-		Password:  "User@123",
-		Name:      "Email Change",
-	})
-	require.NoError(t, err)
-
+	user, userID := signUpG3User(t, ctx, account, projectID, "email-change@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
 		ProjectID: projectID,
-		UserID:    user.ID,
+		UserID:    userID,
 		Email:     user.Email,
-		Roles:     []string{"users", "user:" + user.ID},
+		Roles:     []string{"users", "user:" + userID},
 	})
 
+	// 改邮箱不带 url → 拒绝。
+	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "new-email@torchwood.local",
+		OldPassword: "User@123",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
 	// 无旧密码 → 拒绝。
-	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{Email: "new-email@torchwood.local"})
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	require.Equal(t, codes.InvalidArgument, st.Code())
+	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email: "new-email@torchwood.local",
+		URL:   "http://localhost/confirm-email",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 旧密码错误 → 拒绝。
-	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{Email: "new-email@torchwood.local", OldPassword: "wrong"})
-	require.Error(t, err)
-	st, _ = status.FromError(err)
-	require.Equal(t, codes.Unauthenticated, st.Code())
+	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "new-email@torchwood.local",
+		URL:         "http://localhost/confirm-email",
+		OldPassword: "wrong",
+	})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
 
-	// 旧密码正确 → 成功，且撤销全部会话（含当前会话）。
-	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{Email: "new-email@torchwood.local", OldPassword: "User@123"})
+	// 旧密码正确 → staging：email 保持旧值、会话不撤销。
+	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Email:       "new-email@torchwood.local",
+		URL:         "http://localhost/confirm-email",
+		OldPassword: "User@123",
+	})
 	require.NoError(t, err)
-	require.Equal(t, "new-email@torchwood.local", updated.Email)
+	require.Equal(t, "email-change@torchwood.local", updated.Email, "staging 阶段 email 必须保持旧值")
 
 	sessions, err := account.ListSessions(authCtx)
 	require.NoError(t, err)
-	require.Empty(t, sessions)
+	require.NotEmpty(t, sessions, "staging 阶段不得撤销会话（旧邮箱仍可登录）")
 
-	// 新邮箱 + 旧密码可登录。
+	// 旧邮箱仍可登录；新邮箱不可。
 	_, tokens, _, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
-		Email:     "new-email@torchwood.local",
+		Email:     "email-change@torchwood.local",
 		Password:  "User@123",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, tokens.AccessToken)
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "new-email@torchwood.local",
+		Password:  "User@123",
+	})
+	require.Error(t, err)
 }
 
+// TestAccount_AnonymousUpgradeSetsPasswordWithoutOldPassword：匿名用户
+// （password_hash 为空）升级时跳过 old_password；密码立即生效并撤销会话，
+// 邮箱变更走 staging（确认前保持占位邮箱）。
 func TestAccount_AnonymousUpgradeSetsPasswordWithoutOldPassword(t *testing.T) {
-	ctx, account, projectID, _ := setupAccountSecurity(t, false)
+	ctx, account, projectID, _, _, _ := setupG3Account(t)
 
 	anon, _, _, _, err := account.CreateAnonymousSession(ctx, CreateAnonymousSessionCommand{ProjectID: projectID})
 	require.NoError(t, err)
@@ -117,22 +136,30 @@ func TestAccount_AnonymousUpgradeSetsPasswordWithoutOldPassword(t *testing.T) {
 		Roles:     []string{"users", "user:" + anon.ID},
 	})
 
-	// 匿名用户（password_hash 为空）升级：直接设置邮箱+密码，跳过 old_password。
 	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
 		Email:    "upgraded@example.com",
+		URL:      "http://localhost/confirm-email",
 		Password: "NewPass@123",
 	})
 	require.NoError(t, err)
-	require.Equal(t, "upgraded@example.com", updated.Email)
+	require.Equal(t, anon.Email, updated.Email, "邮箱变更走 staging，确认前保持占位邮箱")
 
-	// 升级后可用新邮箱+密码登录（会话已被撤销）。
+	// 密码已生效且会话已撤销（password 变更路径撤会话）：占位邮箱 + 新密码可登录。
 	_, tokens, _, _, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
-		Email:     "upgraded@example.com",
+		Email:     anon.Email,
 		Password:  "NewPass@123",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, tokens.AccessToken)
+
+	// 新邮箱 staging 未生效，不可登录。
+	_, _, _, _, err = account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "upgraded@example.com",
+		Password:  "NewPass@123",
+	})
+	require.Error(t, err)
 }
 
 func TestAccount_UpdatePrefsLimits(t *testing.T) {

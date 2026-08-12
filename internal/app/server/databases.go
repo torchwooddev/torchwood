@@ -21,7 +21,7 @@ const maxBulkOperations = 1000
 // serverSensitiveCollectionFields 是高敏系统集合（users/sessions/identities）
 // 经 Server Databases API 读取时的脱敏字段清单；专用 API 不公开这些字段。
 var serverSensitiveCollectionFields = map[string][]string{
-	"users":      {"password_hash", "phone", "phone_verified", "labels", "prefs"},
+	"users":      {"password_hash", "pending_email", "phone", "phone_verified", "labels", "prefs"},
 	"sessions":   {"secret_hash", "factors", "user_agent", "ip", "country"},
 	"identities": {"provider_data", "provider_uid"},
 }

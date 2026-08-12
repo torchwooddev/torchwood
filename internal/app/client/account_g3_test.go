@@ -377,12 +377,12 @@ func TestAccount_ConfirmEmailChange_TokenOneTime(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(err), "token 二次使用必须拒绝")
 }
 
-// TestAccount_ConfirmEmailChange_NewEmailTaken：新邮箱已被他人占用 →
+// TestAccount_ConfirmEmailChange_NewEmailTaken：新邮箱在 token 有效期内被他人
+// 注册（pending_email 不占用 email 唯一约束，SignUp 查重查不到）→ 确认时
 // AlreadyExists。
 func TestAccount_ConfirmEmailChange_NewEmailTaken(t *testing.T) {
 	ctx, account, projectID, _, _, mailer := setupG3Account(t)
 
-	signUpG3User(t, ctx, account, projectID, "taken@torchwood.local")
 	user, userID := signUpG3User(t, ctx, account, projectID, "changer@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
 		ProjectID: projectID,
@@ -399,6 +399,10 @@ func TestAccount_ConfirmEmailChange_NewEmailTaken(t *testing.T) {
 	require.NoError(t, err)
 
 	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
+
+	// 确认前新邮箱被他人注册（竞态窗口：pending 不占 email 唯一约束）。
+	signUpG3User(t, ctx, account, projectID, "taken@torchwood.local")
+
 	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
 		UserID:    userID,

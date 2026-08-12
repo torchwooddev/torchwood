@@ -233,8 +233,39 @@ Docker，本地无环境，按约定交 CI。
 
 ---
 
+## 6a. CI 第一轮失败与修复记录
+
+第一轮 push 后 CI（run 31603870245）Backend 集成测试失败，总控定位并修复：
+
+1. **`column "pending_email" does not exist (SQLSTATE=42703)`**：`users` 是 documentdb
+   动态列系统集合，`pending_email` 未在系统集合 attribute spec 中 → 无物理列。
+   **修复**：`internal/infra/documentdb/system_collection_specs.go` users spec 增加
+   `users_pending_email`（email 类型，Size 320）。新项目建表即含该列；存量项目由
+   `EnsureSystemCollections` 的 `reconcileSystemCollectionAttrs` 幂等补列
+   （ADD COLUMN IF NOT EXISTS + document_attributes 元数据），**无需人工迁移步骤**。
+   同时把 `pending_email` 加入 `serverSensitiveCollectionFields` 脱敏清单
+   （Server API 读 users 集合时不泄露暂存邮箱），并同步 `docs/developer/06-databases.md`
+   系统集合字段表。
+2. **既有集成测试未适配 staging 语义**（`account_security_test.go`）：
+   - `TestAccount_UpdateEmailRequiresOldPasswordAndRevokesSessions` 改为
+     `TestAccount_UpdateEmailRequiresOldPasswordAndStages`——改邮箱必须带 url + 旧密码
+     （缺失分别 InvalidArgument / Unauthenticated）；成功后 email 保持旧值、**会话不撤销**、
+     旧邮箱仍可登录、新邮箱不可（撤会话语义由 ConfirmEmailChange 测试覆盖）。
+   - `TestAccount_AnonymousUpgradeSetsPasswordWithoutOldPassword` 改为：密码立即生效并撤
+     会话（占位邮箱 + 新密码可登录），邮箱变更走 staging（确认前保持占位邮箱）。
+   - `TestAccount_ConfirmEmailChange_NewEmailTaken` 修正为真实竞态窗口：stage 后、确认前
+     新邮箱被他人注册（pending_email 不占 email 唯一约束，SignUp 查重查不到）→ 确认时
+     AlreadyExists。
+3. **ConfirmEmailChange 唯一索引兜底**：查重与写入间的 TOCTOU 竞态由 email 唯一索引兜底，
+   `documentdb.ErrDuplicateKey` 映射为 AlreadyExists（与 UpdateAccount 一致）。
+
+修复后本地全量验证再次全绿，push 第二轮（run 见 §7）。
+
+---
+
 ## 7. CI 验证
 
-- Run：见下方 commit push 后的 `gh run watch` 结果。
+- Run 1（31603870245）：Backend 集成测试失败 → 修复见 §6a。
+- Run 2：`gh run watch` 最终结果待更新（push 后填写）。
 - 待 CI 覆盖：B1 staging 集成测试（真实 Postgres）、B3 保留字 id 文档 CRUD 集成测试、
   REST 层（internal/api）与 Docker 集成测试、console embed 构建链路。
