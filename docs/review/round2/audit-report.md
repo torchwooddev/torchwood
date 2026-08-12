@@ -105,5 +105,21 @@ G11（`prompts/fix/G11-audit-p2.md`）五项 P2 缺口已修复并经我逐项�
 未触碰 `apiKeyScopeRules` 与 Functions 写方法守卫（符合约束），无 git 操作。
 
 **结论：本轮（Round-2）审查 → 修复 → 审核闭环正式关闭。**
-遗留：API key 可否调 Functions 写方法的产品决策（挂在用户处）；CI 全链路首轮结果（push 后关注）；
+遗留：CI 全链路首轮结果（push 后关注）；
 G3-2 A 档邮箱 staging、worker 重试持久化、REST 保留字迁移三项记录在案的 backlog。
+
+---
+
+## 附：G12 产品决策落地（2026-08-12）
+
+「API key 可否调 Functions 写方法」经与用户沟通拍板为**方案 B（全部放行 API key）**，已实施：
+
+- `internal/app/functions/` 7 处写方法守卫（Create/Update/DeleteFunction、Create/DeleteDeployment、
+  CreateExecution、SetVariables）由 `RequirePlatformAdmin` 改为 `RequireServerWriteActor`：
+  API key（`apiKeyScopeRules` 的 `functions.write` scope 门禁）与 console admin 会话
+  （`adminRoleMethodRules` 角色门禁，viewer/member 仍拦死）放行；端用户/匿名仍拒绝。
+- 效果：CLI / Go SDK / TS SDK / serverhttp multipart 的函数写路径全部恢复；CI/CD 部署流水线
+  与 Agent 函数调用（agent-native 定位）解锁；`functions.write` 死登记消除。
+- 测试：`authz_test.go` 重写为 `TestFunctionsWriteMethods_RequireServerWriteActor`
+  （端用户 7 方法全拒、匿名 Unauthenticated、API key/各角色 admin 会话过守卫进业务校验）；
+  `go vet` + `go test -short` 相关包全绿。

@@ -187,7 +187,7 @@
 5. **G10**：swagger 断言已本地验证（genproto 入库）；`buf breaking` 无 main 基线（仅 lint，记录在案）。
 
 ### 遗留风险
-1. **Functions 写方法与 API key 的关系（G2-1 决策后果）**：use-case 层 `RequirePlatformAdmin` 使 API key（即使带 `functions.write` scope）无法直接调 CreateFunction/CreateDeployment/CreateExecution/SetVariables；`apiKeyScopeRules` 中对应登记成为「死登记」。这是按 fix-plan 字面执行（纵深防御优先），如需放开应由产品显式决策。同理 `serverhttp` functions_handler 经 API key 上传部署代码路径现被 use-case 拒绝。
+1. ~~**Functions 写方法与 API key 的关系（G2-1 决策后果）**~~ **【已决策并落地，2026-08-12 / G12】**：经拍板采用方案 B——7 个写方法守卫已由 `RequirePlatformAdmin` 改为 `RequireServerWriteActor`，API key（scope 门禁）恢复函数写能力，死登记消除。详见 `docs/review/round2/audit-report.md` 附录 G12。
 2. **G3-2 邮箱 staging（A 档）未实现**：仅 B 档缓解；待契约层增加 url 字段后补 pending_email。
 3. **worker 重试计数不持久化**：重启清零，有超限兜底（不会无限重试）；已注释标注。
 4. **G8-2 掩码模型固有限制**：掩码行 key 改名时 secret 不跟随新 key（该变量被删除），产品层面可后续提供「重置/迁移」能力。

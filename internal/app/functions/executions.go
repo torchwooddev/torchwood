@@ -59,8 +59,8 @@ type queueMessage struct {
 }
 
 func (f *Functions) CreateExecution(ctx context.Context, cmd CreateExecutionCommand) (*domainfunctions.ExecutionRecord, error) {
-	// 纵深防御（G2-1/R06-P0）：执行创建（同步/异步）仅限平台 admin。
-	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+	// 纵深防御（G2-1/R06-P0，G12 调整）：执行创建允许 admin 会话与 API key。
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
 		return nil, err
 	}
 	fn, err := f.repo.GetFunction(ctx, cmd.ProjectID, cmd.FunctionID)

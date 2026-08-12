@@ -16,9 +16,10 @@ const secretMask = "******"
 // 掩码约定：请求中值等于 secretMask 的 key 保留旧值不覆盖（key 不存在则跳过，
 // 不创建）；其余 key 按新值写入。响应与 GetVariables 一致返回掩码视图，
 // 真实值仅在 SetVariables 请求中可见一次。
-// 变量是平台级敏感写操作，仅限平台 admin（纵深防御，G2-1）。
+// 变量是平台级敏感写操作：允许 admin 会话与 API key（scope 门禁），
+// 拒绝端用户/匿名（纵深防御，G2-1；G12 产品决策 B 调整）。
 func (f *Functions) SetVariables(ctx context.Context, projectID, functionID string, vars map[string]string) (map[string]string, error) {
-	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
 		return nil, err
 	}
 	fn, err := f.repo.GetFunction(ctx, projectID, functionID)

@@ -59,9 +59,10 @@ type UpdateFunctionCommand struct {
 }
 
 func (f *Functions) CreateFunction(ctx context.Context, cmd CreateFunctionCommand) (*domainfunctions.Function, error) {
-	// 纵深防御（G2-1/R06-P0）：函数写操作仅限平台 admin（owner/admin 会话）；
-	// 拦截器 adminRoleMethodRules 已收口，此处兜底防止绕过拦截器的直接调用。
-	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+	// 纵深防御（G2-1/R06-P0，G12 产品决策 B 调整）：函数写操作允许 console
+	// admin 会话与 API key（拦截器分别以 adminRoleMethodRules 管角色、
+	// apiKeyScopeRules 管 scope），此处兜底拒绝端用户/匿名的直接调用。
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
 		return nil, err
 	}
 	if !idgen.ID(cmd.ID).IsValid() {
@@ -134,7 +135,7 @@ func (f *Functions) GetFunction(ctx context.Context, projectID, functionID strin
 }
 
 func (f *Functions) UpdateFunction(ctx context.Context, cmd UpdateFunctionCommand) (*domainfunctions.Function, error) {
-	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
 		return nil, err
 	}
 	fn, err := f.repo.GetFunction(ctx, cmd.ProjectID, cmd.FunctionID)
@@ -176,7 +177,7 @@ func (f *Functions) UpdateFunction(ctx context.Context, cmd UpdateFunctionComman
 }
 
 func (f *Functions) DeleteFunction(ctx context.Context, projectID, functionID string) error {
-	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	fn, err := f.repo.GetFunction(ctx, projectID, functionID)
