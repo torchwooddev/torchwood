@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
@@ -11,6 +13,10 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	pkgidgen "github.com/torchwooddev/torchwood/pkg/idgen"
 )
+
+// strategyCacheTTL 是项目 ID 生成策略查询结果的缓存时长：生成路径高频调用
+// 不应每次打穿数据库。
+const strategyCacheTTL = 30 * time.Second
 
 // Service implements domainidgen.Generator using platform config and optional project overrides.
 type Service struct {
@@ -25,6 +31,15 @@ type Service struct {
 	resourceUsers     string
 	resourceSessions  string
 	resourceDocuments string
+
+	mu            sync.Mutex
+	strategyCache map[string]strategyEntry
+}
+
+// strategyEntry 是单项目策略缓存的快照。
+type strategyEntry struct {
+	settings map[string]any
+	expireAt time.Time
 }
 
 func NewService(cfg *config.AppConfig, rdb *redis.Client, projectRepo projects.Repository) (*Service, error) {
@@ -94,7 +109,11 @@ func NewService(cfg *config.AppConfig, rdb *redis.Client, projectRepo projects.R
 var _ domainidgen.Generator = (*Service)(nil)
 
 func (s *Service) NewID(ctx context.Context, projectID string, resource domainidgen.Resource) (string, error) {
-	switch s.resolveStrategy(ctx, projectID, resource) {
+	strategy, err := s.resolveStrategy(ctx, projectID, resource)
+	if err != nil {
+		return "", err
+	}
+	switch strategy {
 	case pkgidgen.StrategyULID:
 		return pkgidgen.ULID().String(), nil
 	case pkgidgen.StrategySnowflake:
@@ -108,7 +127,7 @@ func (s *Service) NewID(ctx context.Context, projectID string, resource domainid
 	}
 }
 
-func (s *Service) resolveStrategy(ctx context.Context, projectID string, resource domainidgen.Resource) string {
+func (s *Service) resolveStrategy(ctx context.Context, projectID string, resource domainidgen.Resource) (string, error) {
 	platformDefault := s.defaultStrategy
 	switch resource {
 	case domainidgen.ResourceUsers:
@@ -126,13 +145,47 @@ func (s *Service) resolveStrategy(ctx context.Context, projectID string, resourc
 	}
 
 	if projectID == "" || s.projectRepo == nil {
-		return platformDefault
+		return platformDefault, nil
 	}
+	settings, err := s.projectSettings(ctx, projectID)
+	if err != nil {
+		// 不静默回退平台默认：无法确认项目覆盖时直接用错策略会破坏
+		// 全局唯一性/顺序语义，宁可显式失败。
+		return "", fmt.Errorf("resolve idgen strategy for project %q: %w", projectID, err)
+	}
+	if settings == nil {
+		return platformDefault, nil
+	}
+	return pkgidgen.NormalizeStrategy(projects.IDGenStrategyForResource(settings, string(resource), platformDefault)), nil
+}
+
+// projectSettings 返回项目 settings（带短 TTL 缓存）；项目不存在返回
+// (nil, nil)，DB 错误原样上抛。
+func (s *Service) projectSettings(ctx context.Context, projectID string) (map[string]any, error) {
+	now := time.Now()
+	s.mu.Lock()
+	if e, ok := s.strategyCache[projectID]; ok && now.Before(e.expireAt) {
+		s.mu.Unlock()
+		return e.settings, nil
+	}
+	s.mu.Unlock()
+
 	project, err := s.projectRepo.GetProject(ctx, projectID)
-	if err != nil || project == nil {
-		return platformDefault
+	if err != nil {
+		return nil, err
 	}
-	return pkgidgen.NormalizeStrategy(projects.IDGenStrategyForResource(project.Settings, string(resource), platformDefault))
+	var settings map[string]any
+	if project != nil {
+		settings = project.Settings
+	}
+
+	s.mu.Lock()
+	if s.strategyCache == nil {
+		s.strategyCache = make(map[string]strategyEntry)
+	}
+	s.strategyCache[projectID] = strategyEntry{settings: settings, expireAt: now.Add(strategyCacheTTL)}
+	s.mu.Unlock()
+	return settings, nil
 }
 
 func (s *Service) nextSequence(ctx context.Context, projectID string, resource domainidgen.Resource) (string, error) {

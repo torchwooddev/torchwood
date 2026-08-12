@@ -13,6 +13,7 @@ const EnvPrefix = "TORCHWOOD"
 
 var envBoundKeys = []string{
 	"security.jwt.secret",
+	"security.setup_token",
 	"security.trusted_proxies",
 	"data.database.source",
 	"data.redis.addr",

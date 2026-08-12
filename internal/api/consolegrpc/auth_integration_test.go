@@ -38,7 +38,10 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	docDB := documentdb.NewPostgresDocumentDB(db)
-	cfg := &config.AppConfig{Security: &config.Security{Jwt: &config.Security_Jwt{Secret: "bootstrap-integration-secret"}}}
+	cfg := &config.AppConfig{Security: &config.Security{
+		Jwt:        &config.Security_Jwt{Secret: "bootstrap-integration-secret"},
+		SetupToken: "bootstrap-setup-token",
+	}}
 
 	adminRepo := bunrepo.NewAdminRepository(db)
 	projectRepo := bunrepo.NewProjectRepository(db)
@@ -46,7 +49,7 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	projects := server.NewProjects(projectRepo, docDB, db)
 	apiKeys := server.NewAPIKeys(bunrepo.NewAPIKeyRepository(db))
 	auth := console.NewAuth(cfg, adminRepo, nil, nil, nil)
-	setupUC := console.NewSetup(admins, projects, apiKeys, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
+	setupUC := console.NewSetup(cfg, admins, projects, apiKeys, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
 	svc := NewAuthService(auth, setupUC)
 
 	env, err := testutil.NewInterceptorEnv(db, cfg, docDB)
@@ -93,7 +96,7 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 
 	// 1) 首次 sign-up：owner admin + 默认 project + 默认 API Key secret +
 	//    会话 cookie。
-	body := bytes.NewBufferString(`{"email":"owner@torchwood.local","password":"Pass@1234"}`)
+	body := bytes.NewBufferString(`{"email":"owner@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token"}`)
 	resp, err := http.Post(fixture.url+"/v1/console/auth/sign-up", "application/json", body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -129,7 +132,7 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	require.False(t, statusResp.NeedsSetup)
 
 	// 3) 二次 sign-up → FailedPrecondition（grpc-gateway 映射为 HTTP 400）。
-	body = bytes.NewBufferString(`{"email":"second@torchwood.local","password":"Pass@1234"}`)
+	body = bytes.NewBufferString(`{"email":"second@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token"}`)
 	resp, err = http.Post(fixture.url+"/v1/console/auth/sign-up", "application/json", body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)

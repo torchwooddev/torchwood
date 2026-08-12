@@ -137,7 +137,7 @@
     },
     "/v1/console/auth/sign-up": {
       "post": {
-        "summary": "首个管理员注册：仅当 admins 表为空时可用；注册成功后自动创建\r\n默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。",
+        "summary": "首个管理员注册：仅当 admins 表为空且携带正确 setup token 时可用；\r\n注册成功后自动创建默认 project（id=default）与默认 API Key\r\n（scope=all，明文仅此一次返回）。",
         "operationId": "ConsoleAuthService_SignUp",
         "responses": {
           "200": {
@@ -243,6 +243,10 @@
         },
         "password": {
           "type": "string"
+        },
+        "setupToken": {
+          "type": "string",
+          "title": "Console 引导令牌（security.setup_token / TORCHWOOD_SECURITY_SETUP_TOKEN）。"
         }
       }
     },
@@ -296,8 +300,33 @@
       "properties": {
         "needsSetup": {
           "type": "boolean"
+        },
+        "setupTokenRequired": {
+          "type": "boolean",
+          "title": "部署方是否配置了 TORCHWOOD_SECURITY_SETUP_TOKEN；为 true 时登录页\r\n需展示 setup token 输入框。"
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "x-torchwood-access": "public"
 }

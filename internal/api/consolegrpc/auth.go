@@ -59,11 +59,14 @@ func (s *AuthService) GetSetupStatus(ctx context.Context, _ *consolev1.GetSetupS
 	if err != nil {
 		return nil, err
 	}
-	return &consolev1.GetSetupStatusResponse{NeedsSetup: needsSetup}, nil
+	return &consolev1.GetSetupStatusResponse{
+		NeedsSetup:        needsSetup,
+		SetupTokenRequired: s.setup.SetupTokenConfigured(),
+	}, nil
 }
 
 func (s *AuthService) SignUp(ctx context.Context, req *consolev1.SignUpRequest) (*consolev1.SignUpResponse, error) {
-	result, err := s.setup.SignUp(ctx, req.GetEmail(), req.GetPassword())
+	result, err := s.setup.SignUp(ctx, req.GetEmail(), req.GetPassword(), req.GetSetupToken())
 	if err != nil {
 		return nil, err
 	}

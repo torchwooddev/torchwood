@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -37,7 +36,7 @@ func NewGRPCGatewayServer(
 	timeout := parseDuration(httpCfg.GetTimeout(), 60*time.Second)
 
 	grpcAddr := cfg.GetServer().GetGrpc().GetAddr()
-	grpcEndpoint := fmt.Sprintf("127.0.0.1:%s", portFromAddr(grpcAddr))
+	grpcEndpoint := grpcEndpointFromAddr(grpcAddr)
 
 	mux := runtime.NewServeMux(
 		runtime.WithErrorHandler(HTTPErrorHandler),
@@ -100,12 +99,31 @@ func NewGRPCGatewayServer(
 	return &GRPCGatewayServer{lynxhttp.NewServer(combined,
 		lynxhttp.WithAddr(httpCfg.GetAddr()),
 		lynxhttp.WithTimeout(timeout),
+		// Recovery 声明在最外层：gateway 转发/自定义 handler/Console SPA
+		// 任一环节 panic 都被恢复为 500 + 统一 JSON 错误体，不拖垮进程。
+		lynxhttp.WithMiddleware(lynxhttp.Recovery()),
 		// /healthz/readiness 依赖 checkers（任一失败 503）；请求日志为
 		// Debug 级（lynx requestlog），需 --log-level debug 可见。
 		lynxhttp.WithHealthCheckers(func() []lynx.Checker { return checkers.Deps() }),
 		lynxhttp.WithLogger(app.Logger()),
 		lynxhttp.WithRequestLog(true),
 	)}, nil
+}
+
+// grpcEndpointFromAddr 从 server.grpc.addr 推导 gateway 转发目标：
+// 保留原主机（默认回环），仅补充缺失的端口默认值。
+func grpcEndpointFromAddr(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		if addr != "" && !strings.HasPrefix(addr, ":") {
+			return addr
+		}
+		return "127.0.0.1:9060"
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port)
 }
 
 func portFromAddr(addr string) string {

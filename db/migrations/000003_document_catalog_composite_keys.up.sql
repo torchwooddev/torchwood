@@ -15,7 +15,7 @@ WHERE di.collection_id = dc.id
 DELETE FROM document_indexes WHERE project_id IS NULL OR database_id IS NULL;
 
 ALTER TABLE document_indexes DROP CONSTRAINT IF EXISTS document_indexes_collection_id_fkey;
-ALTER TABLE document_indexes DROP CONSTRAINT document_indexes_pkey;
+ALTER TABLE document_indexes DROP CONSTRAINT IF EXISTS document_indexes_pkey;
 
 -- document_attributes: add scope columns
 ALTER TABLE document_attributes ADD COLUMN IF NOT EXISTS project_id TEXT;
@@ -32,15 +32,15 @@ DELETE FROM document_attributes WHERE project_id IS NULL OR database_id IS NULL;
 
 ALTER TABLE document_attributes DROP CONSTRAINT IF EXISTS document_attributes_collection_id_fkey;
 ALTER TABLE document_attributes DROP CONSTRAINT IF EXISTS document_attributes_collection_id_key_key;
-ALTER TABLE document_attributes DROP CONSTRAINT document_attributes_pkey;
+ALTER TABLE document_attributes DROP CONSTRAINT IF EXISTS document_attributes_pkey;
 
 -- document_collections: drop FK to document_databases before changing parent PK
 ALTER TABLE document_collections DROP CONSTRAINT IF EXISTS document_collections_database_id_fkey;
-ALTER TABLE document_collections DROP CONSTRAINT document_collections_pkey;
+ALTER TABLE document_collections DROP CONSTRAINT IF EXISTS document_collections_pkey;
 ALTER TABLE document_collections DROP CONSTRAINT IF EXISTS document_collections_database_id_name_key;
 
 -- document_databases: composite PK (project_id, id)
-ALTER TABLE document_databases DROP CONSTRAINT document_databases_pkey;
+ALTER TABLE document_databases DROP CONSTRAINT IF EXISTS document_databases_pkey;
 ALTER TABLE document_databases ADD PRIMARY KEY (project_id, id);
 
 -- document_collections: composite PK + composite FK

@@ -2,10 +2,13 @@ package console
 
 import (
 	"context"
+	"crypto/subtle"
 	"log/slog"
+	"strings"
 
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -19,11 +22,16 @@ const (
 	defaultAPIKeyScope = "all"
 )
 
+// bootstrapLockKey 是引导流程的 pg_advisory_xact_lock 常量键（"Torchwoo"
+// 的 ASCII 编码），用于串行化首个管理员检查+创建。
+const bootstrapLockKey = int64(0x546F726368776F6F)
+
 // Setup 处理首个管理员 bootstrap：查询初始化状态（GetSetupStatus）与首个
 // 管理员注册（SignUp）。SignUp 是公开端点（ConsoleAuthService 服务级
-// ACCESS_PUBLIC），「仅首次可用」的保证必须在本 use-case 内完成，
-// 不依赖拦截器。
+// ACCESS_PUBLIC），「仅首次可用 + 需 setup token」的保证必须在本 use-case
+// 内完成，不依赖拦截器。
 type Setup struct {
+	setupToken       string
 	admins           adminCreator
 	projects         projectCreator
 	apiKeys          apiKeyCreator
@@ -44,7 +52,7 @@ type projectCreator interface {
 }
 
 type apiKeyCreator interface {
-	Create(ctx context.Context, cmd server.CreateAPIKeyCommand) (*projects.APIKey, string, error)
+	CreateInternal(ctx context.Context, cmd server.CreateAPIKeyCommand) (*projects.APIKey, string, error)
 	Delete(ctx context.Context, projectID, id string) error
 }
 
@@ -57,6 +65,7 @@ type tokenIssuer interface {
 }
 
 func NewSetup(
+	cfg *config.AppConfig,
 	admins *Admins,
 	projects *server.Projects,
 	apiKeys *server.APIKeys,
@@ -65,7 +74,12 @@ func NewSetup(
 	adminProjectRepo projects.AdminProjectRepository,
 	projectRepo projects.Repository,
 ) *Setup {
+	setupToken := ""
+	if cfg != nil && cfg.GetSecurity() != nil {
+		setupToken = strings.TrimSpace(cfg.GetSecurity().GetSetupToken())
+	}
 	return &Setup{
+		setupToken:       setupToken,
 		admins:           admins,
 		projects:         projects,
 		apiKeys:          apiKeys,
@@ -85,6 +99,11 @@ func (s *Setup) GetSetupStatus(ctx context.Context) (bool, error) {
 	return len(admins) == 0, nil
 }
 
+// SetupTokenConfigured 返回部署方是否配置了引导令牌（security.setup_token）。
+func (s *Setup) SetupTokenConfigured() bool {
+	return s.setupToken != ""
+}
+
 type SignUpResult struct {
 	Admin        *projects.Admin
 	Tokens       *TokenPair
@@ -95,23 +114,39 @@ type SignUpResult struct {
 // API Key(scope=all) + admin_projects 关联 + 签发 TokenPair。
 // 任一后续步骤失败时 best-effort 回删已建资源，避免「admin 已建但 project
 // 缺失」导致无法重试也无法登录的死锁；补偿失败只记日志。
-// 并发窗口：两个并发 SignUp 可能同时通过首次性检查，MVP 接受（首次部署
-// 单人操作；收紧可引入 Postgres advisory lock，列为可选增强）。
-func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResult, error) {
-	admins, err := s.adminRepo.ListAdmins(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "check setup state: %v", err)
+func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) (*SignUpResult, error) {
+	// setup token 校验先于一切状态检查：未配置即拒绝（引导入口默认关闭），
+	// 请求令牌与配置不一致同样拒绝，防止无凭据抢占首个 owner。
+	if s.setupToken == "" {
+		return nil, status.Error(codes.FailedPrecondition, "setup token is not configured; set TORCHWOOD_SECURITY_SETUP_TOKEN before bootstrapping")
 	}
-	if len(admins) > 0 {
-		return nil, status.Error(codes.FailedPrecondition, "setup already completed")
+	if !setupTokenEqual(setupToken, s.setupToken) {
+		return nil, status.Error(codes.PermissionDenied, "invalid setup token")
 	}
 
-	admin, err := s.admins.Create(ctx, CreateAdminCommand{
-		Email:    email,
-		Password: password,
-		Role:     AdminRoleOwner,
-	})
-	if err != nil {
+	// 并发兜底：首次性检查与首个 admin 创建在 pg_advisory_xact_lock 事务内
+	// 串行化——并发的 SignUp 只有一个能通过「admins 为空」检查，其余看到
+	// 已提交的首个 admin 后被拒绝，杜绝抢占 owner。事务内（含后续 repo
+	// 调用）通过注入的 ctx 复用同一连接。
+	var (
+		admin *projects.Admin
+		err   error
+	)
+	if err := s.adminRepo.WithBootstrapLock(ctx, bootstrapLockKey, func(txCtx context.Context) error {
+		admins, err := s.adminRepo.ListAdmins(txCtx)
+		if err != nil {
+			return status.Errorf(codes.Internal, "check setup state: %v", err)
+		}
+		if len(admins) > 0 {
+			return status.Error(codes.FailedPrecondition, "setup already completed")
+		}
+		admin, err = s.admins.Create(txCtx, CreateAdminCommand{
+			Email:    email,
+			Password: password,
+			Role:     AdminRoleOwner,
+		})
+		return err
+	}); err != nil {
 		return nil, err
 	}
 
@@ -146,7 +181,7 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 		return nil, status.Errorf(codes.Internal, "create default project: %v", err)
 	}
 
-	key, secret, err := s.apiKeys.Create(ctx, server.CreateAPIKeyCommand{
+	key, secret, err := s.apiKeys.CreateInternal(ctx, server.CreateAPIKeyCommand{
 		ProjectID: project.ID,
 		Name:      defaultAPIKeyName,
 		Scopes:    []string{defaultAPIKeyScope},
@@ -175,4 +210,9 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 		Tokens:       tokens,
 		APIKeySecret: secret,
 	}, nil
+}
+
+// setupTokenEqual 常量时间比较 setup token，避免时序侧信道。
+func setupTokenEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

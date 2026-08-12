@@ -7,6 +7,7 @@
 package consolev1
 
 import (
+	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options"
 	v1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -252,10 +253,13 @@ func (*GetSetupStatusRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetSetupStatusResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	NeedsSetup    bool                   `protobuf:"varint,1,opt,name=needs_setup,json=needsSetup,proto3" json:"needs_setup,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	NeedsSetup bool                   `protobuf:"varint,1,opt,name=needs_setup,json=needsSetup,proto3" json:"needs_setup,omitempty"`
+	// 部署方是否配置了 TORCHWOOD_SECURITY_SETUP_TOKEN；为 true 时登录页
+	// 需展示 setup token 输入框。
+	SetupTokenRequired bool `protobuf:"varint,2,opt,name=setup_token_required,json=setupTokenRequired,proto3" json:"setup_token_required,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GetSetupStatusResponse) Reset() {
@@ -295,10 +299,19 @@ func (x *GetSetupStatusResponse) GetNeedsSetup() bool {
 	return false
 }
 
+func (x *GetSetupStatusResponse) GetSetupTokenRequired() bool {
+	if x != nil {
+		return x.SetupTokenRequired
+	}
+	return false
+}
+
 type SignUpRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
-	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Email    string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	Password string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	// Console 引导令牌（security.setup_token / TORCHWOOD_SECURITY_SETUP_TOKEN）。
+	SetupToken    string `protobuf:"bytes,3,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -343,6 +356,13 @@ func (x *SignUpRequest) GetEmail() string {
 func (x *SignUpRequest) GetPassword() string {
 	if x != nil {
 		return x.Password
+	}
+	return ""
+}
+
+func (x *SignUpRequest) GetSetupToken() string {
+	if x != nil {
+		return x.SetupToken
 	}
 	return ""
 }
@@ -419,7 +439,7 @@ var File_console_v1_auth_proto protoreflect.FileDescriptor
 
 const file_console_v1_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x15console/v1/auth.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17console/v1/admins.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
+	"\x15console/v1/auth.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x17console/v1/admins.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"A\n" +
 	"\rSignInRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"w\n" +
@@ -431,13 +451,16 @@ const file_console_v1_auth_proto_rawDesc = "" +
 	"\x13RefreshTokenRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"\x10\n" +
 	"\x0eSignOutRequest\"\x17\n" +
-	"\x15GetSetupStatusRequest\"9\n" +
+	"\x15GetSetupStatusRequest\"k\n" +
 	"\x16GetSetupStatusResponse\x12\x1f\n" +
 	"\vneeds_setup\x18\x01 \x01(\bR\n" +
-	"needsSetup\"A\n" +
+	"needsSetup\x120\n" +
+	"\x14setup_token_required\x18\x02 \x01(\bR\x12setupTokenRequired\"b\n" +
 	"\rSignUpRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"\xc0\x01\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x1f\n" +
+	"\vsetup_token\x18\x03 \x01(\tR\n" +
+	"setupToken\"\xc0\x01\n" +
 	"\x0eSignUpResponse\x121\n" +
 	"\x05admin\x18\x01 \x01(\v2\x1b.torchwood.console.v1.AdminR\x05admin\x12!\n" +
 	"\faccess_token\x18\x02 \x01(\tR\vaccessToken\x12#\n" +
@@ -448,7 +471,14 @@ const file_console_v1_auth_proto_rawDesc = "" +
 	"\fRefreshToken\x12).torchwood.console.v1.RefreshTokenRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/refresh\x12q\n" +
 	"\aSignOut\x12$.torchwood.console.v1.SignOutRequest\x1a\x1a.torchwood.shared.v1.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/console/auth/sign-out\x12\x92\x01\n" +
 	"\x0eGetSetupStatus\x12+.torchwood.console.v1.GetSetupStatusRequest\x1a,.torchwood.console.v1.GetSetupStatusResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/console/auth/setup-status\x12x\n" +
-	"\x06SignUp\x12#.torchwood.console.v1.SignUpRequest\x1a$.torchwood.console.v1.SignUpResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-up\x1a\x06\x92\xb2\x19\x02\b\x01BAZ?github.com/torchwooddev/torchwood/genproto/console/v1;consolev1b\x06proto3"
+	"\x06SignUp\x12#.torchwood.console.v1.SignUpRequest\x1a$.torchwood.console.v1.SignUpResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-up\x1a\x06\x92\xb2\x19\x02\b\x01B\xce\x02\x92A\x89\x02Z\xe6\x01\n" +
+	"3\n" +
+	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
+	"\\\n" +
+	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"Q\n" +
+	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02z\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06publicZ?github.com/torchwooddev/torchwood/genproto/console/v1;consolev1b\x06proto3"
 
 var (
 	file_console_v1_auth_proto_rawDescOnce sync.Once

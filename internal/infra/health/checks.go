@@ -18,6 +18,10 @@ import (
 // DefaultTimeout 是未显式指定超时时的探测超时。
 const DefaultTimeout = 2 * time.Second
 
+// resultCacheTTL 是 Details 探测结果的快照缓存时长：gRPC health 端点被
+// 外部轮询时避免每次请求都打穿到数据库/Redis/MinIO。
+const resultCacheTTL = 10 * time.Second
+
 // DependencyChecker 单依赖探测；实现 lynx.Checker（CheckHealth() error，
 // 无 ctx，超时在内部自控）。
 type DependencyChecker struct {
@@ -45,6 +49,10 @@ var _ lynx.Checker = (*DependencyChecker)(nil)
 // Checkers 是依赖集合（只读，并发安全）。
 type Checkers struct {
 	deps []*DependencyChecker
+
+	mu       sync.Mutex
+	cached   []*serverv1.DependencyStatus
+	cachedAt time.Time
 }
 
 // NewCheckers 构建依赖探测集合：Postgres（PingContext）、Redis（Ping）、
@@ -74,8 +82,19 @@ func (c *Checkers) Deps() []lynx.Checker {
 }
 
 // Details 并行探测各依赖（各自超时 + recover 兜底），返回逐依赖状态；
-// 探测失败不影响其他依赖。
+// 探测失败不影响其他依赖。结果带 10s 快照缓存：TTL 内重复调用直接返回
+// 上次结果，避免被轮询打穿（readiness 语义仍由 lynx 聚合实时决定）。
 func (c *Checkers) Details(ctx context.Context) []*serverv1.DependencyStatus {
+	now := time.Now()
+	c.mu.Lock()
+	if c.cached != nil && now.Sub(c.cachedAt) < resultCacheTTL {
+		out := make([]*serverv1.DependencyStatus, len(c.cached))
+		copy(out, c.cached)
+		c.mu.Unlock()
+		return out
+	}
+	c.mu.Unlock()
+
 	results := make([]*serverv1.DependencyStatus, len(c.deps))
 	var wg sync.WaitGroup
 	for i, dep := range c.deps {
@@ -86,6 +105,11 @@ func (c *Checkers) Details(ctx context.Context) []*serverv1.DependencyStatus {
 		}(i, dep)
 	}
 	wg.Wait()
+
+	c.mu.Lock()
+	c.cached = results
+	c.cachedAt = time.Now()
+	c.mu.Unlock()
 	return results
 }
 

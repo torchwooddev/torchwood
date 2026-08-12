@@ -14,15 +14,19 @@ server:
     addr: "127.0.0.1:9060"
     timeout: "30s"
   metrics:
-    addr: ":9040"
+    # 默认仅回环监听（metrics 无鉴权）；生产走反向代理 + 网络策略
+    addr: "127.0.0.1:9040"
 
 security:
   jwt:
-    secret: ""              # env: TORCHWOOD_SECURITY_JWT_SECRET
+    secret: ""              # env: TORCHWOOD_SECURITY_JWT_SECRET（必填，≥32 字符，弱默认值拒绝启动）
     access_ttl: "15m"
     refresh_ttl: "7d"
   api_key:
     header: "x-api-key"
+  # Console 首个管理员引导令牌；未设置时 Console SignUp 被拒绝。
+  # 部署时生成强随机值，例如：openssl rand -hex 32
+  setup_token: ""           # env: TORCHWOOD_SECURITY_SETUP_TOKEN
   # 可信代理网段（CIDR）。仅当直连 peer 命中时才采纳 X-Forwarded-For 首跳；
   # 默认空 = 只信 peer 地址。grpc-gateway 与 gRPC 同进程部署时需包含 127.0.0.1/32 才能恢复客户端真实 IP。
   trusted_proxies: []         # env: TORCHWOOD_SECURITY_TRUSTED_PROXIES（逗号分隔）
@@ -30,7 +34,7 @@ security:
 data:
   database:
     source: ""              # env: TORCHWOOD_DATA_DATABASE_SOURCE
-    debug: true
+    debug: false
     slow_query_threshold: "500ms"   # 慢查询日志阈值；"0" 禁用；env: TORCHWOOD_DATA_DATABASE_SLOW_QUERY_THRESHOLD
     pool:
       max_idle_conns: 4
@@ -48,8 +52,8 @@ storage:
     endpoint: ""            # env: TORCHWOOD_STORAGE_S3_ENDPOINT
     region: "us-east-1"
     bucket: "torchwood-storage"   # S3/MinIO 要求全小写
-    access_key_id: ""       # env: TORCHWOOD_STORAGE_S3_ACCESS_KEY
-    secret_access_key: ""   # env: TORCHWOOD_STORAGE_S3_SECRET_KEY
+    access_key_id: ""       # env: TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID
+    secret_access_key: ""   # env: TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY
   local:
     path: "./data/files"
 

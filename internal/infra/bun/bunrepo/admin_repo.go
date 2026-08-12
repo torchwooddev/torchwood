@@ -8,6 +8,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/uptrace/bun"
 )
 
 type adminRepo struct {
@@ -18,9 +19,26 @@ func NewAdminRepository(db *clients.Database) projects.AdminRepository {
 	return &adminRepo{db: db}
 }
 
+// WithBootstrapLock 在事务内持 pg_advisory_xact_lock(key) 执行 fn；
+// 事务经 clients.WithTx 注入 ctx，本 repo 的查询自动使用同一连接，
+// 锁随事务提交/回滚释放。
+func (r *adminRepo) WithBootstrapLock(ctx context.Context, key int64, fn func(ctx context.Context) error) error {
+	return r.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if _, err := r.db.Conn(txCtx).ExecContext(txCtx, "SELECT pg_advisory_xact_lock(?)", key); err != nil {
+			return err
+		}
+		return fn(txCtx)
+	})
+}
+
+// conn 返回当前事务（WithBootstrapLock 注入时）或默认连接。
+func (r *adminRepo) conn(ctx context.Context) bun.IDB {
+	return r.db.Conn(ctx)
+}
+
 func (r *adminRepo) GetAdmin(ctx context.Context, id string) (*projects.Admin, error) {
 	m := new(model.Admin)
-	err := r.db.NewSelect().Model(m).Where("id = ?", id).Scan(ctx)
+	err := r.conn(ctx).NewSelect().Model(m).Where("id = ?", id).Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -39,7 +57,7 @@ func (r *adminRepo) GetAdmin(ctx context.Context, id string) (*projects.Admin, e
 
 func (r *adminRepo) GetAdminByEmail(ctx context.Context, email string) (*projects.Admin, error) {
 	m := new(model.Admin)
-	err := r.db.NewSelect().Model(m).Where("email = ?", email).Scan(ctx)
+	err := r.conn(ctx).NewSelect().Model(m).Where("email = ?", email).Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -58,7 +76,7 @@ func (r *adminRepo) GetAdminByEmail(ctx context.Context, email string) (*project
 
 func (r *adminRepo) ListAdmins(ctx context.Context) ([]projects.Admin, error) {
 	var ms []model.Admin
-	if err := r.db.NewSelect().Model(&ms).Order("created_at ASC").Scan(ctx); err != nil {
+	if err := r.conn(ctx).NewSelect().Model(&ms).Order("created_at ASC").Scan(ctx); err != nil {
 		return nil, err
 	}
 	out := make([]projects.Admin, len(ms))
@@ -84,7 +102,7 @@ func (r *adminRepo) CreateAdmin(ctx context.Context, admin *projects.Admin) erro
 		CreatedAt:    admin.CreatedAt,
 		UpdatedAt:    admin.UpdatedAt,
 	}
-	_, err := r.db.NewInsert().Model(m).Exec(ctx)
+	_, err := r.conn(ctx).NewInsert().Model(m).Exec(ctx)
 	return err
 }
 
@@ -96,16 +114,16 @@ func (r *adminRepo) UpdateAdmin(ctx context.Context, admin *projects.Admin) erro
 		Role:         admin.Role,
 		UpdatedAt:    admin.UpdatedAt,
 	}
-	_, err := r.db.NewUpdate().Model(m).Column("password_hash", "role", "updated_at").Where("id = ?", admin.ID).Exec(ctx)
+	_, err := r.conn(ctx).NewUpdate().Model(m).Column("password_hash", "role", "updated_at").Where("id = ?", admin.ID).Exec(ctx)
 	return err
 }
 
 func (r *adminRepo) DeleteAdmin(ctx context.Context, id string) error {
-	_, err := r.db.NewDelete().Model((*model.Admin)(nil)).Where("id = ?", id).Exec(ctx)
+	_, err := r.conn(ctx).NewDelete().Model((*model.Admin)(nil)).Where("id = ?", id).Exec(ctx)
 	return err
 }
 
 func (r *adminRepo) CountAdminsByRole(ctx context.Context, role string) (int64, error) {
-	count, err := r.db.NewSelect().Model((*model.Admin)(nil)).Where("role = ?", role).Count(ctx)
+	count, err := r.conn(ctx).NewSelect().Model((*model.Admin)(nil)).Where("role = ?", role).Count(ctx)
 	return int64(count), err
 }

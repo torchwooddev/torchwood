@@ -309,8 +309,11 @@ type Security struct {
 	// Trusted proxy CIDRs (e.g. 10.0.0.0/8). Only peers matching these ranges
 	// may supply X-Forwarded-For / X-Real-Ip; otherwise the peer address is used.
 	TrustedProxies []string `protobuf:"bytes,3,rep,name=trusted_proxies,json=trustedProxies,proto3" json:"trusted_proxies,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Console bootstrap token required to sign up the first admin. When empty,
+	// Console SignUp is rejected (prevents setup takeover).
+	SetupToken    string `protobuf:"bytes,4,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Security) Reset() {
@@ -362,6 +365,13 @@ func (x *Security) GetTrustedProxies() []string {
 		return x.TrustedProxies
 	}
 	return nil
+}
+
+func (x *Security) GetSetupToken() string {
+	if x != nil {
+		return x.SetupToken
+	}
+	return ""
 }
 
 type Database struct {
@@ -1752,11 +1762,13 @@ const file_config_proto_rawDesc = "" +
 	"\rallow_headers\x18\x03 \x03(\tR\fallowHeaders\x12%\n" +
 	"\x0eexpose_headers\x18\x04 \x03(\tR\rexposeHeaders\x12+\n" +
 	"\x11allow_credentials\x18\x05 \x01(\bR\x10allowCredentials\x12\x17\n" +
-	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xaa\x02\n" +
+	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xcb\x02\n" +
 	"\bSecurity\x124\n" +
 	"\x03jwt\x18\x01 \x01(\v2\".torchwood.api.config.Security.JwtR\x03jwt\x12>\n" +
 	"\aapi_key\x18\x02 \x01(\v2%.torchwood.api.config.Security.ApiKeyR\x06apiKey\x12'\n" +
-	"\x0ftrusted_proxies\x18\x03 \x03(\tR\x0etrustedProxies\x1a]\n" +
+	"\x0ftrusted_proxies\x18\x03 \x03(\tR\x0etrustedProxies\x12\x1f\n" +
+	"\vsetup_token\x18\x04 \x01(\tR\n" +
+	"setupToken\x1a]\n" +
 	"\x03Jwt\x12\x16\n" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\x12\x1d\n" +
 	"\n" +

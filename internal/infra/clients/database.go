@@ -34,7 +34,10 @@ func NewDataClients(cfg *config.AppConfig, logger *slog.Logger) (*DataClients, f
 	}
 
 	rdb := newRedis(cfg.GetData().GetRedis())
-	if err := rdb.Ping(ctx).Err(); err != nil {
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	err = rdb.Ping(pingCtx).Err()
+	cancel()
+	if err != nil {
 		closeDb()
 		return nil, nil, fmt.Errorf("redis ping failed: %w", err)
 	}
@@ -86,9 +89,12 @@ func newDatabase(cfg *config.Database, logger *slog.Logger) (*Database, func(), 
 	}
 
 	db := bun.NewDB(sqldb, pgdialect.New())
-	if err := db.Ping(); err != nil {
+	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pingErr := db.PingContext(pingCtx)
+	cancel()
+	if pingErr != nil {
 		_ = db.Close()
-		return nil, func() {}, fmt.Errorf("database ping failed: %w", err)
+		return nil, func() {}, fmt.Errorf("database ping failed: %w", pingErr)
 	}
 	if hook := NewSlowQueryHook(cfg.GetSlowQueryThreshold(), cfg.GetDebug(), logger); hook != nil {
 		db.AddQueryHook(hook)

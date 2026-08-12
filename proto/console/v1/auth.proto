@@ -5,9 +5,48 @@ package torchwood.console.v1;
 option go_package = "github.com/torchwooddev/torchwood/genproto/console/v1;consolev1";
 
 import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 import "console/v1/admins.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
+
+// 服务默认 access=public：swagger 顶层不声明全局 security（匿名可达），
+// 仅声明 securityDefinitions 供统一引用（详见 shared/v1/openapi.proto）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "public" }
+  }
+};
 
 service ConsoleAuthService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_PUBLIC };
@@ -29,8 +68,9 @@ service ConsoleAuthService {
     option (google.api.http) = { get: "/v1/console/auth/setup-status" };
   }
 
-  // 首个管理员注册：仅当 admins 表为空时可用；注册成功后自动创建
-  // 默认 project（id=default）与默认 API Key（scope=all，明文仅此一次返回）。
+  // 首个管理员注册：仅当 admins 表为空且携带正确 setup token 时可用；
+  // 注册成功后自动创建默认 project（id=default）与默认 API Key
+  // （scope=all，明文仅此一次返回）。
   rpc SignUp(SignUpRequest) returns (SignUpResponse) {
     option (google.api.http) = { post: "/v1/console/auth/sign-up", body: "*" };
   }
@@ -57,11 +97,16 @@ message GetSetupStatusRequest {}
 
 message GetSetupStatusResponse {
   bool needs_setup = 1;
+  // 部署方是否配置了 TORCHWOOD_SECURITY_SETUP_TOKEN；为 true 时登录页
+  // 需展示 setup token 输入框。
+  bool setup_token_required = 2;
 }
 
 message SignUpRequest {
   string email = 1;
   string password = 2;
+  // Console 引导令牌（security.setup_token / TORCHWOOD_SECURITY_SETUP_TOKEN）。
+  string setup_token = 3;
 }
 
 message SignUpResponse {

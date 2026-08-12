@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -60,6 +61,10 @@ func (r *fakeAdminRepo) DeleteAdmin(_ context.Context, id string) error {
 
 func (r *fakeAdminRepo) CountAdminsByRole(context.Context, string) (int64, error) {
 	return 0, nil
+}
+
+func (r *fakeAdminRepo) WithBootstrapLock(_ context.Context, _ int64, fn func(ctx context.Context) error) error {
+	return fn(context.Background())
 }
 
 var _ projects.AdminRepository = (*fakeAdminRepo)(nil)
@@ -149,7 +154,7 @@ type fakeAPIKeys struct {
 	deleted   []string
 }
 
-func (f *fakeAPIKeys) Create(_ context.Context, _ server.CreateAPIKeyCommand) (*projects.APIKey, string, error) {
+func (f *fakeAPIKeys) CreateInternal(_ context.Context, _ server.CreateAPIKeyCommand) (*projects.APIKey, string, error) {
 	if f.createErr != nil {
 		return nil, "", f.createErr
 	}
@@ -173,12 +178,14 @@ func (f *fakeAuth) SignIn(_ context.Context, cmd SignInCommand) (*TokenPair, err
 const (
 	setupEmail    = "admin@torchwood.local"
 	setupPassword = "Pass@1234"
+	setupToken    = "test-setup-token"
 )
 
 // setupWithFakes 构造 Setup 并用 fake 实现替换内部依赖（NewSetup 构造参数为
 // 具体类型，字段收窄为接口；测试直接改字段注入 fake 即可）。
 func setupWithFakes(adminRepo *fakeAdminRepo, projectRepo *fakeProjectRepo, adminProjectRepo *fakeAdminProjectRepo, projectsCreator *fakeProjects, apiKeys *fakeAPIKeys, auth *fakeAuth) *Setup {
-	s := NewSetup(NewAdmins(adminRepo), nil, nil, nil, adminRepo, adminProjectRepo, projectRepo)
+	cfg := &config.AppConfig{Security: &config.Security{SetupToken: setupToken}}
+	s := NewSetup(cfg, NewAdmins(adminRepo), nil, nil, nil, adminRepo, adminProjectRepo, projectRepo)
 	projectsCreator.projectRepo = projectRepo
 	s.projects = projectsCreator
 	s.apiKeys = apiKeys
@@ -208,7 +215,7 @@ func TestSetup_SignUp_FirstSuccess(t *testing.T) {
 	auth := &fakeAuth{}
 	setup := setupWithFakes(adminRepo, projectRepo, adminProjectRepo, &fakeProjects{}, &fakeAPIKeys{}, auth)
 
-	result, err := setup.SignUp(ctx, setupEmail, setupPassword)
+	result, err := setup.SignUp(ctx, setupEmail, setupPassword, setupToken)
 	require.NoError(t, err)
 
 	// admin 为 owner，密码已哈希。
@@ -233,10 +240,10 @@ func TestSetup_SignUp_SecondCallFails(t *testing.T) {
 	projectRepo := &fakeProjectRepo{}
 	setup := setupWithFakes(adminRepo, projectRepo, &fakeAdminProjectRepo{}, &fakeProjects{}, &fakeAPIKeys{}, &fakeAuth{})
 
-	_, err := setup.SignUp(ctx, setupEmail, setupPassword)
+	_, err := setup.SignUp(ctx, setupEmail, setupPassword, setupToken)
 	require.NoError(t, err)
 
-	_, err = setup.SignUp(ctx, "another@torchwood.local", setupPassword)
+	_, err = setup.SignUp(ctx, "another@torchwood.local", setupPassword, setupToken)
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 }
@@ -246,7 +253,7 @@ func TestSetup_SignUp_AlreadyInitializedFails(t *testing.T) {
 	adminRepo := &fakeAdminRepo{admins: []projects.Admin{{ID: "a-1", Email: "a@b.c"}}}
 	setup := setupWithFakes(adminRepo, &fakeProjectRepo{}, &fakeAdminProjectRepo{}, &fakeProjects{}, &fakeAPIKeys{}, &fakeAuth{})
 
-	_, err := setup.SignUp(ctx, setupEmail, setupPassword)
+	_, err := setup.SignUp(ctx, setupEmail, setupPassword, setupToken)
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 }
@@ -257,7 +264,7 @@ func TestSetup_SignUp_RollbackAdminOnProjectFailure(t *testing.T) {
 	projectRepo := &fakeProjectRepo{}
 	setup := setupWithFakes(adminRepo, projectRepo, &fakeAdminProjectRepo{}, &fakeProjects{err: errors.New("project boom")}, &fakeAPIKeys{}, &fakeAuth{})
 
-	_, err := setup.SignUp(ctx, setupEmail, setupPassword)
+	_, err := setup.SignUp(ctx, setupEmail, setupPassword, setupToken)
 	require.Error(t, err)
 
 	// admin 已回删，project 未创建。
@@ -273,7 +280,7 @@ func TestSetup_SignUp_RollbackOnAPIKeyFailure(t *testing.T) {
 	apiKeys := &fakeAPIKeys{createErr: errors.New("key boom")}
 	setup := setupWithFakes(adminRepo, projectRepo, &fakeAdminProjectRepo{}, &fakeProjects{}, apiKeys, &fakeAuth{})
 
-	_, err := setup.SignUp(ctx, setupEmail, setupPassword)
+	_, err := setup.SignUp(ctx, setupEmail, setupPassword, setupToken)
 	require.Error(t, err)
 
 	// admin 与 project 均回删。
@@ -289,7 +296,7 @@ func TestSetup_SignUp_RollbackOnGrantFailure(t *testing.T) {
 	setup := setupWithFakes(adminRepo, projectRepo, &fakeAdminProjectRepo{}, &fakeProjects{}, &fakeAPIKeys{}, &fakeAuth{})
 	setup.adminProjectRepo = &fakeAdminProjectRepo{err: errors.New("grant boom")}
 
-	_, err := setup.SignUp(ctx, setupEmail, setupPassword)
+	_, err := setup.SignUp(ctx, setupEmail, setupPassword, setupToken)
 	require.Error(t, err)
 
 	require.Len(t, adminRepo.deleted, 1)
@@ -300,7 +307,35 @@ func TestSetup_SignUp_WeakPasswordRejected(t *testing.T) {
 	ctx := context.Background()
 	setup := setupWithFakes(&fakeAdminRepo{}, &fakeProjectRepo{}, &fakeAdminProjectRepo{}, &fakeProjects{}, &fakeAPIKeys{}, &fakeAuth{})
 
-	_, err := setup.SignUp(ctx, setupEmail, "short")
+	_, err := setup.SignUp(ctx, setupEmail, "short", setupToken)
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.InvalidArgument, st.Code())
+}
+
+func TestSetup_SignUp_RejectedWhenTokenNotConfigured(t *testing.T) {
+	ctx := context.Background()
+	adminRepo := &fakeAdminRepo{}
+	cfg := &config.AppConfig{Security: &config.Security{}}
+	s := NewSetup(cfg, NewAdmins(adminRepo), nil, nil, nil, adminRepo, &fakeAdminProjectRepo{}, &fakeProjectRepo{})
+
+	_, err := s.SignUp(ctx, setupEmail, setupPassword, "")
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Len(t, adminRepo.admins, 0)
+}
+
+func TestSetup_SignUp_RejectedOnTokenMismatch(t *testing.T) {
+	ctx := context.Background()
+	adminRepo := &fakeAdminRepo{}
+	setup := setupWithFakes(adminRepo, &fakeProjectRepo{}, &fakeAdminProjectRepo{}, &fakeProjects{}, &fakeAPIKeys{}, &fakeAuth{})
+
+	_, err := setup.SignUp(ctx, setupEmail, setupPassword, "wrong-token")
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.PermissionDenied, st.Code())
+	require.Len(t, adminRepo.admins, 0)
+}
+
+func TestSetup_SetupTokenConfigured(t *testing.T) {
+	require.False(t, NewSetup(&config.AppConfig{}, nil, nil, nil, nil, nil, nil, nil).SetupTokenConfigured())
+	require.True(t, NewSetup(&config.AppConfig{Security: &config.Security{SetupToken: "t"}}, nil, nil, nil, nil, nil, nil, nil).SetupTokenConfigured())
 }

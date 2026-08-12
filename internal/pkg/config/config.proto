@@ -56,6 +56,9 @@ message Security {
   // Trusted proxy CIDRs (e.g. 10.0.0.0/8). Only peers matching these ranges
   // may supply X-Forwarded-For / X-Real-Ip; otherwise the peer address is used.
   repeated string trusted_proxies = 3;
+  // Console bootstrap token required to sign up the first admin. When empty,
+  // Console SignUp is rejected (prevents setup takeover).
+  string setup_token = 4;
 }
 
 message Database {

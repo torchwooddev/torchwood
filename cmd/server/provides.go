@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/wire"
 	"github.com/lynx-go/lynx"
@@ -45,10 +47,47 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	if err := config.UnmarshalConfig(app.Config(), &c); err != nil {
 		return nil, err
 	}
-	if secret := c.GetSecurity().GetJwt().GetSecret(); secret == "" {
-		return nil, errors.New("security.jwt.secret must be set (env TORCHWOOD_SECURITY_JWT_SECRET)")
+	if err := validateJWTSecret(c.GetSecurity().GetJwt().GetSecret(), app.Logger()); err != nil {
+		return nil, err
 	}
 	return &c, nil
+}
+
+// weakJWTSecretTokens 是已知弱默认值/常见占位密钥的子串黑名单。
+var weakJWTSecretTokens = []string{
+	"change-me",
+	"changeme",
+	"minioadmin",
+	"secret",
+	"password",
+	"torchwood",
+}
+
+// minJWTSecretLen 是 JWT 主密钥的最小长度（HS256 密钥熵下界）。
+const minJWTSecretLen = 32
+
+// validateJWTSecret 拒绝空值、已知弱默认值与过短密钥；命中弱模式但通过
+// 长度检查的密钥仅 Warn（不阻断，便于自定义强密钥仍含常见词的情形）。
+func validateJWTSecret(secret string, logger *slog.Logger) error {
+	s := strings.TrimSpace(secret)
+	if s == "" {
+		return errors.New("security.jwt.secret must be set (env TORCHWOOD_SECURITY_JWT_SECRET)")
+	}
+	if len(s) < minJWTSecretLen {
+		return fmt.Errorf("security.jwt.secret is too short (%d chars): must be at least %d characters (env TORCHWOOD_SECURITY_JWT_SECRET)", len(s), minJWTSecretLen)
+	}
+	lower := strings.ToLower(s)
+	for _, w := range weakJWTSecretTokens {
+		if lower == w {
+			return fmt.Errorf("security.jwt.secret is a known weak default value %q; generate a strong random secret (env TORCHWOOD_SECURITY_JWT_SECRET)", w)
+		}
+		if strings.Contains(lower, w) {
+			logger.Warn("security.jwt.secret contains a known weak value; make sure a strong random secret is set",
+				"secret_length", len(s))
+			break
+		}
+	}
+	return nil
 }
 
 // NewBuildInfo 返回编译期注入的版本信息（package 级 var，由 ldflags 填充）。

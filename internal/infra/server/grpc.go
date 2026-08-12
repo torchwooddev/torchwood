@@ -75,7 +75,7 @@ func NewGRPCServer(
 		return nil, err
 	}
 	authInterceptor = authInterceptor.WithLogger(app.Logger())
-	auditInterceptor := interceptor.NewAuditInterceptor(auditRepo)
+	auditInterceptor := interceptor.NewAuditInterceptor(auditRepo).WithLogger(app.Logger())
 	trustedProxies, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)

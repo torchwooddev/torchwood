@@ -27,6 +27,11 @@ type AdminRepository interface {
 	UpdateAdmin(ctx context.Context, admin *Admin) error
 	DeleteAdmin(ctx context.Context, id string) error
 	CountAdminsByRole(ctx context.Context, role string) (int64, error)
+	// WithBootstrapLock 在事务内持 pg_advisory_xact_lock(key) 执行 fn，
+	// 串行化首个管理员引导的首次性检查与创建。fn 内通过 ctx 使用同一事务
+	// （ListAdmins/CreateAdmin/DeleteAdmin 等方法自动感知事务上下文）；
+	// 锁随事务提交/回滚自动释放。
+	WithBootstrapLock(ctx context.Context, key int64, fn func(ctx context.Context) error) error
 }
 
 type ProjectResolver interface {

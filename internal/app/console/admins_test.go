@@ -76,6 +76,10 @@ func (r *memAdminRepo) CountAdminsByRole(_ context.Context, role string) (int64,
 	return n, nil
 }
 
+func (r *memAdminRepo) WithBootstrapLock(_ context.Context, _ int64, fn func(ctx context.Context) error) error {
+	return fn(context.Background())
+}
+
 var _ projects.AdminRepository = (*memAdminRepo)(nil)
 
 func newAdminRepo(admins ...projects.Admin) *memAdminRepo {

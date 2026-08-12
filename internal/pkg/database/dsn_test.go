@@ -13,7 +13,7 @@ func TestSourceFromEnv(t *testing.T) {
 	t.Setenv("POSTGRES_DB", "app")
 
 	got := SourceFromEnv()
-	want := "postgres://user:pass@db.local:5433/app?sslmode=disable"
+	want := "postgres://user:pass@db.local:5433/app?sslmode=require"
 	if got != want {
 		t.Fatalf("SourceFromEnv() = %q, want %q", got, want)
 	}
