@@ -405,25 +405,25 @@ func extractZipWithLimits(zipPath, destDir string, limits zipExtractLimits) (str
 			src.Close()
 			return "", fmt.Errorf("write zip entry %q: %w", f.Name, err)
 		}
-	// 写入侧按实际字节计数（不再仅信任 UncompressedSize64 声明值），
-	// 预算（单条目或总预算）超限报错并清理整个解压目标目录——RemoveAll
-	// 仅作用于本函数持有的 destDir 子树（zip-slip 校验保证条目写入始终
-	// 位于其内），不会误删目录外内容，也不残留已解压的前序条目。
-	n, copyErr := io.Copy(&budgetWriter{dst: dst, limit: limits.maxEntryBytes}, src)
-	actualTotal += n
-	src.Close()
-	closeErr := dst.Close()
-	if copyErr != nil {
-		_ = os.RemoveAll(destDir)
-		if errors.Is(copyErr, errZipBudgetExceeded) {
-			return "", status.Errorf(codes.InvalidArgument, "zip entry %q exceeds %d byte extraction budget", f.Name, limits.maxEntryBytes)
+		// 写入侧按实际字节计数（不再仅信任 UncompressedSize64 声明值），
+		// 预算（单条目或总预算）超限报错并清理整个解压目标目录——RemoveAll
+		// 仅作用于本函数持有的 destDir 子树（zip-slip 校验保证条目写入始终
+		// 位于其内），不会误删目录外内容，也不残留已解压的前序条目。
+		n, copyErr := io.Copy(&budgetWriter{dst: dst, limit: limits.maxEntryBytes}, src)
+		actualTotal += n
+		src.Close()
+		closeErr := dst.Close()
+		if copyErr != nil {
+			_ = os.RemoveAll(destDir)
+			if errors.Is(copyErr, errZipBudgetExceeded) {
+				return "", status.Errorf(codes.InvalidArgument, "zip entry %q exceeds %d byte extraction budget", f.Name, limits.maxEntryBytes)
+			}
+			return "", fmt.Errorf("extract zip entry %q: %w", f.Name, copyErr)
 		}
-		return "", fmt.Errorf("extract zip entry %q: %w", f.Name, copyErr)
-	}
-	if actualTotal > limits.maxTotalBytes {
-		_ = os.RemoveAll(destDir)
-		return "", status.Errorf(codes.InvalidArgument, "zip total uncompressed size exceeds %d bytes", limits.maxTotalBytes)
-	}
+		if actualTotal > limits.maxTotalBytes {
+			_ = os.RemoveAll(destDir)
+			return "", status.Errorf(codes.InvalidArgument, "zip total uncompressed size exceeds %d bytes", limits.maxTotalBytes)
+		}
 		if closeErr != nil {
 			return "", fmt.Errorf("close zip entry %q: %w", f.Name, closeErr)
 		}
