@@ -43,6 +43,9 @@ func (a *Account) CreateMagicURLSession(ctx context.Context, cmd CreateMagicURLS
 	if email == "" {
 		return nil, status.Error(codes.InvalidArgument, "email is required")
 	}
+	if err := validateEmail(email); err != nil {
+		return nil, err
+	}
 	if err := validateRedirectURL(cmd.URL); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid url: %v", err)
 	}
@@ -74,17 +77,18 @@ func (a *Account) CreateMagicURLSession(ctx context.Context, cmd CreateMagicURLS
 		return &Challenge{}, nil
 	}
 
-	secret, expireAt, err := a.tokens.CreateMagicURLToken(ctx, projectID, userDoc.ID, email)
+	challengeID, secret, expireAt, err := a.tokens.CreateMagicURLToken(ctx, projectID, userDoc.ID, email)
 	if err != nil {
 		return nil, err
 	}
+	// secret 仅存在于邮件链接中；API 响应只回传不透明 challengeID。
 	link := buildAccountActionURL(cmd.URL, userDoc.ID, secret)
 	subject := "Sign in to Torchwood"
 	body := fmt.Sprintf("Click the link below to sign in:\n\n%s\n\nThis link expires at %s.", link, expireAt.Format("2006-01-02 15:04 MST"))
 	if err := a.mailer.Send(ctx, email, subject, body); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to send magic url email: %v", err)
 	}
-	return &Challenge{ChallengeID: secret, ExpireAt: expireAt}, nil
+	return &Challenge{ChallengeID: challengeID, ExpireAt: expireAt}, nil
 }
 
 // UpdateMagicURLSession 校验一次性 secret 后走 finishSignInWithProvider

@@ -10,6 +10,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -22,6 +23,14 @@ type MFASignInChallenge struct {
 
 // mfaFactorActivateWindow 是 pending 因子必须激活的时限。
 const mfaFactorActivateWindow = 10 * time.Minute
+
+// CompleteMFASession 频控：按账号与 IP 双维度限流，缓解 TOTP 爆破。
+const (
+	mfaCompleteUserWindow = 15 * time.Minute
+	mfaCompleteUserLimit  = 10
+	mfaCompleteIPWindow   = 15 * time.Minute
+	mfaCompleteIPLimit    = 30
+)
 
 // mfaSignInChallenge 读取用户 verified 因子；存在时创建一次性挑战并返回，
 // 不存在（或 MFA 未装配）返回 nil，调用方按原逻辑签发会话。
@@ -197,10 +206,16 @@ func (a *Account) VerifyTOTPFactor(ctx context.Context, projectID, userID, facto
 	return factor, nil
 }
 
-func (a *Account) DeleteFactor(ctx context.Context, projectID, userID, factorID string) error {
+// DeleteFactor 删除 MFA 因子：pending 因子直接删除；verified 因子必须提供
+// 有效 TOTP code 二次验证（防会话劫持者静默移除 MFA）；删除时作废该用户
+// 全部未消费的登录挑战。
+func (a *Account) DeleteFactor(ctx context.Context, projectID, userID, factorID, code string) error {
 	p, err := a.requireUser(ctx)
 	if err != nil {
 		return err
+	}
+	if a.mfa == nil {
+		return status.Error(codes.Unimplemented, "mfa is not configured")
 	}
 	if projectID == "" {
 		projectID = p.ProjectID
@@ -226,9 +241,25 @@ func (a *Account) DeleteFactor(ctx context.Context, projectID, userID, factorID 
 	if idx < 0 {
 		return status.Error(codes.NotFound, "mfa factor not found")
 	}
+	if factors[idx].Status == domainauth.FactorStatusVerified {
+		if code == "" {
+			return status.Error(codes.InvalidArgument, "mfa code is required")
+		}
+		if err := a.mfa.ValidateTOTP(ctx, &factors[idx], code); err != nil {
+			return err
+		}
+	}
 	factors = append(factors[:idx], factors[idx+1:]...)
-	_, err = a.saveFactors(ctx, p, factors)
-	return err
+	if _, err := a.saveFactors(ctx, p, factors); err != nil {
+		return err
+	}
+	// 作废该用户未消费的登录挑战，防止删除因子后挑战仍可完成登录。
+	if a.mfaChallenges != nil {
+		if err := a.mfaChallenges.RevokeByUser(ctx, p.ProjectID, p.UserID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CompleteMFASession 消费一次性挑战 token、校验 TOTP code 并签发会话。
@@ -238,6 +269,10 @@ func (a *Account) CompleteMFASession(ctx context.Context, projectID, challengeTo
 	}
 	challengeProjectID, userID, err := a.mfaChallenges.Consume(ctx, challengeToken)
 	if err != nil {
+		return nil, nil, "", err
+	}
+	clientInfo := contexts.ClientInfoFrom(ctx)
+	if err := a.checkMFACompleteRateLimit(ctx, userID, clientInfo.IP); err != nil {
 		return nil, nil, "", err
 	}
 	if projectID == "" {
@@ -353,4 +388,22 @@ func factorDocs(factors []domainauth.Factor) []any {
 		})
 	}
 	return out
+}
+
+func (a *Account) checkMFACompleteRateLimit(ctx context.Context, userID, ip string) error {
+	// nil 容忍：未装配限流器或拿不到维度值时不做限制。
+	if a.rateLimiter == nil {
+		return nil
+	}
+	if userID != "" {
+		if err := a.rateLimiter.Allow(ctx, "mfa:complete:user:"+userID, mfaCompleteUserLimit, mfaCompleteUserWindow); err != nil {
+			return err
+		}
+	}
+	if ip != "" {
+		if err := a.rateLimiter.Allow(ctx, "mfa:complete:ip:"+ip, mfaCompleteIPLimit, mfaCompleteIPWindow); err != nil {
+			return err
+		}
+	}
+	return nil
 }

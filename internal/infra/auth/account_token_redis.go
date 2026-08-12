@@ -58,8 +58,17 @@ func (s *RedisAccountTokenStore) VerifyRecoveryToken(ctx context.Context, projec
 	return s.verifyToken(ctx, projectID, userID, secret, domainauth.AccountTokenPurposeRecovery)
 }
 
-func (s *RedisAccountTokenStore) CreateMagicURLToken(ctx context.Context, projectID, userID, email string) (string, time.Time, error) {
-	return s.createToken(ctx, projectID, userID, email, domainauth.AccountTokenPurposeMagicURL, magicURLTokenTTL)
+func (s *RedisAccountTokenStore) CreateMagicURLToken(ctx context.Context, projectID, userID, email string) (string, string, time.Time, error) {
+	secret, expireAt, err := s.createToken(ctx, projectID, userID, email, domainauth.AccountTokenPurposeMagicURL, magicURLTokenTTL)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	// 不透明 challengeID 与 secret 无关，仅用于 API 响应回传；secret 只在邮件链接里。
+	challengeID, err := generateAccountTokenSecret()
+	if err != nil {
+		return "", "", time.Time{}, status.Error(codes.Internal, "account token generation failed")
+	}
+	return challengeID, secret, expireAt, nil
 }
 
 func (s *RedisAccountTokenStore) VerifyMagicURLToken(ctx context.Context, projectID, userID, secret string) error {
@@ -90,9 +99,11 @@ func (s *RedisAccountTokenStore) createToken(ctx context.Context, projectID, use
 	return secret, expireAt, nil
 }
 
+// verifyToken 通过 GETDEL 原子消费：校验与删除一体，杜绝并发双消费
+// （recovery 双重置 / magic URL 双会话）。
 func (s *RedisAccountTokenStore) verifyToken(ctx context.Context, projectID, userID, secret, purpose string) error {
 	key := accountTokenKey(purpose, projectID, userID)
-	raw, err := s.rdb.Get(ctx, key).Bytes()
+	raw, err := s.rdb.GetDel(ctx, key).Bytes()
 	if err == redis.Nil {
 		return status.Error(codes.Unauthenticated, "invalid or expired account token")
 	}
@@ -108,9 +119,6 @@ func (s *RedisAccountTokenStore) verifyToken(ctx context.Context, projectID, use
 	}
 	if record.SecretHash != HashOTP(secret) {
 		return status.Error(codes.Unauthenticated, "invalid or expired account token")
-	}
-	if err := s.rdb.Del(ctx, key).Err(); err != nil {
-		return status.Error(codes.Internal, "account token cleanup failed")
 	}
 	return nil
 }

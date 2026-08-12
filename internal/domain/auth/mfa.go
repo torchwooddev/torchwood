@@ -32,7 +32,7 @@ type MFAService interface {
 	CreateTOTPFactor(ctx context.Context, issuer, userID, email string) (*Factor, string, string, error) // factor, plainSecret, otpauthURL
 	// VerifyTOTPFactor 校验 code 并激活因子（防重放：同一 code 60s 内不可重用）。
 	VerifyTOTPFactor(ctx context.Context, factor *Factor, code string) error
-	// ValidateTOTP 校验 code（登录挑战用，不做状态变更与重放记录）。
+	// ValidateTOTP 校验 code（登录挑战用；同样做 60s 防重放与失败锁定）。
 	ValidateTOTP(ctx context.Context, factor *Factor, code string) error
 }
 
@@ -41,4 +41,6 @@ type MFAChallengeStore interface {
 	Create(ctx context.Context, projectID, userID string) (token string, expireAt time.Time, err error)
 	// Consume 一次性取出并删除；不存在/已用返回错误。
 	Consume(ctx context.Context, token string) (projectID, userID string, err error)
+	// RevokeByUser 作废该用户全部未消费的挑战（删除 MFA 因子时调用）。
+	RevokeByUser(ctx context.Context, projectID, userID string) error
 }

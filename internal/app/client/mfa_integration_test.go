@@ -93,6 +93,9 @@ func TestMFAFullFlowIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, sessionsAfter)
 
+	// 等激活 code 的 60s 防重放窗口过后再完成挑战。
+	mr.FastForward(61 * time.Second)
+
 	// 6. 完成挑战 → 签发 provider=mfa 的会话。
 	goodCode, err := totp.GenerateCode(plainSecret, time.Now())
 	require.NoError(t, err)

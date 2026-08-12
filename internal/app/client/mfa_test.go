@@ -30,8 +30,8 @@ func mfaTestConfig() *config.AppConfig {
 	}
 }
 
-// setupMFATestAccount 注册一个用户并返回带 principal 的 ctx 与 account。
-func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, string) {
+// setupMFATestAccount 注册一个用户并返回带 principal 的 ctx、account、miniredis。
+func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, string, *miniredis.Miniredis) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -67,11 +67,11 @@ func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, strin
 		Email:     user.Email,
 		Roles:     []string{"users", "user:" + user.ID},
 	})
-	return userCtx, account, projectID, user.ID
+	return userCtx, account, projectID, user.ID, mr
 }
 
 func TestAccount_ListFactors(t *testing.T) {
-	ctx, account, _, _ := setupMFATestAccount(t)
+	ctx, account, _, _, _ := setupMFATestAccount(t)
 
 	factors, err := account.ListFactors(ctx)
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestAccount_ListFactors(t *testing.T) {
 }
 
 func TestAccount_CreateTOTPFactor_SecretEncrypted(t *testing.T) {
-	ctx, account, projectID, userID := setupMFATestAccount(t)
+	ctx, account, projectID, userID, _ := setupMFATestAccount(t)
 
 	factor, plainSecret, otpauthURL, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestAccount_CreateTOTPFactor_RequiresJWTSecret(t *testing.T) {
 }
 
 func TestAccount_VerifyTOTPFactor_Activate(t *testing.T) {
-	ctx, account, projectID, userID := setupMFATestAccount(t)
+	ctx, account, projectID, userID, _ := setupMFATestAccount(t)
 
 	factor, plainSecret, _, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func TestAccount_VerifyTOTPFactor_Activate(t *testing.T) {
 }
 
 func TestAccount_VerifyTOTPFactor_WrongCode(t *testing.T) {
-	ctx, account, projectID, userID := setupMFATestAccount(t)
+	ctx, account, projectID, userID, _ := setupMFATestAccount(t)
 
 	factor, _, _, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
 	require.NoError(t, err)
@@ -176,7 +176,7 @@ func TestAccount_VerifyTOTPFactor_WrongCode(t *testing.T) {
 }
 
 func TestAccount_VerifyTOTPFactor_LockedAfterFailures(t *testing.T) {
-	ctx, account, projectID, userID := setupMFATestAccount(t)
+	ctx, account, projectID, userID, _ := setupMFATestAccount(t)
 
 	factor, plainSecret, _, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
 	require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestAccount_VerifyTOTPFactor_LockedAfterFailures(t *testing.T) {
 }
 
 func TestAccount_DeleteFactor_RestoresDirectSignIn(t *testing.T) {
-	ctx, account, projectID, userID := setupMFATestAccount(t)
+	ctx, account, projectID, userID, mr := setupMFATestAccount(t)
 
 	factor, plainSecret, _, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
 	require.NoError(t, err)
@@ -204,12 +204,21 @@ func TestAccount_DeleteFactor_RestoresDirectSignIn(t *testing.T) {
 	_, err = account.VerifyTOTPFactor(ctx, projectID, userID, factor.ID, code)
 	require.NoError(t, err)
 
-	// 删除后登录恢复直通（无 MFA 挑战）。
-	require.NoError(t, account.DeleteFactor(ctx, projectID, userID, factor.ID))
+	// 删除 verified 因子需二次验证：无 code / 错误 code 均拒绝。
+	require.Error(t, account.DeleteFactor(ctx, projectID, userID, factor.ID, ""))
+	require.Error(t, account.DeleteFactor(ctx, projectID, userID, factor.ID, "123456"))
+
+	// 等激活 code 的防重放窗口（60s）过后生成新 code。
+	mr.FastForward(61 * time.Second)
+	code2, err := totp.GenerateCode(plainSecret, time.Now())
+	require.NoError(t, err)
+	require.NoError(t, account.DeleteFactor(ctx, projectID, userID, factor.ID, code2))
+
 	factors, err := account.ListFactors(ctx)
 	require.NoError(t, err)
 	require.Empty(t, factors)
 
+	// 删除后登录恢复直通（无 MFA 挑战）。
 	_, _, _, mfa, err := account.SignIn(ctx, SignInCommand{
 		ProjectID: projectID,
 		Email:     "mfa-user@torchwood.local",
@@ -219,10 +228,50 @@ func TestAccount_DeleteFactor_RestoresDirectSignIn(t *testing.T) {
 	require.Nil(t, mfa)
 }
 
+// TestAccount_DeleteFactor_RevokesPendingChallenges 删除因子时作废该用户
+// 全部未消费的登录挑战。
+func TestAccount_DeleteFactor_RevokesPendingChallenges(t *testing.T) {
+	ctx, account, projectID, userID, mr := setupMFATestAccount(t)
+
+	factor, plainSecret, _, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
+	require.NoError(t, err)
+	code, err := totp.GenerateCode(plainSecret, time.Now())
+	require.NoError(t, err)
+	_, err = account.VerifyTOTPFactor(ctx, projectID, userID, factor.ID, code)
+	require.NoError(t, err)
+
+	// 删除当前会话（SignUp 产生的），触发 MFA 登录挑战。
+	sessions, err := account.ListSessions(ctx)
+	require.NoError(t, err)
+	for _, s := range sessions {
+		require.NoError(t, account.DeleteSession(ctx, s.ID))
+	}
+	_, _, _, mfa, err := account.SignIn(ctx, SignInCommand{
+		ProjectID: projectID,
+		Email:     "mfa-user@torchwood.local",
+		Password:  "User@123",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, mfa)
+	token := mfa.Token
+
+	// 删除因子（等激活 code 的防重放窗口过后生成新 code）。
+	mr.FastForward(61 * time.Second)
+	code2, err := totp.GenerateCode(plainSecret, time.Now())
+	require.NoError(t, err)
+	require.NoError(t, account.DeleteFactor(ctx, projectID, userID, factor.ID, code2))
+
+	// 未消费的挑战已作废。
+	_, _, _, err = account.CompleteMFASession(ctx, projectID, token, factor.ID, code2)
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.Unauthenticated, st.Code())
+}
+
 // TestAccount_SignInRequiresMFA 登录钩子：有 verified 因子时返回 mfa_required，
 // 且不产生会话文档；CompleteMFASession 后会话可用；challenge 一次性。
 func TestAccount_VerifyTOTPFactor_ExpiredPending(t *testing.T) {
-	ctx, account, projectID, userID := setupMFATestAccount(t)
+	ctx, account, projectID, userID, _ := setupMFATestAccount(t)
 
 	factor, _, _, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
 	require.NoError(t, err)
@@ -257,7 +306,7 @@ func TestAccount_VerifyTOTPFactor_ExpiredPending(t *testing.T) {
 }
 
 func TestAccount_SignInRequiresMFA(t *testing.T) {
-	ctx, account, projectID, userID := setupMFATestAccount(t)
+	ctx, account, projectID, userID, mr := setupMFATestAccount(t)
 
 	factor, plainSecret, _, err := account.CreateTOTPFactor(ctx, projectID, userID, "")
 	require.NoError(t, err)
@@ -265,6 +314,9 @@ func TestAccount_SignInRequiresMFA(t *testing.T) {
 	require.NoError(t, err)
 	_, err = account.VerifyTOTPFactor(ctx, projectID, userID, factor.ID, code)
 	require.NoError(t, err)
+
+	// 等激活 code 的 60s 防重放窗口过后再走登录流程（新 code 可被接受）。
+	mr.FastForward(61 * time.Second)
 
 	// 登出当前会话（SignUp 产生的），确保登录前无活跃会话。
 	sessions, err := account.ListSessions(ctx)

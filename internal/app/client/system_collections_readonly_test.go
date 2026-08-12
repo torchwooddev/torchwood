@@ -93,8 +93,8 @@ func TestClientDatabases_SystemCollectionReadPolicy(t *testing.T) {
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 
 	// 用户集合行为不变：认证用户在自定义集合正常读写。
-	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "App DB"))
-	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "notes", "Notes", []databases.Attribute{
+	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "App DB"))
+	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "notes", "Notes", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		{Type: "create", Role: "users"},
@@ -159,8 +159,8 @@ func TestClientDatabases_SystemCollectionWriteDenied(t *testing.T) {
 
 	// 自定义库中 id=users 集合不受名单限制（黑名单限定 default 库）：
 	// schema 创建、文档读与文档写均正常（adapter 纵深防御同样限定 default 库）。
-	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "App DB"))
-	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "users", "Custom Users", []databases.Attribute{
+	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "App DB"))
+	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "users", "Custom Users", []databases.Attribute{
 		{ID: "name", Key: "name", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		{Type: "create", Role: "users"},

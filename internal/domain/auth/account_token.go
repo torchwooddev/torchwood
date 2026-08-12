@@ -18,6 +18,8 @@ type AccountTokenStore interface {
 	VerifyVerificationToken(ctx context.Context, projectID, userID, secret string) error
 	CreateRecoveryToken(ctx context.Context, projectID, userID, email string) (secret string, expireAt time.Time, err error)
 	VerifyRecoveryToken(ctx context.Context, projectID, userID, secret string) error
-	CreateMagicURLToken(ctx context.Context, projectID, userID, email string) (secret string, expireAt time.Time, err error)
+	// CreateMagicURLToken 返回不透明 challengeID（API 回传用）与真实 secret
+	// （仅存在于邮件链接中）。
+	CreateMagicURLToken(ctx context.Context, projectID, userID, email string) (challengeID string, secret string, expireAt time.Time, err error)
 	VerifyMagicURLToken(ctx context.Context, projectID, userID, secret string) error
 }

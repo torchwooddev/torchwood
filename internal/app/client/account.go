@@ -2,8 +2,10 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
@@ -44,6 +46,7 @@ type Account struct {
 	roles          domainauth.UserRoleResolver
 	mfa            domainauth.MFAService
 	mfaChallenges  domainauth.MFAChallengeStore
+	oneTimeTokens  domainauth.OneTimeTokenStore
 	auditRepo      audit.Repository
 }
 
@@ -65,6 +68,7 @@ func NewAccount(
 	roles domainauth.UserRoleResolver,
 	mfa domainauth.MFAService,
 	mfaChallenges domainauth.MFAChallengeStore,
+	oneTimeTokens domainauth.OneTimeTokenStore,
 	auditRepo audit.Repository,
 ) *Account {
 	return &Account{
@@ -85,6 +89,7 @@ func NewAccount(
 		roles:          roles,
 		mfa:            mfa,
 		mfaChallenges:  mfaChallenges,
+		oneTimeTokens:  oneTimeTokens,
 		auditRepo:      auditRepo,
 	}
 }
@@ -137,6 +142,30 @@ type UpdateAccountCommand struct {
 	OldPassword string
 }
 
+// SignUp 频控：每 IP 每小时最多 10 次。
+const (
+	signUpIPWindow = time.Hour
+	signUpIPLimit  = 10
+)
+
+// dummyPasswordHash 是固定哑哈希，用户不存在时也执行一次 Verify，
+// 保持 SignIn 两条失败路径的耗时一致。
+var dummyPasswordHash = sync.OnceValue(func() string {
+	h, err := password.Hash("torchwood-dummy-signin-password")
+	if err != nil {
+		return ""
+	}
+	return h
+})
+
+func (a *Account) checkSignUpRateLimit(ctx context.Context, ip string) error {
+	// nil 容忍：未装配限流器或拿不到客户端 IP 时不做限制。
+	if a.rateLimiter == nil || ip == "" {
+		return nil
+	}
+	return a.rateLimiter.Allow(ctx, "signup:ip:"+ip, signUpIPLimit, signUpIPWindow)
+}
+
 func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
 	if cmd.ProjectID == "" {
 		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "project_id is required")
@@ -145,7 +174,14 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 	if email == "" {
 		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "email is required")
 	}
+	if err := validateEmail(email); err != nil {
+		return nil, nil, "", nil, err
+	}
 	if err := validatePasswordStrength(cmd.Password); err != nil {
+		return nil, nil, "", nil, err
+	}
+	clientInfo := contexts.ClientInfoFrom(ctx)
+	if err := a.checkSignUpRateLimit(ctx, clientInfo.IP); err != nil {
 		return nil, nil, "", nil, err
 	}
 	project, err := a.projectRepo.GetProject(ctx, cmd.ProjectID)
@@ -261,6 +297,9 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 		return nil, nil, "", nil, err
 	}
 	if len(list.Documents) == 0 {
+		// 用户不存在时对固定哑哈希执行一次 Verify，抹平"不存在"与"密码错误"
+		// 两条路径的响应时序差异（防枚举）。
+		_, _ = password.Verify(cmd.Password, dummyPasswordHash())
 		return invalidCredentials()
 	}
 	userDoc := list.Documents[0]
@@ -388,7 +427,12 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	if cmd.Name != "" {
 		updates["name"] = cmd.Name
 	}
+	hash, _ := doc.Data["password_hash"].(string)
+	emailChanging := false
 	if email := normalizeEmail(cmd.Email); email != "" && email != stringValue(doc.Data["email"]) {
+		if err := validateEmail(email); err != nil {
+			return nil, err
+		}
 		list, err := a.docDB.ListDocuments(ctx, p.ProjectID, "default", "users", databases.Query{
 			Queries:  []string{query.BuildEqual("email", email)},
 			PageSize: 1,
@@ -401,23 +445,27 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		}
 		updates["email"] = email
 		updates["email_verified"] = false
+		emailChanging = true
 	}
 	if cmd.Password != "" {
 		if err := validatePasswordStrength(cmd.Password); err != nil {
 			return nil, err
-		}
-		if cmd.OldPassword == "" {
-			return nil, status.Error(codes.InvalidArgument, "old_password is required")
-		}
-		hash, _ := doc.Data["password_hash"].(string)
-		if ok, _ := password.Verify(cmd.OldPassword, hash); !ok {
-			return nil, status.Error(codes.Unauthenticated, "invalid old password")
 		}
 		newHash, err := password.Hash(cmd.Password)
 		if err != nil {
 			return nil, err
 		}
 		updates["password_hash"] = newHash
+	}
+	// 敏感变更（改邮箱/改密码）二次验证：非匿名用户（已有密码）必须提供旧密码；
+	// 匿名用户（password_hash 为空）升级为实名/设置密码时跳过。
+	if (emailChanging || updates["password_hash"] != nil) && hash != "" {
+		if cmd.OldPassword == "" {
+			return nil, status.Error(codes.InvalidArgument, "old_password is required")
+		}
+		if ok, _ := password.Verify(cmd.OldPassword, hash); !ok {
+			return nil, status.Error(codes.Unauthenticated, "invalid old password")
+		}
 	}
 	if len(updates) == 0 {
 		return mapUserDoc(doc), nil
@@ -433,32 +481,43 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		}
 		return nil, fmt.Errorf("update account: %w", err)
 	}
-	if _, passwordChanged := updates["password_hash"]; passwordChanged {
+	if _, passwordChanged := updates["password_hash"]; passwordChanged || emailChanging {
+		// 敏感信息变更后撤销该用户全部会话（含当前会话）。
 		if err := a.sessions.DeleteSessionsByUser(ctx, p.ProjectID, p.UserID); err != nil {
-			return nil, fmt.Errorf("delete sessions after password change: %w", err)
+			return nil, fmt.Errorf("delete sessions after account change: %w", err)
 		}
 	}
 	return mapUserDoc(&updated), nil
 }
 
+// ListSessions 循环分页拉取全部会话（PageSize=1000，直至 NextPageToken 空），
+// 避免 ListDocuments 默认 50 条截断。
 func (a *Account) ListSessions(ctx context.Context) ([]Session, error) {
 	p, err := a.requireUser(ctx)
 	if err != nil {
 		return nil, err
 	}
-	list, err := a.docDB.ListDocuments(ctx, p.ProjectID, "default", "sessions", databases.Query{
-		Queries: []string{query.BuildEqual("user_id", p.UserID)},
-	}, databases.Principal{Roles: p.Roles})
-	if err != nil {
-		return nil, err
+	out := make([]Session, 0, 16)
+	pageToken := ""
+	for {
+		list, err := a.docDB.ListDocuments(ctx, p.ProjectID, "default", "sessions", databases.Query{
+			Queries:   []string{query.BuildEqual("user_id", p.UserID)},
+			PageSize:  1000,
+			PageToken: pageToken,
+		}, databases.Principal{Roles: p.Roles})
+		if err != nil {
+			return nil, err
+		}
+		for i := range list.Documents {
+			s := mapSessionDoc(&list.Documents[i])
+			s.Current = s.ID == p.SessionID
+			out = append(out, s)
+		}
+		if list.NextPageToken == "" {
+			return out, nil
+		}
+		pageToken = list.NextPageToken
 	}
-	out := make([]Session, 0, len(list.Documents))
-	for i := range list.Documents {
-		s := mapSessionDoc(&list.Documents[i])
-		s.Current = s.ID == p.SessionID
-		out = append(out, s)
-	}
-	return out, nil
 }
 
 func (a *Account) DeleteSession(ctx context.Context, sessionID string) error {
@@ -521,6 +580,9 @@ func (a *Account) UpdatePrefs(ctx context.Context, prefs map[string]any) (map[st
 	if prefs == nil {
 		return nil, status.Error(codes.InvalidArgument, "prefs is required")
 	}
+	if err := validatePrefs(prefs); err != nil {
+		return nil, err
+	}
 	updated, err := a.docDB.UpdateDocument(ctx, p.ProjectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   p.UserID,
 		Data: map[string]any{"prefs": prefs},
@@ -532,6 +594,46 @@ func (a *Account) UpdatePrefs(ctx context.Context, prefs map[string]any) (map[st
 		return out, nil
 	}
 	return map[string]any{}, nil
+}
+
+// prefs 大小与嵌套深度上限。
+const (
+	maxPrefsBytes = 64 * 1024
+	maxPrefsDepth = 20
+)
+
+func validatePrefs(prefs map[string]any) error {
+	raw, err := json.Marshal(prefs)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, "invalid prefs")
+	}
+	if len(raw) > maxPrefsBytes {
+		return status.Error(codes.InvalidArgument, "prefs exceed size limit")
+	}
+	if prefsDepth(prefs, 0) > maxPrefsDepth {
+		return status.Error(codes.InvalidArgument, "prefs nesting is too deep")
+	}
+	return nil
+}
+
+func prefsDepth(v any, depth int) int {
+	switch t := v.(type) {
+	case map[string]any:
+		depth++
+		for _, child := range t {
+			if d := prefsDepth(child, depth); d > depth {
+				depth = d
+			}
+		}
+	case []any:
+		depth++
+		for _, child := range t {
+			if d := prefsDepth(child, depth); d > depth {
+				depth = d
+			}
+		}
+	}
+	return depth
 }
 
 func (a *Account) deleteUserSession(ctx context.Context, p *shared.Principal, sessionID string) error {

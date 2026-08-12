@@ -154,19 +154,28 @@ func (s *SessionService) EnsureActiveSession(ctx context.Context, projectID, ses
 }
 
 // DeleteSessionsByUser removes every session document owned by the user.
+// 循环分页（PageSize=1000）直至 NextPageToken 空，避免默认 50 条截断。
 func (s *SessionService) DeleteSessionsByUser(ctx context.Context, projectID, userID string) error {
-	list, err := s.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
-		Queries: []string{query.BuildEqual("user_id", userID)},
-	}, databases.SystemPrincipal)
-	if err != nil {
-		return err
-	}
-	for i := range list.Documents {
-		if err := s.docDB.DeleteDocument(ctx, projectID, "default", "sessions", list.Documents[i].ID, databases.SystemPrincipal); err != nil {
+	pageToken := ""
+	for {
+		list, err := s.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+			Queries:   []string{query.BuildEqual("user_id", userID)},
+			PageSize:  1000,
+			PageToken: pageToken,
+		}, databases.SystemPrincipal)
+		if err != nil {
 			return err
 		}
+		for i := range list.Documents {
+			if err := s.docDB.DeleteDocument(ctx, projectID, "default", "sessions", list.Documents[i].ID, databases.SystemPrincipal); err != nil {
+				return err
+			}
+		}
+		if list.NextPageToken == "" {
+			return nil
+		}
+		pageToken = list.NextPageToken
 	}
-	return nil
 }
 
 func sessionPermissions(userID string) []databases.Permission {

@@ -92,6 +92,16 @@ func (f *magicURLFixture) userContext() context.Context {
 	})
 }
 
+// linkSecret 从最新一封邮件正文的登录链接中提取真实 secret。
+func (f *magicURLFixture) linkSecret(t *testing.T) string {
+	t.Helper()
+	require.NotEmpty(t, f.mailer.Bodies)
+	re := regexp.MustCompile(`secret=([a-f0-9]+)`)
+	m := re.FindStringSubmatch(f.mailer.Bodies[len(f.mailer.Bodies)-1])
+	require.NotNil(t, m, "mail body should contain a secret link")
+	return m[1]
+}
+
 // updateProjectSettings 直接更新项目 settings（测试用，绕过 Server API）。
 func updateProjectSettings(ctx context.Context, db *clients.Database, projectID string, settings map[string]any) error {
 	_, err := db.NewUpdate().Model((*model.Project)(nil)).
@@ -115,6 +125,54 @@ func TestAccount_CreateMagicURLSession_SendsLink(t *testing.T) {
 	require.Len(t, f.mailer.Bodies, 1)
 	re := regexp.MustCompile(`https://app\.example\.com/signin\?secret=[a-f0-9]+&userId=[0-9a-f-]+`)
 	require.Regexp(t, re, f.mailer.Bodies[0])
+	// 响应只回传不透明 challengeID，不回传可登录的 secret。
+	require.NotEqual(t, f.linkSecret(t), challenge.ChallengeID)
+}
+
+// TestAccount_CreateMagicURLSession_NoSecretInResponse 断言响应中的
+// challengeID 不可用作登录 secret（仅邮件链接中的 secret 有效）。
+func TestAccount_CreateMagicURLSession_NoSecretInResponse(t *testing.T) {
+	f := setupMagicURL(t, true)
+
+	challenge, err := f.account.CreateMagicURLSession(f.ctx, CreateMagicURLSessionCommand{
+		ProjectID: f.projectID,
+		Email:     "magic-user@example.com",
+		URL:       "https://app.example.com/signin",
+	})
+	require.NoError(t, err)
+	linkSecret := f.linkSecret(t)
+	require.NotEmpty(t, challenge.ChallengeID)
+	require.NotEqual(t, linkSecret, challenge.ChallengeID)
+
+	// 用响应里的 challengeID 当 secret 无法登录（该次尝试也会原子消费掉
+	// 这条 token 记录，因此成功路径需重新发起一次 magic url）。
+	_, _, _, _, err = f.account.UpdateMagicURLSession(f.ctx, UpdateMagicURLSessionCommand{
+		ProjectID: f.projectID,
+		UserID:    f.userID,
+		Secret:    challenge.ChallengeID,
+	})
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.Unauthenticated, st.Code())
+
+	// 重新发起：邮件链接里的 secret 可正常登录（先越过 send cooldown）。
+	f.mr.FastForward(time.Minute)
+	_, err = f.account.CreateMagicURLSession(f.ctx, CreateMagicURLSessionCommand{
+		ProjectID: f.projectID,
+		Email:     "magic-user@example.com",
+		URL:       "https://app.example.com/signin",
+	})
+	require.NoError(t, err)
+	user, tokens, cookie, mfa, err := f.account.UpdateMagicURLSession(f.ctx, UpdateMagicURLSessionCommand{
+		ProjectID: f.projectID,
+		UserID:    f.userID,
+		Secret:    f.linkSecret(t),
+	})
+	require.NoError(t, err)
+	require.Equal(t, f.userID, user.ID)
+	require.NotEmpty(t, tokens.AccessToken)
+	require.NotEmpty(t, cookie)
+	require.Nil(t, mfa)
 }
 
 func TestAccount_CreateMagicURLSession_AntiEnumeration(t *testing.T) {
@@ -176,7 +234,7 @@ func TestAccount_CreateMagicURLSession_NoMailer(t *testing.T) {
 func TestAccount_UpdateMagicURLSession_SignIn(t *testing.T) {
 	f := setupMagicURL(t, true)
 
-	challenge, err := f.account.CreateMagicURLSession(f.ctx, CreateMagicURLSessionCommand{
+	_, err := f.account.CreateMagicURLSession(f.ctx, CreateMagicURLSessionCommand{
 		ProjectID: f.projectID,
 		Email:     "magic-user@example.com",
 		URL:       "https://app.example.com/signin",
@@ -186,7 +244,7 @@ func TestAccount_UpdateMagicURLSession_SignIn(t *testing.T) {
 	user, tokens, cookie, mfa, err := f.account.UpdateMagicURLSession(f.ctx, UpdateMagicURLSessionCommand{
 		ProjectID: f.projectID,
 		UserID:    f.userID,
-		Secret:    challenge.ChallengeID,
+		Secret:    f.linkSecret(t),
 	})
 	require.NoError(t, err)
 	require.Equal(t, f.userID, user.ID)
@@ -198,7 +256,7 @@ func TestAccount_UpdateMagicURLSession_SignIn(t *testing.T) {
 	_, _, _, _, err = f.account.UpdateMagicURLSession(f.ctx, UpdateMagicURLSessionCommand{
 		ProjectID: f.projectID,
 		UserID:    f.userID,
-		Secret:    challenge.ChallengeID,
+		Secret:    f.linkSecret(t),
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -241,7 +299,7 @@ func TestAccount_UpdateMagicURLSession_Expired(t *testing.T) {
 	_, _, _, _, err = f.account.UpdateMagicURLSession(f.ctx, UpdateMagicURLSessionCommand{
 		ProjectID: f.projectID,
 		UserID:    f.userID,
-		Secret:    challenge.ChallengeID,
+		Secret:    f.linkSecret(t),
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -259,7 +317,7 @@ func TestAccount_UpdateMagicURLSession_MFARequired(t *testing.T) {
 	_, err = f.account.VerifyTOTPFactor(f.userContext(), f.projectID, f.userID, factor.ID, code)
 	require.NoError(t, err)
 
-	challenge, err := f.account.CreateMagicURLSession(f.ctx, CreateMagicURLSessionCommand{
+	_, err = f.account.CreateMagicURLSession(f.ctx, CreateMagicURLSessionCommand{
 		ProjectID: f.projectID,
 		Email:     "magic-user@example.com",
 		URL:       "https://app.example.com/signin",
@@ -269,7 +327,7 @@ func TestAccount_UpdateMagicURLSession_MFARequired(t *testing.T) {
 	user, tokens, cookie, mfa, err := f.account.UpdateMagicURLSession(f.ctx, UpdateMagicURLSessionCommand{
 		ProjectID: f.projectID,
 		UserID:    f.userID,
-		Secret:    challenge.ChallengeID,
+		Secret:    f.linkSecret(t),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, user)

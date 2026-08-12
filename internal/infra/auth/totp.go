@@ -13,6 +13,7 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"github.com/torchwooddev/torchwood/pkg/secretbox"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,6 +44,12 @@ func (s *TOTPService) jwtSecret() string {
 	return s.cfg.GetSecurity().GetJwt().GetSecret()
 }
 
+// totpKey 派生 TOTP 专属密钥域（HMAC(master, "totp")），与 JWT 主密钥域分离；
+// 域分离后旧版本用主密钥加密的存量 secret 由 decryptSecret 双密钥读兼容。
+func (s *TOTPService) totpKey() string {
+	return hex.EncodeToString(jwtparser.DeriveKey(s.jwtSecret(), "totp"))
+}
+
 func (s *TOTPService) CreateTOTPFactor(ctx context.Context, issuer, userID, email string) (*domainauth.Factor, string, string, error) {
 	if s.jwtSecret() == "" {
 		return nil, "", "", status.Error(codes.Internal, "mfa secret is not configured")
@@ -57,7 +64,7 @@ func (s *TOTPService) CreateTOTPFactor(ctx context.Context, issuer, userID, emai
 	if err != nil {
 		return nil, "", "", status.Error(codes.Internal, "totp key generation failed")
 	}
-	encrypted, err := secretbox.Encrypt(key.Secret(), s.jwtSecret())
+	encrypted, err := secretbox.Encrypt(key.Secret(), s.totpKey())
 	if err != nil {
 		return nil, "", "", status.Error(codes.Internal, "totp secret encryption failed")
 	}
@@ -75,23 +82,18 @@ func (s *TOTPService) VerifyTOTPFactor(ctx context.Context, factor *domainauth.F
 	if factor == nil {
 		return status.Error(codes.Internal, "mfa factor is required")
 	}
-	if err := s.checkFactorLock(ctx, factor.ID); err != nil {
-		return err
-	}
-	plain, err := s.decryptSecret(factor)
+	plain, legacy, err := s.verifyCode(ctx, factor, code)
 	if err != nil {
 		return err
 	}
-	if !s.validate(ctx, plain, code) {
-		if err := s.recordFactorFailure(ctx, factor.ID); err != nil {
-			return err
+	// 存量（主密钥加密）secret 在校验通过后重加密为新密钥域，由调用方持久化。
+	if legacy {
+		encrypted, encErr := secretbox.Encrypt(plain, s.totpKey())
+		if encErr != nil {
+			return status.Error(codes.Internal, "totp secret re-encryption failed")
 		}
-		return status.Error(codes.Unauthenticated, "invalid mfa code")
+		factor.Secret = encrypted
 	}
-	if err := s.claimUsedCode(ctx, plain); err != nil {
-		return err
-	}
-	_ = s.clearFactorFailures(ctx, factor.ID)
 	return nil
 }
 
@@ -99,25 +101,48 @@ func (s *TOTPService) ValidateTOTP(ctx context.Context, factor *domainauth.Facto
 	if factor == nil {
 		return status.Error(codes.Internal, "mfa factor is required")
 	}
-	plain, err := s.decryptSecret(factor)
-	if err != nil {
-		return err
-	}
-	if !s.validate(ctx, plain, code) {
-		return status.Error(codes.Unauthenticated, "invalid mfa code")
-	}
-	return nil
+	_, _, err := s.verifyCode(ctx, factor, code)
+	return err
 }
 
-func (s *TOTPService) decryptSecret(factor *domainauth.Factor) (string, error) {
+// verifyCode 是 TOTP 校验的公共路径：先查锁定，再解密校验；失败计数，
+// 成功做 60s 防重放占用并清零失败计数。返回解密出的明文 secret 与
+// legacy 标记（true 表示该密文由旧主密钥加密，需重加密迁移）。
+func (s *TOTPService) verifyCode(ctx context.Context, factor *domainauth.Factor, code string) (string, bool, error) {
+	if err := s.checkFactorLock(ctx, factor.ID); err != nil {
+		return "", false, err
+	}
+	plain, legacy, err := s.decryptSecret(factor)
+	if err != nil {
+		return "", false, err
+	}
+	if !s.validate(ctx, plain, code) {
+		if err := s.recordFactorFailure(ctx, factor.ID); err != nil {
+			return "", false, err
+		}
+		return "", false, status.Error(codes.Unauthenticated, "invalid mfa code")
+	}
+	if err := s.claimUsedCode(ctx, plain); err != nil {
+		return "", false, err
+	}
+	_ = s.clearFactorFailures(ctx, factor.ID)
+	return plain, legacy, nil
+}
+
+// decryptSecret 先尝试 TOTP 域密钥；失败再回退旧主密钥（存量数据兼容，
+// 双密钥读窗口：新因子一律写 totp 域密钥，旧因子在下次成功校验时重加密）。
+func (s *TOTPService) decryptSecret(factor *domainauth.Factor) (string, bool, error) {
 	if s.jwtSecret() == "" {
-		return "", status.Error(codes.Internal, "mfa secret is not configured")
+		return "", false, status.Error(codes.Internal, "mfa secret is not configured")
+	}
+	if plain, err := secretbox.Decrypt(factor.Secret, s.totpKey()); err == nil && plain != "" {
+		return plain, false, nil
 	}
 	plain, err := secretbox.Decrypt(factor.Secret, s.jwtSecret())
 	if err != nil || plain == "" {
-		return "", status.Error(codes.Internal, "mfa secret decryption failed")
+		return "", false, status.Error(codes.Internal, "mfa secret decryption failed")
 	}
-	return plain, nil
+	return plain, true, nil
 }
 
 func (s *TOTPService) validate(ctx context.Context, plainSecret, code string) bool {

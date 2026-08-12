@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -49,6 +50,9 @@ func (a *Account) CreateEmailOTP(ctx context.Context, cmd CreateEmailOTPCommand)
 	}
 	if email == "" {
 		return nil, status.Error(codes.InvalidArgument, "email is required")
+	}
+	if err := validateEmail(email); err != nil {
+		return nil, err
 	}
 
 	project, err := a.projectRepo.GetProject(ctx, projectID)
@@ -196,6 +200,18 @@ func (a *Account) finishSignInWithProvider(ctx context.Context, projectID string
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// validateEmail 校验邮箱格式与长度（net/mail.ParseAddress + ≤254）。
+func validateEmail(email string) error {
+	if len(email) > 254 {
+		return status.Error(codes.InvalidArgument, "email is too long")
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return status.Error(codes.InvalidArgument, "invalid email format")
+	}
+	return nil
 }
 
 func emailLocalPart(email string) string {

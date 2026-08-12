@@ -93,6 +93,10 @@ func (r *stubAdminRepo) CountAdminsByRole(context.Context, string) (int64, error
 	return 1, nil
 }
 
+func (r *stubAdminRepo) WithBootstrapLock(_ context.Context, _ int64, fn func(ctx context.Context) error) error {
+	return fn(context.Background())
+}
+
 type stubAdminProjectRepo struct {
 	access map[string]map[string]struct{}
 }

@@ -47,6 +47,7 @@ func NewTestAccountWithDeps(
 	var rateLimiter domainauth.RateLimiter
 	var mfa domainauth.MFAService
 	var mfaChallenges domainauth.MFAChallengeStore
+	var oneTimeTokens domainauth.OneTimeTokenStore
 	if rdb != nil {
 		otp = infraauth.NewRedisOTPChallengeStore(rdb, cfg)
 		oauthState = infraauth.NewRedisOAuthStateStore(rdb)
@@ -55,6 +56,7 @@ func NewTestAccountWithDeps(
 		rateLimiter = infraauth.NewRedisRateLimiter(rdb)
 		mfa = infraauth.NewTOTPService(cfg, rdb)
 		mfaChallenges = infraauth.NewRedisMFAChallengeStore(rdb)
+		oneTimeTokens = infraauth.NewRedisOneTimeTokenStore(rdb)
 	}
 	if mailer == nil {
 		mailer = inframessaging.NewMailer(cfg)
@@ -62,7 +64,7 @@ func NewTestAccountWithDeps(
 	if sms == nil {
 		sms = inframessaging.NewSMSService(cfg)
 	}
-	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, nil)
+	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil)
 }
 
 // CaptureMailer records sent messages for tests.

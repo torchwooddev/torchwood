@@ -74,6 +74,12 @@ func TestAccount_CreateJWT(t *testing.T) {
 	require.Equal(t, user.Email, claims.Username)
 	require.Contains(t, claims.Roles, "user:"+user.ID)
 
+	// 一次性 JWT：携带唯一 jti（TokenID）与一次性消费记录（5min TTL）。
+	require.NotEmpty(t, claims.TokenID)
+	n, err := rdb.Exists(ctx, "Torchwood:jwt:one-time:"+claims.TokenID).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), n)
+
 	// TTL ≈ 5 分钟。
 	ttl := time.Until(time.Unix(claims.ExpiresAt, 0))
 	require.InDelta(t, 5*time.Minute, ttl, float64(30*time.Second))

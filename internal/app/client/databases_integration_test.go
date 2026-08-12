@@ -43,8 +43,8 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, err)
 
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
-	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "notes", "Notes", []databases.Attribute{
+	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
+	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "notes", "Notes", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		// 只授予集合级 create，读/写/删由文档级权限（documentSecurity OR 逻辑）决定，
@@ -119,8 +119,8 @@ func TestClientDatabases_UpsertDocument(t *testing.T) {
 	require.NoError(t, err)
 
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
-	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
+	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
+	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "members", "Members", []databases.Attribute{
 		{ID: "email", Key: "email", Type: "string", Size: 256},
 		{ID: "name", Key: "name", Type: "string", Size: 256},
 	}, []databases.Index{
@@ -177,8 +177,8 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
-	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
+	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		{Type: "read", Role: "any"},
@@ -198,7 +198,7 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 	require.Equal(t, "Public post", list[0].Data["title"])
 
 	lockedUC := appserver.NewDatabases(projectRepo, docDB)
-	require.NoError(t, lockedUC.CreateCollection(ctx, projectID, "app", "private", "Private", []databases.Attribute{
+	require.NoError(t, lockedUC.CreateCollection(adminCtx(ctx), projectID, "app", "private", "Private", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		{Type: "read", Role: "users"},
@@ -245,8 +245,8 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	require.NoError(t, err)
 
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
-	require.NoError(t, serverUC.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	require.NoError(t, serverUC.CreateCollection(ctx, projectID, "app", "notes", "Notes", []databases.Attribute{
+	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
+	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "notes", "Notes", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		// 集合级 read:any：B1 下被文档级权限覆盖（旧 OR 语义下私有文档全公开）。
@@ -308,4 +308,14 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 
 func testConfig() *config.AppConfig {
 	return &config.AppConfig{}
+}
+
+// adminCtx 返回携带平台 admin principal 的上下文（M7 后 Server 用例的 schema
+// DDL 仅允许平台 admin，测试需显式注入）。
+func adminCtx(ctx context.Context) context.Context {
+	return contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:         "admin-1",
+		ActorKind:       shared.ActorKindAdmin,
+		IsPlatformAdmin: true,
+	})
 }

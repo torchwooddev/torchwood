@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,7 +14,8 @@ import (
 const oneTimeJWTTTL = 5 * time.Minute
 
 // CreateJWT 用当前会话换取 5 分钟 TTL 的一次性 JWT（与 end-user token 同一
-// 派生 key，validator 可直接验证）。
+// 派生 key，validator 可直接验证）。claims 绑定 jti 与 SessionID（登出/撤销
+// 会话后立即失效），并在 Redis 记录一次性消费标记（验证方原子 GETDEL 消费）。
 func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 	p, err := a.requireUser(ctx)
 	if err != nil {
@@ -36,11 +38,14 @@ func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 		}
 	}
 	now := time.Now()
+	jti := idgen.UUID().String()
 	claims := jwtparser.Claims{
+		TokenID:   jti,
 		UserID:    p.UserID,
 		Username:  email,
 		ActorKind: "end_user",
 		ProjectID: p.ProjectID,
+		SessionID: p.SessionID,
 		TokenType: jwtparser.TokenTypeAccess,
 		Roles:     roles,
 		ExpiresAt: now.Add(oneTimeJWTTTL).Unix(),
@@ -50,6 +55,16 @@ func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 	token, err := jwtparser.Generate(key, claims)
 	if err != nil {
 		return "", status.Error(codes.Internal, "jwt generation failed")
+	}
+	// 一次性消费记录：jti 在 TTL 内只能被消费一次。
+	if a.oneTimeTokens != nil {
+		ok, err := a.oneTimeTokens.Register(ctx, "Torchwood:jwt:one-time:"+jti, p.SessionID, oneTimeJWTTTL)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			return "", status.Error(codes.Internal, "jwt id collision")
+		}
 	}
 	return token, nil
 }

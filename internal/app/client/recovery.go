@@ -41,6 +41,9 @@ func (a *Account) CreateRecovery(ctx context.Context, cmd CreateRecoveryCommand)
 	if email == "" {
 		return status.Error(codes.InvalidArgument, "email is required")
 	}
+	if err := validateEmail(email); err != nil {
+		return err
+	}
 	if err := validateRedirectURL(cmd.URL); err != nil {
 		return status.Errorf(codes.InvalidArgument, "invalid url: %v", err)
 	}
