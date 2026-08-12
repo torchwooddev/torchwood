@@ -17,10 +17,6 @@ type Databases struct {
 	docDB       databases.DocumentDB
 }
 
-// clientDocumentIDReserved 是 Client API 的 REST 字面量路由段
-// （documents/count），document_id 不得取 count（F11-3，方案 B）。
-var clientDocumentIDReserved = map[string]struct{}{"count": {}}
-
 func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB) *Databases {
 	return &Databases{projectRepo: projectRepo, docDB: docDB}
 }
@@ -122,9 +118,6 @@ func (d *Databases) CreateDocument(
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {
 		return nil, err
-	}
-	if _, reserved := clientDocumentIDReserved[documentID]; reserved {
-		return nil, status.Errorf(codes.InvalidArgument, "document_id %q is reserved", documentID)
 	}
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")

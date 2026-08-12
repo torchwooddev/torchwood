@@ -5,6 +5,9 @@
 > 每个子代理交付后总控亲自审查 diff 的真实性与最小性再合流；B1 子代理中途中断，
 > 剩余实现由总控亲自补齐并审查。
 > 仓库基线 `941ba14`；所有改动 commit 于本批次。
+>
+> **本批收尾**（总控分派两个子代理并行：Task 1 = Client API 保留字路由同步迁移，
+> Task 2 = 历史保留字 id 指引修正）：commit 于本批次，见 §3a 与 §6 遗留项 2/3。
 
 ---
 
@@ -15,6 +18,7 @@
 | B1 邮箱变更完整 staging（G3-2 A 档） | ✅ | `UpdateAccountRequest.url=5` + 新 RPC `ConfirmEmailChange`；pending_email 暂存，确认后才切换 |
 | B2 worker 重试计数持久化（G6 缓修项） | ✅ | payload 内嵌 attempt，队列消息即唯一事实来源，跨重启/多副本正确 |
 | B3 REST 保留字自定义动词迁移（R10-P1-3） | ✅ | `:count`/`:bulkUpdate`/`:bulkDelete`/`:runtimes`/`:specifications`；服务端保留字校验移除 |
+| B3-followup Client API 同步迁移（本批收尾） | ✅ | Client `documents/count`→`:count`；clientDocumentIDReserved 移除；历史保留字 id 指引修正（无需清理，附检测 SQL） |
 | 本地验证 | ✅ | generate-proto / buf lint / build / vet / test -short / TS SDK 16 用例 / console-build / task build 全绿 |
 | CI | 见 §7 | push 后监视至 Backend+Frontend 全绿 |
 
@@ -144,6 +148,55 @@
 - 测试：`databases_reserved_test.go` 重写为「保留字 id 可正常创建并 CRUD」（fake + 集成）；
   `security_test.go` runtimes/specifications 移入合法清单 + 新增创建回读单测。
 
+### 3a. Client API 同步迁移（本批收尾）✅
+
+B3 仅覆盖 Server API；本批按 B3 决策将 Client API 一并迁移（breaking change），
+遗留项 2/3 关闭（见 §6）。
+
+### 关键决策（供产品复核）
+
+1. **与 Server API 完全对齐**：Client `CountDocuments` 路由
+   `get: "/v1/databases/{database_id}/collections/{collection_id}/documents/count"` →
+   `".../documents:count"`；`clientDocumentIDReserved`（仅 `count`）与 CreateDocument
+   拒绝分支一并移除，`document_id="count"` 在 Client API 成为合法 id。不保留旧字面量
+   路由（与 B3 决策 1 一致，旧路径 404）。
+2. **历史保留字 id 无需数据清理**：路由冲突根除后，历史 `count`/`bulk`/`runtimes`/
+   `specifications` id 资源经 REST 自动恢复可访问；roadmap §2.4 升级指引由「升级前
+   重命名/删除」修正为「自动恢复、无需处理」，并附可选检测 SQL（functions 静态表 +
+   动态文档层按 collection 表，注明表命名规则与替换提示）。
+
+### 实现要点
+
+- `proto/client/v1/databases.proto`：路由改 `:count`；CreateDocument 与
+  CreateDocumentRequest.document_id 的保留字注释改为自定义动词说明（措辞对齐
+  proto/server/v1/databases.proto:115-117/:288-290）。`task generate-proto` 产物仅
+  client/v1/databases.*（buf lint 通过）。
+- `internal/app/client/databases.go`：删除 `clientDocumentIDReserved` 变量与
+  CreateDocument 的保留字拒绝分支（净 -7 行）。
+- 测试：`internal/app/client/databases_reserved_test.go` 新增
+  `TestClientDatabases_ReservedIDDocumentCRUD`（真实 PG 集成，与
+  `TestDatabases_ReservedIDDocumentCRUD` 同构：SignUp 用户 + 建库建集合 +
+  `document_id="count"` 创建/Get/Update/Delete 全成功，删后 Get NotFound）。
+- TS SDK：`sdk/typescript/src/client/databases.ts` countDocuments 路径改 `:count`
+  （方法名签名不变）；contract.test.ts 无需改动（CountDocuments 映射已存在且
+   HTTP 绑定用例不含该路径，swagger 自动比对仍 16/16 绿）。
+- 文档：09-api-guide §1.3 与 12-sdk §5.3 breaking 块补 Client API 同步迁移声明；
+  roadmap §2.4 backlog 备注更新（Client 迁移 + 自动恢复 + 检测 SQL，由 Task 2 子代理
+  与总控合流完成）。
+- 复核：`rg "documents/count|/v1/databases" console/src sdk/go cmd/client` 零匹配
+  （console 走 /server/ 前缀，gRPC stub 无路径）。
+
+### 本地验证（本批，全部真实执行）
+
+| 命令 | 结果 |
+|------|------|
+| `task generate-proto`（buf lint + generate，二次运行幂等） | ✅ exit 0 |
+| `gofmt -l .` | ✅ 无输出 |
+| `go vet ./...` / `go build ./...` | ✅ exit 0 |
+| `go test -short -count=1 ./...` | ✅ 52 包全绿 |
+| `go test -count=1 -run 'TestClientDatabases_ReservedIDDocumentCRUD\|TestDatabases_ReservedIDDocumentCRUD' ...`（真实 PG） | ✅ 双 PASS（1.06s / 1.13s） |
+| sdk/typescript `npx tsc --noEmit` + `npm run test` | ✅ 16/16 |
+
 ---
 
 ## 4. 改动文件清单
@@ -222,10 +275,12 @@ Docker，本地无环境，按约定交 CI。
 
 1. ~~**B1 免登录确认**~~（已落地）：ConfirmEmailChange 已按产品决策改为 `ACCESS_PUBLIC`
    （点链接即完成，recovery 同级安全模型），见 §1 决策 2。
-2. **Client API 保留字未迁移**：`/v1/databases/.../documents/count` 字面量路由仍在
-   （B3 范围仅 Server API），`document_id="count"` 在 Client API 仍被保留字校验拒绝。
-3. **历史保留字 id 数据**：服务端校验上线前创建的数据不受限；升级指引已写——
-   升级前重命名/删除 `count/bulk/runtimes/specifications` id 资源（若存在）。
+2. ~~**Client API 保留字未迁移**~~（✅ 已关闭）：本批已完成 Client API 迁移——
+   `/v1/databases/.../documents/count` → `documents:count`，`clientDocumentIDReserved` 已移除，
+   `document_id="count"` 在 Client API 现为合法 id（详见 §3a）。
+3. ~~**历史保留字 id 数据**~~（✅ 已关闭）：自定义动词迁移（B3 + 本批 Client API）完成后
+   路由冲突根除，历史保留字 id 资源经 REST 自动恢复可访问，无需数据清理/重命名；
+   检测 SQL 已附于 docs/roadmap.md §2.4 backlog 备注。
 4. **旧文档路径字面量**：`docs/developer/08-functions.md`、`docs/manual-acceptance-checklist.md`
    等历史文档仍含旧路径（评审/验收记录性质），未在本批次清理。
 5. B2 的 payload 内嵌计数与 MarkExecutionFailed 兜底并存：若未来引入死信队列可再演进。

@@ -690,7 +690,7 @@ func RegisterDatabasesServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/count"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents:count"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -850,7 +850,7 @@ func RegisterDatabasesServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents/count"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/torchwood.client.v1.DatabasesService/CountDocuments", runtime.WithHTTPPathPattern("/v1/databases/{database_id}/collections/{collection_id}/documents:count"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -873,7 +873,7 @@ var (
 	pattern_DatabasesService_UpdateDocument_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
 	pattern_DatabasesService_UpsertDocument_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
 	pattern_DatabasesService_DeleteDocument_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "document_id"}, ""))
-	pattern_DatabasesService_CountDocuments_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 2, 6}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents", "count"}, ""))
+	pattern_DatabasesService_CountDocuments_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"v1", "databases", "database_id", "collections", "collection_id", "documents"}, "count"))
 )
 
 var (

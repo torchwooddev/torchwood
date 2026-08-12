@@ -112,7 +112,7 @@ export class ClientDatabasesService {
     // int64：网关序列化为字符串（如 "42"）；消费时建议 Number() 归一化。
     const res = await this.http.request<{ count: string | number }>(
       "GET",
-      `/v1/databases/${databaseId}/collections/${collectionId}/documents/count`,
+      `/v1/databases/${databaseId}/collections/${collectionId}/documents:count`,
       { query: listQuery(params) }
     );
     return res.count ?? 0;

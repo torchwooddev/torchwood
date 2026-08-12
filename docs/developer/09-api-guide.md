@@ -144,6 +144,9 @@ message UpdateProjectRequest {
 > `:count`/`:bulkUpdate`/`:bulkDelete`/`:runtimes`/`:specifications`（旧路径返回 404）。
 > `count`/`bulk`/`runtimes`/`specifications` 不再占用 id 命名空间，可作
 > document_id/function_id 使用；升级前请先重命名或删除历史保留字 id 资源。
+> **Client API 同步迁移**：`/v1/databases/{database_id}/collections/{collection_id}/
+> documents/count` 同样改为 `documents:count`（旧路径 404），Client API 的
+> `count` 不再占用 document_id 命名空间。
 
 ---
 

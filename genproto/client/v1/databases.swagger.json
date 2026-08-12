@@ -83,7 +83,7 @@
         "x-torchwood-access": "public"
       },
       "post": {
-        "summary": "保留字说明：documents/{document_id} 与字面量路由 documents/count 冲突，\r\ndocument_id 不得取 count（服务端 Create 校验并拒绝，返回 InvalidArgument）。",
+        "summary": "自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间；document_id 可自由取任意合法值。",
         "operationId": "DatabasesService_CreateDocument",
         "responses": {
           "200": {
@@ -124,73 +124,6 @@
         "tags": [
           "DatabasesService"
         ]
-      }
-    },
-    "/v1/databases/{databaseId}/collections/{collectionId}/documents/count": {
-      "get": {
-        "operationId": "DatabasesService_CountDocuments",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/torchwoodclientv1CountDocumentsResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "databaseId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "collectionId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "queries",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "collectionFormat": "multi"
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "required": false,
-            "type": "integer",
-            "format": "int32"
-          },
-          {
-            "name": "pageToken",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "projectId",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "DatabasesService"
-        ],
-        "security": [],
-        "x-torchwood-access": "public"
       }
     },
     "/v1/databases/{databaseId}/collections/{collectionId}/documents/{documentId}": {
@@ -384,6 +317,73 @@
           "DatabasesService"
         ]
       }
+    },
+    "/v1/databases/{databaseId}/collections/{collectionId}/documents:count": {
+      "get": {
+        "operationId": "DatabasesService_CountDocuments",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1CountDocumentsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
+      }
     }
   },
   "definitions": {
@@ -437,7 +437,7 @@
       "properties": {
         "documentId": {
           "type": "string",
-          "title": "客户端自选 document_id；不得使用保留字 count（与 documents/count\r\n字面量路由冲突，服务端校验拒绝）。"
+          "title": "客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），\r\n不再占用 document_id 命名空间，可自由取任意合法值。"
         },
         "data": {
           "type": "object"

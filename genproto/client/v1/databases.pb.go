@@ -106,8 +106,8 @@ type CreateDocumentRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	// 客户端自选 document_id；不得使用保留字 count（与 documents/count
-	// 字面量路由冲突，服务端校验拒绝）。
+	// 客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），
+	// 不再占用 document_id 命名空间，可自由取任意合法值。
 	DocumentId    string           `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
 	Data          *structpb.Struct `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	Permissions   []string         `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
@@ -671,7 +671,7 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\x0eUpsertDocument\x12*.torchwood.client.v1.UpsertDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*\x1aO/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xae\x01\n" +
 	"\x0eDeleteDocument\x12'.torchwood.client.v1.GetDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"W\x82\xd3\xe4\x93\x02Q*O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xe4\x01\n" +
 	"\x0eCountDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a+.torchwood.client.v1.CountDocumentsResponse\"z\x92A\"b\x00j\x1e\n" +
-	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02I\x12G/v1/databases/{database_id}/collections/{collection_id}/documents/count\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02I\x12G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
 	"\\\n" +

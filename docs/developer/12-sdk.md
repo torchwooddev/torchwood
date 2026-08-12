@@ -258,6 +258,9 @@ tw.server.oauthProviders.delete(provider)
 > `.../documents:bulkUpdate`、`.../documents:bulkDelete`、`.../functions:runtimes`、
 > `.../functions:specifications`）。方法名与签名不变，但旧版本 SDK 或手写旧路径的
 > 请求在新服务端将返回 404，升级服务端时需同步升级 SDK。
+> **Client API 同步迁移**：Client `countDocuments` 路径已由
+> `.../documents/count` 切换为 `.../documents:count`（方法名与签名不变，旧路径
+> 在新服务端返回 404）。
 
 ### 5.4 Server Storage（`tw.server.storage`）
 

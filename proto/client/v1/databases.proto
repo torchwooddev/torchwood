@@ -59,8 +59,8 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
 service DatabasesService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
 
-  // 保留字说明：documents/{document_id} 与字面量路由 documents/count 冲突，
-  // document_id 不得取 count（服务端 Create 校验并拒绝，返回 InvalidArgument）。
+  // 自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用
+  // document_id 命名空间；document_id 可自由取任意合法值。
   rpc CreateDocument(CreateDocumentRequest) returns (Document) {
     option (google.api.http) = { post: "/v1/databases/{database_id}/collections/{collection_id}/documents", body: "*" };
   }
@@ -102,7 +102,7 @@ service DatabasesService {
   }
 
   rpc CountDocuments(ListDocumentsRequest) returns (CountDocumentsResponse) {
-    option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents/count" };
+    option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents:count" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
       security: {}
@@ -125,8 +125,8 @@ message Document {
 message CreateDocumentRequest {
   string database_id = 1;
   string collection_id = 2;
-  // 客户端自选 document_id；不得使用保留字 count（与 documents/count
-  // 字面量路由冲突，服务端校验拒绝）。
+  // 客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），
+  // 不再占用 document_id 命名空间，可自由取任意合法值。
   string document_id = 3;
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;

@@ -149,16 +149,32 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - 普通用户只能读写自己有权限的文档；admin/key 可绕过。
 - 删除 attribute 时同步清理 `document_attributes` 元数据与表结构。
 
-> **Backlog（R10-P1-3，已迁移，B3）**：REST 保留字自定义动词迁移已完成（breaking change）。
+> **Backlog（R10-P1-3，已迁移，B3 + 本批 Client API）**：REST 保留字自定义动词迁移已完成（breaking change）。
 > 旧字面量路径 `documents/count`、`documents/bulk`、`documents/bulk/delete`、
 > `functions/runtimes`、`functions/specifications` 已废弃，新路径为自定义动词
 > `documents:count` / `documents:bulkUpdate` / `documents:bulkDelete` /
-> `functions:runtimes` / `functions:specifications`；`count`/`bulk`/`runtimes`/
-> `specifications` 现为合法 id（服务端保留字校验已移除），与 `{id}` 通配路由不再冲突。
+> `functions:runtimes` / `functions:specifications`；本批 Client API 同步迁移
+> `/v1/databases/{database_id}/collections/{collection_id}/documents/count` → `documents:count`
+> （clientDocumentIDReserved 已移除），Client API 的 `count` 同样为合法 document_id；
+> `count`/`bulk`/`runtimes`/`specifications` 现为合法 id（Server/Client 保留字校验均已移除），
+> 与 `{id}` 通配路由不再冲突。
 > **升级指引**：旧 REST 路径请求一律 404，客户端（TS SDK / Console）需随版本升级；
-> 若历史存在保留字 id（count/bulk/runtimes/specifications）的文档/函数
-> （仅保留字校验上线前创建的数据可能受影响），需在升级前先重命名或删除，
-> 否则这些资源经 REST 的 Get/Update/Delete 在旧版本上被字面量路由遮蔽。
+> 自定义动词迁移完成后路由冲突已根除，历史保留字 id（`count`/`bulk`/`runtimes`/
+> `specifications`，仅保留字校验上线前创建的数据可能存在）经 REST 的 Get/Update/Delete
+> 自动恢复可访问，**无需任何数据清理/重命名**。
+>
+> **升级自查检测 SQL**（可选，仅当运维怀疑存在此类历史 id 时执行）：
+>
+> ```sql
+> -- bun 静态表：历史保留字 id 的 function（若有则说明该行曾被字面量路由遮蔽，现已自动恢复）
+> SELECT id FROM functions WHERE id IN ('runtimes','specifications');
+> ```
+>
+> ```sql
+> -- 动态文档层：按 collection 表检查（替换为实际项目的 internal_id / database_id / collection 名）
+> -- schema = TORCHWOOD_{projects.internal_id}_{database_id}
+> SELECT _id FROM "TORCHWOOD_1_app"."posts" WHERE _id IN ('count','bulk');
+> ```
 
 ---
 
