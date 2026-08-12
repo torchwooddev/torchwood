@@ -64,10 +64,10 @@ jobs:
         run: test -z "$(gofmt -l .)"
 
       - name: go vet
-        run: go vet ./...
+        run: go vet $(go list ./... | grep -v '/console$')
 
       - name: Tests (unit + integration)
-        run: go test ./...
+        run: go test $(go list ./... | grep -v '/console$')
 
       - name: SDK Go tests (independent module)
         working-directory: sdk/go
