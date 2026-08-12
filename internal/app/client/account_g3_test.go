@@ -316,7 +316,7 @@ func TestAccount_EmailChangeStaging_OldEmailWorksUntilConfirm(t *testing.T) {
 	require.Error(t, err)
 
 	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
-	confirmed, err := account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+	confirmed, err := 	account.ConfirmEmailChange(authCtx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
 		UserID:    userID,
 		Secret:    secret,
@@ -362,14 +362,14 @@ func TestAccount_ConfirmEmailChange_TokenOneTime(t *testing.T) {
 	require.NoError(t, err)
 
 	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
-	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+	_, err = 	account.ConfirmEmailChange(authCtx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
 		UserID:    userID,
 		Secret:    secret,
 	})
 	require.NoError(t, err)
 
-	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+	_, err = 	account.ConfirmEmailChange(authCtx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
 		UserID:    userID,
 		Secret:    secret,
@@ -403,7 +403,7 @@ func TestAccount_ConfirmEmailChange_NewEmailTaken(t *testing.T) {
 	// 确认前新邮箱被他人注册（竞态窗口：pending 不占 email 唯一约束）。
 	signUpG3User(t, ctx, account, projectID, "taken@torchwood.local")
 
-	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+	_, err = 	account.ConfirmEmailChange(authCtx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
 		UserID:    userID,
 		Secret:    secret,
@@ -433,7 +433,7 @@ func TestAccount_ConfirmEmailChange_SessionRevocationFailureLeavesOldEmail(t *te
 
 	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
 	sessions.fail = true
-	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+	_, err = 	account.ConfirmEmailChange(authCtx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
 		UserID:    userID,
 		Secret:    secret,
@@ -472,7 +472,7 @@ func TestAccount_ConfirmEmailChange_RequiresOwnUser(t *testing.T) {
 	require.NoError(t, err)
 
 	secret := confirmEmailChangeSecret(t, mailer.Bodies[0])
-	_, err = account.ConfirmEmailChange(ctx, ConfirmEmailChangeCommand{
+	_, err = 	account.ConfirmEmailChange(authCtx, ConfirmEmailChangeCommand{
 		ProjectID: projectID,
 		UserID:    "someone-else",
 		Secret:    secret,
