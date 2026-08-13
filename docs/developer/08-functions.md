@@ -64,7 +64,7 @@ HTTP multipart (serverhttp.FunctionsHandler) ← deployment 代码包上传
 | `GetExecution` | `GET /v1/server/functions/{function_id}/executions/{execution_id}` | |
 
 - **同步**：`async=false`（默认）。`timeout_seconds` 超过 30s（`maxSyncTimeoutSeconds`，grpc-gateway WriteTimeout 余量）拒绝同步执行；占用运行信号量（并发上限 16，超限 `ResourceExhausted`）后请求内 `executor.Execute` 并写回结果。
-- **异步**：落库 `status=queued` → JSON payload（`execution_id` / `function_id` / `project_id` / `data` / `attempt`）入队 `torchwood:queue:functions-executions`（Redis List，LPUSH）→ worker 消费。
+- **异步**：落库 `status=queued` → JSON payload（`execution_id` / `function_id` / `project_id` / `data`）入队 `torchwood:queue:functions-executions`（Redis List，LPUSH）→ worker 消费；首次入队不含 `attempt`（`omitempty`），瞬时失败重抛回队时才写入 `attempt` 并随 payload 持久化（上限 `maxProcessAttempts = 3`）。
 - **状态机**：`queued → building（deployment 非 ready 时补构建）→ running → completed | failed`；任何失败（超时 / 非零退出码 / 执行错误）写回 `failed` + `error`；记录级截断：stdout/stderr/response 各 ≤ 64 KB（`maxOutputBytes`，含截断标志位）。
 - **执行安全基线**（docker.go `Execute`）：`CapDrop: ALL`、`no-new-privileges`、只读根文件系统 + `/tmp` tmpfs、内存/CPU 按 spec、pids 上限 512、网络缺省 `none`（配置 `functions.docker.network` 时自动创建/接入 bridge 网络）；数据经 `TW_DATA` 环境变量传入（禁止拼进命令）；超时（默认 15s）→ 停止并强制删除容器，无残留。
 

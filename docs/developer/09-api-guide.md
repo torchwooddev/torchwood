@@ -201,6 +201,7 @@ plugins:
     opt: [paths=source_relative]
   - remote: buf.build/grpc-ecosystem/openapiv2:v2.27.3 # *.swagger.json
     out: genproto
+    opt: [json_names_for_fields=true]
 ```
 
 生成后：
@@ -632,7 +633,8 @@ teams        create/list/get/delete；prefs get/update；memberships create/list
 storage      buckets create/list/get/update/delete；files list/get/update/delete；
              usage（不做文件上传/下载与分片会话，也不提供 files create/token）
 functions    runtimes/specifications；create/list/get/update/delete；
-             deployments create/list/get/delete（create 走 gRPC 纯消息，≤50MiB）；
+             deployments create/list/get/delete（create 走 gRPC 纯消息，≤8MiB；
+             更大代码包走 multipart 上传接口，≤50MiB）；
              variables set/get；executions create/list/get
 oauth-providers list/upsert/delete（proto 无 get 方法）
 ```

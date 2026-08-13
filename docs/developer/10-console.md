@@ -20,7 +20,7 @@
 | lucide-react | 1.x | 图标 |
 | tailwindcss + tailwindcss-animate | 3.x | 样式 |
 | class-variance-authority + clsx + tailwind-merge | — | `cn()` 工具（`lib/utils.ts`） |
-| @radix-ui/react-* | 1.x | 无头组件（dialog/select/label/avatar 等） |
+| @radix-ui/react-* | 1.x / 2.x 混用 | 无头组件（dialog/select/label/avatar 等，版本以 `package.json` 为准） |
 | typescript | ~6.x | 构建时类型检查（`tsc -b`） |
 | vite | 8.x | 构建/开发服务器 |
 | pnpm | 11.20.0 | 包管理器（`packageManager` 字段锁定） |

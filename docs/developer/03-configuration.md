@@ -147,7 +147,7 @@
 | `telemetry.otlp_endpoint` | `TORCHWOOD_TELEMETRY_OTLP_ENDPOINT` | OTLP 端点 |
 | `idgen.snowflake.node_id` | `TORCHWOOD_IDGEN_SNOWFLAKE_NODE_ID` | 雪花节点号 |
 
-> **注意**：`config.yaml.template` 中 storage 的注释写的是 `TORCHWOOD_STORAGE_S3_ACCESS_KEY`，但 `bind.go` 的 `envNameForKey`（按字段 `access_key_id`）实际映射为 `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID`；`.env.example` 与 `AGENTS.md` 也使用 `_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY`。**以 `.env.example` / 环境变量映射为准**（`config.yaml.template` 注释为过时表述）。
+> **注意**：MinIO/S3 凭据的环境变量名为 `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` 与 `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY`（由 `bind.go` 的 `envNameForKey` 按字段名 `access_key_id` / `secret_access_key` 映射）；`config.yaml.template` 注释、`.env.example` 与 `AGENTS.md` 三者一致。
 
 ---
 

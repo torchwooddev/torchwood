@@ -190,7 +190,8 @@ task build             # 构建 server、worker 与 CLI 二进制（含 console�
 ├── buf.yaml / buf.gen.yaml
 ├── go.mod
 ├── Taskfile.yml
-└── README.md
+├── README.md
+└── README_ZH.md
 ```
 
 ## 架构说明
