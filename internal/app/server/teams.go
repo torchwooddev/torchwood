@@ -188,6 +188,9 @@ func (t *Teams) CreateMembership(ctx context.Context, projectID string, cmd Crea
 	if cmd.UserID == "" && cmd.Email == "" {
 		return nil, status.Error(codes.InvalidArgument, "user_id or email is required")
 	}
+	// Round3 H5-4：邮箱与 Users 同一 normalize（ToLower + TrimSpace），
+	// 保证查重与落库口径一致（大小写/空白不同不视为不同邀请）。
+	cmd.Email = normalizeEmail(cmd.Email)
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -222,6 +225,12 @@ func (t *Teams) CreateMembership(ctx context.Context, projectID string, cmd Crea
 			return nil, err
 		}
 		userID = resolved
+	}
+
+	// Round3 H5-4 幂等：在 CreateDocument 之前按 team+user / 规范化 email 查重，
+	// 已存在（含 pending 重复邀请）→ AlreadyExists，不重复写行、不再 +1 total。
+	if err := t.ensureMembershipUnique(ctx, projectID, cmd.TeamID, userID, cmd.Email); err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
@@ -520,6 +529,40 @@ func (t *Teams) resolveUserIDByEmail(ctx context.Context, projectID, email strin
 		return "", nil
 	}
 	return list.Documents[0].ID, nil
+}
+
+// ensureMembershipUnique 是 Round3 H5-4 的应用层幂等查重：同一 team 下
+// 已存在相同 user_id 或相同（规范化）email 的 membership（含 pending 重复
+// 邀请）→ AlreadyExists。适配器把空串存为 '' 而非 SQL NULL，普通
+// unique(team_id,user_id)/unique(team_id,email) 会让多个空 user_id 的 pending
+// 邀请撞车，故不做唯一索引，只做应用层查重（并发窗口由调用方重试兜底）。
+func (t *Teams) ensureMembershipUnique(ctx context.Context, projectID, teamID, userID, email string) error {
+	base := []string{query.BuildEqual("team_id", teamID)}
+	if userID != "" {
+		list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+			Queries:  append(append([]string{}, base...), query.BuildEqual("user_id", userID)),
+			PageSize: 1,
+		}, databases.SystemPrincipal)
+		if err != nil {
+			return err
+		}
+		if len(list.Documents) > 0 {
+			return status.Error(codes.AlreadyExists, "membership already exists for this user")
+		}
+	}
+	if email != "" {
+		list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+			Queries:  append(append([]string{}, base...), query.BuildEqual("email", email)),
+			PageSize: 1,
+		}, databases.SystemPrincipal)
+		if err != nil {
+			return err
+		}
+		if len(list.Documents) > 0 {
+			return status.Error(codes.AlreadyExists, "membership already exists for this email")
+		}
+	}
+	return nil
 }
 
 func (t *Teams) adjustTeamTotal(ctx context.Context, projectID, teamID string, delta int, _ databases.Principal) error {

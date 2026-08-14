@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { Torchwood } from "../graviton.js";
 import { AccountService } from "../client/account.js";
 import { ClientDatabasesService } from "../client/databases.js";
 import { ClientTeamsService } from "../client/teams.js";
@@ -337,6 +338,52 @@ describe("contract: swagger ↔ TS SDK", () => {
     // 服务器 80 + 客户端 34 的基线，防误删。
     assert.ok(rpcCount >= 110, `RPC 总数异常（当前 ${rpcCount}），请核对 genproto 产物`);
   });
+
+// Server swagger 服务名 → Torchwood.server 门面属性名（graviton.ts）。
+const FACADE_SERVICES: Record<string, string> = {
+  DatabasesService: "databases",
+  FunctionsService: "functions",
+  StorageService: "storage",
+  TeamsService: "teams",
+  UsersService: "users",
+  APIKeysService: "apiKeys",
+  OAuthProvidersService: "oauthProviders",
+  ProjectsService: "projects",
+  HealthService: "health",
+};
+
+// Round3 H4-1：Server swagger 的每个服务都必须经 `Torchwood.server.<svc>`
+// 门面实例可达（直接 import 类的契约测试漏掉「门面未挂载」的洞——
+// 此前 FunctionsService 实现存在但未挂到 Torchwood.server，常规 Agent
+// 经 Torchwood.withApiKey() 调不到）。
+it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）", () => {
+  const tw = new Torchwood({ endpoint: "http://torchwood.test:9080", projectId: "p" });
+  const facade = tw.server as unknown as Record<string, Record<string, unknown>>;
+  let svcCount = 0;
+  for (const f of files) {
+    if (!f.name.startsWith("server/")) continue;
+    for (const path of Object.values(f.doc.paths ?? {})) {
+      for (const op of Object.values(path)) {
+        const operationId = op?.operationId;
+        if (!operationId) continue;
+        const [service, rpc] = operationId.split("_");
+        const facadeKey = FACADE_SERVICES[service];
+        assert.ok(facadeKey, `${f.name}: 未登记服务 ${service} 的门面映射`);
+        const svc = facade[facadeKey];
+        assert.ok(svc, `${f.name}: Torchwood.server.${facadeKey} 必须挂到门面`);
+        const method = RPC_TO_METHOD[service]?.[rpc];
+        assert.ok(method, `${f.name} ${operationId} 未登记 RPC→方法映射`);
+        assert.equal(
+          typeof svc[method],
+          "function",
+          `${operationId} 应经门面 Torchwood.server.${facadeKey}.${method}() 可达`
+        );
+        svcCount++;
+      }
+    }
+  }
+  assert.ok(svcCount >= 80, `Server 门面覆盖不足（当前 ${svcCount} 个 RPC）`);
+});
 
   it("写方法 HTTP 绑定（method/path/query/body 参数）与 swagger 一致", async () => {
     // 从 swagger 提取 operationId → {method, path, parameters}，与 SDK 方法

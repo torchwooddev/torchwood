@@ -551,7 +551,7 @@ func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, b
 		if !isValidBucketID(bucketID) {
 			return "", databases.Principal{}, nil, false, status.Error(codes.InvalidArgument, "invalid bucket id")
 		}
-		buckets, _, berr := h.storage.ListBuckets(ctx, projectID, databases.Query{
+		buckets, _, _, berr := h.storage.ListBuckets(ctx, projectID, databases.Query{
 			Queries:  []string{query.BuildEqual("$id", bucketID)},
 			PageSize: 1,
 		}, databases.GuestPrincipal)

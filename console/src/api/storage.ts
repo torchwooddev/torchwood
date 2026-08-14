@@ -274,7 +274,13 @@ export function fileViewUrl(bucketId: string, fileId: string): string {
   return `/v1/storage/buckets/${bucketId}/files/${fileId}/view`;
 }
 
-// filePreviewUrl 构造缩略图 URL（带鉴权 cookie，浏览器 img 标签可加载）。
-export function filePreviewUrl(bucketId: string, fileId: string): string {
-  return `/v1/storage/buckets/${bucketId}/files/${fileId}/preview?width=200`;
+// previewFile 以 blob 拉取缩略图（与 downloadFile 同路：axios 自动带
+// X-Torchwood-Project 头与会话 cookie，避免 <img src> 直连带不上项目头导致
+// 401/403；Round3 H5-1）。
+export async function previewFile(bucketId: string, fileId: string): Promise<Blob> {
+  const res = await api.get(
+    `/storage/buckets/${bucketId}/files/${fileId}/preview?width=200`,
+    { responseType: "blob" }
+  );
+  return res.data as Blob;
 }

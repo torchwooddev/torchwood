@@ -11,8 +11,10 @@ import (
 
 // RequirePlatformAdmin 拒绝非平台 admin 主体（API key、受限 console 管理员、
 // 端用户、匿名）。供各 use-case 做纵深防御（fail-closed）：即使绕过拦截器
-// 直接调用 use-case，平台级敏感写操作（Functions 写方法、Databases DDL、
-// API Key 管理、用户密码/令牌/删除等）也必须有平台 admin 凭证。
+// 直接调用 use-case，平台级敏感写操作（Functions 写方法、API Key 管理、
+// 用户密码/令牌/删除、项目创建等）也必须有平台 admin 凭证。
+// 注意：Databases schema DDL 自 Round3 H3 起与 G12 Functions 同口径使用
+// RequireServerWriteActor（API key 持 databases.write 可做 DDL），不在本守卫内。
 func RequirePlatformAdmin(ctx context.Context) error {
 	principal, ok := contexts.Principal(ctx)
 	if !ok {

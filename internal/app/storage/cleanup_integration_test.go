@@ -107,7 +107,7 @@ func TestDeleteBucket_RemovesOrphanChunks(t *testing.T) {
 	require.Error(t, err, "DeleteBucket 应删除文件对象")
 
 	// bucket 元数据已删（ListBuckets 不再返回）。
-	buckets, _, err := uc.ListBuckets(ctx, projectID, databases.Query{}, principal)
+	buckets, _, _, err := uc.ListBuckets(ctx, projectID, databases.Query{}, principal)
 	require.NoError(t, err)
 	for _, b := range buckets {
 		require.NotEqual(t, bucketID, b.ID)

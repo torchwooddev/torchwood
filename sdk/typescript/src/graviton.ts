@@ -3,6 +3,7 @@ import type { TorchwoodConfig } from "./http.js";
 import { HttpTransport } from "./http.js";
 import {
   APIKeysService,
+  FunctionsService,
   HealthService,
   OAuthProvidersService,
   ProjectsService,
@@ -30,6 +31,7 @@ export class Torchwood {
     apiKeys: APIKeysService;
     oauthProviders: OAuthProvidersService;
     storage: StorageService;
+    functions: FunctionsService;
   };
 
   private readonly transport: HttpTransport;
@@ -48,6 +50,7 @@ export class Torchwood {
       apiKeys: new APIKeysService(this.transport),
       oauthProviders: new OAuthProvidersService(this.transport),
       storage: new StorageService(this.transport),
+      functions: new FunctionsService(this.transport),
     };
   }
 

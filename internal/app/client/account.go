@@ -516,6 +516,12 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		if a.tokens == nil || a.mailer == nil {
 			return nil, status.Error(codes.Unimplemented, "email delivery is not configured")
 		}
+		// Round3 H6-3：与 verification/recovery/magic 对齐，签发前走发送频控
+		//（60s cooldown + IP 窗口），防改邮箱邮件轰炸。
+		clientInfo := contexts.ClientInfoFrom(ctx)
+		if err := a.tokens.CheckSendRateLimit(ctx, p.ProjectID, normalizeEmail(cmd.Email), clientInfo.IP); err != nil {
+			return nil, err
+		}
 		secret, expireAt, err := a.tokens.CreateEmailChangeToken(ctx, p.ProjectID, p.UserID, normalizeEmail(cmd.Email))
 		if err != nil {
 			return nil, err

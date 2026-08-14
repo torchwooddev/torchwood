@@ -93,12 +93,14 @@ export class AccountService {
     return this.http.request<Account>("PATCH", "/v1/account", { body: input });
   }
 
-  // 消费邮件链接中的一次性 secret 完成邮箱变更（需登录态，user_id 必须为当前用户）。
+  // 消费邮件链接中的一次性 secret 完成邮箱变更（公开方法，无需登录：
+  // 凭 user_id + secret，与 recovery 同一安全模型——随机 secret + TTL + 一次性消费）。
   async confirmEmailChange(input: {
     user_id: string;
     secret: string;
   }): Promise<Account> {
     return this.http.request<Account>("PUT", "/v1/account/email-change", {
+      auth: "none",
       body: {
         project_id: this.http.getProjectId(),
         user_id: input.user_id,

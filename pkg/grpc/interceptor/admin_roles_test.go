@@ -220,3 +220,119 @@ func TestAuthInterceptor_MemberAllowedOnBusinessWritesDeniedOnAdminOp(t *testing
 	})
 	requirePermissionDenied(t, err)
 }
+
+// Round3 H1-1：apiKeyScopeRules 中每个 op=="write" 的 Server 写方法都必须已
+// 登记 adminRoleMethodRules（漏登的写方法对 viewer/member 跳过角色检查，
+// 构成提权）；读方法（op=="read"）不得出现在角色表（viewer 必须能读）。
+func TestAdminRoleMethodRules_Coverage_AllWriteMethodsRegistered(t *testing.T) {
+	t.Parallel()
+	missing, extra := adminRoleWriteCoverageDiff(apiKeyScopeRules, adminRoleMethodRules)
+	require.Empty(t, missing, "写方法未登记角色表（viewer 可越权）: %v", missing)
+	require.Empty(t, extra, "角色表登记了读方法或未映射方法: %v", extra)
+
+	// 角色表允许角色均不包含 viewer；写方法允许角色非空。
+	for m, roles := range adminRoleMethodRules {
+		require.NotEmpty(t, roles, "%s 必须声明允许角色", m)
+		require.NotContains(t, roles, "viewer", "%s 不得允许 viewer", m)
+	}
+}
+
+// AssertAdminRoleWriteCoverage 的纯函数 diff：缺失一条写方法 / 多登记一条
+// 读方法 / 多登记未映射方法，都必须被检出并列出方法名。
+func TestAdminRoleWriteCoverageDiff_DetectsMissingAndExtra(t *testing.T) {
+	t.Parallel()
+	scope := map[string]apiKeyScopeRule{
+		"/s/A": {"users", "write"},
+		"/s/B": {"users", "write"},
+		"/s/C": {"users", "read"},
+	}
+	role := map[string][]string{
+		"/s/A": {"owner"},
+		"/s/C": {"member"}, // 读方法误登记 → extra
+		"/s/D": {"owner"},  // scope 表不存在 → extra
+	}
+
+	missing, extra := adminRoleWriteCoverageDiff(scope, role)
+	require.Equal(t, []string{"/s/B"}, missing, "缺失的写方法必须列出")
+	require.Equal(t, []string{"/s/C", "/s/D"}, extra, "读方法/未映射方法必须列出")
+}
+
+// Round3 H1-1：viewer 调全部补登的写方法（DeleteAPIKey/UpdateUser/
+// CreateDocument/CreateTeam/DeleteBucket/CreateFileToken）必须 PermissionDenied。
+func TestAuthInterceptor_RejectsViewerOnNewlyRegisteredWrites(t *testing.T) {
+	t.Parallel()
+	methods := []string{
+		"/torchwood.server.v1.APIKeysService/DeleteAPIKey",
+		"/torchwood.server.v1.UsersService/UpdateUser",
+		"/torchwood.server.v1.DatabasesService/CreateDocument",
+		"/torchwood.server.v1.TeamsService/CreateTeam",
+		"/torchwood.server.v1.StorageService/DeleteBucket",
+		"/torchwood.server.v1.StorageService/CreateFileToken",
+	}
+	for _, method := range methods {
+		ic, err := NewAuthInterceptor(stubValidator{principal: &shared.Principal{
+			ActorKind:      shared.ActorKindAdmin,
+			CredentialType: shared.CredentialTypeSession,
+			Roles:          []string{"viewer"},
+		}}, nil, []string{method}, nil)
+		requireNoError(t, err)
+
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Session admin-token"))
+		_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
+			FullMethod: method,
+		}, func(context.Context, any) (any, error) {
+			t.Fatalf("handler should not run for viewer on %s", method)
+			return nil, nil
+		})
+		requirePermissionDenied(t, err)
+	}
+}
+
+// Round3 H1-1：member 调接管面写（DeleteAPIKey/UpdateUser）必须
+// PermissionDenied；调业务写（CreateDocument/CreateTeam）过拦截器。
+func TestAuthInterceptor_MemberDeniedOnTakeoverWritesAllowedOnBusinessWrites(t *testing.T) {
+	t.Parallel()
+	for _, method := range []string{
+		"/torchwood.server.v1.APIKeysService/DeleteAPIKey",
+		"/torchwood.server.v1.UsersService/UpdateUser",
+	} {
+		ic, err := NewAuthInterceptor(stubValidator{principal: &shared.Principal{
+			ActorKind:      shared.ActorKindAdmin,
+			CredentialType: shared.CredentialTypeSession,
+			Roles:          []string{"member"},
+		}}, nil, []string{method}, nil)
+		requireNoError(t, err)
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Session admin-token"))
+		_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
+			FullMethod: method,
+		}, func(context.Context, any) (any, error) {
+			t.Fatalf("handler should not run for member on %s", method)
+			return nil, nil
+		})
+		requirePermissionDenied(t, err)
+	}
+
+	for _, method := range []string{
+		"/torchwood.server.v1.DatabasesService/CreateDocument",
+		"/torchwood.server.v1.TeamsService/CreateTeam",
+	} {
+		ic, err := NewAuthInterceptor(stubValidator{principal: &shared.Principal{
+			ActorKind:      shared.ActorKindAdmin,
+			CredentialType: shared.CredentialTypeSession,
+			Roles:          []string{"member"},
+		}}, nil, []string{method}, nil)
+		requireNoError(t, err)
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Session admin-token"))
+		called := false
+		_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
+			FullMethod: method,
+		}, func(context.Context, any) (any, error) {
+			called = true
+			return "ok", nil
+		})
+		require.NoError(t, err, "member 应可调 %s（业务写）", method)
+		if !called {
+			t.Fatalf("expected handler to run on %s", method)
+		}
+	}
+}

@@ -12,11 +12,33 @@ import (
 )
 
 // noRefreshMethods 不经过刷新/401 重试逻辑的方法（公开方法 + SignOut）。
+// 必须名副其实：与 proto/client/v1/account.proto 的 ACCESS_PUBLIC 方法集合
+// 保持一致（Round3 H4-2）——公开方法凭 user_id+secret/邮箱即可调用，本地
+// 有过期 refresh token 时也不得被刷新逻辑拦截。client databases 的
+// ACCESS_PUBLIC 方法（ListDocuments/GetDocument/CountDocuments）同样纳入。
 var noRefreshMethods = map[string]bool{
-	clientv1.AccountService_SignIn_FullMethodName:       true,
-	clientv1.AccountService_SignUp_FullMethodName:       true,
-	clientv1.AccountService_RefreshToken_FullMethodName: true,
-	clientv1.AccountService_SignOut_FullMethodName:      true,
+	clientv1.AccountService_SignIn_FullMethodName:                 true,
+	clientv1.AccountService_SignUp_FullMethodName:                 true,
+	clientv1.AccountService_RefreshToken_FullMethodName:           true,
+	clientv1.AccountService_SignOut_FullMethodName:                true,
+	clientv1.AccountService_ConfirmEmailChange_FullMethodName:     true,
+	clientv1.AccountService_CreateEmailOTP_FullMethodName:         true,
+	clientv1.AccountService_CreateEmailOTPSession_FullMethodName:  true,
+	clientv1.AccountService_CreateOAuth2Session_FullMethodName:    true,
+	clientv1.AccountService_CreateOAuth2TokenSession_FullMethodName: true,
+	clientv1.AccountService_CreatePhoneOTP_FullMethodName:         true,
+	clientv1.AccountService_CreatePhoneOTPSession_FullMethodName:  true,
+	clientv1.AccountService_CreateWeChatMiniProgramSession_FullMethodName: true,
+	clientv1.AccountService_CreateAnonymousSession_FullMethodName: true,
+	clientv1.AccountService_UpdateVerification_FullMethodName:     true,
+	clientv1.AccountService_CreateRecovery_FullMethodName:         true,
+	clientv1.AccountService_UpdateRecovery_FullMethodName:         true,
+	clientv1.AccountService_CreateMFASession_FullMethodName:       true,
+	clientv1.AccountService_CreateMagicURLSession_FullMethodName:  true,
+	clientv1.AccountService_UpdateMagicURLSession_FullMethodName:  true,
+	clientv1.DatabasesService_ListDocuments_FullMethodName:        true,
+	clientv1.DatabasesService_GetDocument_FullMethodName:          true,
+	clientv1.DatabasesService_CountDocuments_FullMethodName:       true,
 }
 
 // authInterceptor 挂 Bearer token，处理主动刷新与 401 刷新重试。

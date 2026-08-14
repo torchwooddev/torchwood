@@ -8,8 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/teams"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
@@ -316,22 +318,27 @@ func TestUsers_UpdateUserEmailUniqueness(t *testing.T) {
 		databases.Document{ID: "user-b", Data: map[string]any{"email": "b@torchwood.local"}},
 	)
 	uc := NewUsers(fakeProjectRepo{}, docDB, nil, &clients.Database{})
+	// Round3 H1-3：UpdateUser 现在要求 Server 写主体（admin 会话 / API key）。
+	actorCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
+		Permissions: []string{"users.write"},
+	})
 
 	t.Run("duplicate email rejected", func(t *testing.T) {
-		_, err := uc.UpdateUser(context.Background(), "proj-1", "user-a", map[string]any{"email": "B@Torchwood.Local"},
+		_, err := uc.UpdateUser(actorCtx, "proj-1", "user-a", map[string]any{"email": "B@Torchwood.Local"},
 			databases.Principal{Roles: []string{"keys"}})
 		require.Error(t, err)
 		require.Equal(t, codes.AlreadyExists, status.Code(err))
 	})
 
 	t.Run("own email unchanged allowed", func(t *testing.T) {
-		_, err := uc.UpdateUser(context.Background(), "proj-1", "user-a", map[string]any{"email": "A@torchwood.local"},
+		_, err := uc.UpdateUser(actorCtx, "proj-1", "user-a", map[string]any{"email": "A@torchwood.local"},
 			databases.Principal{Roles: []string{"keys"}})
 		require.NoError(t, err)
 	})
 
 	t.Run("new unique email allowed", func(t *testing.T) {
-		updated, err := uc.UpdateUser(context.Background(), "proj-1", "user-a", map[string]any{"email": "c@torchwood.local"},
+		updated, err := uc.UpdateUser(actorCtx, "proj-1", "user-a", map[string]any{"email": "c@torchwood.local"},
 			databases.Principal{Roles: []string{"keys"}})
 		require.NoError(t, err)
 		require.Equal(t, "c@torchwood.local", updated.Data["email"])

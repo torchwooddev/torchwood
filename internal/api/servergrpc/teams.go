@@ -49,7 +49,7 @@ func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	docs, total, _, err := s.teams.ListTeams(ctx, projectID, databases.Query{
+	docs, total, next, err := s.teams.ListTeams(ctx, projectID, databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -63,7 +63,7 @@ func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest)
 	}
 	return &serverv1.ListTeamsResponse{
 		Teams: out,
-		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total)},
+		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 
@@ -152,7 +152,7 @@ func (s *TeamsService) ListMemberships(ctx context.Context, req *serverv1.ListMe
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	docs, total, _, err := s.teams.ListMemberships(ctx, projectID, req.GetTeamId(), databases.Query{
+	docs, total, next, err := s.teams.ListMemberships(ctx, projectID, req.GetTeamId(), databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -166,7 +166,7 @@ func (s *TeamsService) ListMemberships(ctx context.Context, req *serverv1.ListMe
 	}
 	return &serverv1.ListMembershipsResponse{
 		Memberships: out,
-		Meta:        &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total)},
+		Meta:        &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 

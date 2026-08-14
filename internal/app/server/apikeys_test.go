@@ -99,6 +99,30 @@ func TestAPIKeys_Create_RequiresPlatformAdmin(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Round3 H1-3：APIKeys.Delete 与 Create 对齐的平台级守卫——端用户/API key/
+// 受限 admin（viewer/member）一律 PermissionDenied，匿名 Unauthenticated；
+// 平台 admin 通过守卫后进入业务路径（key 不存在 → NotFound）。
+func TestAPIKeys_Delete_RequiresPlatformAdmin(t *testing.T) {
+	uc := NewAPIKeys(&fakeAPIKeyRepository{})
+
+	for _, principal := range []*shared.Principal{
+		{ActorID: "user-1", ActorKind: shared.ActorKindEndUser, UserID: "user-1"},
+		{ActorID: "admin-2", ActorKind: shared.ActorKindAdmin, Roles: []string{"viewer"}},
+		{ActorID: "admin-3", ActorKind: shared.ActorKindAdmin, Roles: []string{"member"}},
+		{ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"}, Permissions: []string{"*"}},
+	} {
+		ctx := contexts.WithPrincipal(context.Background(), principal)
+		err := uc.Delete(ctx, "p1", "key-1")
+		require.Equal(t, codes.PermissionDenied, status.Code(err), "principal %+v Delete 应被拒", principal)
+	}
+
+	err := uc.Delete(context.Background(), "p1", "key-1")
+	require.Equal(t, codes.Unauthenticated, status.Code(err), "匿名 Delete 应被拒")
+
+	err = uc.Delete(platformAdminCtx(context.Background()), "p1", "key-1")
+	require.Equal(t, codes.NotFound, status.Code(err), "平台 admin 应通过守卫，随后因 key 不存在返回 NotFound")
+}
+
 // TestAPIKeys_EnsureScopesWithinCaller（G2-5/R06-P3）：cmd.Scopes 必须 ⊆
 // 调用者 principal.Permissions，超出返回 PermissionDenied；平台 admin 放行。
 func TestAPIKeys_EnsureScopesWithinCaller(t *testing.T) {

@@ -49,6 +49,12 @@ func (t *TeamsService) UpdateMembershipStatus(ctx context.Context, teamID, membe
 	})
 }
 
+// DeleteTeam 删除团队（仅 owner 角色；Round3 H4-3 补齐与 TS/proto 对齐）。
+func (t *TeamsService) DeleteTeam(ctx context.Context, teamID string) error {
+	_, err := t.c.teams.DeleteTeam(ctx, &clientv1.GetTeamRequest{Id: teamID})
+	return err
+}
+
 // DeleteMembership 移除团队成员。
 func (t *TeamsService) DeleteMembership(ctx context.Context, teamID, membershipID string) error {
 	_, err := t.c.teams.DeleteMembership(ctx, &clientv1.GetMembershipRequest{

@@ -136,6 +136,13 @@ func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUser
 }
 
 func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, updates map[string]any, principal databases.Principal) (*databases.Document, error) {
+	// 纵深防御（Round3 H1-3）：UpdateUser 可改 email/status（接管面），
+	// 必须由 Server 写主体（console admin 会话 / API key）调用；端用户/匿名
+	// 即使绕过拦截器也不得以 SystemPrincipal 改他人资料。owner/admin 角色
+	// 细粒度由拦截器 adminRoleMethodRules 把关。
+	if err := appshared.RequireServerWriteActor(ctx); err != nil {
+		return nil, err
+	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}

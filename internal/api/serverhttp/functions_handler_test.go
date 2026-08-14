@@ -1,19 +1,25 @@
 package serverhttp
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	appfunctions "github.com/torchwooddev/torchwood/internal/app/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -297,5 +303,178 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 		r.Header.Set("X-Api-Key", "fn-key-bad")
 		_, err := h.authorize(r)
 		require.Equal(t, codes.PermissionDenied, status.Code(err))
+	})
+}
+
+// ---- Round3 H2-1：upload 必须把已鉴权 principal 注入 ctx 再调 CreateDeployment ----
+
+// functionsTestRepo 是最小 FunctionRepo 桩：仅 GetFunction/CreateDeployment/
+// UpdateDeployment 需要真实语义（其余方法测试路径用不到）。
+type functionsTestRepo struct {
+	fn *domainfunctions.Function
+}
+
+func (r *functionsTestRepo) CreateFunction(context.Context, *domainfunctions.Function) error {
+	return nil
+}
+func (r *functionsTestRepo) GetFunction(_ context.Context, projectID, functionID string) (*domainfunctions.Function, error) {
+	if r.fn != nil && r.fn.ProjectID == projectID && r.fn.ID == functionID {
+		return r.fn, nil
+	}
+	return nil, nil
+}
+func (r *functionsTestRepo) ListFunctions(context.Context, string) ([]domainfunctions.Function, error) {
+	return nil, nil
+}
+func (r *functionsTestRepo) UpdateFunction(context.Context, *domainfunctions.Function) error {
+	return nil
+}
+func (r *functionsTestRepo) DeleteFunction(context.Context, string, string) error {
+	return nil
+}
+func (r *functionsTestRepo) CreateDeployment(context.Context, *domainfunctions.Deployment) error {
+	return nil
+}
+func (r *functionsTestRepo) GetDeployment(context.Context, string, string, string) (*domainfunctions.Deployment, error) {
+	return nil, nil
+}
+func (r *functionsTestRepo) ListDeployments(context.Context, string, string) ([]domainfunctions.Deployment, error) {
+	return nil, nil
+}
+func (r *functionsTestRepo) UpdateDeployment(context.Context, *domainfunctions.Deployment) error {
+	return nil
+}
+func (r *functionsTestRepo) DeleteDeployment(context.Context, string, string, string) error {
+	return nil
+}
+func (r *functionsTestRepo) SetVariables(context.Context, string, string, map[string]string) error {
+	return nil
+}
+func (r *functionsTestRepo) GetVariables(context.Context, string, string) (map[string]string, error) {
+	return nil, nil
+}
+func (r *functionsTestRepo) CreateExecution(context.Context, *domainfunctions.ExecutionRecord) error {
+	return nil
+}
+func (r *functionsTestRepo) GetExecution(context.Context, string, string, string) (*domainfunctions.ExecutionRecord, error) {
+	return nil, nil
+}
+func (r *functionsTestRepo) ListExecutions(context.Context, string, string, int) ([]domainfunctions.ExecutionRecord, error) {
+	return nil, nil
+}
+func (r *functionsTestRepo) UpdateExecution(context.Context, *domainfunctions.ExecutionRecord) error {
+	return nil
+}
+func (r *functionsTestRepo) RecoverOrphanExecutions(context.Context, time.Duration) (int64, error) {
+	return 0, nil
+}
+func (r *functionsTestRepo) PruneOldExecutions(context.Context, string, int) error {
+	return nil
+}
+
+// functionsRecordingExecutor 记录 Build 收到的 ctx（CreateDeployment 内部
+// buildDeployment 会把 handler 传入的 ctx 一路传到 executor），用于断言
+// handler 是否把 principal 注入 ctx。
+type functionsRecordingExecutor struct {
+	buildCtx context.Context
+	builds   int
+}
+
+func (e *functionsRecordingExecutor) Build(ctx context.Context, _, _, _ string) error {
+	e.buildCtx = ctx
+	e.builds++
+	return nil
+}
+func (e *functionsRecordingExecutor) Execute(context.Context, domainfunctions.Execution) (*domainfunctions.ExecutionResult, error) {
+	return nil, nil
+}
+func (e *functionsRecordingExecutor) RemoveImage(context.Context, string, string) error {
+	return nil
+}
+
+// newUploadRequest 构造带 code 文件（PK\x03\x04 魔数）的 multipart 上传请求。
+func newUploadRequest(t *testing.T, header map[string]string) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("code", "code.zip")
+	require.NoError(t, err)
+	_, err = fw.Write([]byte("PK\x03\x04fake-zip-body"))
+	require.NoError(t, err)
+	require.NoError(t, mw.Close())
+	r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", &buf)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	for k, v := range header {
+		r.Header.Set(k, v)
+	}
+	return r
+}
+
+// TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx：admin 会话与带
+// functions.write 的 API Key 走完 upload 必须 201，且 executor 收到的 ctx
+// 里能读到 principal（ActorKind 为 admin/service）。修复前 upload 用裸
+// r.Context()，RequireServerWriteActor 在 use-case 入口直接 401，executor
+// 不会被调、此测试失败——证明测的是根因。
+func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
+	projectID := "proj-1"
+	admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
+
+	t.Run("admin session", func(t *testing.T) {
+		repo := &functionsTestRepo{fn: &domainfunctions.Function{
+			ID: "fn-1", ProjectID: projectID, Runtime: "node-18.0", TimeoutSeconds: 15,
+		}}
+		executor := &functionsRecordingExecutor{}
+		uc := appfunctions.NewFunctions(functionsTestConfig(), executor, repo, nil)
+		validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
+			admins: map[string]*projects.Admin{admin.ID: admin},
+		}, &functionsAdminProjectRepo{}, nil, &functionsDocDB{}, nil)
+		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil)
+		require.NoError(t, err)
+
+		token := functionsSignToken(t, jwtparser.Claims{
+			UserID:    admin.ID,
+			Username:  admin.Email,
+			ActorKind: "admin",
+			TokenType: jwtparser.TokenTypeAccess,
+			IssuedAt:  time.Now().Unix(),
+			ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		})
+		r := newUploadRequest(t, map[string]string{
+			"Authorization":     "Bearer " + token,
+			"X-Torchwood-Project": projectID,
+		})
+		rec := httptest.NewRecorder()
+		h.upload(rec, r, map[string]string{"functionId": "fn-1"})
+		require.Equal(t, http.StatusCreated, rec.Code, "admin 上传应成功：%s", rec.Body.String())
+		require.Equal(t, 1, executor.builds, "CreateDeployment 必须被调用（构建进入 executor）")
+		p, ok := contexts.Principal(executor.buildCtx)
+		require.True(t, ok, "executor 收到的 ctx 必须含 Principal")
+		require.Equal(t, shared.ActorKindAdmin, p.ActorKind, "admin 会话的 ActorKind 必须为 admin")
+	})
+
+	t.Run("api key with functions.write", func(t *testing.T) {
+		repo := &functionsTestRepo{fn: &domainfunctions.Function{
+			ID: "fn-1", ProjectID: projectID, Runtime: "node-18.0", TimeoutSeconds: 15,
+		}}
+		executor := &functionsRecordingExecutor{}
+		uc := appfunctions.NewFunctions(functionsTestConfig(), executor, repo, nil)
+		validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{
+			keys: map[string]*projects.APIKey{
+				functionsHashSecret("fn-key-ok"): {
+					ID: "key-1", ProjectID: projectID, Scopes: []string{"functions.write"}, Enabled: true,
+				},
+			},
+		}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, &functionsDocDB{}, nil)
+		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil)
+		require.NoError(t, err)
+
+		r := newUploadRequest(t, map[string]string{"X-Api-Key": "fn-key-ok"})
+		rec := httptest.NewRecorder()
+		h.upload(rec, r, map[string]string{"functionId": "fn-1"})
+		require.Equal(t, http.StatusCreated, rec.Code, "API key 上传应成功：%s", rec.Body.String())
+		require.Equal(t, 1, executor.builds, "CreateDeployment 必须被调用（构建进入 executor）")
+		p, ok := contexts.Principal(executor.buildCtx)
+		require.True(t, ok, "executor 收到的 ctx 必须含 Principal")
+		require.Equal(t, shared.ActorKindService, p.ActorKind, "API key 的 ActorKind 必须为 service")
 	})
 }

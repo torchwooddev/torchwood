@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -17,7 +17,7 @@ import {
   getStorageUsage,
   deleteFile,
   downloadFile,
-  filePreviewUrl,
+  previewFile,
   fileViewUrl,
   shouldChunk,
   isTooLarge,
@@ -492,6 +492,31 @@ export function FileDetailPage() {
     enabled: !!bucketId && !!fileId,
   });
 
+  // Round3 H5-1：预览经 axios blob 拉取（自动带 X-Torchwood-Project 头），
+  // 再 createObjectURL 渲染；卸载时 revokeObjectURL 防泄漏。
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setPreviewUrl(null);
+    setPreviewFailed(false);
+    if (!bucketId || !fileId) return;
+    previewFile(bucketId, fileId)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [bucketId, fileId]);
+
   const remove = useMutation({
     mutationFn: () => deleteFile(bucketId!, fileId!),
     onSuccess: () => {
@@ -556,10 +581,12 @@ export function FileDetailPage() {
       backLabel="返回 Bucket"
       actions={
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={generateShare} disabled={shareLoading}>
-            <Link2 className="h-4 w-4 mr-2" />
-            分享链接
-          </Button>
+          {writeable && (
+            <Button variant="outline" size="sm" onClick={generateShare} disabled={shareLoading}>
+              <Link2 className="h-4 w-4 mr-2" />
+              分享链接
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -592,11 +619,17 @@ export function FileDetailPage() {
             <CardTitle className="text-base">预览</CardTitle>
           </CardHeader>
           <CardContent>
-            <img
-              src={filePreviewUrl(bucketId!, file.id)}
-              alt={file.name}
-              className="max-h-96 rounded-lg border object-contain"
-            />
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={file.name}
+                className="max-h-96 rounded-lg border object-contain"
+              />
+            ) : (
+              <div className="flex h-40 items-center justify-center rounded-lg border text-sm text-muted-foreground">
+                {previewFailed ? "预览加载失败" : "预览加载中..."}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

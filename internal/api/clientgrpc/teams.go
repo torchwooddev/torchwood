@@ -31,7 +31,7 @@ func (s *TeamsService) CreateTeam(ctx context.Context, req *clientv1.CreateTeamR
 }
 
 func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest) (*clientv1.ListTeamsResponse, error) {
-	docs, total, _, err := s.teams.ListTeams(ctx, databases.Query{
+	docs, total, next, err := s.teams.ListTeams(ctx, databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -45,7 +45,7 @@ func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest)
 	}
 	return &clientv1.ListTeamsResponse{
 		Teams: out,
-		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total)},
+		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 

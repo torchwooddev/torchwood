@@ -58,7 +58,7 @@ func (s *UsersService) ListUsers(ctx context.Context, req *sharedv1.ListRequest)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	docs, total, _, err := s.users.ListUsers(ctx, projectID, databases.Query{
+	docs, total, next, err := s.users.ListUsers(ctx, projectID, databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -72,7 +72,7 @@ func (s *UsersService) ListUsers(ctx context.Context, req *sharedv1.ListRequest)
 	}
 	return &serverv1.ListUsersResponse{
 		Users: out,
-		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total)},
+		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 

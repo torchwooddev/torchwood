@@ -51,11 +51,12 @@ func TestRedisAccountTokenStore_MagicURL(t *testing.T) {
 	require.NoError(t, store.VerifyMagicURLToken(ctx, "proj-1", "user-1", secret))
 	require.Error(t, store.VerifyMagicURLToken(ctx, "proj-1", "user-1", secret))
 
-	// 错误 secret 拒绝（消费后记录已删除，同样拒绝）。
+	// 错误 secret 拒绝（Round3 H6-3：只计数不删除，正确 secret 仍可用）。
 	challengeID2, secret2, _, err := store.CreateMagicURLToken(ctx, "proj-1", "user-1", "user@example.com")
 	require.NoError(t, err)
 	require.NotEmpty(t, challengeID2)
 	require.Error(t, store.VerifyMagicURLToken(ctx, "proj-1", "user-1", secret2+"0"))
+	require.NoError(t, store.VerifyMagicURLToken(ctx, "proj-1", "user-1", secret2), "错 secret 不得删除记录，正确 secret 仍可消费")
 }
 
 func TestRedisAccountTokenStore_MagicURLConcurrentConsume(t *testing.T) {
@@ -149,8 +150,64 @@ func TestRedisAccountTokenStore_EmailChange(t *testing.T) {
 	_, err = store.VerifyEmailChangeToken(ctx, "proj-1", "user-1", verificationSecret)
 	require.Error(t, err)
 
-	// 错误 secret 拒绝（消费后记录已删除，同样拒绝）。
+	// 错误 secret 拒绝（Round3 H6-3：只计数不删除，正确 secret 仍可消费）。
 	secret3, _, _ := store.CreateEmailChangeToken(ctx, "proj-1", "user-1", "wrong@example.com")
 	_, err = store.VerifyEmailChangeToken(ctx, "proj-1", "user-1", secret3+"0")
 	require.Error(t, err)
+	gotEmail, err := store.VerifyEmailChangeToken(ctx, "proj-1", "user-1", secret3)
+	require.NoError(t, err, "错 secret 不得删除记录，正确 secret 仍可消费")
+	require.Equal(t, "wrong@example.com", gotEmail)
+}
+
+// Round3 H6-3：错 secret 只计数（不删除记录、不重置 TTL），超过
+// accountTokenMaxAttempts 次后删除并锁定（此后正确 secret 也 Unauthenticated）。
+func TestRedisAccountTokenStore_WrongSecretCountsAndLocks(t *testing.T) {
+	t.Parallel()
+
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := auth.NewRedisAccountTokenStore(rdb)
+	ctx := context.Background()
+
+	secret, _, err := store.CreateRecoveryToken(ctx, "proj-1", "user-1", "user@example.com")
+	require.NoError(t, err)
+
+	// 前 N-1 次错 secret：统一 Unauthenticated，记录仍在（正确 secret 可用）。
+	for i := 0; i < auth.AccountTokenMaxAttempts-1; i++ {
+		require.Error(t, store.VerifyRecoveryToken(ctx, "proj-1", "user-1", secret+"0"),
+			"错 secret 必须拒绝（统一 Unauthenticated 防枚举）")
+	}
+	require.NoError(t, store.VerifyRecoveryToken(ctx, "proj-1", "user-1", secret),
+		"未超限前正确 secret 仍可消费，记录未被删除")
+
+	// 再创建一条，耗尽全部尝试次数 → 锁定：记录删除，正确 secret 也无法使用。
+	secret2, _, err := store.CreateRecoveryToken(ctx, "proj-1", "user-1", "user@example.com")
+	require.NoError(t, err)
+	for i := 0; i < auth.AccountTokenMaxAttempts; i++ {
+		require.Error(t, store.VerifyRecoveryToken(ctx, "proj-1", "user-1", secret2+"0"))
+	}
+	require.Error(t, store.VerifyRecoveryToken(ctx, "proj-1", "user-1", secret2),
+		"超过尝试上限后记录已删除锁定，正确 secret 也拒绝")
+}
+
+// Round3 H6-3：错 secret 计数不重置 TTL——记录仍按原窗口过期。
+func TestRedisAccountTokenStore_WrongSecretKeepsTTL(t *testing.T) {
+	t.Parallel()
+
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := auth.NewRedisAccountTokenStore(rdb)
+	ctx := context.Background()
+
+	secret, _, err := store.CreateVerificationToken(ctx, "proj-1", "user-1", "user@example.com")
+	require.NoError(t, err)
+	require.Error(t, store.VerifyVerificationToken(ctx, "proj-1", "user-1", secret+"0"))
+
+	mr.FastForward(25 * time.Hour) // > 24h TTL
+	require.Error(t, store.VerifyVerificationToken(ctx, "proj-1", "user-1", secret),
+		"错 secret 计数后记录仍按原 TTL 过期")
 }

@@ -47,7 +47,7 @@ func (d *Databases) resolveProject(ctx context.Context, projectID string) (*proj
 }
 
 func (d *Databases) CreateDatabase(ctx context.Context, projectID, id, name string) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if err := d.ValidateIdentifier(id); err != nil {
@@ -80,7 +80,7 @@ func (d *Databases) GetDatabase(ctx context.Context, projectID, databaseID strin
 }
 
 func (d *Databases) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	// "default" 库承载全部系统集合，删除会破坏"项目存在 ⇒ schema 存在"不变式
@@ -95,7 +95,7 @@ func (d *Databases) DeleteDatabase(ctx context.Context, projectID, databaseID st
 }
 
 func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
@@ -138,7 +138,7 @@ func (d *Databases) GetCollection(ctx context.Context, projectID, databaseID, co
 }
 
 func (d *Databases) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
@@ -151,7 +151,7 @@ func (d *Databases) DeleteCollection(ctx context.Context, projectID, databaseID,
 }
 
 func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch databases.CollectionPatch, principal databases.Principal) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
@@ -175,7 +175,7 @@ func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID,
 }
 
 func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, collectionID string, attr databases.Attribute) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
@@ -201,7 +201,7 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 }
 
 func (d *Databases) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
@@ -223,7 +223,7 @@ func (d *Databases) CreateIndex(ctx context.Context, projectID, databaseID, coll
 }
 
 func (d *Databases) DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {
@@ -242,7 +242,7 @@ func (d *Databases) DeleteAttribute(ctx context.Context, projectID, databaseID, 
 }
 
 func (d *Databases) DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error {
-	if err := shared.RequirePlatformAdmin(ctx); err != nil {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if err := d.ValidateIdentifier(databaseID); err != nil {

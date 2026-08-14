@@ -55,7 +55,7 @@ func (s *StorageService) ListBuckets(ctx context.Context, req *sharedv1.ListRequ
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	buckets, total, err := s.storage.ListBuckets(ctx, projectID, databases.Query{
+	buckets, total, next, err := s.storage.ListBuckets(ctx, projectID, databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -69,7 +69,7 @@ func (s *StorageService) ListBuckets(ctx context.Context, req *sharedv1.ListRequ
 	}
 	return &serverv1.ListBucketsResponse{
 		Buckets: out,
-		Meta:    &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total)},
+		Meta:    &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 
@@ -78,8 +78,10 @@ func (s *StorageService) GetBucket(ctx context.Context, req *serverv1.GetBucketR
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	buckets, _, err := s.storage.ListBuckets(ctx, projectID, databases.Query{
-		Queries:  []string{"equal(\"$id\",\"" + req.GetId() + "\")"},
+	// Round3 H6-2：与 ListFiles / 公开 bucket HTTP 路径一致用 BuildEqual，
+	// 避免手拼 equal 串在非法 id（含引号等）下产生解析错误。
+	buckets, _, _, err := s.storage.ListBuckets(ctx, projectID, databases.Query{
+		Queries:  []string{query.BuildEqual("$id", req.GetId())},
 		PageSize: 1,
 	}, dbPrincipal(ctx))
 	if err != nil {
@@ -158,7 +160,7 @@ func (s *StorageService) ListFiles(ctx context.Context, req *serverv1.ListFilesR
 		PageToken: req.GetPageToken(),
 	}
 	q.Queries = append([]string{query.BuildEqual("bucket_id", req.GetBucketId())}, q.Queries...)
-	files, total, _, err := s.storage.ListFiles(ctx, projectID, req.GetBucketId(), q, dbPrincipal(ctx))
+	files, total, next, err := s.storage.ListFiles(ctx, projectID, req.GetBucketId(), q, dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +170,7 @@ func (s *StorageService) ListFiles(ctx context.Context, req *serverv1.ListFilesR
 	}
 	return &serverv1.ListFilesResponse{
 		Files: out,
-		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total)},
+		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 

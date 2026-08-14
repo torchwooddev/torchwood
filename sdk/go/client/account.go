@@ -91,8 +91,9 @@ func (a *AccountService) UpdateAccount(ctx context.Context, name, email *string,
 	})
 }
 
-// ConfirmEmailChange 消费邮件链接中的一次性 secret 完成邮箱变更（验证通过后
-// email 才切换；需登录态，user_id 必须等于当前用户）。
+// ConfirmEmailChange 消费邮件链接中的一次性 secret 完成邮箱变更（公开方法，
+// 凭 user_id + secret，无需登录——与 recovery 同一安全模型：随机 secret +
+// TTL + 一次性消费；Round3 H4-2 起不再依赖登录态）。
 func (a *AccountService) ConfirmEmailChange(ctx context.Context, userID, secret string) (*clientv1.Account, error) {
 	return a.c.account.ConfirmEmailChange(ctx, &clientv1.ConfirmEmailChangeRequest{
 		ProjectId: a.c.cfg.ProjectID,

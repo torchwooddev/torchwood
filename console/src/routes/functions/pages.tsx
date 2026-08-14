@@ -53,6 +53,7 @@ import {
   NotFound,
   DeleteButton,
   RowDeleteButton,
+  BulkDeleteButton,
 } from "@/components/resource/shared";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminRole, canWrite, isPlatformAdmin } from "@/hooks/useAdminRole";
@@ -195,15 +196,11 @@ export function FunctionsListPage() {
         selectionActions={
           writeable
             ? (selected, clear) => (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  disabled={selected.length === 0 || bulkDeleting}
-                  onClick={() => handleBulkDelete(selected, clear)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  删除 ({selected.length})
-                </Button>
+                <BulkDeleteButton
+                  count={selected.length}
+                  loading={bulkDeleting}
+                  onConfirm={() => handleBulkDelete(selected, clear)}
+                />
               )
             : undefined
         }

@@ -72,6 +72,10 @@ func NewGRPCServer(
 	// fail-closed（R10-P1-5）：proto 注解推导的 ACCESS_API_KEY 方法集合必须与
 	// apiKeyScopeRules 完全一致，不一致直接 panic（见 AssertAPIKeyScopeCoverage）。
 	interceptor.AssertAPIKeyScopeCoverage(apiKeyMethods)
+	// fail-closed（Round3 H1-1）：apiKeyScopeRules 的全部写方法必须已登记
+	// adminRoleMethodRules，且角色表不得残留读方法/未映射方法，否则 viewer
+	// 会话可越权调用未登记写方法（见 AssertAdminRoleWriteCoverage）。
+	interceptor.AssertAdminRoleWriteCoverage()
 
 	authInterceptor, err := interceptor.NewAuthInterceptor(validator, publicMethods, apiKeyMethods, permissionMethods)
 	if err != nil {

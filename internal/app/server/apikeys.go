@@ -122,6 +122,11 @@ func (a *APIKeys) Get(ctx context.Context, projectID, id string) (*projects.APIK
 }
 
 func (a *APIKeys) Delete(ctx context.Context, projectID, id string) error {
+	// 纵深防御（Round3 H1-3）：与 Create 对齐，平台级写操作仅限平台 admin；
+	// 即使绕过拦截器，viewer/member/API key 也不能删除 API Key。
+	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
+		return err
+	}
 	key, err := a.repo.GetAPIKey(ctx, id)
 	if err != nil {
 		return err

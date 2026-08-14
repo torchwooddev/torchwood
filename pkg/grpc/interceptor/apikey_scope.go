@@ -219,3 +219,50 @@ func AssertAPIKeyScopeCoverage(apiKeyMethods []string) {
 	panic(fmt.Sprintf("apiKeyScopeRules 与 ACCESS_API_KEY 方法集合不一致 (fail-closed): "+
 		"proto 声明但规则表缺失=%v; 规则表多余=%v", missing, extra))
 }
+
+// adminRoleWriteCoverageDiff 比较 scope 写方法集合与角色表，返回：
+//   - missing：scope 表声明 op=="write" 但角色表未登记的方法；
+//   - extra：角色表登记了读方法（op=="read"）或 scope 表不存在的方法。
+//
+// 抽成纯函数便于单测构造缺失/多余场景（AssertAdminRoleWriteCoverage 直接调用）。
+func adminRoleWriteCoverageDiff(scopeRules map[string]apiKeyScopeRule, roleRules map[string][]string) (missing, extra []string) {
+	for m, rule := range scopeRules {
+		if rule.op != "write" {
+			continue
+		}
+		if _, ok := roleRules[m]; !ok {
+			missing = append(missing, m)
+		}
+	}
+	for m := range roleRules {
+		rule, ok := scopeRules[m]
+		if !ok {
+			extra = append(extra, m)
+			continue
+		}
+		if rule.op != "write" {
+			extra = append(extra, m)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+	return missing, extra
+}
+
+// AssertAdminRoleWriteCoverage 断言 adminRoleMethodRules 与 apiKeyScopeRules
+// 的写方法集合完全一致（Round3 H1-1，fail-closed）：
+//   - apiKeyScopeRules 中每个 op=="write" 的方法必须已登记进 adminRoleMethodRules
+//     ——漏登的写方法会被 jwt.go 拦截器跳过角色检查，viewer 会话可越权调用；
+//   - adminRoleMethodRules 中不得出现读方法（op=="read"）或未映射方法——
+//     误登记会把 viewer 能读的接口锁死，或登记已删除的方法。
+//
+// 不一致直接 panic 并列出方法名。由 server 启动路径调用
+// （internal/infra/server/grpc.go NewGRPCServer，紧挨 AssertAPIKeyScopeCoverage）。
+func AssertAdminRoleWriteCoverage() {
+	missing, extra := adminRoleWriteCoverageDiff(apiKeyScopeRules, adminRoleMethodRules)
+	if len(missing) == 0 && len(extra) == 0 {
+		return
+	}
+	panic(fmt.Sprintf("adminRoleMethodRules 与 apiKeyScopeRules 写方法集合不一致 (fail-closed): "+
+		"写方法未登记角色=%v; 角色表多余/指向读方法=%v", missing, extra))
+}

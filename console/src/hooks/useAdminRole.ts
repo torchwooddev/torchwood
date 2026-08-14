@@ -12,8 +12,11 @@ export function isPlatformAdmin(role: string | undefined): boolean {
   return role === "owner" || role === "admin";
 }
 
+// canWrite fail-closed（Round3 H5-2）：显式白名单 owner | admin | member；
+// viewer 与未知角色（undefined/其他值）一律不可写——未加载出角色时
+// 宁可不展示写入口，也不放行。
 export function canWrite(role: string | undefined): boolean {
-  return role !== "viewer";
+  return role === "owner" || role === "admin" || role === "member";
 }
 
 // useAdminRole 返回当前登录 admin 的角色（共享 ["console-admin-me"] 查询缓存，

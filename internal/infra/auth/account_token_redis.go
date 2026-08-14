@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -18,6 +19,9 @@ const (
 	verificationTokenTTL = 24 * time.Hour
 	recoveryTokenTTL     = time.Hour
 	magicURLTokenTTL     = time.Hour
+	// AccountTokenMaxAttempts 是错误 secret 尝试次数上限（与 OTP 对齐，5 次）；
+	// 超过后删除并锁定记录（Round3 H6-3）。
+	AccountTokenMaxAttempts = 5
 )
 
 type accountTokenRecord struct {
@@ -108,7 +112,40 @@ func (s *RedisAccountTokenStore) createToken(ctx context.Context, projectID, use
 	return secret, expireAt, nil
 }
 
-// verifyToken 通过 GETDEL 原子消费：校验与删除一体，杜绝并发双消费
+// accountTokenVerifyScript 原子完成「读取记录 -> 校验归属 -> 比对 secret ->
+// 成功删除 / 错 secret 计数（超限删除并锁定）」：GET-改-SET 竞态会导致并发
+// 双消费（recovery 双重置 / magic URL 双会话）与错 secret 作废链接（Round3
+// H6-3：先 GETDEL 再比 hash 会在错 secret 时烧掉一次性 token）。
+// 返回值：ok:<email> / badsecret / locked / notfound。
+const accountTokenVerifyScript = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  return 'notfound'
+end
+local record = cjson.decode(raw)
+if record.project_id ~= ARGV[3] or record.user_id ~= ARGV[4] or record.purpose ~= ARGV[5] then
+  return 'mismatch'
+end
+if record.secret_hash ~= ARGV[1] then
+  local attempts = (record.attempts or 0) + 1
+  if attempts >= tonumber(ARGV[2]) then
+    redis.call('DEL', KEYS[1])
+    return 'locked'
+  end
+  record.attempts = attempts
+  local ttl = redis.call('PTTL', KEYS[1])
+  if ttl > 0 then
+    redis.call('SET', KEYS[1], cjson.encode(record), 'PX', ttl)
+  else
+    redis.call('SET', KEYS[1], cjson.encode(record))
+  end
+  return 'badsecret'
+end
+redis.call('DEL', KEYS[1])
+return 'ok:' .. tostring(record.email)
+`
+
+// verifyToken 通过 Lua 原子消费：校验与删除一体，杜绝并发双消费
 // （recovery 双重置 / magic URL 双会话）。
 func (s *RedisAccountTokenStore) verifyToken(ctx context.Context, projectID, userID, secret, purpose string) error {
 	_, err := s.verifyTokenWithEmail(ctx, projectID, userID, secret, purpose)
@@ -116,27 +153,22 @@ func (s *RedisAccountTokenStore) verifyToken(ctx context.Context, projectID, use
 }
 
 // verifyTokenWithEmail 同 verifyToken，额外返回 record 中携带的 email
-// （email_change 消费后需要新邮箱地址）。
+// （email_change 消费后需要新邮箱地址）。错误 secret 只计数不删除记录，
+// 超限（AccountTokenMaxAttempts）删除锁定；全部失败路径统一返回
+// Unauthenticated（防枚举，Round3 H6-3）。
 func (s *RedisAccountTokenStore) verifyTokenWithEmail(ctx context.Context, projectID, userID, secret, purpose string) (string, error) {
 	key := accountTokenKey(purpose, projectID, userID)
-	raw, err := s.rdb.GetDel(ctx, key).Bytes()
-	if err == redis.Nil {
-		return "", status.Error(codes.Unauthenticated, "invalid or expired account token")
-	}
+	result, err := s.rdb.Eval(ctx, accountTokenVerifyScript, []string{key},
+		HashOTP(secret), AccountTokenMaxAttempts, projectID, userID, purpose).Text()
 	if err != nil {
-		return "", status.Error(codes.Internal, "account token lookup failed")
+		return "", status.Error(codes.Internal, "account token verify failed")
 	}
-	var record accountTokenRecord
-	if err := json.Unmarshal(raw, &record); err != nil {
-		return "", status.Error(codes.Internal, "account token decode failed")
-	}
-	if record.ProjectID != projectID || record.UserID != userID || record.Purpose != purpose {
+	switch {
+	case strings.HasPrefix(result, "ok:"):
+		return strings.TrimPrefix(result, "ok:"), nil
+	default: // notfound / mismatch / badsecret / locked
 		return "", status.Error(codes.Unauthenticated, "invalid or expired account token")
 	}
-	if record.SecretHash != HashOTP(secret) {
-		return "", status.Error(codes.Unauthenticated, "invalid or expired account token")
-	}
-	return record.Email, nil
 }
 
 func accountTokenKey(purpose, projectID, userID string) string {

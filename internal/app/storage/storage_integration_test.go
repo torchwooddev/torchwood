@@ -268,7 +268,7 @@ func TestStorage_PublicBucket(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, bucket.Public)
 
-	buckets, _, err := uc.ListBuckets(ctx, projectID, databases.Query{}, databases.GuestPrincipal)
+	buckets, _, _, err := uc.ListBuckets(ctx, projectID, databases.Query{}, databases.GuestPrincipal)
 	require.NoError(t, err)
 	require.Len(t, buckets, 1)
 	require.True(t, buckets[0].Public)

@@ -25,14 +25,10 @@ func (l *RedisRateLimiter) Allow(ctx context.Context, key string, limit int, win
 		return nil
 	}
 	redisKey := "Torchwood:ratelimit:" + key
-	count, err := l.rdb.Incr(ctx, redisKey).Result()
+	// Round3 H6-4：INCR + 首次 EXPIRE 原子化，崩溃不留下无 TTL 计数键。
+	count, err := incrWithTTL(ctx, l.rdb, redisKey, window)
 	if err != nil {
 		return status.Error(codes.Internal, "rate limit check failed")
-	}
-	if count == 1 {
-		if err := l.rdb.Expire(ctx, redisKey, window).Err(); err != nil {
-			return status.Error(codes.Internal, "rate limit check failed")
-		}
 	}
 	if count > int64(limit) {
 		return status.Error(codes.ResourceExhausted, "rate limit exceeded")

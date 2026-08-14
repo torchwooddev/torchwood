@@ -79,6 +79,11 @@ func (s *fakeTeams) DeleteMembership(ctx context.Context, _ *clientv1.GetMembers
 	return &sharedv1.Empty{}, nil
 }
 
+func (s *fakeTeams) DeleteTeam(ctx context.Context, _ *clientv1.GetTeamRequest) (*sharedv1.Empty, error) {
+	s.rec.record(ctx)
+	return &sharedv1.Empty{}, nil
+}
+
 // fakeDatabases 实现 Client API Databases 服务。
 type fakeDatabases struct {
 	clientv1.UnimplementedDatabasesServiceServer
@@ -188,6 +193,15 @@ func TestClientTeams_Memberships(t *testing.T) {
 	require.Equal(t, "active", updated.Status)
 
 	require.NoError(t, c.Teams.DeleteMembership(ctx, "team-1", "mem-1"))
+}
+
+// Round3 H4-3：Go Client 补齐 DeleteTeam（对齐 TS / proto）。
+func TestClientTeams_DeleteTeam(t *testing.T) {
+	c, rec := newFullClient(t, WithInitialTokens(&clientv1.TokenBundle{AccessToken: "jwt-1"}))
+	ctx := context.Background()
+
+	require.NoError(t, c.Teams.DeleteTeam(ctx, "team-1"))
+	require.Equal(t, "Bearer jwt-1", rec.auth("authorization"), "DeleteTeam 必须携带 Bearer token")
 }
 
 func TestClientDatabases_DocumentCRUD(t *testing.T) {

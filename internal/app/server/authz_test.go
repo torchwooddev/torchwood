@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -66,4 +67,32 @@ func TestUsers_WriteMethods_RequireServerWriteActor(t *testing.T) {
 	require.Equal(t, codes.NotFound, status.Code(err), "API key 应通过守卫，随后因项目不存在返回 NotFound")
 	err = uc.DeleteUserSession(keyCtx, "p1", "u1", "s1")
 	require.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// Round3 H1-3：UpdateUser（可改 email/status 的接管面）纵深防御——端用户
+// PermissionDenied、匿名 Unauthenticated；admin 会话与 API key 通过守卫进入
+// 业务路径（项目不存在 → NotFound）。角色细粒度由拦截器 adminRoleMethodRules
+// 把关（owner/admin）。
+func TestUsers_UpdateUser_RequiresServerWriteActor(t *testing.T) {
+	uc := NewUsers(&emptyProjectRepo{}, nil, nil, nil)
+	updates := map[string]any{"status": "active"}
+
+	endUserCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorID: "user-1", ActorKind: shared.ActorKindEndUser, UserID: "user-1",
+	})
+	_, err := uc.UpdateUser(endUserCtx, "p1", "u1", updates, databases.Principal{})
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "端用户 UpdateUser 应被拒")
+
+	_, err = uc.UpdateUser(context.Background(), "p1", "u1", updates, databases.Principal{})
+	require.Equal(t, codes.Unauthenticated, status.Code(err), "匿名 UpdateUser 应被拒")
+
+	_, err = uc.UpdateUser(platformAdminCtx(context.Background()), "p1", "u1", updates, databases.Principal{})
+	require.Equal(t, codes.NotFound, status.Code(err), "admin 会话应通过守卫，随后因项目不存在返回 NotFound")
+
+	keyCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
+		Permissions: []string{"users.write"},
+	})
+	_, err = uc.UpdateUser(keyCtx, "p1", "u1", updates, databases.Principal{})
+	require.Equal(t, codes.NotFound, status.Code(err), "API key 应通过守卫，随后因项目不存在返回 NotFound")
 }

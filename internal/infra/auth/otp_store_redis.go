@@ -86,14 +86,10 @@ func (s *RedisOTPChallengeStore) CheckSendRateLimit(ctx context.Context, project
 		return nil
 	}
 	ipKey := fmt.Sprintf("Torchwood:otp:ip:%s:%s", projectID, ip)
-	count, err := s.rdb.Incr(ctx, ipKey).Result()
+	// Round3 H6-4：INCR + 首次 EXPIRE 原子化，崩溃不留下无 TTL 计数键。
+	count, err := incrWithTTL(ctx, s.rdb, ipKey, otpIPWindow)
 	if err != nil {
 		return status.Error(codes.Internal, "otp ip rate limit check failed")
-	}
-	if count == 1 {
-		if err := s.rdb.Expire(ctx, ipKey, otpIPWindow).Err(); err != nil {
-			return status.Error(codes.Internal, "otp ip rate limit check failed")
-		}
 	}
 	if count > otpIPMaxPerWindow {
 		return status.Error(codes.ResourceExhausted, "otp ip rate limit exceeded")

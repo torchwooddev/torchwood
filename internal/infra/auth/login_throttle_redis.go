@@ -70,14 +70,9 @@ func (s *RedisLoginThrottle) incr(ctx context.Context, key string) error {
 	if key == "" {
 		return nil
 	}
-	count, err := s.rdb.Incr(ctx, key).Result()
-	if err != nil {
+	// Round3 H6-4：INCR + 首次 EXPIRE 原子化，崩溃不留下无 TTL 计数键。
+	if _, err := incrWithTTL(ctx, s.rdb, key, loginFailWindow); err != nil {
 		return status.Error(codes.Internal, "login throttle update failed")
-	}
-	if count == 1 {
-		if err := s.rdb.Expire(ctx, key, loginFailWindow).Err(); err != nil {
-			return status.Error(codes.Internal, "login throttle update failed")
-		}
 	}
 	return nil
 }

@@ -104,24 +104,26 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 	}, nil
 }
 
-func (s *Storage) ListBuckets(ctx context.Context, projectID string, q databases.Query, principal databases.Principal) ([]storage.Bucket, int64, error) {
+// ListBuckets 返回 (buckets, total, nextPageToken, error)；nextPageToken 供
+// 分页续拉（Round3 H6-1：此前被丢弃导致列表截断不可翻页）。
+func (s *Storage) ListBuckets(ctx context.Context, projectID string, q databases.Query, principal databases.Principal) ([]storage.Bucket, int64, string, error) {
 	project, err := s.resolveProject(ctx, projectID)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 
 	list, err := s.docDB.ListDocuments(ctx, project.ID, "default", "buckets", q, principal)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	buckets := make([]storage.Bucket, 0, len(list.Documents))
 	for _, d := range list.Documents {
 		buckets = append(buckets, *mapBucketDoc(&d))
 	}
-	return buckets, list.TotalCount, nil
+	return buckets, list.TotalCount, list.NextPageToken, nil
 }
 
 // UpdateBucketCommand 更新 bucket 元数据；空字段表示不修改。
