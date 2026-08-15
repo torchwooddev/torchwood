@@ -568,6 +568,14 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "version",
+            "description": "用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
           }
         ],
         "tags": [
@@ -1161,6 +1169,11 @@
             "type": "string",
             "format": "int64"
           }
+        },
+        "version": {
+          "type": "string",
+          "format": "int64",
+          "title": "用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。"
         }
       }
     },
@@ -1206,6 +1219,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "version": {
+          "type": "string",
+          "format": "int64",
+          "title": "用户集合为当前 _version；系统集合恒为 0。"
         }
       }
     },

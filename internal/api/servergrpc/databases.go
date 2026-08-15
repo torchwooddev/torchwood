@@ -386,6 +386,11 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	var version *int64
+	if req.Version != nil {
+		v := req.GetVersion()
+		version = &v
+	}
 	doc, err := s.databases.UpdateDocument(
 		ctx,
 		projectID,
@@ -396,6 +401,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 		perms,
 		req.GetIncrement(),
 		dbPrincipal(ctx),
+		version,
 	)
 	if err != nil {
 		return nil, err
@@ -480,13 +486,18 @@ func (s *DatabasesService) BulkDeleteDocuments(ctx context.Context, req *serverv
 	return &serverv1.BulkDocumentsResponse{Affected: n}, nil
 }
 
-func (s *DatabasesService) DeleteDocument(ctx context.Context, req *serverv1.GetDocumentRequest) (*sharedv1.Empty, error) {
+func (s *DatabasesService) DeleteDocument(ctx context.Context, req *serverv1.DeleteDocumentRequest) (*sharedv1.Empty, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditDocumentResource(req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()))
-	if err := s.databases.DeleteDocument(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), dbPrincipal(ctx)); err != nil {
+	var version *int64
+	if req.Version != nil {
+		v := req.GetVersion()
+		version = &v
+	}
+	if err := s.databases.DeleteDocument(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), dbPrincipal(ctx), version); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
@@ -569,6 +580,7 @@ func mapDocument(doc *databases.Document) (*serverv1.Document, error) {
 		CreatedAt:   timestamppb.New(doc.CreatedAt),
 		UpdatedAt:   timestamppb.New(doc.UpdatedAt),
 		Permissions: formatPermissionStrings(doc.Permissions),
+		Version:     doc.Version,
 	}, nil
 }
 

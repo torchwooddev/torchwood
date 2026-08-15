@@ -131,6 +131,8 @@ func (f *fakeDocDB) UpdateDocument(_ context.Context, _, _, collectionID string,
 	for k, v := range update.Document.Data {
 		doc.Data[k] = v
 	}
+	// 模拟 OCC：版本 +1（单元测试 use-case 需要非零 version）。
+	doc.Version++
 	f.docs[collectionID][doc.ID] = doc
 	return doc, nil
 }
@@ -139,11 +141,13 @@ func (f *fakeDocDB) CreateDocument(_ context.Context, _, _, collectionID string,
 	if f.docs[collectionID] == nil {
 		f.docs[collectionID] = map[string]databases.Document{}
 	}
+	// 模拟用户集合 OCC：创建后版本为 1。
+	doc.Version = 1
 	f.docs[collectionID][doc.ID] = doc
 	return doc, nil
 }
 
-func (f *fakeDocDB) DeleteDocument(_ context.Context, _, _, collectionID, docID string, _ databases.Principal) error {
+func (f *fakeDocDB) DeleteDocument(_ context.Context, _, _, collectionID, docID string, _ databases.DeleteOptions, _ databases.Principal) error {
 	delete(f.docs[collectionID], docID)
 	return nil
 }

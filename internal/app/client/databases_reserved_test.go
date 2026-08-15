@@ -71,11 +71,11 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 
 	updated, err := clientUC.UpdateDocument(userCtx, "app", "notes", "count", map[string]any{
 		"title": "Renamed note",
-	}, nil, nil)
+	}, nil, nil, &created.Version)
 	require.NoError(t, err)
 	require.Equal(t, "Renamed note", updated.Data["title"])
 
-	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", "count"))
+	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", "count", &updated.Version))
 	_, err = clientUC.GetDocument(userCtx, projectID, "app", "notes", "count")
 	require.Equal(t, codes.NotFound, status.Code(err), "删除后 document_id=\"count\" 应不可再读")
 }

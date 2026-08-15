@@ -44,6 +44,8 @@ export interface Document {
   permissions?: string[];
   created_at: string;
   updated_at: string;
+  // 用户集合 OCC 版本；int64 网关可能给 string，消费时 Number()。
+  version?: number;
 }
 
 function normalizeIndex(index: Index): Index {
@@ -52,6 +54,17 @@ function normalizeIndex(index: Index): Index {
     attributes: index.attributes ?? [],
     orders: index.orders ?? [],
   };
+}
+
+// normalizeVersion 把网关返回的 version（int64 常为 string）归一化为正整数；
+// 非法 / 缺失 → 0（页面侧应拦截，禁止静默把 0 当 OCC 版本发出去）。
+function normalizeVersion(value: unknown): number {
+  const v = Number(value);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+function normalizeDocument(doc: Document): Document {
+  return { ...doc, version: normalizeVersion(doc.version) };
 }
 
 function normalizeCollection(collection: Collection): Collection {
@@ -211,7 +224,7 @@ export async function listDocuments(
   const res = await api.get<{ documents: Document[] }>(
     `/server/databases/${databaseId}/collections/${collectionId}/documents`
   );
-  return res.data.documents ?? [];
+  return (res.data.documents ?? []).map(normalizeDocument);
 }
 
 export async function getDocument(
@@ -222,7 +235,7 @@ export async function getDocument(
   const res = await api.get<Document>(
     `/server/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`
   );
-  return res.data;
+  return normalizeDocument(res.data);
 }
 
 export async function createDocument(
@@ -245,6 +258,8 @@ export async function updateDocument(
     data?: Record<string, unknown>;
     permissions?: string[];
     increment?: Record<string, number>;
+    // 用户集合 OCC 必填：来自 GetDocument/List 的 version。
+    version: number;
   }
 ): Promise<Document> {
   const res = await api.patch<Document>(
@@ -257,10 +272,13 @@ export async function updateDocument(
 export async function deleteDocument(
   databaseId: string,
   collectionId: string,
-  documentId: string
+  documentId: string,
+  // 用户集合 OCC 必填：来自 GetDocument/List 的 version。
+  version: number
 ): Promise<void> {
   await api.delete(
-    `/server/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`
+    `/server/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`,
+    { params: { version } }
   );
 }
 

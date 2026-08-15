@@ -62,6 +62,8 @@ export interface Document {
   permissions?: string[];
   created_at: string;
   updated_at: string;
+  // 用户集合 OCC 版本；int64，网关可能给 string，消费时 Number()。
+  version?: number;
 }
 
 export interface Team {
@@ -166,6 +168,8 @@ export interface UpdateDocumentInput {
   data?: Record<string, unknown>;
   permissions?: string[];
   increment?: Record<string, number>;
+  // 用户集合 OCC 必填：来自上一次 GetDocument/List 的 version。
+  version: number;
 }
 
 export interface UpsertDocumentInput {

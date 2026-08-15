@@ -116,7 +116,7 @@ func (s *fakeDatabases) UpdateDocument(ctx context.Context, req *clientv1.Update
 	return &clientv1.Document{Id: req.DocumentId, Data: req.Data}, nil
 }
 
-func (s *fakeDatabases) DeleteDocument(ctx context.Context, _ *clientv1.GetDocumentRequest) (*sharedv1.Empty, error) {
+func (s *fakeDatabases) DeleteDocument(ctx context.Context, _ *clientv1.DeleteDocumentRequest) (*sharedv1.Empty, error) {
 	s.rec.record(ctx)
 	return &sharedv1.Empty{}, nil
 }
@@ -221,11 +221,11 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, "m1", got.Id)
 
 	updated, err := docs.UpdateDocument(ctx, "members", "m1",
-		map[string]any{"last_read_seq": 42}, nil, nil)
+		map[string]any{"last_read_seq": 42}, nil, nil, 1)
 	require.NoError(t, err)
 	require.Equal(t, "m1", updated.Id)
 
-	require.NoError(t, docs.DeleteDocument(ctx, "members", "m1"))
+	require.NoError(t, docs.DeleteDocument(ctx, "members", "m1", 2))
 }
 
 func TestClientDatabases_UpsertForwardsConflictColumns(t *testing.T) {

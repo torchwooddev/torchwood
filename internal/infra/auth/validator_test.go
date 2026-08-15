@@ -266,7 +266,7 @@ func (d *stubDocDB) UpdateDocument(context.Context, string, string, string, data
 func (d *stubDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
 	return databases.Document{}, nil
 }
-func (d *stubDocDB) DeleteDocument(context.Context, string, string, string, string, databases.Principal) error {
+func (d *stubDocDB) DeleteDocument(context.Context, string, string, string, string, databases.DeleteOptions, databases.Principal) error {
 	return nil
 }
 func (d *stubDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {

@@ -234,7 +234,7 @@ func (s *fakeServices) UpsertDocument(ctx context.Context, req *serverv1.UpsertD
 	return &serverv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
 }
 
-func (s *fakeServices) DeleteDocument(ctx context.Context, _ *serverv1.GetDocumentRequest) (*sharedv1.Empty, error) {
+func (s *fakeServices) DeleteDocument(ctx context.Context, _ *serverv1.DeleteDocumentRequest) (*sharedv1.Empty, error) {
 	return &sharedv1.Empty{}, nil
 }
 

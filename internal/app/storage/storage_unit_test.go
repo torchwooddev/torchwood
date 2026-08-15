@@ -63,7 +63,7 @@ func (m *mockDocDB) CreateDocument(_ context.Context, _, _, _ string, doc databa
 	return doc, nil
 }
 
-func (m *mockDocDB) DeleteDocument(_ context.Context, _, _, _, docID string, _ databases.Principal) error {
+func (m *mockDocDB) DeleteDocument(_ context.Context, _, _, _, docID string, _ databases.DeleteOptions, _ databases.Principal) error {
 	if m.deleteErr != nil {
 		return m.deleteErr
 	}

@@ -97,7 +97,7 @@ func (t *Teams) CreateTeamWithOwner(ctx context.Context, projectID, name, ownerU
 		Status: teams.StatusAccepted,
 	}, principal)
 	if err != nil {
-		_ = t.docDB.DeleteDocument(ctx, projectID, "default", "teams", team.ID, databases.SystemPrincipal)
+		_ = t.docDB.DeleteDocument(ctx, projectID, "default", "teams", team.ID, databases.DeleteOptions{}, databases.SystemPrincipal)
 		return nil, nil, err
 	}
 	team, err = t.GetTeam(ctx, projectID, team.ID, databases.SystemPrincipal)
@@ -174,11 +174,11 @@ func (t *Teams) DeleteTeam(ctx context.Context, projectID, teamID string, princi
 		return err
 	}
 	for _, m := range memberships {
-		if err := t.docDB.DeleteDocument(ctx, projectID, "default", "memberships", m.ID, databases.SystemPrincipal); err != nil {
+		if err := t.docDB.DeleteDocument(ctx, projectID, "default", "memberships", m.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
 			return err
 		}
 	}
-	return t.docDB.DeleteDocument(ctx, projectID, "default", "teams", teamID, principal)
+	return t.docDB.DeleteDocument(ctx, projectID, "default", "teams", teamID, databases.DeleteOptions{}, principal)
 }
 
 func (t *Teams) CreateMembership(ctx context.Context, projectID string, cmd CreateMembershipCommand, principal databases.Principal) (*databases.Document, error) {
@@ -385,7 +385,7 @@ func (t *Teams) DeleteMembership(ctx context.Context, projectID, teamID, members
 			return err
 		}
 	}
-	return t.docDB.DeleteDocument(ctx, projectID, "default", "memberships", membershipID, principal)
+	return t.docDB.DeleteDocument(ctx, projectID, "default", "memberships", membershipID, databases.DeleteOptions{}, principal)
 }
 
 func (t *Teams) ListAcceptedTeamRoles(ctx context.Context, projectID, userID string) ([]string, error) {

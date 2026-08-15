@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -70,6 +71,14 @@ type postgresDocumentDB struct {
 	// keysPermsCleaned 标记已完成"keys 角色系统集合写权限收窄"清理的项目
 	// （安全评审 C1 第 3 层 / M2 存量迁移）；进程重启后重复执行 DELETE/UPDATE 幂等无害。
 	keysPermsCleaned sync.Map // projectID -> struct{}
+	// versionColumns 记录已确保 _version 列（bigint）的 "schema.collection" 键，
+	// 避免每次写路径重复查 information_schema；**只缓存已提交的列**：
+	// 本事务内 ALTER 新建的列不记入（事务回滚会撤销列，cache 必须保持冷）。
+	versionColumns sync.Map // "schema.collection" -> struct{}
+	// versionAlterTx 记录"本事务内已执行 _version 列 ALTER"的键
+	// （txid|schema.collection -> struct{}）。用于区分 catalog 里见到的 int8
+	// 列是本事务新建（未提交，不得缓存）还是事务开始前已存在（可缓存）。
+	versionAlterTx sync.Map // "txid|schema.collection" -> struct{}
 }
 
 func NewPostgresDocumentDB(db *clients.Database) databases.DocumentDB {
@@ -185,7 +194,8 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		if err := p.ensureSchemaAndPerms(txCtx, schema); err != nil {
 			return err
 		}
-		if err := p.createCollectionTable(txCtx, schema, collectionID, internalID, attrs); err != nil {
+		isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+		if err := p.createCollectionTable(txCtx, schema, collectionID, internalID, attrs, isSystem); err != nil {
 			return err
 		}
 		for _, idx := range idxs {
@@ -359,6 +369,11 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if err != nil {
 		return err
 	}
+	// 第二道防线（app 层已校验）：直调 adapter 也不得把系统保留列（含 _version）
+	// 当作用户属性 ADD COLUMN——否则会与 OCC 列类型/语义冲突。
+	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
+	}
 	schema := schemaName(internalID, databaseID)
 	colSQL, err := attributeColumnSQL(attr)
 	if err != nil {
@@ -444,6 +459,10 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 	}
 	schema := schemaName(internalID, databaseID)
 	tbl := tableName(schema, collectionID)
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+		return doc, err
+	}
 
 	// Check collection-level "create" permission before inserting.
 	if !principal.IsSystem() {
@@ -548,6 +567,10 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	}
 	schema := schemaName(internalID, databaseID)
 	tbl := tableName(schema, collectionID)
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+		return doc, err
+	}
 
 	conflictValues, err := conflictArgs(conflictColumns, doc.Data)
 	if err != nil {
@@ -625,8 +648,14 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	if len(setParts) == 0 {
 		return doc, status.Error(codes.InvalidArgument, "no fields to upsert")
 	}
+	// Upsert 更新支：盲写（不做 OCC），但用户集合 _version 仍 +1。
+	// ON CONFLICT DO UPDATE 中未限定列名在目标行与 excluded 之间歧义（42702），
+	// 用表别名 t 显式限定目标行。
+	if !isSystem {
+		setParts = append(setParts, "_version = t._version + 1")
+	}
 	args = append(args, setArgs...)
-	sql := fmt.Sprintf(`INSERT INTO %s (_id%s) VALUES (%s) ON CONFLICT (%s) DO UPDATE SET %s`,
+	sql := fmt.Sprintf(`INSERT INTO %s AS t (_id%s) VALUES (%s) ON CONFLICT (%s) DO UPDATE SET %s`,
 		tbl, columns, allPlaceholders, strings.Join(conflictCols, ", "), strings.Join(setParts, ", "))
 	if _, err := p.conn(ctx).ExecContext(ctx, sql, args...); err != nil {
 		if isUniqueViolation(err) {
@@ -723,6 +752,8 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 
 // updateDocument 是 UpdateDocument 的事务体：数据语句与 _perms 替换在同一
 // 事务内，任一步失败整体回滚；目标文档不存在时返回 ErrDocumentNotFound。
+// 用户集合（非系统）强制 OCC：ExpectedVersion 必填且须等于当前行 _version；
+// SkipVersion（仅 Bulk 内部循环）跳过校验但同样 _version = _version + 1。
 func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, databaseID, collectionID string, update databases.DocumentUpdate, principal databases.Principal) (databases.Document, error) {
 	doc := update.Document
 	if err := validateDocID(doc.ID); err != nil {
@@ -733,6 +764,17 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 		return doc, err
 	}
 	schema := schemaName(internalID, databaseID)
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+		return doc, err
+	}
+	occ := false
+	if !isSystem && !update.SkipVersion {
+		if update.ExpectedVersion <= 0 {
+			return doc, databases.ErrVersionRequired
+		}
+		occ = true
+	}
 	// 非 System 且非文档 owner（user:<id> 匹配）时，禁止写入写保护系统集合（纵深防御，
 	// 与 CreateDocument/DeleteDocument 对齐，安全评审 C1 第 2 层）。
 	// owner 例外：end-user 自助路径（UpdateAccount/UpdatePrefs）以 user:<id> 角色更新自己的 users 文档。
@@ -767,13 +809,44 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 		}
 	}
 	if len(setParts) > 0 {
+		if !isSystem {
+			// 每次成功写 +1（含权限-only 更新与 Increment；SkipVersion 同样 +1）。
+			setParts = append(setParts, "_version = _version + 1")
+		}
 		args = append(args, doc.ID, internalID)
-		sql := fmt.Sprintf(`UPDATE %s SET %s WHERE _id = ? AND _tenant = ?`, tbl, strings.Join(setParts, ", "))
-		if _, err := p.conn(ctx).ExecContext(ctx, sql, args...); err != nil {
+		where := "_id = ? AND _tenant = ?"
+		if occ {
+			where += " AND _version = ?"
+			args = append(args, update.ExpectedVersion)
+		}
+		sqlText := fmt.Sprintf(`UPDATE %s SET %s WHERE %s`, tbl, strings.Join(setParts, ", "), where)
+		res, err := p.conn(ctx).ExecContext(ctx, sqlText, args...)
+		if err != nil {
 			if isUniqueViolation(err) {
 				return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 			}
 			return doc, fmt.Errorf("update document: %w", err)
+		}
+		if occ {
+			affected, err := res.RowsAffected()
+			if err != nil {
+				return doc, err
+			}
+			if affected == 0 {
+				// 区分"行不存在"与"version 不匹配"（不落 PG 未定义列错误）。
+				var existsID string
+				err := p.conn(ctx).QueryRowContext(ctx,
+					fmt.Sprintf(`SELECT _id FROM %s WHERE _id = ? AND _tenant = ?`, tbl),
+					doc.ID, internalID,
+				).Scan(&existsID)
+				if err != nil {
+					if errors.Is(err, sql.ErrNoRows) {
+						return doc, fmt.Errorf("%w", databases.ErrDocumentNotFound)
+					}
+					return doc, err
+				}
+				return doc, databases.ErrVersionMismatch
+			}
 		}
 	}
 	if len(update.Permissions) > 0 {
@@ -797,31 +870,55 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	return *updated, nil
 }
 
-func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) error {
+func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
 	if err := validateDocID(docID); err != nil {
 		return err
 	}
 	if clients.InTx(ctx) {
-		return p.deleteDocument(ctx, projectID, databaseID, collectionID, docID, principal)
+		return p.deleteDocument(ctx, projectID, databaseID, collectionID, docID, opts, principal)
 	}
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		return p.deleteDocument(txCtx, projectID, databaseID, collectionID, docID, principal)
+		return p.deleteDocument(txCtx, projectID, databaseID, collectionID, docID, opts, principal)
 	})
 }
 
 // deleteDocument 是 DeleteDocument 的事务体：_perms 清理与数据行删除在同一
-// 事务内，删除失败时不会残留权限行。
-func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) error {
+// 事务内，删除失败时不会残留权限行。用户集合（非系统）强制 OCC：
+// ExpectedVersion 必填且须等于当前行 _version（行锁下比较，防止竞态）。
+func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
 		return err
 	}
 	schema := schemaName(internalID, databaseID)
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+		return err
+	}
 	if !principal.IsSystem() && isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return ErrPermissionDenied
 	}
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "delete", principal, nil); err != nil {
 		return err
+	}
+	if !isSystem && !opts.SkipVersion {
+		if opts.ExpectedVersion <= 0 {
+			return databases.ErrVersionRequired
+		}
+		var currentVersion int64
+		err := p.conn(ctx).QueryRowContext(ctx,
+			fmt.Sprintf(`SELECT _version FROM %s WHERE _id = ? AND _tenant = ? FOR UPDATE`, tableName(schema, collectionID)),
+			docID, internalID,
+		).Scan(&currentVersion)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w", databases.ErrDocumentNotFound)
+			}
+			return err
+		}
+		if currentVersion != opts.ExpectedVersion {
+			return databases.ErrVersionMismatch
+		}
 	}
 	if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
 		return err
@@ -874,7 +971,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 
 	if coll != nil {
-		if err := validateQueryFields(parsed, coll, collectionID, isSystem); err != nil {
+		if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
 			return nil, err
 		}
 	}
@@ -1056,7 +1153,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 		}
 	}
 	if coll != nil {
-		if err := validateQueryFields(parsed, coll, collectionID, isSystem); err != nil {
+		if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
 			return 0, err
 		}
 	}
@@ -1327,7 +1424,7 @@ func (p *postgresDocumentDB) ensurePermsTable(ctx context.Context, schema string
 	return err
 }
 
-func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, collectionID string, tenant int64, attrs []databases.Attribute) error {
+func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, collectionID string, tenant int64, attrs []databases.Attribute, isSystem bool) error {
 	cols := []string{
 		"_id TEXT NOT NULL",
 		fmt.Sprintf("_tenant BIGINT NOT NULL DEFAULT %d", tenant),
@@ -1335,6 +1432,10 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 		"_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
 		"_created_by TEXT",
 		"_updated_by TEXT",
+	}
+	// 仅用户集合追加 _version（OCC）；系统集合不加列。
+	if !isSystem {
+		cols = append(cols, "_version BIGINT NOT NULL DEFAULT 1")
 	}
 	for _, attr := range attrs {
 		colSQL, err := attributeColumnSQL(attr)
@@ -1353,6 +1454,124 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 		_, err = p.conn(ctx).ExecContext(ctx, sql)
 	}
 	return err
+}
+
+// ensureVersionColumn 是用户集合 _version 列的懒迁移，**仅写路径**调用：
+//
+//   - isSystem == true：直接返回（系统集合无 _version）。
+//   - 列不存在 → ALTER TABLE ADD COLUMN IF NOT EXISTS _version BIGINT NOT NULL DEFAULT 1
+//     （存量行 DEFAULT 1 回填）。
+//   - 列已存在且为 bigint → 就绪。
+//   - 列已存在但非 bigint（存量用户属性抢占 _version）→ fail-closed：
+//     返回 ErrVersionColumnConflict，禁止对错误类型做 _version = _version + 1。
+//
+// 进程内 sync.Map 记录已确保的 "schema.collection"（含类型合法），避免每次写查目录。
+// **只缓存已提交的列**：catalog 查到 int8 时，若本事务未 ALTER 过该键，说明列在
+// 事务开始前已存在 → 可缓存；本事务刚 ALTER 的列（versionAlterTx 有标记）一律不
+// 缓存——事务 ROLLBACK 会撤销列，缓存必须保持冷，下次写/读再查 catalog（已提交则
+// 看到 int8 再缓存，已回滚则重新 ALTER）。
+// 读路径（Get/List/Count）不得调用本函数：ADD COLUMN 是 AccessExclusiveLock，
+// 滚动发布时读流量会堵住该集合全部会话。
+func (p *postgresDocumentDB) ensureVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
+	if isSystem {
+		return nil
+	}
+	key := schema + "." + collectionID
+	if _, ok := p.versionColumns.Load(key); ok {
+		return nil
+	}
+	alterKey := p.txid(ctx) + "|" + key
+	if alterKey != "|"+key {
+		if _, ok := p.versionAlterTx.Load(alterKey); ok {
+			// 本事务已 ALTER：列存在且类型必为 bigint（本函数保证），直接放行。
+			return nil
+		}
+	}
+	udtName, err := p.versionColumnType(ctx, schema, collectionID)
+	switch {
+	case err == nil && udtName == "int8":
+		// 本事务未 ALTER 过该键（上面已查标记）→ 列在事务开始前已存在，可缓存。
+		p.versionColumns.Store(key, struct{}{})
+		return nil
+	case errors.Is(err, sql.ErrNoRows):
+		tbl := tableName(schema, collectionID)
+		if _, err := p.conn(ctx).ExecContext(ctx,
+			fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS _version BIGINT NOT NULL DEFAULT 1`, tbl),
+		); err != nil {
+			return fmt.Errorf("add version column: %w", err)
+		}
+		// 本事务新建的列：不得写入进程 cache（回滚会撤销列）。
+		if alterKey != "|"+key {
+			p.versionAlterTx.Store(alterKey, struct{}{})
+		}
+		return nil
+	case err != nil:
+		return err
+	default:
+		// 用户属性占用了 _version 且类型不是 bigint：拒绝 OCC，禁止拼接
+		// _version = _version + 1（会撞类型错误或静默截断）。
+		slog.Error("version column exists with unsupported type; OCC disabled fail-closed",
+			"schema", schema, "collection", collectionID, "udt_name", udtName)
+		return databases.ErrVersionColumnConflict
+	}
+}
+
+// txid 返回当前事务 ID（文本）；非事务上下文或查询失败时返回 ""。
+// 仅 cache miss 时调用（information_schema 查询旁的一次轻量查询）。
+func (p *postgresDocumentDB) txid(ctx context.Context) string {
+	var id string
+	if err := p.conn(ctx).QueryRowContext(ctx, `SELECT txid_current()::text`).Scan(&id); err != nil {
+		return ""
+	}
+	return id
+}
+
+// versionColumnType 查询 information_schema 中 _version 列的 udt_name；
+// 列不存在返回 (sql.ErrNoRows, "")。
+func (p *postgresDocumentDB) versionColumnType(ctx context.Context, schema, collectionID string) (string, error) {
+	var udtName string
+	err := p.conn(ctx).QueryRowContext(ctx,
+		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = '_version'`,
+		schema, collectionID,
+	).Scan(&udtName)
+	return udtName, err
+}
+
+// versionColumnReady 供读路径 $version 查询校验使用：cache miss 时只查
+// information_schema（不 ALTER）；已是 bigint 则记入 cache，允许后续 $version 查询。
+// 返回：
+//   - (true, nil)：列可用（bigint）。
+//   - (false, nil)：列不存在（未 ALTER）→ 调用方返回 version_column_unavailable。
+//   - (false, ErrVersionColumnConflict)：列存在但非 bigint（用户属性抢占，
+//     与写路径同语义 fail-closed）。
+//
+// 与 ensureVersionColumn 共用缓存规则：本事务内 ALTER 新建的列（versionAlterTx
+// 标记）不得写入进程 cache（读路径理论上不在事务内，防御性检查）。
+func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, collectionID string) (bool, error) {
+	key := schema + "." + collectionID
+	if _, ok := p.versionColumns.Load(key); ok {
+		return true, nil
+	}
+	alterKey := p.txid(ctx) + "|" + key
+	if alterKey != "|"+key {
+		if _, ok := p.versionAlterTx.Load(alterKey); ok {
+			// 本事务新建的列（未提交）：SQL 可用但不缓存。
+			return true, nil
+		}
+	}
+	udtName, err := p.versionColumnType(ctx, schema, collectionID)
+	switch {
+	case err == nil && udtName == "int8":
+		p.versionColumns.Store(key, struct{}{})
+		return true, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, err
+	default:
+		// 读路径遇非 bigint _version：与写路径同码 fail-closed。
+		return false, databases.ErrVersionColumnConflict
+	}
 }
 
 func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, collectionID string, idx databases.Index) error {
@@ -1713,6 +1932,14 @@ func scanDocumentJSON(scanner interface{ Scan(dest ...any) error }) (*databases.
 	if v, ok := payload["_updated_by"].(string); ok {
 		doc.UpdatedBy = v
 	}
+	// _version：用户集合有列时读取；存量表未 ALTER（缺列）视为 1，不当硬错
+	// （读路径禁止 DDL；与成功 ALTER 后的 DEFAULT 1 回填语义一致）。
+	// 系统集合恒无该列，同样视为 1，由 app 层按 IsSystemCollection 归零。
+	if v, ok := payload["_version"].(float64); ok {
+		doc.Version = int64(v)
+	} else {
+		doc.Version = 1
+	}
 	for k, v := range payload {
 		if strings.HasPrefix(k, "_") {
 			continue
@@ -1759,12 +1986,14 @@ func mapQueryField(field string) string {
 		return "_created_at"
 	case "$updatedAt", "_updated_at":
 		return "_updated_at"
+	case "$version", "_version":
+		return "_version"
 	}
 	return field
 }
 
 // systemQueryFields 是查询白名单中的系统列（含 $ 别名映射后的内部名）。
-var systemQueryFields = []string{"_id", "_created_at", "_updated_at"}
+var systemQueryFields = []string{"_id", "_created_at", "_updated_at", "_version"}
 
 // sensitiveQueryFields 是 default 库系统集合中禁止作为查询过滤/排序条件的
 // 凭据/令牌类列（任何角色不得探测）；仅按 databases.IsSystemCollection 限定，
@@ -1777,8 +2006,10 @@ var sensitiveQueryFields = map[string]map[string]struct{}{
 
 // validateQueryFields 校验非 System 查询路径（A7）：Filters/Orders/Selects 字段
 // 白名单（系统列 + 声明 attrs）、敏感列黑名单、search 的 fulltext 索引约束。
+// _version 特判：系统集合拒绝（无此列）；用户集合列未确保（缺列）时返回
+// version_column_unavailable，不得落 PG 未定义列错误（读路径不 ALTER）。
 // SystemPrincipal 路径不调用本函数（信任内部调用，零额外元数据查询）。
-func validateQueryFields(parsed *query.Query, coll *databases.Collection, collectionID string, isSystem bool) error {
+func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema string, parsed *query.Query, coll *databases.Collection, collectionID string, isSystem bool) error {
 	allowed := make(map[string]struct{}, len(systemQueryFields)+len(coll.Attributes))
 	for _, f := range systemQueryFields {
 		allowed[f] = struct{}{}
@@ -1799,6 +2030,22 @@ func validateQueryFields(parsed *query.Query, coll *databases.Collection, collec
 		field := mapQueryField(name)
 		if _, ok := allowed[field]; !ok {
 			return status.Error(codes.InvalidArgument, fmt.Sprintf("invalid query field: %s", name))
+		}
+		if field == "_version" {
+			if isSystem {
+				// 系统表无 _version 列，禁止编进 SQL。
+				return status.Error(codes.InvalidArgument, fmt.Sprintf("invalid query field: %s", name))
+			}
+			// 用户集合：列尚未确保（写路径没 ALTER）→ version_column_unavailable；
+			// 列已存在但非 bigint → version_column_conflict（与写路径同码）。
+			// 均不落 PG 42703；不得改写成对常量 1 的比较（equal("$version", 2) 会静默语义错误）。
+			ready, err := p.versionColumnReady(ctx, schema, collectionID)
+			if err != nil {
+				return err
+			}
+			if !ready {
+				return status.Error(codes.InvalidArgument, databases.ErrVersionColumnUnavailable.Error())
+			}
 		}
 		if isSystem {
 			if sensitive, ok := sensitiveQueryFields[collectionID]; ok {

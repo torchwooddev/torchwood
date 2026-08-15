@@ -408,7 +408,7 @@ var filter_DatabasesService_DeleteDocument_0 = &utilities.DoubleArray{Encoding: 
 
 func request_DatabasesService_DeleteDocument_0(ctx context.Context, marshaler runtime.Marshaler, client DatabasesServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq GetDocumentRequest
+		protoReq DeleteDocumentRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)
@@ -451,7 +451,7 @@ func request_DatabasesService_DeleteDocument_0(ctx context.Context, marshaler ru
 
 func local_request_DatabasesService_DeleteDocument_0(ctx context.Context, marshaler runtime.Marshaler, server DatabasesServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq GetDocumentRequest
+		protoReq DeleteDocumentRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)

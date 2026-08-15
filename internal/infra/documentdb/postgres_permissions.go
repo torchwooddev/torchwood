@@ -190,6 +190,8 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 		update := databases.DocumentUpdate{
 			Document:    databases.Document{ID: docID, Data: data},
 			Permissions: perms,
+			// Bulk 是唯一允许跳过 OCC 的 Update 调用方（LWW 语义）；仍 _version + 1。
+			SkipVersion: true,
 		}
 		if _, err := p.UpdateDocument(ctx, projectID, databaseID, collectionID, update, principal); err != nil {
 			return affected, err
@@ -230,7 +232,8 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 ) (int64, error) {
 	var affected int64
 	for _, docID := range documentIDs {
-		if err := p.DeleteDocument(ctx, projectID, databaseID, collectionID, docID, principal); err != nil {
+		// Bulk 是唯一允许跳过 OCC 的 Delete 调用方（LWW 语义）。
+		if err := p.DeleteDocument(ctx, projectID, databaseID, collectionID, docID, databases.DeleteOptions{SkipVersion: true}, principal); err != nil {
 			return affected, err
 		}
 		affected++

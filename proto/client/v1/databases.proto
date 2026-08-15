@@ -97,7 +97,7 @@ service DatabasesService {
     option (google.api.http) = { put: "/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}", body: "*" };
   }
 
-  rpc DeleteDocument(GetDocumentRequest) returns (shared.v1.Empty) {
+  rpc DeleteDocument(DeleteDocumentRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}" };
   }
 
@@ -120,6 +120,8 @@ message Document {
   google.protobuf.Timestamp created_at = 3;
   google.protobuf.Timestamp updated_at = 4;
   repeated string permissions = 5;
+  // 用户集合为当前 _version；系统集合恒为 0。
+  int64 version = 6;
 }
 
 message CreateDocumentRequest {
@@ -139,6 +141,8 @@ message UpdateDocumentRequest {
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;
   map<string, int64> increment = 6;
+  // 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
+  optional int64 version = 7;
 }
 
 message UpsertDocumentRequest {
@@ -155,6 +159,14 @@ message GetDocumentRequest {
   string collection_id = 2;
   string document_id = 3;
   string project_id = 4;
+}
+
+message DeleteDocumentRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  string document_id = 3;
+  // 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
+  optional int64 version = 4;
 }
 
 message ListDocumentsRequest {

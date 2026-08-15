@@ -56,9 +56,10 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 
 	updated, err := uc.UpdateDocument(ctx, projectID, dbID, collID, created.ID, map[string]any{
 		"views": 99,
-	}, nil, nil, principal)
+	}, nil, nil, principal, &created.Version)
 	require.NoError(t, err)
 	require.Equal(t, float64(99), updated.Data["views"])
+	require.Equal(t, int64(2), updated.Version)
 
 	list, total, _, err := uc.ListDocuments(ctx, projectID, dbID, collID, databases.Query{
 		Queries: []string{`equal("title","Hello Torchwood")`, `orderDesc("$createdAt")`},
@@ -71,7 +72,7 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
-	require.NoError(t, uc.DeleteDocument(ctx, projectID, dbID, collID, created.ID, principal))
+	require.NoError(t, uc.DeleteDocument(ctx, projectID, dbID, collID, created.ID, principal, &updated.Version))
 	_, err = uc.GetDocument(ctx, projectID, dbID, collID, created.ID, principal)
 	require.Error(t, err)
 }

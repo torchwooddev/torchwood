@@ -155,6 +155,12 @@ func (d *Databases) ListDocuments(
 	if err != nil {
 		return nil, 0, "", shared.MapDocumentDBError(err)
 	}
+	// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
+	if databases.IsSystemCollection(pid, databaseID, collectionID) {
+		for i := range list.Documents {
+			list.Documents[i].Version = 0
+		}
+	}
 	return list.Documents, list.TotalCount, list.NextPageToken, nil
 }
 
@@ -169,6 +175,10 @@ func (d *Databases) GetDocument(ctx context.Context, projectID, databaseID, coll
 	}
 	if doc == nil {
 		return nil, status.Error(codes.NotFound, "document not found")
+	}
+	// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
+	if databases.IsSystemCollection(pid, databaseID, collectionID) {
+		doc.Version = 0
 	}
 	return doc, nil
 }
@@ -188,9 +198,13 @@ func (d *Databases) UpdateDocument(
 	data map[string]any,
 	perms []databases.Permission,
 	increment map[string]int64,
+	version *int64,
 ) (*databases.Document, error) {
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {
+		return nil, err
+	}
+	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
 		return nil, err
 	}
 	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
@@ -214,9 +228,10 @@ func (d *Databases) UpdateDocument(
 		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied")
 	}
 	updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
-		Document:    databases.Document{ID: documentID, Data: filtered},
-		Permissions: perms,
-		Increment:   increment,
+		Document:        databases.Document{ID: documentID, Data: filtered},
+		Permissions:     perms,
+		Increment:       increment,
+		ExpectedVersion: *version,
 	}, principal)
 	if err != nil {
 		return nil, shared.MapDocumentDBError(fmt.Errorf("update document: %w", err))
@@ -271,12 +286,15 @@ func (d *Databases) UpsertDocument(
 	return &upserted, nil
 }
 
-func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID, documentID string) error {
+func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID, documentID string, version *int64) error {
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {
 		return err
 	}
-	return shared.MapDocumentDBError(d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal))
+	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
+		return err
+	}
+	return shared.MapDocumentDBError(d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, databases.DeleteOptions{ExpectedVersion: *version}, principal))
 }
 
 func (d *Databases) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string) (int64, error) {

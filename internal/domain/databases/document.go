@@ -34,6 +34,7 @@ type Document struct {
 	UpdatedAt   time.Time
 	CreatedBy   string
 	UpdatedBy   string
+	Version     int64 // 顶层；用户集合为当前 _version，系统集合恒为 0；不进 Data
 }
 
 type Query struct {
@@ -65,6 +66,23 @@ type DocumentUpdate struct {
 	Document    Document
 	Permissions []Permission
 	Increment   map[string]int64
+	// ExpectedVersion：用户集合且 !SkipVersion 时必填，须等于当前行 _version。
+	ExpectedVersion int64
+	// SkipVersion：Bulk 内部循环、Upsert 更新支专用。仍执行 _version = _version + 1。
+	SkipVersion bool
+}
+
+// DeleteOptions 携带 DeleteDocument 的 OCC 参数。
+type DeleteOptions struct {
+	ExpectedVersion int64
+	SkipVersion     bool
+}
+
+// ReservedAttributeKeys 是禁止作为用户属性的系统列（含 _version）。
+// ValidateIdentifier 允许 "_" 前缀，必须在属性创建路径显式拒绝。
+var ReservedAttributeKeys = map[string]struct{}{
+	"_id": {}, "_tenant": {}, "_created_at": {}, "_updated_at": {},
+	"_created_by": {}, "_updated_by": {}, "_version": {}, "_perms": {},
 }
 
 type DocumentList struct {

@@ -31,7 +31,7 @@ type DocumentDB interface {
 	UpsertDocument(ctx context.Context, projectID, databaseID, collectionID string, doc Document, conflictColumns []string, perms []Permission, principal Principal) (Document, error)
 	GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal Principal) (*Document, error)
 	UpdateDocument(ctx context.Context, projectID, databaseID, collectionID string, update DocumentUpdate, principal Principal) (Document, error)
-	DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal Principal) error
+	DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts DeleteOptions, principal Principal) error
 	ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q Query, principal Principal) (*DocumentList, error)
 	CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string, principal Principal) (int64, error)
 	// SumDocumentField sums a numeric column across a collection (e.g. file sizes

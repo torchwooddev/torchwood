@@ -45,7 +45,8 @@ func (d *DatabasesService) GetDocument(ctx context.Context, collectionID, docume
 
 // UpdateDocument 更新文档字段；increment 对数字字段做原子增量
 // （如 {"last_seq": 1}），data 与 increment 可同时使用。
-func (d *DatabasesService) UpdateDocument(ctx context.Context, collectionID, documentID string, data map[string]any, increment map[string]int64, permissions []string) (*clientv1.Document, error) {
+// version 为用户集合 OCC 版本（GetDocument 返回的 version），必填。
+func (d *DatabasesService) UpdateDocument(ctx context.Context, collectionID, documentID string, data map[string]any, increment map[string]int64, permissions []string, version int64) (*clientv1.Document, error) {
 	st, err := toStruct(data)
 	if err != nil {
 		return nil, err
@@ -57,6 +58,7 @@ func (d *DatabasesService) UpdateDocument(ctx context.Context, collectionID, doc
 		Data:         st,
 		Permissions:  permissions,
 		Increment:    increment,
+		Version:      &version,
 	})
 }
 
@@ -76,12 +78,13 @@ func (d *DatabasesService) UpsertDocument(ctx context.Context, collectionID, doc
 	})
 }
 
-// DeleteDocument 删除文档。
-func (d *DatabasesService) DeleteDocument(ctx context.Context, collectionID, documentID string) error {
-	_, err := d.c.databases.DeleteDocument(ctx, &clientv1.GetDocumentRequest{
+// DeleteDocument 删除文档；version 为用户集合 OCC 版本（GetDocument 返回的 version），必填。
+func (d *DatabasesService) DeleteDocument(ctx context.Context, collectionID, documentID string, version int64) error {
+	_, err := d.c.databases.DeleteDocument(ctx, &clientv1.DeleteDocumentRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
 		DocumentId:   documentID,
+		Version:      &version,
 	})
 	return err
 }

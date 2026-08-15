@@ -113,10 +113,23 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
+	for _, attr := range attrs {
+		if err := d.validateAttributeKey(attr.Key); err != nil {
+			return err
+		}
+	}
 	if len(perms) == 0 {
 		perms = databases.DefaultCollectionPermissions()
 	}
 	return d.docDB.CreateCollection(ctx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
+}
+
+// validateAttributeKey 拒绝系统保留列（含 _version）作为用户属性。
+func (d *Databases) validateAttributeKey(key string) error {
+	if _, ok := databases.ReservedAttributeKeys[key]; ok {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", key))
+	}
+	return nil
 }
 
 func (d *Databases) ListCollections(ctx context.Context, projectID, databaseID string, q databases.ListQuery) ([]databases.Collection, int64, string, error) {
@@ -188,6 +201,9 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 		return status.Error(codes.InvalidArgument, "key is required")
 	}
 	if err := d.ValidateAttributeType(attr.Type); err != nil {
+		return err
+	}
+	if err := d.validateAttributeKey(attr.Key); err != nil {
 		return err
 	}
 	attr.Type = strings.ToLower(attr.Type)
@@ -377,6 +393,10 @@ func (d *Databases) ListDocuments(
 	}
 	for i := range list.Documents {
 		redactSensitiveCollectionData(projectID, databaseID, collectionID, &list.Documents[i])
+		// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
+		if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+			list.Documents[i].Version = 0
+		}
 	}
 	return list.Documents, list.TotalCount, list.NextPageToken, nil
 }
@@ -397,6 +417,10 @@ func (d *Databases) GetDocument(
 		return nil, status.Error(codes.NotFound, "document not found")
 	}
 	redactSensitiveCollectionData(projectID, databaseID, collectionID, doc)
+	// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		doc.Version = 0
+	}
 	return doc, nil
 }
 
@@ -407,8 +431,12 @@ func (d *Databases) UpdateDocument(
 	perms []databases.Permission,
 	increment map[string]int64,
 	principal databases.Principal,
+	version *int64,
 ) (*databases.Document, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
+		return nil, err
+	}
+	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
 		return nil, err
 	}
 	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
@@ -424,9 +452,10 @@ func (d *Databases) UpdateDocument(
 		data = map[string]any{}
 	}
 	updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
-		Document:    databases.Document{ID: documentID, Data: data},
-		Permissions: perms,
-		Increment:   increment,
+		Document:        databases.Document{ID: documentID, Data: data},
+		Permissions:     perms,
+		Increment:       increment,
+		ExpectedVersion: *version,
 	}, principal)
 	if err != nil {
 		return nil, shared.MapDocumentDBError(fmt.Errorf("update document: %w", err))
@@ -515,11 +544,15 @@ func (d *Databases) DeleteDocument(
 	ctx context.Context,
 	projectID, databaseID, collectionID, documentID string,
 	principal databases.Principal,
+	version *int64,
 ) error {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return err
 	}
-	return shared.MapDocumentDBError(d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal))
+	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
+		return err
+	}
+	return shared.MapDocumentDBError(d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, databases.DeleteOptions{ExpectedVersion: *version}, principal))
 }
 
 func (d *Databases) CountDocuments(

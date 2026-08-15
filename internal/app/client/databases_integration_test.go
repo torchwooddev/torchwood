@@ -79,16 +79,17 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 
 	updated, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
 		"title": "Updated note",
-	}, nil, nil)
+	}, nil, nil, &created.Version)
 	require.NoError(t, err)
 	require.Equal(t, "Updated note", updated.Data["title"])
+	require.Equal(t, int64(2), updated.Version)
 
 	list, total, _, err := clientUC.ListDocuments(userCtx, projectID, "app", "notes", databases.Query{})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 
-	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID))
+	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID, &updated.Version))
 }
 
 // TestClientDatabases_UpsertDocument (T2): client UpsertDocument inserts with
@@ -286,10 +287,10 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	_, err = clientUC.GetDocument(otherCtx, projectID, "app", "notes", created.ID)
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user read should be denied")
 
-	_, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil)
+	_, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil, &created.Version)
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user update should be denied")
 
-	err = clientUC.DeleteDocument(otherCtx, "app", "notes", created.ID)
+	err = clientUC.DeleteDocument(otherCtx, "app", "notes", created.ID, &created.Version)
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user delete should be denied")
 
 	// owner：读/改/删均放行。
@@ -299,11 +300,11 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 
 	updated, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
 		"title": "Updated note",
-	}, nil, nil)
+	}, nil, nil, &created.Version)
 	require.NoError(t, err)
 	require.Equal(t, "Updated note", updated.Data["title"])
 
-	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID))
+	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID, &updated.Version))
 }
 
 func testConfig() *config.AppConfig {

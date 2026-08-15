@@ -96,7 +96,7 @@ func (d *fakeDocDB) GetDocument(_ context.Context, projectID, _, collectionID, d
 	return nil, nil
 }
 
-func (d *fakeDocDB) DeleteDocument(_ context.Context, projectID, _, collectionID, docID string, _ databases.Principal) error {
+func (d *fakeDocDB) DeleteDocument(_ context.Context, projectID, _, collectionID, docID string, _ databases.DeleteOptions, _ databases.Principal) error {
 	src := d.users
 	if collectionID == "sessions" {
 		src = d.sessions

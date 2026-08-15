@@ -150,10 +150,10 @@ func TestClientDatabases_SystemCollectionWriteDenied(t *testing.T) {
 		_, err := clientUC.CreateDocument(userCtx, "default", coll, "", map[string]any{"name": "x"}, nil)
 		require.Equal(t, codes.PermissionDenied, status.Code(err), "create into %s should be denied", coll)
 
-		_, err = clientUC.UpdateDocument(userCtx, "default", coll, "doc-1", map[string]any{"name": "x"}, nil, nil)
+		_, err = clientUC.UpdateDocument(userCtx, "default", coll, "doc-1", map[string]any{"name": "x"}, nil, nil, nil)
 		require.Equal(t, codes.PermissionDenied, status.Code(err), "update %s should be denied", coll)
 
-		err = clientUC.DeleteDocument(userCtx, "default", coll, "doc-1")
+		err = clientUC.DeleteDocument(userCtx, "default", coll, "doc-1", nil)
 		require.Equal(t, codes.PermissionDenied, status.Code(err), "delete %s should be denied", coll)
 	}
 

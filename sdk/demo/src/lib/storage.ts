@@ -5,6 +5,7 @@ export interface AppSettings {
   demoDbId: string;
   demoCollId: string;
   demoDocId: string;
+  demoDocVersion: number;
   demoIndexId: string;
 }
 
@@ -26,6 +27,7 @@ const defaultSettings = (): AppSettings => ({
   demoDbId: "",
   demoCollId: "posts",
   demoDocId: "",
+  demoDocVersion: 0,
   demoIndexId: "",
 });
 

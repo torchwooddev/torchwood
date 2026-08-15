@@ -374,7 +374,7 @@ func (a *Account) SignOut(ctx context.Context) error {
 	if !ok || p.SessionID == "" {
 		return nil
 	}
-	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", p.SessionID, databases.SystemPrincipal)
+	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", p.SessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
 }
 
 func (a *Account) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*TokenBundle, string, error) {
@@ -420,7 +420,7 @@ func (a *Account) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*T
 		return a.sessions.IssueTokensWithRefreshID(ctx, projectID, claims.UserID, claims.Username, claims.SessionID, newRefreshTokenID)
 	case domainauth.RotateMismatch:
 		// 旧 refresh token 被再次使用：判定为重用，删除会话使该会话全部 token 立即失效。
-		_ = a.docDB.DeleteDocument(ctx, projectID, "default", "sessions", claims.SessionID, databases.SystemPrincipal)
+		_ = a.docDB.DeleteDocument(ctx, projectID, "default", "sessions", claims.SessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
 		return nil, "", status.Error(codes.Unauthenticated, "refresh token reuse detected")
 	default: // RotateMissing
 		return nil, "", status.Error(codes.Unauthenticated, "session expired")
@@ -779,7 +779,7 @@ func (a *Account) deleteUserSession(ctx context.Context, p *shared.Principal, se
 	if uid, _ := doc.Data["user_id"].(string); uid != p.UserID {
 		return status.Error(codes.PermissionDenied, "cannot delete another user's session")
 	}
-	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", sessionID, databases.SystemPrincipal)
+	return a.docDB.DeleteDocument(ctx, p.ProjectID, "default", "sessions", sessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
 }
 
 func (a *Account) requireUser(ctx context.Context) (*shared.Principal, error) {

@@ -96,11 +96,14 @@ export class ClientDatabasesService {
   async deleteDocument(
     databaseId: string,
     collectionId: string,
-    documentId: string
+    documentId: string,
+    // 用户集合 OCC 必填：来自上一次 GetDocument/List 的 version。
+    version: number
   ): Promise<void> {
     await this.http.request<void>(
       "DELETE",
-      `/v1/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`
+      `/v1/databases/${databaseId}/collections/${collectionId}/documents/${documentId}`,
+      { query: { version } }
     );
   }
 

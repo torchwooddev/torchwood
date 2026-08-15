@@ -50,6 +50,7 @@ export function DatabasesPage() {
   const dbId = settings.demoDbId;
   const collId = settings.demoCollId || "posts";
   const docId = settings.demoDocId;
+  const docVersion = settings.demoDocVersion;
   const indexId = settings.demoIndexId;
 
   const hasEnv = Boolean(dbId && collId);
@@ -112,13 +113,14 @@ export function DatabasesPage() {
         databaseId: string;
         collectionId: string;
         indexId: string;
-        seedDocument: { id: string };
+        seedDocument: { id: string; version?: number };
       };
       updateSettings({
         ...settings,
         demoDbId: payload.databaseId,
         demoCollId: payload.collectionId,
         demoDocId: payload.seedDocument.id,
+        demoDocVersion: Number(payload.seedDocument.version ?? 1),
         demoIndexId: payload.indexId,
       });
       setResult({ action: "bootstrapEnv()", data });
@@ -150,7 +152,9 @@ export function DatabasesPage() {
     const testCollId = "items";
     const testIndexId = "idx_views";
     let serverDocId = "";
+    let serverDocVersion = 0;
     let clientDocId = "";
+    let clientDocVersion = 0;
     let extraDocId = "";
 
     try {
@@ -205,8 +209,9 @@ export function DatabasesPage() {
         Torchwood.server.databases.createDocument(testDbId, testCollId, {
           data: { title: "Server doc", views: 1 },
         })
-      )) as { id: string };
+      )) as { id: string; version?: number };
       serverDocId = serverDoc.id;
+      serverDocVersion = Number(serverDoc.version ?? 1);
 
       await step("server.listDocuments", () =>
         Torchwood.server.databases.listDocuments(testDbId, testCollId)
@@ -214,12 +219,14 @@ export function DatabasesPage() {
       await step("server.getDocument", () =>
         Torchwood.server.databases.getDocument(testDbId, testCollId, serverDocId)
       );
-      await step("server.updateDocument", () =>
+      const serverDocUpdated = (await step("server.updateDocument", () =>
         Torchwood.server.databases.updateDocument(testDbId, testCollId, serverDocId, {
           data: { title: "Server doc updated" },
           increment: { views: 2 },
+          version: serverDocVersion,
         })
-      );
+      )) as { version?: number };
+      serverDocVersion = Number(serverDocUpdated.version ?? serverDocVersion + 1);
       await step("server.countDocuments", () =>
         Torchwood.server.databases.countDocuments(testDbId, testCollId)
       );
@@ -228,8 +235,9 @@ export function DatabasesPage() {
         client.databases.createDocument(testDbId, testCollId, {
           data: { title: "Client doc", views: 5 },
         })
-      )) as { id: string };
+      )) as { id: string; version?: number };
       clientDocId = clientDoc.id;
+      clientDocVersion = Number(clientDoc.version ?? 1);
 
       const extraDoc = (await step("client.createDocument (bulk target)", () =>
         client.databases.createDocument(testDbId, testCollId, {
@@ -244,12 +252,14 @@ export function DatabasesPage() {
       await step("client.getDocument", () =>
         client.databases.getDocument(testDbId, testCollId, clientDocId)
       );
-      await step("client.updateDocument", () =>
+      const clientDocUpdated = (await step("client.updateDocument", () =>
         client.databases.updateDocument(testDbId, testCollId, clientDocId, {
           data: { title: "Client doc updated" },
           increment: { views: 3 },
+          version: clientDocVersion,
         })
-      );
+      )) as { version?: number };
+      clientDocVersion = Number(clientDocUpdated.version ?? clientDocVersion + 1);
       await step("client.countDocuments", () =>
         client.databases.countDocuments(testDbId, testCollId)
       );
@@ -265,10 +275,10 @@ export function DatabasesPage() {
       );
 
       await step("client.deleteDocument", () =>
-        client.databases.deleteDocument(testDbId, testCollId, clientDocId)
+        client.databases.deleteDocument(testDbId, testCollId, clientDocId, clientDocVersion)
       );
       await step("server.deleteDocument", () =>
-        Torchwood.server.databases.deleteDocument(testDbId, testCollId, serverDocId)
+        Torchwood.server.databases.deleteDocument(testDbId, testCollId, serverDocId, serverDocVersion)
       );
 
       await step("server.deleteAttribute(views)", () =>
@@ -535,7 +545,11 @@ export function DatabasesPage() {
               const doc = await serverClient().server.databases.createDocument(dbId, collId, {
                 data: { title, views: Number(views) },
               });
-              updateSettings({ ...settings, demoDocId: doc.id });
+              updateSettings({
+                ...settings,
+                demoDocId: doc.id,
+                demoDocVersion: Number(doc.version ?? 1),
+              });
               return doc;
             })
           }
@@ -557,12 +571,19 @@ export function DatabasesPage() {
           method="PATCH"
           disabled={disabled || !docId}
           onClick={() =>
-            exec("server.databases.updateDocument()", () =>
-              serverClient().server.databases.updateDocument(dbId, collId, docId, {
+            exec("server.databases.updateDocument()", async () => {
+              const v =
+                Number.isFinite(docVersion) && docVersion > 0
+                  ? docVersion
+                  : Number((await serverClient().server.databases.getDocument(dbId, collId, docId)).version ?? 0);
+              const updated = await serverClient().server.databases.updateDocument(dbId, collId, docId, {
                 data: { title: `${title} (server)` },
                 increment: { views: 1 },
-              })
-            )
+                version: v,
+              });
+              updateSettings({ ...settings, demoDocVersion: Number(updated.version ?? v + 1) });
+              return updated;
+            })
           }
         />
         <ActionButton
@@ -571,8 +592,12 @@ export function DatabasesPage() {
           disabled={disabled || !docId}
           onClick={() =>
             exec("server.databases.deleteDocument()", async () => {
-              await serverClient().server.databases.deleteDocument(dbId, collId, docId);
-              updateSettings({ ...settings, demoDocId: "" });
+              const v =
+                Number.isFinite(docVersion) && docVersion > 0
+                  ? docVersion
+                  : Number((await serverClient().server.databases.getDocument(dbId, collId, docId)).version ?? 0);
+              await serverClient().server.databases.deleteDocument(dbId, collId, docId, v);
+              updateSettings({ ...settings, demoDocId: "", demoDocVersion: 0 });
             })
           }
         />
@@ -619,7 +644,11 @@ export function DatabasesPage() {
               const doc = await client.databases.createDocument(dbId, collId, {
                 data: { title, views: Number(views) },
               });
-              updateSettings({ ...settings, demoDocId: doc.id });
+              updateSettings({
+                ...settings,
+                demoDocId: doc.id,
+                demoDocVersion: Number(doc.version ?? 1),
+              });
               return doc;
             })
           }
@@ -641,12 +670,19 @@ export function DatabasesPage() {
           method="PATCH"
           disabled={disabled || !docId}
           onClick={() =>
-            exec("client.databases.updateDocument()", () =>
-              client.databases.updateDocument(dbId, collId, docId, {
+            exec("client.databases.updateDocument()", async () => {
+              const v =
+                Number.isFinite(docVersion) && docVersion > 0
+                  ? docVersion
+                  : Number((await client.databases.getDocument(dbId, collId, docId)).version ?? 0);
+              const updated = await client.databases.updateDocument(dbId, collId, docId, {
                 data: { title: `${title} (client)` },
                 increment: { views: 1 },
-              })
-            )
+                version: v,
+              });
+              updateSettings({ ...settings, demoDocVersion: Number(updated.version ?? v + 1) });
+              return updated;
+            })
           }
         />
         <ActionButton
@@ -655,8 +691,12 @@ export function DatabasesPage() {
           disabled={disabled || !docId}
           onClick={() =>
             exec("client.databases.deleteDocument()", async () => {
-              await client.databases.deleteDocument(dbId, collId, docId);
-              updateSettings({ ...settings, demoDocId: "" });
+              const v =
+                Number.isFinite(docVersion) && docVersion > 0
+                  ? docVersion
+                  : Number((await client.databases.getDocument(dbId, collId, docId)).version ?? 0);
+              await client.databases.deleteDocument(dbId, collId, docId, v);
+              updateSettings({ ...settings, demoDocId: "", demoDocVersion: 0 });
             })
           }
         />

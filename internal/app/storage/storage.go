@@ -178,7 +178,7 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 			if derr := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, f.ID)); derr != nil {
 				slog.Warn("delete file object failed", "bucket", bucketID, "file", f.ID, "error", derr)
 			}
-			if derr := s.docDB.DeleteDocument(ctx, project.ID, "default", "files", f.ID, databases.SystemPrincipal); derr != nil {
+			if derr := s.docDB.DeleteDocument(ctx, project.ID, "default", "files", f.ID, databases.DeleteOptions{}, databases.SystemPrincipal); derr != nil {
 				slog.Warn("delete file document failed", "bucket", bucketID, "file", f.ID, "error", derr)
 			}
 		}
@@ -199,7 +199,7 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 			}
 		}
 	}
-	return s.docDB.DeleteDocument(ctx, project.ID, "default", "buckets", bucketID, principal)
+	return s.docDB.DeleteDocument(ctx, project.ID, "default", "buckets", bucketID, databases.DeleteOptions{}, principal)
 }
 
 func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content io.Reader, size int64, principal databases.Principal) (*storage.File, error) {
@@ -250,7 +250,7 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 	}
 	if err := s.store.Put(ctx, defaultBucketName(s.cfg), objectKey(project.ID, cmd.BucketID, fileID), content, size, cmd.MimeType); err != nil {
 		// Attempt rollback metadata.
-		_ = s.docDB.DeleteDocument(ctx, project.ID, "default", "files", fileID, databases.SystemPrincipal)
+		_ = s.docDB.DeleteDocument(ctx, project.ID, "default", "files", fileID, databases.DeleteOptions{}, databases.SystemPrincipal)
 		return nil, fmt.Errorf("upload file: %w", err)
 	}
 
@@ -298,7 +298,7 @@ func (s *Storage) DeleteFile(ctx context.Context, projectID, bucketID, fileID st
 	if err := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID)); err != nil {
 		// Continue to delete metadata even if object missing.
 	}
-	return s.docDB.DeleteDocument(ctx, project.ID, "default", "files", fileID, principal)
+	return s.docDB.DeleteDocument(ctx, project.ID, "default", "files", fileID, databases.DeleteOptions{}, principal)
 }
 
 func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q databases.Query, principal databases.Principal) ([]storage.File, int64, string, error) {

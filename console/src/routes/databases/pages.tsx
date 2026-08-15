@@ -1260,11 +1260,17 @@ function DocumentListSection({
   });
 
   const remove = useMutation({
-    mutationFn: (docId: string) => deleteDocument(dbId, collId, docId),
+    mutationFn: (doc: Document) => {
+      if (!doc.version || doc.version <= 0) {
+        throw new Error("文档缺少 OCC 版本信息，请刷新列表后重试");
+      }
+      return deleteDocument(dbId, collId, doc.id, doc.version);
+    },
     onSuccess: () => {
       toast.success("Document 已删除");
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "删除失败"),
   });
 
   const columns: ColumnDef<Document>[] = [
@@ -1380,7 +1386,7 @@ function DocumentListSection({
       rowActions={(d) =>
         readonly ? null : (
           <RowDeleteButton
-            onConfirm={() => remove.mutate(d.id)}
+            onConfirm={() => remove.mutate(d)}
             loading={remove.isPending}
           />
         )
@@ -1663,6 +1669,9 @@ export function DocumentDetailPage() {
 
   const save = useMutation({
     mutationFn: () => {
+      if (!document?.version || document.version <= 0) {
+        throw new Error("文档缺少 OCC 版本信息，请刷新后重试");
+      }
       const increment: Record<string, number> = {};
       for (const attr of collection?.attributes ?? []) {
         const delta = increments[attr.key]?.trim();
@@ -1676,6 +1685,8 @@ export function DocumentDetailPage() {
       return updateDocument(dbId!, collId!, docId!, {
         data: buildDocumentData(collection!.attributes, values),
         increment: Object.keys(increment).length > 0 ? increment : undefined,
+        // OCC：data 与 increment 同一次 PATCH 使用同一个版本。
+        version: document.version,
       });
     },
     onSuccess: (doc) => {
@@ -1686,14 +1697,21 @@ export function DocumentDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId] });
       queryClient.invalidateQueries({ queryKey: ["documents", dbId, collId, docId] });
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "保存失败"),
   });
 
   const remove = useMutation({
-    mutationFn: () => deleteDocument(dbId!, collId!, docId!),
+    mutationFn: () => {
+      if (!document?.version || document.version <= 0) {
+        throw new Error("文档缺少 OCC 版本信息，请刷新后重试");
+      }
+      return deleteDocument(dbId!, collId!, docId!, document.version);
+    },
     onSuccess: () => {
       toast.success("Document 已删除");
       navigate(`/console/databases/${dbId}/collections/${collId}/documents`);
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "删除失败"),
   });
 
   const documentsPath = `/console/databases/${dbId}/collections/${collId}/documents`;

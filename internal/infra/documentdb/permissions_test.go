@@ -258,13 +258,16 @@ func TestPermissions_PlatformAdminBypass(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Secret", got.Data["title"])
 
-	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   created.ID,
-		Data: map[string]any{"title": "Updated by admin"},
-	}, nil), adminPrincipal)
+	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
+		Document: databases.Document{
+			ID:   created.ID,
+			Data: map[string]any{"title": "Updated by admin"},
+		},
+		ExpectedVersion: 1,
+	}, adminPrincipal)
 	require.NoError(t, err)
 
-	err = docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID, adminPrincipal)
+	err = docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID, databases.DeleteOptions{ExpectedVersion: 2}, adminPrincipal)
 	require.NoError(t, err)
 }
 
@@ -404,7 +407,7 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 		Data: map[string]any{"name": "hacked"},
 	}, nil), keysPrincipal)
 	require.ErrorIs(t, err, ErrPermissionDenied)
-	err = docDB.DeleteDocument(ctx, projectID, "default", "users", userDoc.ID, keysPrincipal)
+	err = docDB.DeleteDocument(ctx, projectID, "default", "users", userDoc.ID, databases.DeleteOptions{}, keysPrincipal)
 	require.ErrorIs(t, err, ErrPermissionDenied)
 
 	// keys 读 users 文档仍然放行（read:keys 保留）。
@@ -603,10 +606,13 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	require.NoError(t, err)
 
 	// write 行命中 update 检查（matchTypes 展开）→ 可更新（D3：无 read 预检）。
-	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   created.ID,
-		Data: map[string]any{"title": "updated"},
-	}, nil), alice)
+	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
+		Document: databases.Document{
+			ID:   created.ID,
+			Data: map[string]any{"title": "updated"},
+		},
+		ExpectedVersion: 1,
+	}, alice)
 	require.NoError(t, err)
 
 	// write 不隐含 read：GetDocument 的 read 检查拒绝。
@@ -621,6 +627,6 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	require.Len(t, list.Documents, 0)
 
 	// write 行命中 delete 检查 → 可删除。
-	err = docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID, alice)
+	err = docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID, databases.DeleteOptions{ExpectedVersion: 2}, alice)
 	require.NoError(t, err)
 }

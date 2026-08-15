@@ -40,11 +40,11 @@ func TestCreateDocument_FormerReservedIDsAreRegularIDs(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, got.Data["a"])
 
-		updated, err := d.UpdateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 2}, nil, nil, principal)
+		updated, err := d.UpdateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 2}, nil, nil, principal, &created.Version)
 		require.NoError(t, err)
 		require.Equal(t, 2, updated.Data["a"])
 
-		require.NoError(t, d.DeleteDocument(ctx, "p1", "db1", "coll1", id, principal))
+		require.NoError(t, d.DeleteDocument(ctx, "p1", "db1", "coll1", id, principal, &updated.Version))
 		_, err = d.GetDocument(ctx, "p1", "db1", "coll1", id, principal)
 		require.Equal(t, codes.NotFound, status.Code(err), "删除后 document_id %q 应不可再读", id)
 	}
@@ -88,11 +88,11 @@ func TestDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "reserved", got.Data["title"])
 
-	updated, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "renamed"}, nil, nil, principal)
+	updated, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "renamed"}, nil, nil, principal, &created.Version)
 	require.NoError(t, err)
 	require.Equal(t, "renamed", updated.Data["title"])
 
-	require.NoError(t, uc.DeleteDocument(ctx, projectID, "app", "posts", "count", principal))
+	require.NoError(t, uc.DeleteDocument(ctx, projectID, "app", "posts", "count", principal, &updated.Version))
 	_, err = uc.GetDocument(ctx, projectID, "app", "posts", "count", principal)
 	require.Equal(t, codes.NotFound, status.Code(err))
 }

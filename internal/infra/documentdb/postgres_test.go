@@ -62,12 +62,15 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	require.Equal(t, "Hello World", got.Data["title"])
 
 	// Update document.
-	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "posts", databases.SimpleDocumentUpdate(databases.Document{
-		ID: got.ID,
-		Data: map[string]any{
-			"views": 100,
+	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "posts", databases.DocumentUpdate{
+		Document: databases.Document{
+			ID: got.ID,
+			Data: map[string]any{
+				"views": 100,
+			},
 		},
-	}, nil), databases.Principal{Roles: []string{"any"}})
+		ExpectedVersion: got.Version,
+	}, databases.Principal{Roles: []string{"any"}})
 	require.NoError(t, err)
 	require.Equal(t, float64(100), updated.Data["views"])
 
@@ -85,7 +88,7 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	require.Equal(t, int64(1), count)
 
 	// Delete.
-	require.NoError(t, docDB.DeleteDocument(ctx, projectID, "app", "posts", created.ID, databases.Principal{Roles: []string{"any"}}))
+	require.NoError(t, docDB.DeleteDocument(ctx, projectID, "app", "posts", created.ID, databases.DeleteOptions{ExpectedVersion: updated.Version}, databases.Principal{Roles: []string{"any"}}))
 	got2, err := docDB.GetDocument(ctx, projectID, "app", "posts", created.ID, databases.Principal{Roles: []string{"any"}})
 	require.NoError(t, err)
 	require.Nil(t, got2)
@@ -1122,10 +1125,13 @@ func TestCreateDocument_AuditColumns(t *testing.T) {
 	require.Equal(t, "t1", created.Data["title"])
 
 	// Update as user:abc → UpdatedBy == "abc".
-	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "audit", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   created.ID,
-		Data: map[string]any{"title": "t2"},
-	}, nil), databases.Principal{Roles: []string{"user:abc"}})
+	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "audit", databases.DocumentUpdate{
+		Document: databases.Document{
+			ID:   created.ID,
+			Data: map[string]any{"title": "t2"},
+		},
+		ExpectedVersion: created.Version,
+	}, databases.Principal{Roles: []string{"user:abc"}})
 	require.NoError(t, err)
 	require.Equal(t, "abc", updated.UpdatedBy)
 	require.Equal(t, "t2", updated.Data["title"])
@@ -1254,11 +1260,15 @@ func TestUpdateDocument_PermissionsOnlyRefreshesAuditColumns(t *testing.T) {
 	require.NotEmpty(t, created.CreatedBy)
 
 	// 仅更新 permissions（无数据字段）：审计列必须刷新。
-	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "audit", databases.SimpleDocumentUpdate(databases.Document{
-		ID: created.ID,
-	}, []databases.Permission{
-		{Type: "read", Role: "user:abc"},
-	}), databases.Principal{Roles: []string{"user:abc"}})
+	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "audit", databases.DocumentUpdate{
+		Document: databases.Document{
+			ID: created.ID,
+		},
+		Permissions: []databases.Permission{
+			{Type: "read", Role: "user:abc"},
+		},
+		ExpectedVersion: created.Version,
+	}, databases.Principal{Roles: []string{"user:abc"}})
 	require.NoError(t, err)
 	require.Equal(t, "abc", updated.UpdatedBy)
 	require.True(t, updated.UpdatedAt.After(created.UpdatedAt), "updated_at must be refreshed on permissions-only update")

@@ -282,7 +282,7 @@ func (u *Users) DeleteUserSession(ctx context.Context, projectID, userID, sessio
 	if uid, _ := doc.Data["user_id"].(string); uid != userID {
 		return status.Error(codes.NotFound, "session not found")
 	}
-	return u.docDB.DeleteDocument(ctx, projectID, "default", "sessions", sessionID, databases.SystemPrincipal)
+	return u.docDB.DeleteDocument(ctx, projectID, "default", "sessions", sessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
 }
 
 // CreateUserToken 模拟登录：以指定用户身份创建会话并签发 token（调试/客服场景）。
@@ -338,7 +338,7 @@ func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, princi
 		if err := u.deleteUserCascade(txCtx, projectID, userID); err != nil {
 			return err
 		}
-		return u.docDB.DeleteDocument(txCtx, projectID, "default", "users", userID, databases.SystemPrincipal)
+		return u.docDB.DeleteDocument(txCtx, projectID, "default", "users", userID, databases.DeleteOptions{}, databases.SystemPrincipal)
 	})
 	if err != nil {
 		return err
@@ -356,7 +356,7 @@ func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string)
 			return fmt.Errorf("list %s for user: %w", coll, err)
 		}
 		for _, doc := range docs {
-			if err := u.docDB.DeleteDocument(ctx, projectID, "default", coll, doc.ID, databases.SystemPrincipal); err != nil {
+			if err := u.docDB.DeleteDocument(ctx, projectID, "default", coll, doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
 				return fmt.Errorf("delete %s: %w", coll, err)
 			}
 		}
@@ -374,7 +374,7 @@ func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string)
 				teamsToAdjust[teamID] = struct{}{}
 			}
 		}
-		if err := u.docDB.DeleteDocument(ctx, projectID, "default", "memberships", doc.ID, databases.SystemPrincipal); err != nil {
+		if err := u.docDB.DeleteDocument(ctx, projectID, "default", "memberships", doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
 			return fmt.Errorf("delete membership: %w", err)
 		}
 	}

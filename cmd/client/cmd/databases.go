@@ -448,12 +448,13 @@ func newDatabasesDocumentsGetCmd(g *globalFlags) *cobra.Command {
 
 func newDatabasesDocumentsUpdateCmd(g *globalFlags) *cobra.Command {
 	var data, permissions, increment string
+	var version int64
 	cmd := &cobra.Command{
-		Use:   "update <database-id> <collection-id> <document-id> [--data] [--permissions] [--increment]",
-		Short: "更新文档（--data/--permissions/--increment 至少一个）",
+		Use:   "update <database-id> <collection-id> <document-id> --version <n> [--data] [--permissions] [--increment]",
+		Short: "更新文档（--version 必填；--data/--permissions/--increment 至少一个）",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildUpdateDocumentReq(args[0], args[1], args[2], data, permissions, increment)
+			req, err := buildUpdateDocumentReq(args[0], args[1], args[2], data, permissions, increment, version)
 			if err != nil {
 				return err
 			}
@@ -464,6 +465,7 @@ func newDatabasesDocumentsUpdateCmd(g *globalFlags) *cobra.Command {
 			return printJSON(os.Stdout, resp)
 		},
 	}
+	cmd.Flags().Int64Var(&version, "version", 0, "当前文档版本（用户集合 OCC 必填，来自 get 的 version 字段）")
 	cmd.Flags().StringVar(&data, "data", "", "文档数据 JSON 对象（全量替换）")
 	cmd.Flags().StringVar(&permissions, "permissions", "", "权限 JSON 数组（全量替换）")
 	cmd.Flags().StringVar(&increment, "increment", "", "自增字段 JSON 对象（如 '{\"views\":1}'）")
@@ -495,18 +497,48 @@ func newDatabasesDocumentsUpsertCmd(g *globalFlags) *cobra.Command {
 }
 
 func newDatabasesDocumentsDeleteCmd(g *globalFlags) *cobra.Command {
-	return &cobra.Command{
-		Use:   "delete <database-id> <collection-id> <document-id>",
-		Short: "删除文档",
+	var version int64
+	cmd := &cobra.Command{
+		Use:   "delete <database-id> <collection-id> <document-id> --version <n>",
+		Short: "删除文档（--version 必填，用户集合 OCC）",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := invoke(g, methodDBDeleteDocument, map[string]any{"databaseId": args[0], "collectionId": args[1], "documentId": args[2]})
+			req, err := buildDeleteDocumentReq(args[0], args[1], args[2], version)
+			if err != nil {
+				return err
+			}
+			resp, err := invoke(g, methodDBDeleteDocument, req)
 			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
 		},
 	}
+	cmd.Flags().Int64Var(&version, "version", 0, "当前文档版本（用户集合 OCC 必填，来自 get 的 version 字段）")
+	return cmd
+}
+
+// buildDeleteDocumentReq 构造 DeleteDocumentRequest JSON map（version 必填，
+// 与服务端 OCC 校验一致）。
+func buildDeleteDocumentReq(databaseID, collectionID, documentID string, version int64) (map[string]any, error) {
+	if databaseID == "" {
+		return nil, fmt.Errorf("缺少 database-id")
+	}
+	if collectionID == "" {
+		return nil, fmt.Errorf("缺少 collection-id")
+	}
+	if documentID == "" {
+		return nil, fmt.Errorf("缺少 document-id")
+	}
+	if version <= 0 {
+		return nil, fmt.Errorf("--version 必填（正整数，来自 get 的 version 字段）")
+	}
+	return map[string]any{
+		"databaseId":   databaseID,
+		"collectionId": collectionID,
+		"documentId":   documentID,
+		"version":      version,
+	}, nil
 }
 
 func newDatabasesDocumentsCountCmd(g *globalFlags) *cobra.Command {
@@ -794,9 +826,10 @@ func buildListDocumentsReq(databaseID, collectionID, queries string, pageSize in
 	return req, nil
 }
 
-// buildUpdateDocumentReq 构造 UpdateDocumentRequest JSON map（data/permissions/
-// increment 至少一个，与服务端校验一致；increment 用 json.Number 保持 int64 精度）。
-func buildUpdateDocumentReq(databaseID, collectionID, documentID, data, permissions, increment string) (map[string]any, error) {
+// buildUpdateDocumentReq 构造 UpdateDocumentRequest JSON map（version 必填；
+// data/permissions/increment 至少一个，与服务端校验一致；increment 用
+// json.Number 保持 int64 精度）。
+func buildUpdateDocumentReq(databaseID, collectionID, documentID, data, permissions, increment string, version int64) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
 	}
@@ -806,6 +839,9 @@ func buildUpdateDocumentReq(databaseID, collectionID, documentID, data, permissi
 	if documentID == "" {
 		return nil, fmt.Errorf("缺少 document-id")
 	}
+	if version <= 0 {
+		return nil, fmt.Errorf("--version 必填（正整数，来自 get 的 version 字段）")
+	}
 	if data == "" && permissions == "" && increment == "" {
 		return nil, fmt.Errorf("--data/--permissions/--increment 至少提供一个")
 	}
@@ -813,6 +849,7 @@ func buildUpdateDocumentReq(databaseID, collectionID, documentID, data, permissi
 		"databaseId":   databaseID,
 		"collectionId": collectionID,
 		"documentId":   documentID,
+		"version":      version,
 	}
 	if data != "" {
 		docData, err := jsonObject(data, "--data")

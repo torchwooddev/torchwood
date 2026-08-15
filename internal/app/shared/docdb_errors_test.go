@@ -80,3 +80,33 @@ func TestMapDocumentDBError_SQLState(t *testing.T) {
 	plain := errors.New("SQLSTATE 23505 unique constraint")
 	require.Equal(t, plain, MapDocumentDBError(plain))
 }
+
+// TestMapDocumentDBError_OCCVersionErrors (PR1): OCC 版本相关领域错误按稳定
+// 消息映射（SDK/Console 分支依赖消息文本）：
+//
+//	version_required / version_mismatch / version_column_conflict → FailedPrecondition
+//	version_column_unavailable → InvalidArgument
+func TestMapDocumentDBError_OCCVersionErrors(t *testing.T) {
+	cases := []struct {
+		err  error
+		code codes.Code
+		msg  string
+	}{
+		{databases.ErrVersionRequired, codes.FailedPrecondition, "version_required"},
+		{databases.ErrVersionMismatch, codes.FailedPrecondition, "version_mismatch"},
+		{databases.ErrVersionColumnConflict, codes.FailedPrecondition, "version_column_conflict"},
+		{databases.ErrVersionColumnUnavailable, codes.InvalidArgument, "version_column_unavailable"},
+	}
+	for _, tc := range cases {
+		mapped := MapDocumentDBError(fmt.Errorf("update document: %w", tc.err))
+		require.Equal(t, tc.code, status.Code(mapped), "err %v", tc.err)
+		require.Equal(t, tc.msg, status.Convert(mapped).Message(), "err %v", tc.err)
+	}
+
+	// UpdateDocumentVersionRequired：未设置 / ≤0 → version_required。
+	require.Equal(t, codes.FailedPrecondition, status.Code(UpdateDocumentVersionRequired(nil)))
+	zero := int64(0)
+	require.Equal(t, codes.FailedPrecondition, status.Code(UpdateDocumentVersionRequired(&zero)))
+	one := int64(1)
+	require.NoError(t, UpdateDocumentVersionRequired(&one))
+}

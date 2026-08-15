@@ -133,7 +133,7 @@ func (d *functionsDocDB) UpdateDocument(context.Context, string, string, string,
 func (d *functionsDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
 	return databases.Document{}, nil
 }
-func (d *functionsDocDB) DeleteDocument(context.Context, string, string, string, string, databases.Principal) error {
+func (d *functionsDocDB) DeleteDocument(context.Context, string, string, string, string, databases.DeleteOptions, databases.Principal) error {
 	return nil
 }
 func (d *functionsDocDB) ListDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (*databases.DocumentList, error) {

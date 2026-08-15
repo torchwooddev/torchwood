@@ -91,6 +91,11 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.Upd
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	var version *int64
+	if req.Version != nil {
+		v := req.GetVersion()
+		version = &v
+	}
 	doc, err := s.databases.UpdateDocument(
 		ctx,
 		req.GetDatabaseId(),
@@ -99,6 +104,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.Upd
 		updateData(req.GetData()),
 		perms,
 		req.GetIncrement(),
+		version,
 	)
 	if err != nil {
 		return nil, err
@@ -131,9 +137,14 @@ func (s *DatabasesService) UpsertDocument(ctx context.Context, req *clientv1.Ups
 	return mapClientDocument(doc)
 }
 
-func (s *DatabasesService) DeleteDocument(ctx context.Context, req *clientv1.GetDocumentRequest) (*sharedv1.Empty, error) {
+func (s *DatabasesService) DeleteDocument(ctx context.Context, req *clientv1.DeleteDocumentRequest) (*sharedv1.Empty, error) {
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
-	if err := s.databases.DeleteDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()); err != nil {
+	var version *int64
+	if req.Version != nil {
+		v := req.GetVersion()
+		version = &v
+	}
+	if err := s.databases.DeleteDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), version); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
@@ -180,6 +191,7 @@ func mapClientDocument(doc *databases.Document) (*clientv1.Document, error) {
 		Data:      data,
 		CreatedAt: timestamppb.New(doc.CreatedAt),
 		UpdatedAt: timestamppb.New(doc.UpdatedAt),
+		Version:   doc.Version,
 	}
 	for _, p := range doc.Permissions {
 		out.Permissions = append(out.Permissions, databases.FormatPermissionString(p))

@@ -261,10 +261,10 @@ func TestSystemCollections_DocumentWriteDenied(t *testing.T) {
 		_, err := uc.CreateDocument(ctx, projectID, "default", "users", "", map[string]any{"email": "a@b.c"}, nil, principal)
 		assertDenied(err)
 
-		_, err = uc.UpdateDocument(ctx, projectID, "default", "users", "user-1", map[string]any{"name": "x"}, nil, nil, principal)
+		_, err = uc.UpdateDocument(ctx, projectID, "default", "users", "user-1", map[string]any{"name": "x"}, nil, nil, principal, nil)
 		assertDenied(err)
 
-		err = uc.DeleteDocument(ctx, projectID, "default", "users", "user-1", principal)
+		err = uc.DeleteDocument(ctx, projectID, "default", "users", "user-1", principal, nil)
 		assertDenied(err)
 
 		_, err = uc.BulkUpdateDocuments(ctx, projectID, "default", "users", []string{"user-1"}, map[string]any{"name": "x"}, nil, principal)

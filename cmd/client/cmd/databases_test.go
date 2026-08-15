@@ -375,23 +375,26 @@ func TestBuildUpdateDocumentReq(t *testing.T) {
 		data         string
 		permissions  string
 		increment    string
+		version      int64
 		wantErr      string
 	}{
-		{name: "无可更新字段", databaseID: "app", collectionID: "c1", documentID: "d1",
+		{name: "缺 version", databaseID: "app", collectionID: "c1", documentID: "d1",
+			data: `{"title":"new"}`, version: 0, wantErr: "--version 必填"},
+		{name: "无可更新字段", databaseID: "app", collectionID: "c1", documentID: "d1", version: 1,
 			wantErr: "--data/--permissions/--increment 至少提供一个"},
-		{name: "仅 data", databaseID: "app", collectionID: "c1", documentID: "d1",
+		{name: "仅 data", databaseID: "app", collectionID: "c1", documentID: "d1", version: 1,
 			data: `{"title":"new"}`, wantErr: ""},
-		{name: "仅 increment", databaseID: "app", collectionID: "c1", documentID: "d1",
+		{name: "仅 increment", databaseID: "app", collectionID: "c1", documentID: "d1", version: 2,
 			increment: `{"views":1}`, wantErr: ""},
-		{name: "全字段", databaseID: "app", collectionID: "c1", documentID: "d1",
+		{name: "全字段", databaseID: "app", collectionID: "c1", documentID: "d1", version: 3,
 			data: `{"title":"new"}`, permissions: `["read(\"all\")"]`, increment: `{"views":1}`, wantErr: ""},
-		{name: "increment 非法", databaseID: "app", collectionID: "c1", documentID: "d1",
+		{name: "increment 非法", databaseID: "app", collectionID: "c1", documentID: "d1", version: 1,
 			increment: `{"views":"x"}`, wantErr: "--increment 解析失败"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := buildUpdateDocumentReq(tt.databaseID, tt.collectionID, tt.documentID,
-				tt.data, tt.permissions, tt.increment)
+				tt.data, tt.permissions, tt.increment, tt.version)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.wantErr)
@@ -401,6 +404,7 @@ func TestBuildUpdateDocumentReq(t *testing.T) {
 			require.Equal(t, tt.databaseID, req["databaseId"])
 			require.Equal(t, tt.collectionID, req["collectionId"])
 			require.Equal(t, tt.documentID, req["documentId"])
+			require.Equal(t, tt.version, req["version"])
 			if tt.data == "" {
 				_, ok := req["data"]
 				require.False(t, ok)
@@ -428,11 +432,51 @@ func TestBuildUpdateDocumentReq(t *testing.T) {
 // TestDocumentsUpdateIncrementPrecision 回归 int64 精度：>2^53 的增量经
 // json.Marshal 后必须是原始整数，不能变 1.234...e+18。
 func TestDocumentsUpdateIncrementPrecision(t *testing.T) {
-	req, err := buildUpdateDocumentReq("db1", "col1", "doc1", "", "", `{"big": 1234567890123456789}`)
+	req, err := buildUpdateDocumentReq("db1", "col1", "doc1", "", "", `{"big": 1234567890123456789}`, 1)
 	require.NoError(t, err)
 	b, err := json.Marshal(req)
 	require.NoError(t, err)
 	require.Contains(t, string(b), "1234567890123456789") // 不是 1.23...e+18
+}
+
+// TestBuildDeleteDocumentReq：documents delete 的 --version 校验与
+// buildUpdateDocumentReq 对齐——缺 version 或 ≤0 一律拒绝。
+func TestBuildDeleteDocumentReq(t *testing.T) {
+	tests := []struct {
+		name         string
+		databaseID   string
+		collectionID string
+		documentID   string
+		version      int64
+		wantErr      string
+	}{
+		{name: "缺 database-id", collectionID: "c1", documentID: "d1", version: 1,
+			wantErr: "缺少 database-id"},
+		{name: "缺 collection-id", databaseID: "app", documentID: "d1", version: 1,
+			wantErr: "缺少 collection-id"},
+		{name: "缺 document-id", databaseID: "app", collectionID: "c1", version: 1,
+			wantErr: "缺少 document-id"},
+		{name: "缺 version", databaseID: "app", collectionID: "c1", documentID: "d1", version: 0,
+			wantErr: "--version 必填"},
+		{name: "version 为负", databaseID: "app", collectionID: "c1", documentID: "d1", version: -1,
+			wantErr: "--version 必填"},
+		{name: "全字段", databaseID: "app", collectionID: "c1", documentID: "d1", version: 3, wantErr: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := buildDeleteDocumentReq(tt.databaseID, tt.collectionID, tt.documentID, tt.version)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.databaseID, req["databaseId"])
+			require.Equal(t, tt.collectionID, req["collectionId"])
+			require.Equal(t, tt.documentID, req["documentId"])
+			require.Equal(t, tt.version, req["version"])
+		})
+	}
 }
 
 func TestBuildUpsertDocumentReq(t *testing.T) {
