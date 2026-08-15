@@ -23,7 +23,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	// 集合无 read 授权：强制走逐文档 EXISTS 过滤路径（无 SkipDocumentPermissionFilter）。
@@ -78,7 +78,7 @@ func TestPermissions_CollectionLevelFallback(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -116,7 +116,7 @@ func TestPermissions_DocumentLevelOverridesCollection(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -157,7 +157,7 @@ func TestPermissions_CreateCheck(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -190,7 +190,7 @@ func TestPermissions_KeysNotBypass(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -230,7 +230,7 @@ func TestPermissions_PlatformAdminBypass(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -354,7 +354,7 @@ func TestPermissions_SystemPrincipalBypass(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -385,7 +385,7 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
@@ -437,7 +437,7 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	schema := fmt.Sprintf(`"TORCHWOOD_%d_default"`, internalID)
@@ -462,7 +462,7 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	require.NoError(t, err)
 
 	// 新实例触发清理（进程内"已清理"标记不跨实例）。
-	fresh := NewPostgresDocumentDB(db)
+	fresh := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
 
 	permsTable := fmt.Sprintf("%s._perms", schema)
@@ -496,7 +496,7 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	require.Equal(t, int64(1), teamMeta)
 
 	// 幂等：再次清理无错误、无新副作用。
-	third := NewPostgresDocumentDB(db)
+	third := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, third.EnsureSystemCollections(ctx, projectID, internalID))
 	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
 		`SELECT COUNT(*) FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection IN ('users','sessions','identities')`, permsTable))
@@ -519,7 +519,7 @@ func TestPermissions_ListORFallback(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -581,7 +581,7 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/pkg/crud"
@@ -63,7 +65,8 @@ const maxQueryStringLen = 4096
 const maxFilterValues = 1000
 
 type postgresDocumentDB struct {
-	db *clients.Database
+	db  *clients.Database
+	pub shared.EventPublisher // nil 视为 nop（单测）；写路径同事务写入 outbox
 
 	// in-process caches keyed by projectID; safe for concurrent use.
 	internalIDCache sync.Map // projectID -> int64
@@ -81,8 +84,8 @@ type postgresDocumentDB struct {
 	versionAlterTx sync.Map // "txid|schema.collection" -> struct{}
 }
 
-func NewPostgresDocumentDB(db *clients.Database) databases.DocumentDB {
-	return &postgresDocumentDB{db: db}
+func NewPostgresDocumentDB(db *clients.Database, pub shared.EventPublisher) databases.DocumentDB {
+	return &postgresDocumentDB{db: db, pub: pub}
 }
 
 func (p *postgresDocumentDB) conn(ctx context.Context) bun.IDB {
@@ -515,6 +518,12 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 	if created == nil {
 		return doc, errors.New("document not found after insert")
 	}
+	// create 事件：acl=写后（读回已含 _perms）；系统集合不发布。
+	if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, created.ID,
+		domainevents.EventDocumentsCreate, created.Version, created,
+		created.Permissions, len(created.Permissions) > 0); err != nil {
+		return doc, err
+	}
 	return *created, nil
 }
 
@@ -665,6 +674,15 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	}
 	// 文档级权限替换语义（与 UpdateDocument 一致）：非空时先清后写。
 	// 作用于目标行（effectiveID），而非调用方传入的 doc.ID。
+	// upsert 更新支事件 acl=写前：在替换 _perms 之前抓拍。
+	var prePerms []databases.Permission
+	var preHasPerms bool
+	if targetID != "" && !isSystem && p.pub != nil {
+		prePerms, preHasPerms, err = p.getDocumentPermissions(ctx, schema, collectionID, effectiveID, internalID)
+		if err != nil {
+			return doc, err
+		}
+	}
 	if len(perms) > 0 {
 		if err := p.clearPermissions(ctx, schema, collectionID, effectiveID, internalID); err != nil {
 			return doc, err
@@ -679,6 +697,18 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	}
 	if upserted == nil {
 		return doc, errors.New("document not found after upsert")
+	}
+	// upsert 事件：插入支 → create（acl=写后），更新支 → update（acl=写前）；
+	// 系统集合不发布。
+	if targetID == "" {
+		if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, upserted.ID,
+			domainevents.EventDocumentsCreate, upserted.Version, upserted,
+			upserted.Permissions, len(upserted.Permissions) > 0); err != nil {
+			return doc, err
+		}
+	} else if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, upserted.ID,
+		domainevents.EventDocumentsUpdate, upserted.Version, upserted, prePerms, preHasPerms); err != nil {
+		return doc, err
 	}
 	return *upserted, nil
 }
@@ -789,6 +819,15 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "update", principal, nil); err != nil {
 		return doc, err
 	}
+	// update 事件 acl=写前：在 SET / _perms 替换之前抓拍当前文档 _perms。
+	var prePerms []databases.Permission
+	var preHasPerms bool
+	if !isSystem && p.pub != nil {
+		prePerms, preHasPerms, err = p.getDocumentPermissions(ctx, schema, collectionID, doc.ID, internalID)
+		if err != nil {
+			return doc, err
+		}
+	}
 	tbl := tableName(schema, collectionID)
 	updatedBy := userIDFromPrincipal(principal)
 	setParts, args := buildUpdateParts(doc, updatedBy)
@@ -867,6 +906,11 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	if updated == nil {
 		return doc, fmt.Errorf("%w", databases.ErrDocumentNotFound)
 	}
+	// update / increment 事件：acl=写前快照；系统集合不发布。
+	if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, updated.ID,
+		domainevents.EventDocumentsUpdate, updated.Version, updated, prePerms, preHasPerms); err != nil {
+		return doc, err
+	}
 	return *updated, nil
 }
 
@@ -901,10 +945,9 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "delete", principal, nil); err != nil {
 		return err
 	}
-	if !isSystem && !opts.SkipVersion {
-		if opts.ExpectedVersion <= 0 {
-			return databases.ErrVersionRequired
-		}
+	if !isSystem {
+		// 用户集合：取删除前 _version（行锁下比较，防止竞态）；delete 事件
+		// 的 version 与 acl 都基于写前状态。
 		var currentVersion int64
 		err := p.conn(ctx).QueryRowContext(ctx,
 			fmt.Sprintf(`SELECT _version FROM %s WHERE _id = ? AND _tenant = ? FOR UPDATE`, tableName(schema, collectionID)),
@@ -916,8 +959,30 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 			}
 			return err
 		}
-		if currentVersion != opts.ExpectedVersion {
-			return databases.ErrVersionMismatch
+		if !opts.SkipVersion {
+			if opts.ExpectedVersion <= 0 {
+				return databases.ErrVersionRequired
+			}
+			if currentVersion != opts.ExpectedVersion {
+				return databases.ErrVersionMismatch
+			}
+		}
+		// 分叉：有 publisher 时必须在清 _perms 之前抓拍写前 ACL，并带删除前
+		// version 发 delete 事件后直接返回；无 publisher 走下方公共路径。
+		// 两条路径都必须清 _perms、都必须删行（事件失败同样随事务回滚）。
+		if p.pub != nil {
+			prePerms, preHasPerms, err := p.getDocumentPermissions(ctx, schema, collectionID, docID, internalID)
+			if err != nil {
+				return err
+			}
+			if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
+				return err
+			}
+			if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, collectionID)), docID, internalID); err != nil {
+				return err
+			}
+			return p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, docID,
+				domainevents.EventDocumentsDelete, currentVersion, nil, prePerms, preHasPerms)
 		}
 	}
 	if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
@@ -925,6 +990,49 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 	}
 	_, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, collectionID)), docID, internalID)
 	return err
+}
+
+// publishDocumentEvent 在文档写成功读回之后、函数返回之前（仍在外层
+// RunInTx 内）把事件写入 outbox，与文档行、_perms 同 COMMIT（v2 设计 §3.3）。
+// 未注入 EventPublisher（单测）或系统集合时为空操作；acl 快照取当时
+// collection ACL + 调用方提供的文档 _perms（create=写后 / update、delete=写前）。
+func (p *postgresDocumentDB) publishDocumentEvent(
+	ctx context.Context,
+	projectID, databaseID, collectionID, docID, event string,
+	version int64,
+	data *databases.Document,
+	docPerms []databases.Permission,
+	docHasPerms bool,
+) error {
+	if p.pub == nil {
+		return nil
+	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return nil
+	}
+	coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return err
+	}
+	if coll == nil || coll.IsSystem {
+		return nil
+	}
+	return p.pub.Publish(ctx, domainevents.Envelope{
+		Event:        event,
+		ProjectID:    projectID,
+		DatabaseID:   databaseID,
+		CollectionID: collectionID,
+		DocumentID:   docID,
+		Version:      version,
+		CreatedAt:    time.Now(),
+		Data:         data,
+		ACL: domainevents.ACLSnapshot{
+			DocumentSecurity:      coll.DocumentSecurity,
+			CollectionPermissions: coll.Permissions,
+			DocumentPermissions:   docPerms,
+			DocHasPerms:           docHasPerms,
+		},
+	})
 }
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {

@@ -31,7 +31,7 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccount(cfg, projectRepo, docDB)
 
 	_, _, _, _, err := account.SignUp(ctx, SignUpCommand{

@@ -49,7 +49,7 @@ func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, strin
 	t.Cleanup(cleanup)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, rdb)
 
 	user, _, _, mfa, err := account.SignUp(ctx, SignUpCommand{
@@ -121,7 +121,7 @@ func TestAccount_CreateTOTPFactor_RequiresJWTSecret(t *testing.T) {
 	defer rdb.Close()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	// 空 jwt secret 的配置。
 	account := NewTestAccountWithRedis(&config.AppConfig{}, projectRepo, docDB, rdb)
 

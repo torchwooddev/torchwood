@@ -29,7 +29,7 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	// Create a custom database and collection.
@@ -109,7 +109,7 @@ func TestPostgresDocumentDatabase_UpsertDocument(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
@@ -173,7 +173,7 @@ func TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected(t *
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "users", "Users", []databases.Attribute{
@@ -235,7 +235,7 @@ func TestPostgresDocumentDatabase_UpsertDocument_ConcurrentRace(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "users", "Users", []databases.Attribute{
@@ -296,7 +296,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	created, err := docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
@@ -346,7 +346,7 @@ func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 
 	projectA, internalA, cleanupA := testutil.CreateTestProject(ctx, db)
 	defer cleanupA()
@@ -400,7 +400,7 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 
@@ -464,7 +464,7 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
@@ -543,7 +543,7 @@ func TestListDocuments_SelectProjection(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "profiles", "Profiles", []databases.Attribute{
@@ -595,7 +595,7 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "seqdocs", "SeqDocs", []databases.Attribute{
@@ -692,7 +692,7 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -788,7 +788,7 @@ func TestListDocuments_InputLimits(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
@@ -842,9 +842,9 @@ func TestEnsureSystemCollections_Idempotent(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	fresh := NewPostgresDocumentDB(db)
+	fresh := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
 	coll, err := fresh.GetCollection(ctx, projectID, "default", "users")
 	require.NoError(t, err)
@@ -864,7 +864,7 @@ func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	spec := systemCollectionSpecs(projectID)["users"]
@@ -887,7 +887,7 @@ func TestCreateCollectionMetadata_DuplicateUserCollection(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "notes", "Notes", nil, nil, nil, true))
@@ -911,7 +911,7 @@ func TestBulkUpdateDocuments_RollbackOnFailure(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -948,7 +948,7 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	_, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
@@ -975,7 +975,7 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
@@ -1037,7 +1037,7 @@ func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
@@ -1092,7 +1092,7 @@ func TestCreateDocument_AuditColumns(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	perms := []databases.Permission{
@@ -1158,7 +1158,7 @@ func TestDeleteIndex_RecreateSameIndex(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
@@ -1203,7 +1203,7 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	// 预插同 (project_id, id) 元数据行，令 INSERT 撞复合主键。
@@ -1240,7 +1240,7 @@ func TestUpdateDocument_PermissionsOnlyRefreshesAuditColumns(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	perms := []databases.Permission{
@@ -1319,7 +1319,7 @@ func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -1372,7 +1372,7 @@ func TestListDocuments_PageSizeClamp(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))

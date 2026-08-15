@@ -74,7 +74,12 @@ func SetupTestDB(t *testing.T) *clients.Database {
 		}
 	})
 
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(testDSN)))
+	sqldb := sql.OpenDB(pgdriver.NewConnector(
+		pgdriver.WithDSN(testDSN),
+		// 默认写缓冲 4KB 放不下单个 >4KB 的参数（如 outbox 截断测试的
+		// 300KiB 文档 JSON）；测试库统一放宽到 2MiB。
+		pgdriver.WithBufferSize(2<<20),
+	))
 	db := &clients.Database{DB: bun.NewDB(sqldb, pgdialect.New())}
 	t.Cleanup(func() { _ = db.Close() })
 

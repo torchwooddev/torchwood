@@ -38,7 +38,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
@@ -65,7 +65,7 @@ func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	// API key 主体（ActorKind=service）被拒。
@@ -99,7 +99,7 @@ func TestProjects_CreateProject_RejectsInvalidID(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	// 非白名单字符（下划线/非 ASCII）的项目名派生出的 ID 必须被拒。
@@ -116,7 +116,7 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
 	projectID := fmt.Sprintf("rollback-%d", time.Now().UnixNano())
 	p := &projects.Project{
@@ -185,7 +185,7 @@ func TestProjects_UpdateProject_PlatformAdminSuccess(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	created := createTestProject(t, repo, "alpha", "Alpha App")
@@ -219,7 +219,7 @@ func TestProjects_UpdateProject_RestrictedAdminOwnProject(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	createTestProject(t, repo, "own", "Own App")
@@ -240,7 +240,7 @@ func TestProjects_UpdateProject_RestrictedAdminOtherProjectNotFound(t *testing.T
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	createTestProject(t, repo, "own", "Own App")
@@ -270,7 +270,7 @@ func TestProjects_UpdateProject_ProjectNotFound(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	_, err := projectsUC.UpdateProject(platformAdminCtx(ctx), UpdateProjectCommand{
@@ -289,7 +289,7 @@ func TestProjects_UpdateProject_NothingToUpdate(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	// 前置检查：name 与 description 均未提供 → InvalidArgument（先于取数/越权）。
@@ -307,7 +307,7 @@ func TestProjects_UpdateProject_EmptyID(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	_, err := projectsUC.UpdateProject(platformAdminCtx(ctx), UpdateProjectCommand{
@@ -325,7 +325,7 @@ func TestProjects_UpdateProject_BlankNameRejected(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	createTestProject(t, repo, "alpha", "Alpha App")
@@ -348,7 +348,7 @@ func TestProjects_UpdateProject_NameCollision(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	createTestProject(t, repo, "alpha", "Alpha App")
@@ -376,7 +376,7 @@ func TestProjects_CreateProject_RejectsLongDescription(t *testing.T) {
 	defer db.Close()
 
 	repo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
 	// 口径 a：CreateProject 与 UpdateProject 对 description 施加同一上限 512。

@@ -75,7 +75,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
 	apiSecret, keyCleanup := testutil.CreateTestAPIKey(ctx, db, projectID, nil)
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
@@ -276,7 +276,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	projectA, internalA, cleanupA := testutil.CreateTestProject(ctx, db)
 	projectB, internalB, cleanupB := testutil.CreateTestProject(ctx, db)
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectA, internalA))
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectB, internalB))
 
@@ -402,7 +402,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
 	apiSecret, keyCleanup := testutil.CreateTestAPIKey(ctx, db, projectID, []string{"users"})
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
@@ -457,7 +457,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
 	otherProjectID, otherInternalID, otherCleanup := testutil.CreateTestProject(ctx, db)
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, otherProjectID, otherInternalID))
 

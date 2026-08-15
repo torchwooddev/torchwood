@@ -34,7 +34,7 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 	cfg = buildTestConfig()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccount(cfg, projectRepo, docDB)
 
 	// Sign up.

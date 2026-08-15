@@ -31,7 +31,7 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)

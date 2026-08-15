@@ -27,7 +27,7 @@ func TestAccount_ListLogs(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, nil)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
@@ -101,7 +101,7 @@ func TestAccount_ListLogs_Unauthenticated(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, nil)
 
 	_, err := account.ListLogs(ctx, 10)

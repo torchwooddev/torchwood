@@ -39,7 +39,7 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 	_ = cfg
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	mailer := &CaptureMailer{}
 	account := NewTestAccountWithMailer(cfgWithDevMailer, projectRepo, docDB, rdb, mailer)
 

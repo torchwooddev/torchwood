@@ -34,7 +34,7 @@ func TestTeams_Prefs_CRUD(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewTeams(bunrepo.NewProjectRepository(db), docDB)
@@ -79,7 +79,7 @@ func TestTeams_Prefs_SelfHealReconcile(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
 	// 模拟存量项目：只建 default 库元数据 + 旧 spec 的 teams 集合，绝不调
 	// EnsureSystemCollections（否则 reconcile 提前发生，测不出自愈路径）。
@@ -141,7 +141,7 @@ func TestTeams_Prefs_Errors(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewTeams(bunrepo.NewProjectRepository(db), docDB)
@@ -174,7 +174,7 @@ func TestTeams_Prefs_PermissionMatrix(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewTeams(bunrepo.NewProjectRepository(db), docDB)

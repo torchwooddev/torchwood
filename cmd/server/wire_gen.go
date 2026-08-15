@@ -22,6 +22,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/infra/events"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
@@ -51,7 +52,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	adminProjectRepository := bunrepo.NewAdminProjectRepository(database)
 	redisClient := clients.NewRedis(dataClients)
 	redisAdminTokenRevokeStore := auth.NewRedisAdminTokenRevokeStore(redisClient)
-	documentDB := documentdb.NewPostgresDocumentDB(database)
+	eventOutbox := events.NewEventOutbox(database)
+	documentDB := documentdb.NewPostgresDocumentDB(database, eventOutbox)
 	userRoles := client.NewUserRoles(documentDB)
 	redisOneTimeTokenStore := auth.NewRedisOneTimeTokenStore(redisClient)
 	validator := auth.NewValidatorWithOneTimeTokens(appConfig, apiKeyRepository, adminRepository, adminProjectRepository, redisAdminTokenRevokeStore, documentDB, userRoles, redisOneTimeTokenStore)

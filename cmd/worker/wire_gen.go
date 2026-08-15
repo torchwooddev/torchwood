@@ -14,6 +14,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/infra/events"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
@@ -41,7 +42,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
 	worker := NewWorker(functionsFunctions, sharedQueue, logger)
 	repository := bunrepo.NewProjectRepository(database)
-	documentDB := documentdb.NewPostgresDocumentDB(database)
+	eventOutbox := events.NewEventOutbox(database)
+	documentDB := documentdb.NewPostgresDocumentDB(database, eventOutbox)
 	objectStore, err := storage.NewMinioObjectStore(appConfig)
 	if err != nil {
 		cleanup()

@@ -18,7 +18,7 @@ func occTestProject(t *testing.T, ctx context.Context) (databases.DocumentDB, st
 	t.Helper()
 	db := testutil.SetupTestDB(t)
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -208,7 +208,7 @@ func TestUpsert_NoVersionCheck(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
@@ -252,7 +252,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	schema := schemaName(internalID, "default")
@@ -310,7 +310,7 @@ func TestVersionColumn_LazyAlterAndReadFallback(t *testing.T) {
 		PRIMARY KEY (_tenant, _id))`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -392,7 +392,7 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 		PRIMARY KEY (_tenant, _id))`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
@@ -424,7 +424,7 @@ func TestUpdateDocument_EnsureVersionRollbackDoesNotPoisonCache(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -520,7 +520,7 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 		PRIMARY KEY (_tenant, _id))`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, []databases.Permission{
@@ -548,7 +548,7 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
@@ -579,7 +579,7 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	_, err := docDB.ListDocuments(ctx, projectID, "default", "teams", databases.Query{

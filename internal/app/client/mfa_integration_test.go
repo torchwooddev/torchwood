@@ -37,7 +37,7 @@ func TestMFAFullFlowIntegration(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, rdb)
 
 	// 1. 注册。

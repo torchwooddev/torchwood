@@ -42,7 +42,7 @@ func newUploadsUC(t *testing.T) (context.Context, *Storage, string, *miniredis.M
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	t.Cleanup(cleanup)
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}

@@ -37,7 +37,7 @@ func setupRefreshRotationAccount(t *testing.T) (context.Context, *Account, datab
 	t.Cleanup(cleanup)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccountWithRedis(buildTestConfig(), projectRepo, docDB, rdb)
 	return ctx, account, docDB, projectID
 }

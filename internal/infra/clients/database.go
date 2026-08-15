@@ -72,7 +72,15 @@ func newDatabase(cfg *config.Database, logger *slog.Logger) (*Database, func(), 
 		return nil, func() {}, fmt.Errorf("invalid database scheme %q: expected postgres", u.Scheme)
 	}
 
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(source)))
+	// WithBufferSize(2<<20)：pgdriver 默认写缓冲仅 4KB。PR2 起每次用户集合
+	// 写都会把整份 outbox 信封 JSON 作为单个 JSONB 参数插入
+	// document_events_outbox（256KiB 上限 + 余量），默认缓冲下 >4KB 参数报
+	// bufio: buffer full，整段 RunInTx 回滚、文档写失败。测试库已在
+	// testutil.SetupTestDB 对齐同值。
+	sqldb := sql.OpenDB(pgdriver.NewConnector(
+		pgdriver.WithDSN(source),
+		pgdriver.WithBufferSize(2<<20),
+	))
 	if pool := cfg.GetPool(); pool != nil {
 		maxOpen, maxIdle := normalizePoolSizes(int(pool.GetMaxOpenConns()), int(pool.GetMaxIdleConns()), logger)
 		sqldb.SetMaxOpenConns(maxOpen)

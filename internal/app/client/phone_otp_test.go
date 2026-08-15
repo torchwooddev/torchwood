@@ -43,7 +43,7 @@ func TestAccount_PhoneOTPLogin(t *testing.T) {
 
 	cfg := &config.AppConfig{Messaging: &config.Messaging{DevLogSms: true}}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	sms := &CaptureSMSSender{}
 	account := NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, rdb, nil, sms)
 

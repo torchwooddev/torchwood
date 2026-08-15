@@ -27,7 +27,7 @@ func TestResolveOAuthUser_RejectsExistingEmailWithoutIdentity(t *testing.T) {
 
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccount(cfg, projectRepo, docDB)
 
 	_, _, _, _, err := account.SignUp(ctx, SignUpCommand{
@@ -62,7 +62,7 @@ func TestResolveOAuthUser_RejectsUnverifiedEmail(t *testing.T) {
 
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	account := NewTestAccount(cfg, projectRepo, docDB)
 

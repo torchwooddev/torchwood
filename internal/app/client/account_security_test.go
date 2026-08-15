@@ -32,7 +32,7 @@ func setupAccountSecurity(t *testing.T, withRedis bool) (context.Context, *Accou
 	t.Cleanup(cleanup)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	var account *Account
 	if withRedis {
 		mr, err := miniredis.Run()

@@ -28,7 +28,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	account := NewTestAccount(cfg, projectRepo, docDB)

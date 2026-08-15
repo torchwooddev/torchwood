@@ -8,6 +8,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	infraevents "github.com/torchwooddev/torchwood/internal/infra/events"
 	infrafunctions "github.com/torchwooddev/torchwood/internal/infra/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
@@ -52,6 +53,7 @@ var ProviderSet = wire.NewSet(
 
 	bun.ProviderSet,
 	documentdb.ProviderSet,
+	infraevents.ProviderSet,
 	infrastorage.ProviderSet,
 	infrafunctions.ProviderSet,
 	infraqueue.ProviderSet,

@@ -54,7 +54,7 @@ func setupMagicURL(t *testing.T, withMailer bool) *magicURLFixture {
 	}))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
 	var account *Account
 	mailer := &CaptureMailer{}

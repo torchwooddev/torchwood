@@ -31,7 +31,7 @@ func newUsersUC(ctx context.Context, t *testing.T) (*Users, databases.DocumentDB
 	t.Helper()
 	db := testutil.SetupTestDB(t)
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	cfg := &config.AppConfig{}
 	sessions := auth.NewSessionService(cfg, docDB, documentRoles{}, nil)

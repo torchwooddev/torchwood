@@ -37,7 +37,7 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	cfg := &config.AppConfig{Security: &config.Security{
 		Jwt:        &config.Security_Jwt{Secret: "bootstrap-integration-secret"},
 		SetupToken: "bootstrap-setup-token",

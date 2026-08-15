@@ -44,7 +44,7 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	store := testutil.NewMemObjectStore()
@@ -100,7 +100,7 @@ func newStorageUC(t *testing.T) (context.Context, *Storage, string, *config.AppC
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	t.Cleanup(cleanup)
 
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}

@@ -40,7 +40,7 @@ func TestAccount_VerificationFlow(t *testing.T) {
 		},
 	}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	mailer := &CaptureMailer{}
 	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, rdb, mailer)
 
@@ -104,7 +104,7 @@ func TestAccount_RecoveryFlow(t *testing.T) {
 		},
 	}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	mailer := &CaptureMailer{}
 	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, rdb, mailer)
 

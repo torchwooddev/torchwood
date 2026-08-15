@@ -45,7 +45,7 @@ func TestAccount_CreateJWT(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, rdb)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
@@ -98,7 +98,7 @@ func TestAccount_CreateJWT_Unauthenticated(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccount(jwtTestConfig(), projectRepo, docDB)
 
 	// 无 principal → 401。
@@ -146,7 +146,7 @@ func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, rdb)
 
 	user, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{

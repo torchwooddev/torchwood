@@ -78,7 +78,7 @@ func setupG3Account(t *testing.T) (context.Context, *Account, string, *failableS
 		},
 	}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	roles := NewUserRoles(docDB)
 	rotation := auth.NewRedisRefreshRotationStore(rdb)
 	realSessions := auth.NewSessionService(cfg, docDB, roles, rotation)

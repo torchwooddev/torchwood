@@ -60,7 +60,7 @@ func TestEnsureSystemCollections_ReconcileExistingCollectionAttrs(t *testing.T) 
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	setupOldSpecTeamsCollection(t, ctx, db, docDB, projectID)
 
 	coll, err := docDB.GetCollection(ctx, projectID, "default", "teams")
@@ -106,7 +106,7 @@ func TestEnsureSystemCollections_ReconcileConcurrent(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	ddb := NewPostgresDocumentDB(db)
+	ddb := NewPostgresDocumentDB(db, nil)
 	docDB := ddb.(*postgresDocumentDB)
 
 	internalID, err := docDB.resolveInternalID(ctx, projectID)
