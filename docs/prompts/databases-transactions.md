@@ -1,5 +1,8 @@
 # Torchwood Databases Transactions 实现 Prompt
 
+> **已过期（2026-08-15）**。v2 以 `docs/design/v2-events-realtime-transactions.md` 为准。  
+> 本文缺少：`_version` OCC、Client API、额度（60s / 100 ops / 单 pending）、操作者规则、与 outbox 同 `COMMIT`。不要按本文直接开工。
+>
 > 将本文件整体复制到新 Cursor session 作为实现任务说明。  
 > 仓库路径：`D:/Codes/qiulin/Torchwood`  
 > Appwrite 参考：`D:/Codes/baas/appwrite`（`Transactions` HTTP 模块 + `utopia-php/database` 事务权限）

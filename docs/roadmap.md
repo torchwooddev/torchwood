@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-10（**P1 MVP 全部完成**：Teams 团队偏好交付收尾 §2.3；M1 里程碑全量勾选，进入 P2 规划）。
+> 最新更新：2026-08-15（**P2 / v2 设计已批准**：`docs/design/v2-events-realtime-transactions.md`；执行计划 `docs/design/v2-execution-plan.md`；派发稿 `docs/prompts/implement-v2.md`）。
 
 ---
 
@@ -22,15 +22,18 @@ Torchwood 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定�
 
 ### 规划中
 
+P2 先夯 BaaS 门面（Realtime + 事件 + 事务），Agent 表面后置。P1 已具备的 API Key / OpenAPI / SDK 对内测自动化仍然够用。
+
 | 任务 | 说明 | 目标阶段 |
 |------|------|----------|
-| MCP Server | 暴露 Torchwood Server API 为 MCP Tools（Users/Databases/Storage 等） | P1 |
-| OpenAPI 聚合与 Tool Schema | 合并各服务 Swagger，导出 Agent 可用的 operation 清单 | P1 |
-| Agent 专用 API Key 模板 | Console 一键创建「只读 Agent」「文档读写 Agent」等预设 scope | P1 |
-| Functions Tool 运行时 | Agent 触发函数作为 Tool 执行，返回结构化 JSON | P1 |
-| Realtime 事件订阅 | Agent 订阅文档/用户变更，驱动多步工作流 | P2 |
-| Webhooks 出站 | 业务事件推送到 Agent 编排系统（n8n、Temporal 等） | P2 |
-| 多语言 SDK 生成 | 从 proto 生成 Python/Go SDK，扩大 Agent 生态 | P3 |
+| 轻量 Realtime | 内置 WebSocket 订阅用户 collection 文档变更；高压走 MessageLoop | **P2（第一门面）** |
+| 事件脊柱 + Outbox | 写路径与事务同 `COMMIT` 落 outbox，再扇出 Realtime | **P2** |
+| Webhooks 出站（用户面 CRUD） | 业务事件推送到 n8n / Temporal 等 | P3（P2 只做内部消费，不先做 Webhook 产品） |
+| MCP Server | 暴露 Server API 为 MCP Tools | P3 |
+| OpenAPI 聚合与 Tool Schema | 合并各服务 Swagger，导出 Agent 可用的 operation 清单 | P3 |
+| Agent 专用 API Key 模板 | Console 一键创建「只读 Agent」「文档读写 Agent」等预设 scope | P3 |
+| Functions Tool 运行时 | 函数声明 JSON Schema 入参/出参，Agent 当 Tool 调 | P3 |
+| 多语言 SDK 生成 | 从 proto 生成 Python 等 SDK（Go/TS 已有） | P3 |
 
 **验收标准（Agent-Native MVP）**：
 
@@ -46,8 +49,8 @@ Torchwood 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定�
 |------|------|----------|------|
 | **P0 底座** | 可运行的工程骨架：动态文档层、Admin Console、基础认证、Storage/Functions 端口 | 已完成 | 完成 |
 | **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Teams、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **完成** |
-| **P2 增强** | Realtime、Webhooks/Events、Messaging、Project settings、Migrations、Tokens、Worker 框架 | 中期：3-6 个月 | 规划中 |
-| **P3 生态** | Sites、Proxy、VCS、GraphQL、Avatars、Locale、Advisor、多区域/水平扩展 | 长期：6-12 个月 | 规划中 |
+| **P2 / v2** | 轻量 Realtime、事件脊柱（outbox）、单库事务；按内测需要补生产底座 | 中期：3-6 个月 | **规划中（边界已锁定）** |
+| **P3 生态** | Agent 表面（MCP / Tool Schema / Key 模板）、完整 Messaging、关系/向量、Sites / Proxy / VCS / GraphQL、多区域 | 长期：6-12 个月 | 规划中 |
 
 ---
 
@@ -277,100 +280,133 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ---
 
-## 3. 中期（Medium-term，未来 3-6 个月）
+## 3. 中期 P2 / v2（Medium-term，未来 3-6 个月）
 
-**目标**：把 MVP 打磨成可生产运行的 BaaS，补齐实时、事件、消息、项目设置、Worker 框架。
+**目标**：让自用 / 内测应用能在 Torchwood 上长期跑起来——业务会动（轻量 Realtime + 事件脊柱），数据能原子写（单库事务）。
 
-### 3.1 Realtime
+v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、Tool Schema、Key 模板、Functions as Tools）后置到 P3；先把 BaaS 门面夯实。
 
-| 任务 | 说明 | 关键组件 |
-|------|------|----------|
-| WebSocket 服务器 | Gorilla WebSocket，独立端口或复用 HTTP | `internal/api/realtime/server.go` |
-| 连接认证握手 | 用 JWT 或 session cookie 鉴权 | Realtime 握手协议 |
-| 频道订阅 | subscribe / unsubscribe `collections.{db}.{coll}`、`users.{id}` 等 | Channel manager |
-| 事件广播 | 数据库/存储/函数变更后广播事件 | PG `LISTEN/NOTIFY` 或 Redis Pub/Sub |
-| Presence | 在线状态、user/channel presence | Presence manager |
-| Ping/Pong | 心跳保活 | 协议层 |
+### 3.0 已锁定边界
 
----
+| 议题 | 决定 |
+|------|------|
+| 第一用户 | 自用 / 内测应用（不是外部 Agent 框架） |
+| 第一门面 | 轻量 Realtime |
+| 高压 Realtime | 不自研集群；通道与 payload 归 Torchwood，投递可换 `D:/Codes/qiulin/messageloop` |
+| 事务形态 | 单库本地 ACID：staged ops + 一次 `COMMIT`；不上 2PC / XA / Saga |
+| 事务范围 | 同一 `database_id` 下的**用户自建 collection**；禁止跨 database / 跨 project |
+| 系统集合 | `users` / `teams` / `memberships` / `files` 等不进事务，继续走现有 API |
+| 事件与写路径 | transactional outbox 与事务同一 `COMMIT`；不和 Redis / S3 / Function 做分布式事务 |
+| Bulk API | 保持立即执行、非原子；不与事务混为一谈 |
+| Messaging | 现有 OTP / 验证 / 找回够用；完整 Provider + Topic + Push **不做** |
+| Agent Identity / Run | API Key 够用；不做独立 Agent Principal，不做 Tool Trace 产品 |
+| Console | Databases 详情页「试听」集合频道；不堆新模块页 |
+| 关系 / 向量 / Geo | 后置 P3 |
+| 设计稿 | `docs/design/v2-events-realtime-transactions.md`（批准）；执行计划 `docs/design/v2-execution-plan.md` |
 
-### 3.2 Webhooks / Events
+依赖顺序：**事件脊柱（最小 outbox）→ 轻量 Realtime → 单库事务（Commit 写 outbox）**。事务必须和 outbox 一起设计，否则 Realtime 只能 fire-and-forget。
 
-| 任务 | 说明 | 关键组件 |
-|------|------|----------|
-| 事件目录 | 定义 `users.create`、`databases.documents.update`、`storage.files.create` 等 | `internal/domain/events/catalog.go` |
-| Webhook CRUD | 创建/列表/获取/更新/删除 webhook | `/v1/server/webhooks` |
-| 事件发布 | use-case 层在写操作后发布事件 | `internal/domain/events/publisher.go` |
-| 投递 Worker | HTTP 投递、HMAC 签名、重试、失败队列 | `cmd/worker` webhook 任务 |
-| 重试策略 | 指数退避、死信队列 | Queue adapter |
+### 3.1 事件脊柱（最小）
 
----
-
-### 3.3 Messaging
-
-| 任务 | 说明 | 关键端点 |
-|------|------|----------|
-| Providers | SMTP、Sendgrid、Mailgun、Twilio、FCM、APNS 等 | `/v1/server/messaging/providers` |
-| Topics | 主题 CRUD | `/v1/server/messaging/topics` |
-| Subscribers | 订阅者 CRUD | `/v1/server/messaging/topics/{id}/subscribers` |
-| Messages | 创建邮件/SMS/Push 消息，异步发送 | `/v1/server/messaging/messages` |
-| 发送 Worker | 调用 provider SDK 投递 | `cmd/worker` messaging 任务 |
-
----
-
-### 3.4 Project settings
-
-| 任务 | 说明 | 关键端点 |
-|------|------|----------|
-| Platforms | Web / Android / Apple / Linux / Windows 平台 CRUD | `/v1/server/projects/{id}/platforms` |
-| OAuth providers | 30+ 提供商配置，优先 Google/GitHub/Apple | `/v1/server/projects/{id}/oauth2` |
-| SMTP & Email templates | 邮件服务器配置与模板管理 | `/v1/server/projects/{id}/smtp`、`/email-templates` |
-| Policies | 密码策略、会话策略、用户限制等 | `/v1/server/projects/{id}/policies` |
-| Variables | 项目级环境变量 | `/v1/server/projects/{id}/variables` |
-| Mock phone numbers | 测试手机号 | `/v1/server/projects/{id}/mock-phones` |
-| DeleteProject RPC | 删除项目（repo 层已有；需级联清理动态 schema 与 admin_projects，成本高，独立排期） | `DELETE /v1/server/projects/{id}` |
-
----
-
-### 3.5 高级数据库能力
+现有 `Queue` 端口只服务 Functions 执行；`EventPublisher` / outbox **尚未落地**。v2 先做平台能力，不做 Webhook 产品。
 
 | 任务 | 说明 | 关键组件 |
 |------|------|----------|
-| Relationships | 一对一、一对多、多对多关系 | Collection metadata 与 SQL JOIN |
-| Transactions | 多文档事务接口 | `internal/infra/documentdb/transaction.go` |
-| VectorsDB | pgvector 向量索引与相似度搜索 | 新增 `vector` attribute 类型 |
-| 全文搜索 | 使用 `pg_trgm` 或 `to_tsvector` 优化 `search` | `buildAppwriteQuery` |
-| Geo 支持 | PostGIS point/polygon | 新增 `point`、`polygon` 类型 |
+| 事件目录 | 仅用户 collection 文档：`databases.documents.create` / `update` / `delete`。Increment 与 Update 同为 `update`。目录可扩展，P2 不实现 storage / functions 生产者 | `internal/domain/events/` |
+| 生产路径 | 单条 CRUD、Increment、Bulk（每文档一条）、事务 Commit（每条 op 一条，带 `transaction_id`） | use-case 写路径 |
+| Payload | create/update 带全文档（含 `version`）；delete 只带 id | 事件信封 |
+| 推送资格 | create 按写后 `_perms`；update/delete 按**写前**能 read 的 principal | 与 documentdb 权限同一套角色 |
+| Outbox | 写库与发事件同 `COMMIT` 落入 PG；at-least-once，信封含 `event_id` | 元数据表 + 现有 `cmd/worker` |
+| 发布端口 | use-case 写路径统一 `Publish`，禁止 handler 直推 WS | `internal/domain/shared` 新增 Event / Realtime 端口 |
+| 内部消费者 | 第一消费者是内置 Realtime；Webhook HTTP 投递不做用户面 CRUD | worker registry |
+| Worker 扩展 | 在现有 Functions worker 上注册 outbox 消费者；重试计数写入 payload（P1 遗留 B2） | `cmd/worker`、`internal/domain/shared/ports.go` |
 
----
+### 3.2 轻量 Realtime（第一门面）
 
-### 3.6 Worker 框架与队列
-
-| 任务 | 说明 | 关键组件 |
-|------|------|----------|
-| Queue 端口 | 抽象队列接口 | `internal/domain/shared/ports.go` |
-| Redis 队列实现 | 基于 Redis List / Stream | `internal/infra/queue/redis.go` |
-| Worker 二进制 | `cmd/worker` 启动消费者 | `cmd/worker/main.go`、`cmd/worker/provides.go` |
-| 任务注册 | Functions、Webhooks、Messaging、Builds 等任务类型 | `internal/app/worker/registry.go` |
-| 死信与重试 | 失败任务进入死信队列，可查看/重试 | Queue + DB |
-
----
-
-### 3.7 安全与审计
+内置版只服务内测连接数。Presence、历史回放、多节点会话归属不做——那些是 MessageLoop 的职责。
 
 | 任务 | 说明 | 关键组件 |
 |------|------|----------|
-| 速率限制 | 按 IP / user / API Key 限流 | `pkg/ratelimit` + Redis |
-| 审计日志 | 记录关键管理操作 | `internal/infra/audit` |
-| API Key 轮换 | 支持 secret 重新生成 | `/v1/server/api-keys/{id}/rotate` |
-| 会话限制 | 最大并发会话数、异地登录提醒 | Account use-case |
-| 密码字典/历史 | 密码策略落地 | Project policies |
+| WebSocket 接入 | 复用现有 HTTP mux，路径 `/v1/realtime` | `internal/api/realtime/` |
+| 连接握手 | 一条连接绑定一个 project。SDK 首帧带 access token；Console same-origin 走 session cookie。无 API Key、无 guest。JWT 过期断开，SDK 自行 refresh 再握手 | 握手协议 |
+| 频道 | `databases.{db}.collections.{coll}` 与 `...documents.{id}`。无通配、无系统/停用集合 | Channel manager |
+| 订集合频道 | 集合存在即可（非系统、未停用），**不查** collection 级 read | — |
+| 订文档频道 | 文档必须已存在且当前可读；失败统一 `NotFound` | — |
+| 逐条鉴权 | Client JWT 每条事件过 `_perms`；Console platform admin 绕过 `_perms` | 与 Q3/Q17/Q21 一致 |
+| 扇出 | 单实例进程内 hub；需要跨进程时再接 Redis Pub/Sub 或 MessageLoop broker | Hub + `RealtimePublisher` |
+| 心跳 / 配额 | Ping/Pong；每用户最多 4 连，每连最多 32 订阅 | 协议层 |
+| SDK | TS / Go Client 必须能订 | `sdk/typescript`、`sdk/go` |
+| Console | Databases 详情「试听」该集合（管理员旁路） | `console/src/routes/databases/` |
+| MessageLoop 适配器 | **非 P2 必达**。通道名与 payload 先按本文稳定下来 | 日后 `internal/infra/realtime/messageloop.go` |
+
+**明确不做**：Presence、频道历史、Survey、集群接管、用户级 `users.{id}` 频道、连接内换证。重连不补历史。
+
+### 3.3 单库事务
+
+以 `docs/design/v2-events-realtime-transactions.md` 为准（旧稿 `docs/prompts/databases-transactions.md` 已过期）。
+
+| 任务 | 说明 | 关键组件 |
+|------|------|----------|
+| `_version` | 用户 collection 表加整型列；成功写 +1。顶层字段，不进 `data`。系统集合不加 | `documentdb` CREATE/ALTER |
+| 强制 OCC | 单条 Update / Delete / Increment **以及**事务内 update/delete 必须带 `version`；对不上 abort。Bulk / Upsert / Create 不带 | proto Client + Server |
+| 元数据表 | `document_transactions` + `document_transaction_ops` | `db/migrations/` |
+| API | Client + Server：Create / Get / 追加 create·update·delete·upsert / Commit / Rollback | `proto/client/v1`、`proto/server/v1` |
+| 额度 | TTL 60s；最多 100 条 op；同一 principal+database 同时只 1 个 pending | use-case |
+| 提交 | `BEGIN` → 按 seq 执行（含同文档多 op 的版本接力）+ `_perms` → 写 outbox → `COMMIT` | `internal/infra/documentdb/transaction.go` |
+| 可见性 | 提交前外部不可见；同一事务内后一条看得到前面 staged 结果 | documentdb |
+| 谁能操作 | 仅创建者追加 / Commit / Rollback；Console admin 与 `databases` 写权限 API Key 可干预任意 pending | use-case |
+| Console | 事务调试 UI **非必须**（有「试听」即可） | — |
+
+**明确不做**：跨 database、跨项目、文档+S3 / 文档+Function 原子、系统集合进事务、握着 PG 连接跨多个 HTTP 请求。
+
+### 3.4 生产底座（按内测需要，不挡第一门面）
+
+上内测前建议至少有限流。其余可并行、可后置，不计入「Realtime 能用」的必达。
+
+| 任务 | 说明 | 关键组件 |
+|------|------|----------|
+| 速率限制 | 按 IP / user / API Key | `pkg/ratelimit` + Redis |
+| 审计日志 | 管理面写操作可查 | `internal/infra/audit` |
+| API Key 轮换 | secret 重新生成 | `/v1/server/api-keys/{id}/rotate` |
+| 邮箱变更 staging | P1 遗留 B1：新邮箱验证前旧邮箱仍可用 | Account use-case |
+| Worker 重试持久化 | P1 遗留 B2：attempt 写入 payload | `cmd/worker` |
+| 全文检索收口 | `search` 仅允许 fulltext 索引列（已有算子，收紧以免 CPU DoS） | `buildAppwriteQuery` |
+| DeleteProject | repo 已有；级联清理动态 schema，独立排期 | `DELETE /v1/server/projects/{id}` |
+
+项目设置（平台 origin、密码策略、SMTP 模板、30+ OAuth）**不作为 v2 核心**。OAuth 维持已有 Google / GitHub / 微信；SMTP 维持现有发信。
+
+### 3.5 明确移出 v2
+
+| 模块 | 去向 |
+|------|------|
+| 用户面 Webhook CRUD、HMAC 投递产品 | P3 |
+| MCP / OpenAPI 聚合 / Agent Key 模板 / Functions as Tools | P3（§0） |
+| 完整 Messaging（Topic / SMS / Push） | P3 |
+| Relationships、Vectors（pgvector）、Geo（PostGIS） | P3 |
+| Presence、Realtime 集群 | MessageLoop，需要时再接 |
+| Sites / Proxy / VCS / GraphQL / Avatars / Locale / Advisor | P3（§4） |
+| 独立 Agent Identity、Agent Run / Tool Trace | 不做，直到有明确用户 |
 
 ---
 
 ## 4. 长期（Long-term，未来 6-12 个月）
 
-**目标**：构建完整 BaaS 生态，支持多租户、站点托管、CI/CD 集成、GraphQL 与高级扩展。
+**目标**：补齐 Agent-Native 表面与完整 BaaS 生态（从 P2 明确移出的模块 + 站点托管 / CI/CD / GraphQL / 水平扩展）。
+
+### 4.0 从 P2 移入
+
+| 任务 | 说明 |
+|------|------|
+| Webhook 产品 | Webhook CRUD、HMAC 签名、重试与死信、投递 Worker |
+| MCP + Tool Schema + Agent Key 模板 | 见 §0 |
+| Functions as Tools | 函数 JSON Schema I/O |
+| Messaging | Providers / Topics / Subscribers / SMS / Push |
+| Relationships | 一对一、一对多、多对多 |
+| VectorsDB | `vector` attribute + pgvector 相似度查询 |
+| 全文检索增强 | `pg_trgm` / 索引策略（P2 只做「仅索引列可 search」收口） |
+| Geo | PostGIS `point` / `polygon` |
+| 项目设置补齐 | Platforms、密码/会话策略、邮件模板、DeleteProject |
+| MessageLoop 投递 | 内置 Realtime 协议不变，broker 换成 MessageLoop |
 
 ### 4.1 Sites（静态/SSR 站点托管）
 
@@ -455,18 +491,24 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - [x] Admin Console 覆盖 Settings 页面（项目基本信息编辑、OAuth Providers、Messaging 只读说明）。
 - [x] CI 绿，集成测试覆盖核心流程。
 
-### M2：P2 生产就绪（中期结束）
+### M2：P2 / v2 内测可用（中期结束）
 
-- [ ] Realtime 可订阅数据库变更。
-- [ ] Webhooks 可创建并成功投递事件。
-- [ ] Messaging 可发送邮件/SMS/Push。
-- [ ] Project settings（OAuth、SMTP、Policies）可用。
-- [ ] Worker 框架运行 Functions / Webhooks / Messaging / Builds。
-- [ ] 速率限制、审计日志、API Key 轮换上线。
-- [ ] 通过负载与混沌测试。
+- [ ] 用户 collection 的文档写路径经 outbox 发布事件（与事务同一 `COMMIT`）。
+- [ ] 轻量 Realtime：已鉴权客户端可订阅文档变更并收到提交后的事件。
+- [ ] 单库事务：同一 database 下用户 collection 的 staged create/update/delete/upsert 可原子提交；系统集合不可进入。
+- [ ] Bulk API 行为不变（立即、非原子）。
+- [ ] Worker 能消费 outbox（Functions 队列仍可用）；重试计数不因进程重启丢失。
+- [ ] 内测前上线按 IP / user / API Key 的速率限制。
+- [ ] 官方 Client SDK 可按 §3.2 频道与握手建立订阅；Console 集合详情可试听。
+- [ ] 用户 collection 文档带 `_version`；Update / Delete / Increment 强制 OCC（Bulk / Upsert 除外）。
+
+**不计入 M2**：Webhook 用户面、Messaging 产品、MCP、关系/向量、Presence、负载与混沌测试（内测不卡这个）。
 
 ### M3：P3 生态完整（长期结束）
 
+- [ ] Agent 表面：MCP / Tool Schema / scoped Key 模板可用。
+- [ ] Webhooks 可创建并成功投递；Messaging 可发送邮件/SMS/Push。
+- [ ] Relationships / Vectors 可用。
 - [ ] Sites / Proxy / VCS / GraphQL 上线。
 - [ ] 多区域部署与水平扩展方案稳定运行。
 - [ ] 官方 SDK 发布到包管理器。
@@ -479,11 +521,11 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
 | Docker executor 安全隔离复杂 | Functions 执行可能威胁主机 | 使用 gVisor/Firecracker 或限制容器资源与网络 |
-| Realtime 水平扩展 | 多实例间事件广播需要共享状态 | 优先 Redis Pub/Sub，后期评估 NATS |
-| OAuth provider 数量庞大 | 30+ 提供商配置维护成本高 | 先实现 Google/GitHub/Apple，其余按需 |
+| 内置 Realtime 单实例上限 | 内测后连接数打满 | 通道/payload 与投递解耦；高压接 MessageLoop，不自研集群 |
+| Outbox 与 Realtime 时序 | 客户端先收到事件再读仍是旧值，或事件丢失 | 写路径与 outbox 同 `COMMIT`；投递 at-least-once，客户端按 id 去重 |
+| 事务 staged 占用与 TTL | 未提交事务堆积；过期与并发提交竞态 | 短 TTL、过期回收、Commit 用状态机（pending → committed） |
 | 文件预览性能 | 大图缩放消耗 CPU/内存 | 限制最大尺寸、异步生成、可选外部 CDN |
 | 动态 schema 迁移 | attribute/index 变更可能影响大数据量表 | 使用 `ALTER TABLE` 时加锁评估、提供异步迁移 |
-| pgvector / PostGIS 依赖 | 增加部署复杂度 | 在 Docker Compose 中预装扩展，文档说明 |
 
 ---
 
@@ -492,6 +534,9 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 - `docs/archived/appwrite-go-migration-modules.md`：Appwrite 功能迁移全景（已归档）。
 - `docs/archived/p0-foundation-design.md`：P0 底座设计（已归档）。
 - `docs/archived/completed-tasks.md`：已完成任务清单（已归档）。
+- `docs/design/v2-events-realtime-transactions.md`：v2 批准设计（事件 / Realtime / 事务）。
+- `docs/design/v2-execution-plan.md`：五张 PR 的执行计划。
+- `docs/prompts/implement-v2.md`：派给第三方实施 agent 的 prompt。
 - `docs/tech-decision.md`：技术选型决策。
 - `README.md`：快速开始。
 - `AGENTS.md`：开发约定。
