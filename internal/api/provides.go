@@ -4,6 +4,7 @@ import (
 	"github.com/google/wire"
 	"github.com/torchwooddev/torchwood/internal/api/clientgrpc"
 	"github.com/torchwooddev/torchwood/internal/api/consolegrpc"
+	apirealtime "github.com/torchwooddev/torchwood/internal/api/realtime"
 	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
 	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
 )
@@ -26,4 +27,5 @@ var ProviderSet = wire.NewSet(
 	serverhttp.NewFunctionsHandler,
 	consolegrpc.NewAuthService,
 	consolegrpc.NewAdminsService,
+	apirealtime.NewHandler,
 )

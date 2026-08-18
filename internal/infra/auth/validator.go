@@ -107,6 +107,12 @@ func (v *Validator) parseJWT(raw string) (*jwtparser.Claims, bool) {
 	return jwtparser.Parse(jwtparser.DeriveKey(secret, jwtparser.PurposeEndUserJWT), raw)
 }
 
+// ParseClaims 解析并验签 JWT（复用于 Realtime 握手读取 ttp/exp 元数据；
+// 校验语义仍以 ValidateCredential 为准）。
+func (v *Validator) ParseClaims(raw string) (*jwtparser.Claims, bool) {
+	return v.parseJWT(raw)
+}
+
 func (v *Validator) validateAPIKey(ctx context.Context, raw string) (*shared.Principal, error) {
 	hash := sha256.Sum256([]byte(raw))
 	hashStr := hex.EncodeToString(hash[:])

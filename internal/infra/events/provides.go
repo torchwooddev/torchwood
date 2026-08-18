@@ -8,4 +8,5 @@ import (
 var ProviderSet = wire.NewSet(
 	NewEventOutbox,
 	wire.Bind(new(shared.EventPublisher), new(*eventOutbox)),
+	NewOutboxWorker,
 )

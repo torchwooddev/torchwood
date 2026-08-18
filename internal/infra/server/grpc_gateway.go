@@ -13,6 +13,7 @@ import (
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+	apirealtime "github.com/torchwooddev/torchwood/internal/api/realtime"
 	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -31,6 +32,7 @@ func NewGRPCGatewayServer(
 	fileHandler *serverhttp.FileHandler,
 	oauthHandler *serverhttp.OAuthHandler,
 	functionsHandler *serverhttp.FunctionsHandler,
+	realtimeHandler *apirealtime.Handler,
 ) (*GRPCGatewayServer, error) {
 	httpCfg := cfg.GetServer().GetHttp()
 	timeout := parseDuration(httpCfg.GetTimeout(), 60*time.Second)
@@ -84,21 +86,38 @@ func NewGRPCGatewayServer(
 		return nil, err
 	}
 
-	var combined http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/console/") || r.URL.Path == "/console" {
-			consoleHandler.ServeHTTP(w, r)
-			return
+	// /v1/realtime 是长连接 WebSocket：不套 TimeoutHandler（下放
+	// 握手超时与 ping 滑窗自行管理）；其余路径统一 60s TimeoutHandler
+	// 兜底慢 handler。
+	var routed http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/realtime":
+			realtimeHandler.ServeHTTP(w, r)
+		case strings.HasPrefix(r.URL.Path, "/console/") || r.URL.Path == "/console":
+			http.TimeoutHandler(consoleHandler, timeout, "timeout").ServeHTTP(w, r)
+		default:
+			http.TimeoutHandler(handler, timeout, "timeout").ServeHTTP(w, r)
 		}
-		handler.ServeHTTP(w, r)
 	})
 
 	if cors := httpCfg.GetCors(); cors != nil {
-		combined = CORSMiddleware(cors, app.Logger())(combined)
+		routed = CORSMiddleware(cors, app.Logger())(routed)
 	}
 
-	return &GRPCGatewayServer{lynxhttp.NewServer(combined,
+	// http.Server 超时（v2 设计 §4.1 锁定）：
+	// - WithTimeout(0) 只清 lynx 默认 60s（否则读写超时打在 net.Conn 上，
+	//   Hijack 之后 WS 连接约 60s 被杀，ping 无法重置一次性 deadline）；
+	// - WithServerOptions 在内部赋值之后执行，覆盖为
+	//   ReadTimeout=0 / WriteTimeout=0 / ReadHeaderTimeout=10s（保留
+	//   慢握手 / Slowloris 上限）。
+	return &GRPCGatewayServer{lynxhttp.NewServer(routed,
 		lynxhttp.WithAddr(httpCfg.GetAddr()),
-		lynxhttp.WithTimeout(timeout),
+		lynxhttp.WithTimeout(0),
+		lynxhttp.WithServerOptions(func(s *http.Server) {
+			s.ReadTimeout = 0
+			s.WriteTimeout = 0
+			s.ReadHeaderTimeout = 10 * time.Second
+		}),
 		// Recovery 声明在最外层：gateway 转发/自定义 handler/Console SPA
 		// 任一环节 panic 都被恢复为 500 + 统一 JSON 错误体，不拖垮进程。
 		lynxhttp.WithMiddleware(lynxhttp.Recovery()),

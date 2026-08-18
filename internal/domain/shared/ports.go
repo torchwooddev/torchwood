@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/events"
 )
 
@@ -23,4 +24,39 @@ type Queue interface {
 // 短事务插入。若 ctx 带 events.TransactionID，写入信封 transaction_id。
 type EventPublisher interface {
 	Publish(ctx context.Context, ev events.Envelope) error
+}
+
+// RealtimeTransport 是 outbox → server Hub 的最后一跳（至少一次，
+// v2 设计 §3.4）。P2 实现：Redis Streams + consumer group；日后可换
+// MessageLoop，频道与信封不变。worker 进程只负责 Enqueue（XADD），
+// 不持有 WebSocket。
+type RealtimeTransport interface {
+	Enqueue(ctx context.Context, ev events.Envelope) error
+}
+
+// RealtimeFanout 仅存在于 cmd/server 进程：从 transport 拉消息并写入
+// Hub（XGROUP/XAUTOCLAIM/XREADGROUP → Hub.Dispatch → XACK → published_at）。
+type RealtimeFanout interface {
+	Run(ctx context.Context) error
+}
+
+// RealtimeConn 是 Hub 侧的连接句柄。Send 只承载出站帧
+// （{"type":"event","channel":...,"payload":ClientPayload()}，无 acl）。
+type RealtimeConn struct {
+	ID            string
+	PlatformAdmin bool
+	DocPrincipal  databases.Principal
+	Send          chan map[string]any
+}
+
+// RealtimeHub 是 server 进程内订阅表端口（v2 设计 §4.5）：WS handler
+// 经它注册/摘除订阅，RealtimeFanout 实现侧按频道 + ACL 快照扇出。
+// 只存在于 cmd/server 进程。
+type RealtimeHub interface {
+	// Subscribe 把 conn 注册到频道（幂等：同一连接重复订阅不重复计数）。
+	Subscribe(channel string, conn *RealtimeConn)
+	// Unsubscribe 把 conn 从单个频道移除。
+	Unsubscribe(channel, connID string)
+	// Remove 把 conn 从全部频道移除（连接关闭时调用）。
+	Remove(connID string)
 }

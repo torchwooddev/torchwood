@@ -11,6 +11,7 @@ import (
 	"github.com/lynx-go/lynx/boot"
 	"github.com/torchwooddev/torchwood/internal/api/clientgrpc"
 	"github.com/torchwooddev/torchwood/internal/api/consolegrpc"
+	realtime2 "github.com/torchwooddev/torchwood/internal/api/realtime"
 	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
 	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
 	"github.com/torchwooddev/torchwood/internal/app/client"
@@ -28,6 +29,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/messaging"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
+	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
 )
@@ -135,17 +137,25 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, checkers, fileHandler, oAuthHandler, functionsHandler)
+	hub := realtime.NewHub(logger)
+	handler, err := realtime2.NewHandler(appConfig, validator, documentDB, hub, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
+	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, checkers, fileHandler, oAuthHandler, functionsHandler, handler)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	subscriber := realtime.NewRealtimeSubscriber(redisClient, database, hub, logger)
+	realtimeSubscriberService := NewRealtimeSubscriberService(subscriber, logger)
 	metricsServer, err := server2.NewMetricsServer(appConfig)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	v := NewComponents(grpcServer, grpcGatewayServer, metricsServer)
+	v := NewComponents(grpcServer, grpcGatewayServer, realtimeSubscriberService, metricsServer)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {

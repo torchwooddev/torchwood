@@ -30,6 +30,7 @@ var ProviderSet = wire.NewSet(
 	NewAppConfig,
 	NewWorker,
 	NewChunkCleaner,
+	NewOutboxWorkerService,
 	wire.Bind(new(chunkCleaner), new(*appstorage.Storage)),
 )
 
@@ -49,8 +50,8 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	return &c, nil
 }
 
-func NewComponents(worker *Worker, cleaner *ChunkCleaner) []lynx.Service {
-	return []lynx.Service{worker, cleaner}
+func NewComponents(worker *Worker, cleaner *ChunkCleaner, outbox *OutboxWorkerService) []lynx.Service {
+	return []lynx.Service{worker, cleaner, outbox}
 }
 
 func NewComponentBuilders() []lynx.ServiceFactory {

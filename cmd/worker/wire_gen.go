@@ -17,6 +17,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/events"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
+	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
 )
 
@@ -52,7 +53,10 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	uploadSessionStore := storage.NewRedisUploadSessionStore(client)
 	storageStorage := storage2.NewStorage(appConfig, repository, documentDB, objectStore, uploadSessionStore)
 	mainChunkCleaner := NewChunkCleaner(storageStorage, logger)
-	v := NewComponents(worker, mainChunkCleaner)
+	realtimeTransport := realtime.NewStreamTransport(client)
+	outboxWorker := events.NewOutboxWorker(database, realtimeTransport, logger)
+	outboxWorkerService := NewOutboxWorkerService(outboxWorker, logger)
+	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {

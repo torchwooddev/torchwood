@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/coder/websocket v1.8.14
 	github.com/disintegration/imaging v1.6.2
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/go-viper/mapstructure/v2 v2.5.0

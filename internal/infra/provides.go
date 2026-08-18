@@ -14,6 +14,7 @@ import (
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
 	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
+	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 )
@@ -54,6 +55,7 @@ var ProviderSet = wire.NewSet(
 	bun.ProviderSet,
 	documentdb.ProviderSet,
 	infraevents.ProviderSet,
+	infrarealtime.ProviderSet,
 	infrastorage.ProviderSet,
 	infrafunctions.ProviderSet,
 	infraqueue.ProviderSet,
