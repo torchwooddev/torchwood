@@ -39,7 +39,7 @@ func TestDatabasesService_AuditResource(t *testing.T) {
 	require.NoError(t, err)
 
 	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB)
-	svc := NewDatabasesService(uc)
+	svc := NewDatabasesService(uc, nil) // 事务 handler 不在本测试覆盖范围
 
 	adminCtx := auditAdminCtx(ctx)
 	require.NoError(t, uc.CreateDatabase(adminCtx, projectID, "app", "Application DB"))
@@ -94,7 +94,7 @@ func TestDatabasesService_UpsertDocumentAuditResource(t *testing.T) {
 	require.NoError(t, err)
 
 	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB)
-	svc := NewDatabasesService(uc)
+	svc := NewDatabasesService(uc, nil) // 事务 handler 不在本测试覆盖范围
 
 	adminCtx := auditAdminCtx(ctx)
 	require.NoError(t, uc.CreateDatabase(adminCtx, projectID, "app", "Application DB"))

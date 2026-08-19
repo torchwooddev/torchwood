@@ -6,6 +6,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/app/functions"
 	"github.com/torchwooddev/torchwood/internal/app/server"
+	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/app/storage"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 )
@@ -15,6 +16,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(domainauth.UserRoleResolver), new(*client.UserRoles)),
 	client.NewAccount,
 	client.NewDatabases,
+	client.NewTransactions,
 	client.NewTeams,
 	server.NewProjects,
 	server.NewUsers,
@@ -22,6 +24,8 @@ var ProviderSet = wire.NewSet(
 	server.NewOAuthProviders,
 	server.NewTeams,
 	server.NewDatabases,
+	server.NewTransactions,
+	shared.NewTransactions,
 	console.NewAuth,
 	console.NewAdmins,
 	console.NewSetup,

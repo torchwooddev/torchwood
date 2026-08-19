@@ -41,6 +41,15 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.DatabasesService/DeleteDocument":      {"member", "owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/BulkUpdateDocuments": {"member", "owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/BulkDeleteDocuments": {"member", "owner", "admin"},
+	// 单库事务写方法（业务写，member 可做；platform admin / databases 写 Key
+	// 干预任意 pending 由 use-case 判断；GetTransaction 是 read，不进本表）
+	"/torchwood.server.v1.DatabasesService/CreateTransaction":         {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/CreateTransactionDocument": {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/UpdateTransactionDocument": {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/DeleteTransactionDocument": {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/UpsertTransactionDocument": {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/CommitTransaction":         {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/RollbackTransaction":       {"member", "owner", "admin"},
 	// FunctionsService 全部写方法（对照 proto/server/v1/functions.proto RPC
 	// 清单逐一登记；GetVariables 返回掩码值安全可放行，其余读方法 viewer 可读）
 	"/torchwood.server.v1.FunctionsService/CreateFunction":   {"owner", "admin"},

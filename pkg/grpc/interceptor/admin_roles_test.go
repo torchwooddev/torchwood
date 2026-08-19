@@ -237,6 +237,48 @@ func TestAdminRoleMethodRules_Coverage_AllWriteMethodsRegistered(t *testing.T) {
 	}
 }
 
+// PR4（v2 设计 §5）：事务写方法登记 member/owner/admin（业务写），
+// GetTransaction 是 read 不得进角色表；scope 表 write/read 方向核对。
+func TestAdminRoleMethodRules_TransactionWriteMethodsRegistered(t *testing.T) {
+	t.Parallel()
+	writeMethods := []string{
+		"/torchwood.server.v1.DatabasesService/CreateTransaction",
+		"/torchwood.server.v1.DatabasesService/CreateTransactionDocument",
+		"/torchwood.server.v1.DatabasesService/UpdateTransactionDocument",
+		"/torchwood.server.v1.DatabasesService/DeleteTransactionDocument",
+		"/torchwood.server.v1.DatabasesService/UpsertTransactionDocument",
+		"/torchwood.server.v1.DatabasesService/CommitTransaction",
+		"/torchwood.server.v1.DatabasesService/RollbackTransaction",
+	}
+	for _, m := range writeMethods {
+		roles := adminRoleMethodRules[m]
+		require.NotNil(t, roles, "事务写方法 %s 必须登记 adminRoleMethodRules", m)
+		for _, allowed := range []string{"member", "owner", "admin"} {
+			require.Contains(t, roles, allowed, "%s 必须允许 %s", m, allowed)
+		}
+		require.NotContains(t, roles, "viewer", "%s 不得允许 viewer", m)
+
+		rule, ok := apiKeyScopeRules[m]
+		require.True(t, ok, "%s 必须登记 apiKeyScopeRules", m)
+		require.Equal(t, "databases", rule.resource)
+		require.Equal(t, "write", rule.op)
+	}
+
+	// GetTransaction 是读方法：scope=read，不进角色写表。
+	require.NotContains(t, adminRoleMethodRules, "/torchwood.server.v1.DatabasesService/GetTransaction")
+	rule, ok := apiKeyScopeRules["/torchwood.server.v1.DatabasesService/GetTransaction"]
+	require.True(t, ok)
+	require.Equal(t, apiKeyScopeRule{"databases", "read"}, rule)
+
+	// scope 匹配方向：databases.read 放行 GetTransaction、拒写方法；
+	// databases.write 放行写方法、拒 GetTransaction。
+	require.True(t, APIKeyScopeAllowed("/torchwood.server.v1.DatabasesService/GetTransaction", []string{"databases.read"}))
+	require.False(t, APIKeyScopeAllowed("/torchwood.server.v1.DatabasesService/CommitTransaction", []string{"databases.read"}))
+	require.True(t, APIKeyScopeAllowed("/torchwood.server.v1.DatabasesService/CommitTransaction", []string{"databases.write"}))
+	require.False(t, APIKeyScopeAllowed("/torchwood.server.v1.DatabasesService/GetTransaction", []string{"databases.write"}))
+	require.True(t, APIKeyScopeAllowed("/torchwood.server.v1.DatabasesService/RollbackTransaction", []string{"databases"}))
+}
+
 // AssertAdminRoleWriteCoverage 的纯函数 diff：缺失一条写方法 / 多登记一条
 // 读方法 / 多登记未映射方法，都必须被检出并列出方法名。
 func TestAdminRoleWriteCoverageDiff_DetectsMissingAndExtra(t *testing.T) {

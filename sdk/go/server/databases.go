@@ -268,6 +268,103 @@ func (d *DatabasesService) BulkDeleteDocuments(ctx context.Context, collectionID
 	})
 }
 
+// CreateTransaction 创建单库事务（pending，TTL 60s）；同一调用方同一库
+// 仅允许一笔 pending（重复创建返回 transaction_already_pending）。
+func (d *DatabasesService) CreateTransaction(ctx context.Context) (*serverv1.Transaction, error) {
+	return d.c.databases.CreateTransaction(ctx, &serverv1.CreateTransactionRequest{
+		DatabaseId: d.db,
+	})
+}
+
+// GetTransaction 读取事务及其已暂存操作；仅创建者（或 platform admin /
+// databases 写 scope 的 API Key）可见。
+func (d *DatabasesService) GetTransaction(ctx context.Context, transactionID string) (*serverv1.Transaction, error) {
+	return d.c.databases.GetTransaction(ctx, &serverv1.GetTransactionRequest{
+		DatabaseId:    d.db,
+		TransactionId: transactionID,
+	})
+}
+
+// CreateTransactionDocument 向事务追加一条 create 操作（Commit 时才落库）。
+func (d *DatabasesService) CreateTransactionDocument(ctx context.Context, transactionID, collectionID, documentID string, data map[string]any, permissions []string) (*serverv1.TransactionOp, error) {
+	st, err := toStruct(data)
+	if err != nil {
+		return nil, err
+	}
+	return d.c.databases.CreateTransactionDocument(ctx, &serverv1.CreateTransactionDocumentRequest{
+		DatabaseId:    d.db,
+		TransactionId: transactionID,
+		CollectionId:  collectionID,
+		DocumentId:    documentID,
+		Data:          st,
+		Permissions:   permissions,
+	})
+}
+
+// UpdateTransactionDocument 向事务追加一条 update 操作；version 为 OCC 版本，必填。
+func (d *DatabasesService) UpdateTransactionDocument(ctx context.Context, transactionID, collectionID, documentID string, data map[string]any, increment map[string]int64, permissions []string, version int64) (*serverv1.TransactionOp, error) {
+	st, err := toStruct(data)
+	if err != nil {
+		return nil, err
+	}
+	return d.c.databases.UpdateTransactionDocument(ctx, &serverv1.UpdateTransactionDocumentRequest{
+		DatabaseId:    d.db,
+		TransactionId: transactionID,
+		CollectionId:  collectionID,
+		DocumentId:    documentID,
+		Data:          st,
+		Permissions:   permissions,
+		Increment:     increment,
+		Version:       &version,
+	})
+}
+
+// DeleteTransactionDocument 向事务追加一条 delete 操作；version 为 OCC 版本，必填。
+func (d *DatabasesService) DeleteTransactionDocument(ctx context.Context, transactionID, collectionID, documentID string, version int64) (*serverv1.TransactionOp, error) {
+	return d.c.databases.DeleteTransactionDocument(ctx, &serverv1.DeleteTransactionDocumentRequest{
+		DatabaseId:    d.db,
+		TransactionId: transactionID,
+		CollectionId:  collectionID,
+		DocumentId:    documentID,
+		Version:       &version,
+	})
+}
+
+// UpsertTransactionDocument 向事务追加一条 upsert 操作；conflictColumns 须匹配集合唯一索引。
+func (d *DatabasesService) UpsertTransactionDocument(ctx context.Context, transactionID, collectionID, documentID string, data map[string]any, conflictColumns, permissions []string) (*serverv1.TransactionOp, error) {
+	st, err := toStruct(data)
+	if err != nil {
+		return nil, err
+	}
+	return d.c.databases.UpsertTransactionDocument(ctx, &serverv1.UpsertTransactionDocumentRequest{
+		DatabaseId:      d.db,
+		TransactionId:   transactionID,
+		CollectionId:    collectionID,
+		DocumentId:      documentID,
+		Data:            st,
+		Permissions:     permissions,
+		ConflictColumns: conflictColumns,
+	})
+}
+
+// CommitTransaction 在单段事务内按序应用全部操作并写 outbox（同一
+// transaction_id）；任一操作 version/perm 失败则整单回滚并置 rolled_back。
+func (d *DatabasesService) CommitTransaction(ctx context.Context, transactionID string) (*serverv1.Transaction, error) {
+	return d.c.databases.CommitTransaction(ctx, &serverv1.CommitTransactionRequest{
+		DatabaseId:    d.db,
+		TransactionId: transactionID,
+	})
+}
+
+// RollbackTransaction 放弃 pending 事务（置 rolled_back）；platform admin /
+// databases 写 scope 的 API Key 可回滚他人 pending。
+func (d *DatabasesService) RollbackTransaction(ctx context.Context, transactionID string) (*serverv1.Transaction, error) {
+	return d.c.databases.RollbackTransaction(ctx, &serverv1.RollbackTransactionRequest{
+		DatabaseId:    d.db,
+		TransactionId: transactionID,
+	})
+}
+
 // UseDatabase 返回绑定指定 databaseID 的文档服务副本。
 func (c *Client) UseDatabase(databaseID string) *DatabasesService {
 	return newDatabasesService(c, databaseID)

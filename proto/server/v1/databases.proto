@@ -148,6 +148,39 @@ service DatabasesService {
   rpc BulkDeleteDocuments(BulkDeleteDocumentsRequest) returns (BulkDocumentsResponse) {
     option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete", body: "*" };
   }
+
+  // 单库事务（v2 设计 §5）：暂存文档写操作，Commit 单段事务应用并写 outbox。
+  rpc CreateTransaction(CreateTransactionRequest) returns (Transaction) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/transactions", body: "*" };
+  }
+
+  rpc GetTransaction(GetTransactionRequest) returns (Transaction) {
+    option (google.api.http) = { get: "/v1/server/databases/{database_id}/transactions/{transaction_id}" };
+  }
+
+  rpc CreateTransactionDocument(CreateTransactionDocumentRequest) returns (TransactionOp) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/transactions/{transaction_id}/documents", body: "*" };
+  }
+
+  rpc UpdateTransactionDocument(UpdateTransactionDocumentRequest) returns (TransactionOp) {
+    option (google.api.http) = { patch: "/v1/server/databases/{database_id}/transactions/{transaction_id}/collections/{collection_id}/documents/{document_id}", body: "*" };
+  }
+
+  rpc DeleteTransactionDocument(DeleteTransactionDocumentRequest) returns (TransactionOp) {
+    option (google.api.http) = { delete: "/v1/server/databases/{database_id}/transactions/{transaction_id}/collections/{collection_id}/documents/{document_id}" };
+  }
+
+  rpc UpsertTransactionDocument(UpsertTransactionDocumentRequest) returns (TransactionOp) {
+    option (google.api.http) = { put: "/v1/server/databases/{database_id}/transactions/{transaction_id}/collections/{collection_id}/documents/{document_id}", body: "*" };
+  }
+
+  rpc CommitTransaction(CommitTransactionRequest) returns (Transaction) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/transactions/{transaction_id}:commit", body: "*" };
+  }
+
+  rpc RollbackTransaction(RollbackTransactionRequest) returns (Transaction) {
+    option (google.api.http) = { delete: "/v1/server/databases/{database_id}/transactions/{transaction_id}" };
+  }
 }
 
 message CreateDatabaseRequest {
@@ -362,4 +395,89 @@ message BulkDeleteDocumentsRequest {
 
 message BulkDocumentsResponse {
   int64 affected = 1;
+}
+
+// 事务消息（Client/Server 两侧字段号对齐，v2 设计 §事务 RPC）。
+message Transaction {
+  string id = 1;
+  string database_id = 2;
+  string status = 3; // pending|committed|rolled_back|expired
+  string created_by = 4;
+  google.protobuf.Timestamp expire_at = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  repeated TransactionOp operations = 8;
+}
+
+message TransactionOp {
+  string id = 1;
+  int32 seq = 2;
+  string op_type = 3; // create|update|delete|upsert
+  string collection_id = 4;
+  string document_id = 5;
+  google.protobuf.Struct data = 6;
+  repeated string permissions = 7;
+  map<string, int64> increment = 8;
+  optional int64 version = 9;
+  // upsert 的冲突列（须匹配集合唯一索引），随 op 持久化供 Commit 回放。
+  repeated string conflict_columns = 10;
+}
+
+message CreateTransactionRequest {
+  string database_id = 1;
+}
+
+message GetTransactionRequest {
+  string database_id = 1;
+  string transaction_id = 2;
+}
+
+message CreateTransactionDocumentRequest {
+  string database_id = 1;
+  string transaction_id = 2;
+  string collection_id = 3;
+  string document_id = 4;
+  google.protobuf.Struct data = 5;
+  repeated string permissions = 6;
+}
+
+message UpdateTransactionDocumentRequest {
+  string database_id = 1;
+  string transaction_id = 2;
+  string collection_id = 3;
+  string document_id = 4;
+  google.protobuf.Struct data = 5;
+  repeated string permissions = 6;
+  map<string, int64> increment = 7;
+  // 必填（presence）：Commit 时与当前行 _version 做 OCC。
+  optional int64 version = 8;
+}
+
+message DeleteTransactionDocumentRequest {
+  string database_id = 1;
+  string transaction_id = 2;
+  string collection_id = 3;
+  string document_id = 4;
+  // 必填（presence）；REST query。Commit 时与当前行 _version 做 OCC。
+  optional int64 version = 5;
+}
+
+message UpsertTransactionDocumentRequest {
+  string database_id = 1;
+  string transaction_id = 2;
+  string collection_id = 3;
+  string document_id = 4;
+  google.protobuf.Struct data = 5;
+  repeated string permissions = 6;
+  repeated string conflict_columns = 7;
+}
+
+message CommitTransactionRequest {
+  string database_id = 1;
+  string transaction_id = 2;
+}
+
+message RollbackTransactionRequest {
+  string database_id = 1;
+  string transaction_id = 2;
 }

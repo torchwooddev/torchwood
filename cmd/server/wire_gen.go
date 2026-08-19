@@ -18,6 +18,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
 	"github.com/torchwooddev/torchwood/internal/app/server"
+	"github.com/torchwooddev/torchwood/internal/app/shared"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
@@ -87,7 +88,10 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter, userRoles, mfaService, mfaChallengeStore, redisOneTimeTokenStore, repository)
 	accountService := clientgrpc.NewAccountService(account)
 	databases := client.NewDatabases(projectsRepository, documentDB)
-	databasesService := clientgrpc.NewDatabasesService(databases)
+	transactionRepository := bunrepo.NewTransactionRepository(database)
+	transactions := shared.NewTransactions(transactionRepository, documentDB, database)
+	clientTransactions := client.NewTransactions(projectsRepository, transactions)
+	databasesService := clientgrpc.NewDatabasesService(databases, clientTransactions)
 	teams := server.NewTeams(projectsRepository, documentDB)
 	clientTeams := client.NewTeams(teams, documentDB)
 	teamsService := clientgrpc.NewTeamsService(clientTeams)
@@ -106,7 +110,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	oAuthProvidersService := servergrpc.NewOAuthProvidersService(oAuthProviders)
 	servergrpcTeamsService := servergrpc.NewTeamsService(teams)
 	serverDatabases := server.NewDatabases(projectsRepository, documentDB)
-	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases)
+	serverTransactions := server.NewTransactions(projectsRepository, transactions)
+	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases, serverTransactions)
 	executor := functions.NewDockerExecutor(appConfig)
 	functionRepo := bunrepo.NewFunctionRepository(database)
 	sharedQueue := queue.NewRedisQueue(redisClient)

@@ -1,5 +1,16 @@
 import { listQuery, type HttpTransport } from "../http.js";
-import type { Document, ListMeta, ListParams, UpdateDocumentInput, UpsertDocumentInput } from "../types.js";
+import type {
+  CreateTransactionDocumentInput,
+  Document,
+  ListMeta,
+  ListParams,
+  Transaction,
+  TransactionOp,
+  UpdateDocumentInput,
+  UpdateTransactionDocumentInput,
+  UpsertDocumentInput,
+  UpsertTransactionDocumentInput,
+} from "../types.js";
 
 export class ClientDatabasesService {
   constructor(private readonly http: HttpTransport) {}
@@ -119,5 +130,118 @@ export class ClientDatabasesService {
       { query: listQuery(params) }
     );
     return res.count ?? 0;
+  }
+
+  // ---- 单库事务（v2 设计 §5）----
+
+  async createTransaction(databaseId: string): Promise<Transaction> {
+    return this.http.request<Transaction>(
+      "POST",
+      `/v1/databases/${databaseId}/transactions`,
+      { body: { database_id: databaseId } }
+    );
+  }
+
+  async getTransaction(databaseId: string, transactionId: string): Promise<Transaction> {
+    return this.http.request<Transaction>(
+      "GET",
+      `/v1/databases/${databaseId}/transactions/${transactionId}`
+    );
+  }
+
+  async createTransactionDocument(
+    databaseId: string,
+    transactionId: string,
+    input: CreateTransactionDocumentInput
+  ): Promise<TransactionOp> {
+    return this.http.request<TransactionOp>(
+      "POST",
+      `/v1/databases/${databaseId}/transactions/${transactionId}/documents`,
+      {
+        body: {
+          database_id: databaseId,
+          transaction_id: transactionId,
+          collection_id: input.collection_id,
+          document_id: input.document_id ?? "",
+          data: input.data,
+          permissions: input.permissions,
+        },
+      }
+    );
+  }
+
+  async updateTransactionDocument(
+    databaseId: string,
+    transactionId: string,
+    collectionId: string,
+    documentId: string,
+    input: UpdateTransactionDocumentInput
+  ): Promise<TransactionOp> {
+    return this.http.request<TransactionOp>(
+      "PATCH",
+      `/v1/databases/${databaseId}/transactions/${transactionId}/collections/${collectionId}/documents/${documentId}`,
+      {
+        body: {
+          database_id: databaseId,
+          transaction_id: transactionId,
+          collection_id: collectionId,
+          document_id: documentId,
+          ...input,
+        },
+      }
+    );
+  }
+
+  async deleteTransactionDocument(
+    databaseId: string,
+    transactionId: string,
+    collectionId: string,
+    documentId: string,
+    // 用户集合 OCC 必填。
+    version: number
+  ): Promise<TransactionOp> {
+    return this.http.request<TransactionOp>(
+      "DELETE",
+      `/v1/databases/${databaseId}/transactions/${transactionId}/collections/${collectionId}/documents/${documentId}`,
+      { query: { version } }
+    );
+  }
+
+  async upsertTransactionDocument(
+    databaseId: string,
+    transactionId: string,
+    collectionId: string,
+    documentId: string,
+    input: UpsertTransactionDocumentInput
+  ): Promise<TransactionOp> {
+    return this.http.request<TransactionOp>(
+      "PUT",
+      `/v1/databases/${databaseId}/transactions/${transactionId}/collections/${collectionId}/documents/${documentId}`,
+      {
+        body: {
+          database_id: databaseId,
+          transaction_id: transactionId,
+          collection_id: collectionId,
+          document_id: documentId,
+          ...input,
+        },
+      }
+    );
+  }
+
+  // 单段事务应用全部操作并写 outbox；任一操作失败整单回滚。
+  async commitTransaction(databaseId: string, transactionId: string): Promise<Transaction> {
+    return this.http.request<Transaction>(
+      "POST",
+      `/v1/databases/${databaseId}/transactions/${transactionId}:commit`,
+      { body: { database_id: databaseId, transaction_id: transactionId } }
+    );
+  }
+
+  async rollbackTransaction(databaseId: string, transactionId: string): Promise<Transaction> {
+    return this.http.request<Transaction>(
+      "DELETE",
+      `/v1/databases/${databaseId}/transactions/${transactionId}`
+    );
   }
 }

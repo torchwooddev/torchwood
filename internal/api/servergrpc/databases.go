@@ -16,11 +16,12 @@ import (
 
 type DatabasesService struct {
 	serverv1.UnimplementedDatabasesServiceServer
-	databases *appserver.Databases
+	databases    *appserver.Databases
+	transactions *appserver.Transactions
 }
 
-func NewDatabasesService(databases *appserver.Databases) *DatabasesService {
-	return &DatabasesService{databases: databases}
+func NewDatabasesService(databases *appserver.Databases, transactions *appserver.Transactions) *DatabasesService {
+	return &DatabasesService{databases: databases, transactions: transactions}
 }
 
 func (s *DatabasesService) projectID(ctx context.Context) string {

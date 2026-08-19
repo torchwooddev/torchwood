@@ -912,6 +912,367 @@
         ]
       }
     },
+    "/v1/server/databases/{databaseId}/transactions": {
+      "post": {
+        "summary": "单库事务（v2 设计 §5）：暂存文档写操作，Commit 单段事务应用并写 outbox。",
+        "operationId": "DatabasesService_CreateTransaction",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1Transaction"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1DatabasesServiceCreateTransactionBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{databaseId}/transactions/{transactionId}": {
+      "get": {
+        "operationId": "DatabasesService_GetTransaction",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1Transaction"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      },
+      "delete": {
+        "operationId": "DatabasesService_RollbackTransaction",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1Transaction"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{databaseId}/transactions/{transactionId}/collections/{collectionId}/documents/{documentId}": {
+      "delete": {
+        "operationId": "DatabasesService_DeleteTransactionDocument",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1TransactionOp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "description": "必填（presence）；REST query。Commit 时与当前行 _version 做 OCC。",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      },
+      "put": {
+        "operationId": "DatabasesService_UpsertTransactionDocument",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1TransactionOp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1DatabasesServiceUpsertTransactionDocumentBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      },
+      "patch": {
+        "operationId": "DatabasesService_UpdateTransactionDocument",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1TransactionOp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1DatabasesServiceUpdateTransactionDocumentBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{databaseId}/transactions/{transactionId}/documents": {
+      "post": {
+        "operationId": "DatabasesService_CreateTransactionDocument",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1TransactionOp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1DatabasesServiceCreateTransactionDocumentBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{databaseId}/transactions/{transactionId}:commit": {
+      "post": {
+        "operationId": "DatabasesService_CommitTransaction",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1Transaction"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1DatabasesServiceCommitTransactionBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
     "/v1/server/databases/{id}": {
       "get": {
         "operationId": "DatabasesService_GetDatabase",
@@ -1133,12 +1494,38 @@
         }
       }
     },
+    "torchwoodserverv1DatabasesServiceCommitTransactionBody": {
+      "type": "object"
+    },
     "torchwoodserverv1DatabasesServiceCreateDocumentBody": {
       "type": "object",
       "properties": {
         "documentId": {
           "type": "string",
           "title": "客户端自选 document_id；documents:count / documents:bulkUpdate /\r\ndocuments:bulkDelete 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间，可自由取任意合法值。"
+        },
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "torchwoodserverv1DatabasesServiceCreateTransactionBody": {
+      "type": "object"
+    },
+    "torchwoodserverv1DatabasesServiceCreateTransactionDocumentBody": {
+      "type": "object",
+      "properties": {
+        "collectionId": {
+          "type": "string"
+        },
+        "documentId": {
+          "type": "string"
         },
         "data": {
           "type": "object"
@@ -1177,7 +1564,53 @@
         }
       }
     },
+    "torchwoodserverv1DatabasesServiceUpdateTransactionDocumentBody": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "increment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "format": "int64"
+          }
+        },
+        "version": {
+          "type": "string",
+          "format": "int64",
+          "title": "必填（presence）：Commit 时与当前行 _version 做 OCC。"
+        }
+      }
+    },
     "torchwoodserverv1DatabasesServiceUpsertDocumentBody": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conflictColumns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "torchwoodserverv1DatabasesServiceUpsertTransactionDocumentBody": {
       "type": "object",
       "properties": {
         "data": {
@@ -1239,6 +1672,93 @@
         },
         "meta": {
           "$ref": "#/definitions/v1ListResponseMeta"
+        }
+      }
+    },
+    "torchwoodserverv1Transaction": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "databaseId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "title": "pending|committed|rolled_back|expired"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "expireAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodserverv1TransactionOp"
+          }
+        }
+      },
+      "title": "事务消息（Client/Server 两侧字段号对齐，v2 设计 §事务 RPC）。"
+    },
+    "torchwoodserverv1TransactionOp": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "opType": {
+          "type": "string",
+          "title": "create|update|delete|upsert"
+        },
+        "collectionId": {
+          "type": "string"
+        },
+        "documentId": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "increment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "format": "int64"
+          }
+        },
+        "version": {
+          "type": "string",
+          "format": "int64"
+        },
+        "conflictColumns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "upsert 的冲突列（须匹配集合唯一索引），随 op 持久化供 Commit 回放。"
         }
       }
     },
