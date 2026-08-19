@@ -13,7 +13,9 @@ import (
 // ProviderName 是受支持渠道名（设计 §1.2 渠道差异矩阵）。
 const (
 	ProviderStripe = "stripe"
-	// PR4 渠道补齐：wechat / alipay / ios_iap。
+	ProviderWeChat = "wechat"
+	ProviderAlipay = "alipay"
+	ProviderIOSIAP = "ios_iap"
 )
 
 // ErrUnsupported 表示渠道不支持该操作（如 iOS IAP 无 CreatePayment）。
@@ -22,6 +24,10 @@ var ErrUnsupported = errors.New("payments: operation unsupported by provider")
 // ErrSignatureInvalid 表示回调验签失败：调用方必须 401 且不落任何行
 // （设计 §Security：验签是唯一信任根，不返回区分性错误）。
 var ErrSignatureInvalid = errors.New("payments: callback signature invalid")
+
+// ErrReceiptBoundToOtherUser 表示 iOS receipt / transactionId 已绑定其他用户
+// （设计 §Security 5：一份 receipt 绑一个 user，跨用户领取拒绝）。
+var ErrReceiptBoundToOtherUser = errors.New("payments: receipt already bound to another user")
 
 // errNotConfigured 是渠道凭据未配置的统一错误（服务可启动，
 // 相关操作 fail-closed）。
@@ -137,8 +143,9 @@ type SubscriptionCallbackHandler interface {
 // RefundInput 是退款入参。
 type RefundInput struct {
 	OrderID         string
-	ProviderOrderID string // 渠道支付单（Stripe PaymentIntent）
+	ProviderOrderID string // 渠道支付单（Stripe PaymentIntent / 微信 transaction_id）
 	Amount          int64  // 0 = 全额
+	OrderAmount     int64  // 原单金额（微信/支付宝退款报文需要 total；bigint 最小单位）
 	IdempotencyKey  string
 }
 
@@ -167,23 +174,35 @@ type ReceiptVerifier interface {
 	VerifyReceipt(ctx context.Context, in VerifyReceiptInput) (*VerifiedPurchase, error)
 }
 
+// CallbackAcker 是渠道回调 HTTP 回执（可选接口，adapter 实现）：
+// 验签失败不走本方法（handler 固定 401 空 body）；处理成功/可重试失败
+// 才按渠道约定写 JSON / XML / 纯文本，避免渠道重复推（设计 §1.4）。
+type CallbackAcker interface {
+	CallbackAck(success bool) (status int, contentType string, body []byte)
+}
+
 // ProviderRegistry 按渠道名解析 PaymentProvider（infra 装配实现；
 // 回调入口与建单路径经它路由，PR4 泛化多渠道）。
 type ProviderRegistry interface {
 	Get(name string) (PaymentProvider, error)
 }
 
-// VerifyReceiptInput / VerifiedPurchase 为 PR4 预留的 iOS 验票形状。
+// VerifyReceiptInput 是 iOS 验票入参（Client VerifyReceipt）。
 type VerifyReceiptInput struct {
-	Receipt   []byte
+	Receipt   []byte // StoreKit receipt（base64 PKCS7）或 StoreKit 2 JWS
 	UserID    string
 	ProjectID string
+	OrderID   string // 本地订单 id（created 态 ios_iap 单）
 }
 
+// VerifiedPurchase 是 Apple 验票通过后的归一化购买。
 type VerifiedPurchase struct {
-	TransactionID string
-	ProductID     string
-	Amount        int64
-	Currency      string
-	PaidAt        time.Time
+	TransactionID         string
+	OriginalTransactionID string
+	ProductID             string
+	Amount                int64 // 最小货币单位；legacy receipt 可能为 0
+	Currency              string
+	PaidAt                time.Time
+	Environment           string // Sandbox | Production
+	BundleID              string
 }

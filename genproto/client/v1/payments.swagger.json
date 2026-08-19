@@ -16,6 +16,39 @@
     "application/json"
   ],
   "paths": {
+    "/v1/payments/ios/verify-receipt": {
+      "post": {
+        "summary": "VerifyReceipt 校验 iOS IAP receipt / StoreKit 2 JWS 并履约对应订单\n（设计 §1.2：iOS 无服务端下单，走验票路径）。",
+        "operationId": "PaymentsService_VerifyReceipt",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1VerifyReceiptResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1VerifyReceiptRequest"
+            }
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      }
+    },
     "/v1/payments/orders": {
       "get": {
         "operationId": "PaymentsService_ListMyOrders",
@@ -210,7 +243,7 @@
         },
         "provider": {
           "type": "string",
-          "title": "一期支持 stripe；wechat / alipay / ios_iap 见 PR4。"
+          "title": "stripe | wechat | alipay | ios_iap。"
         },
         "amount": {
           "type": "string",
@@ -273,6 +306,33 @@
         "totalCount": {
           "type": "integer",
           "format": "int32"
+        }
+      }
+    },
+    "v1VerifyReceiptRequest": {
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string"
+        },
+        "receipt": {
+          "type": "string"
+        }
+      },
+      "title": "VerifyReceiptRequest 是 iOS 验票请求：receipt 为 StoreKit base64 PKCS7\n或 StoreKit 2 signed transaction JWS；order_id 指向本人 ios_iap 订单。"
+    },
+    "v1VerifyReceiptResponse": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "$ref": "#/definitions/torchwoodclientv1PaymentOrder"
+        },
+        "transactionId": {
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "type": "boolean",
+          "title": "true = 同 transactionId 重放（已履约，不重复发货）。"
         }
       }
     }

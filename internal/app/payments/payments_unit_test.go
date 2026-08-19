@@ -559,3 +559,110 @@ func TestNewPayments_WiresDatabaseAsTxRunner(t *testing.T) {
 	uc := NewPayments(nil, nil, nil, nil, nil, NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil)
 	require.NotNil(t, uc)
 }
+
+type fakeIOS struct {
+	verify *domainpayments.VerifiedPurchase
+	err    error
+}
+
+func (f *fakeIOS) Name() string { return domainpayments.ProviderIOSIAP }
+func (f *fakeIOS) CreatePayment(context.Context, domainpayments.CreatePaymentInput) (*domainpayments.PaymentSession, error) {
+	return nil, domainpayments.ErrUnsupported
+}
+func (f *fakeIOS) VerifyCallback(context.Context, http.Header, []byte) (*domainpayments.CallbackEvent, error) {
+	return nil, domainpayments.ErrSignatureInvalid
+}
+func (f *fakeIOS) Refund(context.Context, domainpayments.RefundInput) (*domainpayments.RefundResult, error) {
+	return nil, domainpayments.ErrUnsupported
+}
+func (f *fakeIOS) VerifyReceipt(context.Context, domainpayments.VerifyReceiptInput) (*domainpayments.VerifiedPurchase, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.verify, nil
+}
+
+func seedIOSOrder(t *testing.T, store *memStore, orderID, userID string, status domainpayments.OrderStatus, txn string) *domainpayments.Order {
+	t.Helper()
+	now := time.Now()
+	order := &domainpayments.Order{
+		ID:              orderID,
+		ProjectID:       "proj-1",
+		UserID:          userID,
+		Provider:        domainpayments.ProviderIOSIAP,
+		IdempotencyKey:  "idem-" + orderID,
+		ProviderOrderID: txn,
+		Amount:          199,
+		Currency:        "USD",
+		PurposeKind:     domainpayments.PurposeTopup,
+		Purpose:         json.RawMessage(`{"currency_code":"gold"}`),
+		Status:          status,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		ExpiresAt:       now.Add(time.Hour),
+	}
+	if status == domainpayments.OrderStatusPaid {
+		tnow := now
+		order.PaidAt = &tnow
+	}
+	store.orders[order.ID] = cloneOrder(order)
+	store.byIdem[idemKey(order.ProjectID, order.IdempotencyKey)] = order.ID
+	return order
+}
+
+func TestCreateOrder_IOSKeepsCreated(t *testing.T) {
+	env := setupUnit(t, &fakeIOS{}, NewRecordOnlyFulfiller())
+	ctx := unitUserCtx("proj-1", "u1")
+	got, err := env.payments.CreateOrder(ctx, CreateOrderCommand{
+		Provider: domainpayments.ProviderIOSIAP, Amount: 199, Currency: "USD",
+		PurposeKind: domainpayments.PurposeTopup, IdempotencyKey: "ios-1",
+	})
+	require.NoError(t, err)
+	require.Equal(t, domainpayments.OrderStatusCreated, got.Order.Status)
+	require.Empty(t, got.PaymentURL)
+}
+
+func TestVerifyReceipt_PaysCreatedOrder(t *testing.T) {
+	ios := &fakeIOS{verify: &domainpayments.VerifiedPurchase{
+		TransactionID: "txn-1", ProductID: "gold", Amount: 199, Currency: "USD", PaidAt: time.Now(),
+	}}
+	fulfiller := &countingFulfiller{}
+	env := setupUnit(t, ios, fulfiller)
+	order := seedIOSOrder(t, env.store, "ord-ios", "u1", domainpayments.OrderStatusCreated, "")
+	ctx := unitUserCtx("proj-1", "u1")
+
+	got, err := env.payments.VerifyReceipt(ctx, order.ID, []byte("receipt-blob"))
+	require.NoError(t, err)
+	require.False(t, got.IdempotentReplay)
+	require.Equal(t, "txn-1", got.TransactionID)
+	require.Equal(t, domainpayments.OrderStatusPaid, env.store.orders[order.ID].Status)
+	require.Equal(t, 1, fulfiller.calls)
+	require.Equal(t, 1, len(env.store.outbox))
+	require.Equal(t, domainpayments.EventOrderPaid, env.store.outbox[0].Event)
+}
+
+func TestVerifyReceipt_TransactionIDReplaySameUser(t *testing.T) {
+	ios := &fakeIOS{verify: &domainpayments.VerifiedPurchase{TransactionID: "txn-1", Amount: 199, Currency: "USD"}}
+	env := setupUnit(t, ios, NewRecordOnlyFulfiller())
+	order := seedIOSOrder(t, env.store, "ord-ios", "u1", domainpayments.OrderStatusPaid, "txn-1")
+	ctx := unitUserCtx("proj-1", "u1")
+
+	got, err := env.payments.VerifyReceipt(ctx, "other-order", []byte("receipt-blob"))
+	require.NoError(t, err)
+	require.True(t, got.IdempotentReplay)
+	require.Equal(t, order.ID, got.Order.ID)
+	require.Equal(t, 1, len(env.store.orders), "不得新建或改绑其他订单")
+}
+
+func TestVerifyReceipt_CrossUserRejected(t *testing.T) {
+	ios := &fakeIOS{verify: &domainpayments.VerifiedPurchase{TransactionID: "txn-1", Amount: 199, Currency: "USD"}}
+	env := setupUnit(t, ios, NewRecordOnlyFulfiller())
+	seedIOSOrder(t, env.store, "ord-a", "u1", domainpayments.OrderStatusPaid, "txn-1")
+	seedIOSOrder(t, env.store, "ord-b", "u2", domainpayments.OrderStatusCreated, "")
+	ctx := unitUserCtx("proj-1", "u2")
+
+	_, err := env.payments.VerifyReceipt(ctx, "ord-b", []byte("receipt-blob"))
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	require.Equal(t, domainpayments.OrderStatusCreated, env.store.orders["ord-b"].Status)
+	require.Empty(t, env.store.fulfillments)
+}

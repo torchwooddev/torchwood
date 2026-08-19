@@ -113,7 +113,13 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 		order = existing
 	}
 
-	// 渠道下单（Checkout Session）：成功后同一短事务回填渠道引用并翻 paying。
+	// iOS IAP 无服务端下单（设计 §1.2）：订单保持 created，等 VerifyReceipt / ASN V2。
+	if provider.Name() == domainpayments.ProviderIOSIAP {
+		paymentOrdersTotal.WithLabelValues(order.Provider, string(order.Status)).Inc()
+		return &CreateOrderResult{Order: order, IdempotentReplay: !inserted}, nil
+	}
+
+	// 渠道下单（Checkout Session / 预下单）：成功后同一短事务回填渠道引用并翻 paying。
 	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{
 		OrderID:        order.ID,
 		Amount:         order.Amount,

@@ -204,5 +204,52 @@ message Payments {
     // REST API base URL; empty = https://api.stripe.com (tests may override).
     string api_base_url = 3;
   }
+  message WeChat {
+    string mch_id = 1;
+    string app_id = 2;
+    // APIv3 密钥（32 字节，回调 AES-256-GCM 解密）。env: TORCHWOOD_PAYMENTS_WECHAT_API_V3_KEY
+    string api_v3_key = 3;
+    // 商户 API 证书序列号。env: TORCHWOOD_PAYMENTS_WECHAT_MERCHANT_SERIAL_NO
+    string merchant_serial_no = 4;
+    // 商户 API 私钥 PEM。env: TORCHWOOD_PAYMENTS_WECHAT_MERCHANT_PRIVATE_KEY
+    string merchant_private_key = 5;
+    // 微信支付平台证书 PEM（验签）。env: TORCHWOOD_PAYMENTS_WECHAT_PLATFORM_CERT
+    string platform_cert = 6;
+    // 可选：覆盖回调 URL；空则用 server.http.public_url + /v1/payments/callbacks/wechat。
+    string notify_url = 7;
+    // REST API base URL; empty = https://api.mch.weixin.qq.com（tests may override）。
+    string api_base_url = 8;
+  }
+  message Alipay {
+    string app_id = 1;
+    // 应用私钥 PEM。env: TORCHWOOD_PAYMENTS_ALIPAY_APP_PRIVATE_KEY
+    string app_private_key = 2;
+    // 支付宝公钥 PEM。env: TORCHWOOD_PAYMENTS_ALIPAY_ALIPAY_PUBLIC_KEY
+    string alipay_public_key = 3;
+    // 可选：覆盖回调 URL；空则用 server.http.public_url + /v1/payments/callbacks/alipay。
+    string notify_url = 4;
+    // 开放平台网关; empty = https://openapi.alipay.com/gateway.do。
+    string gateway_url = 5;
+  }
+  message IosIap {
+    string bundle_id = 1;
+    // verifyReceipt shared secret。env: TORCHWOOD_PAYMENTS_IOS_IAP_SHARED_SECRET
+    string shared_secret = 2;
+    // App Store Connect API（StoreKit 2 / ASN 备用）issuer。
+    string issuer_id = 3;
+    string key_id = 4;
+    // App Store Connect API .p8 PEM。env: TORCHWOOD_PAYMENTS_IOS_IAP_PRIVATE_KEY
+    string private_key = 5;
+    // Apple Root CA PEM（可多张）；空则使用内置 Apple Root CA - G3。
+    // env: TORCHWOOD_PAYMENTS_IOS_IAP_APPLE_ROOT_CERT
+    string apple_root_cert = 6;
+    // verifyReceipt 生产地址；空 = https://buy.itunes.apple.com/verifyReceipt。
+    string verify_receipt_url = 7;
+    // verifyReceipt 沙盒地址；空 = https://sandbox.itunes.apple.com/verifyReceipt。
+    string sandbox_verify_url = 8;
+  }
   Stripe stripe = 1;
+  WeChat wechat = 2;
+  Alipay alipay = 3;
+  IosIap ios_iap = 4;
 }

@@ -66,6 +66,25 @@ func (s *PaymentsService) GetMyOrder(ctx context.Context, req *clientv1.GetMyOrd
 	return mapClientPaymentOrder(order)
 }
 
+func (s *PaymentsService) VerifyReceipt(ctx context.Context, req *clientv1.VerifyReceiptRequest) (*clientv1.VerifyReceiptResponse, error) {
+	if req == nil || req.GetOrderId() == "" || req.GetReceipt() == "" {
+		return nil, status.Error(codes.InvalidArgument, "order_id and receipt are required")
+	}
+	result, err := s.payments.VerifyReceipt(ctx, req.GetOrderId(), []byte(req.GetReceipt()))
+	if err != nil {
+		return nil, err
+	}
+	order, err := mapClientPaymentOrder(result.Order)
+	if err != nil {
+		return nil, err
+	}
+	return &clientv1.VerifyReceiptResponse{
+		Order:            order,
+		TransactionId:    result.TransactionID,
+		IdempotentReplay: result.IdempotentReplay,
+	}, nil
+}
+
 func (s *PaymentsService) ListMyOrders(ctx context.Context, req *clientv1.ListMyOrdersRequest) (*clientv1.ListMyOrdersResponse, error) {
 	before, err := decodeOrderCursor(req.GetPageToken())
 	if err != nil {

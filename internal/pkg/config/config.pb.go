@@ -1015,6 +1015,9 @@ func (x *IdGen) GetResources() *IdGen_Resources {
 type Payments struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Stripe        *Payments_Stripe       `protobuf:"bytes,1,opt,name=stripe,proto3" json:"stripe,omitempty"`
+	Wechat        *Payments_WeChat       `protobuf:"bytes,2,opt,name=wechat,proto3" json:"wechat,omitempty"`
+	Alipay        *Payments_Alipay       `protobuf:"bytes,3,opt,name=alipay,proto3" json:"alipay,omitempty"`
+	IosIap        *Payments_IosIap       `protobuf:"bytes,4,opt,name=ios_iap,json=iosIap,proto3" json:"ios_iap,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1052,6 +1055,27 @@ func (*Payments) Descriptor() ([]byte, []int) {
 func (x *Payments) GetStripe() *Payments_Stripe {
 	if x != nil {
 		return x.Stripe
+	}
+	return nil
+}
+
+func (x *Payments) GetWechat() *Payments_WeChat {
+	if x != nil {
+		return x.Wechat
+	}
+	return nil
+}
+
+func (x *Payments) GetAlipay() *Payments_Alipay {
+	if x != nil {
+		return x.Alipay
+	}
+	return nil
+}
+
+func (x *Payments) GetIosIap() *Payments_IosIap {
+	if x != nil {
+		return x.IosIap
 	}
 	return nil
 }
@@ -2031,6 +2055,299 @@ func (x *Payments_Stripe) GetApiBaseUrl() string {
 	return ""
 }
 
+type Payments_WeChat struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	MchId string                 `protobuf:"bytes,1,opt,name=mch_id,json=mchId,proto3" json:"mch_id,omitempty"`
+	AppId string                 `protobuf:"bytes,2,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	// APIv3 密钥（32 字节，回调 AES-256-GCM 解密）。env: TORCHWOOD_PAYMENTS_WECHAT_API_V3_KEY
+	ApiV3Key string `protobuf:"bytes,3,opt,name=api_v3_key,json=apiV3Key,proto3" json:"api_v3_key,omitempty"`
+	// 商户 API 证书序列号。env: TORCHWOOD_PAYMENTS_WECHAT_MERCHANT_SERIAL_NO
+	MerchantSerialNo string `protobuf:"bytes,4,opt,name=merchant_serial_no,json=merchantSerialNo,proto3" json:"merchant_serial_no,omitempty"`
+	// 商户 API 私钥 PEM。env: TORCHWOOD_PAYMENTS_WECHAT_MERCHANT_PRIVATE_KEY
+	MerchantPrivateKey string `protobuf:"bytes,5,opt,name=merchant_private_key,json=merchantPrivateKey,proto3" json:"merchant_private_key,omitempty"`
+	// 微信支付平台证书 PEM（验签）。env: TORCHWOOD_PAYMENTS_WECHAT_PLATFORM_CERT
+	PlatformCert string `protobuf:"bytes,6,opt,name=platform_cert,json=platformCert,proto3" json:"platform_cert,omitempty"`
+	// 可选：覆盖回调 URL；空则用 server.http.public_url + /v1/payments/callbacks/wechat。
+	NotifyUrl string `protobuf:"bytes,7,opt,name=notify_url,json=notifyUrl,proto3" json:"notify_url,omitempty"`
+	// REST API base URL; empty = https://api.mch.weixin.qq.com（tests may override）。
+	ApiBaseUrl    string `protobuf:"bytes,8,opt,name=api_base_url,json=apiBaseUrl,proto3" json:"api_base_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Payments_WeChat) Reset() {
+	*x = Payments_WeChat{}
+	mi := &file_config_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Payments_WeChat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Payments_WeChat) ProtoMessage() {}
+
+func (x *Payments_WeChat) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Payments_WeChat.ProtoReflect.Descriptor instead.
+func (*Payments_WeChat) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{15, 1}
+}
+
+func (x *Payments_WeChat) GetMchId() string {
+	if x != nil {
+		return x.MchId
+	}
+	return ""
+}
+
+func (x *Payments_WeChat) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *Payments_WeChat) GetApiV3Key() string {
+	if x != nil {
+		return x.ApiV3Key
+	}
+	return ""
+}
+
+func (x *Payments_WeChat) GetMerchantSerialNo() string {
+	if x != nil {
+		return x.MerchantSerialNo
+	}
+	return ""
+}
+
+func (x *Payments_WeChat) GetMerchantPrivateKey() string {
+	if x != nil {
+		return x.MerchantPrivateKey
+	}
+	return ""
+}
+
+func (x *Payments_WeChat) GetPlatformCert() string {
+	if x != nil {
+		return x.PlatformCert
+	}
+	return ""
+}
+
+func (x *Payments_WeChat) GetNotifyUrl() string {
+	if x != nil {
+		return x.NotifyUrl
+	}
+	return ""
+}
+
+func (x *Payments_WeChat) GetApiBaseUrl() string {
+	if x != nil {
+		return x.ApiBaseUrl
+	}
+	return ""
+}
+
+type Payments_Alipay struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	AppId string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	// 应用私钥 PEM。env: TORCHWOOD_PAYMENTS_ALIPAY_APP_PRIVATE_KEY
+	AppPrivateKey string `protobuf:"bytes,2,opt,name=app_private_key,json=appPrivateKey,proto3" json:"app_private_key,omitempty"`
+	// 支付宝公钥 PEM。env: TORCHWOOD_PAYMENTS_ALIPAY_ALIPAY_PUBLIC_KEY
+	AlipayPublicKey string `protobuf:"bytes,3,opt,name=alipay_public_key,json=alipayPublicKey,proto3" json:"alipay_public_key,omitempty"`
+	// 可选：覆盖回调 URL；空则用 server.http.public_url + /v1/payments/callbacks/alipay。
+	NotifyUrl string `protobuf:"bytes,4,opt,name=notify_url,json=notifyUrl,proto3" json:"notify_url,omitempty"`
+	// 开放平台网关; empty = https://openapi.alipay.com/gateway.do。
+	GatewayUrl    string `protobuf:"bytes,5,opt,name=gateway_url,json=gatewayUrl,proto3" json:"gateway_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Payments_Alipay) Reset() {
+	*x = Payments_Alipay{}
+	mi := &file_config_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Payments_Alipay) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Payments_Alipay) ProtoMessage() {}
+
+func (x *Payments_Alipay) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Payments_Alipay.ProtoReflect.Descriptor instead.
+func (*Payments_Alipay) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{15, 2}
+}
+
+func (x *Payments_Alipay) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *Payments_Alipay) GetAppPrivateKey() string {
+	if x != nil {
+		return x.AppPrivateKey
+	}
+	return ""
+}
+
+func (x *Payments_Alipay) GetAlipayPublicKey() string {
+	if x != nil {
+		return x.AlipayPublicKey
+	}
+	return ""
+}
+
+func (x *Payments_Alipay) GetNotifyUrl() string {
+	if x != nil {
+		return x.NotifyUrl
+	}
+	return ""
+}
+
+func (x *Payments_Alipay) GetGatewayUrl() string {
+	if x != nil {
+		return x.GatewayUrl
+	}
+	return ""
+}
+
+type Payments_IosIap struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	BundleId string                 `protobuf:"bytes,1,opt,name=bundle_id,json=bundleId,proto3" json:"bundle_id,omitempty"`
+	// verifyReceipt shared secret。env: TORCHWOOD_PAYMENTS_IOS_IAP_SHARED_SECRET
+	SharedSecret string `protobuf:"bytes,2,opt,name=shared_secret,json=sharedSecret,proto3" json:"shared_secret,omitempty"`
+	// App Store Connect API（StoreKit 2 / ASN 备用）issuer。
+	IssuerId string `protobuf:"bytes,3,opt,name=issuer_id,json=issuerId,proto3" json:"issuer_id,omitempty"`
+	KeyId    string `protobuf:"bytes,4,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	// App Store Connect API .p8 PEM。env: TORCHWOOD_PAYMENTS_IOS_IAP_PRIVATE_KEY
+	PrivateKey string `protobuf:"bytes,5,opt,name=private_key,json=privateKey,proto3" json:"private_key,omitempty"`
+	// Apple Root CA PEM（可多张）；空则使用内置 Apple Root CA - G3。
+	// env: TORCHWOOD_PAYMENTS_IOS_IAP_APPLE_ROOT_CERT
+	AppleRootCert string `protobuf:"bytes,6,opt,name=apple_root_cert,json=appleRootCert,proto3" json:"apple_root_cert,omitempty"`
+	// verifyReceipt 生产地址；空 = https://buy.itunes.apple.com/verifyReceipt。
+	VerifyReceiptUrl string `protobuf:"bytes,7,opt,name=verify_receipt_url,json=verifyReceiptUrl,proto3" json:"verify_receipt_url,omitempty"`
+	// verifyReceipt 沙盒地址；空 = https://sandbox.itunes.apple.com/verifyReceipt。
+	SandboxVerifyUrl string `protobuf:"bytes,8,opt,name=sandbox_verify_url,json=sandboxVerifyUrl,proto3" json:"sandbox_verify_url,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *Payments_IosIap) Reset() {
+	*x = Payments_IosIap{}
+	mi := &file_config_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Payments_IosIap) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Payments_IosIap) ProtoMessage() {}
+
+func (x *Payments_IosIap) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Payments_IosIap.ProtoReflect.Descriptor instead.
+func (*Payments_IosIap) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{15, 3}
+}
+
+func (x *Payments_IosIap) GetBundleId() string {
+	if x != nil {
+		return x.BundleId
+	}
+	return ""
+}
+
+func (x *Payments_IosIap) GetSharedSecret() string {
+	if x != nil {
+		return x.SharedSecret
+	}
+	return ""
+}
+
+func (x *Payments_IosIap) GetIssuerId() string {
+	if x != nil {
+		return x.IssuerId
+	}
+	return ""
+}
+
+func (x *Payments_IosIap) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+func (x *Payments_IosIap) GetPrivateKey() string {
+	if x != nil {
+		return x.PrivateKey
+	}
+	return ""
+}
+
+func (x *Payments_IosIap) GetAppleRootCert() string {
+	if x != nil {
+		return x.AppleRootCert
+	}
+	return ""
+}
+
+func (x *Payments_IosIap) GetVerifyReceiptUrl() string {
+	if x != nil {
+		return x.VerifyReceiptUrl
+	}
+	return ""
+}
+
+func (x *Payments_IosIap) GetSandboxVerifyUrl() string {
+	if x != nil {
+		return x.SandboxVerifyUrl
+	}
+	return ""
+}
+
 var File_config_proto protoreflect.FileDescriptor
 
 const file_config_proto_rawDesc = "" +
@@ -2177,15 +2494,48 @@ const file_config_proto_rawDesc = "" +
 	"\tResources\x12\x14\n" +
 	"\x05users\x18\x01 \x01(\tR\x05users\x12\x1a\n" +
 	"\bsessions\x18\x02 \x01(\tR\bsessions\x12\x1c\n" +
-	"\tdocuments\x18\x03 \x01(\tR\tdocuments\"\xbb\x01\n" +
+	"\tdocuments\x18\x03 \x01(\tR\tdocuments\"\xf2\b\n" +
 	"\bPayments\x12=\n" +
-	"\x06stripe\x18\x01 \x01(\v2%.torchwood.api.config.Payments.StripeR\x06stripe\x1ap\n" +
+	"\x06stripe\x18\x01 \x01(\v2%.torchwood.api.config.Payments.StripeR\x06stripe\x12=\n" +
+	"\x06wechat\x18\x02 \x01(\v2%.torchwood.api.config.Payments.WeChatR\x06wechat\x12=\n" +
+	"\x06alipay\x18\x03 \x01(\v2%.torchwood.api.config.Payments.AlipayR\x06alipay\x12>\n" +
+	"\aios_iap\x18\x04 \x01(\v2%.torchwood.api.config.Payments.IosIapR\x06iosIap\x1ap\n" +
 	"\x06Stripe\x12\x1d\n" +
 	"\n" +
 	"secret_key\x18\x01 \x01(\tR\tsecretKey\x12%\n" +
 	"\x0ewebhook_secret\x18\x02 \x01(\tR\rwebhookSecret\x12 \n" +
 	"\fapi_base_url\x18\x03 \x01(\tR\n" +
-	"apiBaseUrlB7Z5github.com/torchwooddev/torchwood/internal/pkg/configb\x06proto3"
+	"apiBaseUrl\x1a\x9a\x02\n" +
+	"\x06WeChat\x12\x15\n" +
+	"\x06mch_id\x18\x01 \x01(\tR\x05mchId\x12\x15\n" +
+	"\x06app_id\x18\x02 \x01(\tR\x05appId\x12\x1c\n" +
+	"\n" +
+	"api_v3_key\x18\x03 \x01(\tR\bapiV3Key\x12,\n" +
+	"\x12merchant_serial_no\x18\x04 \x01(\tR\x10merchantSerialNo\x120\n" +
+	"\x14merchant_private_key\x18\x05 \x01(\tR\x12merchantPrivateKey\x12#\n" +
+	"\rplatform_cert\x18\x06 \x01(\tR\fplatformCert\x12\x1d\n" +
+	"\n" +
+	"notify_url\x18\a \x01(\tR\tnotifyUrl\x12 \n" +
+	"\fapi_base_url\x18\b \x01(\tR\n" +
+	"apiBaseUrl\x1a\xb3\x01\n" +
+	"\x06Alipay\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12&\n" +
+	"\x0fapp_private_key\x18\x02 \x01(\tR\rappPrivateKey\x12*\n" +
+	"\x11alipay_public_key\x18\x03 \x01(\tR\x0falipayPublicKey\x12\x1d\n" +
+	"\n" +
+	"notify_url\x18\x04 \x01(\tR\tnotifyUrl\x12\x1f\n" +
+	"\vgateway_url\x18\x05 \x01(\tR\n" +
+	"gatewayUrl\x1a\xa3\x02\n" +
+	"\x06IosIap\x12\x1b\n" +
+	"\tbundle_id\x18\x01 \x01(\tR\bbundleId\x12#\n" +
+	"\rshared_secret\x18\x02 \x01(\tR\fsharedSecret\x12\x1b\n" +
+	"\tissuer_id\x18\x03 \x01(\tR\bissuerId\x12\x15\n" +
+	"\x06key_id\x18\x04 \x01(\tR\x05keyId\x12\x1f\n" +
+	"\vprivate_key\x18\x05 \x01(\tR\n" +
+	"privateKey\x12&\n" +
+	"\x0fapple_root_cert\x18\x06 \x01(\tR\rappleRootCert\x12,\n" +
+	"\x12verify_receipt_url\x18\a \x01(\tR\x10verifyReceiptUrl\x12,\n" +
+	"\x12sandbox_verify_url\x18\b \x01(\tR\x10sandboxVerifyUrlB7Z5github.com/torchwooddev/torchwood/internal/pkg/configb\x06proto3"
 
 var (
 	file_config_proto_rawDescOnce sync.Once
@@ -2199,7 +2549,7 @@ func file_config_proto_rawDescGZIP() []byte {
 	return file_config_proto_rawDescData
 }
 
-var file_config_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_config_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_config_proto_goTypes = []any{
 	(*AppConfig)(nil),                    // 0: torchwood.api.config.AppConfig
 	(*Server)(nil),                       // 1: torchwood.api.config.Server
@@ -2233,6 +2583,9 @@ var file_config_proto_goTypes = []any{
 	(*IdGen_Sequence)(nil),               // 29: torchwood.api.config.IdGen.Sequence
 	(*IdGen_Resources)(nil),              // 30: torchwood.api.config.IdGen.Resources
 	(*Payments_Stripe)(nil),              // 31: torchwood.api.config.Payments.Stripe
+	(*Payments_WeChat)(nil),              // 32: torchwood.api.config.Payments.WeChat
+	(*Payments_Alipay)(nil),              // 33: torchwood.api.config.Payments.Alipay
+	(*Payments_IosIap)(nil),              // 34: torchwood.api.config.Payments.IosIap
 }
 var file_config_proto_depIdxs = []int32{
 	1,  // 0: torchwood.api.config.AppConfig.server:type_name -> torchwood.api.config.Server
@@ -2266,14 +2619,17 @@ var file_config_proto_depIdxs = []int32{
 	29, // 28: torchwood.api.config.IdGen.sequence:type_name -> torchwood.api.config.IdGen.Sequence
 	30, // 29: torchwood.api.config.IdGen.resources:type_name -> torchwood.api.config.IdGen.Resources
 	31, // 30: torchwood.api.config.Payments.stripe:type_name -> torchwood.api.config.Payments.Stripe
-	21, // 31: torchwood.api.config.Security.RateLimit.ip:type_name -> torchwood.api.config.Security.RateLimit.Dimension
-	21, // 32: torchwood.api.config.Security.RateLimit.user:type_name -> torchwood.api.config.Security.RateLimit.Dimension
-	21, // 33: torchwood.api.config.Security.RateLimit.api_key:type_name -> torchwood.api.config.Security.RateLimit.Dimension
-	34, // [34:34] is the sub-list for method output_type
-	34, // [34:34] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	32, // 31: torchwood.api.config.Payments.wechat:type_name -> torchwood.api.config.Payments.WeChat
+	33, // 32: torchwood.api.config.Payments.alipay:type_name -> torchwood.api.config.Payments.Alipay
+	34, // 33: torchwood.api.config.Payments.ios_iap:type_name -> torchwood.api.config.Payments.IosIap
+	21, // 34: torchwood.api.config.Security.RateLimit.ip:type_name -> torchwood.api.config.Security.RateLimit.Dimension
+	21, // 35: torchwood.api.config.Security.RateLimit.user:type_name -> torchwood.api.config.Security.RateLimit.Dimension
+	21, // 36: torchwood.api.config.Security.RateLimit.api_key:type_name -> torchwood.api.config.Security.RateLimit.Dimension
+	37, // [37:37] is the sub-list for method output_type
+	37, // [37:37] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_config_proto_init() }
@@ -2288,7 +2644,7 @@ func file_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_config_proto_rawDesc), len(file_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   32,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

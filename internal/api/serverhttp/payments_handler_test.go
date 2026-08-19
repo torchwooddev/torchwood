@@ -13,7 +13,10 @@ import (
 	apppayments "github.com/torchwooddev/torchwood/internal/app/payments"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
 	infrapayments "github.com/torchwooddev/torchwood/internal/infra/payments"
+	"github.com/torchwooddev/torchwood/internal/infra/payments/alipay"
+	"github.com/torchwooddev/torchwood/internal/infra/payments/iosiap"
 	"github.com/torchwooddev/torchwood/internal/infra/payments/stripe"
+	"github.com/torchwooddev/torchwood/internal/infra/payments/wechat"
 )
 
 // writeSpyCallbackRepo 记录 InsertIfAbsent 调用次数：验签失败路径
@@ -25,9 +28,6 @@ func (s *writeSpyCallbackRepo) InsertIfAbsent(context.Context, *domainpayments.C
 	return false, errors.New("payments: callback persist must not run after verify failure")
 }
 
-// newCallbackOnlyPayments 构造只走到「验签」一层即返回的 use-case
-// （db / 订单 / 履约 / outbox 为 nil：本组用例验签全部失败，不允许触达
-// 任何落库路径——一旦触达即 panic 或 spy 计数 > 0，测试失败）。
 func newCallbackOnlyPayments(t *testing.T) (*apppayments.Payments, *writeSpyCallbackRepo) {
 	t.Helper()
 	adapter := stripe.New(stripe.Config{
@@ -38,9 +38,26 @@ func newCallbackOnlyPayments(t *testing.T) (*apppayments.Payments, *writeSpyCall
 	return apppayments.NewPayments(
 		nil, nil, nil, spy, nil,
 		apppayments.NewRecordOnlyFulfiller(),
-		infrapayments.NewRegistry(adapter),
+		infrapayments.NewRegistry(
+			adapter,
+			wechat.New(wechat.Config{APIV3Key: "k", PlatformCert: "x"}),
+			alipay.New(alipay.Config{AlipayPublicKey: "x"}),
+			iosiap.New(iosiap.Config{SharedSecret: "s"}),
+		),
 		nil, nil, nil,
 	), spy
+}
+
+func postCallback(h *PaymentsHandler, provider, body string, hdr http.Header) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/v1/payments/callbacks/"+provider, strings.NewReader(body))
+	for k, vs := range hdr {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+	rec := httptest.NewRecorder()
+	h.callback(rec, req, map[string]string{"provider": provider})
+	return rec
 }
 
 func TestPaymentsHandler_ForgedSignatureReturns401(t *testing.T) {
@@ -49,10 +66,9 @@ func TestPaymentsHandler_ForgedSignatureReturns401(t *testing.T) {
 	require.NoError(t, err)
 
 	body := `{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"id":"cs_1"}}}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/payments/callbacks/stripe", strings.NewReader(body))
-	req.Header.Set("Stripe-Signature", "t=1700000000,v1=0000000000000000000000000000000000000000000000000000000000000000")
-	rec := httptest.NewRecorder()
-	h.stripeCallback(rec, req, nil)
+	hdr := http.Header{}
+	hdr.Set("Stripe-Signature", "t=1700000000,v1=0000000000000000000000000000000000000000000000000000000000000000")
+	rec := postCallback(h, "stripe", body, hdr)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 	require.Empty(t, rec.Body.String(), "不返回区分性错误")
 	require.Equal(t, 0, spy.inserts, "假签不得落 payment_callback_events")
@@ -63,25 +79,21 @@ func TestPaymentsHandler_MissingSignatureHeaderReturns401(t *testing.T) {
 	h, err := NewPaymentsHandler(uc, nil)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/payments/callbacks/stripe", strings.NewReader(`{}`))
-	rec := httptest.NewRecorder()
-	h.stripeCallback(rec, req, nil)
+	rec := postCallback(h, "stripe", `{}`, nil)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 	require.Equal(t, 0, spy.inserts, "缺签不得落库")
 }
 
 func TestPaymentsHandler_UnconfiguredProviderReturns401(t *testing.T) {
-	// 渠道未配置：fail-closed，同样 401（不区分未配置 / 签名错）。
 	adapter := stripe.New(stripe.Config{})
 	uc := apppayments.NewPayments(nil, nil, nil, nil, nil,
 		apppayments.NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil)
 	h, err := NewPaymentsHandler(uc, nil)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/payments/callbacks/stripe", strings.NewReader(`{}`))
-	req.Header.Set("Stripe-Signature", "t=1700000000,v1=abc")
-	rec := httptest.NewRecorder()
-	h.stripeCallback(rec, req, nil)
+	hdr := http.Header{}
+	hdr.Set("Stripe-Signature", "t=1700000000,v1=abc")
+	rec := postCallback(h, "stripe", `{}`, hdr)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
@@ -91,15 +103,11 @@ func TestPaymentsHandler_BodyTooLargeReturns401(t *testing.T) {
 	require.NoError(t, err)
 
 	big := strings.Repeat("a", maxCallbackBody+2)
-	req := httptest.NewRequest(http.MethodPost, "/v1/payments/callbacks/stripe", strings.NewReader(big))
-	rec := httptest.NewRecorder()
-	h.stripeCallback(rec, req, nil)
+	rec := postCallback(h, "stripe", big, nil)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 	require.Equal(t, 0, spy.inserts)
 }
 
-// TestPaymentsHandler_RegisterRoute 确认路由挂载在 /v1/payments/callbacks/stripe
-// （经 gateway ServeMux 分发；HandlePath 自定义 handler 不进 proto 转码）。
 func TestPaymentsHandler_RegisterRoute(t *testing.T) {
 	uc, _ := newCallbackOnlyPayments(t)
 	h, err := NewPaymentsHandler(uc, nil)
@@ -107,17 +115,44 @@ func TestPaymentsHandler_RegisterRoute(t *testing.T) {
 	mux := runtime.NewServeMux()
 	h.Register(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/payments/callbacks/stripe", strings.NewReader(`{}`))
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	for _, provider := range []string{"stripe", "wechat", "alipay", "ios_iap"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/payments/callbacks/"+provider, strings.NewReader(`{}`))
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusUnauthorized, rec.Code, provider)
+	}
 }
 
-// TestPaymentsHandler_UnknownProvider401 验证 use-case 对未知渠道同样
-// 按验签失败应答（PR4 泛化 {provider} 路由前的行为锁定）。
 func TestPaymentsHandler_UnknownProvider(t *testing.T) {
 	uc, spy := newCallbackOnlyPayments(t)
-	err := uc.HandleCallback(context.Background(), "wechat", http.Header{}, []byte(`{}`))
+	err := uc.HandleCallback(context.Background(), "paypal", http.Header{}, []byte(`{}`))
 	require.ErrorIs(t, err, domainpayments.ErrSignatureInvalid)
 	require.Equal(t, 0, spy.inserts, "未知渠道不得落库")
+}
+
+func TestPaymentsHandler_AckFormats(t *testing.T) {
+	uc, _ := newCallbackOnlyPayments(t)
+	h, err := NewPaymentsHandler(uc, nil)
+	require.NoError(t, err)
+
+	// 处理失败（验签已过但内部错误）才走渠道回执；这里直接测 CallbackAck。
+	st, ct, body := uc.CallbackAck(domainpayments.ProviderWeChat, true)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "application/json", ct)
+	require.JSONEq(t, `{"code":"SUCCESS"}`, string(body))
+
+	st, ct, body = uc.CallbackAck(domainpayments.ProviderAlipay, true)
+	require.Equal(t, http.StatusOK, st)
+	require.Contains(t, ct, "text/plain")
+	require.Equal(t, "success", string(body))
+
+	st, _, body = uc.CallbackAck(domainpayments.ProviderStripe, true)
+	require.Equal(t, http.StatusOK, st)
+	require.Empty(t, body)
+
+	st, _, body = uc.CallbackAck(domainpayments.ProviderIOSIAP, true)
+	require.Equal(t, http.StatusOK, st)
+	require.Empty(t, body)
+
+	_ = h
 }

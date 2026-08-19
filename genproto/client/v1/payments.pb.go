@@ -169,7 +169,7 @@ type CreateOrderRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 客户端建单幂等键：同 (project, key) 重复建单返回原单（设计 §1.3）。
 	IdempotencyKey string `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	// 一期支持 stripe；wechat / alipay / ios_iap 见 PR4。
+	// stripe | wechat | alipay | ios_iap。
 	Provider string `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
 	// 最小货币单位金额，必须 > 0（如 1999 = 19.99 USD）。
 	Amount int64 `protobuf:"varint,3,opt,name=amount,proto3" json:"amount,omitempty"`
@@ -456,6 +456,121 @@ func (x *ListMyOrdersResponse) GetMeta() *v1.ListResponseMeta {
 	return nil
 }
 
+// VerifyReceiptRequest 是 iOS 验票请求：receipt 为 StoreKit base64 PKCS7
+// 或 StoreKit 2 signed transaction JWS；order_id 指向本人 ios_iap 订单。
+type VerifyReceiptRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Receipt       string                 `protobuf:"bytes,2,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyReceiptRequest) Reset() {
+	*x = VerifyReceiptRequest{}
+	mi := &file_client_v1_payments_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyReceiptRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyReceiptRequest) ProtoMessage() {}
+
+func (x *VerifyReceiptRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_client_v1_payments_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyReceiptRequest.ProtoReflect.Descriptor instead.
+func (*VerifyReceiptRequest) Descriptor() ([]byte, []int) {
+	return file_client_v1_payments_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *VerifyReceiptRequest) GetOrderId() string {
+	if x != nil {
+		return x.OrderId
+	}
+	return ""
+}
+
+func (x *VerifyReceiptRequest) GetReceipt() string {
+	if x != nil {
+		return x.Receipt
+	}
+	return ""
+}
+
+type VerifyReceiptResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Order         *PaymentOrder          `protobuf:"bytes,1,opt,name=order,proto3" json:"order,omitempty"`
+	TransactionId string                 `protobuf:"bytes,2,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	// true = 同 transactionId 重放（已履约，不重复发货）。
+	IdempotentReplay bool `protobuf:"varint,3,opt,name=idempotent_replay,json=idempotentReplay,proto3" json:"idempotent_replay,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *VerifyReceiptResponse) Reset() {
+	*x = VerifyReceiptResponse{}
+	mi := &file_client_v1_payments_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyReceiptResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyReceiptResponse) ProtoMessage() {}
+
+func (x *VerifyReceiptResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_client_v1_payments_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyReceiptResponse.ProtoReflect.Descriptor instead.
+func (*VerifyReceiptResponse) Descriptor() ([]byte, []int) {
+	return file_client_v1_payments_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *VerifyReceiptResponse) GetOrder() *PaymentOrder {
+	if x != nil {
+		return x.Order
+	}
+	return nil
+}
+
+func (x *VerifyReceiptResponse) GetTransactionId() string {
+	if x != nil {
+		return x.TransactionId
+	}
+	return ""
+}
+
+func (x *VerifyReceiptResponse) GetIdempotentReplay() bool {
+	if x != nil {
+		return x.IdempotentReplay
+	}
+	return false
+}
+
 var File_client_v1_payments_proto protoreflect.FileDescriptor
 
 const file_client_v1_payments_proto_rawDesc = "" +
@@ -496,12 +611,20 @@ const file_client_v1_payments_proto_rawDesc = "" +
 	"page_token\x18\x02 \x01(\tR\tpageToken\"\x8c\x01\n" +
 	"\x14ListMyOrdersResponse\x129\n" +
 	"\x06orders\x18\x01 \x03(\v2!.torchwood.client.v1.PaymentOrderR\x06orders\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta2\xa0\x03\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"K\n" +
+	"\x14VerifyReceiptRequest\x12\x19\n" +
+	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x18\n" +
+	"\areceipt\x18\x02 \x01(\tR\areceipt\"\xa4\x01\n" +
+	"\x15VerifyReceiptResponse\x127\n" +
+	"\x05order\x18\x01 \x01(\v2!.torchwood.client.v1.PaymentOrderR\x05order\x12%\n" +
+	"\x0etransaction_id\x18\x02 \x01(\tR\rtransactionId\x12+\n" +
+	"\x11idempotent_replay\x18\x03 \x01(\bR\x10idempotentReplay2\xb5\x04\n" +
 	"\x0fPaymentsService\x12\x80\x01\n" +
 	"\vCreateOrder\x12'.torchwood.client.v1.CreateOrderRequest\x1a(.torchwood.client.v1.CreateOrderResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/payments/orders\x12\x7f\n" +
 	"\n" +
 	"GetMyOrder\x12&.torchwood.client.v1.GetMyOrderRequest\x1a!.torchwood.client.v1.PaymentOrder\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/payments/orders/{order_id}\x12\x80\x01\n" +
-	"\fListMyOrders\x12(.torchwood.client.v1.ListMyOrdersRequest\x1a).torchwood.client.v1.ListMyOrdersResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/payments/orders\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
+	"\fListMyOrders\x12(.torchwood.client.v1.ListMyOrdersRequest\x1a).torchwood.client.v1.ListMyOrdersResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/payments/orders\x12\x92\x01\n" +
+	"\rVerifyReceipt\x12).torchwood.client.v1.VerifyReceiptRequest\x1a*.torchwood.client.v1.VerifyReceiptResponse\"*\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/payments/ios/verify-receipt\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
 	"\\\n" +
@@ -525,7 +648,7 @@ func file_client_v1_payments_proto_rawDescGZIP() []byte {
 	return file_client_v1_payments_proto_rawDescData
 }
 
-var file_client_v1_payments_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_client_v1_payments_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_client_v1_payments_proto_goTypes = []any{
 	(*PaymentOrder)(nil),          // 0: torchwood.client.v1.PaymentOrder
 	(*CreateOrderRequest)(nil),    // 1: torchwood.client.v1.CreateOrderRequest
@@ -533,30 +656,35 @@ var file_client_v1_payments_proto_goTypes = []any{
 	(*GetMyOrderRequest)(nil),     // 3: torchwood.client.v1.GetMyOrderRequest
 	(*ListMyOrdersRequest)(nil),   // 4: torchwood.client.v1.ListMyOrdersRequest
 	(*ListMyOrdersResponse)(nil),  // 5: torchwood.client.v1.ListMyOrdersResponse
-	(*structpb.Struct)(nil),       // 6: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
-	(*v1.ListResponseMeta)(nil),   // 8: torchwood.shared.v1.ListResponseMeta
+	(*VerifyReceiptRequest)(nil),  // 6: torchwood.client.v1.VerifyReceiptRequest
+	(*VerifyReceiptResponse)(nil), // 7: torchwood.client.v1.VerifyReceiptResponse
+	(*structpb.Struct)(nil),       // 8: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*v1.ListResponseMeta)(nil),   // 10: torchwood.shared.v1.ListResponseMeta
 }
 var file_client_v1_payments_proto_depIdxs = []int32{
-	6,  // 0: torchwood.client.v1.PaymentOrder.purpose:type_name -> google.protobuf.Struct
-	7,  // 1: torchwood.client.v1.PaymentOrder.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 2: torchwood.client.v1.PaymentOrder.paid_at:type_name -> google.protobuf.Timestamp
-	7,  // 3: torchwood.client.v1.PaymentOrder.expires_at:type_name -> google.protobuf.Timestamp
-	6,  // 4: torchwood.client.v1.CreateOrderRequest.purpose:type_name -> google.protobuf.Struct
+	8,  // 0: torchwood.client.v1.PaymentOrder.purpose:type_name -> google.protobuf.Struct
+	9,  // 1: torchwood.client.v1.PaymentOrder.created_at:type_name -> google.protobuf.Timestamp
+	9,  // 2: torchwood.client.v1.PaymentOrder.paid_at:type_name -> google.protobuf.Timestamp
+	9,  // 3: torchwood.client.v1.PaymentOrder.expires_at:type_name -> google.protobuf.Timestamp
+	8,  // 4: torchwood.client.v1.CreateOrderRequest.purpose:type_name -> google.protobuf.Struct
 	0,  // 5: torchwood.client.v1.CreateOrderResponse.order:type_name -> torchwood.client.v1.PaymentOrder
 	0,  // 6: torchwood.client.v1.ListMyOrdersResponse.orders:type_name -> torchwood.client.v1.PaymentOrder
-	8,  // 7: torchwood.client.v1.ListMyOrdersResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	1,  // 8: torchwood.client.v1.PaymentsService.CreateOrder:input_type -> torchwood.client.v1.CreateOrderRequest
-	3,  // 9: torchwood.client.v1.PaymentsService.GetMyOrder:input_type -> torchwood.client.v1.GetMyOrderRequest
-	4,  // 10: torchwood.client.v1.PaymentsService.ListMyOrders:input_type -> torchwood.client.v1.ListMyOrdersRequest
-	2,  // 11: torchwood.client.v1.PaymentsService.CreateOrder:output_type -> torchwood.client.v1.CreateOrderResponse
-	0,  // 12: torchwood.client.v1.PaymentsService.GetMyOrder:output_type -> torchwood.client.v1.PaymentOrder
-	5,  // 13: torchwood.client.v1.PaymentsService.ListMyOrders:output_type -> torchwood.client.v1.ListMyOrdersResponse
-	11, // [11:14] is the sub-list for method output_type
-	8,  // [8:11] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	10, // 7: torchwood.client.v1.ListMyOrdersResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	0,  // 8: torchwood.client.v1.VerifyReceiptResponse.order:type_name -> torchwood.client.v1.PaymentOrder
+	1,  // 9: torchwood.client.v1.PaymentsService.CreateOrder:input_type -> torchwood.client.v1.CreateOrderRequest
+	3,  // 10: torchwood.client.v1.PaymentsService.GetMyOrder:input_type -> torchwood.client.v1.GetMyOrderRequest
+	4,  // 11: torchwood.client.v1.PaymentsService.ListMyOrders:input_type -> torchwood.client.v1.ListMyOrdersRequest
+	6,  // 12: torchwood.client.v1.PaymentsService.VerifyReceipt:input_type -> torchwood.client.v1.VerifyReceiptRequest
+	2,  // 13: torchwood.client.v1.PaymentsService.CreateOrder:output_type -> torchwood.client.v1.CreateOrderResponse
+	0,  // 14: torchwood.client.v1.PaymentsService.GetMyOrder:output_type -> torchwood.client.v1.PaymentOrder
+	5,  // 15: torchwood.client.v1.PaymentsService.ListMyOrders:output_type -> torchwood.client.v1.ListMyOrdersResponse
+	7,  // 16: torchwood.client.v1.PaymentsService.VerifyReceipt:output_type -> torchwood.client.v1.VerifyReceiptResponse
+	13, // [13:17] is the sub-list for method output_type
+	9,  // [9:13] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_client_v1_payments_proto_init() }
@@ -570,7 +698,7 @@ func file_client_v1_payments_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_client_v1_payments_proto_rawDesc), len(file_client_v1_payments_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

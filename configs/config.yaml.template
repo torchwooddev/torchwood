@@ -93,6 +93,33 @@ payments:
     #   TORCHWOOD_PAYMENTS_STRIPE_WEBHOOK_SECRET  (whsec_...)
     # 未配置时服务可启动，支付操作 fail-closed；api_base_url 仅供测试注入。
     api_base_url: ""         # env: TORCHWOOD_PAYMENTS_STRIPE_API_BASE_URL（空 = https://api.stripe.com）
+  wechat:
+    mch_id: ""               # env: TORCHWOOD_PAYMENTS_WECHAT_MCH_ID
+    app_id: ""               # env: TORCHWOOD_PAYMENTS_WECHAT_APP_ID
+    # secret 走环境变量，不写入本文件：
+    #   TORCHWOOD_PAYMENTS_WECHAT_API_V3_KEY
+    #   TORCHWOOD_PAYMENTS_WECHAT_MERCHANT_SERIAL_NO
+    #   TORCHWOOD_PAYMENTS_WECHAT_MERCHANT_PRIVATE_KEY
+    #   TORCHWOOD_PAYMENTS_WECHAT_PLATFORM_CERT
+    notify_url: ""           # 空 = server.http.public_url + /v1/payments/callbacks/wechat
+    api_base_url: ""         # 空 = https://api.mch.weixin.qq.com
+  alipay:
+    app_id: ""               # env: TORCHWOOD_PAYMENTS_ALIPAY_APP_ID
+    # secret 走环境变量：
+    #   TORCHWOOD_PAYMENTS_ALIPAY_APP_PRIVATE_KEY
+    #   TORCHWOOD_PAYMENTS_ALIPAY_ALIPAY_PUBLIC_KEY
+    notify_url: ""           # 空 = server.http.public_url + /v1/payments/callbacks/alipay
+    gateway_url: ""          # 空 = https://openapi.alipay.com/gateway.do
+  ios_iap:
+    bundle_id: ""            # env: TORCHWOOD_PAYMENTS_IOS_IAP_BUNDLE_ID
+    # secret 走环境变量：
+    #   TORCHWOOD_PAYMENTS_IOS_IAP_SHARED_SECRET
+    #   TORCHWOOD_PAYMENTS_IOS_IAP_PRIVATE_KEY
+    #   TORCHWOOD_PAYMENTS_IOS_IAP_APPLE_ROOT_CERT（空 = 内置 Apple Root CA G3）
+    issuer_id: ""
+    key_id: ""
+    verify_receipt_url: ""   # 空 = https://buy.itunes.apple.com/verifyReceipt
+    sandbox_verify_url: ""   # 空 = https://sandbox.itunes.apple.com/verifyReceipt
 
 telemetry:
   enabled: false

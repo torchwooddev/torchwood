@@ -55,6 +55,7 @@ func (p *Payments) Refund(ctx context.Context, orderID string, amount int64) (*d
 		OrderID:         order.ID,
 		ProviderOrderID: order.ProviderOrderID,
 		Amount:          amount,
+		OrderAmount:     order.Amount,
 		IdempotencyKey:  "refund:" + order.ID,
 	})
 	if err != nil {
@@ -178,6 +179,12 @@ func mapProviderError(err error) error {
 	}
 	if errors.Is(err, domainpayments.ErrUnsupported) {
 		return status.Error(codes.Unimplemented, "payment provider does not support this operation")
+	}
+	if errors.Is(err, domainpayments.ErrSignatureInvalid) {
+		return status.Error(codes.Unauthenticated, "receipt verification failed")
+	}
+	if errors.Is(err, domainpayments.ErrReceiptBoundToOtherUser) {
+		return status.Error(codes.PermissionDenied, "receipt already bound to another user")
 	}
 	if pe := domainpayments.AsProviderError(err); pe != nil {
 		switch code := pe.Status; {

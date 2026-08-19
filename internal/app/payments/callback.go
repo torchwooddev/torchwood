@@ -13,6 +13,30 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// CallbackAck 返回渠道约定的 HTTP 回执（验签失败不走本方法）。
+func (p *Payments) CallbackAck(providerName string, success bool) (status int, contentType string, body []byte) {
+	if p.providers == nil {
+		if success {
+			return http.StatusOK, "", nil
+		}
+		return http.StatusInternalServerError, "", nil
+	}
+	provider, err := p.providers.Get(providerName)
+	if err != nil {
+		if success {
+			return http.StatusOK, "", nil
+		}
+		return http.StatusInternalServerError, "", nil
+	}
+	if acker, ok := provider.(domainpayments.CallbackAcker); ok {
+		return acker.CallbackAck(success)
+	}
+	if success {
+		return http.StatusOK, "", nil
+	}
+	return http.StatusInternalServerError, "", nil
+}
+
 // HandleCallback 处理渠道回调（serverhttp 面，设计 §1.4）：
 //
 //  1. 验签 + 归一化（adapter 内完成）；验签失败返回 ErrSignatureInvalid，
