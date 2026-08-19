@@ -1,7 +1,7 @@
 # Torchwood 开发路线图
 
 > 本文档基于已完成 P0 底座，规划 Torchwood 的短期、中期、长期开发方向。
-> 最新更新：2026-08-15（**P2 / v2 设计已批准**：`docs/design/v2-events-realtime-transactions.md`；执行计划 `docs/design/v2-execution-plan.md`；派发稿 `docs/prompts/implement-v2.md`）。
+> 最新更新：2026-08-19（**P2.5 / v3 经济系统设计已批准**：`docs/design/v3-payments-economy.md`；执行计划 `docs/design/v3-execution-plan.md`；派发稿 `docs/prompts/implement-v3.md`。v2 PR1–PR5 已全部合入，owner 审查中）。
 
 ---
 
@@ -49,7 +49,8 @@ P2 先夯 BaaS 门面（Realtime + 事件 + 事务），Agent 表面后置。P1 
 |------|------|----------|------|
 | **P0 底座** | 可运行的工程骨架：动态文档层、Admin Console、基础认证、Storage/Functions 端口 | 已完成 | 完成 |
 | **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Teams、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **完成** |
-| **P2 / v2** | 轻量 Realtime、事件脊柱（outbox）、单库事务；按内测需要补生产底座 | 中期：3-6 个月 | **规划中（边界已锁定）** |
+| **P2 / v2** | 轻量 Realtime、事件脊柱（outbox）、单库事务；按内测需要补生产底座 | 中期：3-6 个月 | **实施完成（PR1–PR5 已合入），owner 审查中** |
+| **P2.5 / v3 经济系统** | 支付（Stripe/微信/支付宝/iOS IAP）、订阅、统一资产系统（代币/物品/权益）、平台用量计费 | 中期 | **设计已批准，待实施**（`docs/design/v3-payments-economy.md` + 执行计划 + 派发稿） |
 | **P3 生态** | Agent 表面（MCP / Tool Schema / Key 模板）、完整 Messaging、关系/向量、Sites / Proxy / VCS / GraphQL、多区域 | 长期：6-12 个月 | 规划中 |
 
 ---
