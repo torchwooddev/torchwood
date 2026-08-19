@@ -331,10 +331,9 @@ func (s *memStore) ListAllLedger(_ context.Context, projectID string) ([]domaina
 			out = append(out, *cloneEntry(e))
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
-			return out[i].ID < out[j].ID
-		}
+	// 冻结时钟下 CreatedAt 全相同；不得按 ULID 打破平局（同毫秒 consume/expire
+	// 可能排到 grant 前，quantity_after 链偶发断裂）。SliceStable 保留插入序。
+	sort.SliceStable(out, func(i, j int) bool {
 		return out[i].CreatedAt.Before(out[j].CreatedAt)
 	})
 	return out, nil
