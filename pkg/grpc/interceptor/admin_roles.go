@@ -94,6 +94,13 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.AssetsService/Mutate":         {"owner", "admin"},
 	"/torchwood.server.v1.AssetsService/Expire":         {"owner", "admin"},
 	"/torchwood.server.v1.AssetsService/Reconcile":      {"owner", "admin"},
+	// SubscriptionsService：计划 CRUD 为业务写（member 可做）；强制 Cancel/Expire
+	// 为资金相关（仅 owner/admin）。
+	"/torchwood.server.v1.SubscriptionsService/CreatePlan":         {"member", "owner", "admin"},
+	"/torchwood.server.v1.SubscriptionsService/UpdatePlan":         {"member", "owner", "admin"},
+	"/torchwood.server.v1.SubscriptionsService/DeletePlan":         {"member", "owner", "admin"},
+	"/torchwood.server.v1.SubscriptionsService/CancelSubscription": {"owner", "admin"},
+	"/torchwood.server.v1.SubscriptionsService/ExpireSubscription": {"owner", "admin"},
 	// ProjectsService（创建是平台级资源，仅 owner/admin——与 use-case
 	// CreateProject 平台 admin 守卫一致；更新是业务写，仅收 viewer）
 	"/torchwood.server.v1.ProjectsService/CreateProject": {"owner", "admin"},

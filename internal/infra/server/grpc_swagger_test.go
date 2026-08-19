@@ -24,6 +24,7 @@ func businessFileDescriptors() []protoreflect.FileDescriptor {
 		clientv1.File_client_v1_teams_proto,
 		clientv1.File_client_v1_payments_proto,
 		clientv1.File_client_v1_assets_proto,
+		clientv1.File_client_v1_subscriptions_proto,
 		serverv1.File_server_v1_projects_proto,
 		serverv1.File_server_v1_health_proto,
 		serverv1.File_server_v1_storage_proto,
@@ -35,6 +36,7 @@ func businessFileDescriptors() []protoreflect.FileDescriptor {
 		serverv1.File_server_v1_functions_proto,
 		serverv1.File_server_v1_payments_proto,
 		serverv1.File_server_v1_assets_proto,
+		serverv1.File_server_v1_subscriptions_proto,
 		consolev1.File_console_v1_auth_proto,
 		consolev1.File_console_v1_admins_proto,
 	}

@@ -279,6 +279,34 @@ func TestAdminRoleMethodRules_TransactionWriteMethodsRegistered(t *testing.T) {
 	require.True(t, APIKeyScopeAllowed("/torchwood.server.v1.DatabasesService/RollbackTransaction", []string{"databases"}))
 }
 
+func TestAdminRoleMethodRules_SubscriptionsWriteMethods(t *testing.T) {
+	t.Parallel()
+	for _, m := range []string{
+		"/torchwood.server.v1.SubscriptionsService/CreatePlan",
+		"/torchwood.server.v1.SubscriptionsService/UpdatePlan",
+		"/torchwood.server.v1.SubscriptionsService/DeletePlan",
+	} {
+		roles := adminRoleMethodRules[m]
+		require.NotNil(t, roles, "%s 必须登记", m)
+		require.Contains(t, roles, "member")
+		require.NotContains(t, roles, "viewer")
+	}
+	for _, m := range []string{
+		"/torchwood.server.v1.SubscriptionsService/CancelSubscription",
+		"/torchwood.server.v1.SubscriptionsService/ExpireSubscription",
+	} {
+		roles := adminRoleMethodRules[m]
+		require.NotNil(t, roles, "%s 必须登记", m)
+		require.Contains(t, roles, "owner")
+		require.Contains(t, roles, "admin")
+		require.NotContains(t, roles, "member")
+	}
+	require.NotContains(t, adminRoleMethodRules, "/torchwood.server.v1.SubscriptionsService/ListPlans")
+	require.True(t, APIKeyScopeAllowed("/torchwood.server.v1.SubscriptionsService/ListPlans", []string{"subscriptions.read"}))
+	require.True(t, APIKeyScopeAllowed("/torchwood.server.v1.SubscriptionsService/CreatePlan", []string{"subscriptions.write"}))
+	require.False(t, APIKeyScopeAllowed("/torchwood.server.v1.SubscriptionsService/CreatePlan", []string{"subscriptions.read"}))
+}
+
 // AssertAdminRoleWriteCoverage 的纯函数 diff：缺失一条写方法 / 多登记一条
 // 读方法 / 多登记未映射方法，都必须被检出并列出方法名。
 func TestAdminRoleWriteCoverageDiff_DetectsMissingAndExtra(t *testing.T) {

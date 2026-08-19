@@ -1,0 +1,41 @@
+package subscriptions
+
+import (
+	"context"
+	"time"
+)
+
+// PlanRepo 持久化 subscription_plans。方法感知 ctx 中的事务（clients.Conn）。
+type PlanRepo interface {
+	Insert(ctx context.Context, plan *Plan) error
+	GetByID(ctx context.Context, projectID, planID string) (*Plan, error)
+	GetByCode(ctx context.Context, projectID, code string) (*Plan, error)
+	// GetByCodeForShare 在事务内 SELECT ... FOR SHARE，防止 Subscribe 途中归档。
+	GetByCodeForShare(ctx context.Context, projectID, code string) (*Plan, error)
+	GetByIDForShare(ctx context.Context, projectID, planID string) (*Plan, error)
+	List(ctx context.Context, projectID string, includeArchived bool, limit int, before time.Time) ([]Plan, error)
+	Update(ctx context.Context, plan *Plan) error
+}
+
+// SubscriptionRepo 持久化 subscriptions。写路径必须在外层事务内调用
+// （与资产 Grant/Mutate / outbox 同一 sql.Tx，总则 10）。
+type SubscriptionRepo interface {
+	// Insert 落库；(project_id, idempotency_key) 冲突时返回已存在行与 false。
+	Insert(ctx context.Context, sub *Subscription) (existing *Subscription, inserted bool, err error)
+	GetByID(ctx context.Context, projectID, id string) (*Subscription, error)
+	GetByIDForUpdate(ctx context.Context, projectID, id string) (*Subscription, error)
+	GetByIdempotencyKey(ctx context.Context, projectID, key string) (*Subscription, error)
+	GetByProviderSubID(ctx context.Context, provider, providerSubID string) (*Subscription, error)
+	GetByProviderSubIDForUpdate(ctx context.Context, provider, providerSubID string) (*Subscription, error)
+	// GetCurrentByUser 返回本人当前非终态订阅；planID 非空时限定计划。
+	// 若无非终态，返回最近一条（含终态）便于 GetMySubscription。
+	GetCurrentByUser(ctx context.Context, projectID, userID, planID string) (*Subscription, error)
+	// ListNonTerminalByUserPlan 列出 (user, plan) 下非终态行（订阅互斥检查）。
+	ListNonTerminalByUserPlan(ctx context.Context, projectID, userID, planID string) ([]Subscription, error)
+	ListByUser(ctx context.Context, projectID, userID string, limit int, before time.Time) ([]Subscription, error)
+	ListByProject(ctx context.Context, projectID string, limit int, before time.Time) ([]Subscription, error)
+	Update(ctx context.Context, sub *Subscription, expectStatus Status) error
+	// ListDueForBilling 扫描 platform 模式待处理行（FOR UPDATE SKIP LOCKED）：
+	// 周期到期、past_due 宽限、cancel_at_period_end。
+	ListDueForBilling(ctx context.Context, now time.Time, limit int) ([]Subscription, error)
+}

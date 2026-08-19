@@ -39,6 +39,7 @@ func NewGRPCServer(
 	clientTeams *clientgrpc.TeamsService,
 	clientPayments *clientgrpc.PaymentsService,
 	clientAssets *clientgrpc.AssetsService,
+	clientSubscriptions *clientgrpc.SubscriptionsService,
 	health *servergrpc.HealthService,
 	projects *servergrpc.ProjectsService,
 	storage *servergrpc.StorageService,
@@ -50,6 +51,7 @@ func NewGRPCServer(
 	functions *servergrpc.FunctionsService,
 	serverPayments *servergrpc.PaymentsService,
 	serverAssets *servergrpc.AssetsService,
+	serverSubscriptions *servergrpc.SubscriptionsService,
 	consoleAuth *consolegrpc.AuthService,
 	adminsService *consolegrpc.AdminsService,
 ) (*lynxgrpc.Server, error) {
@@ -62,6 +64,7 @@ func NewGRPCServer(
 		clientv1.File_client_v1_teams_proto,
 		clientv1.File_client_v1_payments_proto,
 		clientv1.File_client_v1_assets_proto,
+		clientv1.File_client_v1_subscriptions_proto,
 		serverv1.File_server_v1_projects_proto,
 		serverv1.File_server_v1_health_proto,
 		serverv1.File_server_v1_storage_proto,
@@ -73,6 +76,7 @@ func NewGRPCServer(
 		serverv1.File_server_v1_functions_proto,
 		serverv1.File_server_v1_payments_proto,
 		serverv1.File_server_v1_assets_proto,
+		serverv1.File_server_v1_subscriptions_proto,
 		consolev1.File_console_v1_auth_proto,
 		consolev1.File_console_v1_admins_proto,
 	)
@@ -125,6 +129,7 @@ func NewGRPCServer(
 	clientv1.RegisterTeamsServiceServer(grpcSrv, clientTeams)
 	clientv1.RegisterPaymentsServiceServer(grpcSrv, clientPayments)
 	clientv1.RegisterAssetsServiceServer(grpcSrv, clientAssets)
+	clientv1.RegisterSubscriptionsServiceServer(grpcSrv, clientSubscriptions)
 	serverv1.RegisterHealthServiceServer(grpcSrv, health)
 	serverv1.RegisterProjectsServiceServer(grpcSrv, projects)
 	serverv1.RegisterStorageServiceServer(grpcSrv, storage)
@@ -136,6 +141,7 @@ func NewGRPCServer(
 	serverv1.RegisterFunctionsServiceServer(grpcSrv, functions)
 	serverv1.RegisterPaymentsServiceServer(grpcSrv, serverPayments)
 	serverv1.RegisterAssetsServiceServer(grpcSrv, serverAssets)
+	serverv1.RegisterSubscriptionsServiceServer(grpcSrv, serverSubscriptions)
 	consolev1.RegisterConsoleAuthServiceServer(grpcSrv, consoleAuth)
 	consolev1.RegisterAdminsServiceServer(grpcSrv, adminsService)
 

@@ -1,0 +1,214 @@
+syntax = "proto3";
+
+package torchwood.server.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "apiKey"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "api_key" }
+  }
+};
+
+// SubscriptionsService 是订阅管理面（v3 设计 §6）：Plan CRUD、订阅列表、
+// 强制 Cancel/Expire。写方法 scope subscriptions.write（apiKeyScopeRules）
+// 并登记 adminRoleMethodRules。
+service SubscriptionsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
+
+  rpc CreatePlan(CreatePlanRequest) returns (SubscriptionPlan) {
+    option (google.api.http) = { post: "/v1/server/subscriptions/plans", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc ListPlans(shared.v1.ListRequest) returns (ListPlansResponse) {
+    option (google.api.http) = { get: "/v1/server/subscriptions/plans" };
+  }
+  rpc GetPlan(GetPlanRequest) returns (SubscriptionPlan) {
+    option (google.api.http) = { get: "/v1/server/subscriptions/plans/{plan_id}" };
+  }
+  rpc UpdatePlan(UpdatePlanRequest) returns (SubscriptionPlan) {
+    option (google.api.http) = { patch: "/v1/server/subscriptions/plans/{plan_id}", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc DeletePlan(DeletePlanRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/server/subscriptions/plans/{plan_id}" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+
+  rpc ListSubscriptions(shared.v1.ListRequest) returns (ListSubscriptionsResponse) {
+    option (google.api.http) = { get: "/v1/server/subscriptions" };
+  }
+  rpc GetSubscription(GetSubscriptionRequest) returns (Subscription) {
+    option (google.api.http) = { get: "/v1/server/subscriptions/{subscription_id}" };
+  }
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (Subscription) {
+    option (google.api.http) = { post: "/v1/server/subscriptions/{subscription_id}:cancel", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc ExpireSubscription(ExpireSubscriptionRequest) returns (Subscription) {
+    option (google.api.http) = { post: "/v1/server/subscriptions/{subscription_id}:expire", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+}
+
+message BenefitGrant {
+  string asset_code = 1;
+  int64 quantity = 2;
+  optional int64 expires_in = 3;
+}
+
+message BenefitEntitlement {
+  string asset_code = 1;
+  int32 tier = 2;
+}
+
+message Benefits {
+  repeated BenefitGrant grants = 1;
+  repeated BenefitEntitlement entitlements = 2;
+}
+
+message ProviderOverrides {
+  string stripe_price_id = 1;
+}
+
+message SubscriptionPlan {
+  string id = 1;
+  string project_id = 2;
+  string code = 3;
+  string name = 4;
+  int64 amount = 5;
+  string currency = 6;
+  string interval = 7;
+  int64 interval_days = 8;
+  int32 grace_days = 9;
+  int32 trial_days = 10;
+  Benefits benefits = 11;
+  ProviderOverrides provider_overrides = 12;
+  // active | archived
+  string status = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message Subscription {
+  string id = 1;
+  string project_id = 2;
+  string user_id = 3;
+  string plan_id = 4;
+  string plan_code = 5;
+  string mode = 6;
+  string provider = 7;
+  string provider_sub_id = 8;
+  string status = 9;
+  google.protobuf.Timestamp current_period_start = 10;
+  google.protobuf.Timestamp current_period_end = 11;
+  bool cancel_at_period_end = 12;
+  google.protobuf.Timestamp grace_until = 13;
+  string billing_asset_code = 14;
+  Benefits benefits = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+}
+
+message CreatePlanRequest {
+  string code = 1;
+  string name = 2;
+  int64 amount = 3;
+  string currency = 4;
+  string interval = 5;
+  int64 interval_days = 6;
+  int32 grace_days = 7;
+  int32 trial_days = 8;
+  Benefits benefits = 9;
+  ProviderOverrides provider_overrides = 10;
+}
+
+message GetPlanRequest {
+  string plan_id = 1;
+}
+
+message UpdatePlanRequest {
+  string plan_id = 1;
+  optional string name = 2;
+  optional int64 amount = 3;
+  optional string currency = 4;
+  optional string interval = 5;
+  optional int64 interval_days = 6;
+  optional int32 grace_days = 7;
+  optional int32 trial_days = 8;
+  Benefits benefits = 9;
+  ProviderOverrides provider_overrides = 10;
+  optional string status = 11;
+}
+
+message DeletePlanRequest {
+  string plan_id = 1;
+}
+
+message ListPlansResponse {
+  repeated SubscriptionPlan plans = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message ListSubscriptionsResponse {
+  repeated Subscription subscriptions = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message GetSubscriptionRequest {
+  string subscription_id = 1;
+}
+
+message CancelSubscriptionRequest {
+  string subscription_id = 1;
+  string reason = 2;
+}
+
+message ExpireSubscriptionRequest {
+  string subscription_id = 1;
+  string reason = 2;
+}

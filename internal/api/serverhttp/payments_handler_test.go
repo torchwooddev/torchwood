@@ -39,7 +39,7 @@ func newCallbackOnlyPayments(t *testing.T) (*apppayments.Payments, *writeSpyCall
 		nil, nil, nil, spy, nil,
 		apppayments.NewRecordOnlyFulfiller(),
 		infrapayments.NewRegistry(adapter),
-		nil, nil,
+		nil, nil, nil,
 	), spy
 }
 
@@ -74,7 +74,7 @@ func TestPaymentsHandler_UnconfiguredProviderReturns401(t *testing.T) {
 	// 渠道未配置：fail-closed，同样 401（不区分未配置 / 签名错）。
 	adapter := stripe.New(stripe.Config{})
 	uc := apppayments.NewPayments(nil, nil, nil, nil, nil,
-		apppayments.NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil)
+		apppayments.NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil)
 	h, err := NewPaymentsHandler(uc, nil)
 	require.NoError(t, err)
 

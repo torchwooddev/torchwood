@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/payments"
+	domainsubs "github.com/torchwooddev/torchwood/internal/domain/subscriptions"
 )
 
 const (
@@ -129,12 +130,43 @@ type webhookEventData struct {
 // checkoutSessionObject 是 checkout.session.* 事件载荷。
 type checkoutSessionObject struct {
 	ID                string            `json:"id"`
+	Mode              string            `json:"mode"`
 	PaymentIntent     string            `json:"payment_intent"`
+	Subscription      string            `json:"subscription"`
 	ClientReferenceID string            `json:"client_reference_id"`
 	PaymentStatus     string            `json:"payment_status"`
 	AmountTotal       int64             `json:"amount_total"`
 	Currency          string            `json:"currency"`
 	Metadata          map[string]string `json:"metadata"`
+}
+
+// stripeSubscriptionObject 是 customer.subscription.* 事件载荷。
+type stripeSubscriptionObject struct {
+	ID                 string            `json:"id"`
+	Status             string            `json:"status"`
+	CurrentPeriodStart int64             `json:"current_period_start"`
+	CurrentPeriodEnd   int64             `json:"current_period_end"`
+	CancelAtPeriodEnd  bool              `json:"cancel_at_period_end"`
+	Metadata           map[string]string `json:"metadata"`
+	Items              struct {
+		Data []struct {
+			CurrentPeriodStart int64 `json:"current_period_start"`
+			CurrentPeriodEnd   int64 `json:"current_period_end"`
+		} `json:"data"`
+	} `json:"items"`
+}
+
+// stripeInvoiceObject 是 invoice.paid / invoice.payment_failed 载荷。
+type stripeInvoiceObject struct {
+	ID             string `json:"id"`
+	Subscription   string `json:"subscription"`
+	BillingReason  string `json:"billing_reason"`
+	AmountPaid     int64  `json:"amount_paid"`
+	AmountDue      int64  `json:"amount_due"`
+	Currency       string `json:"currency"`
+	PeriodStart    int64  `json:"period_start"`
+	PeriodEnd      int64  `json:"period_end"`
+	Status         string `json:"status"`
 }
 
 // chargeObject 是 charge.refunded 事件载荷。
@@ -233,9 +265,16 @@ func (a *Adapter) normalize(rawBody []byte) (*payments.CallbackEvent, error) {
 		}
 		out.ProviderSessionID = obj.ID
 		out.ProviderOrderID = obj.PaymentIntent
-		out.OrderID = firstNonEmpty(obj.ClientReferenceID, obj.Metadata["order_id"])
+		out.CheckoutMode = obj.Mode
 		out.Amount = obj.AmountTotal
 		out.Currency = strings.ToUpper(obj.Currency)
+		if obj.Mode == "subscription" {
+			out.ProviderSubID = obj.Subscription
+			out.LocalSubscriptionID = firstNonEmpty(obj.Metadata["subscription_id"], obj.ClientReferenceID)
+			out.Type = payments.CallbackSubscriptionUpdated
+			break
+		}
+		out.OrderID = firstNonEmpty(obj.ClientReferenceID, obj.Metadata["order_id"])
 		if obj.PaymentStatus == "paid" {
 			out.Type = payments.CallbackPaid
 		} else {
@@ -272,11 +311,91 @@ func (a *Adapter) normalize(rawBody []byte) (*payments.CallbackEvent, error) {
 		out.Amount = obj.AmountRefunded
 		out.Currency = strings.ToUpper(obj.CurrencyRefunded)
 		out.Type = payments.CallbackRefunded
+	case strings.HasPrefix(ev.Type, "customer.subscription."):
+		var obj stripeSubscriptionObject
+		if err := json.Unmarshal(ev.Data.Object, &obj); err != nil {
+			return nil, fmt.Errorf("stripe: decode subscription: %w", err)
+		}
+		fillSubscriptionEvent(out, &obj)
+		switch ev.Type {
+		case "customer.subscription.deleted":
+			out.Type = payments.CallbackSubscriptionCanceled
+		default:
+			out.Type = mapStripeSubStatus(obj.Status)
+		}
+	case ev.Type == "invoice.paid":
+		var obj stripeInvoiceObject
+		if err := json.Unmarshal(ev.Data.Object, &obj); err != nil {
+			return nil, fmt.Errorf("stripe: decode invoice: %w", err)
+		}
+		fillInvoiceEvent(out, &obj)
+		if obj.BillingReason == "subscription_cycle" {
+			out.Type = payments.CallbackSubscriptionRenewed
+		} else {
+			out.Type = payments.CallbackSubscriptionActivated
+		}
+	case ev.Type == "invoice.payment_failed":
+		var obj stripeInvoiceObject
+		if err := json.Unmarshal(ev.Data.Object, &obj); err != nil {
+			return nil, fmt.Errorf("stripe: decode invoice: %w", err)
+		}
+		fillInvoiceEvent(out, &obj)
+		out.Type = payments.CallbackSubscriptionPastDue
 	default:
-		// 订阅等其余事件：PR3 接入；本期归一化为 ignored，调用方记录后 200。
 		out.Type = "ignored"
 	}
 	return out, nil
+}
+
+func fillSubscriptionEvent(out *payments.CallbackEvent, obj *stripeSubscriptionObject) {
+	out.ProviderSubID = obj.ID
+	out.LocalSubscriptionID = obj.Metadata["subscription_id"]
+	out.HostedStatus = obj.Status
+	out.CancelAtPeriodEnd = obj.CancelAtPeriodEnd
+	start, end := obj.CurrentPeriodStart, obj.CurrentPeriodEnd
+	if start == 0 && len(obj.Items.Data) > 0 {
+		start = obj.Items.Data[0].CurrentPeriodStart
+		end = obj.Items.Data[0].CurrentPeriodEnd
+	}
+	if start > 0 {
+		out.PeriodStart = time.Unix(start, 0).UTC()
+	}
+	if end > 0 {
+		out.PeriodEnd = time.Unix(end, 0).UTC()
+	}
+}
+
+func fillInvoiceEvent(out *payments.CallbackEvent, obj *stripeInvoiceObject) {
+	out.ProviderSubID = obj.Subscription
+	out.BillingReason = obj.BillingReason
+	out.Amount = obj.AmountPaid
+	if out.Amount == 0 {
+		out.Amount = obj.AmountDue
+	}
+	out.Currency = strings.ToUpper(obj.Currency)
+	if obj.PeriodStart > 0 {
+		out.PeriodStart = time.Unix(obj.PeriodStart, 0).UTC()
+	}
+	if obj.PeriodEnd > 0 {
+		out.PeriodEnd = time.Unix(obj.PeriodEnd, 0).UTC()
+	}
+}
+
+func mapStripeSubStatus(status string) string {
+	switch status {
+	case "trialing":
+		return payments.CallbackSubscriptionUpdated
+	case "active":
+		return payments.CallbackSubscriptionUpdated
+	case "past_due", "unpaid":
+		return payments.CallbackSubscriptionPastDue
+	case "canceled":
+		return payments.CallbackSubscriptionCanceled
+	case "incomplete_expired":
+		return payments.CallbackSubscriptionExpired
+	default:
+		return payments.CallbackSubscriptionUpdated
+	}
 }
 
 // Refund 对 PaymentIntent 发起退款（POST /v1/refunds）。
@@ -354,4 +473,71 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
+// CreateCheckout 创建 Stripe Billing Checkout（mode=subscription）。
+func (a *Adapter) CreateCheckout(ctx context.Context, in domainsubs.HostedCheckoutInput) (*domainsubs.HostedCheckout, error) {
+	if a.cfg.SecretKey == "" {
+		return nil, payments.ErrProviderNotConfigured(providerName)
+	}
+	if in.PriceID == "" {
+		return nil, fmt.Errorf("stripe: hosted checkout requires price_id")
+	}
+	form := url.Values{}
+	form.Set("mode", "subscription")
+	form.Set("client_reference_id", in.SubscriptionID)
+	form.Set("metadata[subscription_id]", in.SubscriptionID)
+	form.Set("metadata[project_id]", in.ProjectID)
+	form.Set("subscription_data[metadata][subscription_id]", in.SubscriptionID)
+	form.Set("subscription_data[metadata][project_id]", in.ProjectID)
+	form.Set("line_items[0][price]", in.PriceID)
+	form.Set("line_items[0][quantity]", "1")
+	success := in.SuccessURL
+	if success == "" {
+		success = "https://example.com/success?session_id={CHECKOUT_SESSION_ID}"
+	}
+	cancel := in.CancelURL
+	if cancel == "" {
+		cancel = "https://example.com/cancel"
+	}
+	form.Set("success_url", success)
+	form.Set("cancel_url", cancel)
+
+	var out checkoutSessionResponse
+	reqID := in.IdempotencyKey
+	if reqID == "" {
+		reqID = in.SubscriptionID
+	}
+	if err := a.do(ctx, http.MethodPost, "/v1/checkout/sessions", form, reqID, &out); err != nil {
+		return nil, err
+	}
+	if out.ID == "" || out.URL == "" {
+		return nil, fmt.Errorf("stripe: subscription checkout response missing id/url")
+	}
+	return &domainsubs.HostedCheckout{SessionID: out.ID, PaymentURL: out.URL}, nil
+}
+
+// CancelAtPeriodEnd 通知 Stripe 期末取消（hosted Cancel）。
+func (a *Adapter) CancelAtPeriodEnd(ctx context.Context, providerSubID string) error {
+	if a.cfg.SecretKey == "" {
+		return payments.ErrProviderNotConfigured(providerName)
+	}
+	if providerSubID == "" {
+		return fmt.Errorf("stripe: cancel requires provider subscription id")
+	}
+	form := url.Values{}
+	form.Set("cancel_at_period_end", "true")
+	return a.do(ctx, http.MethodPost, "/v1/subscriptions/"+providerSubID, form, "cancel-at-end:"+providerSubID, nil)
+}
+
+// CancelNow 立即取消 Stripe 订阅（Server 强制 Cancel）。
+func (a *Adapter) CancelNow(ctx context.Context, providerSubID string) error {
+	if a.cfg.SecretKey == "" {
+		return payments.ErrProviderNotConfigured(providerName)
+	}
+	if providerSubID == "" {
+		return fmt.Errorf("stripe: cancel requires provider subscription id")
+	}
+	return a.do(ctx, http.MethodDelete, "/v1/subscriptions/"+providerSubID, nil, "cancel-now:"+providerSubID, nil)
+}
+
 var _ payments.PaymentProvider = (*Adapter)(nil)
+var _ domainsubs.HostedBilling = (*Adapter)(nil)

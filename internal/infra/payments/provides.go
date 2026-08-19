@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/wire"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
+	domainsubs "github.com/torchwooddev/torchwood/internal/domain/subscriptions"
 	"github.com/torchwooddev/torchwood/internal/infra/payments/stripe"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
@@ -16,6 +17,7 @@ var ProviderSet = wire.NewSet(
 	NewStripeAdapter,
 	NewRegistry,
 	wire.Bind(new(domainpayments.ProviderRegistry), new(*Registry)),
+	wire.Bind(new(domainsubs.HostedBilling), new(*stripe.Adapter)),
 )
 
 // NewStripeAdapter 从配置构造 Stripe 适配器（secret 走环境变量，

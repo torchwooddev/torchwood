@@ -98,6 +98,7 @@ func setupEnv(t *testing.T, fulfiller domainpayments.Fulfiller, refundSucceeded 
 		infrapayments.NewRegistry(adapter),
 		infraevents.NewEventOutbox(db),
 		nil,
+		nil,
 	)
 	return &testEnv{payments: uc, db: db, stripe: adapter}
 }

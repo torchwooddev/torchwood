@@ -43,9 +43,25 @@ func (p *Payments) HandleCallback(ctx context.Context, providerName string, head
 		return p.recordIgnoredCallback(ctx, provider, rawBody)
 	}
 
-	// 未识别 / 忽略类型（订阅等 PR3 事件）：登记即可。
+	// 未识别 / 忽略类型：登记即可。
 	if event.Type == "ignored" {
 		return p.recordIgnoredCallback(ctx, provider, rawBody)
+	}
+
+	if domainpayments.IsSubscriptionEvent(event.Type) {
+		return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+			inserted, err := p.callbacks.InsertIfAbsent(txCtx, event, "", event.LocalSubscriptionID)
+			if err != nil {
+				return err
+			}
+			if !inserted {
+				return nil // 重放：幂等 200，不重入状态机。
+			}
+			if p.subs == nil {
+				return nil
+			}
+			return p.subs.HandleHostedCallback(txCtx, event)
+		})
 	}
 
 	order, err := p.locateOrder(ctx, event)

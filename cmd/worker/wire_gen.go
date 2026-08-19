@@ -13,6 +13,7 @@ import (
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
 	payments2 "github.com/torchwooddev/torchwood/internal/app/payments"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
+	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -66,13 +67,17 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	holdingRepo := bunrepo.NewAssetHoldingRepository(database)
 	ledgerRepo := bunrepo.NewAssetLedgerRepository(database)
 	assetsAssets := assets.NewAssets(database, defRepo, holdingRepo, ledgerRepo, eventOutbox, logger)
-	fulfiller := assets.NewOrderFulfiller(assetsAssets)
+	planRepo := bunrepo.NewSubscriptionPlanRepository(database)
+	subscriptionRepo := bunrepo.NewSubscriptionRepository(database)
 	adapter := payments.NewStripeAdapter(appConfig)
 	registry := payments.NewRegistry(adapter)
-	paymentsPayments := payments2.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
+	subscriptionsSubscriptions := subscriptions.NewSubscriptions(appConfig, database, planRepo, subscriptionRepo, assetsAssets, orderRepo, registry, adapter, eventOutbox, logger)
+	fulfiller := subscriptions.NewOrderFulfiller(assetsAssets, subscriptionsSubscriptions)
+	paymentsPayments := payments2.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger, subscriptionsSubscriptions)
 	paymentCloser := NewPaymentCloser(paymentsPayments, logger)
 	assetExpirer := NewAssetExpirer(assetsAssets, logger)
-	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer)
+	subscriptionBiller := NewSubscriptionBiller(subscriptionsSubscriptions, logger)
+	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {

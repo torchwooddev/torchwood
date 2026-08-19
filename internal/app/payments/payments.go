@@ -63,6 +63,7 @@ type Payments struct {
 	fulfiller    domainpayments.Fulfiller
 	providers    domainpayments.ProviderRegistry
 	events       shared.EventPublisher
+	subs         domainpayments.SubscriptionCallbackHandler // hosted 订阅 webhook（PR3，可空）
 	logger       *slog.Logger
 }
 
@@ -77,11 +78,12 @@ func NewPayments(
 	providers domainpayments.ProviderRegistry,
 	events shared.EventPublisher,
 	logger *slog.Logger,
+	subs domainpayments.SubscriptionCallbackHandler,
 ) *Payments {
-	return newPayments(cfg, db, orders, callbacks, fulfillments, fulfiller, providers, events, logger)
+	return newPayments(cfg, db, orders, callbacks, fulfillments, fulfiller, providers, events, logger, subs)
 }
 
-// newPayments 允许单测注入内存 txRunner，不改 Wire 签名。
+// newPayments 允许单测注入内存 txRunner。
 func newPayments(
 	cfg *config.AppConfig,
 	db txRunner,
@@ -92,6 +94,7 @@ func newPayments(
 	providers domainpayments.ProviderRegistry,
 	events shared.EventPublisher,
 	logger *slog.Logger,
+	subs domainpayments.SubscriptionCallbackHandler,
 ) *Payments {
 	if logger == nil {
 		logger = slog.Default()
@@ -105,6 +108,7 @@ func newPayments(
 		fulfiller:    fulfiller,
 		providers:    providers,
 		events:       events,
+		subs:         subs,
 		logger:       logger,
 	}
 }

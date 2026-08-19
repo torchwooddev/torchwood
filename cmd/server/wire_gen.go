@@ -22,6 +22,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
+	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
@@ -105,12 +106,16 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	holdingRepo := bunrepo.NewAssetHoldingRepository(database)
 	ledgerRepo := bunrepo.NewAssetLedgerRepository(database)
 	assetsAssets := assets.NewAssets(database, defRepo, holdingRepo, ledgerRepo, eventOutbox, logger)
-	fulfiller := assets.NewOrderFulfiller(assetsAssets)
+	planRepo := bunrepo.NewSubscriptionPlanRepository(database)
+	subscriptionRepo := bunrepo.NewSubscriptionRepository(database)
 	adapter := payments.NewStripeAdapter(appConfig)
 	registry := payments.NewRegistry(adapter)
-	paymentsPayments := payments2.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
+	subscriptionsSubscriptions := subscriptions.NewSubscriptions(appConfig, database, planRepo, subscriptionRepo, assetsAssets, orderRepo, registry, adapter, eventOutbox, logger)
+	fulfiller := subscriptions.NewOrderFulfiller(assetsAssets, subscriptionsSubscriptions)
+	paymentsPayments := payments2.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger, subscriptionsSubscriptions)
 	paymentsService := clientgrpc.NewPaymentsService(paymentsPayments)
 	assetsService := clientgrpc.NewAssetsService(assetsAssets)
+	subscriptionsService := clientgrpc.NewSubscriptionsService(subscriptionsSubscriptions)
 	buildInfo := NewBuildInfo()
 	healthService := servergrpc.NewHealthService(checkers, buildInfo)
 	projects := server.NewProjects(projectsRepository, documentDB, database)
@@ -135,12 +140,13 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	functionsService := servergrpc.NewFunctionsService(functionsFunctions)
 	servergrpcPaymentsService := servergrpc.NewPaymentsService(paymentsPayments)
 	servergrpcAssetsService := servergrpc.NewAssetsService(assetsAssets)
+	servergrpcSubscriptionsService := servergrpc.NewSubscriptionsService(subscriptionsSubscriptions)
 	consoleAuth := console.NewAuth(appConfig, adminRepository, redisAdminTokenRevokeStore, redisLoginThrottle, redisRefreshRotationStore)
 	admins := console.NewAdmins(adminRepository)
 	setup := console.NewSetup(appConfig, admins, projects, apiKeys, consoleAuth, adminRepository, adminProjectRepository, projectsRepository)
 	authService := consolegrpc.NewAuthService(consoleAuth, setup)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, paymentsService, assetsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, authService, adminsService)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

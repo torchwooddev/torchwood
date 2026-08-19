@@ -1,0 +1,271 @@
+package subscriptions
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	appassets "github.com/torchwooddev/torchwood/internal/app/assets"
+	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
+	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
+	domainsubs "github.com/torchwooddev/torchwood/internal/domain/subscriptions"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// SubscribeCommand 是终端用户订阅入参。
+type SubscribeCommand struct {
+	PlanCode         string
+	Mode             domainsubs.Mode
+	IdempotencyKey   string
+	BillingAssetCode string
+}
+
+// SubscribeResult 是 Subscribe 结果。
+type SubscribeResult struct {
+	Subscription     *domainsubs.Subscription
+	Plan             *domainsubs.Plan
+	PaymentURL       string
+	OrderID          string
+	IdempotentReplay bool
+}
+
+// Subscribe 创建订阅（Client 面）。
+func (s *Subscriptions) Subscribe(ctx context.Context, cmd SubscribeCommand) (*SubscribeResult, error) {
+	projectID, userID, err := endUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !cmd.Mode.IsValid() {
+		return nil, status.Errorf(codes.InvalidArgument, "mode must be hosted or platform")
+	}
+	key, err := validateIdempotency(cmd.IdempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	code, err := validateCode(cmd.PlanCode)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := s.plans.GetByCode(ctx, projectID, code)
+	if err != nil {
+		return nil, err
+	}
+	if plan == nil {
+		return nil, status.Error(codes.NotFound, "plan not found")
+	}
+	if plan.Status != domainsubs.PlanStatusActive {
+		return nil, status.Error(codes.FailedPrecondition, domainsubs.ErrPlanArchived.Error())
+	}
+
+	now := s.ts()
+	periodStart := now
+	periodEnd, err := domainsubs.NextPeriodEnd(periodStart, plan.Interval, plan.IntervalDays)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	initial := domainsubs.StatusActive
+	if plan.TrialDays > 0 {
+		initial = domainsubs.StatusTrialing
+		periodEnd = periodStart.Add(time.Duration(plan.TrialDays) * 24 * time.Hour)
+	}
+
+	sub := &domainsubs.Subscription{
+		ID:                 newID(),
+		ProjectID:          projectID,
+		UserID:             userID,
+		PlanID:             plan.ID,
+		Mode:               cmd.Mode,
+		Status:             initial,
+		CurrentPeriodStart: periodStart,
+		CurrentPeriodEnd:   periodEnd,
+		Benefits:           plan.Benefits,
+		IdempotencyKey:     key,
+		BillingAssetCode:   strings.TrimSpace(cmd.BillingAssetCode),
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if cmd.Mode == domainsubs.ModeHosted {
+		sub.Provider = domainpayments.ProviderStripe
+		if initial != domainsubs.StatusTrialing {
+			sub.Status = domainsubs.StatusTrialing // 等 webhook 确认后转 active
+		}
+	}
+
+	var result SubscribeResult
+	result.Plan = plan
+	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+		existing, inserted, err := s.subs.Insert(txCtx, sub)
+		if err != nil {
+			return err
+		}
+		if !inserted {
+			result.Subscription = existing
+			result.IdempotentReplay = true
+			return nil
+		}
+		live, err := s.subs.ListNonTerminalByUserPlan(txCtx, projectID, userID, plan.ID)
+		if err != nil {
+			return err
+		}
+		for i := range live {
+			if live[i].ID != sub.ID {
+				return domainsubs.ErrAlreadySubscribed
+			}
+		}
+
+		switch cmd.Mode {
+		case domainsubs.ModeHosted:
+			return s.startHosted(txCtx, sub, plan, &result)
+		case domainsubs.ModePlatform:
+			return s.startPlatform(txCtx, sub, plan, &result, now)
+		}
+		return domainsubs.ErrInvalidMode
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	if result.Subscription == nil {
+		result.Subscription = sub
+	}
+	return &result, nil
+}
+
+func (s *Subscriptions) startHosted(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, result *SubscribeResult) error {
+	if s.hosted == nil {
+		return domainsubs.ErrNotConfigured
+	}
+	if plan.ProviderOverrides.StripePriceID == "" {
+		return status.Error(codes.FailedPrecondition, "plan is missing stripe_price_id for hosted mode")
+	}
+	success, cancel := s.checkoutURLs()
+	sess, err := s.hosted.CreateCheckout(ctx, domainsubs.HostedCheckoutInput{
+		SubscriptionID: sub.ID,
+		ProjectID:      sub.ProjectID,
+		PriceID:        plan.ProviderOverrides.StripePriceID,
+		SuccessURL:     success,
+		CancelURL:      cancel,
+		IdempotencyKey: "sub:" + sub.ID,
+	})
+	if err != nil {
+		return err
+	}
+	result.PaymentURL = sess.PaymentURL
+	// hosted：不履约、不扣款；等 invoice.paid / subscription.updated。
+	return nil
+}
+
+func (s *Subscriptions) startPlatform(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, result *SubscribeResult, now time.Time) error {
+	// 试用期：发放 benefits，不扣款。
+	if sub.Status == domainsubs.StatusTrialing {
+		if err := s.fulfillBenefits(ctx, sub, sub.CurrentPeriodEnd); err != nil {
+			return err
+		}
+		return s.publish(ctx, sub, domainsubs.EventActivated, now)
+	}
+	if plan.Amount == 0 {
+		if err := s.fulfillBenefits(ctx, sub, sub.CurrentPeriodEnd); err != nil {
+			return err
+		}
+		return s.publish(ctx, sub, domainsubs.EventActivated, now)
+	}
+	if sub.BillingAssetCode != "" {
+		ctx = withSystemPrincipal(ctx, sub.ProjectID)
+		if _, err := s.assets.Consume(ctx, appassets.ConsumeCommand{
+			OwnerType:      domainassets.OwnerTypeUser,
+			OwnerID:        sub.UserID,
+			DefCode:        sub.BillingAssetCode,
+			Quantity:       plan.Amount,
+			IdempotencyKey: "sub:" + sub.ID + ":activate",
+			RefType:        "subscription",
+			RefID:          sub.ID,
+		}); err != nil {
+			return err
+		}
+		if err := s.fulfillBenefits(ctx, sub, sub.CurrentPeriodEnd); err != nil {
+			return err
+		}
+		return s.publish(ctx, sub, domainsubs.EventActivated, now)
+	}
+	// 生成支付订单：订阅保持 trialing，paid 履约后转 active。
+	from := sub.Status
+	sub.Status = domainsubs.StatusTrialing
+	sub.UpdatedAt = now
+	if from != domainsubs.StatusTrialing {
+		if err := s.subs.Update(ctx, sub, from); err != nil {
+			return err
+		}
+	}
+	order, url, err := s.createBillingOrder(ctx, sub, plan, "activate")
+	if err != nil {
+		return err
+	}
+	result.OrderID = order.ID
+	result.PaymentURL = url
+	return nil
+}
+
+func (s *Subscriptions) checkoutURLs() (success, cancel string) {
+	base := "https://localhost"
+	if s.cfg != nil && s.cfg.GetServer().GetHttp().GetPublicUrl() != "" {
+		base = strings.TrimRight(s.cfg.GetServer().GetHttp().GetPublicUrl(), "/")
+	}
+	return base + "/?checkout=success&session_id={CHECKOUT_SESSION_ID}", base + "/?checkout=cancel"
+}
+
+func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, cycle string) (*domainpayments.Order, string, error) {
+	if s.orders == nil || s.providers == nil {
+		return nil, "", status.Error(codes.FailedPrecondition, "payments are required to bill this subscription")
+	}
+	providerName := domainpayments.ProviderStripe
+	provider, err := s.providers.Get(providerName)
+	if err != nil {
+		return nil, "", status.Errorf(codes.FailedPrecondition, "unsupported provider %q", providerName)
+	}
+	now := s.ts()
+	purpose := purposeJSON(sub.ID, plan.Code, cycle)
+	order := &domainpayments.Order{
+		ID:             newID(),
+		ProjectID:      sub.ProjectID,
+		UserID:         sub.UserID,
+		Provider:       provider.Name(),
+		IdempotencyKey: "sub:" + sub.ID + ":" + cycle,
+		Amount:         plan.Amount,
+		Currency:       plan.Currency,
+		PurposeKind:    domainpayments.PurposeSubscription,
+		Purpose:        purpose,
+		Status:         domainpayments.OrderStatusCreated,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ExpiresAt:      now.Add(24 * time.Hour),
+	}
+	existing, inserted, err := s.orders.Insert(ctx, order)
+	if err != nil {
+		return nil, "", err
+	}
+	if !inserted {
+		return existing, "", nil
+	}
+	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{
+		OrderID:        order.ID,
+		Amount:         order.Amount,
+		Currency:       order.Currency,
+		Description:    "Torchwood subscription " + sub.ID,
+		ExpiresAt:      order.ExpiresAt,
+		IdempotencyKey: "order:" + order.ID,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	order.ProviderSessionID = session.SessionID
+	if err := order.Transition(domainpayments.OrderStatusPaying, now); err != nil {
+		return nil, "", err
+	}
+	if err := s.orders.Update(ctx, order, domainpayments.OrderStatusCreated); err != nil {
+		return nil, "", err
+	}
+	return order, session.PaymentURL, nil
+}
+
+

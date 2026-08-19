@@ -197,13 +197,42 @@ func TestNormalize_EventTypes(t *testing.T) {
 			wantAmount: 300,
 		},
 		{
-			name: "invoice.paid（订阅，PR3）→ ignored",
+			name: "invoice.paid subscription_create → activated",
 			body: func() []byte {
-				obj := map[string]any{"id": "in_1"}
+				obj := map[string]any{"id": "in_1", "subscription": "sub_1", "billing_reason": "subscription_create", "amount_paid": 1999, "currency": "usd", "period_start": 1700000000, "period_end": 1702592000}
 				b, _ := json.Marshal(map[string]any{"id": "evt_7", "type": "invoice.paid", "data": map[string]any{"object": obj}})
 				return b
 			}(),
-			wantType: "ignored",
+			wantType:   payments.CallbackSubscriptionActivated,
+			wantAmount: 1999,
+		},
+		{
+			name: "invoice.payment_failed → past_due",
+			body: func() []byte {
+				obj := map[string]any{"id": "in_2", "subscription": "sub_1", "amount_due": 1999, "currency": "usd"}
+				b, _ := json.Marshal(map[string]any{"id": "evt_8", "type": "invoice.payment_failed", "data": map[string]any{"object": obj}})
+				return b
+			}(),
+			wantType: payments.CallbackSubscriptionPastDue,
+		},
+		{
+			name: "customer.subscription.deleted → canceled",
+			body: func() []byte {
+				obj := map[string]any{"id": "sub_1", "status": "canceled", "metadata": map[string]any{"subscription_id": "local_1"}}
+				b, _ := json.Marshal(map[string]any{"id": "evt_9", "type": "customer.subscription.deleted", "data": map[string]any{"object": obj}})
+				return b
+			}(),
+			wantType: payments.CallbackSubscriptionCanceled,
+		},
+		{
+			name: "checkout.session.completed mode=subscription",
+			body: func() []byte {
+				obj := map[string]any{"id": "cs_sub", "mode": "subscription", "subscription": "sub_1", "payment_status": "paid", "amount_total": 1999, "currency": "usd", "metadata": map[string]any{"subscription_id": "local_1"}}
+				b, _ := json.Marshal(map[string]any{"id": "evt_10", "type": "checkout.session.completed", "data": map[string]any{"object": obj}})
+				return b
+			}(),
+			wantType:   payments.CallbackSubscriptionUpdated,
+			wantAmount: 1999,
 		},
 	}
 	for _, tc := range cases {

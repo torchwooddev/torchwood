@@ -1,0 +1,422 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "client/v1/subscriptions.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SubscriptionsService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/subscriptions": {
+      "post": {
+        "operationId": "SubscriptionsService_Subscribe",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SubscribeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SubscribeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "SubscriptionsService"
+        ]
+      }
+    },
+    "/v1/subscriptions/me": {
+      "get": {
+        "operationId": "SubscriptionsService_GetMySubscription",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1Subscription"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "planCode",
+            "description": "可选：按计划 code 过滤；空则返回当前非终态（或最近一条）。",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SubscriptionsService"
+        ]
+      }
+    },
+    "/v1/subscriptions/plans": {
+      "get": {
+        "operationId": "SubscriptionsService_ListPlans",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1ListPlansResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SubscriptionsService"
+        ]
+      }
+    },
+    "/v1/subscriptions/{subscriptionId}:cancel": {
+      "post": {
+        "operationId": "SubscriptionsService_Cancel",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1Subscription"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "subscriptionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SubscriptionsServiceCancelBody"
+            }
+          }
+        ],
+        "tags": [
+          "SubscriptionsService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "SubscriptionsServiceCancelBody": {
+      "type": "object"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "torchwoodclientv1BenefitEntitlement": {
+      "type": "object",
+      "properties": {
+        "assetCode": {
+          "type": "string"
+        },
+        "tier": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "torchwoodclientv1BenefitGrant": {
+      "type": "object",
+      "properties": {
+        "assetCode": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "expiresIn": {
+          "type": "string",
+          "format": "int64"
+        }
+      }
+    },
+    "torchwoodclientv1Benefits": {
+      "type": "object",
+      "properties": {
+        "grants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodclientv1BenefitGrant"
+          }
+        },
+        "entitlements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodclientv1BenefitEntitlement"
+          }
+        }
+      }
+    },
+    "torchwoodclientv1ListPlansResponse": {
+      "type": "object",
+      "properties": {
+        "plans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodclientv1SubscriptionPlan"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
+        }
+      }
+    },
+    "torchwoodclientv1Subscription": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "planCode": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "title": "hosted | platform"
+        },
+        "status": {
+          "type": "string",
+          "title": "trialing | active | past_due | canceled | expired"
+        },
+        "currentPeriodStart": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "currentPeriodEnd": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "cancelAtPeriodEnd": {
+          "type": "boolean"
+        },
+        "graceUntil": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "benefits": {
+          "$ref": "#/definitions/torchwoodclientv1Benefits"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "paymentUrl": {
+          "type": "string",
+          "title": "渠道收银台 / 一次性支付 URL；仅 Subscribe 响应可能填充。"
+        }
+      }
+    },
+    "torchwoodclientv1SubscriptionPlan": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "string",
+          "format": "int64"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "interval": {
+          "type": "string",
+          "title": "month | year | custom_days"
+        },
+        "intervalDays": {
+          "type": "string",
+          "format": "int64"
+        },
+        "graceDays": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "trialDays": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "benefits": {
+          "$ref": "#/definitions/torchwoodclientv1Benefits"
+        }
+      }
+    },
+    "v1ListResponseMeta": {
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "nextPageToken": {
+          "type": "string"
+        },
+        "prevPageToken": {
+          "type": "string"
+        },
+        "totalCount": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1SubscribeRequest": {
+      "type": "object",
+      "properties": {
+        "planCode": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "title": "hosted | platform"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "billingAssetCode": {
+          "type": "string",
+          "title": "platform：Consume 该资产 def code（currency/stack）；空则生成支付订单。"
+        }
+      }
+    },
+    "v1SubscribeResponse": {
+      "type": "object",
+      "properties": {
+        "subscription": {
+          "$ref": "#/definitions/torchwoodclientv1Subscription"
+        },
+        "idempotentReplay": {
+          "type": "boolean"
+        },
+        "paymentUrl": {
+          "type": "string"
+        },
+        "orderId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e（Client API 登录态）",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "Bearer": []
+    }
+  ],
+  "x-torchwood-access": "authenticated"
+}

@@ -76,12 +76,30 @@ type PaymentSession struct {
 	PaymentURL string // 客户端跳转/拉起地址
 }
 
-// CallbackEventType 是归一化回调类型（设计 §1.1）。subscription_* 留给 PR3。
+// CallbackEventType 是归一化回调类型（设计 §1.1）。subscription_* 由 PR3 消费。
 const (
 	CallbackPaid     = "paid"
 	CallbackFailed   = "failed"
 	CallbackRefunded = "refunded"
+
+	CallbackSubscriptionUpdated   = "subscription_updated"
+	CallbackSubscriptionActivated = "subscription_activated"
+	CallbackSubscriptionRenewed   = "subscription_renewed"
+	CallbackSubscriptionPastDue   = "subscription_past_due"
+	CallbackSubscriptionCanceled  = "subscription_canceled"
+	CallbackSubscriptionExpired   = "subscription_expired"
 )
+
+// IsSubscriptionEvent 报告归一化类型是否为订阅镜像事件（hosted webhook）。
+func IsSubscriptionEvent(t string) bool {
+	switch t {
+	case CallbackSubscriptionUpdated, CallbackSubscriptionActivated,
+		CallbackSubscriptionRenewed, CallbackSubscriptionPastDue,
+		CallbackSubscriptionCanceled, CallbackSubscriptionExpired:
+		return true
+	}
+	return false
+}
 
 // CallbackEvent 是验签后的归一化渠道异步通知：
 // {Provider, ProviderEventID, ProviderOrderID, Type, Amount, Currency, Raw}
@@ -98,6 +116,22 @@ type CallbackEvent struct {
 	OrderID           string // 渠道 metadata 回传的本地订单 id（若有）
 	Raw               []byte
 	ReceivedAt        time.Time
+
+	// hosted 订阅镜像字段（一次性支付事件保持零值）。
+	ProviderSubID       string
+	LocalSubscriptionID string
+	PeriodStart         time.Time
+	PeriodEnd           time.Time
+	CancelAtPeriodEnd   bool
+	HostedStatus        string
+	BillingReason       string
+	CheckoutMode        string
+}
+
+// SubscriptionCallbackHandler 处理 hosted 订阅 webhook（PR3）：
+// 与 payment_callback_events 插入同一 sql.Tx。nil 时订阅事件仅登记不驱动。
+type SubscriptionCallbackHandler interface {
+	HandleHostedCallback(ctx context.Context, event *CallbackEvent) error
 }
 
 // RefundInput 是退款入参。

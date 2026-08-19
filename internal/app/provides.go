@@ -10,7 +10,9 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/app/storage"
+	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
 )
 
 var ProviderSet = wire.NewSet(
@@ -35,5 +37,7 @@ var ProviderSet = wire.NewSet(
 	functions.NewFunctions,
 	payments.NewPayments,
 	assets.NewAssets,
-	assets.NewOrderFulfiller,
+	subscriptions.NewSubscriptions,
+	subscriptions.NewOrderFulfiller,
+	wire.Bind(new(domainpayments.SubscriptionCallbackHandler), new(*subscriptions.Subscriptions)),
 )

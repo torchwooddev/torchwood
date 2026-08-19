@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package torchwood.client.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/client/v1;clientv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// 服务默认 access=authenticated：swagger 顶层声明 Bearer security
+// （详见 docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>（Client API 登录态）"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "Bearer"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "authenticated" }
+  }
+};
+
+// SubscriptionsService 是终端用户订阅面（v3 设计 §3 / §6）：
+// ListPlans / Subscribe / GetMySubscription / Cancel（期末生效）。
+service SubscriptionsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
+
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse) {
+    option (google.api.http) = { get: "/v1/subscriptions/plans" };
+  }
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {
+    option (google.api.http) = { post: "/v1/subscriptions", body: "*" };
+  }
+  rpc GetMySubscription(GetMySubscriptionRequest) returns (Subscription) {
+    option (google.api.http) = { get: "/v1/subscriptions/me" };
+  }
+  rpc Cancel(CancelRequest) returns (Subscription) {
+    option (google.api.http) = { post: "/v1/subscriptions/{subscription_id}:cancel", body: "*" };
+  }
+}
+
+message BenefitGrant {
+  string asset_code = 1;
+  int64 quantity = 2;
+  optional int64 expires_in = 3;
+}
+
+message BenefitEntitlement {
+  string asset_code = 1;
+  int32 tier = 2;
+}
+
+message Benefits {
+  repeated BenefitGrant grants = 1;
+  repeated BenefitEntitlement entitlements = 2;
+}
+
+message SubscriptionPlan {
+  string id = 1;
+  string code = 2;
+  string name = 3;
+  int64 amount = 4;
+  string currency = 5;
+  // month | year | custom_days
+  string interval = 6;
+  int64 interval_days = 7;
+  int32 grace_days = 8;
+  int32 trial_days = 9;
+  Benefits benefits = 10;
+}
+
+message Subscription {
+  string id = 1;
+  string plan_id = 2;
+  string plan_code = 3;
+  // hosted | platform
+  string mode = 4;
+  // trialing | active | past_due | canceled | expired
+  string status = 5;
+  google.protobuf.Timestamp current_period_start = 6;
+  google.protobuf.Timestamp current_period_end = 7;
+  bool cancel_at_period_end = 8;
+  google.protobuf.Timestamp grace_until = 9;
+  Benefits benefits = 10;
+  google.protobuf.Timestamp created_at = 11;
+  // 渠道收银台 / 一次性支付 URL；仅 Subscribe 响应可能填充。
+  string payment_url = 12;
+}
+
+message ListPlansRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListPlansResponse {
+  repeated SubscriptionPlan plans = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message SubscribeRequest {
+  string plan_code = 1;
+  // hosted | platform
+  string mode = 2;
+  string idempotency_key = 3;
+  // platform：Consume 该资产 def code（currency/stack）；空则生成支付订单。
+  string billing_asset_code = 4;
+}
+
+message SubscribeResponse {
+  Subscription subscription = 1;
+  bool idempotent_replay = 2;
+  string payment_url = 3;
+  string order_id = 4;
+}
+
+message GetMySubscriptionRequest {
+  // 可选：按计划 code 过滤；空则返回当前非终态（或最近一条）。
+  string plan_code = 1;
+}
+
+message CancelRequest {
+  string subscription_id = 1;
+}

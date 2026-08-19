@@ -332,6 +332,7 @@ func setupUnit(t *testing.T, provider domainpayments.PaymentProvider, fulfiller 
 		fakeRegistry{p: provider},
 		memPublisher{store},
 		nil,
+		nil,
 	)
 	return &unitEnv{payments: uc, store: store, provider: fp}
 }
@@ -555,6 +556,6 @@ func TestHandleCallback_UnknownProviderWritesNothing(t *testing.T) {
 func TestNewPayments_WiresDatabaseAsTxRunner(t *testing.T) {
 	// 生产构造器签名不变：nil *clients.Database 仍可装配（handler 验签失败路径）。
 	adapter := stripe.New(stripe.Config{SecretKey: "sk", WebhookSecret: unitWebhookSecret})
-	uc := NewPayments(nil, nil, nil, nil, nil, NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil)
+	uc := NewPayments(nil, nil, nil, nil, nil, NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil)
 	require.NotNil(t, uc)
 }
