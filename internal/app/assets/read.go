@@ -28,8 +28,24 @@ func (a *Assets) ListMyAssets(ctx context.Context, limit int, before time.Time) 
 	if err != nil {
 		return nil, err
 	}
+	return a.listOwnerAssets(ctx, projectID, userID, limit, before)
+}
+
+// ListUserAssets 返回指定用户未过期持有（Server / Console 只读查询）。
+func (a *Assets) ListUserAssets(ctx context.Context, ownerID string, limit int, before time.Time) ([]HoldingView, error) {
+	projectID, err := projectScope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID == "" {
+		return nil, status.Error(codes.InvalidArgument, "owner_id is required")
+	}
+	return a.listOwnerAssets(ctx, projectID, ownerID, limit, before)
+}
+
+func (a *Assets) listOwnerAssets(ctx context.Context, projectID, ownerID string, limit int, before time.Time) ([]HoldingView, error) {
 	limit, before = normalizeList(limit, before)
-	rows, err := a.holdings.ListByOwner(ctx, projectID, domainassets.OwnerTypeUser, userID, limit, before)
+	rows, err := a.holdings.ListByOwner(ctx, projectID, domainassets.OwnerTypeUser, ownerID, limit, before)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +76,22 @@ func (a *Assets) ListMyLedger(ctx context.Context, defCode string, limit int, be
 	if err != nil {
 		return nil, err
 	}
+	return a.listOwnerLedger(ctx, projectID, userID, defCode, limit, before)
+}
+
+// ListUserLedger 返回指定用户流水（Server / Console 只读查询）。
+func (a *Assets) ListUserLedger(ctx context.Context, ownerID, defCode string, limit int, before time.Time) ([]LedgerView, error) {
+	projectID, err := projectScope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID == "" {
+		return nil, status.Error(codes.InvalidArgument, "owner_id is required")
+	}
+	return a.listOwnerLedger(ctx, projectID, ownerID, defCode, limit, before)
+}
+
+func (a *Assets) listOwnerLedger(ctx context.Context, projectID, ownerID, defCode string, limit int, before time.Time) ([]LedgerView, error) {
 	limit, before = normalizeList(limit, before)
 	var defID string
 	if defCode != "" {
@@ -76,7 +108,7 @@ func (a *Assets) ListMyLedger(ctx context.Context, defCode string, limit int, be
 		}
 		defID = def.ID
 	}
-	rows, err := a.ledger.ListByOwner(ctx, projectID, domainassets.OwnerTypeUser, userID, defID, limit, before)
+	rows, err := a.ledger.ListByOwner(ctx, projectID, domainassets.OwnerTypeUser, ownerID, defID, limit, before)
 	if err != nil {
 		return nil, err
 	}

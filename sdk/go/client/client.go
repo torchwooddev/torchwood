@@ -62,9 +62,12 @@ type Client struct {
 	mu  sync.Mutex // 串行化刷新
 	now func() time.Time
 
-	account   clientv1.AccountServiceClient
-	teams     clientv1.TeamsServiceClient
-	databases clientv1.DatabasesServiceClient
+	account       clientv1.AccountServiceClient
+	teams         clientv1.TeamsServiceClient
+	databases     clientv1.DatabasesServiceClient
+	payments      clientv1.PaymentsServiceClient
+	assets        clientv1.AssetsServiceClient
+	subscriptions clientv1.SubscriptionsServiceClient
 
 	// Account 提供注册/登录/账户管理。
 	Account *AccountService
@@ -72,6 +75,12 @@ type Client struct {
 	Teams *TeamsService
 	// Databases 提供文档 CRUD，绑定默认 DatabaseID。
 	Databases *DatabasesService
+	// Payments 提供终端用户建单与本人订单查询。
+	Payments *PaymentsService
+	// Assets 提供终端用户只读资产查询（无写入口）。
+	Assets *AssetsService
+	// Subscriptions 提供计划列表、订阅与期末取消。
+	Subscriptions *SubscriptionsService
 }
 
 // New 建立 Client API 连接。target 为 gRPC 目标地址，不能为空。
@@ -99,9 +108,15 @@ func New(target string, opts ...Option) (*Client, error) {
 	c.account = clientv1.NewAccountServiceClient(gc)
 	c.teams = clientv1.NewTeamsServiceClient(gc)
 	c.databases = clientv1.NewDatabasesServiceClient(gc)
+	c.payments = clientv1.NewPaymentsServiceClient(gc)
+	c.assets = clientv1.NewAssetsServiceClient(gc)
+	c.subscriptions = clientv1.NewSubscriptionsServiceClient(gc)
 	c.Account = &AccountService{c: c}
 	c.Teams = &TeamsService{c: c}
 	c.Databases = c.UseDatabase(cfg.DatabaseID)
+	c.Payments = &PaymentsService{c: c}
+	c.Assets = &AssetsService{c: c}
+	c.Subscriptions = &SubscriptionsService{c: c}
 	return c, nil
 }
 

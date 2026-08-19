@@ -1,6 +1,9 @@
 import {
   AccountService,
+  ClientAssetsService,
   ClientDatabasesService,
+  ClientPaymentsService,
+  ClientSubscriptionsService,
   ClientTeamsService,
   RealtimeService,
 } from "./client/index.js";
@@ -12,7 +15,11 @@ import {
   HealthService,
   OAuthProvidersService,
   ProjectsService,
+  BillingService,
+  ServerAssetsService,
   ServerDatabasesService,
+  ServerPaymentsService,
+  ServerSubscriptionsService,
   ServerTeamsService,
   StorageService,
   UsersService,
@@ -20,6 +27,7 @@ import {
 
 export type { TorchwoodConfig } from "./http.js";
 export { TorchwoodError } from "./errors.js";
+export { accountsChannel } from "./client/realtime.js";
 export type {
   RealtimeConnectOptions,
   RealtimeConnection,
@@ -36,6 +44,9 @@ export class Torchwood {
   readonly databases: ClientDatabasesService;
   readonly teams: ClientTeamsService;
   readonly realtime: RealtimeService;
+  readonly payments: ClientPaymentsService;
+  readonly assets: ClientAssetsService;
+  readonly subscriptions: ClientSubscriptionsService;
 
   readonly server: {
     health: HealthService;
@@ -47,6 +58,10 @@ export class Torchwood {
     oauthProviders: OAuthProvidersService;
     storage: StorageService;
     functions: FunctionsService;
+    payments: ServerPaymentsService;
+    assets: ServerAssetsService;
+    subscriptions: ServerSubscriptionsService;
+    billing: BillingService;
   };
 
   private readonly transport: HttpTransport;
@@ -57,6 +72,9 @@ export class Torchwood {
     this.databases = new ClientDatabasesService(this.transport);
     this.teams = new ClientTeamsService(this.transport);
     this.realtime = new RealtimeService(this.transport);
+    this.payments = new ClientPaymentsService(this.transport);
+    this.assets = new ClientAssetsService(this.transport);
+    this.subscriptions = new ClientSubscriptionsService(this.transport);
     this.server = {
       health: new HealthService(this.transport),
       projects: new ProjectsService(this.transport),
@@ -67,6 +85,10 @@ export class Torchwood {
       oauthProviders: new OAuthProvidersService(this.transport),
       storage: new StorageService(this.transport),
       functions: new FunctionsService(this.transport),
+      payments: new ServerPaymentsService(this.transport),
+      assets: new ServerAssetsService(this.transport),
+      subscriptions: new ServerSubscriptionsService(this.transport),
+      billing: new BillingService(this.transport),
     };
   }
 

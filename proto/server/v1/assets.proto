@@ -106,6 +106,14 @@ service AssetsService {
     option (google.api.http) = { post: "/v1/server/assets:reconcile", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
   }
+
+  // ListUserAssets / ListUserLedger：Console 用户资产查询（PR6，只读）。
+  rpc ListUserAssets(ListUserAssetsRequest) returns (ListUserAssetsResponse) {
+    option (google.api.http) = { get: "/v1/server/assets/users/{owner_id}" };
+  }
+  rpc ListUserLedger(ListUserLedgerRequest) returns (ListUserLedgerResponse) {
+    option (google.api.http) = { get: "/v1/server/assets/users/{owner_id}/ledger" };
+  }
 }
 
 message AssetDef {
@@ -250,4 +258,40 @@ message AssetDrift {
   int64 holding_qty = 3;
   int64 replayed_qty = 4;
   string detail = 5;
+}
+
+// AssetHolding 是用户持有投影（Console / Server 只读查询；quantity 为 bigint）。
+message AssetHolding {
+  string id = 1;
+  string owner_id = 2;
+  string def_id = 3;
+  string def_code = 4;
+  string class = 5;
+  int64 quantity = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  int32 level = 8;
+  google.protobuf.Struct metadata = 9;
+}
+
+message ListUserAssetsRequest {
+  string owner_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListUserAssetsResponse {
+  repeated AssetHolding holdings = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message ListUserLedgerRequest {
+  string owner_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  string def_code = 4;
+}
+
+message ListUserLedgerResponse {
+  repeated AssetLedgerEntry entries = 1;
+  shared.v1.ListResponseMeta meta = 2;
 }

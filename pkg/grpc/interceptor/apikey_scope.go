@@ -120,8 +120,10 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.AssetsService/Consume":        {"economy", "write"},
 	"/torchwood.server.v1.AssetsService/Transfer":       {"economy", "write"},
 	"/torchwood.server.v1.AssetsService/Mutate":         {"economy", "write"},
-	"/torchwood.server.v1.AssetsService/Expire":         {"economy", "write"},
-	"/torchwood.server.v1.AssetsService/Reconcile":      {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Expire":          {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Reconcile":       {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/ListUserAssets":  {"economy", "read"},
+	"/torchwood.server.v1.AssetsService/ListUserLedger":  {"economy", "read"},
 	// SubscriptionsService（v3 设计 §6：读 subscriptions.read，写 subscriptions.write）
 	"/torchwood.server.v1.SubscriptionsService/CreatePlan":         {"subscriptions", "write"},
 	"/torchwood.server.v1.SubscriptionsService/ListPlans":          {"subscriptions", "read"},

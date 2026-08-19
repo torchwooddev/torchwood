@@ -7,6 +7,7 @@ import { DatabasesPage } from "@/pages/DatabasesPage";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage, OAuthCallbackPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
+import { EconomyPage } from "@/pages/EconomyPage";
 import { ServerPage } from "@/pages/ServerPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { TeamsPage } from "@/pages/TeamsPage";
@@ -33,6 +34,7 @@ export default function App() {
               <Route path="/app/databases" element={<DatabasesPage />} />
               <Route path="/app/teams" element={<TeamsPage />} />
               <Route path="/app/server" element={<ServerPage />} />
+              <Route path="/app/economy" element={<EconomyPage />} />
               <Route path="/app/settings" element={<SettingsPage />} />
             </Route>
           </Route>

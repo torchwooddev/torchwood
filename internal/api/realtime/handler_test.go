@@ -521,6 +521,10 @@ func TestSubscribe_InvalidChannel(t *testing.T) {
 		"databases.app.foos.posts",                  // 缺 collections 段
 		"databases.app.collections.posts.documents", // 缺 doc id
 		"databases.app.collections.px.y",            // coll 含点 → 越权防护
+		"accounts",                                  // 缺 userId
+		"accounts.",                                 // 空 userId
+		"accounts.u1.extra",                         // 多段
+		"accounts.bad user",                         // 非法 userId
 	} {
 		sendJSON(t, c, map[string]any{"type": "subscribe", "id": "x", "channel": ch})
 		expectErrorFrame(t, c, errCodeInvalidArgument)
@@ -780,6 +784,163 @@ func TestConnection_KeepAliveBeyond60Seconds(t *testing.T) {
 			sendJSON(t, c, map[string]any{"type": "pong"})
 		}
 	}
+}
+
+// TestSubscribe_AccountsChannelSelfOK：本人可订 accounts.{uid}。
+func TestSubscribe_AccountsChannelSelfOK(t *testing.T) {
+	validator := &fakeValidator{
+		principal: endUserPrincipal("default", "u1"),
+		claims:    &jwtparser.Claims{TokenType: jwtparser.TokenTypeAccess},
+	}
+	_, _, srv := testHandler(t, validator, &fakeDocDB{collections: map[string]*databases.Collection{}})
+	c := dial(t, srv)
+	sendJSON(t, c, hello("default", "jwt"))
+	discardHelloOK(t, c)
+
+	sendJSON(t, c, map[string]any{"type": "subscribe", "id": "a1", "channel": "accounts.u1"})
+	var ok struct {
+		Type    string `json:"type"`
+		ID      string `json:"id"`
+		Channel string `json:"channel"`
+	}
+	readTestFrame(t, c, &ok)
+	require.Equal(t, "subscribed", ok.Type)
+	require.Equal(t, "accounts.u1", ok.Channel)
+}
+
+// TestSubscribe_AccountsChannelOtherRejected：他人 uid 订阅拒（NOT_FOUND，防枚举）。
+func TestSubscribe_AccountsChannelOtherRejected(t *testing.T) {
+	validator := &fakeValidator{
+		principal: endUserPrincipal("default", "u1"),
+		claims:    &jwtparser.Claims{TokenType: jwtparser.TokenTypeAccess},
+	}
+	_, _, srv := testHandler(t, validator, &fakeDocDB{collections: map[string]*databases.Collection{}})
+	c := dial(t, srv)
+	sendJSON(t, c, hello("default", "jwt"))
+	discardHelloOK(t, c)
+
+	sendJSON(t, c, map[string]any{"type": "subscribe", "id": "a2", "channel": "accounts.u2"})
+	expectErrorFrame(t, c, errCodeNotFound)
+}
+
+// TestSubscribe_AccountsChannelPlatformAdminOK：platform admin 可订任意 uid。
+func TestSubscribe_AccountsChannelPlatformAdminOK(t *testing.T) {
+	validator := &fakeValidator{
+		principal:     adminPrincipal("a1"),
+		claims:        &jwtparser.Claims{TokenType: jwtparser.TokenTypeAccess},
+		projectAccess: true,
+	}
+	_, _, srv := testHandler(t, validator, &fakeDocDB{collections: map[string]*databases.Collection{}})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_console=console-session"}},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.CloseNow() })
+	sendJSON(t, c, hello("default", ""))
+	discardHelloOK(t, c)
+
+	sendJSON(t, c, map[string]any{"type": "subscribe", "id": "a3", "channel": "accounts.u9"})
+	var ok struct {
+		Type    string `json:"type"`
+		Channel string `json:"channel"`
+	}
+	readTestFrame(t, c, &ok)
+	require.Equal(t, "subscribed", ok.Type)
+	require.Equal(t, "accounts.u9", ok.Channel)
+}
+
+// TestEventDelivery_AccountsChannelDomainSplit：经济事件按频道天然过滤、
+// 出站无 acl，payload 含 domain 供客户端分流。
+func TestEventDelivery_AccountsChannelDomainSplit(t *testing.T) {
+	validator := &fakeValidator{
+		principal: endUserPrincipal("default", "u1"),
+		claims:    &jwtparser.Claims{TokenType: jwtparser.TokenTypeAccess},
+	}
+	_, hub, srv := testHandler(t, validator, &fakeDocDB{collections: map[string]*databases.Collection{}})
+
+	u1 := dial(t, srv)
+	sendJSON(t, u1, hello("default", "jwt"))
+	discardHelloOK(t, u1)
+	sendJSON(t, u1, map[string]any{"type": "subscribe", "id": "s", "channel": "accounts.u1"})
+	readTestFrame(t, u1, &struct {
+		Type string `json:"type"`
+	}{})
+
+	hub.Dispatch(domainevents.Envelope{
+		EventID:   "pay-1",
+		Event:     "payments.orders.paid",
+		ProjectID: "default",
+		Domain:    "payments",
+		Channel:   "accounts.u1",
+		CreatedAt: time.Now(),
+		Attrs:     map[string]any{"order_id": "o1", "amount": int64(1999)},
+	})
+	var pay struct {
+		Type    string         `json:"type"`
+		Channel string         `json:"channel"`
+		Payload map[string]any `json:"payload"`
+	}
+	readTestFrame(t, u1, &pay)
+	require.Equal(t, "event", pay.Type)
+	require.Equal(t, "accounts.u1", pay.Channel)
+	require.Equal(t, "payments", pay.Payload["domain"])
+	require.Equal(t, "payments.orders.paid", pay.Payload["event"])
+	require.Equal(t, "o1", pay.Payload["order_id"])
+	raw, _ := json.Marshal(pay)
+	require.NotContains(t, string(raw), `"acl"`)
+
+	hub.Dispatch(domainevents.Envelope{
+		EventID:   "eco-1",
+		Event:     "economy.assets.granted",
+		ProjectID: "default",
+		Domain:    "economy",
+		Channel:   "accounts.u1",
+		CreatedAt: time.Now(),
+		Attrs:     map[string]any{"def_code": "gold", "delta": int64(100)},
+	})
+	var eco struct {
+		Payload map[string]any `json:"payload"`
+	}
+	readTestFrame(t, u1, &eco)
+	require.Equal(t, "economy", eco.Payload["domain"])
+	require.Equal(t, "economy.assets.granted", eco.Payload["event"])
+	require.Equal(t, "gold", eco.Payload["def_code"])
+
+	// 他人频道事件不得误投。
+	hub.Dispatch(domainevents.Envelope{
+		EventID:   "pay-other",
+		Event:     "payments.orders.paid",
+		ProjectID: "default",
+		Domain:    "payments",
+		Channel:   "accounts.u2",
+		CreatedAt: time.Now(),
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, _, err := u1.Read(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestParseChannelDispatcher(t *testing.T) {
+	db, ok := parseChannel("databases.app.collections.posts")
+	require.True(t, ok)
+	require.Equal(t, channelKindDatabases, db.kind)
+	require.Equal(t, "app", db.dbID)
+	require.Equal(t, "posts", db.collID)
+	require.Empty(t, db.docID)
+
+	acc, ok := parseChannel("accounts.01HZXUSERID00000000000000")
+	require.True(t, ok)
+	require.Equal(t, channelKindAccounts, acc.kind)
+	require.Equal(t, "01HZXUSERID00000000000000", acc.userID)
+
+	_, ok = parseChannel("chat.room.one")
+	require.False(t, ok)
+	_, ok = parseChannel("accounts.u1.extra")
+	require.False(t, ok)
 }
 
 // eventsEnvelope 构造 u1 可读、u2 不可读的事件（doc perms user:u1）。

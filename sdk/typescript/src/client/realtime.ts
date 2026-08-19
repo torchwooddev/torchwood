@@ -261,6 +261,11 @@ class RealtimeConnectionImpl implements RealtimeConnection {
   }
 }
 
+/** D17 单一经济频道：订单 / 资产 / 订阅事件都发 accounts.{userId}。 */
+export function accountsChannel(userId: string): string {
+  return `accounts.${userId}`;
+}
+
 /** Realtime 服务入口：`client.realtime.connect({ projectId, getAccessToken })`。 */
 export class RealtimeService {
   constructor(private readonly http: HttpTransport) {}

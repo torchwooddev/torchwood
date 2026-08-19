@@ -511,7 +511,7 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 		})
 		return
 	}
-	dbID, collID, docID, ok := parseChannel(f.Channel)
+	parsed, ok := parseChannel(f.Channel)
 	if !ok {
 		_ = h.writeFrame(ctx, c, &outboundFrame{
 			ID: f.ID, Type: "error", Code: errCodeInvalidArgument,
@@ -519,7 +519,7 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 		})
 		return
 	}
-	if !h.channelAllowed(ctx, st, dbID, collID, docID) {
+	if !h.channelAllowed(ctx, st, parsed) {
 		_ = h.writeFrame(ctx, c, &outboundFrame{
 			ID: f.ID, Type: "error", Code: errCodeNotFound,
 			Message: "channel not found",
@@ -535,8 +535,24 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 	})
 }
 
-// channelAllowed 判定频道可订（集合或文档存在且可读）。
-func (h *Handler) channelAllowed(ctx context.Context, st *connState, dbID, collID, docID string) bool {
+// channelAllowed 判定频道可订。databases：集合/文档存在且可读；
+// accounts：本人（JWT sub == userId）或 platform admin（D17）；出站无 acl。
+func (h *Handler) channelAllowed(ctx context.Context, st *connState, ch parsedChannel) bool {
+	switch ch.kind {
+	case channelKindAccounts:
+		if st.platformAdmin {
+			return true
+		}
+		return st.principal != nil && st.principal.UserID != "" && st.principal.UserID == ch.userID
+	case channelKindDatabases:
+		return h.databasesChannelAllowed(ctx, st, ch.dbID, ch.collID, ch.docID)
+	default:
+		return false
+	}
+}
+
+// databasesChannelAllowed 判定集合或文档频道可订（存在且可读）。
+func (h *Handler) databasesChannelAllowed(ctx context.Context, st *connState, dbID, collID, docID string) bool {
 	if docID != "" {
 		doc, err := h.docDB.GetDocument(ctx, st.projectID, dbID, collID, docID, st.docPrincipal)
 		if err != nil {
@@ -599,36 +615,6 @@ func (h *Handler) writeBytes(ctx context.Context, c *websocket.Conn, payload []b
 	ctxWrite, cancel := context.WithTimeout(ctx, frameWriteTimeout)
 	defer cancel()
 	return c.Write(ctxWrite, websocket.MessageText, payload)
-}
-
-// parseChannel 按字面量分段解析频道名（v2 设计 §2.4）：
-//
-//	databases . <db> . collections . <coll> [ . documents . <doc...> ]
-//
-// databaseId/collectionId 须满足 identifierRe（不含 "."）；documentId
-// 取余下全部（可含 "." ":" "-"）。禁止 strings.Split 到 channel 任意
-// 位置后凭片段拼写，防止文档 id 含 "." 造成越权。
-func parseChannel(ch string) (dbID, collID, docID string, ok bool) {
-	parts := strings.Split(ch, ".")
-	if len(parts) < 4 || parts[0] != "databases" || parts[2] != "collections" {
-		return "", "", "", false
-	}
-	dbID, collID = parts[1], parts[3]
-	if !identifierRe.MatchString(dbID) || !identifierRe.MatchString(collID) {
-		return "", "", "", false
-	}
-	rest := parts[4:]
-	if len(rest) == 0 {
-		return dbID, collID, "", true
-	}
-	if len(rest) < 2 || rest[0] != "documents" {
-		return "", "", "", false
-	}
-	docID = strings.Join(rest[1:], ".")
-	if !docIDRe.MatchString(docID) {
-		return "", "", "", false
-	}
-	return dbID, collID, docID, true
 }
 
 // isPermissionOrNotFound 识别订阅校验中「无权限/不存在」类错误

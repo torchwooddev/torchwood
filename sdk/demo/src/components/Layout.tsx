@@ -7,6 +7,7 @@ const nav = [
   { to: "/app/databases", label: "Databases" },
   { to: "/app/teams", label: "Teams" },
   { to: "/app/server", label: "Server API" },
+  { to: "/app/economy", label: "Economy" },
   { to: "/app/settings", label: "设置" },
 ];
 

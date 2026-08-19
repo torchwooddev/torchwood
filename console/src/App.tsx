@@ -106,6 +106,39 @@ const SettingsPage = lazy(() =>
 const AdminsListPage = lazy(() =>
   import("@/routes/admins/pages").then((m) => ({ default: m.AdminsListPage }))
 );
+const OrdersListPage = lazy(() =>
+  import("@/routes/payments/pages").then((m) => ({ default: m.OrdersListPage }))
+);
+const OrderDetailPage = lazy(() =>
+  import("@/routes/payments/pages").then((m) => ({ default: m.OrderDetailPage }))
+);
+const AssetDefsListPage = lazy(() =>
+  import("@/routes/assets/pages").then((m) => ({ default: m.AssetDefsListPage }))
+);
+const AssetDefNewPage = lazy(() =>
+  import("@/routes/assets/pages").then((m) => ({ default: m.AssetDefNewPage }))
+);
+const AssetDefDetailPage = lazy(() =>
+  import("@/routes/assets/pages").then((m) => ({ default: m.AssetDefDetailPage }))
+);
+const UserAssetsPage = lazy(() =>
+  import("@/routes/assets/pages").then((m) => ({ default: m.UserAssetsPage }))
+);
+const PlansListPage = lazy(() =>
+  import("@/routes/subscriptions/pages").then((m) => ({ default: m.PlansListPage }))
+);
+const PlanNewPage = lazy(() =>
+  import("@/routes/subscriptions/pages").then((m) => ({ default: m.PlanNewPage }))
+);
+const PlanDetailPage = lazy(() =>
+  import("@/routes/subscriptions/pages").then((m) => ({ default: m.PlanDetailPage }))
+);
+const SubscriptionsListPage = lazy(() =>
+  import("@/routes/subscriptions/pages").then((m) => ({ default: m.SubscriptionsListPage }))
+);
+const SubscriptionDetailPage = lazy(() =>
+  import("@/routes/subscriptions/pages").then((m) => ({ default: m.SubscriptionDetailPage }))
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -460,6 +493,119 @@ function AppRoutes() {
             <RouteErrorBoundary>
               <DocumentDetailPage />
             </RouteErrorBoundary>
+          }
+        />
+
+        <Route
+          path="orders"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <OrdersListPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="orders/:id"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <OrderDetailPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+
+        <Route
+          path="assets"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <AssetDefsListPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="assets/defs/new"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <AssetDefNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="assets/defs/:id"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <AssetDefDetailPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="assets/users"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <UserAssetsPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+
+        <Route
+          path="subscriptions/plans"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <PlansListPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="subscriptions/plans/new"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <PlanNewPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="subscriptions/plans/:id"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <PlanDetailPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="subscriptions"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <SubscriptionsListPage />
+              </RouteErrorBoundary>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="subscriptions/:id"
+          element={
+            <RequireRole mode="platformAdmin">
+              <RouteErrorBoundary>
+                <SubscriptionDetailPage />
+              </RouteErrorBoundary>
+            </RequireRole>
           }
         />
       </Route>

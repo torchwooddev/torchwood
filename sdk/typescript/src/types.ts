@@ -336,3 +336,179 @@ export interface UpsertTransactionDocumentInput {
   permissions?: string[];
   conflict_columns: string[];
 }
+
+/** int64 最小单位；网关 protojson 序列化为字符串。禁止按 number 做算术。 */
+export type Int64String = string;
+
+export interface PaymentOrder {
+  id: string;
+  project_id?: string;
+  user_id?: string;
+  provider: string;
+  amount: Int64String;
+  currency: string;
+  purpose_kind: string;
+  purpose?: Record<string, unknown>;
+  status: string;
+  idempotency_key?: string;
+  provider_session_id?: string;
+  provider_order_id?: string;
+  created_at?: string;
+  paid_at?: string;
+  expires_at?: string;
+  payment_url?: string;
+}
+
+export interface CreateOrderResponse {
+  order: PaymentOrder;
+  idempotent_replay?: boolean;
+}
+
+export interface PaymentFulfillment {
+  id: string;
+  order_id: string;
+  purpose_kind: string;
+  ref: string;
+  status: string;
+  detail?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AssetDef {
+  id: string;
+  project_id?: string;
+  code: string;
+  name: string;
+  class: string;
+  decimals: number;
+  max_quantity?: Int64String;
+  expires_in?: Int64String;
+  tradable?: boolean;
+  unique_per_owner?: boolean;
+  upgradeable?: boolean;
+  metadata?: Record<string, unknown>;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AssetHolding {
+  id: string;
+  owner_id?: string;
+  def_id: string;
+  def_code: string;
+  class: string;
+  quantity: Int64String;
+  expires_at?: string;
+  level?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AssetLedgerEntry {
+  id: string;
+  holding_id?: string;
+  owner_id?: string;
+  def_id: string;
+  def_code?: string;
+  kind: string;
+  delta: Int64String;
+  quantity_after: Int64String;
+  expires_at?: string;
+  ref_type?: string;
+  ref_id?: string;
+  idempotency_key?: string;
+  created_at?: string;
+}
+
+export interface AssetOpResponse {
+  entries: AssetLedgerEntry[];
+  idempotent_replay?: boolean;
+}
+
+export interface AssetDrift {
+  owner_id: string;
+  def_id: string;
+  holding_qty: Int64String;
+  replayed_qty: Int64String;
+  detail?: string;
+}
+
+export interface ReconcileResponse {
+  zero_drift: boolean;
+  holdings: number;
+  entries: number;
+  drift_count: number;
+  drifts?: AssetDrift[];
+}
+
+export interface BenefitGrant {
+  asset_code: string;
+  quantity: Int64String;
+  expires_in?: Int64String;
+}
+
+export interface BenefitEntitlement {
+  asset_code: string;
+  tier: number;
+}
+
+export interface Benefits {
+  grants?: BenefitGrant[];
+  entitlements?: BenefitEntitlement[];
+}
+
+export interface ProviderOverrides {
+  stripe_price_id?: string;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  project_id?: string;
+  code: string;
+  name: string;
+  amount: Int64String;
+  currency: string;
+  interval: string;
+  interval_days?: Int64String;
+  grace_days?: number;
+  trial_days?: number;
+  benefits?: Benefits;
+  provider_overrides?: ProviderOverrides;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Subscription {
+  id: string;
+  project_id?: string;
+  user_id?: string;
+  plan_id?: string;
+  plan_code?: string;
+  mode: string;
+  provider?: string;
+  provider_sub_id?: string;
+  status: string;
+  current_period_start?: string;
+  current_period_end?: string;
+  cancel_at_period_end?: boolean;
+  grace_until?: string;
+  billing_asset_code?: string;
+  benefits?: Benefits;
+  created_at?: string;
+  updated_at?: string;
+  payment_url?: string;
+}
+
+export interface SubscribeResponse {
+  subscription: Subscription;
+  idempotent_replay?: boolean;
+  payment_url?: string;
+  order_id?: string;
+}
+
+export interface ManualFulfillResponse {
+  order: PaymentOrder;
+  fulfillment: PaymentFulfillment;
+}

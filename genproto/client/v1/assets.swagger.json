@@ -215,6 +215,38 @@
       },
       "title": "AssetDef 是资产定义（只读投影：不含内部字段）。"
     },
+    "torchwoodclientv1AssetHolding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "defId": {
+          "type": "string"
+        },
+        "defCode": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "level": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
     "torchwoodclientv1AssetLedgerEntry": {
       "type": "object",
       "properties": {
@@ -270,38 +302,6 @@
         }
       }
     },
-    "v1AssetHolding": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "defId": {
-          "type": "string"
-        },
-        "defCode": {
-          "type": "string"
-        },
-        "class": {
-          "type": "string"
-        },
-        "quantity": {
-          "type": "string",
-          "format": "int64"
-        },
-        "expiresAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "level": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "metadata": {
-          "type": "object"
-        }
-      }
-    },
     "v1ListMyAssetLedgerResponse": {
       "type": "object",
       "properties": {
@@ -324,7 +324,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "$ref": "#/definitions/v1AssetHolding"
+            "$ref": "#/definitions/torchwoodclientv1AssetHolding"
           }
         },
         "meta": {

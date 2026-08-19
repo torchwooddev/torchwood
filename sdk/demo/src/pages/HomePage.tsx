@@ -27,6 +27,12 @@ const cards = [
     desc: "Health / Projects / Users / Databases",
     code: "Torchwood.server.*",
   },
+  {
+    title: "Economy",
+    path: "/app/economy",
+    desc: "建单 → 支付模拟 → 资产到账 → Realtime accounts.{uid}",
+    code: "payments / assets / realtime",
+  },
 ];
 
 export function HomePage() {

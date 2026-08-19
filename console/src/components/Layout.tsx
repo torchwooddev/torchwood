@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ProjectBootstrap } from "@/components/ProjectBootstrap";
 import { ProjectSelector } from "@/components/ProjectSelector";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Key, Users, Database, HardDrive, LogOut, Menu, X, UsersRound, Settings, ShieldCheck, FolderKanban, FunctionSquare } from "lucide-react";
+import { LayoutDashboard, Key, Users, Database, HardDrive, LogOut, Menu, X, UsersRound, Settings, ShieldCheck, FolderKanban, FunctionSquare, Receipt, Coins, CreditCard } from "lucide-react";
 
 const navSections = [
   {
@@ -24,6 +24,14 @@ const navSections = [
     items: [
       { to: "/console/users", label: "Users", icon: Users },
       { to: "/console/teams", label: "Teams", icon: UsersRound },
+    ],
+  },
+  {
+    title: "Economy",
+    items: [
+      { to: "/console/orders", label: "Orders", icon: Receipt },
+      { to: "/console/assets", label: "Assets", icon: Coins },
+      { to: "/console/subscriptions/plans", label: "Subscriptions", icon: CreditCard },
     ],
   },
   {

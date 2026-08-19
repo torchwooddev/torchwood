@@ -67,6 +67,14 @@ type Client struct {
 	Functions *FunctionsService
 	// OAuthProviders 提供 OAuth 提供商管理。
 	OAuthProviders *OAuthProvidersService
+	// Payments 提供订单查询、退款与人工履约。
+	Payments *PaymentsService
+	// Assets 提供资产定义 CRUD 与五动词（终端用户无写入口）。
+	Assets *AssetsService
+	// Subscriptions 提供计划 CRUD 与订阅强制取消/过期。
+	Subscriptions *SubscriptionsService
+	// Billing 提供用量合计、小时 rollup 与月账单文档（只读）。
+	Billing *BillingService
 }
 
 // New 建立 Server API 连接。target 为 gRPC 目标地址，不能为空。
@@ -94,6 +102,10 @@ func New(target string, opts ...Option) (*Client, error) {
 	c.Storage = &StorageService{c: c, api: serverv1.NewStorageServiceClient(gc)}
 	c.Functions = &FunctionsService{c: c, api: serverv1.NewFunctionsServiceClient(gc)}
 	c.OAuthProviders = &OAuthProvidersService{c: c, api: serverv1.NewOAuthProvidersServiceClient(gc)}
+	c.Payments = &PaymentsService{c: c, api: serverv1.NewPaymentsServiceClient(gc)}
+	c.Assets = &AssetsService{c: c, api: serverv1.NewAssetsServiceClient(gc)}
+	c.Subscriptions = &SubscriptionsService{c: c, api: serverv1.NewSubscriptionsServiceClient(gc)}
+	c.Billing = &BillingService{c: c, api: serverv1.NewBillingServiceClient(gc)}
 	return c, nil
 }
 

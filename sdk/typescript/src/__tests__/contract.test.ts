@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 
 import { Torchwood } from "../graviton.js";
 import { AccountService } from "../client/account.js";
+import { ClientAssetsService } from "../client/assets.js";
 import { ClientDatabasesService } from "../client/databases.js";
+import { ClientPaymentsService } from "../client/payments.js";
+import { ClientSubscriptionsService } from "../client/subscriptions.js";
 import { ClientTeamsService } from "../client/teams.js";
 import { HttpTransport } from "../http.js";
 import {
@@ -15,7 +18,11 @@ import {
   HealthService,
   OAuthProvidersService,
   ProjectsService,
+  BillingService,
+  ServerAssetsService,
   ServerDatabasesService,
+  ServerPaymentsService,
+  ServerSubscriptionsService,
   ServerTeamsService,
   StorageService,
   UsersService,
@@ -43,10 +50,17 @@ const SDK_SERVICES: Record<string, ClassLike> = {
   OAuthProvidersService: OAuthProvidersService,
   ProjectsService: ProjectsService,
   HealthService: HealthService,
+  PaymentsService: ServerPaymentsService,
+  AssetsService: ServerAssetsService,
+  SubscriptionsService: ServerSubscriptionsService,
+  BillingService: BillingService,
   // Client API（swagger 服务名与 Server API 重名，加 client. 前缀区分）
   "client.AccountService": AccountService,
   "client.DatabasesService": ClientDatabasesService,
   "client.TeamsService": ClientTeamsService,
+  "client.PaymentsService": ClientPaymentsService,
+  "client.AssetsService": ClientAssetsService,
+  "client.SubscriptionsService": ClientSubscriptionsService,
 };
 
 // RPC 名 → TS SDK 方法名（SDK 使用简短命名，与 proto 非一一对应，显式登记）。
@@ -228,6 +242,60 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     UpdateMembershipStatus: "updateMembershipStatus",
     DeleteMembership: "deleteMembership",
   },
+  PaymentsService: {
+    ListOrders: "listOrders",
+    GetOrder: "getOrder",
+    Refund: "refund",
+    ManualFulfill: "manualFulfill",
+  },
+  AssetsService: {
+    CreateAssetDef: "createAssetDef",
+    ListAssetDefs: "listAssetDefs",
+    GetAssetDef: "getAssetDef",
+    UpdateAssetDef: "updateAssetDef",
+    DeleteAssetDef: "deleteAssetDef",
+    Grant: "grant",
+    Consume: "consume",
+    Transfer: "transfer",
+    Mutate: "mutate",
+    Expire: "expire",
+    Reconcile: "reconcile",
+    ListUserAssets: "listUserAssets",
+    ListUserLedger: "listUserLedger",
+  },
+  SubscriptionsService: {
+    CreatePlan: "createPlan",
+    ListPlans: "listPlans",
+    GetPlan: "getPlan",
+    UpdatePlan: "updatePlan",
+    DeletePlan: "deletePlan",
+    ListSubscriptions: "listSubscriptions",
+    GetSubscription: "getSubscription",
+    CancelSubscription: "cancelSubscription",
+    ExpireSubscription: "expireSubscription",
+  },
+  BillingService: {
+    GetUsage: "getUsage",
+    ListRollups: "listRollups",
+    ListStatements: "listStatements",
+  },
+  "client.PaymentsService": {
+    CreateOrder: "createOrder",
+    GetMyOrder: "getMyOrder",
+    ListMyOrders: "listMyOrders",
+    VerifyReceipt: "verifyReceipt",
+  },
+  "client.AssetsService": {
+    ListAssetDefs: "listAssetDefs",
+    ListMyAssets: "listMyAssets",
+    ListMyAssetLedger: "listMyAssetLedger",
+  },
+  "client.SubscriptionsService": {
+    ListPlans: "listPlans",
+    Subscribe: "subscribe",
+    GetMySubscription: "getMySubscription",
+    Cancel: "cancel",
+  },
 };
 
 // securityDefinitions 中必须存在的三个统一 scheme 名（F11-1）。
@@ -366,6 +434,10 @@ const FACADE_SERVICES: Record<string, string> = {
   OAuthProvidersService: "oauthProviders",
   ProjectsService: "projects",
   HealthService: "health",
+  PaymentsService: "payments",
+  AssetsService: "assets",
+  SubscriptionsService: "subscriptions",
+  BillingService: "billing",
 };
 
 // Round3 H4-1：Server swagger 的每个服务都必须经 `Torchwood.server.<svc>`
@@ -464,8 +536,16 @@ it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）
       projects: new ProjectsService(h),
       apiKeys: new APIKeysService(h),
       oauth: new OAuthProvidersService(h),
+      payments: new ServerPaymentsService(h),
+      assets: new ServerAssetsService(h),
+      subscriptions: new ServerSubscriptionsService(h),
     });
-    const client = (h: HttpTransport) => ({ account: new AccountService(h) });
+    const client = (h: HttpTransport) => ({
+      account: new AccountService(h),
+      payments: new ClientPaymentsService(h),
+      assets: new ClientAssetsService(h),
+      subscriptions: new ClientSubscriptionsService(h),
+    });
 
     // 覆盖各服务的 Create/Update/Delete 写方法（及代表性 Get/其他写方法）。
     cases.push(
@@ -522,7 +602,25 @@ it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）
       { side: "client", operationId: "AccountService_CreateTOTPFactor", invoke: (h) => client(h).account.createTOTPFactor() },
       { side: "client", operationId: "AccountService_VerifyTOTPFactor", invoke: (h) => client(h).account.verifyTOTPFactor({ factor_id: "f1", code: "123456" }) },
       { side: "client", operationId: "AccountService_DeleteFactor", invoke: (h) => client(h).account.deleteFactor("f1", "123456") },
-      { side: "client", operationId: "AccountService_CreateMFASession", invoke: (h) => client(h).account.createMFASession({ challenge_token: "ct", factor_id: "f1", code: "123456" }) }
+      { side: "client", operationId: "AccountService_CreateMFASession", invoke: (h) => client(h).account.createMFASession({ challenge_token: "ct", factor_id: "f1", code: "123456" }) },
+      { side: "server", operationId: "PaymentsService_Refund", invoke: (h) => server(h).payments.refund("o1", { amount: "1999", reason: "demo" }) },
+      { side: "server", operationId: "PaymentsService_ManualFulfill", invoke: (h) => server(h).payments.manualFulfill("o1", "demo") },
+      { side: "server", operationId: "AssetsService_CreateAssetDef", invoke: (h) => server(h).assets.createAssetDef({ code: "gold", name: "Gold", class: "currency" }) },
+      { side: "server", operationId: "AssetsService_UpdateAssetDef", invoke: (h) => server(h).assets.updateAssetDef("d1", { name: "Gold v2" }) },
+      { side: "server", operationId: "AssetsService_DeleteAssetDef", invoke: (h) => server(h).assets.deleteAssetDef("d1") },
+      { side: "server", operationId: "AssetsService_Grant", invoke: (h) => server(h).assets.grant({ owner_id: "u1", def_code: "gold", quantity: "100", idempotency_key: "g1" }) },
+      { side: "server", operationId: "AssetsService_Consume", invoke: (h) => server(h).assets.consume({ owner_id: "u1", def_code: "gold", quantity: "10", idempotency_key: "c1" }) },
+      { side: "server", operationId: "AssetsService_Transfer", invoke: (h) => server(h).assets.transfer({ from_owner_id: "u1", to_owner_id: "u2", def_code: "gold", quantity: "1", idempotency_key: "t1" }) },
+      { side: "server", operationId: "AssetsService_Mutate", invoke: (h) => server(h).assets.mutate({ holding_id: "h1", idempotency_key: "m1" }) },
+      { side: "server", operationId: "AssetsService_Expire", invoke: (h) => server(h).assets.expire({ holding_id: "h1", idempotency_key: "x1" }) },
+      { side: "server", operationId: "SubscriptionsService_CreatePlan", invoke: (h) => server(h).subscriptions.createPlan({ code: "pro", name: "Pro", amount: "999", currency: "USD", interval: "month" }) },
+      { side: "server", operationId: "SubscriptionsService_UpdatePlan", invoke: (h) => server(h).subscriptions.updatePlan("p1", { name: "Pro+" }) },
+      { side: "server", operationId: "SubscriptionsService_DeletePlan", invoke: (h) => server(h).subscriptions.deletePlan("p1") },
+      { side: "server", operationId: "SubscriptionsService_CancelSubscription", invoke: (h) => server(h).subscriptions.cancelSubscription("s1", "demo") },
+      { side: "server", operationId: "SubscriptionsService_ExpireSubscription", invoke: (h) => server(h).subscriptions.expireSubscription("s1", "demo") },
+      { side: "client", operationId: "PaymentsService_CreateOrder", invoke: (h) => client(h).payments.createOrder({ idempotency_key: "idem-1", provider: "stripe", amount: "1999", currency: "USD", purpose_kind: "topup", purpose: { currency_code: "gold", amount: "100" } }) },
+      { side: "client", operationId: "SubscriptionsService_Subscribe", invoke: (h) => client(h).subscriptions.subscribe({ plan_code: "pro", mode: "platform", idempotency_key: "s1" }) },
+      { side: "client", operationId: "SubscriptionsService_Cancel", invoke: (h) => client(h).subscriptions.cancel("sub-1") }
     );
     assert.ok(cases.length >= 40, `HTTP 绑定用例不足（当前 ${cases.length}）`);
 

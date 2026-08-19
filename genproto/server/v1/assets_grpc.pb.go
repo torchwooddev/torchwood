@@ -31,6 +31,8 @@ const (
 	AssetsService_Mutate_FullMethodName         = "/torchwood.server.v1.AssetsService/Mutate"
 	AssetsService_Expire_FullMethodName         = "/torchwood.server.v1.AssetsService/Expire"
 	AssetsService_Reconcile_FullMethodName      = "/torchwood.server.v1.AssetsService/Reconcile"
+	AssetsService_ListUserAssets_FullMethodName = "/torchwood.server.v1.AssetsService/ListUserAssets"
+	AssetsService_ListUserLedger_FullMethodName = "/torchwood.server.v1.AssetsService/ListUserLedger"
 )
 
 // AssetsServiceClient is the client API for AssetsService service.
@@ -53,6 +55,9 @@ type AssetsServiceClient interface {
 	Expire(ctx context.Context, in *ExpireRequest, opts ...grpc.CallOption) (*AssetOpResponse, error)
 	// 对账任务手动触发（设计 §2.4 / PR2）：流水重放 = holdings 快照。
 	Reconcile(ctx context.Context, in *ReconcileRequest, opts ...grpc.CallOption) (*ReconcileResponse, error)
+	// ListUserAssets / ListUserLedger：Console 用户资产查询（PR6，只读）。
+	ListUserAssets(ctx context.Context, in *ListUserAssetsRequest, opts ...grpc.CallOption) (*ListUserAssetsResponse, error)
+	ListUserLedger(ctx context.Context, in *ListUserLedgerRequest, opts ...grpc.CallOption) (*ListUserLedgerResponse, error)
 }
 
 type assetsServiceClient struct {
@@ -173,6 +178,26 @@ func (c *assetsServiceClient) Reconcile(ctx context.Context, in *ReconcileReques
 	return out, nil
 }
 
+func (c *assetsServiceClient) ListUserAssets(ctx context.Context, in *ListUserAssetsRequest, opts ...grpc.CallOption) (*ListUserAssetsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUserAssetsResponse)
+	err := c.cc.Invoke(ctx, AssetsService_ListUserAssets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *assetsServiceClient) ListUserLedger(ctx context.Context, in *ListUserLedgerRequest, opts ...grpc.CallOption) (*ListUserLedgerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUserLedgerResponse)
+	err := c.cc.Invoke(ctx, AssetsService_ListUserLedger_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AssetsServiceServer is the server API for AssetsService service.
 // All implementations must embed UnimplementedAssetsServiceServer
 // for forward compatibility.
@@ -193,6 +218,9 @@ type AssetsServiceServer interface {
 	Expire(context.Context, *ExpireRequest) (*AssetOpResponse, error)
 	// 对账任务手动触发（设计 §2.4 / PR2）：流水重放 = holdings 快照。
 	Reconcile(context.Context, *ReconcileRequest) (*ReconcileResponse, error)
+	// ListUserAssets / ListUserLedger：Console 用户资产查询（PR6，只读）。
+	ListUserAssets(context.Context, *ListUserAssetsRequest) (*ListUserAssetsResponse, error)
+	ListUserLedger(context.Context, *ListUserLedgerRequest) (*ListUserLedgerResponse, error)
 	mustEmbedUnimplementedAssetsServiceServer()
 }
 
@@ -235,6 +263,12 @@ func (UnimplementedAssetsServiceServer) Expire(context.Context, *ExpireRequest) 
 }
 func (UnimplementedAssetsServiceServer) Reconcile(context.Context, *ReconcileRequest) (*ReconcileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Reconcile not implemented")
+}
+func (UnimplementedAssetsServiceServer) ListUserAssets(context.Context, *ListUserAssetsRequest) (*ListUserAssetsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUserAssets not implemented")
+}
+func (UnimplementedAssetsServiceServer) ListUserLedger(context.Context, *ListUserLedgerRequest) (*ListUserLedgerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUserLedger not implemented")
 }
 func (UnimplementedAssetsServiceServer) mustEmbedUnimplementedAssetsServiceServer() {}
 func (UnimplementedAssetsServiceServer) testEmbeddedByValue()                       {}
@@ -455,6 +489,42 @@ func _AssetsService_Reconcile_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AssetsService_ListUserAssets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUserAssetsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AssetsServiceServer).ListUserAssets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AssetsService_ListUserAssets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AssetsServiceServer).ListUserAssets(ctx, req.(*ListUserAssetsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AssetsService_ListUserLedger_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUserLedgerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AssetsServiceServer).ListUserLedger(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AssetsService_ListUserLedger_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AssetsServiceServer).ListUserLedger(ctx, req.(*ListUserLedgerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AssetsService_ServiceDesc is the grpc.ServiceDesc for AssetsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -505,6 +575,14 @@ var AssetsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Reconcile",
 			Handler:    _AssetsService_Reconcile_Handler,
+		},
+		{
+			MethodName: "ListUserAssets",
+			Handler:    _AssetsService_ListUserAssets_Handler,
+		},
+		{
+			MethodName: "ListUserLedger",
+			Handler:    _AssetsService_ListUserLedger_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

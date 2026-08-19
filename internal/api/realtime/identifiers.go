@@ -9,3 +9,7 @@ var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 // docIDRe 与 internal/infra/documentdb/postgres.go 的 docID 校验一致
 // （可含 "." ":" "-"，最长 64）。
 var docIDRe = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,64}$`)
+
+// accountUserIDRe 匹配 accounts.{userId} 的 userId（ULID 可数字开头，
+// 故不能复用 identifierRe；一段、最长 64）。
+var accountUserIDRe = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,64}$`)

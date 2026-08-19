@@ -199,6 +199,99 @@
         ]
       }
     },
+    "/v1/server/assets/users/{ownerId}": {
+      "get": {
+        "summary": "ListUserAssets / ListUserLedger：Console 用户资产查询（PR6，只读）。",
+        "operationId": "AssetsService_ListUserAssets",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListUserAssetsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "ownerId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets/users/{ownerId}/ledger": {
+      "get": {
+        "operationId": "AssetsService_ListUserLedger",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListUserLedgerResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "ownerId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "defCode",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
     "/v1/server/assets:consume": {
       "post": {
         "operationId": "AssetsService_Consume",
@@ -522,6 +615,42 @@
         }
       }
     },
+    "torchwoodserverv1AssetHolding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "defId": {
+          "type": "string"
+        },
+        "defCode": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "level": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "title": "AssetHolding 是用户持有投影（Console / Server 只读查询；quantity 为 bigint）。"
+    },
     "torchwoodserverv1AssetLedgerEntry": {
       "type": "object",
       "properties": {
@@ -749,6 +878,36 @@
         "totalCount": {
           "type": "integer",
           "format": "int32"
+        }
+      }
+    },
+    "v1ListUserAssetsResponse": {
+      "type": "object",
+      "properties": {
+        "holdings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodserverv1AssetHolding"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
+        }
+      }
+    },
+    "v1ListUserLedgerResponse": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodserverv1AssetLedgerEntry"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
         }
       }
     },

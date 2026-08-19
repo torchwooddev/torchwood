@@ -274,6 +274,56 @@ func (s *AssetsService) Expire(ctx context.Context, req *serverv1.ExpireRequest)
 	return mapOpResult(res)
 }
 
+func (s *AssetsService) ListUserAssets(ctx context.Context, req *serverv1.ListUserAssetsRequest) (*serverv1.ListUserAssetsResponse, error) {
+	if req == nil || req.GetOwnerId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "owner_id is required")
+	}
+	before, err := decodeServerOrderCursor(req.GetPageToken())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid page token")
+	}
+	rows, err := s.assets.ListUserAssets(ctx, req.GetOwnerId(), int(req.GetPageSize()), before)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*serverv1.AssetHolding, len(rows))
+	for i := range rows {
+		mapped, err := mapServerHolding(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = mapped
+	}
+	meta := &sharedv1.ListResponseMeta{PageSize: req.GetPageSize()}
+	if len(rows) > 0 {
+		meta.NextPageToken = encodeServerOrderCursor(rows[len(rows)-1].Holding.CreatedAt)
+	}
+	return &serverv1.ListUserAssetsResponse{Holdings: out, Meta: meta}, nil
+}
+
+func (s *AssetsService) ListUserLedger(ctx context.Context, req *serverv1.ListUserLedgerRequest) (*serverv1.ListUserLedgerResponse, error) {
+	if req == nil || req.GetOwnerId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "owner_id is required")
+	}
+	before, err := decodeServerOrderCursor(req.GetPageToken())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid page token")
+	}
+	rows, err := s.assets.ListUserLedger(ctx, req.GetOwnerId(), req.GetDefCode(), int(req.GetPageSize()), before)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*serverv1.AssetLedgerEntry, len(rows))
+	for i := range rows {
+		out[i] = mapServerLedgerView(rows[i])
+	}
+	meta := &sharedv1.ListResponseMeta{PageSize: req.GetPageSize()}
+	if len(rows) > 0 {
+		meta.NextPageToken = encodeServerOrderCursor(rows[len(rows)-1].Entry.CreatedAt)
+	}
+	return &serverv1.ListUserLedgerResponse{Entries: out, Meta: meta}, nil
+}
+
 func (s *AssetsService) Reconcile(ctx context.Context, _ *serverv1.ReconcileRequest) (*serverv1.ReconcileResponse, error) {
 	report, err := s.assets.Reconcile(ctx)
 	if err != nil {
@@ -339,6 +389,33 @@ func mapServerAssetDef(d *domainassets.Def) (*serverv1.AssetDef, error) {
 		out.ExpiresIn = d.ExpiresIn
 	}
 	return out, nil
+}
+
+func mapServerHolding(v appassets.HoldingView) (*serverv1.AssetHolding, error) {
+	meta, err := rawToStructServer(v.Holding.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	out := &serverv1.AssetHolding{
+		Id:       v.Holding.ID,
+		OwnerId:  v.Holding.OwnerID,
+		DefId:    v.Holding.DefID,
+		DefCode:  v.DefCode,
+		Class:    string(v.Class),
+		Quantity: v.Holding.Quantity,
+		Level:    v.Holding.Level,
+		Metadata: meta,
+	}
+	if v.Holding.ExpiresAt != nil {
+		out.ExpiresAt = timestamppb.New(*v.Holding.ExpiresAt)
+	}
+	return out, nil
+}
+
+func mapServerLedgerView(v appassets.LedgerView) *serverv1.AssetLedgerEntry {
+	out := mapServerLedger(&v.Entry)
+	out.DefCode = v.DefCode
+	return out
 }
 
 func mapServerLedger(e *domainassets.LedgerEntry) *serverv1.AssetLedgerEntry {
