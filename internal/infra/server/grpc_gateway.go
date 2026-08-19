@@ -68,6 +68,8 @@ func NewGRPCGatewayServer(
 		serverv1.RegisterFunctionsServiceHandlerFromEndpoint,
 		serverv1.RegisterPaymentsServiceHandlerFromEndpoint,
 		clientv1.RegisterPaymentsServiceHandlerFromEndpoint,
+		serverv1.RegisterAssetsServiceHandlerFromEndpoint,
+		clientv1.RegisterAssetsServiceHandlerFromEndpoint,
 		consolev1.RegisterConsoleAuthServiceHandlerFromEndpoint,
 		consolev1.RegisterAdminsServiceHandlerFromEndpoint,
 	}

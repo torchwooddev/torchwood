@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package torchwood.client.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/client/v1;clientv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// 服务默认 access=authenticated：swagger 顶层声明 Bearer security
+// （详见 docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>（Client API 登录态）"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "Bearer"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "authenticated" }
+  }
+};
+
+// AssetsService 是终端用户资产面（v3 设计 §2.7 / §6）：只读三个方法。
+// 终端用户没有任何直接写资产的 API（红线 D6）。
+service AssetsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
+
+  rpc ListAssetDefs(ListAssetDefsRequest) returns (ListAssetDefsResponse) {
+    option (google.api.http) = { get: "/v1/assets/defs" };
+  }
+  rpc ListMyAssets(ListMyAssetsRequest) returns (ListMyAssetsResponse) {
+    option (google.api.http) = { get: "/v1/assets" };
+  }
+  rpc ListMyAssetLedger(ListMyAssetLedgerRequest) returns (ListMyAssetLedgerResponse) {
+    option (google.api.http) = { get: "/v1/assets/ledger" };
+  }
+}
+
+// AssetDef 是资产定义（只读投影：不含内部字段）。
+message AssetDef {
+  string id = 1;
+  string code = 2;
+  string name = 3;
+  // currency | stack | instance | entitlement
+  string class = 4;
+  int32 decimals = 5;
+  optional int64 max_quantity = 6;
+  optional int64 expires_in = 7;
+  bool tradable = 8;
+  bool unique_per_owner = 9;
+  bool upgradeable = 10;
+  google.protobuf.Struct metadata = 11;
+}
+
+message AssetHolding {
+  string id = 1;
+  string def_id = 2;
+  string def_code = 3;
+  string class = 4;
+  int64 quantity = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  int32 level = 7;
+  google.protobuf.Struct metadata = 8;
+}
+
+message AssetLedgerEntry {
+  string id = 1;
+  string def_id = 2;
+  string def_code = 3;
+  // grant | consume | transfer_out | transfer_in | mutate | expire | adjust
+  string kind = 4;
+  int64 delta = 5;
+  int64 quantity_after = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  string ref_type = 8;
+  string ref_id = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+message ListAssetDefsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListAssetDefsResponse {
+  repeated AssetDef defs = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message ListMyAssetsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListMyAssetsResponse {
+  repeated AssetHolding holdings = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message ListMyAssetLedgerRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  // 可选：只看某一资产定义。
+  string def_code = 3;
+}
+
+message ListMyAssetLedgerResponse {
+  repeated AssetLedgerEntry entries = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}

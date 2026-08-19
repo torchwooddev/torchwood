@@ -18,7 +18,7 @@ type apiKeyScopeRule struct {
 	op       string // "read" 或 "write"
 }
 
-// apiKeyScopeRules 显式映射全部 8 个 ACCESS_API_KEY 服务的方法（Health 是
+// apiKeyScopeRules 显式映射全部 ACCESS_API_KEY 服务的方法（Health 是
 // ACCESS_PUBLIC，不映射）。读方法 = List/Get/Count 类，其余一律 write。
 // 新增 ACCESS_API_KEY 方法必须在此登记，否则 APIKeyScopeAllowed 对其 fail-closed；
 // 一致性由 AssertAPIKeyScopeCoverage 在启动期校验（R10-P1-5）。
@@ -110,6 +110,18 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.PaymentsService/GetOrder":      {"payments", "read"},
 	"/torchwood.server.v1.PaymentsService/Refund":        {"payments", "write"},
 	"/torchwood.server.v1.PaymentsService/ManualFulfill": {"payments", "write"},
+	// AssetsService（v3 设计 §6：读 economy.read，写 economy.write）
+	"/torchwood.server.v1.AssetsService/CreateAssetDef": {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/ListAssetDefs":  {"economy", "read"},
+	"/torchwood.server.v1.AssetsService/GetAssetDef":    {"economy", "read"},
+	"/torchwood.server.v1.AssetsService/UpdateAssetDef": {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/DeleteAssetDef": {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Grant":          {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Consume":        {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Transfer":       {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Mutate":         {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Expire":         {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Reconcile":      {"economy", "write"},
 	// FunctionsService
 	"/torchwood.server.v1.FunctionsService/ListRuntimes":       {"functions", "read"},
 	"/torchwood.server.v1.FunctionsService/ListSpecifications": {"functions", "read"},

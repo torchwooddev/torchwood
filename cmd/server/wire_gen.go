@@ -14,10 +14,11 @@ import (
 	realtime2 "github.com/torchwooddev/torchwood/internal/api/realtime"
 	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
 	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
+	"github.com/torchwooddev/torchwood/internal/app/assets"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
-	"github.com/torchwooddev/torchwood/internal/app/payments"
+	payments2 "github.com/torchwooddev/torchwood/internal/app/payments"
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
@@ -30,7 +31,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/messaging"
-	payments2 "github.com/torchwooddev/torchwood/internal/infra/payments"
+	"github.com/torchwooddev/torchwood/internal/infra/payments"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
@@ -100,11 +101,16 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	orderRepo := bunrepo.NewPaymentOrderRepository(database)
 	callbackEventRepo := bunrepo.NewPaymentCallbackEventRepository(database)
 	fulfillmentRepo := bunrepo.NewPaymentFulfillmentRepository(database)
-	fulfiller := payments.NewRecordOnlyFulfiller()
-	adapter := payments2.NewStripeAdapter(appConfig)
-	registry := payments2.NewRegistry(adapter)
-	paymentsPayments := payments.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
+	defRepo := bunrepo.NewAssetDefRepository(database)
+	holdingRepo := bunrepo.NewAssetHoldingRepository(database)
+	ledgerRepo := bunrepo.NewAssetLedgerRepository(database)
+	assetsAssets := assets.NewAssets(database, defRepo, holdingRepo, ledgerRepo, eventOutbox, logger)
+	fulfiller := assets.NewOrderFulfiller(assetsAssets)
+	adapter := payments.NewStripeAdapter(appConfig)
+	registry := payments.NewRegistry(adapter)
+	paymentsPayments := payments2.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
 	paymentsService := clientgrpc.NewPaymentsService(paymentsPayments)
+	assetsService := clientgrpc.NewAssetsService(assetsAssets)
 	buildInfo := NewBuildInfo()
 	healthService := servergrpc.NewHealthService(checkers, buildInfo)
 	projects := server.NewProjects(projectsRepository, documentDB, database)
@@ -128,12 +134,13 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
 	functionsService := servergrpc.NewFunctionsService(functionsFunctions)
 	servergrpcPaymentsService := servergrpc.NewPaymentsService(paymentsPayments)
+	servergrpcAssetsService := servergrpc.NewAssetsService(assetsAssets)
 	consoleAuth := console.NewAuth(appConfig, adminRepository, redisAdminTokenRevokeStore, redisLoginThrottle, redisRefreshRotationStore)
 	admins := console.NewAdmins(adminRepository)
 	setup := console.NewSetup(appConfig, admins, projects, apiKeys, consoleAuth, adminRepository, adminProjectRepository, projectsRepository)
 	authService := consolegrpc.NewAuthService(consoleAuth, setup)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, paymentsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, authService, adminsService)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, paymentsService, assetsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

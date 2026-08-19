@@ -1,0 +1,867 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "server/v1/assets.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "AssetsService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/server/assets/defs": {
+      "get": {
+        "operationId": "AssetsService_ListAssetDefs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1ListAssetDefsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      },
+      "post": {
+        "operationId": "AssetsService_CreateAssetDef",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1AssetDef"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateAssetDefRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets/defs/{defId}": {
+      "get": {
+        "operationId": "AssetsService_GetAssetDef",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1AssetDef"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "defId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      },
+      "delete": {
+        "operationId": "AssetsService_DeleteAssetDef",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Empty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "defId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      },
+      "patch": {
+        "operationId": "AssetsService_UpdateAssetDef",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1AssetDef"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "defId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/AssetsServiceUpdateAssetDefBody"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets:consume": {
+      "post": {
+        "operationId": "AssetsService_Consume",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AssetOpResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ConsumeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets:expire": {
+      "post": {
+        "operationId": "AssetsService_Expire",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AssetOpResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ExpireRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets:grant": {
+      "post": {
+        "operationId": "AssetsService_Grant",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AssetOpResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GrantRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets:mutate": {
+      "post": {
+        "operationId": "AssetsService_Mutate",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AssetOpResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1MutateRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets:reconcile": {
+      "post": {
+        "summary": "对账任务手动触发（设计 §2.4 / PR2）：流水重放 = holdings 快照。",
+        "operationId": "AssetsService_Reconcile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ReconcileResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ReconcileRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    },
+    "/v1/server/assets:transfer": {
+      "post": {
+        "operationId": "AssetsService_Transfer",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AssetOpResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1TransferRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AssetsService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "AssetsServiceUpdateAssetDefBody": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "decimals": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "maxQuantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "expiresIn": {
+          "type": "string",
+          "format": "int64"
+        },
+        "tradable": {
+          "type": "boolean"
+        },
+        "uniquePerOwner": {
+          "type": "boolean"
+        },
+        "upgradeable": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "torchwoodserverv1AssetDef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string",
+          "title": "currency | stack | instance | entitlement"
+        },
+        "decimals": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "maxQuantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "expiresIn": {
+          "type": "string",
+          "format": "int64"
+        },
+        "tradable": {
+          "type": "boolean"
+        },
+        "uniquePerOwner": {
+          "type": "boolean"
+        },
+        "upgradeable": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "status": {
+          "type": "string",
+          "title": "active | archived"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "torchwoodserverv1AssetLedgerEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "holdingId": {
+          "type": "string"
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "defId": {
+          "type": "string"
+        },
+        "defCode": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "delta": {
+          "type": "string",
+          "format": "int64"
+        },
+        "quantityAfter": {
+          "type": "string",
+          "format": "int64"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "refType": {
+          "type": "string"
+        },
+        "refId": {
+          "type": "string"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "torchwoodserverv1ListAssetDefsResponse": {
+      "type": "object",
+      "properties": {
+        "defs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodserverv1AssetDef"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
+        }
+      }
+    },
+    "v1AssetDrift": {
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "defId": {
+          "type": "string"
+        },
+        "holdingQty": {
+          "type": "string",
+          "format": "int64"
+        },
+        "replayedQty": {
+          "type": "string",
+          "format": "int64"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "v1AssetOpResponse": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodserverv1AssetLedgerEntry"
+          }
+        },
+        "idempotentReplay": {
+          "type": "boolean"
+        }
+      }
+    },
+    "v1ConsumeRequest": {
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "defCode": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "refType": {
+          "type": "string"
+        },
+        "refId": {
+          "type": "string"
+        }
+      }
+    },
+    "v1CreateAssetDefRequest": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "decimals": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "maxQuantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "expiresIn": {
+          "type": "string",
+          "format": "int64"
+        },
+        "tradable": {
+          "type": "boolean"
+        },
+        "uniquePerOwner": {
+          "type": "boolean"
+        },
+        "upgradeable": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "v1Empty": {
+      "type": "object"
+    },
+    "v1ExpireRequest": {
+      "type": "object",
+      "properties": {
+        "holdingId": {
+          "type": "string"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        }
+      }
+    },
+    "v1GrantRequest": {
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "defCode": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "level": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "refType": {
+          "type": "string"
+        },
+        "refId": {
+          "type": "string"
+        }
+      }
+    },
+    "v1ListResponseMeta": {
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "nextPageToken": {
+          "type": "string"
+        },
+        "prevPageToken": {
+          "type": "string"
+        },
+        "totalCount": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1MutateRequest": {
+      "type": "object",
+      "properties": {
+        "holdingId": {
+          "type": "string"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "level": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "refType": {
+          "type": "string"
+        },
+        "refId": {
+          "type": "string"
+        }
+      }
+    },
+    "v1ReconcileRequest": {
+      "type": "object"
+    },
+    "v1ReconcileResponse": {
+      "type": "object",
+      "properties": {
+        "zeroDrift": {
+          "type": "boolean"
+        },
+        "holdings": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "entries": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "driftCount": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "drifts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1AssetDrift"
+          }
+        }
+      }
+    },
+    "v1TransferRequest": {
+      "type": "object",
+      "properties": {
+        "fromOwnerId": {
+          "type": "string"
+        },
+        "toOwnerId": {
+          "type": "string"
+        },
+        "defCode": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "string",
+          "format": "int64"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "refType": {
+          "type": "string"
+        },
+        "refId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "x-torchwood-access": "api_key"
+}

@@ -83,6 +83,17 @@ var adminRoleMethodRules = map[string][]string{
 	// 与 apikeys 同级——直接资金操作，viewer/member 不可触发）
 	"/torchwood.server.v1.PaymentsService/Refund":        {"owner", "admin"},
 	"/torchwood.server.v1.PaymentsService/ManualFulfill": {"owner", "admin"},
+	// AssetsService：目录 CRUD 为业务写（member 可做）；五动词与对账为资产
+	// 变动（仅 owner/admin，与退款同级）。
+	"/torchwood.server.v1.AssetsService/CreateAssetDef": {"member", "owner", "admin"},
+	"/torchwood.server.v1.AssetsService/UpdateAssetDef": {"member", "owner", "admin"},
+	"/torchwood.server.v1.AssetsService/DeleteAssetDef": {"member", "owner", "admin"},
+	"/torchwood.server.v1.AssetsService/Grant":          {"owner", "admin"},
+	"/torchwood.server.v1.AssetsService/Consume":        {"owner", "admin"},
+	"/torchwood.server.v1.AssetsService/Transfer":       {"owner", "admin"},
+	"/torchwood.server.v1.AssetsService/Mutate":         {"owner", "admin"},
+	"/torchwood.server.v1.AssetsService/Expire":         {"owner", "admin"},
+	"/torchwood.server.v1.AssetsService/Reconcile":      {"owner", "admin"},
 	// ProjectsService（创建是平台级资源，仅 owner/admin——与 use-case
 	// CreateProject 平台 admin 守卫一致；更新是业务写，仅收 viewer）
 	"/torchwood.server.v1.ProjectsService/CreateProject": {"owner", "admin"},

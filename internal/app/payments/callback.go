@@ -159,7 +159,7 @@ func (p *Payments) applyPaid(ctx context.Context, order *domainpayments.Order, e
 		PurposeKind: order.PurposeKind,
 		Ref:         "order:" + order.ID,
 		Status:      domainpayments.FulfillmentPending,
-		Detail:      map[string]any{"hook": "record-only (PR2)"},
+		Detail:      map[string]any{"kind": string(order.PurposeKind)},
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}

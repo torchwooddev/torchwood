@@ -1,0 +1,253 @@
+syntax = "proto3";
+
+package torchwood.server.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "apiKey"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "api_key" }
+  }
+};
+
+// AssetsService 是资产管理面（v3 设计 §2.7 / §6）：Def CRUD + 五动词。
+// 写方法 scope economy.write（apiKeyScopeRules）并登记 adminRoleMethodRules；
+// 终端用户无写入口（红线 D6；use-case 再断言 system / admin-key）。
+service AssetsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
+
+  rpc CreateAssetDef(CreateAssetDefRequest) returns (AssetDef) {
+    option (google.api.http) = { post: "/v1/server/assets/defs", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc ListAssetDefs(shared.v1.ListRequest) returns (ListAssetDefsResponse) {
+    option (google.api.http) = { get: "/v1/server/assets/defs" };
+  }
+  rpc GetAssetDef(GetAssetDefRequest) returns (AssetDef) {
+    option (google.api.http) = { get: "/v1/server/assets/defs/{def_id}" };
+  }
+  rpc UpdateAssetDef(UpdateAssetDefRequest) returns (AssetDef) {
+    option (google.api.http) = { patch: "/v1/server/assets/defs/{def_id}", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc DeleteAssetDef(DeleteAssetDefRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/server/assets/defs/{def_id}" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+
+  rpc Grant(GrantRequest) returns (AssetOpResponse) {
+    option (google.api.http) = { post: "/v1/server/assets:grant", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc Consume(ConsumeRequest) returns (AssetOpResponse) {
+    option (google.api.http) = { post: "/v1/server/assets:consume", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc Transfer(TransferRequest) returns (AssetOpResponse) {
+    option (google.api.http) = { post: "/v1/server/assets:transfer", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc Mutate(MutateRequest) returns (AssetOpResponse) {
+    option (google.api.http) = { post: "/v1/server/assets:mutate", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc Expire(ExpireRequest) returns (AssetOpResponse) {
+    option (google.api.http) = { post: "/v1/server/assets:expire", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+
+  // 对账任务手动触发（设计 §2.4 / PR2）：流水重放 = holdings 快照。
+  rpc Reconcile(ReconcileRequest) returns (ReconcileResponse) {
+    option (google.api.http) = { post: "/v1/server/assets:reconcile", body: "*" };
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+}
+
+message AssetDef {
+  string id = 1;
+  string project_id = 2;
+  string code = 3;
+  string name = 4;
+  // currency | stack | instance | entitlement
+  string class = 5;
+  int32 decimals = 6;
+  optional int64 max_quantity = 7;
+  optional int64 expires_in = 8;
+  bool tradable = 9;
+  bool unique_per_owner = 10;
+  bool upgradeable = 11;
+  google.protobuf.Struct metadata = 12;
+  // active | archived
+  string status = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message CreateAssetDefRequest {
+  string code = 1;
+  string name = 2;
+  string class = 3;
+  int32 decimals = 4;
+  optional int64 max_quantity = 5;
+  optional int64 expires_in = 6;
+  bool tradable = 7;
+  bool unique_per_owner = 8;
+  bool upgradeable = 9;
+  google.protobuf.Struct metadata = 10;
+}
+
+message GetAssetDefRequest {
+  string def_id = 1;
+}
+
+message UpdateAssetDefRequest {
+  string def_id = 1;
+  optional string name = 2;
+  optional int32 decimals = 3;
+  optional int64 max_quantity = 4;
+  optional int64 expires_in = 5;
+  optional bool tradable = 6;
+  optional bool unique_per_owner = 7;
+  optional bool upgradeable = 8;
+  google.protobuf.Struct metadata = 9;
+  optional string status = 10;
+}
+
+message DeleteAssetDefRequest {
+  string def_id = 1;
+}
+
+message ListAssetDefsResponse {
+  repeated AssetDef defs = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message AssetLedgerEntry {
+  string id = 1;
+  string holding_id = 2;
+  string owner_id = 3;
+  string def_id = 4;
+  string def_code = 5;
+  string kind = 6;
+  int64 delta = 7;
+  int64 quantity_after = 8;
+  google.protobuf.Timestamp expires_at = 9;
+  string ref_type = 10;
+  string ref_id = 11;
+  string idempotency_key = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+message AssetOpResponse {
+  repeated AssetLedgerEntry entries = 1;
+  bool idempotent_replay = 2;
+}
+
+message GrantRequest {
+  string owner_id = 1;
+  string def_code = 2;
+  int64 quantity = 3;
+  string idempotency_key = 4;
+  optional google.protobuf.Timestamp expires_at = 5;
+  optional int32 level = 6;
+  google.protobuf.Struct metadata = 7;
+  string ref_type = 8;
+  string ref_id = 9;
+}
+
+message ConsumeRequest {
+  string owner_id = 1;
+  string def_code = 2;
+  int64 quantity = 3;
+  string idempotency_key = 4;
+  string ref_type = 5;
+  string ref_id = 6;
+}
+
+message TransferRequest {
+  string from_owner_id = 1;
+  string to_owner_id = 2;
+  string def_code = 3;
+  int64 quantity = 4;
+  string idempotency_key = 5;
+  string ref_type = 6;
+  string ref_id = 7;
+}
+
+message MutateRequest {
+  string holding_id = 1;
+  string idempotency_key = 2;
+  optional int32 level = 3;
+  optional google.protobuf.Timestamp expires_at = 4;
+  google.protobuf.Struct metadata = 5;
+  string ref_type = 6;
+  string ref_id = 7;
+}
+
+message ExpireRequest {
+  string holding_id = 1;
+  string idempotency_key = 2;
+}
+
+message ReconcileRequest {}
+
+message ReconcileResponse {
+  bool zero_drift = 1;
+  int32 holdings = 2;
+  int32 entries = 3;
+  int32 drift_count = 4;
+  repeated AssetDrift drifts = 5;
+}
+
+message AssetDrift {
+  string owner_id = 1;
+  string def_id = 2;
+  int64 holding_qty = 3;
+  int64 replayed_qty = 4;
+  string detail = 5;
+}

@@ -9,15 +9,16 @@ package main
 import (
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"
+	"github.com/torchwooddev/torchwood/internal/app/assets"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
-	"github.com/torchwooddev/torchwood/internal/app/payments"
+	payments2 "github.com/torchwooddev/torchwood/internal/app/payments"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/events"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
-	payments2 "github.com/torchwooddev/torchwood/internal/infra/payments"
+	"github.com/torchwooddev/torchwood/internal/infra/payments"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
@@ -61,12 +62,17 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	orderRepo := bunrepo.NewPaymentOrderRepository(database)
 	callbackEventRepo := bunrepo.NewPaymentCallbackEventRepository(database)
 	fulfillmentRepo := bunrepo.NewPaymentFulfillmentRepository(database)
-	fulfiller := payments.NewRecordOnlyFulfiller()
-	adapter := payments2.NewStripeAdapter(appConfig)
-	registry := payments2.NewRegistry(adapter)
-	paymentsPayments := payments.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
+	defRepo := bunrepo.NewAssetDefRepository(database)
+	holdingRepo := bunrepo.NewAssetHoldingRepository(database)
+	ledgerRepo := bunrepo.NewAssetLedgerRepository(database)
+	assetsAssets := assets.NewAssets(database, defRepo, holdingRepo, ledgerRepo, eventOutbox, logger)
+	fulfiller := assets.NewOrderFulfiller(assetsAssets)
+	adapter := payments.NewStripeAdapter(appConfig)
+	registry := payments.NewRegistry(adapter)
+	paymentsPayments := payments2.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
 	paymentCloser := NewPaymentCloser(paymentsPayments, logger)
-	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser)
+	assetExpirer := NewAssetExpirer(assetsAssets, logger)
+	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {
