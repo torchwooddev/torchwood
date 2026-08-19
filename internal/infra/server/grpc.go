@@ -37,6 +37,7 @@ func NewGRPCServer(
 	account *clientgrpc.AccountService,
 	clientDatabases *clientgrpc.DatabasesService,
 	clientTeams *clientgrpc.TeamsService,
+	clientPayments *clientgrpc.PaymentsService,
 	health *servergrpc.HealthService,
 	projects *servergrpc.ProjectsService,
 	storage *servergrpc.StorageService,
@@ -46,6 +47,7 @@ func NewGRPCServer(
 	teams *servergrpc.TeamsService,
 	databases *servergrpc.DatabasesService,
 	functions *servergrpc.FunctionsService,
+	serverPayments *servergrpc.PaymentsService,
 	consoleAuth *consolegrpc.AuthService,
 	adminsService *consolegrpc.AdminsService,
 ) (*lynxgrpc.Server, error) {
@@ -56,6 +58,7 @@ func NewGRPCServer(
 		clientv1.File_client_v1_account_proto,
 		clientv1.File_client_v1_databases_proto,
 		clientv1.File_client_v1_teams_proto,
+		clientv1.File_client_v1_payments_proto,
 		serverv1.File_server_v1_projects_proto,
 		serverv1.File_server_v1_health_proto,
 		serverv1.File_server_v1_storage_proto,
@@ -65,6 +68,7 @@ func NewGRPCServer(
 		serverv1.File_server_v1_teams_proto,
 		serverv1.File_server_v1_databases_proto,
 		serverv1.File_server_v1_functions_proto,
+		serverv1.File_server_v1_payments_proto,
 		consolev1.File_console_v1_auth_proto,
 		consolev1.File_console_v1_admins_proto,
 	)
@@ -115,6 +119,7 @@ func NewGRPCServer(
 	clientv1.RegisterAccountServiceServer(grpcSrv, account)
 	clientv1.RegisterDatabasesServiceServer(grpcSrv, clientDatabases)
 	clientv1.RegisterTeamsServiceServer(grpcSrv, clientTeams)
+	clientv1.RegisterPaymentsServiceServer(grpcSrv, clientPayments)
 	serverv1.RegisterHealthServiceServer(grpcSrv, health)
 	serverv1.RegisterProjectsServiceServer(grpcSrv, projects)
 	serverv1.RegisterStorageServiceServer(grpcSrv, storage)
@@ -124,6 +129,7 @@ func NewGRPCServer(
 	serverv1.RegisterTeamsServiceServer(grpcSrv, teams)
 	serverv1.RegisterDatabasesServiceServer(grpcSrv, databases)
 	serverv1.RegisterFunctionsServiceServer(grpcSrv, functions)
+	serverv1.RegisterPaymentsServiceServer(grpcSrv, serverPayments)
 	consolev1.RegisterConsoleAuthServiceServer(grpcSrv, consoleAuth)
 	consolev1.RegisterAdminsServiceServer(grpcSrv, adminsService)
 

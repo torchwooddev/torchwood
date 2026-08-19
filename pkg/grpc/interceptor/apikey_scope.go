@@ -105,6 +105,11 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.APIKeysService/ListAPIKeys":  {"apikeys", "read"},
 	"/torchwood.server.v1.APIKeysService/GetAPIKey":    {"apikeys", "read"},
 	"/torchwood.server.v1.APIKeysService/DeleteAPIKey": {"apikeys", "write"},
+	// PaymentsService（v3 设计 §6：读 payments.read，写 payments.write）
+	"/torchwood.server.v1.PaymentsService/ListOrders":    {"payments", "read"},
+	"/torchwood.server.v1.PaymentsService/GetOrder":      {"payments", "read"},
+	"/torchwood.server.v1.PaymentsService/Refund":        {"payments", "write"},
+	"/torchwood.server.v1.PaymentsService/ManualFulfill": {"payments", "write"},
 	// FunctionsService
 	"/torchwood.server.v1.FunctionsService/ListRuntimes":       {"functions", "read"},
 	"/torchwood.server.v1.FunctionsService/ListSpecifications": {"functions", "read"},

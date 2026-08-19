@@ -32,6 +32,7 @@ func NewGRPCGatewayServer(
 	fileHandler *serverhttp.FileHandler,
 	oauthHandler *serverhttp.OAuthHandler,
 	functionsHandler *serverhttp.FunctionsHandler,
+	paymentsHandler *serverhttp.PaymentsHandler,
 	realtimeHandler *apirealtime.Handler,
 ) (*GRPCGatewayServer, error) {
 	httpCfg := cfg.GetServer().GetHttp()
@@ -65,6 +66,8 @@ func NewGRPCGatewayServer(
 		serverv1.RegisterTeamsServiceHandlerFromEndpoint,
 		serverv1.RegisterDatabasesServiceHandlerFromEndpoint,
 		serverv1.RegisterFunctionsServiceHandlerFromEndpoint,
+		serverv1.RegisterPaymentsServiceHandlerFromEndpoint,
+		clientv1.RegisterPaymentsServiceHandlerFromEndpoint,
 		consolev1.RegisterConsoleAuthServiceHandlerFromEndpoint,
 		consolev1.RegisterAdminsServiceHandlerFromEndpoint,
 	}
@@ -78,6 +81,7 @@ func NewGRPCGatewayServer(
 	fileHandler.Register(mux)
 	oauthHandler.Register(mux)
 	functionsHandler.Register(mux)
+	paymentsHandler.Register(mux)
 
 	handler := http.Handler(mux)
 

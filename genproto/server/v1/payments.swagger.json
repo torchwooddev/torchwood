@@ -1,0 +1,409 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "server/v1/payments.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "PaymentsService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/server/payments/orders": {
+      "get": {
+        "operationId": "PaymentsService_ListOrders",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListOrdersResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      }
+    },
+    "/v1/server/payments/orders/{orderId}": {
+      "get": {
+        "operationId": "PaymentsService_GetOrder",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1PaymentOrder"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      }
+    },
+    "/v1/server/payments/orders/{orderId}:fulfill": {
+      "post": {
+        "operationId": "PaymentsService_ManualFulfill",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ManualFulfillResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/PaymentsServiceManualFulfillBody"
+            }
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      }
+    },
+    "/v1/server/payments/orders/{orderId}:refund": {
+      "post": {
+        "operationId": "PaymentsService_Refund",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1PaymentOrder"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/PaymentsServiceRefundBody"
+            }
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "PaymentsServiceManualFulfillBody": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        }
+      },
+      "title": "ManualFulfillRequest 人工标记履约完成（订单已支付但履约异常时的兜底）。"
+    },
+    "PaymentsServiceRefundBody": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "string",
+          "format": "int64",
+          "title": "退款金额（最小货币单位）；缺省/0 = 全额退款。"
+        },
+        "reason": {
+          "type": "string",
+          "title": "备注（审计用途，可选）。"
+        }
+      },
+      "title": "RefundRequest 对已支付订单发起退款（D12：一期只翻订单状态 + 事件，\n不回收已发放资产）。"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "torchwoodserverv1PaymentOrder": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "string",
+          "format": "int64"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "purposeKind": {
+          "type": "string",
+          "title": "topup | item_purchase | subscription"
+        },
+        "purpose": {
+          "type": "object"
+        },
+        "status": {
+          "type": "string"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "providerSessionId": {
+          "type": "string",
+          "title": "渠道会话 / 渠道支付单（Stripe cs_... / pi_...）。"
+        },
+        "providerOrderId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "paidAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "title": "PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的\nint64（禁止 float）；status 状态机：\ncreated → paying → paid | failed | closed → refunding → refunded。"
+    },
+    "v1Fulfillment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "orderId": {
+          "type": "string"
+        },
+        "purposeKind": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string",
+          "title": "履约 ref（幂等锚点三：order:{order_id}；PR2 起指向资产 ledger entry）。"
+        },
+        "status": {
+          "type": "string",
+          "title": "pending | done | failed"
+        },
+        "detail": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "title": "Fulfillment 是履约记录（v3 设计 §1.5；PR1 为占位记录，PR2 联通资产发放）。"
+    },
+    "v1ListOrdersResponse": {
+      "type": "object",
+      "properties": {
+        "orders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodserverv1PaymentOrder"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
+        }
+      }
+    },
+    "v1ListResponseMeta": {
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "nextPageToken": {
+          "type": "string"
+        },
+        "prevPageToken": {
+          "type": "string"
+        },
+        "totalCount": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "v1ManualFulfillResponse": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "$ref": "#/definitions/torchwoodserverv1PaymentOrder"
+        },
+        "fulfillment": {
+          "$ref": "#/definitions/v1Fulfillment"
+        }
+      }
+    }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "x-torchwood-access": "api_key"
+}

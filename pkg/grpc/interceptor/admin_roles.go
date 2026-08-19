@@ -79,6 +79,10 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.TeamsService/UpdateMembershipStatus": {"member", "owner", "admin"},
 	"/torchwood.server.v1.TeamsService/DeleteMembership":       {"member", "owner", "admin"},
 	"/torchwood.server.v1.TeamsService/UpdateTeamPrefs":        {"member", "owner", "admin"},
+	// PaymentsService（金额敏感：退款 / 人工履约仅 owner/admin；
+	// 与 apikeys 同级——直接资金操作，viewer/member 不可触发）
+	"/torchwood.server.v1.PaymentsService/Refund":        {"owner", "admin"},
+	"/torchwood.server.v1.PaymentsService/ManualFulfill": {"owner", "admin"},
 	// ProjectsService（创建是平台级资源，仅 owner/admin——与 use-case
 	// CreateProject 平台 admin 守卫一致；更新是业务写，仅收 viewer）
 	"/torchwood.server.v1.ProjectsService/CreateProject": {"owner", "admin"},

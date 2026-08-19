@@ -45,7 +45,18 @@ type Envelope struct {
 	Truncated     bool
 	Data          *databases.Document // delete 时 nil
 	ACL           ACLSnapshot
+
+	// v3 经济事件扩展（设计 §5.1）：Domain 非空表示非文档事件
+	// （payments / economy / subscriptions），Channel 显式给出扇出频道
+	// （D17 单一 accounts.{userId}），Attrs 携带事件专属字段且不含隐私。
+	// 文档事件三个字段均为零值，序列化与扇出行为与 v2 完全一致。
+	Domain  string
+	Channel string
+	Attrs   map[string]any
 }
+
+// IsEconomy 报告是否为 v3 经济事件（显式 domain/channel 的非文档事件）。
+func (e Envelope) IsEconomy() bool { return e.Domain != "" }
 
 // CollectionChannel 返回集合频道名（topic 与订阅用）。
 func (e Envelope) CollectionChannel() string {
@@ -77,7 +88,23 @@ func DocumentPayload(d *databases.Document) map[string]any {
 // ClientPayload 返回出站 JSON（WS 帧 / 客户端可见）：**不含 acl**。
 // 保留 event_id / event / 资源 id / version / transaction_id / created_at /
 // truncated / data；delete 事件无 data 键。
+// 经济事件（Domain 非空）：文档专属字段不出现，改为 domain + channel
+// + Attrs（channel 必须进 payload——worker → Stream → Hub 链路只认 payload）。
 func (e Envelope) ClientPayload() map[string]any {
+	if e.IsEconomy() {
+		m := map[string]any{
+			"event_id":   e.EventID,
+			"event":      e.Event,
+			"project_id": e.ProjectID,
+			"domain":     e.Domain,
+			"channel":    e.Channel,
+			"created_at": e.CreatedAt.UTC().Format(time.RFC3339),
+		}
+		for k, v := range e.Attrs {
+			m[k] = v
+		}
+		return m
+	}
 	m := map[string]any{
 		"event_id":       e.EventID,
 		"event":          e.Event,

@@ -5,6 +5,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/app/functions"
+	"github.com/torchwooddev/torchwood/internal/app/payments"
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/app/storage"
@@ -31,4 +32,6 @@ var ProviderSet = wire.NewSet(
 	console.NewSetup,
 	storage.NewStorage,
 	functions.NewFunctions,
+	payments.NewPayments,
+	payments.NewRecordOnlyFulfiller,
 )

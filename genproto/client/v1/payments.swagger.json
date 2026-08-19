@@ -1,0 +1,306 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "client/v1/payments.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "PaymentsService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/payments/orders": {
+      "get": {
+        "operationId": "PaymentsService_ListMyOrders",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListMyOrdersResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "description": "不透明游标（上一页最后一条的创建时间）。",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      },
+      "post": {
+        "operationId": "PaymentsService_CreateOrder",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateOrderResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateOrderRequest"
+            }
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      }
+    },
+    "/v1/payments/orders/{orderId}": {
+      "get": {
+        "operationId": "PaymentsService_GetMyOrder",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1PaymentOrder"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "PaymentsService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "torchwoodclientv1PaymentOrder": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "string",
+          "format": "int64"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "purposeKind": {
+          "type": "string",
+          "title": "topup | item_purchase | subscription"
+        },
+        "purpose": {
+          "type": "object",
+          "title": "用途载荷：{currency_code, amount} / {asset_code, quantity} / {plan_code}"
+        },
+        "status": {
+          "type": "string"
+        },
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "paidAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "paymentUrl": {
+          "type": "string",
+          "title": "渠道收银台地址（Stripe Checkout URL 等）；仅 CreateOrder 响应填充，\n查询接口不返回。"
+        }
+      },
+      "title": "PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的\nint64（禁止 float）；status 状态机：\ncreated → paying → paid | failed | closed → refunding → refunded。"
+    },
+    "v1CreateOrderRequest": {
+      "type": "object",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string",
+          "title": "客户端建单幂等键：同 (project, key) 重复建单返回原单（设计 §1.3）。"
+        },
+        "provider": {
+          "type": "string",
+          "title": "一期支持 stripe；wechat / alipay / ios_iap 见 PR4。"
+        },
+        "amount": {
+          "type": "string",
+          "format": "int64",
+          "title": "最小货币单位金额，必须 \u003e 0（如 1999 = 19.99 USD）。"
+        },
+        "currency": {
+          "type": "string",
+          "title": "ISO-4217 三字母码（usd / cny ...）。"
+        },
+        "purposeKind": {
+          "type": "string",
+          "title": "topup | item_purchase（subscription 在 PR3 开放）。"
+        },
+        "purpose": {
+          "type": "object"
+        }
+      }
+    },
+    "v1CreateOrderResponse": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "$ref": "#/definitions/torchwoodclientv1PaymentOrder"
+        },
+        "idempotentReplay": {
+          "type": "boolean",
+          "title": "true = 命中幂等键返回原单（未向渠道重复下单）。"
+        }
+      }
+    },
+    "v1ListMyOrdersResponse": {
+      "type": "object",
+      "properties": {
+        "orders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodclientv1PaymentOrder"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
+        }
+      }
+    },
+    "v1ListResponseMeta": {
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "nextPageToken": {
+          "type": "string"
+        },
+        "prevPageToken": {
+          "type": "string"
+        },
+        "totalCount": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "格式: Bearer \u003cjwt\u003e（Client API 登录态）",
+      "name": "Authorization",
+      "in": "header"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "name": "X-API-Key",
+      "in": "header"
+    },
+    "cookie": {
+      "type": "apiKey",
+      "description": "TORCHWOOD_session_console=\u003csid\u003e（Console admin 会话）",
+      "name": "Cookie",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "Bearer": []
+    }
+  ],
+  "x-torchwood-access": "authenticated"
+}

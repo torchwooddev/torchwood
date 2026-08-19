@@ -100,12 +100,20 @@ func (h *Hub) Remove(connID string) {
 // Dispatch 收**完整**信封（含 ev.ACL），按集合 + 文档两个频道扇出。
 // 连接只收 PlatformAdmin 旁路或 VisibleTo(ev.ACL) 通过的订阅者；
 // 入队帧只用 ev.ClientPayload()（剥掉 acl），发送 chan 满载则丢事件。
+// 经济事件（Domain 非空，v3 设计 §5.1/D17）：只扇出显式 Channel，无 acl——
+// 可见性由频道本身保证（订阅侧 parseChannel 派发表仅允许本人订阅）。
 func (h *Hub) Dispatch(ev events.Envelope) {
 	if !h.markSeen(ev.EventID) {
 		return // 重复 event_id（回收重放 / PEL 重投）
 	}
 	payload := ev.ClientPayload()
-	for _, ch := range []string{ev.CollectionChannel(), ev.DocumentChannel()} {
+	var channels []string
+	if ev.IsEconomy() {
+		channels = []string{ev.Channel}
+	} else {
+		channels = []string{ev.CollectionChannel(), ev.DocumentChannel()}
+	}
+	for _, ch := range channels {
 		h.mu.RLock()
 		subs := make([]*Conn, 0, 8)
 		for _, c := range h.channels[ch] {
@@ -113,7 +121,7 @@ func (h *Hub) Dispatch(ev events.Envelope) {
 		}
 		h.mu.RUnlock()
 		for _, c := range subs {
-			if !c.PlatformAdmin && !events.VisibleTo(ev.ACL, c.DocPrincipal) {
+			if !ev.IsEconomy() && !c.PlatformAdmin && !events.VisibleTo(ev.ACL, c.DocPrincipal) {
 				continue
 			}
 			frame := map[string]any{"type": "event", "channel": ch, "payload": payload}

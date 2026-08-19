@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package torchwood.client.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/client/v1;clientv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// 服务默认 access=authenticated：swagger 顶层声明 Bearer security
+// （详见 docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>（Client API 登录态）"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "Bearer"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "authenticated" }
+  }
+};
+
+// PaymentsService 是终端用户支付面（v3 设计 §6）：建单（幂等键 + purpose）
+// 与本人订单查询。回调端点 POST /v1/payments/callbacks/{provider} 是裸
+// HTTP（渠道验签，不走 gRPC gateway，见 internal/api/serverhttp）。
+service PaymentsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
+
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse) {
+    option (google.api.http) = { post: "/v1/payments/orders", body: "*" };
+  }
+  rpc GetMyOrder(GetMyOrderRequest) returns (PaymentOrder) {
+    option (google.api.http) = { get: "/v1/payments/orders/{order_id}" };
+  }
+  rpc ListMyOrders(ListMyOrdersRequest) returns (ListMyOrdersResponse) {
+    option (google.api.http) = { get: "/v1/payments/orders" };
+  }
+}
+
+// PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的
+// int64（禁止 float）；status 状态机：
+// created → paying → paid | failed | closed → refunding → refunded。
+message PaymentOrder {
+  string id = 1;
+  string provider = 2;
+  int64 amount = 3;
+  string currency = 4;
+  // topup | item_purchase | subscription
+  string purpose_kind = 5;
+  // 用途载荷：{currency_code, amount} / {asset_code, quantity} / {plan_code}
+  google.protobuf.Struct purpose = 6;
+  string status = 7;
+  string idempotency_key = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp paid_at = 10;
+  google.protobuf.Timestamp expires_at = 11;
+  // 渠道收银台地址（Stripe Checkout URL 等）；仅 CreateOrder 响应填充，
+  // 查询接口不返回。
+  string payment_url = 12;
+}
+
+message CreateOrderRequest {
+  // 客户端建单幂等键：同 (project, key) 重复建单返回原单（设计 §1.3）。
+  string idempotency_key = 1;
+  // 一期支持 stripe；wechat / alipay / ios_iap 见 PR4。
+  string provider = 2;
+  // 最小货币单位金额，必须 > 0（如 1999 = 19.99 USD）。
+  int64 amount = 3;
+  // ISO-4217 三字母码（usd / cny ...）。
+  string currency = 4;
+  // topup | item_purchase（subscription 在 PR3 开放）。
+  string purpose_kind = 5;
+  google.protobuf.Struct purpose = 6;
+}
+
+message CreateOrderResponse {
+  PaymentOrder order = 1;
+  // true = 命中幂等键返回原单（未向渠道重复下单）。
+  bool idempotent_replay = 2;
+}
+
+message GetMyOrderRequest {
+  string order_id = 1;
+}
+
+message ListMyOrdersRequest {
+  int32 page_size = 1;
+  // 不透明游标（上一页最后一条的创建时间）。
+  string page_token = 2;
+}
+
+message ListMyOrdersResponse {
+  repeated PaymentOrder orders = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}

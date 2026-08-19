@@ -1,0 +1,147 @@
+syntax = "proto3";
+
+package torchwood.server.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "apiKey"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "api_key" }
+  }
+};
+
+// PaymentsService 是支付管理面（v3 设计 §6）：订单查询、退款与人工履约
+// 兜底。写方法 scope payments.write（apiKeyScopeRules）并登记
+// adminRoleMethodRules（owner/admin）；操作自动进审计日志（PR0 拦截器）。
+service PaymentsService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
+
+  rpc ListOrders(shared.v1.ListRequest) returns (ListOrdersResponse) {
+    option (google.api.http) = { get: "/v1/server/payments/orders" };
+  }
+  rpc GetOrder(GetOrderRequest) returns (PaymentOrder) {
+    option (google.api.http) = { get: "/v1/server/payments/orders/{order_id}" };
+  }
+  rpc Refund(RefundRequest) returns (PaymentOrder) {
+    option (google.api.http) = { post: "/v1/server/payments/orders/{order_id}:refund", body: "*" };
+    // 金额敏感写操作：显式声明 method_auth（R10-P1-1），不依赖服务级默认值。
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+  rpc ManualFulfill(ManualFulfillRequest) returns (ManualFulfillResponse) {
+    option (google.api.http) = { post: "/v1/server/payments/orders/{order_id}:fulfill", body: "*" };
+    // 金额敏感写操作：显式声明 method_auth（R10-P1-1），不依赖服务级默认值。
+    option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
+  }
+}
+
+// PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的
+// int64（禁止 float）；status 状态机：
+// created → paying → paid | failed | closed → refunding → refunded。
+message PaymentOrder {
+  string id = 1;
+  string project_id = 2;
+  string user_id = 3;
+  string provider = 4;
+  int64 amount = 5;
+  string currency = 6;
+  // topup | item_purchase | subscription
+  string purpose_kind = 7;
+  google.protobuf.Struct purpose = 8;
+  string status = 9;
+  string idempotency_key = 10;
+  // 渠道会话 / 渠道支付单（Stripe cs_... / pi_...）。
+  string provider_session_id = 11;
+  string provider_order_id = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp paid_at = 14;
+  google.protobuf.Timestamp expires_at = 15;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+// RefundRequest 对已支付订单发起退款（D12：一期只翻订单状态 + 事件，
+// 不回收已发放资产）。
+message RefundRequest {
+  string order_id = 1;
+  // 退款金额（最小货币单位）；缺省/0 = 全额退款。
+  optional int64 amount = 2;
+  // 备注（审计用途，可选）。
+  string reason = 3;
+}
+
+// ManualFulfillRequest 人工标记履约完成（订单已支付但履约异常时的兜底）。
+message ManualFulfillRequest {
+  string order_id = 1;
+  string reason = 2;
+}
+
+message ManualFulfillResponse {
+  PaymentOrder order = 1;
+  Fulfillment fulfillment = 2;
+}
+
+// Fulfillment 是履约记录（v3 设计 §1.5；PR1 为占位记录，PR2 联通资产发放）。
+message Fulfillment {
+  string id = 1;
+  string order_id = 2;
+  string purpose_kind = 3;
+  // 履约 ref（幂等锚点三：order:{order_id}；PR2 起指向资产 ledger entry）。
+  string ref = 4;
+  // pending | done | failed
+  string status = 5;
+  google.protobuf.Struct detail = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message ListOrdersResponse {
+  repeated PaymentOrder orders = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
+	infrapayments "github.com/torchwooddev/torchwood/internal/infra/payments"
 	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
 	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
@@ -58,6 +59,7 @@ var ProviderSet = wire.NewSet(
 	infrarealtime.ProviderSet,
 	infrastorage.ProviderSet,
 	infrafunctions.ProviderSet,
+	infrapayments.ProviderSet,
 	infraqueue.ProviderSet,
 
 	server.NewGRPCServer,

@@ -1,0 +1,155 @@
+// Package payments 定义 v3 支付子域的领域模型与端口：订单状态机、
+// 归一化回调事件与 PaymentProvider 渠道端口（设计 §1）。
+package payments
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+// ProviderName 是受支持渠道名（设计 §1.2 渠道差异矩阵）。
+const (
+	ProviderStripe = "stripe"
+	// PR4 渠道补齐：wechat / alipay / ios_iap。
+)
+
+// ErrUnsupported 表示渠道不支持该操作（如 iOS IAP 无 CreatePayment）。
+var ErrUnsupported = errors.New("payments: operation unsupported by provider")
+
+// ErrSignatureInvalid 表示回调验签失败：调用方必须 401 且不落任何行
+// （设计 §Security：验签是唯一信任根，不返回区分性错误）。
+var ErrSignatureInvalid = errors.New("payments: callback signature invalid")
+
+// errNotConfigured 是渠道凭据未配置的统一错误（服务可启动，
+// 相关操作 fail-closed）。
+var errNotConfigured = errors.New("payments: provider not configured")
+
+// ErrNotConfigured 报告 err 是否为「渠道未配置」。
+func ErrNotConfigured(err error) bool { return errors.Is(err, errNotConfigured) }
+
+// ErrProviderNotConfigured 构造「渠道未配置」错误（sentinel 未导出，
+// 供 adapter 构造）。
+func ErrProviderNotConfigured(provider string) error {
+	return fmt.Errorf("%w: %s", errNotConfigured, provider)
+}
+
+// ProviderError 携带渠道侧调用失败（HTTP 状态等）；adapter 把非 2xx
+// 渠道响应包装为本类型，use-case 据此映射 gRPC 状态（不透出渠道原文）。
+type ProviderError struct {
+	Provider string
+	Status   int // 渠道 HTTP 状态码（0 = 未知）
+}
+
+func (e *ProviderError) Error() string {
+	return fmt.Sprintf("payments: provider %s error: http %d", e.Provider, e.Status)
+}
+
+// AsProviderError 取出 *ProviderError（非该类型返回 nil）。
+func AsProviderError(err error) *ProviderError {
+	var pe *ProviderError
+	if errors.As(err, &pe) {
+		return pe
+	}
+	return nil
+}
+
+// CreatePaymentInput 是下单入参（use-case 从订单实体组装）。
+type CreatePaymentInput struct {
+	OrderID     string // 本地订单 id，回填渠道 metadata / client_reference_id
+	Amount      int64  // 最小货币单位（bigint，禁止 float）
+	Currency    string // ISO-4217 三字母
+	Description string // 收银台展示名
+	ExpiresAt   time.Time
+	SuccessURL  string
+	CancelURL   string
+	// IdempotencyKey 透传渠道幂等键（Stripe Idempotency-Key header）。
+	IdempotencyKey string
+}
+
+// PaymentSession 是下单结果：客户端完成支付所需的载荷
+// （Stripe → checkout URL；微信/支付宝 → 预下单参数/二维码串）。
+type PaymentSession struct {
+	SessionID  string // 渠道会话 id（Stripe Checkout Session cs_...）
+	PaymentURL string // 客户端跳转/拉起地址
+}
+
+// CallbackEventType 是归一化回调类型（设计 §1.1）。subscription_* 留给 PR3。
+const (
+	CallbackPaid     = "paid"
+	CallbackFailed   = "failed"
+	CallbackRefunded = "refunded"
+)
+
+// CallbackEvent 是验签后的归一化渠道异步通知：
+// {Provider, ProviderEventID, ProviderOrderID, Type, Amount, Currency, Raw}
+// （设计 §1.1）。ProviderSessionID 为 Stripe Checkout Session 等
+// 「我们下单时拿到的会话标识」，用于回调定位本地订单。
+type CallbackEvent struct {
+	Provider          string
+	ProviderEventID   string // 幂等锚点二：(provider, provider_event_id) 唯一
+	ProviderSessionID string
+	ProviderOrderID   string
+	Type              string // paid | failed | refunded | subscription_*
+	Amount            int64
+	Currency          string
+	OrderID           string // 渠道 metadata 回传的本地订单 id（若有）
+	Raw               []byte
+	ReceivedAt        time.Time
+}
+
+// RefundInput 是退款入参。
+type RefundInput struct {
+	OrderID         string
+	ProviderOrderID string // 渠道支付单（Stripe PaymentIntent）
+	Amount          int64  // 0 = 全额
+	IdempotencyKey  string
+}
+
+// RefundResult 是退款结果：Succeeded=true 时订单可直接翻 refunded，
+// 否则订单停在 refunding，等渠道回调确认（设计 §1.3）。
+type RefundResult struct {
+	RefundID  string
+	Succeeded bool
+}
+
+// PaymentProvider 是支付渠道端口（domain）：use-case 只见归一化接口，
+// 渠道差异全部收敛在 infra adapter（设计 §1.1）。
+type PaymentProvider interface {
+	// Name 返回 ProviderName 常量之一。
+	Name() string
+	// CreatePayment 下单。iOS IAP 不实现（返回 ErrUnsupported，走验票路径）。
+	CreatePayment(ctx context.Context, in CreatePaymentInput) (*PaymentSession, error)
+	// VerifyCallback 验签并归一化渠道异步通知；验签失败返回 ErrSignatureInvalid。
+	VerifyCallback(ctx context.Context, headers http.Header, rawBody []byte) (*CallbackEvent, error)
+	// Refund 发起退款。
+	Refund(ctx context.Context, in RefundInput) (*RefundResult, error)
+}
+
+// ReceiptVerifier 是 iOS IAP 专用端口（PR4 实现）。
+type ReceiptVerifier interface {
+	VerifyReceipt(ctx context.Context, in VerifyReceiptInput) (*VerifiedPurchase, error)
+}
+
+// ProviderRegistry 按渠道名解析 PaymentProvider（infra 装配实现；
+// 回调入口与建单路径经它路由，PR4 泛化多渠道）。
+type ProviderRegistry interface {
+	Get(name string) (PaymentProvider, error)
+}
+
+// VerifyReceiptInput / VerifiedPurchase 为 PR4 预留的 iOS 验票形状。
+type VerifyReceiptInput struct {
+	Receipt   []byte
+	UserID    string
+	ProjectID string
+}
+
+type VerifiedPurchase struct {
+	TransactionID string
+	ProductID     string
+	Amount        int64
+	Currency      string
+	PaidAt        time.Time
+}

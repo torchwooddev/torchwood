@@ -95,7 +95,7 @@ func (w *OutboxWorker) pollOnce(ctx context.Context) error {
 
 	var rows []model.DocumentEventsOutbox
 	err := w.db.Conn(ctx).NewSelect().Model(&rows).
-		Column("event_id", "payload", "created_at", "attempts").
+		Column("event_id", "payload", "channel", "created_at", "attempts").
 		Where("published_at IS NULL").
 		Where("available_at <= NOW()").
 		Where("(dispatched_at IS NULL OR dispatched_at < NOW() - INTERVAL '2 minutes')").
@@ -146,8 +146,8 @@ func (w *OutboxWorker) failRow(ctx context.Context, row *model.DocumentEventsOut
 	if attempts >= maxOutboxAttempts {
 		if err := w.db.RunInTx(ctx, func(txCtx context.Context) error {
 			if _, err := w.db.Conn(txCtx).NewRaw(`INSERT INTO document_events_outbox_dead
-				(event_id, project_id, topic, payload, attempts, last_error, created_at)
-				SELECT event_id, project_id, topic, payload, ? AS attempts, ? AS last_error, created_at
+				(event_id, project_id, topic, channel, payload, attempts, last_error, created_at)
+				SELECT event_id, project_id, topic, channel, payload, ? AS attempts, ? AS last_error, created_at
 				FROM document_events_outbox
 				WHERE event_id = ?`,
 				attempts, cause.Error(), row.EventID).Exec(txCtx); err != nil {

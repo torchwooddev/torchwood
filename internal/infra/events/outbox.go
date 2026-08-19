@@ -47,10 +47,19 @@ func (o *eventOutbox) Publish(ctx context.Context, ev domainevents.Envelope) err
 		return err
 	}
 	insert := func(ctx context.Context) error {
+		topic := ev.CollectionChannel()
+		var channel *string
+		if ev.IsEconomy() {
+			// 经济事件：topic 落事件名，channel 落显式扇出频道（D17）。
+			topic = ev.Event
+			ch := ev.Channel
+			channel = &ch
+		}
 		_, err := o.db.Conn(ctx).NewInsert().Model(&model.DocumentEventsOutbox{
 			EventID:     ev.EventID,
 			ProjectID:   ev.ProjectID,
-			Topic:       ev.CollectionChannel(),
+			Topic:       topic,
+			Channel:     channel,
 			Payload:     payload,
 			CreatedAt:   ev.CreatedAt,
 			AvailableAt: time.Now(),
@@ -65,10 +74,14 @@ func (o *eventOutbox) Publish(ctx context.Context, ev domainevents.Envelope) err
 	})
 }
 
-// marshalEnvelope 序列化完整信封（含 acl）并按 256 KiB 上限截断：
+// marshalEnvelope 序列化完整信封并按 256 KiB 上限截断：
 // 1) 整体超限 → 去掉 data、标记 truncated（业务写不回滚）；
 // 2) acl 仍超限（极端权限列表）→ 逐条截断 acl 数组并记日志。
+// 经济事件（Domain 非空）载荷小且无 acl / data，直接序列化。
 func marshalEnvelope(ev domainevents.Envelope) (json.RawMessage, error) {
+	if ev.IsEconomy() {
+		return json.Marshal(envelopePayloadMap(ev))
+	}
 	payload, err := json.Marshal(envelopePayloadMap(ev))
 	if err != nil {
 		return nil, err
@@ -102,10 +115,14 @@ func marshalEnvelope(ev domainevents.Envelope) (json.RawMessage, error) {
 }
 
 // envelopePayloadMap 组装 outbox.payload：ClientPayload()（无 acl）之上
-// 追加服务端投递过滤用的 acl 快照。与 outbox.payload 同形的完整信封
-// 也是日后 Redis Stream 条目的载荷（含 acl，Hub 侧再剥）。
+// 追加服务端投递过滤用的 acl 快照（经济事件无 acl，设计 §5.1）。
+// 与 outbox.payload 同形的完整信封也是日后 Redis Stream 条目的载荷
+// （含 acl，Hub 侧再剥）。
 func envelopePayloadMap(ev domainevents.Envelope) map[string]any {
 	m := ev.ClientPayload()
+	if ev.IsEconomy() {
+		return m
+	}
 	m["acl"] = map[string]any{
 		"document_security":      ev.ACL.DocumentSecurity,
 		"collection_permissions": permissionStrings(ev.ACL.CollectionPermissions),

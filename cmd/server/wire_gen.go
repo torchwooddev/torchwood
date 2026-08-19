@@ -17,6 +17,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
+	"github.com/torchwooddev/torchwood/internal/app/payments"
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
@@ -29,6 +30,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/messaging"
+	payments2 "github.com/torchwooddev/torchwood/internal/infra/payments"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
@@ -95,6 +97,14 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	teams := server.NewTeams(projectsRepository, documentDB)
 	clientTeams := client.NewTeams(teams, documentDB)
 	teamsService := clientgrpc.NewTeamsService(clientTeams)
+	orderRepo := bunrepo.NewPaymentOrderRepository(database)
+	callbackEventRepo := bunrepo.NewPaymentCallbackEventRepository(database)
+	fulfillmentRepo := bunrepo.NewPaymentFulfillmentRepository(database)
+	fulfiller := payments.NewRecordOnlyFulfiller()
+	adapter := payments2.NewStripeAdapter(appConfig)
+	registry := payments2.NewRegistry(adapter)
+	paymentsPayments := payments.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
+	paymentsService := clientgrpc.NewPaymentsService(paymentsPayments)
 	buildInfo := NewBuildInfo()
 	healthService := servergrpc.NewHealthService(checkers, buildInfo)
 	projects := server.NewProjects(projectsRepository, documentDB, database)
@@ -117,12 +127,13 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	sharedQueue := queue.NewRedisQueue(redisClient)
 	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
 	functionsService := servergrpc.NewFunctionsService(functionsFunctions)
+	servergrpcPaymentsService := servergrpc.NewPaymentsService(paymentsPayments)
 	consoleAuth := console.NewAuth(appConfig, adminRepository, redisAdminTokenRevokeStore, redisLoginThrottle, redisRefreshRotationStore)
 	admins := console.NewAdmins(adminRepository)
 	setup := console.NewSetup(appConfig, admins, projects, apiKeys, consoleAuth, adminRepository, adminProjectRepository, projectsRepository)
 	authService := consolegrpc.NewAuthService(consoleAuth, setup)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, authService, adminsService)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, paymentsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -142,13 +153,18 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
+	paymentsHandler, err := serverhttp.NewPaymentsHandler(paymentsPayments, logger)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	hub := realtime.NewHub(logger)
 	handler, err := realtime2.NewHandler(appConfig, validator, documentDB, hub, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, checkers, fileHandler, oAuthHandler, functionsHandler, handler)
+	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, checkers, fileHandler, oAuthHandler, functionsHandler, paymentsHandler, handler)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

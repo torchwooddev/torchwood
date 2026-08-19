@@ -9,12 +9,15 @@ import (
 
 // DocumentEventsOutbox 是用户集合文档写事件的 transactional outbox 行
 // （public 元数据库，与文档写同 COMMIT；payload 为完整事件信封 JSON，含 acl）。
+// v3 起经济事件复用同表（设计 §5.1）：channel 落显式扇出频道（D17），
+// 文档事件 channel 为 NULL。
 type DocumentEventsOutbox struct {
 	bun.BaseModel `bun:"table:document_events_outbox,alias:deo"`
 
 	EventID      string          `bun:"event_id,pk"`
 	ProjectID    string          `bun:"project_id,notnull"`
 	Topic        string          `bun:"topic,notnull"`
+	Channel      *string         `bun:"channel"`
 	Payload      json.RawMessage `bun:"payload,type:jsonb,notnull"`
 	CreatedAt    time.Time       `bun:"created_at,notnull"`
 	AvailableAt  time.Time       `bun:"available_at,notnull"`

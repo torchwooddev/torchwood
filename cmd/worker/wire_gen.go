@@ -10,12 +10,14 @@ import (
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
+	"github.com/torchwooddev/torchwood/internal/app/payments"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/events"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
+	payments2 "github.com/torchwooddev/torchwood/internal/infra/payments"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
@@ -56,7 +58,15 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	realtimeTransport := realtime.NewStreamTransport(client)
 	outboxWorker := events.NewOutboxWorker(database, realtimeTransport, logger)
 	outboxWorkerService := NewOutboxWorkerService(outboxWorker, logger)
-	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService)
+	orderRepo := bunrepo.NewPaymentOrderRepository(database)
+	callbackEventRepo := bunrepo.NewPaymentCallbackEventRepository(database)
+	fulfillmentRepo := bunrepo.NewPaymentFulfillmentRepository(database)
+	fulfiller := payments.NewRecordOnlyFulfiller()
+	adapter := payments2.NewStripeAdapter(appConfig)
+	registry := payments2.NewRegistry(adapter)
+	paymentsPayments := payments.NewPayments(appConfig, database, orderRepo, callbackEventRepo, fulfillmentRepo, fulfiller, registry, eventOutbox, logger)
+	paymentCloser := NewPaymentCloser(paymentsPayments, logger)
+	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {

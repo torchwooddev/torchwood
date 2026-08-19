@@ -35,6 +35,8 @@ func UnmarshalEnvelope(data []byte) (domainevents.Envelope, error) {
 		Truncated     bool            `json:"truncated"`
 		Data          json.RawMessage `json:"data"`
 		ACL           json.RawMessage `json:"acl"`
+		Domain        string          `json:"domain"`
+		Channel       string          `json:"channel"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return domainevents.Envelope{}, fmt.Errorf("decode envelope: %w", err)
@@ -49,6 +51,8 @@ func UnmarshalEnvelope(data []byte) (domainevents.Envelope, error) {
 		Version:       raw.Version,
 		TransactionID: raw.TransactionID,
 		Truncated:     raw.Truncated,
+		Domain:        raw.Domain,
+		Channel:       raw.Channel,
 	}
 	if raw.CreatedAt != "" {
 		createdAt, err := time.Parse(time.RFC3339, raw.CreatedAt)
@@ -56,6 +60,21 @@ func UnmarshalEnvelope(data []byte) (domainevents.Envelope, error) {
 			return domainevents.Envelope{}, fmt.Errorf("decode envelope created_at: %w", err)
 		}
 		ev.CreatedAt = createdAt
+	}
+	// 经济事件：Attrs = ClientPayload 去掉固定键（domain 非空时无 data/acl）。
+	if ev.IsEconomy() {
+		var m map[string]any
+		if err := json.Unmarshal(data, &m); err != nil {
+			return domainevents.Envelope{}, fmt.Errorf("decode economy envelope: %w", err)
+		}
+		delete(m, "event_id")
+		delete(m, "event")
+		delete(m, "project_id")
+		delete(m, "domain")
+		delete(m, "channel")
+		delete(m, "created_at")
+		ev.Attrs = m
+		return ev, nil
 	}
 	if len(raw.Data) > 0 && string(raw.Data) != "null" {
 		doc, err := unmarshalDocumentPayload(raw.Data)

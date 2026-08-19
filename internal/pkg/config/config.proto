@@ -13,6 +13,7 @@ message AppConfig {
   Telemetry telemetry = 6;
   Messaging messaging = 7;
   IdGen idgen = 8;
+  Payments payments = 9;
 }
 
 message Server {
@@ -189,4 +190,19 @@ message IdGen {
   Snowflake snowflake = 3;
   Sequence sequence = 4;
   Resources resources = 5;
+}
+
+// Payments 是 v3 支付子域配置（设计 §1.2）。渠道 secret 一律走
+// TORCHWOOD_ 环境变量，不写入 config.yaml；未配置时服务可启动，
+// 相关操作 fail-closed。
+message Payments {
+  message Stripe {
+    // Secret key (sk_...). env: TORCHWOOD_PAYMENTS_STRIPE_SECRET_KEY
+    string secret_key = 1;
+    // Webhook signing secret (whsec_...). env: TORCHWOOD_PAYMENTS_STRIPE_WEBHOOK_SECRET
+    string webhook_secret = 2;
+    // REST API base URL; empty = https://api.stripe.com (tests may override).
+    string api_base_url = 3;
+  }
+  Stripe stripe = 1;
 }
