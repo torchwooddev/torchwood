@@ -5,6 +5,7 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
+	infrabilling "github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/bun"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -60,6 +61,7 @@ var ProviderSet = wire.NewSet(
 	infrastorage.ProviderSet,
 	infrafunctions.ProviderSet,
 	infrapayments.ProviderSet,
+	infrabilling.ProviderSet,
 	infraqueue.ProviderSet,
 
 	server.NewGRPCServer,

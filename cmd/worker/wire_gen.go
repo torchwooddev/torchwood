@@ -10,10 +10,12 @@ import (
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"
 	"github.com/torchwooddev/torchwood/internal/app/assets"
+	billing2 "github.com/torchwooddev/torchwood/internal/app/billing"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
 	payments2 "github.com/torchwooddev/torchwood/internal/app/payments"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
+	"github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -44,7 +46,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	functionRepo := bunrepo.NewFunctionRepository(database)
 	client := clients.NewRedis(dataClients)
 	sharedQueue := queue.NewRedisQueue(client)
-	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
+	redisCounter := billing.NewRedisCounter(client)
+	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter)
 	worker := NewWorker(functionsFunctions, sharedQueue, logger)
 	repository := bunrepo.NewProjectRepository(database)
 	eventOutbox := events.NewEventOutbox(database)
@@ -77,7 +80,11 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	paymentCloser := NewPaymentCloser(paymentsPayments, logger)
 	assetExpirer := NewAssetExpirer(assetsAssets, logger)
 	subscriptionBiller := NewSubscriptionBiller(subscriptionsSubscriptions, logger)
-	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller)
+	usageRepo := bunrepo.NewUsageRepository(database)
+	statementRepo := bunrepo.NewBillingStatementRepository(database)
+	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, documentDB, logger)
+	usageRollupWorker := NewUsageRollupWorker(billingBilling, logger)
+	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {

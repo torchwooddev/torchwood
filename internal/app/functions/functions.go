@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
 	"github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -16,10 +17,18 @@ type Functions struct {
 	executor functions.Executor
 	repo     functions.FunctionRepo
 	queue    shared.Queue
+	usage    domainbilling.UsageCounter // 可选：函数执行时长计量（PR5）
 }
 
 func NewFunctions(cfg *config.AppConfig, executor functions.Executor, repo functions.FunctionRepo, queue shared.Queue) *Functions {
 	return &Functions{cfg: cfg, executor: executor, repo: repo, queue: queue}
+}
+
+// NewFunctionsWithUsage 注入用量计数器（Wire）；测试仍用 NewFunctions（usage=nil 跳过计量）。
+func NewFunctionsWithUsage(cfg *config.AppConfig, executor functions.Executor, repo functions.FunctionRepo, queue shared.Queue, usage domainbilling.UsageCounter) *Functions {
+	f := NewFunctions(cfg, executor, repo, queue)
+	f.usage = usage
+	return f
 }
 
 type ExecuteCommand struct {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
+	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -210,6 +211,7 @@ func (f *Functions) runExecution(ctx context.Context, fn *domainfunctions.Functi
 			rec.Stderr, rec.StderrTruncated = truncateWithFlag(result.Stderr, maxOutputBytes)
 		}
 		_ = f.repo.UpdateExecution(ctx, rec)
+		f.meterDuration(ctx, rec.ProjectID, rec.DurationMS)
 		return rec, err
 	}
 	rec.StatusCode = result.StatusCode
@@ -228,6 +230,7 @@ func (f *Functions) runExecution(ctx context.Context, fn *domainfunctions.Functi
 	if err := f.repo.UpdateExecution(ctx, rec); err != nil {
 		return nil, err
 	}
+	f.meterDuration(ctx, rec.ProjectID, rec.DurationMS)
 	return rec, nil
 }
 
@@ -322,6 +325,7 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 			rec.Stderr, rec.StderrTruncated = truncateWithFlag(result.Stderr, maxOutputBytes)
 		}
 		_ = f.repo.UpdateExecution(ctx, rec)
+		f.meterDuration(ctx, rec.ProjectID, rec.DurationMS)
 		return nil
 	}
 	rec.StatusCode = result.StatusCode
@@ -340,8 +344,19 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 	if err := f.repo.UpdateExecution(ctx, rec); err != nil {
 		return err
 	}
+	f.meterDuration(ctx, rec.ProjectID, rec.DurationMS)
 	_ = f.repo.PruneOldExecutions(ctx, msg.FunctionID, pruneKeepRecent)
 	return nil
+}
+
+// meterDuration 把函数执行时长写入当前小时 Redis bucket（best-effort）。
+func (f *Functions) meterDuration(ctx context.Context, projectID string, durationMS int64) {
+	if f.usage == nil || projectID == "" || durationMS <= 0 {
+		return
+	}
+	meterCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 200*time.Millisecond)
+	defer cancel()
+	_ = f.usage.Incr(meterCtx, projectID, domainbilling.MetricFunctionDurationMS, durationMS)
 }
 
 func (f *Functions) GetExecution(ctx context.Context, projectID, functionID, executionID string) (*domainfunctions.ExecutionRecord, error) {

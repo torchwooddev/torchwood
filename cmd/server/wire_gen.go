@@ -15,6 +15,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
 	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
 	"github.com/torchwooddev/torchwood/internal/app/assets"
+	billing2 "github.com/torchwooddev/torchwood/internal/app/billing"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
@@ -24,6 +25,7 @@ import (
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
+	"github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -136,17 +138,22 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	executor := functions.NewDockerExecutor(appConfig)
 	functionRepo := bunrepo.NewFunctionRepository(database)
 	sharedQueue := queue.NewRedisQueue(redisClient)
-	functionsFunctions := functions2.NewFunctions(appConfig, executor, functionRepo, sharedQueue)
+	redisCounter := billing.NewRedisCounter(redisClient)
+	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter)
 	functionsService := servergrpc.NewFunctionsService(functionsFunctions)
 	servergrpcPaymentsService := servergrpc.NewPaymentsService(paymentsPayments)
 	servergrpcAssetsService := servergrpc.NewAssetsService(assetsAssets)
 	servergrpcSubscriptionsService := servergrpc.NewSubscriptionsService(subscriptionsSubscriptions)
+	usageRepo := bunrepo.NewUsageRepository(database)
+	statementRepo := bunrepo.NewBillingStatementRepository(database)
+	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, projectsRepository, documentDB, logger)
+	billingService := servergrpc.NewBillingService(billingBilling)
 	consoleAuth := console.NewAuth(appConfig, adminRepository, redisAdminTokenRevokeStore, redisLoginThrottle, redisRefreshRotationStore)
 	admins := console.NewAdmins(adminRepository)
 	setup := console.NewSetup(appConfig, admins, projects, apiKeys, consoleAuth, adminRepository, adminProjectRepository, projectsRepository)
 	authService := consolegrpc.NewAuthService(consoleAuth, setup)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, authService, adminsService)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, billingService, redisCounter, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

@@ -181,6 +181,20 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 	if APIKeyScopeAllowed(updateTeamPrefs, []string{"users"}) {
 		t.Fatal("unrelated scope must NOT allow UpdateTeamPrefs")
 	}
+
+	getUsage := "/torchwood.server.v1.BillingService/GetUsage"
+	if !APIKeyScopeAllowed(getUsage, []string{"billing.read"}) {
+		t.Fatal("billing.read scope should allow GetUsage")
+	}
+	if !APIKeyScopeAllowed(getUsage, []string{"billing"}) {
+		t.Fatal("bare billing scope should allow GetUsage")
+	}
+	if APIKeyScopeAllowed(getUsage, []string{"billing.write"}) {
+		t.Fatal("billing.write must NOT allow GetUsage")
+	}
+	if APIKeyScopeAllowed(getUsage, []string{"payments.read"}) {
+		t.Fatal("payments.read must NOT allow GetUsage")
+	}
 }
 
 func TestValidAPIKeyScope(t *testing.T) {
@@ -196,6 +210,10 @@ func TestValidAPIKeyScope(t *testing.T) {
 		"projects.read", "projects.write",
 		"oauthproviders.read", "oauthproviders.write",
 		"apikeys.read", "apikeys.write",
+		"payments", "payments.read", "payments.write",
+		"economy", "economy.read", "economy.write",
+		"subscriptions", "subscriptions.read", "subscriptions.write",
+		"billing", "billing.read", "billing.write",
 	} {
 		if !ValidAPIKeyScope(s) {
 			t.Fatalf("scope %q should be valid", s)

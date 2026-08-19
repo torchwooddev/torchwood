@@ -17,6 +17,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -52,6 +53,8 @@ func NewGRPCServer(
 	serverPayments *servergrpc.PaymentsService,
 	serverAssets *servergrpc.AssetsService,
 	serverSubscriptions *servergrpc.SubscriptionsService,
+	billingService *servergrpc.BillingService,
+	usageMeter domainbilling.UsageCounter,
 	consoleAuth *consolegrpc.AuthService,
 	adminsService *consolegrpc.AdminsService,
 ) (*lynxgrpc.Server, error) {
@@ -77,6 +80,7 @@ func NewGRPCServer(
 		serverv1.File_server_v1_payments_proto,
 		serverv1.File_server_v1_assets_proto,
 		serverv1.File_server_v1_subscriptions_proto,
+		serverv1.File_server_v1_billing_proto,
 		consolev1.File_console_v1_auth_proto,
 		consolev1.File_console_v1_admins_proto,
 	)
@@ -106,6 +110,7 @@ func NewGRPCServer(
 	// trusted-proxy 校验后的 IP 与 principal）、audit 之前；复用
 	// domainauth.RateLimiter 端口的 Redis 固定窗口实现。
 	rateLimitInterceptor := interceptor.NewRateLimitInterceptor(rateLimiter, cfg)
+	usageInterceptor := interceptor.NewUsageInterceptor(usageMeter).WithLogger(app.Logger())
 
 	srv := lynxgrpc.NewServer(
 		lynxgrpc.WithAddr(grpcCfg.GetAddr()),
@@ -118,6 +123,7 @@ func NewGRPCServer(
 			authInterceptor.UnaryAuthMiddleware,
 			rateLimitInterceptor.UnaryRateLimitMiddleware,
 			auditInterceptor.UnaryAuditMiddleware,
+			usageInterceptor.UnaryUsageMiddleware,
 		),
 		// 允许 ≤1MiB 的 deployment 代码包走 gRPC（base64 膨胀后约 1.33x）。
 		lynxgrpc.WithServerOptions(grpc.MaxRecvMsgSize(8<<20)),
@@ -142,6 +148,7 @@ func NewGRPCServer(
 	serverv1.RegisterPaymentsServiceServer(grpcSrv, serverPayments)
 	serverv1.RegisterAssetsServiceServer(grpcSrv, serverAssets)
 	serverv1.RegisterSubscriptionsServiceServer(grpcSrv, serverSubscriptions)
+	serverv1.RegisterBillingServiceServer(grpcSrv, billingService)
 	consolev1.RegisterConsoleAuthServiceServer(grpcSrv, consoleAuth)
 	consolev1.RegisterAdminsServiceServer(grpcSrv, adminsService)
 

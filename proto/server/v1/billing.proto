@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package torchwood.server.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// 服务默认 access=api_key：swagger 顶层声明 X-API-Key security（详见
+// docs/developer/09-api-guide.md §1.4 的 OpenAPI 建模约定；本服务全部方法继承）。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "Server API key（需同时携带 X-Torchwood-Project 请求头）"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "格式: Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>（Console admin 会话）"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "apiKey"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "api_key" }
+  }
+};
+
+// BillingService 是平台用量查询面（v3 设计 §4 / §6）：当前用量、小时
+// rollup、月账单文档。全部只读；scope billing.read / console admin。
+// 一期不出票、不向 owner 收款、不挂钩配额/限流。
+service BillingService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
+
+  rpc GetUsage(GetUsageRequest) returns (Usage) {
+    option (google.api.http) = { get: "/v1/server/billing/usage" };
+  }
+  rpc ListRollups(ListRollupsRequest) returns (ListRollupsResponse) {
+    option (google.api.http) = { get: "/v1/server/billing/rollups" };
+  }
+  rpc ListStatements(shared.v1.ListRequest) returns (ListStatementsResponse) {
+    option (google.api.http) = { get: "/v1/server/billing/statements" };
+  }
+}
+
+// GetUsageRequest 查询时间窗内的用量合计；未设 period 时默认当前 UTC 月。
+message GetUsageRequest {
+  // 空=全部计量点（api_calls / storage_bytes / function_duration_ms）。
+  string metric = 1;
+  google.protobuf.Timestamp period_start = 2;
+  google.protobuf.Timestamp period_end = 3;
+}
+
+// Usage 是项目在时间窗内各 metric 的合计（value 一律 int64 最小单位）。
+message Usage {
+  string project_id = 1;
+  google.protobuf.Timestamp period_start = 2;
+  google.protobuf.Timestamp period_end = 3;
+  repeated UsageMetric metrics = 4;
+}
+
+message UsageMetric {
+  string metric = 1;
+  int64 value = 2;
+}
+
+// ListRollupsRequest 列出小时 rollup（period_start DESC）。
+message ListRollupsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string metric = 3;
+  google.protobuf.Timestamp period_start = 4;
+  google.protobuf.Timestamp period_end = 5;
+}
+
+// UsageRollup 是一小时 bucket 的落表行。
+message UsageRollup {
+  string id = 1;
+  string project_id = 2;
+  string metric = 3;
+  google.protobuf.Timestamp period_start = 4;
+  int64 value = 5;
+}
+
+message ListRollupsResponse {
+  repeated UsageRollup rollups = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+// BillingStatement 是月账单文档（draft → final；JSONB 明细与 rollups 对账）。
+message BillingStatement {
+  string id = 1;
+  string project_id = 2;
+  google.protobuf.Timestamp period_start = 3;
+  google.protobuf.Timestamp period_end = 4;
+  // draft | final
+  string status = 5;
+  google.protobuf.Struct details = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp finalized_at = 8;
+}
+
+message ListStatementsResponse {
+  repeated BillingStatement statements = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}

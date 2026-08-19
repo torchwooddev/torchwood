@@ -264,6 +264,19 @@ func TestAdminRoleMethodRules_TransactionWriteMethodsRegistered(t *testing.T) {
 		require.Equal(t, "write", rule.op)
 	}
 
+	// BillingService 全部只读：不得进角色写表（viewer 可读）。
+	for _, m := range []string{
+		"/torchwood.server.v1.BillingService/GetUsage",
+		"/torchwood.server.v1.BillingService/ListRollups",
+		"/torchwood.server.v1.BillingService/ListStatements",
+	} {
+		require.NotContains(t, adminRoleMethodRules, m, "billing 读方法 %s 不得登记受限规则", m)
+		rule, ok := apiKeyScopeRules[m]
+		require.True(t, ok, "%s 必须登记 apiKeyScopeRules", m)
+		require.Equal(t, "billing", rule.resource)
+		require.Equal(t, "read", rule.op)
+	}
+
 	// GetTransaction 是读方法：scope=read，不进角色写表。
 	require.NotContains(t, adminRoleMethodRules, "/torchwood.server.v1.DatabasesService/GetTransaction")
 	rule, ok := apiKeyScopeRules["/torchwood.server.v1.DatabasesService/GetTransaction"]

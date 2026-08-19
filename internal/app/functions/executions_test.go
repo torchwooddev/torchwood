@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"google.golang.org/grpc/codes"
@@ -375,4 +376,36 @@ func TestProcessExecution_InvalidPayload(t *testing.T) {
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
 	err := uc.ProcessExecutionPayload(context.Background(), []byte("not json"))
 	require.Error(t, err)
+}
+
+type recUsage struct{ n int64 }
+
+func (r *recUsage) Incr(_ context.Context, _ string, metric string, delta int64) error {
+	if metric == domainbilling.MetricFunctionDurationMS {
+		r.n += delta
+	}
+	return nil
+}
+func (r *recUsage) IncrAt(ctx context.Context, projectID, metric string, _ time.Time, delta int64) error {
+	return r.Incr(ctx, projectID, metric, delta)
+}
+func (r *recUsage) Set(context.Context, string, string, time.Time, int64) error { return nil }
+func (r *recUsage) Get(context.Context, string, string, time.Time) (int64, error) {
+	return 0, nil
+}
+func (r *recUsage) ListHour(context.Context, time.Time) ([]domainbilling.Bucket, error) {
+	return nil, nil
+}
+
+func TestCreateExecution_MetersFunctionDuration(t *testing.T) {
+	repo := newMockRepo()
+	seedReadyFunction(repo, "p1", "fn_1", true, 15)
+	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0, DurationMS: 42}, nil)
+	meter := &recUsage{}
+	uc := NewFunctionsWithUsage(&config.AppConfig{}, executor, repo, newMockQueue(), meter)
+
+	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
+	require.NoError(t, err)
+	require.Equal(t, int64(42), rec.DurationMS)
+	require.Equal(t, int64(42), meter.n)
 }

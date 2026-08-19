@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/google/wire"
 	"github.com/torchwooddev/torchwood/internal/app/assets"
+	"github.com/torchwooddev/torchwood/internal/app/billing"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/app/functions"
@@ -34,10 +35,11 @@ var ProviderSet = wire.NewSet(
 	console.NewAdmins,
 	console.NewSetup,
 	storage.NewStorage,
-	functions.NewFunctions,
+	functions.NewFunctionsWithUsage,
 	payments.NewPayments,
 	assets.NewAssets,
 	subscriptions.NewSubscriptions,
 	subscriptions.NewOrderFulfiller,
 	wire.Bind(new(domainpayments.SubscriptionCallbackHandler), new(*subscriptions.Subscriptions)),
+	billing.NewBilling,
 )
