@@ -35,6 +35,10 @@ export class HttpTransport {
     return this.projectId;
   }
 
+  getEndpoint(): string {
+    return this.endpoint;
+  }
+
   getAccessToken(): string | undefined {
     return this.accessToken;
   }

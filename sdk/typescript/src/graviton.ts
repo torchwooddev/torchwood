@@ -1,4 +1,9 @@
-import { AccountService, ClientDatabasesService, ClientTeamsService } from "./client/index.js";
+import {
+  AccountService,
+  ClientDatabasesService,
+  ClientTeamsService,
+  RealtimeService,
+} from "./client/index.js";
 import type { TorchwoodConfig } from "./http.js";
 import { HttpTransport } from "./http.js";
 import {
@@ -15,12 +20,22 @@ import {
 
 export type { TorchwoodConfig } from "./http.js";
 export { TorchwoodError } from "./errors.js";
+export type {
+  RealtimeConnectOptions,
+  RealtimeConnection,
+  RealtimeEvent,
+  RealtimeHandler,
+  RealtimeStatus,
+  RealtimeSubscription,
+  RealtimeWebSocket,
+} from "./client/realtime.js";
 export * from "./types.js";
 
 export class Torchwood {
   readonly account: AccountService;
   readonly databases: ClientDatabasesService;
   readonly teams: ClientTeamsService;
+  readonly realtime: RealtimeService;
 
   readonly server: {
     health: HealthService;
@@ -41,6 +56,7 @@ export class Torchwood {
     this.account = new AccountService(this.transport);
     this.databases = new ClientDatabasesService(this.transport);
     this.teams = new ClientTeamsService(this.transport);
+    this.realtime = new RealtimeService(this.transport);
     this.server = {
       health: new HealthService(this.transport),
       projects: new ProjectsService(this.transport),

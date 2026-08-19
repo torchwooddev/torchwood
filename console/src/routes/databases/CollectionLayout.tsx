@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FileText, Layers } from "lucide-react";
+import { ArrowLeft, FileText, Layers, Radio } from "lucide-react";
 import { toast } from "sonner";
 import { getDatabase, getCollection, deleteCollection } from "@/api/databases";
 import { useAdminRole, isPlatformAdmin } from "@/hooks/useAdminRole";
@@ -93,6 +93,13 @@ export function CollectionLayout() {
             <FileText className="h-4 w-4" />
             文档
           </NavLink>
+          {/* 试听：仅 platform admin；系统 / 停用集合 Realtime 订阅会被拒，不展示 */}
+          {platformAdmin && !collection.is_system && !collection.disabled && (
+            <NavLink to={`${basePath}/listen`} className={navLinkClass}>
+              <Radio className="h-4 w-4" />
+              试听
+            </NavLink>
+          )}
         </nav>
       </div>
 

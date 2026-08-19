@@ -97,6 +97,9 @@ const DocumentDetailPage = lazy(() =>
 const CollectionLayout = lazy(() =>
   import("@/routes/databases/CollectionLayout").then((m) => ({ default: m.CollectionLayout }))
 );
+const ListenPanel = lazy(() =>
+  import("@/routes/databases/ListenPanel").then((m) => ({ default: m.ListenPanel }))
+);
 const SettingsPage = lazy(() =>
   import("@/routes/settings/pages").then((m) => ({ default: m.SettingsPage }))
 );
@@ -428,6 +431,16 @@ function AppRoutes() {
               <RouteErrorBoundary>
                 <DocumentsListPage />
               </RouteErrorBoundary>
+            }
+          />
+          <Route
+            path="listen"
+            element={
+              <RequireRole mode="platformAdmin">
+                <RouteErrorBoundary>
+                  <ListenPanel />
+                </RouteErrorBoundary>
+              </RequireRole>
             }
           />
         </Route>

@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
