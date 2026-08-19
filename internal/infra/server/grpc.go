@@ -16,6 +16,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/api/consolegrpc"
 	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -31,6 +32,7 @@ func NewGRPCServer(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	auditRepo audit.Repository,
+	rateLimiter domainauth.RateLimiter,
 	checkers *health.Checkers,
 	account *clientgrpc.AccountService,
 	clientDatabases *clientgrpc.DatabasesService,
@@ -88,6 +90,10 @@ func NewGRPCServer(
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
 	clientInfoInterceptor := interceptor.NewClientInfoInterceptor(trustedProxies)
+	// 通用 API 限流（roadmap §3.4）：挂在 clientInfo 与 auth 之后（需要
+	// trusted-proxy 校验后的 IP 与 principal）、audit 之前；复用
+	// domainauth.RateLimiter 端口的 Redis 固定窗口实现。
+	rateLimitInterceptor := interceptor.NewRateLimitInterceptor(rateLimiter, cfg)
 
 	srv := lynxgrpc.NewServer(
 		lynxgrpc.WithAddr(grpcCfg.GetAddr()),
@@ -98,6 +104,7 @@ func NewGRPCServer(
 		lynxgrpc.WithInterceptors(
 			clientInfoInterceptor.UnaryMiddleware,
 			authInterceptor.UnaryAuthMiddleware,
+			rateLimitInterceptor.UnaryRateLimitMiddleware,
 			auditInterceptor.UnaryAuditMiddleware,
 		),
 		// 允许 ≤1MiB 的 deployment 代码包走 gRPC（base64 膨胀后约 1.33x）。

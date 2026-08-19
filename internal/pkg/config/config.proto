@@ -55,6 +55,19 @@ message Security {
     // 单用户最大并发会话数（end-user sessions）；未配置/0 = 默认 50；-1 = 不限。
     int32 max_per_user = 1;
   }
+  message RateLimit {
+    message Dimension {
+      // 每窗口允许的最大请求数；未配置/<=0 使用拦截器内置默认值。
+      int32 limit = 1;
+      // 窗口时长字符串（如 "60s"）；未配置/非法格式使用拦截器内置默认值。
+      string window = 2;
+    }
+    // 通用 API 限流总开关；默认 true（未显式配置为 false 即开启）。
+    optional bool enabled = 1;
+    Dimension ip = 2;
+    Dimension user = 3;
+    Dimension api_key = 4;
+  }
   Jwt jwt = 1;
   ApiKey api_key = 2;
   // Trusted proxy CIDRs (e.g. 10.0.0.0/8). Only peers matching these ranges
@@ -64,6 +77,7 @@ message Security {
   // Console SignUp is rejected (prevents setup takeover).
   string setup_token = 4;
   Sessions sessions = 5;
+  RateLimit rate_limit = 6;
 }
 
 message Database {

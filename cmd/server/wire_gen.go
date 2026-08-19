@@ -61,6 +61,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	redisOneTimeTokenStore := auth.NewRedisOneTimeTokenStore(redisClient)
 	validator := auth.NewValidatorWithOneTimeTokens(appConfig, apiKeyRepository, adminRepository, adminProjectRepository, redisAdminTokenRevokeStore, documentDB, userRoles, redisOneTimeTokenStore)
 	repository := bunrepo.NewAuditRepository(database)
+	redisRateLimiter := auth.NewRedisRateLimiter(redisClient)
 	objectStore, err := storage.NewMinioObjectStore(appConfig)
 	if err != nil {
 		cleanup()
@@ -82,7 +83,6 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	}
 	mailerService := messaging.NewMailer(appConfig)
 	smsService := messaging.NewSMSService(appConfig)
-	redisRateLimiter := auth.NewRedisRateLimiter(redisClient)
 	mfaService := auth.NewTOTPService(appConfig, redisClient)
 	mfaChallengeStore := auth.NewRedisMFAChallengeStore(redisClient)
 	account := client.NewAccount(appConfig, projectsRepository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter, userRoles, mfaService, mfaChallengeStore, redisOneTimeTokenStore, repository)
@@ -122,7 +122,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	setup := console.NewSetup(appConfig, admins, projects, apiKeys, consoleAuth, adminRepository, adminProjectRepository, projectsRepository)
 	authService := consolegrpc.NewAuthService(consoleAuth, setup)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, checkers, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, authService, adminsService)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, repository, redisRateLimiter, checkers, accountService, databasesService, teamsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcTeamsService, servergrpcDatabasesService, functionsService, authService, adminsService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

@@ -21,12 +21,15 @@ const (
 	MethodAccountSignOut = "/torchwood.client.v1.AccountService/SignOut"
 )
 
-// InterceptorEnv wires auth + audit interceptors the same way production does.
+// InterceptorEnv wires clientInfo + auth + rate limit + audit interceptors
+// the same way production does.
 type InterceptorEnv struct {
-	DB        *clients.Database
-	Validator *auth.Validator
-	Auth      *interceptor.AuthInterceptor
-	Audit     *interceptor.AuditInterceptor
+	DB          *clients.Database
+	Validator   *auth.Validator
+	Auth        *interceptor.AuthInterceptor
+	RateLimit   *interceptor.RateLimitInterceptor
+	RateLimiter *FakeRateLimiter
+	Audit       *interceptor.AuditInterceptor
 }
 
 func NewInterceptorEnv(db *clients.Database, cfg *config.AppConfig, docDB databases.DocumentDB) (*InterceptorEnv, error) {
@@ -51,15 +54,19 @@ func NewInterceptorEnv(db *clients.Database, cfg *config.AppConfig, docDB databa
 	if err != nil {
 		return nil, err
 	}
+	rateLimiter := &FakeRateLimiter{}
 	return &InterceptorEnv{
-		DB:        db,
-		Validator: validator,
-		Auth:      authIC,
-		Audit:     interceptor.NewAuditInterceptor(bunrepo.NewAuditRepository(db)),
+		DB:          db,
+		Validator:   validator,
+		Auth:        authIC,
+		RateLimit:   interceptor.NewRateLimitInterceptor(rateLimiter, cfg),
+		RateLimiter: rateLimiter,
+		Audit:       interceptor.NewAuditInterceptor(bunrepo.NewAuditRepository(db)),
 	}, nil
 }
 
-// InvokeUnary runs auth -> audit -> handler for the given gRPC method and metadata.
+// InvokeUnary runs clientInfo -> auth -> rate limit -> audit -> handler for
+// the given gRPC method and metadata (production chain order).
 func (e *InterceptorEnv) InvokeUnary(ctx context.Context, method string, md metadata.MD) error {
 	ctx = metadata.NewIncomingContext(ctx, md)
 	info := &grpc.UnaryServerInfo{FullMethod: method}
@@ -67,7 +74,14 @@ func (e *InterceptorEnv) InvokeUnary(ctx context.Context, method string, md meta
 	auditHandler := func(ctx context.Context, req any) (any, error) {
 		return e.Audit.UnaryAuditMiddleware(ctx, req, info, handler)
 	}
-	_, err := e.Auth.UnaryAuthMiddleware(ctx, nil, info, auditHandler)
+	rateLimitHandler := func(ctx context.Context, req any) (any, error) {
+		return e.RateLimit.UnaryRateLimitMiddleware(ctx, req, info, auditHandler)
+	}
+	authHandler := func(ctx context.Context, req any) (any, error) {
+		return e.Auth.UnaryAuthMiddleware(ctx, req, info, rateLimitHandler)
+	}
+	clientInfo := interceptor.NewClientInfoInterceptor(nil)
+	_, err := clientInfo.UnaryMiddleware(ctx, nil, info, authHandler)
 	return err
 }
 

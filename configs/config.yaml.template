@@ -33,6 +33,25 @@ security:
   sessions:
     # 单用户最大并发会话数；未配置/0 = 默认 50；-1 = 不限。
     max_per_user: 50          # env: TORCHWOOD_SECURITY_SESSIONS_MAX_PER_USER
+  # 通用 API 限流（gRPC 管道全量生效，gateway 流量经同一拦截器）：
+  # API Key > user > IP 三维度各按命中一个计数，超限返回 429；
+  # 与注册/匿名会话等局部限流叠加不冲突。维度 limit/window 未配置时使用
+  # 内置默认值（ip 300/60s、user 1000/60s、api_key 6000/60s）。
+  rate_limit:
+    # 总开关，默认 true（未配置视为开启）；仅显式设为 false 关闭。
+    enabled: true             # env: TORCHWOOD_SECURITY_RATE_LIMIT_ENABLED
+    ip:
+      # 未认证请求按客户端 IP 计数（IP 经 trusted_proxies 校验）。
+      limit: 300              # env: TORCHWOOD_SECURITY_RATE_LIMIT_IP_LIMIT
+      window: "60s"           # env: TORCHWOOD_SECURITY_RATE_LIMIT_IP_WINDOW
+    user:
+      # user/session principal 按 ActorID 计数。
+      limit: 1000             # env: TORCHWOOD_SECURITY_RATE_LIMIT_USER_LIMIT
+      window: "60s"           # env: TORCHWOOD_SECURITY_RATE_LIMIT_USER_WINDOW
+    api_key:
+      # API Key principal 按 key 计数（Agent/自动化调用量更高）。
+      limit: 6000             # env: TORCHWOOD_SECURITY_RATE_LIMIT_API_KEY_LIMIT
+      window: "60s"           # env: TORCHWOOD_SECURITY_RATE_LIMIT_API_KEY_WINDOW
 
 data:
   database:

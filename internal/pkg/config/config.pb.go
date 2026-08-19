@@ -311,8 +311,9 @@ type Security struct {
 	TrustedProxies []string `protobuf:"bytes,3,rep,name=trusted_proxies,json=trustedProxies,proto3" json:"trusted_proxies,omitempty"`
 	// Console bootstrap token required to sign up the first admin. When empty,
 	// Console SignUp is rejected (prevents setup takeover).
-	SetupToken    string             `protobuf:"bytes,4,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
-	Sessions      *Security_Sessions `protobuf:"bytes,5,opt,name=sessions,proto3" json:"sessions,omitempty"`
+	SetupToken    string              `protobuf:"bytes,4,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
+	Sessions      *Security_Sessions  `protobuf:"bytes,5,opt,name=sessions,proto3" json:"sessions,omitempty"`
+	RateLimit     *Security_RateLimit `protobuf:"bytes,6,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -378,6 +379,13 @@ func (x *Security) GetSetupToken() string {
 func (x *Security) GetSessions() *Security_Sessions {
 	if x != nil {
 		return x.Sessions
+	}
+	return nil
+}
+
+func (x *Security) GetRateLimit() *Security_RateLimit {
+	if x != nil {
+		return x.RateLimit
 	}
 	return nil
 }
@@ -1226,6 +1234,129 @@ func (x *Security_Sessions) GetMaxPerUser() int32 {
 	return 0
 }
 
+type Security_RateLimit struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 通用 API 限流总开关；默认 true（未显式配置为 false 即开启）。
+	Enabled       *bool                         `protobuf:"varint,1,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
+	Ip            *Security_RateLimit_Dimension `protobuf:"bytes,2,opt,name=ip,proto3" json:"ip,omitempty"`
+	User          *Security_RateLimit_Dimension `protobuf:"bytes,3,opt,name=user,proto3" json:"user,omitempty"`
+	ApiKey        *Security_RateLimit_Dimension `protobuf:"bytes,4,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Security_RateLimit) Reset() {
+	*x = Security_RateLimit{}
+	mi := &file_config_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Security_RateLimit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Security_RateLimit) ProtoMessage() {}
+
+func (x *Security_RateLimit) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Security_RateLimit.ProtoReflect.Descriptor instead.
+func (*Security_RateLimit) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{4, 3}
+}
+
+func (x *Security_RateLimit) GetEnabled() bool {
+	if x != nil && x.Enabled != nil {
+		return *x.Enabled
+	}
+	return false
+}
+
+func (x *Security_RateLimit) GetIp() *Security_RateLimit_Dimension {
+	if x != nil {
+		return x.Ip
+	}
+	return nil
+}
+
+func (x *Security_RateLimit) GetUser() *Security_RateLimit_Dimension {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+func (x *Security_RateLimit) GetApiKey() *Security_RateLimit_Dimension {
+	if x != nil {
+		return x.ApiKey
+	}
+	return nil
+}
+
+type Security_RateLimit_Dimension struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 每窗口允许的最大请求数；未配置/<=0 使用拦截器内置默认值。
+	Limit int32 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	// 窗口时长字符串（如 "60s"）；未配置/非法格式使用拦截器内置默认值。
+	Window        string `protobuf:"bytes,2,opt,name=window,proto3" json:"window,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Security_RateLimit_Dimension) Reset() {
+	*x = Security_RateLimit_Dimension{}
+	mi := &file_config_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Security_RateLimit_Dimension) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Security_RateLimit_Dimension) ProtoMessage() {}
+
+func (x *Security_RateLimit_Dimension) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Security_RateLimit_Dimension.ProtoReflect.Descriptor instead.
+func (*Security_RateLimit_Dimension) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{4, 3, 0}
+}
+
+func (x *Security_RateLimit_Dimension) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *Security_RateLimit_Dimension) GetWindow() string {
+	if x != nil {
+		return x.Window
+	}
+	return ""
+}
+
 type Database_Pool struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	MaxIdleConns    int32                  `protobuf:"varint,1,opt,name=max_idle_conns,json=maxIdleConns,proto3" json:"max_idle_conns,omitempty"`
@@ -1238,7 +1369,7 @@ type Database_Pool struct {
 
 func (x *Database_Pool) Reset() {
 	*x = Database_Pool{}
-	mi := &file_config_proto_msgTypes[19]
+	mi := &file_config_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1250,7 +1381,7 @@ func (x *Database_Pool) String() string {
 func (*Database_Pool) ProtoMessage() {}
 
 func (x *Database_Pool) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[19]
+	mi := &file_config_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1308,7 +1439,7 @@ type Storage_S3 struct {
 
 func (x *Storage_S3) Reset() {
 	*x = Storage_S3{}
-	mi := &file_config_proto_msgTypes[20]
+	mi := &file_config_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1320,7 +1451,7 @@ func (x *Storage_S3) String() string {
 func (*Storage_S3) ProtoMessage() {}
 
 func (x *Storage_S3) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[20]
+	mi := &file_config_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1387,7 +1518,7 @@ type Storage_Local struct {
 
 func (x *Storage_Local) Reset() {
 	*x = Storage_Local{}
-	mi := &file_config_proto_msgTypes[21]
+	mi := &file_config_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1399,7 +1530,7 @@ func (x *Storage_Local) String() string {
 func (*Storage_Local) ProtoMessage() {}
 
 func (x *Storage_Local) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[21]
+	mi := &file_config_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1433,7 +1564,7 @@ type Functions_Docker struct {
 
 func (x *Functions_Docker) Reset() {
 	*x = Functions_Docker{}
-	mi := &file_config_proto_msgTypes[22]
+	mi := &file_config_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1445,7 +1576,7 @@ func (x *Functions_Docker) String() string {
 func (*Functions_Docker) ProtoMessage() {}
 
 func (x *Functions_Docker) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[22]
+	mi := &file_config_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1496,7 +1627,7 @@ type Messaging_SMTP struct {
 
 func (x *Messaging_SMTP) Reset() {
 	*x = Messaging_SMTP{}
-	mi := &file_config_proto_msgTypes[23]
+	mi := &file_config_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1508,7 +1639,7 @@ func (x *Messaging_SMTP) String() string {
 func (*Messaging_SMTP) ProtoMessage() {}
 
 func (x *Messaging_SMTP) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[23]
+	mi := &file_config_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1578,7 +1709,7 @@ type IdGen_Random struct {
 
 func (x *IdGen_Random) Reset() {
 	*x = IdGen_Random{}
-	mi := &file_config_proto_msgTypes[24]
+	mi := &file_config_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1590,7 +1721,7 @@ func (x *IdGen_Random) String() string {
 func (*IdGen_Random) ProtoMessage() {}
 
 func (x *IdGen_Random) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[24]
+	mi := &file_config_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1643,7 +1774,7 @@ type IdGen_Snowflake struct {
 
 func (x *IdGen_Snowflake) Reset() {
 	*x = IdGen_Snowflake{}
-	mi := &file_config_proto_msgTypes[25]
+	mi := &file_config_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1655,7 +1786,7 @@ func (x *IdGen_Snowflake) String() string {
 func (*IdGen_Snowflake) ProtoMessage() {}
 
 func (x *IdGen_Snowflake) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[25]
+	mi := &file_config_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1687,7 +1818,7 @@ type IdGen_Sequence struct {
 
 func (x *IdGen_Sequence) Reset() {
 	*x = IdGen_Sequence{}
-	mi := &file_config_proto_msgTypes[26]
+	mi := &file_config_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1699,7 +1830,7 @@ func (x *IdGen_Sequence) String() string {
 func (*IdGen_Sequence) ProtoMessage() {}
 
 func (x *IdGen_Sequence) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[26]
+	mi := &file_config_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1733,7 +1864,7 @@ type IdGen_Resources struct {
 
 func (x *IdGen_Resources) Reset() {
 	*x = IdGen_Resources{}
-	mi := &file_config_proto_msgTypes[27]
+	mi := &file_config_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1745,7 +1876,7 @@ func (x *IdGen_Resources) String() string {
 func (*IdGen_Resources) ProtoMessage() {}
 
 func (x *IdGen_Resources) ProtoReflect() protoreflect.Message {
-	mi := &file_config_proto_msgTypes[27]
+	mi := &file_config_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1815,14 +1946,16 @@ const file_config_proto_rawDesc = "" +
 	"\rallow_headers\x18\x03 \x03(\tR\fallowHeaders\x12%\n" +
 	"\x0eexpose_headers\x18\x04 \x03(\tR\rexposeHeaders\x12+\n" +
 	"\x11allow_credentials\x18\x05 \x01(\bR\x10allowCredentials\x12\x17\n" +
-	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xbe\x03\n" +
+	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xd4\x06\n" +
 	"\bSecurity\x124\n" +
 	"\x03jwt\x18\x01 \x01(\v2\".torchwood.api.config.Security.JwtR\x03jwt\x12>\n" +
 	"\aapi_key\x18\x02 \x01(\v2%.torchwood.api.config.Security.ApiKeyR\x06apiKey\x12'\n" +
 	"\x0ftrusted_proxies\x18\x03 \x03(\tR\x0etrustedProxies\x12\x1f\n" +
 	"\vsetup_token\x18\x04 \x01(\tR\n" +
 	"setupToken\x12C\n" +
-	"\bsessions\x18\x05 \x01(\v2'.torchwood.api.config.Security.SessionsR\bsessions\x1a]\n" +
+	"\bsessions\x18\x05 \x01(\v2'.torchwood.api.config.Security.SessionsR\bsessions\x12G\n" +
+	"\n" +
+	"rate_limit\x18\x06 \x01(\v2(.torchwood.api.config.Security.RateLimitR\trateLimit\x1a]\n" +
 	"\x03Jwt\x12\x16\n" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\x12\x1d\n" +
 	"\n" +
@@ -1833,7 +1966,17 @@ const file_config_proto_rawDesc = "" +
 	"\x06header\x18\x01 \x01(\tR\x06header\x1a,\n" +
 	"\bSessions\x12 \n" +
 	"\fmax_per_user\x18\x01 \x01(\x05R\n" +
-	"maxPerUser\"\xd1\x02\n" +
+	"maxPerUser\x1a\xca\x02\n" +
+	"\tRateLimit\x12\x1d\n" +
+	"\aenabled\x18\x01 \x01(\bH\x00R\aenabled\x88\x01\x01\x12B\n" +
+	"\x02ip\x18\x02 \x01(\v22.torchwood.api.config.Security.RateLimit.DimensionR\x02ip\x12F\n" +
+	"\x04user\x18\x03 \x01(\v22.torchwood.api.config.Security.RateLimit.DimensionR\x04user\x12K\n" +
+	"\aapi_key\x18\x04 \x01(\v22.torchwood.api.config.Security.RateLimit.DimensionR\x06apiKey\x1a9\n" +
+	"\tDimension\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06window\x18\x02 \x01(\tR\x06windowB\n" +
+	"\n" +
+	"\b_enabled\"\xd1\x02\n" +
 	"\bDatabase\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
 	"\x05debug\x18\x02 \x01(\bR\x05debug\x127\n" +
@@ -1929,36 +2072,38 @@ func file_config_proto_rawDescGZIP() []byte {
 	return file_config_proto_rawDescData
 }
 
-var file_config_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_config_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_config_proto_goTypes = []any{
-	(*AppConfig)(nil),         // 0: torchwood.api.config.AppConfig
-	(*Server)(nil),            // 1: torchwood.api.config.Server
-	(*GRPC)(nil),              // 2: torchwood.api.config.GRPC
-	(*Http)(nil),              // 3: torchwood.api.config.Http
-	(*Security)(nil),          // 4: torchwood.api.config.Security
-	(*Database)(nil),          // 5: torchwood.api.config.Database
-	(*Redis)(nil),             // 6: torchwood.api.config.Redis
-	(*Data)(nil),              // 7: torchwood.api.config.Data
-	(*Storage)(nil),           // 8: torchwood.api.config.Storage
-	(*Functions)(nil),         // 9: torchwood.api.config.Functions
-	(*Telemetry)(nil),         // 10: torchwood.api.config.Telemetry
-	(*Messaging)(nil),         // 11: torchwood.api.config.Messaging
-	(*SMS)(nil),               // 12: torchwood.api.config.SMS
-	(*Twilio)(nil),            // 13: torchwood.api.config.Twilio
-	(*IdGen)(nil),             // 14: torchwood.api.config.IdGen
-	(*Http_Cors)(nil),         // 15: torchwood.api.config.Http.Cors
-	(*Security_Jwt)(nil),      // 16: torchwood.api.config.Security.Jwt
-	(*Security_ApiKey)(nil),   // 17: torchwood.api.config.Security.ApiKey
-	(*Security_Sessions)(nil), // 18: torchwood.api.config.Security.Sessions
-	(*Database_Pool)(nil),     // 19: torchwood.api.config.Database.Pool
-	(*Storage_S3)(nil),        // 20: torchwood.api.config.Storage.S3
-	(*Storage_Local)(nil),     // 21: torchwood.api.config.Storage.Local
-	(*Functions_Docker)(nil),  // 22: torchwood.api.config.Functions.Docker
-	(*Messaging_SMTP)(nil),    // 23: torchwood.api.config.Messaging.SMTP
-	(*IdGen_Random)(nil),      // 24: torchwood.api.config.IdGen.Random
-	(*IdGen_Snowflake)(nil),   // 25: torchwood.api.config.IdGen.Snowflake
-	(*IdGen_Sequence)(nil),    // 26: torchwood.api.config.IdGen.Sequence
-	(*IdGen_Resources)(nil),   // 27: torchwood.api.config.IdGen.Resources
+	(*AppConfig)(nil),                    // 0: torchwood.api.config.AppConfig
+	(*Server)(nil),                       // 1: torchwood.api.config.Server
+	(*GRPC)(nil),                         // 2: torchwood.api.config.GRPC
+	(*Http)(nil),                         // 3: torchwood.api.config.Http
+	(*Security)(nil),                     // 4: torchwood.api.config.Security
+	(*Database)(nil),                     // 5: torchwood.api.config.Database
+	(*Redis)(nil),                        // 6: torchwood.api.config.Redis
+	(*Data)(nil),                         // 7: torchwood.api.config.Data
+	(*Storage)(nil),                      // 8: torchwood.api.config.Storage
+	(*Functions)(nil),                    // 9: torchwood.api.config.Functions
+	(*Telemetry)(nil),                    // 10: torchwood.api.config.Telemetry
+	(*Messaging)(nil),                    // 11: torchwood.api.config.Messaging
+	(*SMS)(nil),                          // 12: torchwood.api.config.SMS
+	(*Twilio)(nil),                       // 13: torchwood.api.config.Twilio
+	(*IdGen)(nil),                        // 14: torchwood.api.config.IdGen
+	(*Http_Cors)(nil),                    // 15: torchwood.api.config.Http.Cors
+	(*Security_Jwt)(nil),                 // 16: torchwood.api.config.Security.Jwt
+	(*Security_ApiKey)(nil),              // 17: torchwood.api.config.Security.ApiKey
+	(*Security_Sessions)(nil),            // 18: torchwood.api.config.Security.Sessions
+	(*Security_RateLimit)(nil),           // 19: torchwood.api.config.Security.RateLimit
+	(*Security_RateLimit_Dimension)(nil), // 20: torchwood.api.config.Security.RateLimit.Dimension
+	(*Database_Pool)(nil),                // 21: torchwood.api.config.Database.Pool
+	(*Storage_S3)(nil),                   // 22: torchwood.api.config.Storage.S3
+	(*Storage_Local)(nil),                // 23: torchwood.api.config.Storage.Local
+	(*Functions_Docker)(nil),             // 24: torchwood.api.config.Functions.Docker
+	(*Messaging_SMTP)(nil),               // 25: torchwood.api.config.Messaging.SMTP
+	(*IdGen_Random)(nil),                 // 26: torchwood.api.config.IdGen.Random
+	(*IdGen_Snowflake)(nil),              // 27: torchwood.api.config.IdGen.Snowflake
+	(*IdGen_Sequence)(nil),               // 28: torchwood.api.config.IdGen.Sequence
+	(*IdGen_Resources)(nil),              // 29: torchwood.api.config.IdGen.Resources
 }
 var file_config_proto_depIdxs = []int32{
 	1,  // 0: torchwood.api.config.AppConfig.server:type_name -> torchwood.api.config.Server
@@ -1976,24 +2121,28 @@ var file_config_proto_depIdxs = []int32{
 	16, // 12: torchwood.api.config.Security.jwt:type_name -> torchwood.api.config.Security.Jwt
 	17, // 13: torchwood.api.config.Security.api_key:type_name -> torchwood.api.config.Security.ApiKey
 	18, // 14: torchwood.api.config.Security.sessions:type_name -> torchwood.api.config.Security.Sessions
-	19, // 15: torchwood.api.config.Database.pool:type_name -> torchwood.api.config.Database.Pool
-	5,  // 16: torchwood.api.config.Data.database:type_name -> torchwood.api.config.Database
-	6,  // 17: torchwood.api.config.Data.redis:type_name -> torchwood.api.config.Redis
-	20, // 18: torchwood.api.config.Storage.s3:type_name -> torchwood.api.config.Storage.S3
-	21, // 19: torchwood.api.config.Storage.local:type_name -> torchwood.api.config.Storage.Local
-	22, // 20: torchwood.api.config.Functions.docker:type_name -> torchwood.api.config.Functions.Docker
-	23, // 21: torchwood.api.config.Messaging.smtp:type_name -> torchwood.api.config.Messaging.SMTP
-	12, // 22: torchwood.api.config.Messaging.sms:type_name -> torchwood.api.config.SMS
-	13, // 23: torchwood.api.config.SMS.twilio:type_name -> torchwood.api.config.Twilio
-	24, // 24: torchwood.api.config.IdGen.random:type_name -> torchwood.api.config.IdGen.Random
-	25, // 25: torchwood.api.config.IdGen.snowflake:type_name -> torchwood.api.config.IdGen.Snowflake
-	26, // 26: torchwood.api.config.IdGen.sequence:type_name -> torchwood.api.config.IdGen.Sequence
-	27, // 27: torchwood.api.config.IdGen.resources:type_name -> torchwood.api.config.IdGen.Resources
-	28, // [28:28] is the sub-list for method output_type
-	28, // [28:28] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	19, // 15: torchwood.api.config.Security.rate_limit:type_name -> torchwood.api.config.Security.RateLimit
+	21, // 16: torchwood.api.config.Database.pool:type_name -> torchwood.api.config.Database.Pool
+	5,  // 17: torchwood.api.config.Data.database:type_name -> torchwood.api.config.Database
+	6,  // 18: torchwood.api.config.Data.redis:type_name -> torchwood.api.config.Redis
+	22, // 19: torchwood.api.config.Storage.s3:type_name -> torchwood.api.config.Storage.S3
+	23, // 20: torchwood.api.config.Storage.local:type_name -> torchwood.api.config.Storage.Local
+	24, // 21: torchwood.api.config.Functions.docker:type_name -> torchwood.api.config.Functions.Docker
+	25, // 22: torchwood.api.config.Messaging.smtp:type_name -> torchwood.api.config.Messaging.SMTP
+	12, // 23: torchwood.api.config.Messaging.sms:type_name -> torchwood.api.config.SMS
+	13, // 24: torchwood.api.config.SMS.twilio:type_name -> torchwood.api.config.Twilio
+	26, // 25: torchwood.api.config.IdGen.random:type_name -> torchwood.api.config.IdGen.Random
+	27, // 26: torchwood.api.config.IdGen.snowflake:type_name -> torchwood.api.config.IdGen.Snowflake
+	28, // 27: torchwood.api.config.IdGen.sequence:type_name -> torchwood.api.config.IdGen.Sequence
+	29, // 28: torchwood.api.config.IdGen.resources:type_name -> torchwood.api.config.IdGen.Resources
+	20, // 29: torchwood.api.config.Security.RateLimit.ip:type_name -> torchwood.api.config.Security.RateLimit.Dimension
+	20, // 30: torchwood.api.config.Security.RateLimit.user:type_name -> torchwood.api.config.Security.RateLimit.Dimension
+	20, // 31: torchwood.api.config.Security.RateLimit.api_key:type_name -> torchwood.api.config.Security.RateLimit.Dimension
+	32, // [32:32] is the sub-list for method output_type
+	32, // [32:32] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_config_proto_init() }
@@ -2001,13 +2150,14 @@ func file_config_proto_init() {
 	if File_config_proto != nil {
 		return
 	}
+	file_config_proto_msgTypes[19].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_config_proto_rawDesc), len(file_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

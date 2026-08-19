@@ -199,3 +199,47 @@ func TestEnvNameForKey(t *testing.T) {
 	require.Equal(t, "TORCHWOOD_DATA_DATABASE_SOURCE", envNameForKey("data.database.source"))
 	require.Equal(t, "TORCHWOOD_SECURITY_JWT_SECRET", envNameForKey("security.jwt.secret"))
 }
+
+// TestRateLimitBinding：security.rate_limit 的 YAML 解码（optional bool 的
+// 显式 presence）与 TORCHWOOD_SECURITY_RATE_LIMIT_* 环境变量覆盖。
+func TestRateLimitBinding(t *testing.T) {
+	yaml := `
+security:
+  rate_limit:
+    enabled: false
+    ip:
+      limit: 100
+      window: "30s"
+`
+	cfg := newTestConfig(t, yaml)
+	var out AppConfig
+	require.NoError(t, UnmarshalConfig(cfg, &out))
+	rl := out.GetSecurity().GetRateLimit()
+	require.NotNil(t, rl)
+	require.NotNil(t, rl.Enabled, "explicit false must set presence")
+	require.False(t, rl.GetEnabled())
+	require.EqualValues(t, 100, rl.GetIp().GetLimit())
+	require.Equal(t, "30s", rl.GetIp().GetWindow())
+	// 未配置的维度解码为零值结构（limit=0/window=""），由拦截器回落默认值。
+	require.Zero(t, rl.GetUser().GetLimit())
+	require.Empty(t, rl.GetUser().GetWindow())
+
+	v := viper.New()
+	v.SetConfigType("yaml")
+	require.NoError(t, v.ReadConfig(strings.NewReader(yaml)))
+	f := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	f.String("config-dir", "./testdata", "config file path")
+
+	t.Setenv("TORCHWOOD_SECURITY_RATE_LIMIT_ENABLED", "true")
+	t.Setenv("TORCHWOOD_SECURITY_RATE_LIMIT_IP_LIMIT", "42")
+	t.Setenv("TORCHWOOD_SECURITY_RATE_LIMIT_API_KEY_WINDOW", "10s")
+
+	require.NoError(t, ConfigureViper(f, lynx.NewViperConfig(v)))
+	var envOut AppConfig
+	require.NoError(t, UnmarshalConfig(lynx.NewViperConfig(v), &envOut))
+	envRL := envOut.GetSecurity().GetRateLimit()
+	require.NotNil(t, envRL)
+	require.True(t, envRL.GetEnabled())
+	require.EqualValues(t, 42, envRL.GetIp().GetLimit())
+	require.Equal(t, "10s", envRL.GetApiKey().GetWindow())
+}
