@@ -71,12 +71,10 @@ func (w *Worker) Start(ctx context.Context) error {
 	w.cancel = cancel
 	w.mu.Unlock()
 
-	w.wg.Add(w.workers)
 	for i := 0; i < w.workers; i++ {
-		go func() {
-			defer w.wg.Done()
+		w.wg.Go(func() {
 			w.consume(runCtx)
-		}()
+		})
 	}
 	w.logger.Info("worker started", "workers", w.workers)
 

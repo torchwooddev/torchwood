@@ -39,13 +39,11 @@ func (s *RealtimeSubscriberService) Start(ctx context.Context) error {
 	s.cancel = cancel
 	s.mu.Unlock()
 
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		if err := s.sub.Run(runCtx); err != nil && ctx.Err() == nil {
 			s.logger.Error("realtime subscriber stopped with error", "error", err)
 		}
-	}()
+	})
 
 	// Start 必须阻塞到应用上下文取消（lynx 把 Start 作为 run.Group actor）。
 	<-ctx.Done()

@@ -266,17 +266,14 @@ func (h *Handler) serveConn(r *http.Request, c *websocket.Conn) {
 	var stopOnce sync.Once
 	stop := func() { stopOnce.Do(cancel) }
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer stop()
 		h.readLoop(runCtx, c, st)
-	}()
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		defer stop()
 		h.writeLoop(runCtx, c, st)
-	}()
+	})
 	wg.Wait()
 	cancel()
 	h.cleanup(st)

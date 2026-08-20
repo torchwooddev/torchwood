@@ -134,11 +134,9 @@ func (c *Checkers) Details(ctx context.Context) []*serverv1.DependencyStatus {
 	results := make([]*serverv1.DependencyStatus, len(c.deps))
 	var wg sync.WaitGroup
 	for i, dep := range c.deps {
-		wg.Add(1)
-		go func(i int, dep *DependencyChecker) {
-			defer wg.Done()
+		wg.Go(func() {
 			results[i] = checkOne(dep, ctx)
-		}(i, dep)
+		})
 	}
 	wg.Wait()
 
