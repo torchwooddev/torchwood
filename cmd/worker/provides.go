@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 
@@ -10,7 +11,10 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/infra"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
@@ -62,8 +66,29 @@ func NewComponentBuilders() []lynx.ServiceFactory {
 	return nil
 }
 
-func NewOnStarts() boot.OnStartHooks {
-	return boot.OnStartHooks{}
+func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Logger) boot.OnStartHooks {
+	return boot.OnStartHooks{projectSchemaEnsureHook(repo, db, logger)}
+}
+
+func projectSchemaEnsureHook(repo projects.Repository, db *clients.Database, logger *slog.Logger) lynx.HookFunc {
+	return func(ctx context.Context) error {
+		if repo == nil || db == nil {
+			return nil
+		}
+		list, err := repo.ListProjects(ctx)
+		if err != nil {
+			if logger != nil {
+				logger.Error("list projects for schema ensure", "error", err)
+			}
+			return nil
+		}
+		ids := make([]string, len(list))
+		for i := range list {
+			ids[i] = list[i].ID
+		}
+		projectschema.KickoffEnsureAll(db, ids, logger)
+		return nil
+	}
 }
 
 func NewOnStops() boot.OnStopHooks {

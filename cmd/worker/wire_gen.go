@@ -30,24 +30,24 @@ import (
 // Injectors from wire.go:
 
 func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
-	onStartHooks := NewOnStarts()
-	onStopHooks := NewOnStops()
 	appConfig, err := NewAppConfig(app)
 	if err != nil {
 		return nil, nil, err
 	}
-	executor := functions.NewDockerExecutor(appConfig)
 	logger := NewLogger(app)
 	dataClients, cleanup, err := clients.NewDataClients(appConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
 	database := clients.NewDatabase(dataClients)
+	repository := bunrepo.NewProjectRepository(database)
+	onStartHooks := NewOnStarts(repository, database, logger)
+	onStopHooks := NewOnStops()
+	executor := functions.NewDockerExecutor(appConfig)
 	functionRepo := bunrepo.NewFunctionRepository(database)
 	client := clients.NewRedis(dataClients)
 	sharedQueue := queue.NewRedisQueue(client)
 	redisCounter := billing.NewRedisCounter(client)
-	repository := bunrepo.NewProjectRepository(database)
 	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter, repository)
 	worker := NewWorker(functionsFunctions, sharedQueue, logger)
 	eventOutbox := events.NewEventOutbox(database)

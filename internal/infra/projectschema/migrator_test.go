@@ -82,3 +82,8 @@ func TestEnsureAll_AppliesListedProjects(t *testing.T) {
 	require.NoError(t, projectschema.EnsureAll(ctx, db, []string{p1, p2}))
 	require.Error(t, projectschema.EnsureAll(ctx, db, []string{p1, "_"}))
 }
+
+func TestKickoffEnsureAll_EmptyIsNoop(t *testing.T) {
+	projectschema.KickoffEnsureAll(nil, nil, nil)
+	projectschema.KickoffEnsureAll(nil, []string{}, nil)
+}
