@@ -91,6 +91,14 @@ func (s *ProjectsService) UpdateProject(ctx context.Context, req *serverv1.Updat
 	return mapProject(p), nil
 }
 
+func (s *ProjectsService) DeleteProject(ctx context.Context, req *serverv1.GetProjectRequest) (*sharedv1.Empty, error) {
+	ctx = contexts.WithAuditResource(ctx, req.GetId())
+	if err := s.projects.DeleteProject(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	return &sharedv1.Empty{}, nil
+}
+
 func mapProject(p *projects.Project) *serverv1.Project {
 	if p == nil {
 		return nil

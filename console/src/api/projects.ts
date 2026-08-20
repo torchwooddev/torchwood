@@ -40,3 +40,7 @@ export async function updateProject(
   const res = await api.patch<Project>(`/server/projects/${id}`, input);
   return res.data;
 }
+
+export async function deleteProject(id: string): Promise<void> {
+  await api.delete(`/server/projects/${id}`);
+}

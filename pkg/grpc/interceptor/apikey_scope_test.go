@@ -157,6 +157,14 @@ func TestAPIKeyScopeAllowed(t *testing.T) {
 		t.Fatal("unrelated scope must NOT allow UpdateProject")
 	}
 
+	deleteProject := "/torchwood.server.v1.ProjectsService/DeleteProject"
+	if !APIKeyScopeAllowed(deleteProject, []string{"projects.write"}) {
+		t.Fatal("projects.write scope should allow DeleteProject")
+	}
+	if APIKeyScopeAllowed(deleteProject, []string{"projects.read"}) {
+		t.Fatal("projects.read scope must NOT allow DeleteProject")
+	}
+
 	// Groups prefs：GetGroupPrefs 需要 groups.read，UpdateGroupPrefs 需要 groups.write。
 	getGroupPrefs := "/torchwood.server.v1.GroupsService/GetGroupPrefs"
 	updateGroupPrefs := "/torchwood.server.v1.GroupsService/UpdateGroupPrefs"

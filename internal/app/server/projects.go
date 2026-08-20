@@ -111,9 +111,32 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 	return p, nil
 }
 
-// DeleteProject 级联删除项目（内部；setup 回滚必须走这里）。同一事务：
-// 业务 schema DROP → 清理 public 行 → DROP tw_<project> → 删 projects 行。
+// DeleteProject 对外删除入口：仅平台 admin。校验存在后委托 DeleteProjectInternal。
 func (s *Projects) DeleteProject(ctx context.Context, id string) error {
+	principal, ok := contexts.Principal(ctx)
+	if !ok {
+		return status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+	if principal.ActorKind != shared.ActorKindAdmin || !principal.IsPlatformAdmin {
+		return status.Error(codes.PermissionDenied, "platform admin required to delete projects")
+	}
+	if err := ident.ValidateSchemaResourceID(id); err != nil {
+		return err
+	}
+	p, err := s.projectRepo.GetProject(ctx, id)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return status.Error(codes.NotFound, "project not found")
+	}
+	return s.DeleteProjectInternal(ctx, id)
+}
+
+// DeleteProjectInternal 级联删除项目（不做 principal 检查）。setup 回滚与
+// 测试清理必须走这里；外部入口 DeleteProject 保留平台 admin 校验后委托本方法。
+// 同一事务：业务 schema DROP → 清理 public 行 → DROP tw_<project> → 删 projects 行。
+func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 	if err := ident.ValidateSchemaResourceID(id); err != nil {
 		return err
 	}

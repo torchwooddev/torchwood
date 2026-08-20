@@ -3,7 +3,7 @@ package interceptor
 // adminRoleMethodRules 登记 Server API 全部写方法对应的允许角色（安全评审
 // M7 / Round3 H1）：受限 admin（viewer）会话一律拒绝；member 可写业务资源；
 // 平台敏感写（API Key 管理、用户接管面、Databases DDL、Functions、OAuth
-// 提供方、项目创建）仅 owner/admin。API key 与端用户凭证不在此表处理
+// 提供方、项目创建/删除）仅 owner/admin。API key 与端用户凭证不在此表处理
 // （分别走 apiKeyMethods scope 门禁与 use-case 层 RequireServerWriteActor
 // /RequirePlatformAdmin 守门）。
 //
@@ -101,8 +101,9 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.SubscriptionsService/DeletePlan":         {"member", "owner", "admin"},
 	"/torchwood.server.v1.SubscriptionsService/CancelSubscription": {"owner", "admin"},
 	"/torchwood.server.v1.SubscriptionsService/ExpireSubscription": {"owner", "admin"},
-	// ProjectsService（创建是平台级资源，仅 owner/admin——与 use-case
-	// CreateProject 平台 admin 守卫一致；更新是业务写，仅收 viewer）
+	// ProjectsService（创建/删除是平台级资源，仅 owner/admin——与 use-case
+	// CreateProject/DeleteProject 平台 admin 守卫一致；更新是业务写，仅收 viewer）
 	"/torchwood.server.v1.ProjectsService/CreateProject": {"owner", "admin"},
 	"/torchwood.server.v1.ProjectsService/UpdateProject": {"member", "owner", "admin"},
+	"/torchwood.server.v1.ProjectsService/DeleteProject": {"owner", "admin"},
 }

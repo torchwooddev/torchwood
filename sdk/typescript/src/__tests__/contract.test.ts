@@ -170,6 +170,7 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     ListProjects: "list",
     GetProject: "get",
     UpdateProject: "update",
+    DeleteProject: "delete",
   },
   HealthService: {
     Check: "check",
@@ -583,6 +584,7 @@ it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）
       { side: "server", operationId: "GroupsService_UpdateGroupPrefs", invoke: (h) => server(h).groups.updatePrefs("t1", { locale: "zh" }) },
       { side: "server", operationId: "ProjectsService_CreateProject", invoke: (h) => server(h).projects.create({ id: "p", name: "P", description: "d" }) },
       { side: "server", operationId: "ProjectsService_UpdateProject", invoke: (h) => server(h).projects.update("p1", { name: "P2" }) },
+      { side: "server", operationId: "ProjectsService_DeleteProject", invoke: (h) => server(h).projects.delete("p1") },
       { side: "server", operationId: "APIKeysService_CreateAPIKey", invoke: (h) => server(h).apiKeys.create({ name: "k", scopes: ["users"] }) },
       { side: "server", operationId: "APIKeysService_DeleteAPIKey", invoke: (h) => server(h).apiKeys.delete("k1") },
       { side: "server", operationId: "OAuthProvidersService_UpsertOAuthProvider", invoke: (h) => server(h).oauth.upsert({ provider: "github", enabled: true, client_id: "cid", client_secret: "sec", scopes: ["user"] }) },

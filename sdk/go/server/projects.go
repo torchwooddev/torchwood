@@ -32,3 +32,8 @@ func (s *ProjectsService) GetProject(ctx context.Context, req *serverv1.GetProje
 func (s *ProjectsService) UpdateProject(ctx context.Context, req *serverv1.UpdateProjectRequest) (*serverv1.Project, error) {
 	return s.api.UpdateProject(ctx, req)
 }
+
+// DeleteProject 删除项目（限平台 admin；级联清理项目 schema 与 public 行）。
+func (s *ProjectsService) DeleteProject(ctx context.Context, req *serverv1.GetProjectRequest) (*sharedv1.Empty, error) {
+	return s.api.DeleteProject(ctx, req)
+}

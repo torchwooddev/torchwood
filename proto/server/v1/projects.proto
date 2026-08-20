@@ -72,6 +72,10 @@ service ProjectsService {
   rpc UpdateProject(UpdateProjectRequest) returns (Project) {
     option (google.api.http) = { patch: "/v1/server/projects/{id}", body: "*" };
   }
+
+  rpc DeleteProject(GetProjectRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/server/projects/{id}" };
+  }
 }
 
 message UpdateProjectRequest {

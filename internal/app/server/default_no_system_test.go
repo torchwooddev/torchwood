@@ -35,7 +35,7 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 		Name: "PR3 Default",
 	})
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = projectsUC.DeleteProject(context.Background(), p.ID) })
+	t.Cleanup(func() { _ = projectsUC.DeleteProjectInternal(context.Background(), p.ID) })
 
 	cat := testutil.CatalogIdent(p.ID)
 	defaultSystem, err := db.NewSelect().Model((*model.DocumentCollection)(nil)).

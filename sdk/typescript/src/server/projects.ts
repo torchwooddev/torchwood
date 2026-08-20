@@ -32,4 +32,8 @@ export class ProjectsService {
       body: { id, ...input },
     });
   }
+
+  async delete(id: string): Promise<void> {
+    await this.http.request<void>("DELETE", `/v1/server/projects/${id}`, { auth: "apiKey" });
+  }
 }

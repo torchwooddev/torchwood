@@ -50,7 +50,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, p.ID)
 	t.Cleanup(func() {
-		_ = projectsUC.DeleteProject(ctx, p.ID)
+		_ = projectsUC.DeleteProjectInternal(ctx, p.ID)
 	})
 
 	coll, err := docDB.GetCollection(ctx, p.ID, databases.SystemDatabaseID, "users")
@@ -419,7 +419,7 @@ func TestProjects_CreateProject_RejectsLongDescription(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_ = projectsUC.DeleteProject(ctx, p.ID)
+		_ = projectsUC.DeleteProjectInternal(ctx, p.ID)
 	})
 }
 
@@ -447,7 +447,7 @@ func TestProjects_DeleteProject_DropsSchemas(t *testing.T) {
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	require.NoError(t, projectsUC.DeleteProject(ctx, p.ID))
+	require.NoError(t, projectsUC.DeleteProject(platformAdminCtx(ctx), p.ID))
 
 	got, err := repo.GetProject(ctx, p.ID)
 	require.NoError(t, err)
@@ -458,4 +458,55 @@ func TestProjects_DeleteProject_DropsSchemas(t *testing.T) {
 	require.Nil(t, projectNS)
 	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_delme_app").Scan(&appNS))
 	require.Nil(t, appNS)
+}
+
+func TestProjects_DeleteProject_RequiresPlatformAdmin(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	repo := bunrepo.NewProjectRepository(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	projectsUC := NewProjects(repo, docDB, db)
+
+	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:   "delauth",
+		Name: "Delete Auth",
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = projectsUC.DeleteProjectInternal(ctx, p.ID)
+	})
+
+	err = projectsUC.DeleteProject(ctx, p.ID)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+
+	apiKeyCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:     "key-1",
+		ActorKind:   shared.ActorKindService,
+		ProjectID:   p.ID,
+		Roles:       []string{"keys"},
+		Permissions: []string{"projects.write"},
+	})
+	err = projectsUC.DeleteProject(apiKeyCtx, p.ID)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+
+	viewerCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:   "admin-2",
+		ActorKind: shared.ActorKindAdmin,
+		UserID:    "admin-2",
+		Roles:     []string{"viewer"},
+	})
+	err = projectsUC.DeleteProject(viewerCtx, p.ID)
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+
+	err = projectsUC.DeleteProject(platformAdminCtx(ctx), "missing")
+	require.Equal(t, codes.NotFound, status.Code(err))
+
+	got, err := repo.GetProject(ctx, p.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got, "被拒删除不得动项目")
 }

@@ -42,7 +42,7 @@ type Setup struct {
 //   - tokenIssuer:    *Auth
 type projectCreator interface {
 	CreateProjectInternal(ctx context.Context, cmd server.CreateProjectCommand) (*projects.Project, error)
-	DeleteProject(ctx context.Context, id string) error
+	DeleteProjectInternal(ctx context.Context, id string) error
 }
 
 type adminCreator interface {
@@ -160,7 +160,7 @@ func (s *Setup) SignUp(ctx context.Context, cmd SignUpCommand) (*SignUpResult, e
 	var project *projects.Project
 	rollback := func() {
 		if project != nil {
-			if err := s.projects.DeleteProject(ctx, project.ID); err != nil {
+			if err := s.projects.DeleteProjectInternal(ctx, project.ID); err != nil {
 				slog.Warn("setup rollback: delete project failed", "project", project.ID, "error", err)
 			}
 		}

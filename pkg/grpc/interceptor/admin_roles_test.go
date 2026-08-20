@@ -72,6 +72,19 @@ func TestAdminRoleMethodRules_BusinessWriteMethodsAllowMember(t *testing.T) {
 	require.Contains(t, roles, "admin")
 	require.NotContains(t, roles, "member")
 	require.NotContains(t, roles, "viewer")
+
+	// CreateProject/DeleteProject 是平台级资源，仅 owner/admin。
+	for _, m := range []string{
+		"/torchwood.server.v1.ProjectsService/CreateProject",
+		"/torchwood.server.v1.ProjectsService/DeleteProject",
+	} {
+		roles := adminRoleMethodRules[m]
+		require.NotNil(t, roles, "%s 必须登记 adminRoleMethodRules", m)
+		require.Contains(t, roles, "owner")
+		require.Contains(t, roles, "admin")
+		require.NotContains(t, roles, "member")
+		require.NotContains(t, roles, "viewer")
+	}
 }
 
 // G2-1：viewer/member admin 调 Functions 全部写方法必须 PermissionDenied。

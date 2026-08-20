@@ -131,3 +131,23 @@ func TestProjectsService_UpdateProject_OwnProjectForRestrictedAdmin(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, "updated by restricted admin", p.Description)
 }
+
+func TestProjectsService_DeleteProject_WithoutPrincipal(t *testing.T) {
+	s := newTestProjectsService(&stubProjectRepo{})
+	_, err := s.DeleteProject(context.Background(), &serverv1.GetProjectRequest{Id: "p1"})
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestProjectsService_DeleteProject_RequiresPlatformAdmin(t *testing.T) {
+	s := newTestProjectsService(&stubProjectRepo{project: &projects.Project{
+		ID: "p1", Name: "Project 1", Status: "active",
+	}})
+	_, err := s.DeleteProject(projectPrincipalCtx("p1", false), &serverv1.GetProjectRequest{Id: "p1"})
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+func TestProjectsService_DeleteProject_Missing(t *testing.T) {
+	s := newTestProjectsService(&stubProjectRepo{})
+	_, err := s.DeleteProject(projectPrincipalCtx("", true), &serverv1.GetProjectRequest{Id: "missing"})
+	require.Equal(t, codes.NotFound, status.Code(err))
+}

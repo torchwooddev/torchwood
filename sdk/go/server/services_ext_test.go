@@ -37,6 +37,10 @@ func (f *fakeExt) UpdateProject(_ context.Context, req *serverv1.UpdateProjectRe
 	return &serverv1.Project{Id: req.Id, Name: req.GetName()}, nil
 }
 
+func (f *fakeExt) DeleteProject(_ context.Context, req *serverv1.GetProjectRequest) (*sharedv1.Empty, error) {
+	return &sharedv1.Empty{}, nil
+}
+
 func (f *fakeExt) CreateBucket(_ context.Context, req *serverv1.CreateBucketRequest) (*serverv1.Bucket, error) {
 	return &serverv1.Bucket{Id: req.Name, Name: req.Name, Permissions: req.Permissions, Public: req.Public}, nil
 }
@@ -190,6 +194,14 @@ func TestProjectsCreateProject(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "p1", got.Id)
 	require.Equal(t, "Proj", got.Name)
+}
+
+func TestProjectsDeleteProject(t *testing.T) {
+	c := newExtClient(t)
+	ctx := context.Background()
+
+	_, err := c.Projects.DeleteProject(ctx, &serverv1.GetProjectRequest{Id: "p1"})
+	require.NoError(t, err)
 }
 
 func TestStorageCreateBucket(t *testing.T) {

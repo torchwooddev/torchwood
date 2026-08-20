@@ -431,7 +431,7 @@ DeleteDatabase(shop, "default")
 规定顺序（同一事务）：
 
 ```text
-DeleteProject(shop)   -- app 层；setup 回滚必须走这里，禁止只调 projectRepo.DeleteProject
+DeleteProjectInternal(shop)   -- app 层；setup 回滚必须走这里，禁止只调 projectRepo.DeleteProject
   1. dbs = SELECT id FROM catalog.document_databases
            WHERE project_id='shop' AND id <> '_'
            -- PR4 前 catalog 在 public；之后在 tw_shop
@@ -447,7 +447,7 @@ DeleteProject(shop)   -- app 层；setup 回滚必须走这里，禁止只调 pr
   5. DELETE public.projects WHERE id='shop'
 ```
 
-禁止 `LIKE 'tw_shop%'`。对外 DeleteProject RPC 仍按 roadmap 另做（Open Q3）；**setup 回滚与内部删除必须在 PR2 就走级联**。
+禁止 `LIKE 'tw_shop%'`。对外 DeleteProject RPC 已落地（`DELETE /v1/server/projects/{id}`，平台 admin）；**setup 回滚与内部删除走 `DeleteProjectInternal`**。
 
 已知缺口（另案，不在本方案内）：MinIO 对象不清理（files 元数据随 schema 消失、blob 成孤儿）；Redis 残留不清理（functions 队列待执行消息、OTP 码、限流键）。
 
@@ -872,7 +872,7 @@ HTTP 映射（改 `payments_handler.go`，PR6）：
 | `CreateCollection(default, "users")` | 允许，普通集合 |
 | Account / Users / Storage / Groups | 协议不变；后端改 schema |
 | Payments / Assets / Functions | 协议不变；表换 schema |
-| DeleteProject RPC | 仍按 roadmap 另做；**内部级联从 PR2 起必须存在** |
+| DeleteProject RPC | `DELETE /v1/server/projects/{id}`；平台 admin；级联走 `DeleteProjectInternal` |
 
 domain 扫描方法加 `projectID`（§7）。支付仓储 `GetByID` / `GetByProviderRef` / `GetByProviderSubID` **禁止空 projectID**（§9.2）。`EnsureSystemCollections` 签名保留。`domain/payments.ErrProviderIndexMiss` 新增；HTTP 回调 handler 映射见 §9.3。
 
@@ -1182,7 +1182,7 @@ owner 2026-08-20 决策：不执行。`_tenant` 全保留，待系统表化整�
 
 1. ~~PR4 feature flag？~~ **关闭。** 见 K20。
 2. ~~未命中回调是否建 orphans 表？~~ **关闭。** 见 K21：`hasPlatformRef` 未命中 503；无我方 ref 200；不建表。
-3. **DeleteProject 对外 API 是否顺带做？** 内部级联 PR2 必做；Server RPC 仍可另 PR。
+3. ~~**DeleteProject 对外 API 是否顺带做？**~~ **关闭。** `DELETE /v1/server/projects/{id}` 已落地；仅平台 admin；setup 回滚走 `DeleteProjectInternal`。
 4. **catalog 迁入后是否丢掉 `project_id` 列？** 建议保留作防御与 FK。可另案瘦身。
 5. Worker 队尾饥饿：第一版按 `project_id` 轮转是否够用，待内测量级再看（不挡开工）。
 6. ~~PR8 是否执行？~~ **已决策（2026-08-20）：不执行。** `_tenant` 全保留，待系统表化一并处理（K12）。

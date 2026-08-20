@@ -151,7 +151,7 @@ func (f *fakeProjects) CreateProjectInternal(_ context.Context, cmd server.Creat
 	return p, nil
 }
 
-func (f *fakeProjects) DeleteProject(_ context.Context, id string) error {
+func (f *fakeProjects) DeleteProjectInternal(_ context.Context, id string) error {
 	f.deleted = append(f.deleted, id)
 	if f.projectRepo != nil {
 		_ = f.projectRepo.DeleteProject(context.Background(), id)

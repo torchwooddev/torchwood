@@ -12,11 +12,11 @@ const (
 )
 
 // NewProjectsCmd 提供 ProjectsService 的 list/get。
-// CreateProject/UpdateProject 限平台 admin（console session），API Key 无法调用，CLI 不提供。
+// CreateProject/UpdateProject/DeleteProject 限平台 admin（console session），API Key 无法调用，CLI 不提供。
 func NewProjectsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "projects",
-		Short: "项目管理（list/get；create/update 限平台 admin，CLI 不提供）",
+		Short: "项目管理（list/get；create/update/delete 限平台 admin，CLI 不提供）",
 	}
 	cmd.AddCommand(
 		newProjectsListCmd(g),

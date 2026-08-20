@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
-import { listProjects, getProject, createProject, type Project } from "@/api/projects";
+import { listProjects, getProject, createProject, deleteProject, type Project } from "@/api/projects";
 import { useAdminRole, isPlatformAdmin } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   DetailGrid,
   DetailSkeleton,
   NotFound,
+  DeleteButton,
 } from "@/components/resource/shared";
 
 const columns: ColumnDef<Project>[] = [
@@ -144,17 +145,42 @@ export function ProjectNewPage() {
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { role } = useAdminRole();
   const { data: project, isLoading } = useQuery({
     queryKey: ["projects", id],
     queryFn: () => getProject(id!),
     enabled: !!id,
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteProject(id!),
+    onSuccess: () => {
+      toast.success("项目已删除");
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      navigate("/console/projects");
+    },
   });
 
   if (isLoading) return <DetailSkeleton />;
   if (!project) return <NotFound backTo="/console/projects" />;
 
   return (
-    <DetailPageWrapper title={project.name} description="项目详情" backTo="/console/projects">
+    <DetailPageWrapper
+      title={project.name}
+      description="项目详情"
+      backTo="/console/projects"
+      actions={
+        isPlatformAdmin(role) ? (
+          <DeleteButton
+            label="删除项目"
+            description="将永久删除该项目及其全部数据（数据库、存储元数据、函数、账本等），此操作不可撤销。"
+            onConfirm={() => remove.mutate()}
+            loading={remove.isPending}
+          />
+        ) : undefined
+      }
+    >
       <DetailGrid
         items={[
           { label: "ID", value: project.id, mono: true },

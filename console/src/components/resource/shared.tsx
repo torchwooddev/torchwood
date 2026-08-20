@@ -150,10 +150,12 @@ export function DeleteButton({
   onConfirm,
   loading,
   label = "删除",
+  description = "此操作不可撤销，确定要删除吗？",
 }: {
   onConfirm: () => void;
   loading?: boolean;
   label?: string;
+  description?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -166,7 +168,7 @@ export function DeleteButton({
         open={open}
         onOpenChange={setOpen}
         title="确认删除"
-        description="此操作不可撤销，确定要删除吗？"
+        description={description}
         confirmLabel="删除"
         loading={loading}
         onConfirm={() => {

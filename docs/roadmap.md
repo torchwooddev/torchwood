@@ -372,7 +372,7 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 | 邮箱变更 staging | P1 遗留 B1：新邮箱验证前旧邮箱仍可用 | Account use-case |
 | Worker 重试持久化 | P1 遗留 B2：attempt 写入 payload | `cmd/worker` |
 | 全文检索收口 | `search` 仅允许 fulltext 索引列（已有算子，收紧以免 CPU DoS） | `buildAppwriteQuery` |
-| DeleteProject | repo 已有；级联清理动态 schema，独立排期 | `DELETE /v1/server/projects/{id}` |
+| DeleteProject | 已落地：平台 admin；级联清理动态 schema | `DELETE /v1/server/projects/{id}` |
 
 项目设置（平台 origin、密码策略、SMTP 模板、30+ OAuth）**不作为 v2 核心**。OAuth 维持已有 Google / GitHub / 微信；SMTP 维持现有发信。
 

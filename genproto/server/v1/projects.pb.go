@@ -354,13 +354,14 @@ const file_server_v1_projects_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\x82\x04\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\xf9\x04\n" +
 	"\x0fProjectsService\x12x\n" +
 	"\rCreateProject\x12).torchwood.server.v1.CreateProjectRequest\x1a\x1c.torchwood.server.v1.Project\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/server/projects\x12x\n" +
 	"\fListProjects\x12 .torchwood.shared.v1.ListRequest\x1a).torchwood.server.v1.ListProjectsResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/server/projects\x12t\n" +
 	"\n" +
 	"GetProject\x12&.torchwood.server.v1.GetProjectRequest\x1a\x1c.torchwood.server.v1.Project\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/projects/{id}\x12}\n" +
-	"\rUpdateProject\x12).torchwood.server.v1.UpdateProjectRequest\x1a\x1c.torchwood.server.v1.Project\"#\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/server/projects/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"\rUpdateProject\x12).torchwood.server.v1.UpdateProjectRequest\x1a\x1c.torchwood.server.v1.Project\"#\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/server/projects/{id}\x12u\n" +
+	"\rDeleteProject\x12&.torchwood.server.v1.GetProjectRequest\x1a\x1a.torchwood.shared.v1.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/projects/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\\\n" +
@@ -394,6 +395,7 @@ var file_server_v1_projects_proto_goTypes = []any{
 	(*v1.ListResponseMeta)(nil),   // 5: torchwood.shared.v1.ListResponseMeta
 	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 	(*v1.ListRequest)(nil),        // 7: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),              // 8: torchwood.shared.v1.Empty
 }
 var file_server_v1_projects_proto_depIdxs = []int32{
 	4, // 0: torchwood.server.v1.ListProjectsResponse.projects:type_name -> torchwood.server.v1.Project
@@ -404,12 +406,14 @@ var file_server_v1_projects_proto_depIdxs = []int32{
 	7, // 5: torchwood.server.v1.ProjectsService.ListProjects:input_type -> torchwood.shared.v1.ListRequest
 	2, // 6: torchwood.server.v1.ProjectsService.GetProject:input_type -> torchwood.server.v1.GetProjectRequest
 	0, // 7: torchwood.server.v1.ProjectsService.UpdateProject:input_type -> torchwood.server.v1.UpdateProjectRequest
-	4, // 8: torchwood.server.v1.ProjectsService.CreateProject:output_type -> torchwood.server.v1.Project
-	3, // 9: torchwood.server.v1.ProjectsService.ListProjects:output_type -> torchwood.server.v1.ListProjectsResponse
-	4, // 10: torchwood.server.v1.ProjectsService.GetProject:output_type -> torchwood.server.v1.Project
-	4, // 11: torchwood.server.v1.ProjectsService.UpdateProject:output_type -> torchwood.server.v1.Project
-	8, // [8:12] is the sub-list for method output_type
-	4, // [4:8] is the sub-list for method input_type
+	2, // 8: torchwood.server.v1.ProjectsService.DeleteProject:input_type -> torchwood.server.v1.GetProjectRequest
+	4, // 9: torchwood.server.v1.ProjectsService.CreateProject:output_type -> torchwood.server.v1.Project
+	3, // 10: torchwood.server.v1.ProjectsService.ListProjects:output_type -> torchwood.server.v1.ListProjectsResponse
+	4, // 11: torchwood.server.v1.ProjectsService.GetProject:output_type -> torchwood.server.v1.Project
+	4, // 12: torchwood.server.v1.ProjectsService.UpdateProject:output_type -> torchwood.server.v1.Project
+	8, // 13: torchwood.server.v1.ProjectsService.DeleteProject:output_type -> torchwood.shared.v1.Empty
+	9, // [9:14] is the sub-list for method output_type
+	4, // [4:9] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name
