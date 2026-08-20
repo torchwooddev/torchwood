@@ -18,7 +18,7 @@ MCP Tool Server 以类型安全的方式调用后端。
 | 管理面自动化（建用户、管文档、Storage） | **Server API** + API Key | 在 Console 或通过 `POST /v1/server/api-keys` 创建带 scope 的 Key |
 | 终端用户身份流（注册/登录/会话） | **Client API** + JWT | SDK 自动持久化 access token（内存态，`setAccessToken` 可覆盖） |
 | Agent 工具 schema 来源 | **OpenAPI** | `task generate-proto` 后在 `genproto/**/*.swagger.json` 获取 |
-| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入首次部署引导展示的默认 API Key |
+| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入 Console API Keys 页面创建的 API Key |
 
 典型 Agent 工作流：用 scoped API Key 实例化 `Torchwood.withApiKey()` → 读取 OpenAPI
 或 SDK 类型 → 调用 Server Databases/Users/Storage API → 将结构化响应回传给 LLM。
@@ -380,8 +380,8 @@ task sdk-demo        # 自动先跑 sdk-build，然后 vite dev（http://localho
 
 启动前确认本地后端已就绪（`task up` + `task migrate` + `task dev-server`），
 并在全新数据库上先完成首次部署引导（打开 `/console/` 注册第一个管理员——需先
-配置 `TORCHWOOD_SECURITY_SETUP_TOKEN`；注册响应展示的默认 API Key secret 用于
-Server API），复制 `sdk/demo/.env.example` 为 `.env` 可覆盖默认值：
+配置 `TORCHWOOD_SECURITY_SETUP_TOKEN`，并填写 project id / database id；登录后
+到 API Keys 页面创建密钥用于 Server API），复制 `sdk/demo/.env.example` 为 `.env` 可覆盖默认值：
 
 ```dotenv
 VITE_TORCHWOOD_ENDPOINT=http://localhost:9080
@@ -398,7 +398,7 @@ VITE_TORCHWOOD_PROJECT_ID=default
 | `/app/server` | `health.check` / `projects.list` / `users.list` / `groups.create` / `databases.listDatabases` |
 | `/app/settings` | Endpoint、Project ID、API Key 配置（本地持久化） |
 
-Server API 页面需要先在设置页填入首次部署引导展示的默认 API Key；设置与登录态
+Server API 页面需要先在设置页填入 Console API Keys 页面创建的 API Key；设置与登录态
 保存在 localStorage（`Torchwood-demo-settings` / `Torchwood-demo-auth`）。
 
 ---

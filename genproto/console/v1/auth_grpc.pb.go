@@ -37,8 +37,8 @@ type ConsoleAuthServiceClient interface {
 	// 查询是否已完成初始化（admins 是否为空）。
 	GetSetupStatus(ctx context.Context, in *GetSetupStatusRequest, opts ...grpc.CallOption) (*GetSetupStatusResponse, error)
 	// 首个管理员注册：仅当 admins 表为空且携带正确 setup token 时可用；
-	// 注册成功后自动创建默认 project（id=default）与默认 API Key
-	// （scope=all，明文仅此一次返回）。
+	// 须同时指定 project_id 与 database_id，创建 owner + 项目 + 数据库。
+	// 不生成 API Key，登录后在 Console 的 API Key 页面创建。
 	SignUp(ctx context.Context, in *SignUpRequest, opts ...grpc.CallOption) (*SignUpResponse, error)
 }
 
@@ -110,8 +110,8 @@ type ConsoleAuthServiceServer interface {
 	// 查询是否已完成初始化（admins 是否为空）。
 	GetSetupStatus(context.Context, *GetSetupStatusRequest) (*GetSetupStatusResponse, error)
 	// 首个管理员注册：仅当 admins 表为空且携带正确 setup token 时可用；
-	// 注册成功后自动创建默认 project（id=default）与默认 API Key
-	// （scope=all，明文仅此一次返回）。
+	// 须同时指定 project_id 与 database_id，创建 owner + 项目 + 数据库。
+	// 不生成 API Key，登录后在 Console 的 API Key 页面创建。
 	SignUp(context.Context, *SignUpRequest) (*SignUpResponse, error)
 	mustEmbedUnimplementedConsoleAuthServiceServer()
 }

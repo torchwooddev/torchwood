@@ -244,4 +244,4 @@ PostgreSQL
 
 > CLI 的动态分发基于 `sdk/go/server` 的 `InvokeJSON`（按 full method name 从 `protoregistry.GlobalFiles` 查找），**新增 Server API RPC 无需在 CLI 登记**；`cmd/client/import_guard_test.go` 兜底禁止 CLI 源码直接 import genproto/grpc。使用示例见 `docs/developer/02-quickstart.md` §7。
 
-> 首个管理员与默认 project/API Key 不再由离线脚本引导：全新数据库上打开 `/console/` 后按「初始化设置」表单注册第一个管理员（自动成为 owner，并创建默认 project 与默认 API Key），详见 `docs/implementation-bootstrap-and-cli.md` §3。注意：bootstrap 要求配置 `security.setup_token`（`TORCHWOOD_SECURITY_SETUP_TOKEN`），未配置时注册会被拒绝。
+> 首个管理员与首个 project/database 不再由离线脚本引导：全新数据库上打开 `/console/` 后按「初始化设置」表单注册第一个管理员（自动成为 owner，须同时填写 project id 与 database id）。API Key 不在注册时生成，登录后到 API Keys 页面创建。详见 `docs/implementation-bootstrap-and-cli.md` §3。注意：bootstrap 要求配置 `security.setup_token`（`TORCHWOOD_SECURITY_SETUP_TOKEN`），未配置时注册会被拒绝。

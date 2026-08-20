@@ -220,10 +220,10 @@ if cmd.Name == "" { return nil, status.Error(codes.InvalidArgument, "name is req
 **Bootstrap** `internal/app/console/setup.go`：
 
 ```go
-CreateProjectCommand{ID: "default", Name: defaultProjectName, Description: defaultProjectDesc}
+CreateProjectCommand{ID: cmd.ProjectID, Name: cmd.ProjectID, Description: "Bootstrap project"}
 ```
 
-注释改为「bootstrap 固定 id=`default`」，删除「从名称派生」的说法。`default` 命中新正则。
+注释改为「bootstrap 使用注册时填写的 project id」，删除「从名称派生」的说法。`default` 仍命中新正则（系统库 id）。
 
 **gRPC handler / SDK / Console**：创建项目表单增加必填 `ID` 字段（placeholder `shop`，hint 写明规则）。`console/src/api/projects.ts` 的 `createProject` 增加 `id`。
 
@@ -315,7 +315,7 @@ ListDocuments(project=shop, database=app, collection=posts)
 - 撞 id → 唯一约束映射为 `AlreadyExists`（沿用现有 duplicate 处理）
 - `CreateDatabase` 非法 id、`default`、合法 `app`
 - 删除 `default` 仍拒绝
-- bootstrap `SignUp` 得到项目 id `default`，schema `tw_default_default`
+- bootstrap `SignUp` 使用调用方指定的 project id / database id；系统库 schema 为 `tw_<projectID>_default`
 
 ### 7.3 documentdb 集成
 

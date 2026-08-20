@@ -9,7 +9,7 @@
 | 管理面自动化（建用户、管文档、Storage） | **Server API** + API Key | 在 Console 或通过 `POST /v1/server/api-keys` 创建带 scope 的 Key |
 | 终端用户身份流（注册/登录/会话） | **Client API** + JWT | SDK 自动持久化 access token |
 | Agent 工具 schema 来源 | **OpenAPI** | `task generate-proto` 后在 `genproto/**/*.swagger.json` 获取 |
-| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入首次部署引导展示的默认 API Key |
+| 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入 Console API Keys 页面创建的 API Key |
 
 典型 Agent 工作流：用 scoped API Key 实例化 `Torchwood.withApiKey()` → 读取 OpenAPI 或 SDK 类型 → 调用 Server Databases/Users/Storage API → 将结构化响应回传给 LLM。
 
@@ -79,7 +79,7 @@ task up
 task migrate
 task dev-server
 # 全新数据库上打开 http://127.0.0.1:9080/console/ 完成首次部署引导，
-# 注册第一个管理员后页面展示一次默认 API Key secret
+# 注册第一个管理员（填写 project id / database id），登录后到 API Keys 页面创建密钥
 
 # 启动 Web 演示（默认 http://localhost:5174）
 task sdk-demo
@@ -100,7 +100,7 @@ task sdk-demo
 | `/app/server` | Health / Projects / Users / Groups / Databases |
 | `/app/settings` | Endpoint、Project ID、API Key 配置 |
 
-Server API 相关功能需在设置页填写首次部署引导展示的默认 API Key。
+Server API 相关功能需在设置页填写 Console API Keys 页面创建的 API Key。
 
 ## SDK 用法
 

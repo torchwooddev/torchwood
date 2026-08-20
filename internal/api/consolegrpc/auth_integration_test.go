@@ -14,22 +14,24 @@ import (
 	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
 	"github.com/torchwooddev/torchwood/internal/app/console"
 	"github.com/torchwooddev/torchwood/internal/app/server"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type bootstrapFixture struct {
-	url            string
-	interceptorEnv *testutil.InterceptorEnv
+	url         string
+	projectRepo projects.Repository
+	apiKeyRepo  projects.APIKeyRepository
+	docDB       databases.DocumentDB
 }
 
 // setupBootstrapFixture 用真实数据库装配 bootstrap 全链路：
-// gateway(RegisterConsoleAuthServiceHandlerServer) + 真实 use-case +
-// 生产同款认证拦截器（用于 x-api-key 冒烟）。
+// gateway(RegisterConsoleAuthServiceHandlerServer) + 真实 use-case。
 func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	t.Helper()
 	if testing.Short() {
@@ -45,15 +47,13 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 
 	adminRepo := bunrepo.NewAdminRepository(db)
 	projectRepo := bunrepo.NewProjectRepository(db)
+	apiKeyRepo := bunrepo.NewAPIKeyRepository(db)
 	admins := console.NewAdmins(adminRepo)
 	projects := server.NewProjects(projectRepo, docDB, db)
-	apiKeys := server.NewAPIKeys(bunrepo.NewAPIKeyRepository(db))
+	databases := server.NewDatabases(projectRepo, docDB)
 	auth := console.NewAuth(cfg, adminRepo, nil, nil, nil)
-	setupUC := console.NewSetup(cfg, admins, projects, apiKeys, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
+	setupUC := console.NewSetup(cfg, admins, projects, databases, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
 	svc := NewAuthService(auth, setupUC)
-
-	env, err := testutil.NewInterceptorEnv(db, cfg, docDB)
-	require.NoError(t, err)
 
 	// 生产网关用 authOutgoingHeaderMatcher 透传 set-cookie + protojson
 	// （UseProtoNames）；测试 mux 对齐该配置。
@@ -76,7 +76,12 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	return &bootstrapFixture{url: srv.URL, interceptorEnv: env}
+	return &bootstrapFixture{
+		url:         srv.URL,
+		projectRepo: projectRepo,
+		apiKeyRepo:  apiKeyRepo,
+		docDB:       docDB,
+	}
 }
 
 type signUpPayload struct {
@@ -85,18 +90,17 @@ type signUpPayload struct {
 		Email string `json:"email"`
 		Role  string `json:"role"`
 	} `json:"admin"`
-	AccessToken         string `json:"access_token"`
-	RefreshToken        string `json:"refresh_token"`
-	DefaultAPIKeySecret string `json:"default_api_key_secret"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	fixture := setupBootstrapFixture(t)
 	ctx := context.Background()
 
-	// 1) 首次 sign-up：owner admin + 默认 project + 默认 API Key secret +
-	//    会话 cookie。
-	body := bytes.NewBufferString(`{"email":"owner@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token"}`)
+	// 1) 首次 sign-up：owner admin + 指定 project/database + 会话 cookie；
+	//    不生成 API Key。
+	body := bytes.NewBufferString(`{"email":"owner@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token","project_id":"shop","database_id":"app"}`)
 	resp, err := http.Post(fixture.url+"/v1/console/auth/sign-up", "application/json", body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -109,7 +113,19 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	require.Equal(t, "owner@torchwood.local", payload.Admin.Email)
 	require.NotEmpty(t, payload.AccessToken)
 	require.NotEmpty(t, payload.RefreshToken)
-	require.NotEmpty(t, payload.DefaultAPIKeySecret)
+
+	project, err := fixture.projectRepo.GetProject(ctx, "shop")
+	require.NoError(t, err)
+	require.NotNil(t, project)
+	appDB, err := fixture.docDB.GetDatabase(ctx, "shop", "app")
+	require.NoError(t, err)
+	require.NotNil(t, appDB)
+	sysDB, err := fixture.docDB.GetDatabase(ctx, "shop", "default")
+	require.NoError(t, err)
+	require.NotNil(t, sysDB)
+	keys, err := fixture.apiKeyRepo.ListAPIKeys(ctx, "shop")
+	require.NoError(t, err)
+	require.Empty(t, keys)
 
 	// 会话 cookie 已下发（SignUp 复用 setSessionCookies）。
 	var foundSession, foundRefresh bool
@@ -132,7 +148,7 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	require.False(t, statusResp.NeedsSetup)
 
 	// 3) 二次 sign-up → FailedPrecondition（grpc-gateway 映射为 HTTP 400）。
-	body = bytes.NewBufferString(`{"email":"second@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token"}`)
+	body = bytes.NewBufferString(`{"email":"second@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token","project_id":"shop","database_id":"app"}`)
 	resp, err = http.Post(fixture.url+"/v1/console/auth/sign-up", "application/json", body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -143,12 +159,6 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&errResp))
 	resp.Body.Close()
 	require.Contains(t, errResp.Message, "setup already completed")
-
-	// 4) 用返回的 secret 以 x-api-key 调用 UsersService/ListUsers：all scope
-	//    生效，认证拦截器放行。
-	err = fixture.interceptorEnv.InvokeUnary(ctx, testutil.MethodListUsers,
-		metadata.Pairs("x-api-key", payload.DefaultAPIKeySecret))
-	require.NoError(t, err)
 }
 
 func TestBootstrap_SetupStatusBeforeSignUp(t *testing.T) {

@@ -16,7 +16,7 @@
 
 本方案做两件事：
 
-1. **Bootstrap**：移除 `cmd/seed`；Console 提供公开的首个管理员注册端点，第一个注册的管理员自动成为超管（owner），并在注册流程中自动创建默认 project 和默认 API Key。
+1. **Bootstrap**：移除 `cmd/seed`；Console 提供公开的首个管理员注册端点，第一个注册的管理员自动成为超管（owner），注册时须指定 project id 与 database id。API Key 不在注册时生成，登录后在 Console 的 API Key 页面创建。
 2. **CLI**：新增 `cmd/client`（二进制名 `torchwood`），通过 API Key 调用服务端 gRPC 接口，覆盖 Server API 的主要资源。
 
 ## 2. 现状关键事实（调研结论，实施时以代码为准）
@@ -60,13 +60,17 @@ message GetSetupStatusResponse { bool needs_setup = 1; }
 message SignUpRequest {
   string email = 1;
   string password = 2;
+  string setup_token = 3;
+  string project_id = 4;
+  string database_id = 5;
 }
 
 message SignUpResponse {
   Admin admin = 1;                    // 复用 admins.proto 的 Admin 消息
   string access_token = 2;            // 与 SignInResponse 一致，便于前端统一处理
   string refresh_token = 3;
-  string default_api_key_secret = 4;  // 仅此一次返回明文
+  reserved 4;
+  reserved "default_api_key_secret";
 }
 ```
 
@@ -76,38 +80,38 @@ message SignUpResponse {
 
 ```go
 type Setup struct {
-    admins   *Admins          // 复用 Create（无 principal 检查）
-    projects *server.Projects // 复用 CreateProjectInternal（见 3.3）
-    apiKeys  *server.APIKeys  // 复用 Create（无 principal 检查）
-    auth     *Auth            // 复用 SignIn 签发 TokenPair
+    admins    *Admins            // 复用 Create（无 principal 检查）
+    projects  *server.Projects   // 复用 CreateProjectInternal（见 3.3）
+    databases *server.Databases  // 复用 CreateDatabase（注入 bootstrap principal）
+    auth      *Auth              // 复用 SignIn 签发 TokenPair
     adminRepo projects.AdminRepository
     // admin_projects 关联写入（repo 已有或新增方法）
 }
 
 type SignUpResult struct {
-    Admin       *projects.Admin
-    Tokens      *TokenPair
-    APIKeySecret string
+    Admin  *projects.Admin
+    Tokens *TokenPair
 }
 
 func (s *Setup) GetSetupStatus(ctx context.Context) (bool, error)
-func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResult, error)
+func (s *Setup) SignUp(ctx context.Context, cmd SignUpCommand) (*SignUpResult, error)
 ```
 
 `SignUp` 流程（顺序与补偿）：
 
 1. **首次性检查**：`admins` 计数 > 0 → `FailedPrecondition("setup already completed")`。
-2. 调用 `Admins.Create(ctx, {Email, Password, Role: "owner"})` —— 复用邮箱/密码/角色校验。
-3. 调用 `Projects.CreateProjectInternal(ctx, {Name: "Default"})` —— 生成 id `default`，内含 `RunInTx` + `EnsureSystemCollections`。
-4. 调用 `APIKeys.Create(ctx, {ProjectID: "default", Name: "Default API Key", Scopes: ["all"]})` —— 得到明文 secret。
-5. 写入 `admin_projects` 关联（owner 实际会被 `ValidateAdminProjectAccess` 放行，但保持数据完整）。
-6. 调用 `Auth.SignIn(ctx, {Email, Password})` 签发 TokenPair（handler 侧复用 `setSessionCookies`）。
+2. 校验 `project_id` / `database_id`（`ident.ValidateSchemaResourceID`）。
+3. 调用 `Admins.Create(ctx, {Email, Password, Role: "owner"})` —— 复用邮箱/密码/角色校验。
+4. 调用 `Projects.CreateProjectInternal(ctx, {ID: project_id, Name: project_id})` —— 内含 `RunInTx` + `EnsureSystemCollections`（自动创建系统 `default` 库）。
+5. 若 `database_id != "default"`，调用 `Databases.CreateDatabase` 创建业务库。
+6. 写入 `admin_projects` 关联（owner 实际会被 `ValidateAdminProjectAccess` 放行，但保持数据完整）。
+7. 调用 `Auth.SignIn(ctx, {Email, Password})` 签发 TokenPair（handler 侧复用 `setSessionCookies`）。
 
-**失败补偿**：步骤 3-6 任一步失败时，best-effort 回删已创建的 admin（避免「admin 已建但 project 缺失」导致无法重试也无法登录的死锁），然后返回错误。补偿失败只记日志。
+不创建 API Key；登录后由 Console 的 API Key 页面生成。
 
-**并发**：两个并发 SignUp 可能同时通过步骤 1。MVP 接受此窗口（首次部署单人操作）；如要收紧，可在步骤 1 前后使用 Postgres advisory lock（`pg_advisory_xact_lock`）——列为可选增强，不强制。
+**失败补偿**：步骤 4-7 任一步失败时，best-effort 回删已创建的 admin / project / 业务库（避免「admin 已建但 project 缺失」导致无法重试也无法登录的死锁），然后返回错误。补偿失败只记日志。
 
-**默认 API Key scope 用 `all`**：它是超管的引导 key，与 seed 的宽 scope 列表语义一致且更简洁；用户可在 Console 另行创建受限 key。
+**并发**：两个并发 SignUp 可能同时通过步骤 1。以 Postgres advisory lock（`pg_advisory_xact_lock`）串行化首次性检查与首个 admin 创建。
 
 ### 3.3 `Projects.CreateProject` 最小重构
 
@@ -127,15 +131,15 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 
 最小改动方案（不新增路由）：
 
-- `console/src/api/auth.ts` 增加 `getSetupStatus()`、`signUp({email, password})`。
-- `console/src/routes/Login.tsx`：挂载时查询 `setup-status`；`needs_setup=true` 时切换为「初始化设置」表单（email/password/确认密码，文案区分），提交调 `sign-up`，成功后 cookie 已设置，直接进入 Console。
-- `SignUpResponse.default_api_key_secret` 前端**仅展示一次**（设置成功后的提示对话框，可复制），不持久化。
+- `console/src/api/auth.ts` 增加 `getSetupStatus()`、`signUp({email, password, project_id, database_id})`。
+- `console/src/routes/Login.tsx`：挂载时查询 `setup-status`；`needs_setup=true` 时切换为「初始化设置」表单（email/password/确认密码/project id/database id，文案区分），提交调 `sign-up`，成功后 cookie 已设置，直接进入 Console。
+- 不在引导页展示 API Key；登录后到 API Keys 页面创建（secret 仅创建时展示一次）。
 
 ### 3.6 移除 cmd/seed
 
 - 删除 `cmd/seed/` 目录。
 - 全仓 grep `cmd/seed`、`go run ./cmd/seed`、`seed`，更新 §2 列出的所有文档：
-  - 快速开始改为：启动服务 → 打开 `/console/` → 按引导完成首个管理员注册（页面展示默认 API Key secret）。
+  - 快速开始改为：启动服务 → 打开 `/console/` → 按引导填写 project id / database id 完成首个管理员注册；API Key 在登录后的 API Keys 页面创建。
   - `docs/roadmap.md` §2.9 的「Seed 数据增强」行标记为「已由首个管理员 bootstrap 取代，cmd/seed 移除」。
   - `docs/manual-acceptance-checklist.md` 0.4 改为 bootstrap 验收步骤。
   - `AGENTS.md` 如有涉及同步更新。
@@ -143,10 +147,10 @@ func (s *Setup) SignUp(ctx context.Context, email, password string) (*SignUpResu
 ### 3.7 测试
 
 - 单元测试 `internal/app/console/setup_test.go`：
-  - 首次 SignUp 成功：admin=owner、project id=`default`、返回非空 secret、tokens 有效。
+  - 首次 SignUp 成功：admin=owner、指定 project/database 已创建、tokens 有效、未创建 API Key。
   - 二次 SignUp 返回 `FailedPrecondition`。
-  - project 创建失败时 admin 被回删（mock 注入失败）。
-- 集成测试：通过 gateway `POST /v1/console/auth/sign-up` 全流程；随后 `GET /v1/console/auth/setup-status` 返回 `needs_setup=false`；用返回的 secret 以 `x-api-key` 调用 `UsersService/ListUsers` 成功（验证 `all` scope 生效）。
+  - project / database 创建失败时 admin 被回删（mock 注入失败）。
+- 集成测试：通过 gateway `POST /v1/console/auth/sign-up` 全流程；随后 `GET /v1/console/auth/setup-status` 返回 `needs_setup=false`；项目与数据库存在且 `api_keys` 为空。
 
 ## 4. CLI（cmd/client）设计
 
@@ -247,8 +251,8 @@ A 与 B 无代码交集（A 不碰 cmd/client，B 不碰 console/bootstrap），
 
 **Bootstrap**
 
-- 全新数据库上启动 server，打开 `/console/` 出现初始化引导；注册后即为 owner 并直接进入 Console。
-- 注册响应展示默认 API Key secret 一次；使用该 secret 以 `x-api-key` 调用 `ListUsers` 等接口成功。
+- 全新数据库上启动 server，打开 `/console/` 出现初始化引导；填写 project id / database id 注册后即为 owner 并直接进入 Console。
+- 指定 project 与 database 已创建；未生成 API Key。登录后在 API Keys 页面创建密钥，再用 `x-api-key` 调用 `ListUsers` 等接口。
 - 再次调用 `sign-up` 返回 `FailedPrecondition`；`setup-status` 返回 `needs_setup=false`。
 - `cmd/seed` 目录与文档引用全部清除；`task test`、`task build`、`task console-build && task build` 通过。
 

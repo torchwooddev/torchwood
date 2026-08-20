@@ -11,23 +11,16 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-)
-
-// Bootstrap 默认资源常量：首个管理员注册时自动创建的 project 与 API Key。
-// bootstrap 固定项目 id=`default`。
-const (
-	defaultProjectID   = "default"
-	defaultProjectName = "Default"
-	defaultProjectDesc = "Auto-created default project"
-	defaultAPIKeyName  = "Default API Key"
-	defaultAPIKeyScope = "all"
 )
 
 // bootstrapLockKey 是引导流程的 pg_advisory_xact_lock 常量键（"Torchwoo"
 // 的 ASCII 编码），用于串行化首个管理员检查+创建。
 const bootstrapLockKey = int64(0x546F726368776F6F)
+
+const defaultDatabaseID = "default"
 
 // Setup 处理首个管理员 bootstrap：查询初始化状态（GetSetupStatus）与首个
 // 管理员注册（SignUp）。SignUp 是公开端点（ConsoleAuthService 服务级
@@ -37,7 +30,7 @@ type Setup struct {
 	setupToken       string
 	admins           adminCreator
 	projects         projectCreator
-	apiKeys          apiKeyCreator
+	databases        databaseCreator
 	auth             tokenIssuer
 	adminRepo        projects.AdminRepository
 	adminProjectRepo projects.AdminProjectRepository
@@ -47,16 +40,16 @@ type Setup struct {
 // 以下接口由 internal/app 的对应 use-case 实现（构造参数为具体类型，
 // 字段收窄为接口仅用于单元测试注入失败场景）：
 //   - projectCreator: *server.Projects
-//   - apiKeyCreator:  *server.APIKeys
+//   - databaseCreator: *server.Databases
 //   - adminCreator:   *Admins
 //   - tokenIssuer:    *Auth
 type projectCreator interface {
 	CreateProjectInternal(ctx context.Context, cmd server.CreateProjectCommand) (*projects.Project, error)
 }
 
-type apiKeyCreator interface {
-	CreateInternal(ctx context.Context, cmd server.CreateAPIKeyCommand) (*projects.APIKey, string, error)
-	Delete(ctx context.Context, projectID, id string) error
+type databaseCreator interface {
+	CreateDatabase(ctx context.Context, projectID, id, name string) error
+	DeleteDatabase(ctx context.Context, projectID, databaseID string) error
 }
 
 type adminCreator interface {
@@ -71,7 +64,7 @@ func NewSetup(
 	cfg *config.AppConfig,
 	admins *Admins,
 	projects *server.Projects,
-	apiKeys *server.APIKeys,
+	databases *server.Databases,
 	auth *Auth,
 	adminRepo projects.AdminRepository,
 	adminProjectRepo projects.AdminProjectRepository,
@@ -85,7 +78,7 @@ func NewSetup(
 		setupToken:       setupToken,
 		admins:           admins,
 		projects:         projects,
-		apiKeys:          apiKeys,
+		databases:        databases,
 		auth:             auth,
 		adminRepo:        adminRepo,
 		adminProjectRepo: adminProjectRepo,
@@ -107,24 +100,41 @@ func (s *Setup) SetupTokenConfigured() bool {
 	return s.setupToken != ""
 }
 
-type SignUpResult struct {
-	Admin        *projects.Admin
-	Tokens       *TokenPair
-	APIKeySecret string
+type SignUpCommand struct {
+	Email      string
+	Password   string
+	SetupToken string
+	ProjectID  string
+	DatabaseID string
 }
 
-// SignUp 注册首个管理员并完成引导：admin(owner) + 默认 project + 默认
-// API Key(scope=all) + admin_projects 关联 + 签发 TokenPair。
+type SignUpResult struct {
+	Admin  *projects.Admin
+	Tokens *TokenPair
+}
+
+// SignUp 注册首个管理员并完成引导：admin(owner) + 指定 project + 指定
+// database + admin_projects 关联 + 签发 TokenPair。不创建 API Key，登录后
+// 由 Console 的 API Key 页面生成。
 // 任一后续步骤失败时 best-effort 回删已建资源，避免「admin 已建但 project
 // 缺失」导致无法重试也无法登录的死锁；补偿失败只记日志。
-func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) (*SignUpResult, error) {
+func (s *Setup) SignUp(ctx context.Context, cmd SignUpCommand) (*SignUpResult, error) {
 	// setup token 校验先于一切状态检查：未配置即拒绝（引导入口默认关闭），
 	// 请求令牌与配置不一致同样拒绝，防止无凭据抢占首个 owner。
 	if s.setupToken == "" {
 		return nil, status.Error(codes.FailedPrecondition, "setup token is not configured; set TORCHWOOD_SECURITY_SETUP_TOKEN before bootstrapping")
 	}
-	if !setupTokenEqual(setupToken, s.setupToken) {
+	if !setupTokenEqual(cmd.SetupToken, s.setupToken) {
 		return nil, status.Error(codes.PermissionDenied, "invalid setup token")
+	}
+
+	projectID := strings.TrimSpace(cmd.ProjectID)
+	databaseID := strings.TrimSpace(cmd.DatabaseID)
+	if err := ident.ValidateSchemaResourceID(projectID); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "project_id must match ^[a-z][a-z0-9]{0,27}$")
+	}
+	if err := ident.ValidateSchemaResourceID(databaseID); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "database_id must match ^[a-z][a-z0-9]{0,27}$")
 	}
 
 	// 并发兜底：首次性检查与首个 admin 创建在 pg_advisory_xact_lock 事务内
@@ -146,15 +156,9 @@ func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) 
 		// Admins.Create 要求 admin actor（G2-4 纵深防御）；SignUp 是公开
 		// 引导端点，由本 use-case 完成 setup token 授权后代表平台执行首个
 		// owner 创建，故注入 bootstrap principal 表明授权来源。
-		bootstrapCtx := contexts.WithPrincipal(txCtx, &shared.Principal{
-			ActorID:         "setup",
-			ActorKind:       shared.ActorKindAdmin,
-			IsPlatformAdmin: true,
-			UserID:          "setup",
-		})
-		admin, err = s.admins.Create(bootstrapCtx, CreateAdminCommand{
-			Email:    email,
-			Password: password,
+		admin, err = s.admins.Create(bootstrapPrincipalCtx(txCtx), CreateAdminCommand{
+			Email:    cmd.Email,
+			Password: cmd.Password,
 			Role:     AdminRoleOwner,
 		})
 		return err
@@ -163,13 +167,14 @@ func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) 
 	}
 
 	var (
-		project *projects.Project
-		key     *projects.APIKey
+		project        *projects.Project
+		createdUserDB  bool
+		bootstrapWrite = bootstrapPrincipalCtx(ctx)
 	)
 	rollback := func() {
-		if key != nil {
-			if err := s.apiKeys.Delete(ctx, key.ProjectID, key.ID); err != nil {
-				slog.Warn("setup rollback: delete api key failed", "project", key.ProjectID, "key", key.ID, "error", err)
+		if createdUserDB {
+			if err := s.databases.DeleteDatabase(bootstrapWrite, project.ID, databaseID); err != nil {
+				slog.Warn("setup rollback: delete database failed", "project", project.ID, "database", databaseID, "error", err)
 			}
 		}
 		if project != nil {
@@ -185,23 +190,23 @@ func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) 
 	}
 
 	project, err = s.projects.CreateProjectInternal(ctx, server.CreateProjectCommand{
-		ID:          defaultProjectID,
-		Name:        defaultProjectName,
-		Description: defaultProjectDesc,
+		ID:          projectID,
+		Name:        projectID,
+		Description: "Bootstrap project",
 	})
 	if err != nil {
 		rollback()
-		return nil, status.Errorf(codes.Internal, "create default project: %v", err)
+		return nil, status.Errorf(codes.Internal, "create project: %v", err)
 	}
 
-	key, secret, err := s.apiKeys.CreateInternal(ctx, server.CreateAPIKeyCommand{
-		ProjectID: project.ID,
-		Name:      defaultAPIKeyName,
-		Scopes:    []string{defaultAPIKeyScope},
-	})
-	if err != nil {
-		rollback()
-		return nil, status.Errorf(codes.Internal, "create default api key: %v", err)
+	// 项目创建会 EnsureSystemCollections，自动带上系统 default 库。
+	// 调用方指定其它 database_id 时再额外创建业务库。
+	if databaseID != defaultDatabaseID {
+		if err := s.databases.CreateDatabase(bootstrapWrite, project.ID, databaseID, databaseID); err != nil {
+			rollback()
+			return nil, status.Errorf(codes.Internal, "create database: %v", err)
+		}
+		createdUserDB = true
 	}
 
 	// 保持 admin_projects 关联数据完整（owner 实际会被
@@ -212,17 +217,27 @@ func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) 
 	}
 
 	// 用规范化后的 email（Admins.Create 内部已小写化）签发 TokenPair。
-	tokens, err := s.auth.SignIn(ctx, SignInCommand{Email: admin.Email, Password: password})
+	tokens, err := s.auth.SignIn(ctx, SignInCommand{Email: admin.Email, Password: cmd.Password})
 	if err != nil {
 		rollback()
 		return nil, err
 	}
 
 	return &SignUpResult{
-		Admin:        admin,
-		Tokens:       tokens,
-		APIKeySecret: secret,
+		Admin:  admin,
+		Tokens: tokens,
 	}, nil
+}
+
+// bootstrapPrincipalCtx 注入引导路径专用的平台 admin 主体，供 Admins.Create
+// 与 Databases 写方法的 actor 守卫放行。SignUp 已完成 setup token 授权。
+func bootstrapPrincipalCtx(ctx context.Context) context.Context {
+	return contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:         "setup",
+		ActorKind:       shared.ActorKindAdmin,
+		IsPlatformAdmin: true,
+		UserID:          "setup",
+	})
 }
 
 // setupTokenEqual 常量时间比较 setup token，避免时序侧信道。

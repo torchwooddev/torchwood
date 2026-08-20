@@ -28,7 +28,7 @@
 | 0.1 | 基础设施启动 | `task up` | Postgres / Redis / MinIO 容器健康 | [x] |
 | 0.2 | 环境变量 | 复制 `.env.example` → `.env`，设置 `TORCHWOOD_SECURITY_JWT_SECRET` 等非空值 | 服务可读取配置 | [x] |
 | 0.3 | 数据库迁移 | `task migrate` | `000001`、`000002` 迁移成功；存在 `audit_logs`、`admin_projects` 表 | [x] |
-| 0.4 | 首次部署引导（bootstrap） | 全新数据库启动 server 后打开 `/console/`，按「初始化设置」表单注册第一个管理员 | 注册成功即进入 Console；页面展示一次默认 API Key secret（scope=`all`）；`GET /v1/console/auth/setup-status` 返回 `{"needs_setup":false}`；二次 `POST /v1/console/auth/sign-up` 返回 `FailedPrecondition` | [x] |
+| 0.4 | 首次部署引导（bootstrap） | 全新数据库启动 server 后打开 `/console/`，按「初始化设置」表单填写 email/password/project id/database id 注册第一个管理员 | 注册成功即进入 Console；指定 project 与 database 已创建；未生成 API Key；`GET /v1/console/auth/setup-status` 返回 `{"needs_setup":false}`；二次 `POST /v1/console/auth/sign-up` 返回 `FailedPrecondition`；登录后在 API Keys 页面可创建密钥 | [x] |
 | 0.5 | Console 构建 | `task console-build`（若验收嵌入版 Console） | `console/dist/` 生成且无报错 | [x] |
 | 0.6 | 服务启动 | `task dev-server` 或 `task build && ./bin/server` | gRPC / HTTP / Metrics 均监听；无启动 panic | [x] |
 | 0.7 | 健康检查 | `GET /v1/health` | `{"status":"ok"}` 或等价 200 响应 | [x] |
@@ -36,9 +36,10 @@
 **记录 bootstrap 输出（验收过程使用）：**
 
 ```
-API Key Secret: _______________________
-Project ID: default
+Project ID: _______________________
+Database ID: _______________________
 Console Admin: <注册时填写的 email>（owner）
+API Key：登录后在 Console → API Keys 页面创建
 ```
 
 ---

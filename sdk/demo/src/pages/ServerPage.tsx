@@ -38,7 +38,7 @@ export function ServerPage() {
           <Link className="text-Torchwood-accent underline" to="/app/settings">
             设置
           </Link>{" "}
-          填写 Server API Key（首次部署引导 `/console/` 注册管理员时展示的默认 API Key）。
+          填写 Server API Key（登录 Console 后在 API Keys 页面创建）。
         </div>
       ) : null}
 

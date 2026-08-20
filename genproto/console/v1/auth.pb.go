@@ -312,7 +312,12 @@ type SignUpRequest struct {
 	Email    string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 	Password string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 	// Console 引导令牌（security.setup_token / TORCHWOOD_SECURITY_SETUP_TOKEN）。
-	SetupToken    string `protobuf:"bytes,3,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
+	SetupToken string `protobuf:"bytes,3,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
+	// 首个项目 ID，须匹配 ^[a-z][a-z0-9]{0,27}$。
+	ProjectId string `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// 首个业务数据库 ID，规则同 project_id。系统集合所在的 default 库会随
+	// 项目自动创建；填写 default 即使用该库，填写其他 id 则额外创建业务库。
+	DatabaseId    string `protobuf:"bytes,5,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -368,14 +373,27 @@ func (x *SignUpRequest) GetSetupToken() string {
 	return ""
 }
 
+func (x *SignUpRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *SignUpRequest) GetDatabaseId() string {
+	if x != nil {
+		return x.DatabaseId
+	}
+	return ""
+}
+
 type SignUpResponse struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Admin               *Admin                 `protobuf:"bytes,1,opt,name=admin,proto3" json:"admin,omitempty"`                                // 复用 admins.proto 的 Admin 消息
-	AccessToken         string                 `protobuf:"bytes,2,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"` // 与 SignInResponse 一致，便于前端统一处理
-	RefreshToken        string                 `protobuf:"bytes,3,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
-	DefaultApiKeySecret string                 `protobuf:"bytes,4,opt,name=default_api_key_secret,json=defaultApiKeySecret,proto3" json:"default_api_key_secret,omitempty"` // 仅此一次返回明文
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Admin         *Admin                 `protobuf:"bytes,1,opt,name=admin,proto3" json:"admin,omitempty"`                                // 复用 admins.proto 的 Admin 消息
+	AccessToken   string                 `protobuf:"bytes,2,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"` // 与 SignInResponse 一致，便于前端统一处理
+	RefreshToken  string                 `protobuf:"bytes,3,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SignUpResponse) Reset() {
@@ -429,13 +447,6 @@ func (x *SignUpResponse) GetRefreshToken() string {
 	return ""
 }
 
-func (x *SignUpResponse) GetDefaultApiKeySecret() string {
-	if x != nil {
-		return x.DefaultApiKeySecret
-	}
-	return ""
-}
-
 var File_console_v1_auth_proto protoreflect.FileDescriptor
 
 const file_console_v1_auth_proto_rawDesc = "" +
@@ -456,17 +467,20 @@ const file_console_v1_auth_proto_rawDesc = "" +
 	"\x16GetSetupStatusResponse\x12\x1f\n" +
 	"\vneeds_setup\x18\x01 \x01(\bR\n" +
 	"needsSetup\x120\n" +
-	"\x14setup_token_required\x18\x02 \x01(\bR\x12setupTokenRequired\"b\n" +
+	"\x14setup_token_required\x18\x02 \x01(\bR\x12setupTokenRequired\"\xa2\x01\n" +
 	"\rSignUpRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x1f\n" +
 	"\vsetup_token\x18\x03 \x01(\tR\n" +
-	"setupToken\"\xc0\x01\n" +
+	"setupToken\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x04 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vdatabase_id\x18\x05 \x01(\tR\n" +
+	"databaseId\"\xa9\x01\n" +
 	"\x0eSignUpResponse\x121\n" +
 	"\x05admin\x18\x01 \x01(\v2\x1b.torchwood.console.v1.AdminR\x05admin\x12!\n" +
 	"\faccess_token\x18\x02 \x01(\tR\vaccessToken\x12#\n" +
-	"\rrefresh_token\x18\x03 \x01(\tR\frefreshToken\x123\n" +
-	"\x16default_api_key_secret\x18\x04 \x01(\tR\x13defaultApiKeySecret2\x9f\x05\n" +
+	"\rrefresh_token\x18\x03 \x01(\tR\frefreshTokenJ\x04\b\x04\x10\x05R\x16default_api_key_secret2\x9f\x05\n" +
 	"\x12ConsoleAuthService\x12x\n" +
 	"\x06SignIn\x12#.torchwood.console.v1.SignInRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-in\x12\x84\x01\n" +
 	"\fRefreshToken\x12).torchwood.console.v1.RefreshTokenRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/refresh\x12q\n" +

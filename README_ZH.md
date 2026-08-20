@@ -114,13 +114,14 @@ task dev-server
 
 全新数据库上启动后，打开 Admin Console `http://127.0.0.1:9080/console/`，
 登录页会自动切换为「初始化设置」表单。使用你配置的 `TORCHWOOD_SECURITY_SETUP_TOKEN`
-注册第一个管理员将自动：
+注册第一个管理员时需同时填写 `project id` 与 `database id`，将自动：
 
 - 创建 owner 管理员账户（首个管理员固定为 `owner`）；
-- 创建默认项目（id=`default`）与默认 API Key（scope=`all`）；
-- 页面展示一次默认 API Key secret（请立即复制，此后无法再读取）。
+- 创建指定项目（随项目自动创建系统 `default` 库）；若 `database id` 不是
+  `default`，再额外创建该业务库。
 
-使用该 secret 以 `x-api-key` metadata 调用 Server API 即可。
+API Key **不在注册时生成**。登录后进入 Console 的 **API Keys** 页面创建，
+再用该 secret 以 `x-api-key` metadata 调用 Server API。
 
 访问（默认取自 `configs/config.yaml.template`，并非硬编码）：
 

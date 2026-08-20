@@ -5,25 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Copy } from "lucide-react";
-import { toast } from "sonner";
 import { getSetupStatus, signUp } from "@/api/auth";
 
 type SetupState = "loading" | "login" | "setup";
+
+const schemaResourceIDPattern = "^[a-z][a-z0-9]{0,27}$";
+const schemaResourceIDHint = "小写字母开头，仅小写字母与数字，最长 28。创建后不可改。";
 
 export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [setupToken, setSetupToken] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [databaseId, setDatabaseId] = useState("");
   const [setupTokenRequired, setSetupTokenRequired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,8 +26,6 @@ export function Login() {
   const [setupState, setSetupState] = useState<SetupState>("loading");
   // setup-status 探测失败时展示错误 + 重试按钮，同时退回登录表单不阻塞登录。
   const [setupProbeError, setSetupProbeError] = useState<string | null>(null);
-  // 默认 API Key 明文 secret 仅展示一次，不持久化。
-  const [apiKeySecret, setApiKeySecret] = useState<string | null>(null);
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -89,13 +82,17 @@ export function Login() {
     }
     setLoading(true);
     try {
-      const result = await signUp({
+      await signUp({
         email,
         password,
         setup_token: setupTokenRequired ? setupToken : undefined,
+        project_id: projectId,
+        database_id: databaseId,
       });
-      // 会话 cookie 已由服务端下发；展示一次默认 API Key secret。
-      setApiKeySecret(result.default_api_key_secret);
+      // 会话 cookie 已由服务端下发；再调 login 同步本地认证状态后进入 Console。
+      // API Key 不在引导阶段生成，登录后到 API Keys 页面创建。
+      await login(email, password);
+      navigate("/console", { replace: true });
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg || "Setup failed");
@@ -104,32 +101,11 @@ export function Login() {
     }
   };
 
-  // enterConsole 在用户确认复制 secret 后进入 Console（调用 login 同步
-  // 本地认证状态，会话 cookie 已由 sign-up 下发）。
-  const enterConsole = async () => {
-    try {
-      await login(email, password);
-    } catch (err) {
-      // login 已跳过全局 toast，错误需由本页展示。
-      const msg = extractErrorMessage(err);
-      toast.error(msg || "登录失败，请重试");
-    } finally {
-      navigate("/console", { replace: true });
-    }
-  };
-
-  const copySecret = () => {
-    if (apiKeySecret) {
-      navigator.clipboard.writeText(apiKeySecret);
-      toast.success("Secret 已复制");
-    }
-  };
-
   const isSetup = setupState === "setup";
 
   return (
-    <div className="flex h-screen items-center justify-center bg-muted/40">
-      <Card className="w-full max-w-sm">
+    <div className="flex min-h-screen items-center justify-center overflow-y-auto bg-muted/40 p-4">
+      <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Torchwood Console</CardTitle>
           <CardDescription>
@@ -172,6 +148,39 @@ export function Login() {
                 />
               </div>
             )}
+            {isSetup && (
+              <div className="space-y-2">
+                <Label htmlFor="project-id">Project ID</Label>
+                <Input
+                  id="project-id"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  required
+                  pattern={schemaResourceIDPattern}
+                  maxLength={28}
+                  placeholder="shop"
+                />
+                <p className="text-xs text-muted-foreground">{schemaResourceIDHint}</p>
+              </div>
+            )}
+            {isSetup && (
+              <div className="space-y-2">
+                <Label htmlFor="database-id">Database ID</Label>
+                <Input
+                  id="database-id"
+                  value={databaseId}
+                  onChange={(e) => setDatabaseId(e.target.value)}
+                  required
+                  pattern={schemaResourceIDPattern}
+                  maxLength={28}
+                  placeholder="app"
+                />
+                <p className="text-xs text-muted-foreground">
+                  规则同上。系统 default 库会随项目自动创建；填 default 使用该库，填其他 id
+                  则额外创建业务库。
+                </p>
+              </div>
+            )}
             {isSetup && setupTokenRequired && (
               <div className="space-y-2">
                 <Label htmlFor="setup-token">Setup Token</Label>
@@ -201,8 +210,8 @@ export function Login() {
             {error && <p className="text-sm text-destructive">{error}</p>}
             {isSetup && (
               <p className="text-xs text-muted-foreground">
-                注册后自动创建默认项目（default）与默认 API Key（scope=all），
-                首个管理员将获得 owner 角色。
+                注册后创建指定项目与数据库，首个管理员获得 owner 角色。
+                API Key 请登录后到 API Keys 页面生成。
               </p>
             )}
           </CardContent>
@@ -219,30 +228,6 @@ export function Login() {
           </CardFooter>
         </form>
       </Card>
-
-      <Dialog open={apiKeySecret !== null} onOpenChange={() => {}}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>初始化完成</DialogTitle>
-            <DialogDescription>
-              管理员账户已创建，你已自动获得 owner 角色。默认 API Key 的
-              Secret 仅在此显示一次，请立即复制并妥善保存。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="rounded-md bg-muted p-4 flex items-center justify-between gap-4">
-            <code className="break-all text-xs flex-1">{apiKeySecret}</code>
-            <Button variant="secondary" size="sm" type="button" onClick={copySecret}>
-              <Copy className="h-4 w-4 mr-1" />
-              复制
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button onClick={enterConsole} className="w-full sm:w-auto">
-              进入 Console
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

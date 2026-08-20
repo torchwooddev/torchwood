@@ -68,17 +68,22 @@ func (s *AuthService) GetSetupStatus(ctx context.Context, _ *consolev1.GetSetupS
 }
 
 func (s *AuthService) SignUp(ctx context.Context, req *consolev1.SignUpRequest) (*consolev1.SignUpResponse, error) {
-	result, err := s.setup.SignUp(ctx, req.GetEmail(), req.GetPassword(), req.GetSetupToken())
+	result, err := s.setup.SignUp(ctx, console.SignUpCommand{
+		Email:      req.GetEmail(),
+		Password:   req.GetPassword(),
+		SetupToken: req.GetSetupToken(),
+		ProjectID:  req.GetProjectId(),
+		DatabaseID: req.GetDatabaseId(),
+	})
 	if err != nil {
 		return nil, err
 	}
 	// 与 SignIn 一致：注册成功后下发会话 cookie，浏览器端免再次登录。
 	setSessionCookies(ctx, s.auth, result.Tokens)
 	return &consolev1.SignUpResponse{
-		Admin:               mapAdmin(result.Admin),
-		AccessToken:         result.Tokens.AccessToken,
-		RefreshToken:        result.Tokens.RefreshToken,
-		DefaultApiKeySecret: result.APIKeySecret,
+		Admin:        mapAdmin(result.Admin),
+		AccessToken:  result.Tokens.AccessToken,
+		RefreshToken: result.Tokens.RefreshToken,
 	}, nil
 }
 

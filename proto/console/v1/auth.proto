@@ -70,8 +70,8 @@ service ConsoleAuthService {
   }
 
   // 首个管理员注册：仅当 admins 表为空且携带正确 setup token 时可用；
-  // 注册成功后自动创建默认 project（id=default）与默认 API Key
-  // （scope=all，明文仅此一次返回）。
+  // 须同时指定 project_id 与 database_id，创建 owner + 项目 + 数据库。
+  // 不生成 API Key，登录后在 Console 的 API Key 页面创建。
   rpc SignUp(SignUpRequest) returns (SignUpResponse) {
     option (google.api.http) = { post: "/v1/console/auth/sign-up", body: "*" };
   }
@@ -108,11 +108,17 @@ message SignUpRequest {
   string password = 2;
   // Console 引导令牌（security.setup_token / TORCHWOOD_SECURITY_SETUP_TOKEN）。
   string setup_token = 3;
+  // 首个项目 ID，须匹配 ^[a-z][a-z0-9]{0,27}$。
+  string project_id = 4;
+  // 首个业务数据库 ID，规则同 project_id。系统集合所在的 default 库会随
+  // 项目自动创建；填写 default 即使用该库，填写其他 id 则额外创建业务库。
+  string database_id = 5;
 }
 
 message SignUpResponse {
   Admin admin = 1;                   // 复用 admins.proto 的 Admin 消息
   string access_token = 2;           // 与 SignInResponse 一致，便于前端统一处理
   string refresh_token = 3;
-  string default_api_key_secret = 4; // 仅此一次返回明文
+  reserved 4;
+  reserved "default_api_key_secret";
 }

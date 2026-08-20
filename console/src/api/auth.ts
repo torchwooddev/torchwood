@@ -47,16 +47,16 @@ export interface SignUpInput {
   password: string;
   // 服务端配置了引导令牌时必填，否则注册被拒绝。
   setup_token?: string;
+  project_id: string;
+  database_id: string;
 }
 
 export interface SignUpResult {
   admin: { id: string; email: string; role: string };
-  // default_api_key_secret 仅此一次返回，前端只展示不持久化。
-  default_api_key_secret: string;
 }
 
-// signUp 注册首个管理员（owner）。成功后服务端通过 HttpOnly cookie 下发
-// 会话凭证，浏览器端无需再次登录。
+// signUp 注册首个管理员（owner）并创建指定 project / database。
+// 不生成 API Key。成功后服务端通过 HttpOnly cookie 下发会话凭证。
 // __skipToast：初始化页自行渲染错误，避免全局 toast 双显。
 export async function signUp(input: SignUpInput): Promise<SignUpResult> {
   const config: ApiRequestConfig = { __skipToast: true };

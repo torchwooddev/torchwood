@@ -114,13 +114,16 @@ task dev-server
 
 On a fresh database, open the Admin Console at `http://127.0.0.1:9080/console/`.
 The login page switches to the **setup form**. Registering the first admin
-(with the `TORCHWOOD_SECURITY_SETUP_TOKEN` you configured) automatically:
+(with the `TORCHWOOD_SECURITY_SETUP_TOKEN` you configured) requires a
+`project_id` and `database_id`, and automatically:
 
 - creates the owner admin account (first admin is always `owner`);
-- creates the default project (`default`) and a default API Key (scope `all`);
-- shows the API Key secret **once** (copy it, it cannot be retrieved later).
+- creates the specified project (system `default` database is created with it)
+  and, if `database_id` is not `default`, the specified application database.
 
-Use that secret with `x-api-key` metadata to call the Server API.
+API Keys are **not** created during setup. After login, open **API Keys** in
+the Console to generate a key. Use that secret with `x-api-key` metadata to
+call the Server API.
 
 Endpoints (defaults from `configs/config.yaml.template`; not hardcoded):
 

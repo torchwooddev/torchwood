@@ -138,16 +138,17 @@ task dev-server    # go run ./cmd/server
 全新数据库上，浏览器打开 Console 地址 → 登录页会自动切换为「初始化设置」
 表单。**前提：必须已配置 `TORCHWOOD_SECURITY_SETUP_TOKEN`**（未配置时注册
 被拒绝，`internal/app/console/setup.go` 的 `SignUp` 直接返回 FailedPrecondition）。
-注册第一个管理员将自动：
+注册第一个管理员时需同时填写 `project_id` 与 `database_id`，将自动：
 
 - 创建 **owner** 管理员账户（首个管理员固定为超管，仅当 `admins` 表为空
   时可用；`POST /v1/console/auth/sign-up` 二次调用返回 `FailedPrecondition`）；
-- 创建默认项目（id = `default`）与默认 API Key（scope = `all`，明文 secret
-  **仅注册响应展示一次**；请立即复制，此后无法再读取）；
+- 创建指定项目（随项目自动创建系统 `default` 库）；若 `database_id` 不是
+  `default`，再额外创建该业务库；
 - 注册成功后直接进入 Console（会话为 HttpOnly cookie
   `TORCHWOOD_session_console`，前端不存储 token）。
 
-用该 secret 以 `x-api-key` metadata 调用 Server API 即可（如
+API Key **不在注册时生成**。登录后进入 Console 的 **API Keys** 页面创建，
+再用该 secret 以 `x-api-key` metadata 调用 Server API（如
 `UsersService/ListUsers`）。后续管理员由 Console 的「管理员」页面创建。
 
 ---

@@ -160,11 +160,8 @@ UnaryAuthMiddleware(ctx, req)
   - 安全收窄：`EnsureSystemCollections` 会执行 `cleanupKeysWritePerms`，移除 `users` / `sessions` / `identities` 集合上存量的 `update:keys` / `delete:keys`，`groups` / `memberships` 保留。
 - 特权主体（`SystemPrincipal`、PlatformAdmin）才走完全绕过（`IsSystem()`）。
 
-首次部署引导（Console「初始化设置」注册第一个管理员）创建的默认 API Key 使用 `all` scope（全量放行，等价于旧的逐资源 read/write 组合）：
-
-```go
-Scopes: []string{"all"}
-```
+API Key 不在首次部署引导中生成。登录 Console 后到 **API Keys** 页面创建；
+scope 由创建者指定（`all` 表示全量放行，等价于旧的逐资源 read/write 组合）。
 
 ---
 
