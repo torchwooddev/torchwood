@@ -26,11 +26,12 @@ type FunctionRepo interface {
 	GetExecution(ctx context.Context, projectID, functionID, executionID string) (*ExecutionRecord, error)
 	ListExecutions(ctx context.Context, projectID, functionID string, limit int) ([]ExecutionRecord, error)
 	UpdateExecution(ctx context.Context, e *ExecutionRecord) error
-	// RecoverOrphanExecutions 将停留 building/running 超过 staleAfter 的记录
-	// 标记为 failed（worker 启动对账；queued 任务仍在队列中，不应标记）。
-	RecoverOrphanExecutions(ctx context.Context, staleAfter time.Duration) (int64, error)
-	// PruneOldExecutions 清理超过 keepRecent 条的最新之外记录（保留策略）。
-	PruneOldExecutions(ctx context.Context, functionID string, keepRecent int) error
+	// RecoverOrphanExecutionsInProject 将指定项目中停留 building/running 且
+	// updated_at < olderThan 的记录标记为 failed（queued 仍在 Redis 队列，不标）。
+	// limit 是本项目本轮上限，供 app/worker 扣减全局预算。
+	RecoverOrphanExecutionsInProject(ctx context.Context, projectID string, olderThan time.Time, limit int) (int64, error)
+	// PruneOldExecutionsInProject 清理该项目该函数超过 keepRecent 条最新之外的记录。
+	PruneOldExecutionsInProject(ctx context.Context, projectID, functionID string, keepRecent int) error
 }
 
 // Function 状态常量。

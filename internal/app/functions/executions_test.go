@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
+	domainprojects "github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -402,10 +403,48 @@ func TestCreateExecution_MetersFunctionDuration(t *testing.T) {
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0, DurationMS: 42}, nil)
 	meter := &recUsage{}
-	uc := NewFunctionsWithUsage(&config.AppConfig{}, executor, repo, newMockQueue(), meter)
+	uc := NewFunctionsWithUsage(&config.AppConfig{}, executor, repo, newMockQueue(), meter, nil)
 
 	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.NoError(t, err)
 	require.Equal(t, int64(42), rec.DurationMS)
 	require.Equal(t, int64(42), meter.n)
+}
+
+type stubProjectRepo struct {
+	list []domainprojects.Project
+}
+
+func (s *stubProjectRepo) CreateProject(context.Context, *domainprojects.Project) error {
+	return nil
+}
+func (s *stubProjectRepo) GetProject(context.Context, string) (*domainprojects.Project, error) {
+	return nil, nil
+}
+func (s *stubProjectRepo) GetProjectByName(context.Context, string) (*domainprojects.Project, error) {
+	return nil, nil
+}
+func (s *stubProjectRepo) ListProjects(context.Context) ([]domainprojects.Project, error) {
+	return s.list, nil
+}
+func (s *stubProjectRepo) UpdateProject(context.Context, *domainprojects.Project) error {
+	return nil
+}
+func (s *stubProjectRepo) DeleteProject(context.Context, string) error { return nil }
+
+func TestRecoverOrphanExecutions_EnumeratesActiveProjectsWithBudget(t *testing.T) {
+	repo := newMockRepo()
+	repo.recoverEach = 300
+	projects := &stubProjectRepo{list: []domainprojects.Project{
+		{ID: "p1", Status: "active"},
+		{ID: "p-off", Status: "suspended"},
+		{ID: "p2", Status: "active"},
+	}}
+	uc := NewFunctionsWithUsage(&config.AppConfig{}, newMockExecutor(nil, nil), repo, newMockQueue(), nil, projects)
+
+	n, err := uc.RecoverOrphanExecutions(context.Background(), time.Hour)
+	require.NoError(t, err)
+	require.Equal(t, int64(500), n, "全局预算 500：p1 扣 300，p2 扣 remaining 200")
+	require.Equal(t, []string{"p1", "p2"}, repo.recoverCalls)
+	require.Equal(t, []int{500, 200}, repo.recoverLimits)
 }

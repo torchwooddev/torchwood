@@ -365,10 +365,10 @@ func (r *functionsTestRepo) ListExecutions(context.Context, string, string, int)
 func (r *functionsTestRepo) UpdateExecution(context.Context, *domainfunctions.ExecutionRecord) error {
 	return nil
 }
-func (r *functionsTestRepo) RecoverOrphanExecutions(context.Context, time.Duration) (int64, error) {
+func (r *functionsTestRepo) RecoverOrphanExecutionsInProject(context.Context, string, time.Time, int) (int64, error) {
 	return 0, nil
 }
-func (r *functionsTestRepo) PruneOldExecutions(context.Context, string, int) error {
+func (r *functionsTestRepo) PruneOldExecutionsInProject(context.Context, string, string, int) error {
 	return nil
 }
 

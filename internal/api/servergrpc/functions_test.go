@@ -67,10 +67,12 @@ func (r *stubRepo) ListExecutions(context.Context, string, string, int) ([]domai
 func (r *stubRepo) UpdateExecution(context.Context, *domainfunctions.ExecutionRecord) error {
 	return nil
 }
-func (r *stubRepo) RecoverOrphanExecutions(context.Context, time.Duration) (int64, error) {
+func (r *stubRepo) RecoverOrphanExecutionsInProject(context.Context, string, time.Time, int) (int64, error) {
 	return 0, nil
 }
-func (r *stubRepo) PruneOldExecutions(context.Context, string, int) error { return nil }
+func (r *stubRepo) PruneOldExecutionsInProject(context.Context, string, string, int) error {
+	return nil
+}
 
 type stubExecutor struct{}
 

@@ -23,6 +23,7 @@ const (
 	maxEnvBytes           = 32 << 10 // env vars 总量 ≤ 32KB
 	maxOutputBytes        = 64 << 10 // stdout/stderr/response 截断上限
 	pruneKeepRecent       = 100      // 保留策略：每函数最多保留最近 100 条
+	recoverOrphanBatch    = 500      // worker 启动对账全局预算（K22）
 	// workerRebuildTimeout 是 worker 补构建的最长耗时（防挂死的 daemon 卡住消费）。
 	workerRebuildTimeout = 5 * time.Minute
 )
@@ -150,7 +151,7 @@ func (f *Functions) CreateExecution(ctx context.Context, cmd CreateExecutionComm
 	}
 
 	// 保留策略：清理该函数超过最近 100 条的更旧记录（失败仅记日志）。
-	_ = f.repo.PruneOldExecutions(ctx, cmd.FunctionID, pruneKeepRecent)
+	_ = f.repo.PruneOldExecutionsInProject(ctx, cmd.ProjectID, cmd.FunctionID, pruneKeepRecent)
 	return rec, nil
 }
 
@@ -345,7 +346,7 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 		return err
 	}
 	f.meterDuration(ctx, rec.ProjectID, rec.DurationMS)
-	_ = f.repo.PruneOldExecutions(ctx, msg.FunctionID, pruneKeepRecent)
+	_ = f.repo.PruneOldExecutionsInProject(ctx, msg.ProjectID, msg.FunctionID, pruneKeepRecent)
 	return nil
 }
 
@@ -397,10 +398,35 @@ func (f *Functions) MarkExecutionFailed(ctx context.Context, projectID, function
 	return f.repo.UpdateExecution(ctx, rec)
 }
 
-// RecoverOrphanExecutions 将停留 queued/building/running 超过 staleAfter 的记录
-// 标记为 failed（worker 启动对账）。
+// RecoverOrphanExecutions 按 public.projects 枚举 active 项目，将停留
+// building/running 超过 staleAfter 的记录标记为 failed（worker 启动对账）。
+// 全局预算 recoverOrphanBatch，foreach 项目扣减 remaining。
 func (f *Functions) RecoverOrphanExecutions(ctx context.Context, staleAfter time.Duration) (int64, error) {
-	return f.repo.RecoverOrphanExecutions(ctx, staleAfter)
+	if f.projects == nil {
+		return 0, nil
+	}
+	all, err := f.projects.ListProjects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	olderThan := time.Now().Add(-staleAfter)
+	remaining := recoverOrphanBatch
+	var n int64
+	for i := range all {
+		if remaining <= 0 {
+			break
+		}
+		if all[i].Status != "active" {
+			continue
+		}
+		c, err := f.repo.RecoverOrphanExecutionsInProject(ctx, all[i].ID, olderThan, remaining)
+		if err != nil {
+			continue
+		}
+		n += c
+		remaining -= int(c)
+	}
+	return n, nil
 }
 
 func (f *Functions) ListExecutions(ctx context.Context, projectID, functionID string) ([]domainfunctions.ExecutionRecord, error) {

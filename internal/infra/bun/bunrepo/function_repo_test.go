@@ -70,8 +70,9 @@ func TestFunctionRepository_CRUDAndRelations(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "hello", got.Name)
 
-	// 跨项目不可见。
-	missing, err := repo.GetFunction(ctx, "other-project", fn.ID)
+	otherID, _, otherCleanup := testutil.CreateTestProject(ctx, db)
+	defer otherCleanup()
+	missing, err := repo.GetFunction(ctx, otherID, fn.ID)
 	require.NoError(t, err)
 	require.Nil(t, missing)
 
@@ -156,7 +157,7 @@ func TestFunctionRepository_PruneOldExecutions(t *testing.T) {
 			UpdatedAt:    time.Now(),
 		}))
 	}
-	require.NoError(t, repo.PruneOldExecutions(ctx, fn.ID, 3))
+	require.NoError(t, repo.PruneOldExecutionsInProject(ctx, projectID, fn.ID, 3))
 	recs, err := repo.ListExecutions(ctx, projectID, fn.ID, 100)
 	require.NoError(t, err)
 	require.Len(t, recs, 3, "仅保留最近 3 条")
@@ -175,21 +176,24 @@ func TestFunctionRepository_WritePathsAreProjectScoped(t *testing.T) {
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
+	otherID, _, otherCleanup := testutil.CreateTestProject(ctx, db)
+	defer otherCleanup()
 
 	repo := bunrepo.NewFunctionRepository(db)
 	fn := seedFunctionRow(t, ctx, repo, projectID)
 	dep := seedDeploymentRow(t, ctx, repo, fn, domainfunctions.DeploymentStatusReady)
 	require.NoError(t, repo.SetVariables(ctx, projectID, fn.ID, map[string]string{"A": "1"}))
 
-	// 跨项目 SetVariables 全量替换不得清掉本项目的变量。
-	require.NoError(t, repo.SetVariables(ctx, "other-project", fn.ID, map[string]string{"B": "2"}))
+	// 跨项目 SetVariables：目标 schema 无该 function 行（FK），必须失败且不得清掉本项目变量。
+	err := repo.SetVariables(ctx, otherID, fn.ID, map[string]string{"B": "2"})
+	require.Error(t, err)
 	vars, err := repo.GetVariables(ctx, projectID, fn.ID)
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"A": "1"}, vars, "跨项目 SetVariables 不得影响本项目变量")
 
 	// 跨项目 UpdateFunction 不得改名/更新。
 	crossFn := *fn
-	crossFn.ProjectID = "other-project"
+	crossFn.ProjectID = otherID
 	crossFn.Name = "hijacked"
 	crossFn.UpdatedAt = time.Now()
 	require.NoError(t, repo.UpdateFunction(ctx, &crossFn))
@@ -199,7 +203,7 @@ func TestFunctionRepository_WritePathsAreProjectScoped(t *testing.T) {
 
 	// 跨项目 UpdateDeployment（同 function id）不得改状态。
 	crossDep := *dep
-	crossDep.ProjectID = "other-project"
+	crossDep.ProjectID = otherID
 	crossDep.Status = domainfunctions.DeploymentStatusFailed
 	require.NoError(t, repo.UpdateDeployment(ctx, &crossDep))
 	gotDep, err := repo.GetDeployment(ctx, projectID, fn.ID, dep.ID)
@@ -263,7 +267,7 @@ func TestFunctionRepository_RecoverOrphanExecutions(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateExecution(ctx, fresh))
 
-	n, err := repo.RecoverOrphanExecutions(ctx, time.Hour)
+	n, err := repo.RecoverOrphanExecutionsInProject(ctx, projectID, time.Now().Add(-time.Hour), 500)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), n)
 
@@ -275,4 +279,30 @@ func TestFunctionRepository_RecoverOrphanExecutions(t *testing.T) {
 	got, err = repo.GetExecution(ctx, projectID, fn.ID, "exe_fresh")
 	require.NoError(t, err)
 	require.Equal(t, domainfunctions.ExecutionStatusQueued, got.Status, "未过期的记录不受影响")
+
+	otherID, _, otherCleanup := testutil.CreateTestProject(ctx, db)
+	defer otherCleanup()
+	otherFn := &domainfunctions.Function{
+		ID: "fn_other", ProjectID: otherID, Name: "other", Runtime: "node-18.0",
+		Entrypoint: "index.main", TimeoutSeconds: 15, Spec: "shared-1x", Enabled: true,
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.CreateFunction(ctx, otherFn))
+	otherDep := seedDeploymentRow(t, ctx, repo, otherFn, domainfunctions.DeploymentStatusReady)
+	require.NoError(t, repo.CreateExecution(ctx, &domainfunctions.ExecutionRecord{
+		ID: "exe_other", FunctionID: otherFn.ID, ProjectID: otherID, DeploymentID: otherDep.ID,
+		Status:    domainfunctions.ExecutionStatusRunning,
+		CreatedAt: time.Now().Add(-2 * time.Hour), UpdatedAt: time.Now().Add(-2 * time.Hour),
+	}))
+	n, err = repo.RecoverOrphanExecutionsInProject(ctx, projectID, time.Now().Add(-time.Hour), 500)
+	require.NoError(t, err)
+	require.Zero(t, n, "本项目已无孤儿")
+	got, err = repo.GetExecution(ctx, otherID, otherFn.ID, "exe_other")
+	require.NoError(t, err)
+	require.Equal(t, domainfunctions.ExecutionStatusRunning, got.Status, "不得扫到其它项目")
+
+	var publicN int
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM public.functions WHERE project_id = ?`, projectID).Scan(&publicN))
+	require.Zero(t, publicN, "PR5: functions 不得再写 public")
 }

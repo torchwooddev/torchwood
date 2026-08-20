@@ -1,6 +1,8 @@
 package bunrepo
 
 import (
+	"strings"
+
 	"github.com/torchwooddev/torchwood/pkg/ident"
 	"github.com/uptrace/bun"
 )
@@ -17,4 +19,13 @@ func ProjectTable(projectID, table, alias string) (bun.Ident, string, error) {
 		expr += " AS " + alias
 	}
 	return bun.Ident(schema), expr, nil
+}
+
+// ProjectQuoted 返回 quoteIdent 后的项目 schema 名，供 Raw SQL。
+func ProjectQuoted(projectID string) (string, error) {
+	schema, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		return "", err
+	}
+	return `"` + strings.ReplaceAll(schema, `"`, `""`) + `"`, nil
 }

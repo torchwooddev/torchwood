@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/uptrace/bun"
 )
 
@@ -20,15 +22,34 @@ func NewFunctionRepository(db *clients.Database) domainfunctions.FunctionRepo {
 	return &functionRepo{db: db}
 }
 
+func (r *functionRepo) scoped(ctx context.Context, projectID, table, alias string) (bun.IDB, bun.Ident, string, error) {
+	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+		return nil, bun.Ident(""), "", err
+	}
+	sch, expr, err := ProjectTable(projectID, table, alias)
+	if err != nil {
+		return nil, bun.Ident(""), "", err
+	}
+	return r.db.Conn(ctx), sch, expr, nil
+}
+
 func (r *functionRepo) CreateFunction(ctx context.Context, fn *domainfunctions.Function) error {
+	conn, sch, expr, err := r.scoped(ctx, fn.ProjectID, "functions", "f")
+	if err != nil {
+		return err
+	}
 	m := mapFunctionToModel(fn)
-	_, err := r.db.NewInsert().Model(m).Exec(ctx)
+	_, err = conn.NewInsert().Model(m).ModelTableExpr(expr, sch).Exec(ctx)
 	return err
 }
 
 func (r *functionRepo) GetFunction(ctx context.Context, projectID, functionID string) (*domainfunctions.Function, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "functions", "f")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.Function)
-	err := r.db.NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("f.project_id = ?", projectID).
 		Where("f.id = ?", functionID).
 		Scan(ctx)
@@ -42,9 +63,13 @@ func (r *functionRepo) GetFunction(ctx context.Context, projectID, functionID st
 }
 
 func (r *functionRepo) ListFunctions(ctx context.Context, projectID string) ([]domainfunctions.Function, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "functions", "f")
+	if err != nil {
+		return nil, err
+	}
 	var ms []model.Function
-	err := r.db.NewSelect().Model(&ms).
-		Where("project_id = ?", projectID).
+	err = conn.NewSelect().Model(&ms).ModelTableExpr(expr, sch).
+		Where("f.project_id = ?", projectID).
 		Order("created_at DESC").
 		Scan(ctx)
 	if err != nil {
@@ -58,16 +83,23 @@ func (r *functionRepo) ListFunctions(ctx context.Context, projectID string) ([]d
 }
 
 func (r *functionRepo) UpdateFunction(ctx context.Context, fn *domainfunctions.Function) error {
+	conn, sch, expr, err := r.scoped(ctx, fn.ProjectID, "functions", "f")
+	if err != nil {
+		return err
+	}
 	m := mapFunctionToModel(fn)
-	// 写路径带 project_id 过滤（G6-5/R07-P2-3）：防跨项目更新同 id 函数。
-	_, err := r.db.NewUpdate().Model(m).WherePK().
+	_, err = conn.NewUpdate().Model(m).ModelTableExpr(expr, sch).WherePK().
 		Where("f.project_id = ?", fn.ProjectID).
 		Exec(ctx)
 	return err
 }
 
 func (r *functionRepo) DeleteFunction(ctx context.Context, projectID, functionID string) error {
-	_, err := r.db.NewDelete().Model((*model.Function)(nil)).
+	conn, sch, expr, err := r.scoped(ctx, projectID, "functions", "f")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewDelete().Model((*model.Function)(nil)).ModelTableExpr(expr, sch).
 		Where("project_id = ?", projectID).
 		Where("id = ?", functionID).
 		Exec(ctx)
@@ -75,14 +107,22 @@ func (r *functionRepo) DeleteFunction(ctx context.Context, projectID, functionID
 }
 
 func (r *functionRepo) CreateDeployment(ctx context.Context, d *domainfunctions.Deployment) error {
+	conn, sch, expr, err := r.scoped(ctx, d.ProjectID, "function_deployments", "fd")
+	if err != nil {
+		return err
+	}
 	m := mapDeploymentToModel(d)
-	_, err := r.db.NewInsert().Model(m).Exec(ctx)
+	_, err = conn.NewInsert().Model(m).ModelTableExpr(expr, sch).Exec(ctx)
 	return err
 }
 
 func (r *functionRepo) GetDeployment(ctx context.Context, projectID, functionID, deploymentID string) (*domainfunctions.Deployment, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_deployments", "fd")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.FunctionDeployment)
-	err := r.db.NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("fd.project_id = ?", projectID).
 		Where("fd.function_id = ?", functionID).
 		Where("fd.id = ?", deploymentID).
@@ -97,8 +137,12 @@ func (r *functionRepo) GetDeployment(ctx context.Context, projectID, functionID,
 }
 
 func (r *functionRepo) ListDeployments(ctx context.Context, projectID, functionID string) ([]domainfunctions.Deployment, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_deployments", "fd")
+	if err != nil {
+		return nil, err
+	}
 	var ms []model.FunctionDeployment
-	err := r.db.NewSelect().Model(&ms).
+	err = conn.NewSelect().Model(&ms).ModelTableExpr(expr, sch).
 		Where("fd.project_id = ?", projectID).
 		Where("fd.function_id = ?", functionID).
 		Order("created_at DESC").
@@ -114,10 +158,12 @@ func (r *functionRepo) ListDeployments(ctx context.Context, projectID, functionI
 }
 
 func (r *functionRepo) UpdateDeployment(ctx context.Context, d *domainfunctions.Deployment) error {
+	conn, sch, expr, err := r.scoped(ctx, d.ProjectID, "function_deployments", "fd")
+	if err != nil {
+		return err
+	}
 	m := mapDeploymentToModel(d)
-	// 写路径带 project_id + function_id 过滤（G6-5/R08-P2-3）：防跨项目/跨函数
-	// 更新同 id 部署。
-	_, err := r.db.NewUpdate().Model(m).WherePK().
+	_, err = conn.NewUpdate().Model(m).ModelTableExpr(expr, sch).WherePK().
 		Where("fd.project_id = ?", d.ProjectID).
 		Where("fd.function_id = ?", d.FunctionID).
 		Exec(ctx)
@@ -125,7 +171,11 @@ func (r *functionRepo) UpdateDeployment(ctx context.Context, d *domainfunctions.
 }
 
 func (r *functionRepo) DeleteDeployment(ctx context.Context, projectID, functionID, deploymentID string) error {
-	_, err := r.db.NewDelete().Model((*model.FunctionDeployment)(nil)).
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_deployments", "fd")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewDelete().Model((*model.FunctionDeployment)(nil)).ModelTableExpr(expr, sch).
 		Where("project_id = ?", projectID).
 		Where("function_id = ?", functionID).
 		Where("id = ?", deploymentID).
@@ -134,36 +184,44 @@ func (r *functionRepo) DeleteDeployment(ctx context.Context, projectID, function
 }
 
 func (r *functionRepo) SetVariables(ctx context.Context, projectID, functionID string, vars map[string]string) error {
-	tx, err := r.db.Conn(ctx).BeginTx(ctx, nil)
+	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+		return err
+	}
+	sch, expr, err := ProjectTable(projectID, "function_variables", "fv")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.NewDelete().Model((*model.FunctionVariable)(nil)).
-		Where("project_id = ?", projectID).
-		Where("function_id = ?", functionID).
-		Exec(ctx); err != nil {
-		return err
-	}
-
-	for k, v := range vars {
-		if _, err := tx.NewInsert().Model(&model.FunctionVariable{
-			ID:         "var_" + functionID + "_" + k,
-			FunctionID: functionID,
-			ProjectID:  projectID,
-			Key:        k,
-			Value:      v,
-		}).Exec(ctx); err != nil {
+	return r.db.RunInTx(ctx, func(txCtx context.Context) error {
+		conn := r.db.Conn(txCtx)
+		if _, err := conn.NewDelete().Model((*model.FunctionVariable)(nil)).
+			ModelTableExpr(expr, sch).
+			Where("project_id = ?", projectID).
+			Where("function_id = ?", functionID).
+			Exec(txCtx); err != nil {
 			return err
 		}
-	}
-	return tx.Commit()
+		for k, v := range vars {
+			if _, err := conn.NewInsert().Model(&model.FunctionVariable{
+				ID:         "var_" + functionID + "_" + k,
+				FunctionID: functionID,
+				ProjectID:  projectID,
+				Key:        k,
+				Value:      v,
+			}).ModelTableExpr(expr, sch).Exec(txCtx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *functionRepo) GetVariables(ctx context.Context, projectID, functionID string) (map[string]string, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_variables", "fv")
+	if err != nil {
+		return nil, err
+	}
 	var ms []model.FunctionVariable
-	err := r.db.NewSelect().Model(&ms).
+	err = conn.NewSelect().Model(&ms).ModelTableExpr(expr, sch).
 		Where("fv.project_id = ?", projectID).
 		Where("fv.function_id = ?", functionID).
 		Scan(ctx)
@@ -178,14 +236,22 @@ func (r *functionRepo) GetVariables(ctx context.Context, projectID, functionID s
 }
 
 func (r *functionRepo) CreateExecution(ctx context.Context, e *domainfunctions.ExecutionRecord) error {
+	conn, sch, expr, err := r.scoped(ctx, e.ProjectID, "function_executions", "fe")
+	if err != nil {
+		return err
+	}
 	m := mapExecutionToModel(e)
-	_, err := r.db.NewInsert().Model(m).Exec(ctx)
+	_, err = conn.NewInsert().Model(m).ModelTableExpr(expr, sch).Exec(ctx)
 	return err
 }
 
 func (r *functionRepo) GetExecution(ctx context.Context, projectID, functionID, executionID string) (*domainfunctions.ExecutionRecord, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_executions", "fe")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.FunctionExecution)
-	err := r.db.NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("fe.project_id = ?", projectID).
 		Where("fe.function_id = ?", functionID).
 		Where("fe.id = ?", executionID).
@@ -200,16 +266,19 @@ func (r *functionRepo) GetExecution(ctx context.Context, projectID, functionID, 
 }
 
 func (r *functionRepo) ListExecutions(ctx context.Context, projectID, functionID string, limit int) ([]domainfunctions.ExecutionRecord, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_executions", "fe")
+	if err != nil {
+		return nil, err
+	}
 	var ms []model.FunctionExecution
-	q := r.db.NewSelect().Model(&ms).
+	q := conn.NewSelect().Model(&ms).ModelTableExpr(expr, sch).
 		Where("fe.project_id = ?", projectID).
 		Where("fe.function_id = ?", functionID).
 		Order("created_at DESC")
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
-	err := q.Scan(ctx)
-	if err != nil {
+	if err := q.Scan(ctx); err != nil {
 		return nil, err
 	}
 	out := make([]domainfunctions.ExecutionRecord, len(ms))
@@ -220,40 +289,77 @@ func (r *functionRepo) ListExecutions(ctx context.Context, projectID, functionID
 }
 
 func (r *functionRepo) UpdateExecution(ctx context.Context, e *domainfunctions.ExecutionRecord) error {
+	conn, sch, expr, err := r.scoped(ctx, e.ProjectID, "function_executions", "fe")
+	if err != nil {
+		return err
+	}
 	m := mapExecutionToModel(e)
-	_, err := r.db.NewUpdate().Model(m).WherePK().Exec(ctx)
+	_, err = conn.NewUpdate().Model(m).ModelTableExpr(expr, sch).WherePK().
+		Where("fe.project_id = ?", e.ProjectID).
+		Exec(ctx)
 	return err
 }
 
-func (r *functionRepo) RecoverOrphanExecutions(ctx context.Context, staleAfter time.Duration) (int64, error) {
-	cutoff := time.Now().Add(-staleAfter)
-	res, err := r.db.NewUpdate().Model((*model.FunctionExecution)(nil)).
-		Set("status = ?", domainfunctions.ExecutionStatusFailed).
-		Set("error = ?", "worker restarted").
-		Set("updated_at = NOW()").
-		// queued 任务仍在队列中（Redis 持久化），对账仅处理 building/running。
-		Where("status IN (?)", bun.In([]string{
-			domainfunctions.ExecutionStatusBuilding,
-			domainfunctions.ExecutionStatusRunning,
-		})).
-		Where("updated_at < ?", cutoff).
-		Exec(ctx)
+func (r *functionRepo) RecoverOrphanExecutionsInProject(ctx context.Context, projectID string, olderThan time.Time, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+		return 0, err
+	}
+	quoted, err := ProjectQuoted(projectID)
+	if err != nil {
+		return 0, err
+	}
+	res, err := r.db.Conn(ctx).ExecContext(ctx, fmt.Sprintf(`
+WITH cte AS (
+  SELECT id FROM %s.function_executions
+  WHERE project_id = ? AND status IN (?, ?) AND updated_at < ?
+  ORDER BY updated_at
+  LIMIT ?
+  FOR UPDATE SKIP LOCKED
+)
+UPDATE %s.function_executions AS fe
+SET status = ?, error = ?, updated_at = NOW()
+FROM cte WHERE fe.id = cte.id
+`, quoted, quoted),
+		projectID,
+		domainfunctions.ExecutionStatusBuilding,
+		domainfunctions.ExecutionStatusRunning,
+		olderThan,
+		limit,
+		domainfunctions.ExecutionStatusFailed,
+		"worker restarted",
+	)
 	if err != nil {
 		return 0, err
 	}
 	return res.RowsAffected()
 }
 
-func (r *functionRepo) PruneOldExecutions(ctx context.Context, functionID string, keepRecent int) error {
-	sub := r.db.NewSelect().Model((*model.FunctionExecution)(nil)).
-		Column("id").
-		Where("function_id = ?", functionID).
-		Order("created_at DESC").
-		Limit(keepRecent)
-	_, err := r.db.NewDelete().Model((*model.FunctionExecution)(nil)).
-		Where("function_id = ?", functionID).
-		Where("id NOT IN (?)", sub).
-		Exec(ctx)
+func (r *functionRepo) PruneOldExecutionsInProject(ctx context.Context, projectID, functionID string, keepRecent int) error {
+	if keepRecent <= 0 {
+		return nil
+	}
+	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+		return err
+	}
+	quoted, err := ProjectQuoted(projectID)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Conn(ctx).ExecContext(ctx, fmt.Sprintf(`
+DELETE FROM %s.function_executions
+WHERE project_id = ? AND function_id = ?
+  AND id NOT IN (
+    SELECT id FROM (
+      SELECT id FROM %s.function_executions
+      WHERE project_id = ? AND function_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    ) keep
+  )
+`, quoted, quoted), projectID, functionID, projectID, functionID, keepRecent)
 	return err
 }
 

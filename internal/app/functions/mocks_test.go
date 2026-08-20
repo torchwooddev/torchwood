@@ -10,11 +10,14 @@ import (
 
 // mockRepo 是 FunctionRepo 的内存实现（测试用）。
 type mockRepo struct {
-	mu          sync.Mutex
-	functions   map[string]*domainfunctions.Function
-	deployments map[string]*domainfunctions.Deployment
-	variables   map[string]map[string]string
-	executions  map[string]*domainfunctions.ExecutionRecord
+	mu            sync.Mutex
+	functions     map[string]*domainfunctions.Function
+	deployments   map[string]*domainfunctions.Deployment
+	variables     map[string]map[string]string
+	executions    map[string]*domainfunctions.ExecutionRecord
+	recoverEach   int
+	recoverCalls  []string
+	recoverLimits []int
 }
 
 func newMockRepo() *mockRepo {
@@ -175,11 +178,22 @@ func (r *mockRepo) UpdateExecution(_ context.Context, e *domainfunctions.Executi
 	return nil
 }
 
-func (r *mockRepo) RecoverOrphanExecutions(_ context.Context, staleAfter time.Duration) (int64, error) {
-	return 0, nil
+func (r *mockRepo) RecoverOrphanExecutionsInProject(_ context.Context, projectID string, olderThan time.Time, limit int) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recoverCalls = append(r.recoverCalls, projectID)
+	r.recoverLimits = append(r.recoverLimits, limit)
+	if r.recoverEach <= 0 {
+		return 0, nil
+	}
+	n := r.recoverEach
+	if n > limit {
+		n = limit
+	}
+	return int64(n), nil
 }
 
-func (r *mockRepo) PruneOldExecutions(_ context.Context, functionID string, keepRecent int) error {
+func (r *mockRepo) PruneOldExecutionsInProject(_ context.Context, projectID, functionID string, keepRecent int) error {
 	return nil
 }
 

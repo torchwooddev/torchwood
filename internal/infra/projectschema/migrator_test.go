@@ -28,14 +28,14 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 	var version int64
 	require.NoError(t, db.DB.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
-	require.Equal(t, int64(2), version)
+	require.Equal(t, int64(3), version)
 
 	var dirty bool
 	require.NoError(t, db.DB.QueryRowContext(ctx,
 		"SELECT COALESCE(bool_or(dirty), false) FROM "+quoted+".schema_migrations").Scan(&dirty))
 	require.False(t, dirty)
 
-	for _, table := range []string{"document_databases", "document_collections", "document_attributes", "document_indexes", "project_oauth_providers"} {
+	for _, table := range []string{"document_databases", "document_collections", "document_attributes", "document_indexes", "project_oauth_providers", "functions", "function_deployments", "function_variables", "function_executions"} {
 		var reg any
 		require.NoError(t, db.DB.QueryRowContext(ctx,
 			`SELECT to_regclass(?)`, quoted+"."+table).Scan(&reg), table)

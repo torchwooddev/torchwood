@@ -56,8 +56,8 @@ func (w *Worker) Init(ctx lynx.AppContext) error {
 }
 
 func (w *Worker) Start(ctx context.Context) error {
-	// 启动对账：停留 queued/building/running 超过 1h 的记录标记 failed
-	// （兜底 Redis 重启丢任务、worker 崩溃孤儿）。
+	// 启动对账：按项目枚举，将停留 building/running 超过 1h 的记录标记 failed
+	// （兜底 Redis 重启丢任务、worker 崩溃孤儿；queued 仍在 Redis 队列）。
 	recovered, err := w.functions.RecoverOrphanExecutions(ctx, time.Hour)
 	if err != nil {
 		return fmt.Errorf("recover orphan executions: %w", err)

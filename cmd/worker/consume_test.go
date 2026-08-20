@@ -75,10 +75,12 @@ func (r *retryRepo) UpdateExecution(_ context.Context, e *domainfunctions.Execut
 	r.rec = &cp
 	return nil
 }
-func (r *retryRepo) RecoverOrphanExecutions(context.Context, time.Duration) (int64, error) {
+func (r *retryRepo) RecoverOrphanExecutionsInProject(context.Context, string, time.Time, int) (int64, error) {
 	return 0, nil
 }
-func (r *retryRepo) PruneOldExecutions(context.Context, string, int) error { return nil }
+func (r *retryRepo) PruneOldExecutionsInProject(context.Context, string, string, int) error {
+	return nil
+}
 
 // retryExecutor 是 functions.Executor 的零值桩（重试路径在 GetFunction 即
 // 失败，不会触达执行）。

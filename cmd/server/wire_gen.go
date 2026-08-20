@@ -142,7 +142,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	functionRepo := bunrepo.NewFunctionRepository(database)
 	sharedQueue := queue.NewRedisQueue(redisClient)
 	redisCounter := billing.NewRedisCounter(redisClient)
-	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter)
+	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter, projectsRepository)
 	functionsService := servergrpc.NewFunctionsService(functionsFunctions)
 	servergrpcPaymentsService := servergrpc.NewPaymentsService(paymentsPayments)
 	servergrpcAssetsService := servergrpc.NewAssetsService(assetsAssets)
