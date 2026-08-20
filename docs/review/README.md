@@ -1,4 +1,17 @@
-# Torchwood 分模块代码审查
+# Torchwood 审查文档
+
+本目录有两类审查，不要混单：
+
+| 类型 | 文档 | 用途 |
+|------|------|------|
+| **第一性原理设计评审** | [first-principles-design.md](first-principles-design.md) | 不考虑既有预设，从最优设计评估模块切分、接口深度与缝。按 ID 逐项验证后再规划。**不是**缺陷修复清单。 |
+| **Round 1 分模块代码审查** | 下文 prompt + [fix-plan.md](fix-plan.md) | 对照源码找缺陷并修复（F1–F11）。 |
+| **Round 2** | [round2/](round2/) | 第二轮审计与修复（G 批次）。 |
+| **Round 3** | [round3/](round3/) | 第三轮全量审核与验收。 |
+
+---
+
+# 分模块代码审查
 
 本目录为 Torchwood 项目分模块代码审查的 prompt 集合，每个模块一份独立 prompt，
 可直接整份复制交给其他 agent 执行（一次一个模块，可并行）。
