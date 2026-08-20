@@ -460,26 +460,25 @@ DeleteProjectInternal(shop)   -- app 层；setup 回滚必须走这里，禁止�
 ```
 internal/infra/projectschema/migrations/
   000001_catalog.up.sql
-  000002_payments.up.sql
-  000003_assets.up.sql
-  000004_subscriptions.up.sql
-  000005_usage_billing.up.sql
-  000006_functions.up.sql
-  000007_oauth.up.sql
+  000002_oauth.up.sql
+  000003_functions.up.sql
+  000004_payments.up.sql
+  000005_assets.up.sql
+  000006_subscriptions.up.sql
+  000007_usage_billing.up.sql
 ```
 
 > 目录放在包内而不是 `db/`：`go:embed` 不支持引用包目录之外的路径，而 server 与 worker 二进制都要跑 `EnsureAll`，SQL 文件必须打进二进制（今日 `db/` 不被任何二进制 embed，`task migrate` 是 CLI 从磁盘执行）。全局 `db/migrations/` 继续服务 `public`，两者互不影响。
+> 落地备注：版本内容与本文示例的对应关系为 002=oauth、003=functions、004=payments、005=assets、006=subscriptions、007=usage_billing（七版本齐全，全新部署重编号无存量影响）。
 
-`internal/infra/projectschema`（自研，风格对齐 documentdb 的 `ExecContext` + `quoteIdent`）：
+`internal/infra/projectschema`（自研，风格对齐 documentdb 的 `ExecContext` + `quoteIdent`；落地为包级函数）：
 
 ```go
-type Migrator struct{}
-
 // Apply 在调用方已经打开的 tx 上执行待应用版本。
 // CreateProject 传入 ctx 里的 bun.Tx；EnsureAll 自己 RunInTx。
-func (m *Migrator) Apply(ctx context.Context, projectID string) error
+func Apply(ctx context.Context, db *clients.Database, projectID string) error
 
-func (m *Migrator) EnsureAll(ctx context.Context, projectIDs []string) error
+func EnsureAll(ctx context.Context, db *clients.Database, projectIDs []string) error
 ```
 
 `Apply` 流程：
@@ -489,7 +488,7 @@ func (m *Migrator) EnsureAll(ctx context.Context, projectIDs []string) error
 3. `CREATE SCHEMA IF NOT EXISTS <quoted>`（若尚未建）。
 4. 确保 `<schema>.schema_migrations (version BIGINT PRIMARY KEY, dirty BOOLEAN NOT NULL, applied_at TIMESTAMPTZ)`。
 5. 按版本读 `migrations/*.up.sql`（包内 embed），把占位符 `{{schema}}` 替换为 `quoteIdent(schema)`，在 **同一 Tx** `Exec`。引用平台表写 `public.projects(id)`。
-6. 每文件成功后 `INSERT schema_migrations`。中途失败：CreateProject 路径靠外层 ROLLBACK；EnsureAll 路径标记 `dirty=true` 并返回错误，**不**在脏项目上继续跑后续版本。
+6. 每文件成功后 `INSERT schema_migrations`。中途失败：CreateProject 路径靠外层 ROLLBACK；EnsureAll 路径标记 `dirty=true` 并返回错误，**不**在脏项目上继续跑后续版本。落地备注：事务内的标记会随 ROLLBACK 撤销，失败后由 `Apply` 经**独立池连接**补写 dirty 行持久化（CreateProject 整体回滚后 schema 不存在，补写失败属预期、best-effort 忽略）。
 
 执行约束：驱动是 **bun/pgdriver**（非 pgx / lib/pq）。无参数 `Exec` 走 simple protocol、可整文件多语句执行（`internal/testutil/db.go` 的 `runMigrations` 已有先例）——`Apply` 在替换 `{{schema}}` 后必须保持**零查询参数**，禁止占位符与 SQL 参数混用。
 
@@ -510,7 +509,7 @@ func (m *Migrator) EnsureAll(ctx context.Context, projectIDs []string) error
 #### 5.2 SQL 文件形态
 
 ```sql
--- internal/infra/projectschema/migrations/000002_payments.up.sql
+-- internal/infra/projectschema/migrations/000004_payments.up.sql
 -- 占位符 {{schema}} 由 Apply 替换为 quoteIdent(ProjectSchemaName(id))，例如 "tw_shop"。
 -- 禁止未限定表名。
 

@@ -74,17 +74,18 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 ---
 
-## 2. 元数据静态表与动态文档层的分工
+## 2. public 控制面与项目数据面的分工
 
-元数据与业务数据的“动静分离”由两层承担：
+「控制面 / 项目数据面 / 业务文档面」的动静分离由三层承担（见 `docs/design/project-data-plane-schema.md`）：
 
 | 层 | 技术 | 职责 | 表 |
 |----|------|------|-----|
-| 元数据静态层 | bun + golang-migrate（`db/migrations/`） | 项目、API Key、库/集合目录、审计等平台元数据 | `projects`、`api_keys`、`admins`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`audit_logs`、`admin_projects`、`project_oauth_providers`、`functions` 等 |
-| 动态文档层 | schema-per-project + schema-per-database 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、groups 等）在 `tw_<project>`；用户动态集合在 `tw_<project>_<database>` | `tw_shop.users`、`tw_shop_app.posts` |
+| public 控制面 + 事件脊柱 | bun + golang-migrate（`db/migrations/`） | 无项目上下文或 Ensure 之前就要访问的表、跨项目领取的事件 | `projects`、`admins`、`admin_projects`、`api_keys`、`audit_logs`、`provider_resource_index`、`document_events_outbox(+dead)`、`document_transactions(+ops)` |
+| 项目数据面 `tw_<project>` | bun + go:embed 项目迁移（`internal/infra/projectschema/migrations/`，CreateProject 同事务 Apply、启动 EnsureAll 自愈） | 项目账本、Functions、OAuth 配置、文档目录 | `payment_*`、`asset_*`、`subscription_*`、`usage_rollups`、`billing_statements`、`functions*`、`project_oauth_providers`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`schema_migrations` |
+| 文档层（一段式 + 两段式） | 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、groups 等）在 `tw_<project>`；用户动态集合在 `tw_<project>_<database>` | `tw_shop.users`、`tw_shop_app.posts`（均含 `_perms`） |
 
-- `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。
-- 动态层表结构由目录驱动：`CreateCollection` 先建表 + 索引，再写目录元数据（用户集合重复创建返回 `ErrDuplicateKey` → `AlreadyExists`；系统集合幂等成功）。
+- `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**（位于 `tw_<project>`）：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。
+- 文档层表结构由目录驱动：`CreateCollection` 先建表 + 索引，再写目录元数据（用户集合重复创建返回 `ErrDuplicateKey` → `AlreadyExists`；系统集合幂等成功）。
 
 ### 2.1 系统集合
 

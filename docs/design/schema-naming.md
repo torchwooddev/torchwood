@@ -139,7 +139,7 @@ id must match ^[a-z][a-z0-9]{0,27}$
 
 | 资源 | id | 规则 |
 |---|---|---|
-| database（业务库） | `default` | 普通业务库：CreateProject 自动建，`CreateDatabase`/`DeleteDatabase` 视为普通库（见 `docs/design/project-data-plane-schema.md` §4 PR7）。本期（PR7 前）仍按现状禁删 |
+| database（业务库） | `default` | 普通业务库：CreateProject 自动建（缺省第一库 id），`CreateDatabase`/`DeleteDatabase` 与其它业务库同等（见 `docs/design/project-data-plane-schema.md` §4 / PR7，已落地解禁） |
 | database（内部 sentinel） | `_`（`ident.ProjectDataPlaneID`） | 非法 SchemaResourceID（charset 拒绝）。仅供系统集合寻址项目数据面；对外 database_id 走 `RejectExternalDatabaseID` 拒绝；DDL 分叉 `businessSchema` 显式拒绝。见 project-data-plane-schema.md §3.1 |
 | project | `default` | bootstrap 显式使用；其它创建路径允许同名失败于 PK，不额外保留 |
 
@@ -258,7 +258,7 @@ if cmd.Name == "" { return nil, status.Error(codes.InvalidArgument, "name is req
 CreateProjectCommand{ID: cmd.ProjectID, Name: cmd.ProjectID, Description: "Bootstrap project"}
 ```
 
-注释改为「bootstrap 使用注册时填写的 project id」，删除「从名称派生」的说法。`default` 仍命中新正则（系统库 id）。
+注释改为「bootstrap 使用注册时填写的 project id」，删除「从名称派生」的说法。`default` 仍命中新正则（普通业务库 id；系统集合已不寄居任何业务库，见 project-data-plane-schema.md）。
 
 **gRPC handler / SDK / Console**：创建项目表单增加必填 `ID` 字段（placeholder `shop`，hint 写明规则）。`console/src/api/projects.ts` 的 `createProject` 增加 `id`。
 
@@ -346,11 +346,16 @@ ListDocuments(project=shop, database=app, collection=posts)
 
 ### 7.2 项目 / 数据库用例
 
+> 下表前两条为本方案（schema 命名）当时的验收；后三条描述的「default 特殊禁令
+> 与系统库寄居」已被 project-data-plane-schema.md PR2/PR7 取代（`default` 可建可删，
+> 系统集合在 `tw_<project>`），现行断言以 `default_no_system_test.go` /
+> `data_plane_schema_test.go` 为准。
+
 - `CreateProject` 缺 id / 非法 id → `InvalidArgument`；合法 id 落库且 `GetProject` 一致
 - 撞 id → 唯一约束映射为 `AlreadyExists`（沿用现有 duplicate 处理）
-- `CreateDatabase` 非法 id、`default`、合法 `app`
-- 删除 `default` 仍拒绝
-- bootstrap `SignUp` 使用调用方指定的 project id / database id；系统库 schema 为 `tw_<projectID>_default`
+- `CreateDatabase` 非法 id、`default`、合法 `app`（**已过时**：`default` 今与普通库同等）
+- 删除 `default` 仍拒绝（**已过时**：PR7 已解禁，只掉两段式业务 schema）
+- bootstrap `SignUp` 使用调用方指定的 project id / database id；系统库 schema 为 `tw_<projectID>_default`（**已过时**：系统集合物理表在 `tw_<project>`）
 
 ### 7.3 documentdb 集成
 
