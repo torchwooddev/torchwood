@@ -250,10 +250,11 @@ task build           # 重新编译 Go 二进制
 
 ## 7. Torchwood CLI（cmd/client）
 
-`task build` 产出 `bin/torchwood[.exe]`：通过 API Key 走 **gRPC**（非 HTTP gateway）调用 Server API，适合 Agent/自动化与运维场景。`health` 命令公开可调用，其余命令需要 API key。
+`task build` 产出 `bin/torchwood[.exe]`：通过 API Key 走 **gRPC**（非 HTTP gateway）调用 Server API，适合 Agent/自动化与运维场景。`health`、`uuid` 公开/本地可调用，其余命令需要 API key。
 
 ```bash
 ./bin/torchwood health get                          # 无需 key
+./bin/torchwood uuid                                # 生成本地 UUID，无需 key
 ./bin/torchwood users list --api-key <secret>       # 列出用户
 ./bin/torchwood projects get default --api-key <secret>
 ./bin/torchwood rpc /torchwood.server.v1.UsersService/ListUsers --data '{"pageSize": 10}' --api-key <secret>
@@ -264,6 +265,7 @@ task build           # 重新编译 Go 二进制
 ```text
 torchwood
 ├── health                 # 公开
+├── uuid                   # 生成本地 UUID v4（无需 key）
 ├── projects               # list/get（create/update 限平台 admin）
 ├── users                  # 全部方法（含 sessions/tokens 子命令）
 ├── databases              # 库；collections/attributes/indexes/documents 子命令
@@ -300,7 +302,7 @@ torchwood
 | Flag | 环境变量 | 默认值 | 说明 |
 |------|----------|--------|------|
 | `--endpoint` | `TORCHWOOD_CLI_ENDPOINT` | `127.0.0.1:9060` | gRPC 地址（服务端仅监听回环，远程走 SSH 隧道） |
-| `--api-key` | `TORCHWOOD_CLI_API_KEY` | 无 | API Key secret（`health` 除外必填） |
+| `--api-key` | `TORCHWOOD_CLI_API_KEY` | 无 | API Key secret（`health` / `uuid` 除外必填） |
 | `--timeout` | `TORCHWOOD_CLI_TIMEOUT` | `30s` | 单次调用超时 |
 | `--output` | `TORCHWOOD_CLI_OUTPUT` | `json` | 输出格式（MVP 仅 json） |
 

@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newHealthCmd 提供 HealthService 两个公开方法（ACCESS_PUBLIC，无需 API key）。
+// NewHealthCmd 提供 HealthService 两个公开方法（ACCESS_PUBLIC，无需 API key）。
 // 整组命令标记 annotationNoKey，root 的 validate 据此豁免 api-key 必填校验。
 func NewHealthCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{

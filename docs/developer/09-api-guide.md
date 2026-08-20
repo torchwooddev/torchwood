@@ -606,12 +606,13 @@ grpc-gateway 用自定义 `HTTPErrorHandler` 把 gRPC status 转为统一结构�
 
 ## 12. 用 Torchwood CLI 调用 Server API
 
-`cmd/client`（二进制 `bin/torchwood[.exe]`，cobra）通过 gRPC 调用 Server API，认证走 `x-api-key` metadata（**不传** `X-Torchwood-Project`，该 header 仅对 admin console session 有效）。`health` 为公开命令，其余命令必须先提供 API key（`--api-key` 或 `TORCHWOOD_CLI_API_KEY`）。
+`cmd/client`（二进制 `bin/torchwood[.exe]`，cobra）通过 gRPC 调用 Server API，认证走 `x-api-key` metadata（**不传** `X-Torchwood-Project`，该 header 仅对 admin console session 有效）。`health` 为公开命令、`uuid` 为本地工具（无需 key），其余命令必须先提供 API key（`--api-key` 或 `TORCHWOOD_CLI_API_KEY`）。
 
 常用示例：
 
 ```bash
 torchwood health get
+torchwood uuid
 torchwood users list --api-key <secret> --page-size 20
 torchwood users create --email a@b.c --password 'pw' --data '{"labels":{"team":"core"}}'
 torchwood projects get default
@@ -625,6 +626,7 @@ torchwood rpc /torchwood.server.v1.UsersService/ListUsers --data '{"pageSize": 1
 命令树（`torchwood --help`）：
 
 ```text
+uuid         生成本地 UUID v4（无需 API key；纯文本输出，便于传给 --id）
 databases    create/list/get/delete；collections create/list/get/update/delete；
              attributes create/delete；indexes create/delete；
              documents create/list/get/update/upsert/delete/count/bulk-update/bulk-delete
@@ -647,7 +649,7 @@ oauth-providers list/upsert/delete（proto 无 get 方法）
   在 CLI 登记**，proto 方法自动获得支持；`cmd/client/import_guard_test.go` 兜底
   禁止 CLI 源码直接 import genproto/grpc/protobuf。
 - **具名命令**覆盖 `proto/server/v1` 全部资源（health/projects/users/databases/teams/
-  storage/functions/oauth-providers），方法级覆盖见上方命令树。
+  storage/functions/oauth-providers）以及本地 `uuid` 工具，方法级覆盖见上方命令树。
 - **请求参数**：标量用具名 flag，复杂结构（labels/prefs 等 `Struct`、document data）
   用 `--data` 传 protojson（camelCase 字段名），与 flag 冲突时以 `--data` 为准。
 - **安全边界**：CLI 不提供 api-keys 命令（API Key 凭证被服务端拦截器禁止调用），

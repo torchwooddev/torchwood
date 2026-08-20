@@ -238,7 +238,7 @@ PostgreSQL
 |------|------|
 | `cmd/server` | **主服务器**。Lynx Runner 启动：gRPC（默认 `127.0.0.1:9060`）、grpc-gateway + Console SPA（`server.http.addr`）、独立 HTTP handler（multipart 上传下载、OAuth 回调）、Metrics。Wire 装配见 `provides.go` |
 | `cmd/worker` | **Worker**。后台任务进程（函数异步执行队列消费者），独立 Wire 装配（`cmd/worker/provides.go`），与 server 共享 app/domain/infra 代码 |
-| `cmd/client` | **Torchwood CLI**（`task build` 产出 `bin/torchwood[.exe]`）。面向 Agent / 自动化 / 运维，用 cobra 实现（不依赖 Wire），通过 API Key 调用 Server API。`health` 公开可调用，其余命令需 API key；含 `health`、`projects`、`users`、`databases`、`teams`、`storage`、`functions`、`oauth-providers` 具名命令与覆盖全部 Server API 方法的 `rpc` 逃生舱命令 |
+| `cmd/client` | **Torchwood CLI**（`task build` 产出 `bin/torchwood[.exe]`）。面向 Agent / 自动化 / 运维，用 cobra 实现（不依赖 Wire），通过 API Key 调用 Server API。`health` 公开可调用、`uuid` 本地生成无需 key，其余命令需 API key；含 `health`、`uuid`、`projects`、`users`、`databases`、`teams`、`storage`、`functions`、`oauth-providers` 具名命令与覆盖全部 Server API 方法的 `rpc` 逃生舱命令 |
 
 两个服务入口都通过 `godotenv` 加载 `.env`，并从 `./configs` 绑定配置；统一使用 `config.NewBindConfigFunc()` 完成配置绑定。
 
