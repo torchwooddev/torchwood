@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	appassets "github.com/torchwooddev/torchwood/internal/app/assets"
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
@@ -50,6 +51,8 @@ func init() {
 
 type txRunner interface {
 	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
+	// RunInNewTx 强制新事务（不并入 ctx 已有事务），供订单两段式使用。
+	RunInNewTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 // assetOps 是订阅履约所需的资产动词（*assets.Assets 满足）。
@@ -62,19 +65,20 @@ type assetOps interface {
 
 // Subscriptions 是订阅子域 use-case 聚合。
 type Subscriptions struct {
-	cfg       *config.AppConfig
-	db        txRunner
-	plans     domainsubs.PlanRepo
-	subs      domainsubs.SubscriptionRepo
-	assets    assetOps
-	orders    domainpayments.OrderRepo
-	providers domainpayments.ProviderRegistry
-	hosted    domainsubs.HostedBilling
-	events    shared.EventPublisher
-	projects  projects.Repository
-	index     domainpayments.ProviderIndexRepo
-	logger    *slog.Logger
-	now       func() time.Time
+	cfg        *config.AppConfig
+	db         txRunner
+	plans      domainsubs.PlanRepo
+	subs       domainsubs.SubscriptionRepo
+	assets     assetOps
+	orders     domainpayments.OrderRepo
+	providers  domainpayments.ProviderRegistry
+	hosted     domainsubs.HostedBilling
+	events     shared.EventPublisher
+	projects   projects.Repository
+	index      domainpayments.ProviderIndexRepo
+	logger     *slog.Logger
+	now        func() time.Time
+	scanCursor appshared.ProjectRotation // RunBillingCycle 轮转游标（tick 串行）
 }
 
 // NewSubscriptions 构造 use-case 聚合（Wire）。

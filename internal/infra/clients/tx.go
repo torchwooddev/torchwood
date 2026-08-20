@@ -39,3 +39,13 @@ func (d *Database) RunInTx(ctx context.Context, fn func(ctx context.Context) err
 		return fn(WithTx(ctx, tx))
 	})
 }
+
+// RunInNewTx runs fn in a fresh transaction even when ctx already carries one.
+// 用于「子操作必须先于外层事务提交」的路径（如订单 + provider index 在渠道
+// 下单之前 COMMIT，见设计 §9.2）：外层失败回滚自己的部分，子事务保持已提交。
+// 调用方自行确保两张事务不触碰会互相加锁的行。
+func (d *Database) RunInNewTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return d.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		return fn(WithTx(ctx, tx))
+	})
+}

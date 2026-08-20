@@ -48,6 +48,11 @@ func (s *memStore) RunInTx(_ context.Context, fn func(context.Context) error) er
 	return nil
 }
 
+// RunInNewTx 模拟独立事务：与 RunInTx 一样快照回滚（内存 fake 无连接概念）。
+func (s *memStore) RunInNewTx(ctx context.Context, fn func(context.Context) error) error {
+	return s.RunInTx(ctx, fn)
+}
+
 func (s *memStore) snapshot() memStore {
 	out := memStore{
 		plans:  map[string]*domainsubs.Plan{},

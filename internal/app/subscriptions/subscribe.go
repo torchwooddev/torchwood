@@ -213,6 +213,18 @@ func (s *Subscriptions) checkoutURLs() (success, cancel string) {
 	return base + "/?checkout=success&session_id={CHECKOUT_SESSION_ID}", base + "/?checkout=cancel"
 }
 
+// createBillingOrder 生成订阅扣款订单（Stripe，两段式，对齐 payments.CreateOrder）：
+//
+//  1. 订单 INSERT + payment_session index 在**独立事务**提交——本函数可能被
+//     Subscribe / processDue 的外层订阅事务调用，渠道下单（外部 HTTP）不得
+//     拖长外层事务；index 行必须在回调可到达之前持久可见（设计 §9.2：
+//     在调 CreatePayment 之前 COMMIT）。
+//  2. CreatePayment 在事务之外。
+//  3. 回填渠道引用并翻 paying + cs_/pi_ index upsert，第二个独立事务。
+//
+// CreatePayment 失败时订单保持 created：外层按各自语义处理（Subscribe 回滚订阅、
+// processDue 记日志下轮重试），订单由到期 worker 关单；幂等键 sub:<id>:<cycle>
+// 保证重放不重复建单。
 func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, cycle string) (*domainpayments.Order, string, error) {
 	if s.orders == nil || s.providers == nil {
 		return nil, "", status.Error(codes.FailedPrecondition, "payments are required to bill this subscription")
@@ -239,15 +251,23 @@ func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.
 		UpdatedAt:      now,
 		ExpiresAt:      now.Add(24 * time.Hour),
 	}
-	existing, inserted, err := s.orders.Insert(ctx, order)
-	if err != nil {
+	var existing *domainpayments.Order
+	var inserted bool
+	if err := s.db.RunInNewTx(ctx, func(txCtx context.Context) error {
+		var err error
+		existing, inserted, err = s.orders.Insert(txCtx, order)
+		if err != nil {
+			return err
+		}
+		if !inserted {
+			return nil
+		}
+		return s.upsertIndex(txCtx, order.Provider, domainpayments.IndexKindPaymentSession, order.ID, order.ProjectID)
+	}); err != nil {
 		return nil, "", err
 	}
 	if !inserted {
 		return existing, "", nil
-	}
-	if err := s.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentSession, order.ID, order.ProjectID); err != nil {
-		return nil, "", err
 	}
 	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{
 		OrderID:        order.ID,
@@ -261,23 +281,45 @@ func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.
 	if err != nil {
 		return nil, "", err
 	}
+	var locked *domainpayments.Order
+	if err := s.db.RunInNewTx(ctx, func(txCtx context.Context) error {
+		var err error
+		locked, err = s.orders.GetByIDForUpdate(txCtx, order.ProjectID, order.ID)
+		if err != nil {
+			return err
+		}
+		if locked == nil {
+			return status.Error(codes.NotFound, "payment order not found")
+		}
+		if locked.Status != domainpayments.OrderStatusCreated {
+			return nil // 并发已推进（回调先到）：保持现状态。
+		}
+		locked.ProviderSessionID = session.SessionID
+		if session.ProviderOrderID != "" {
+			locked.ProviderOrderID = session.ProviderOrderID
+		}
+		if err := locked.Transition(domainpayments.OrderStatusPaying, now); err != nil {
+			return err
+		}
+		if err := s.orders.Update(txCtx, locked, domainpayments.OrderStatusCreated); err != nil {
+			return err
+		}
+		if err := s.upsertIndex(txCtx, locked.Provider, domainpayments.IndexKindPaymentSession, session.SessionID, locked.ProjectID); err != nil {
+			return err
+		}
+		if session.ProviderOrderID != "" {
+			return s.upsertIndex(txCtx, locked.Provider, domainpayments.IndexKindPaymentOrder, session.ProviderOrderID, locked.ProjectID)
+		}
+		return nil
+	}); err != nil {
+		return nil, "", err
+	}
+	if locked != nil {
+		return locked, session.PaymentURL, nil
+	}
 	order.ProviderSessionID = session.SessionID
 	if session.ProviderOrderID != "" {
 		order.ProviderOrderID = session.ProviderOrderID
-	}
-	if err := order.Transition(domainpayments.OrderStatusPaying, now); err != nil {
-		return nil, "", err
-	}
-	if err := s.orders.Update(ctx, order, domainpayments.OrderStatusCreated); err != nil {
-		return nil, "", err
-	}
-	if err := s.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentSession, session.SessionID, order.ProjectID); err != nil {
-		return nil, "", err
-	}
-	if session.ProviderOrderID != "" {
-		if err := s.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentOrder, session.ProviderOrderID, order.ProjectID); err != nil {
-			return nil, "", err
-		}
 	}
 	return order, session.PaymentURL, nil
 }
