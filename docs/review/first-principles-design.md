@@ -1,8 +1,8 @@
 # Torchwood 第一性原理设计评审
 
-> 日期：2026-08-20  
+> 日期：2026-08-20（2026-08-21 评审修订）  
 > 基线：`main` @ `202211d`（落笔时工作区干净；提交 SHA 以 git 为准）  
-> 状态：**已独立核对的规划底稿**（事实已抽查；冲击与「假缝」定义已按复核下调。**尚未** owner 逐项接受/驳回，也**尚未**排期实施）  
+> 状态：**已独立核对并经评审修订的规划底稿**（事实经两轮独立抽查；2026-08-21 评审接受总体判断与 K/E/T 框架，修正 13 处事实细节、拆出 2 项独立缺陷单——见附录 B。逐项 accept/reject 表态与排期**尚未**完成）  
 > 方法：不考虑既有预设前提与已拍板决策，只从最优设计评估当前代码。已排期的另案（系统表化、Agent overlay）在判断里标明，避免当成未规划的永久错误。  
 > 读者：后续逐项验证与重新规划。只认带前缀的稳定 ID，不按段落语序。
 
@@ -290,7 +290,7 @@ OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。缺口是：机�
 3. `EnsureSystemCollections` 引导
 4. 每个文档方法都带 `Principal`（ACL 下沉到 adapter）
 
-生产适配器只有 `postgresDocumentDB`（`internal/infra/documentdb/postgres.go`）。该类型还持有连接、outbox publisher、以及四套进程缓存（internalID、bootstrap、keys 清理、`_version` 列）。
+生产适配器只有 `postgresDocumentDB`（`internal/infra/documentdb/postgres.go`）。该类型还持有连接、outbox publisher、以及五套进程缓存（internalID、bootstrap、keys 清理、`_version` 已提交列、本事务内 `_version` ALTER 标记）。
 
 调用方包括：Account、Users、Groups、Storage、SessionService、Client/Server Databases、Transactions、billing 引导。
 
@@ -302,7 +302,7 @@ OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。缺口是：机�
 
 **事实**
 
-领域有 `Def` / `Holding` / `LedgerEntry` 与 class 校验（`NaturalUniquePerOwner`、`RequiresExpiry`、`ValidateDefMatrix`）。Grant / Consume / Transfer / Mutate / Expire 实现在 `internal/app/assets/write.go`。仓储接口带 `GetByCodeForShare`、`GetByIDForUpdate`、`ListExpiredInProject`（`FOR UPDATE SKIP LOCKED`）。
+领域有 `Def` / `Holding` / `LedgerEntry` 与 class 校验（`NaturalUniquePerOwner` / `RequiresExpiry` 在 `assets/def.go`，`ValidateDefMatrix` 在 `assets/class.go`）。Grant / Consume / Transfer / Mutate / Expire 实现在 `internal/app/assets/write.go`。仓储接口带 `GetByCodeForShare`、`GetByIDForUpdate`、`ListExpiredInProject`（`FOR UPDATE SKIP LOCKED`）。
 
 **判断**
 
@@ -374,7 +374,7 @@ class 矩阵已经是深模块。五动词应成为聚合上的行为（或单�
 
 **事实**
 
-`GetByIDForUpdate`、`GetByCodeForShare`、`LockPending`、`ListExpiredInProject` / `ListDueForBillingInProject` 出现在 assets / payments / subscriptions / databases 端口上，注释写明 `FOR UPDATE` / `FOR SHARE` / `SKIP LOCKED`。
+`GetByIDForUpdate`、`GetByCodeForShare`、`ListExpiredInProject` / `ListDueForBillingInProject` / `CloseExpiredInProject` 出现在 assets / payments / subscriptions 端口上；`LockPending` 在 databases 的 staged-transaction 仓储（`domain/databases/transaction.go`）。注释写明 `FOR UPDATE` / `FOR SHARE` / `SKIP LOCKED`。
 
 **判断**
 
@@ -500,7 +500,7 @@ List 用 `_perms` 相关子查询；Get 才 `attachDocumentPermissions`——同
 
 `pkg/query.Parse` 把 `equal("a","b")` 收成 `Filter{Op, Attribute, Values[]string}`。无 `or`/`and`/`not` 分组。值全是 string。SQL 编译在 `postgres.go` 的 `buildAppwriteQuery`（`contains` → `ILIKE`）。
 
-proto `ListRequest` 同时有 AIP `filter`/`order_by` 与 Appwrite `queries`（`proto/shared/v1/common.proto`）；handler 只接线 `queries`。
+proto `ListRequest` 同时有 AIP `filter`/`order_by` 与 Appwrite `queries`（`proto/shared/v1/common.proto`）；文档类资源 handler 只接线 `queries`。例外：`servergrpc/projects.go` 的 ListProjects 已消费 AIP `filter`/`order_by`——AIP 风格已有先例，对 E-4 是利好而非从零开始。
 
 分页：DSL `offset`/`cursor*` 与 AIP `page_token` 叠两套。
 
@@ -543,13 +543,13 @@ CreateCollection/Attribute/Index 与 catalog 同事务（正向写路径正确�
 
 **判断**
 
-幽灵表增加心智负担。系统表化或一次迁移应删掉运行时不用的 public catalog（若确认无读路径）。
+幽灵表增加心智负担。已核对：全仓 catalog 读写均带项目 schema 限定（`?.document_*`），public 的四张 `document_*` 无任何运行时读路径，删除安全——系统表化或一次独立迁移即可删。
 
 ### D-8 Client/Server Databases 用例分叉
 
 **事实**
 
-`internal/app/client/databases.go` 与 `internal/app/server/databases.go` 各自实现 Create/List/Get/Update：系统集合守卫、OCC version、grant 校验两边各写。Client 额外：guest 读、owner 默认 ACE、敏感字段过滤。Transactions 已抽 `app/shared.Transactions`，Databases 没有同样的核心。
+Database/Collection DDL 用例仅在 Server（`app/server/databases.go`）。分叉的是**文档**用例：`internal/app/client/databases.go` 与 `internal/app/server/databases.go` 各自实现文档 Create/List/Get/Update，系统集合守卫、OCC version、grant 校验两边各写。Client 额外：guest 读、owner 默认 ACE、敏感字段过滤。Transactions 已抽 `app/shared.Transactions`，Documents 没有同样的核心。
 
 proto `message Document` 在 client 与 server 各一份。
 
@@ -592,7 +592,7 @@ proto `message Document` 在 client 与 server 各一份。
 
 `requireUser`（Account）只看 `UserID != ""`，类型系统挡不住 admin Principal。
 
-Worker 注入：`ActorKind=service` + `CredentialType=api_key` + 无 `APIKeyID`；`APIKeyID==""` 被当作 `IsSystem`。
+Worker 注入：`ActorKind=service` + `CredentialType=api_key` + 无 `APIKeyID`。`shared.Principal` 本身没有 `IsSystem` 方法，「系统」判据有两套且互不一致：assets 的 `OperatorSnapshot.IsSystem` 用 `ActorKind==service && APIKeyID==""`（`internal/app/assets/assets.go:210`），databases 的 `Principal.IsSystem` 用 `PlatformAdmin || HasRole("__system__")`（`internal/domain/databases/access.go:40`）——同一概念三处形状不同，是本条与 A-2 的直接证据。
 
 Anonymous 不是 kind：带 `label:anonymous` 的全权 end_user。
 
@@ -615,7 +615,7 @@ Actor = EndUser { ProjectID, UserID, SessionID?, Anonymous }
 
 `databases.Principal` 只有 `Roles` + `PlatformAdmin`。注释：避免 databases 依赖 shared——然后 `domain/shared/ports.go` 又 import `databases`（`RealtimeConn.DocPrincipal`）。
 
-Client Databases / Transactions（`app/client/databases.go` `resolveProject`）只传 `Roles`，不传 `PlatformAdmin`。**Groups 没有丢**：`client/groups.go` 传 `PlatformAdmin: p.IsPlatformAdmin`。Server gRPC/HTTP 带上 `PlatformAdmin`。
+Client Databases / Transactions（`app/client/databases.go:50` 与 `app/client/transactions.go:37` 的 `resolveProject`）只传 `Roles`，不传 `PlatformAdmin`。**Groups 没有丢**：`client/groups.go` 传 `PlatformAdmin: p.IsPlatformAdmin`。Server gRPC/HTTP 带上 `PlatformAdmin`。
 
 **判断**
 
@@ -629,7 +629,7 @@ Client Databases / Transactions（`app/client/databases.go` `resolveProject`）�
 
 1. proto `method_auth`（`PUBLIC | AUTHENTICATED | PERMISSION | API_KEY`）。`ACCESS_AUTHENTICATED` 在方法自身 permissions 为空时被改写成 `permissionMethods[method] = ["users"]`（`internal/infra/server/grpc.go`）。Account 热路径许多方法本来就是 `ACCESS_PERMISSION` + `["users"]`。
 2. gRPC interceptor（`pkg/grpc/interceptor/jwt.go`）：public / API_KEY（key 或 admin）/ permission map / admin 角色表。
-3. `apiKeyScopeRules`（`apikey_scope.go`，约 130 条方法名）与 `adminRoleMethodRules`。启动 panic 对齐 proto。
+3. `apiKeyScopeRules`（`pkg/grpc/interceptor/apikey_scope.go`，120 条方法名）与 `adminRoleMethodRules`（`admin_roles.go`，72 条）。启动 panic 对齐 proto。
 4. app 层 `RequirePlatformAdmin` / `RequireAdminActor` / `RequireServerWriteActor`（`app/shared/authz.go`）。`RequireServerWriteActor` 只认 ActorKind admin|service，**不看** viewer vs owner、不看 scope。
 5. 文档 `_perms`：`users` / `user:` / `keys` / `admin` / `any` / `guests` / `group:` / `label:`。
 6. HTTP（`serverhttp/auth.go`）与 Realtime（`realtime/handler.go`）各自 extract + validate；Realtime 直接禁 API key。
@@ -682,17 +682,17 @@ Cookie 只是运输，不能改变凭证类型。console cookie 运 access token
 
 Admin refresh **不读库**：`firstRole` 空则默认 `"admin"`。删除的 admin、改过的角色，refresh 仍可能出新 token；access 验证才会失败。端用户 refresh 会 `EnsureActiveSession` + `ensureUserCanAuthenticate`。
 
-`TokenPair`（console）与 `TokenBundle`（client）是复制 DTO。`checkAdminTokenRevoked` 在 Auth 与 Validator 各写一遍。
+console 的 `TokenPair` 是 domain `TokenBundle` 的逐字段复制；client 的 `TokenBundle` 只是类型别名（`app/client/account.go:127`），并非第二份 DTO。`checkAdminTokenRevoked` 在 Auth 与 Validator 各写一遍。
 
 **判断**
 
-端用户 refresh + `RefreshRotationStore` + `EnsureActiveSession` 已经是深模块（K-16、K-22），合并时不要丢掉 reuse→删 session 语义。真正的洞是 admin refresh 不读库、`firstRole` 空则 `"admin"`。签发器可归一；Admin 也要有可吊销的 session 记录，或明确「平台会话 = refresh jti + revoke epoch」一种机制。
+端用户 refresh + `RefreshRotationStore` + `EnsureActiveSession` 已经是深模块（K-16、K-22），合并时不要丢掉 reuse→删 session 语义。真正的洞是 admin refresh 不读库、`firstRole` 空则 `"admin"`。签发器可归一；Admin 也要有可吊销的 session 记录，或明确「平台会话 = refresh jti + revoke epoch」一种机制。**该洞不等架构排期**：refresh 路径加一次 `GetAdmin`（存在性 + 当前角色）即可闭合被删/改角色 admin 的无限续签，应作为独立缺陷单立即修，不依赖 E-3 的 Actor ADT（见附录 B）。
 
 ### A-6 `Account` 上帝对象；`domain/auth` 是 Redis 端口动物园
 
 **事实**
 
-`app/client.Account` **19** 个构造依赖（cfg、projectRepo、oauthProviders、docDB、sessions、otp、oauthState、tokens、loginThrottle、rotation、idGen、mailer、sms、rateLimiter、roles、mfa、mfaChallenges、oneTimeTokens、auditRepo），方法散落 **15** 个生产文件。生产代码 import `infra/auth`、`infra/documentdb`。
+`app/client.Account` **19** 个构造依赖（cfg、projectRepo、oauthProviders、docDB、sessions、otp、oauthState、tokens、loginThrottle、rotation、idGen、mailer、sms、rateLimiter、roles、mfa、mfaChallenges、oneTimeTokens、auditRepo），方法散落 **13** 个生产文件。生产代码 import `infra/auth`、`infra/documentdb`。
 
 `domain/auth` **13** 个接口，多数各只有 Redis 一个适配器。`SessionService` 实现在 infra，内部用 DocumentDB 写 `map[string]any` 会话文档。`MFAService` 实际只有 TOTP。`OAuthAuthenticator` 是真缝，但 app 通过 infra 工厂构造，不经注入端口。
 
@@ -723,7 +723,7 @@ Worker：`ActorKind=service` + `CredentialType=api_key` + 无 `APIKeyID` + `Role
 **判断**（两条，表态时分开）
 
 1. gRPC / HTTP / WS 共享 `Authenticate(raw headers) (Principal, error)`。Realtime 禁 API key、HTTP upload 禁 end-user，是 Grant 配置，不是第三份解析器。
-2. System 应是 Actor 的第四变体，不是缺字段的 API key。
+2. System 应是 Actor 的第四变体，不是缺字段的 API key。E-3 落地时应同时消灭三处互不一致的「系统」判据（shared 无、assets 看 `APIKeyID`、databases 看 `PlatformAdmin`/`__system__`）。
 
 ---
 
@@ -772,7 +772,7 @@ Groups 已经是「一个核心 + Client 策略包装」。经济也是一个 us
 
 **事实**
 
-见上表。Server Databases 一服务 **30** 个方法。Account 一服务 **35** 个方法（OTP/OAuth/MFA/magic/recovery 等认证流，几乎不是 Agent 用 API Key 打的面）。`apiKeyScopeRules` 有 **118** 条。
+见上表。Server Databases 一服务 **30** 个方法。Account 一服务 **35** 个方法（OTP/OAuth/MFA/magic/recovery 等认证流，几乎不是 Agent 用 API Key 打的面）。`apiKeyScopeRules` 有 **120** 条。
 
 **判断**
 
@@ -792,7 +792,7 @@ BaaS 产品就是大 CRUD。Agent 用 API Key 打 Server，几乎不调 `CreateE
 
 **事实**
 
-每个新 Server RPC 必须改：proto `method_auth` **和** `apiKeyScopeRules`（118 条）**和** `adminRoleMethodRules`，否则进程启动 panic。这是 fail-closed（K-9），但是方法名注册表，不是资源策略。
+每个新 Server RPC 必须改：proto `method_auth` **和** `apiKeyScopeRules`（120 条）**和** `adminRoleMethodRules`，否则进程启动 panic。这是 fail-closed（K-9），但是方法名注册表，不是资源策略。
 
 **判断**
 
@@ -802,7 +802,7 @@ BaaS 产品就是大 CRUD。Agent 用 API Key 打 Server，几乎不调 `CreateE
 
 **事实**
 
-grpc-gateway 注册全部 Client+Server+Console，再 overlay 自定义 HTTP（`internal/infra/server/grpc_gateway.go`）。上传、OAuth 回调、webhook、`GET /v1/realtime` 不在 swagger。`InvokeJSON` 是 Server unary only。
+grpc-gateway 注册全部 Client+Server+Console，再 overlay 自定义 HTTP（`internal/infra/server/grpc_gateway.go`）。上传、OAuth 回调、webhook、`GET /v1/realtime` 不在 swagger。`InvokeJSON` 是 Server unary only，且显式排除 `APIKeysService`（`sdk/go/server/invoke.go:61`）——Agent 经逃生舱连 key 管理也不可达；这是有意的安全设计，但 T-4 工具目录规划时应显式决定 Agent 是否需要任何 key 管理类工具。
 
 **判断**
 
@@ -814,11 +814,11 @@ Agent 用 swagger / InvokeJSON 操作不了产品的非 unary 半边。上传/�
 
 一个 use-case 服务两面 proto（正确）。`Subscriptions` 依赖 `app/assets` 命令（app-to-app）。Billing 是给运营商的用量汇总，不是对客户扣款产品（与 v3 范围声明一致）。
 
-`CreateOrder` **仍拒绝** `PurposeSubscription`（`internal/app/payments/orders.go`，`"subscription orders are not supported yet"`），而 `Subscribe` 自行建 `PurposeKind: PurposeSubscription` 的订单（`internal/app/subscriptions/subscribe.go`）。
+`CreateOrder` **仍拒绝** `PurposeSubscription`（`internal/app/payments/orders.go`，`"subscription orders are not supported yet"`），而 `Subscribe` 的 `createBillingOrder` 自行构造 `PurposeKind: PurposeSubscription` 的订单并**直接 `orders.Insert` 落库**（`internal/app/subscriptions/subscribe.go:228-258`，幂等键 `sub:{subID}:{cycle}`）——绕过 `payments.CreateOrder` 入口，其校验与审计路径对订阅订单整体不走。
 
 **判断**
 
-模块缝基本对。不要在还债时按 Documents 的克隆模式去「拆」经济。边缘未闭合是一个具体缺陷，验证阶段开单或直接修，不挡架构规划。
+模块缝基本对。不要在还债时按 Documents 的克隆模式去「拆」经济。边缘未闭合是一个具体缺陷，验证阶段开单或直接修，不挡架构规划。验收点：要么 `CreateOrder` 接受 `PurposeSubscription`，要么 `Subscribe` 复用同一建单入口——不允许第三条插单路径长期存在。
 
 ### R-7 Storage/Functions 无 Client 投影
 
@@ -938,7 +938,7 @@ AGENTS.md 已要求。D-4 / E-4 升 Query AST 时不要另起一套分页；AIP 
 
 ### K-22 端用户 Session 热路径
 
-会话上限驱逐、rotation key=`project+session`。系统表化后可换存储，不要先删行为。`sessions.secret_hash` 存明文 UUID **不是** keep——是缺陷，系统表化时应变成真 hash。
+会话上限驱逐、rotation key=`project+session`。系统表化后可换存储，不要先删行为。`sessions.secret_hash` 存明文 UUID **不是** keep——是缺陷，系统表化时应变成真 hash；若要提前修，需「写入哈希 + 校验」两半同改并处理存量会话，属独立缺陷单，不阻塞也不被 E-5 阻塞。
 
 ### K-23 经济表物理位置以数据面方案为准
 
@@ -1086,3 +1086,32 @@ E-1～E-4 可在不改物理存储的情况下降低克隆和身份袋成本。E
 - `RefreshRotationStore` 不是 nonce。
 - 经济表在 `tw_<project>`，不要按过时的 v3「必须 public」搬回去。
 - `sessions.secret_hash` 明文是缺陷，不是 keep。
+
+---
+
+## 附录 B：owner 评审核对记录
+
+日期：2026-08-21。针对当前 `main`（基线 `202211d` 之后仅 docs 提交，代码未漂移）做第二轮独立事实抽查（身份授权 / 数据面 / API 表面 / 领域模型四路并行，逐条落到 file:line），随后评审表态：**接受总体判断、K 清单与 E/T 顺序**；以下事实细节已改入正文（均不改变判断方向）：
+
+| 位置 | 修正 |
+|---|---|
+| R-2 / R-4 / A-3 | `apiKeyScopeRules` 统一为 **120** 条（原文 118 与「约 130」两处互相矛盾）；文件为 `pkg/grpc/interceptor/apikey_scope.go`；`adminRoleMethodRules` 72 条 |
+| A-1 | `shared.Principal` 无 `IsSystem` 方法；「系统」判据两套且不一致（`app/assets/assets.go:210` vs `domain/databases/access.go:40`），反为 A-1/A-2 补强证据，已写入正文 |
+| A-2 | 补 `app/client/transactions.go:37` 同样丢 `PlatformAdmin` |
+| A-5 | client `TokenBundle` 是类型别名（`account.go:127`）非复制 DTO；仅 console `TokenPair` 为逐字段复制 |
+| A-6 | Account 方法散落 **13** 个生产文件（原 15） |
+| D-4 | 例外：`servergrpc/projects.go` ListProjects 已消费 AIP `filter`/`order_by`，为 E-4 先例 |
+| D-7 | 升级为已确认：public `document_*` 无运行时读路径，删除安全 |
+| D-8 | Database/Collection DDL 仅在 Server；两侧分叉限定为文档用例（与 §7 表面地图对齐） |
+| M-3 | 补第 5 个进程缓存 `versionAlterTx`（本事务内 `_version` ALTER 标记） |
+| M-4 | `NaturalUniquePerOwner`/`RequiresExpiry` 在 `def.go`，`ValidateDefMatrix` 在 `class.go` |
+| S-2 | `LockPending` 属 databases staged-transaction 仓储；payments 实际为 `CloseExpiredInProject` / `GetByIDForUpdate` |
+| R-5 | 补 `InvokeJSON` 显式排除 `APIKeysService`（`invoke.go:61`） |
+| R-6 | 补 `subscribe.go:228-258` 直接 `orders.Insert` 绕过 `CreateOrder`；验收点已更新 |
+
+排期层修正（判断不变，拆出独立缺陷单，不绑架构史诗）：
+
+1. **admin refresh 不读库**（A-5）：被删/改角色 admin 凭未吊销 refresh token 可无限续签（`app/console/auth.go:75-111`；`firstRole` 空默认 `"admin"`）。refresh 路径加一次 `GetAdmin` 即可闭合，不等 E-3。
+2. **`sessions.secret_hash` 明文**（A-4 / K-22）：与上一条同批开单；修复需哈希写入与校验两半同改并处理存量会话。
+
+其余核对项均属实：RPC 201（69+122+10）、Account 19 构造依赖、`ProjectResolver` 零引用、`HasAnyPermission([])` fail-open、`Attribute.Array` DDL 忽略、`GetDatabase` 返回 `*Collection`、public catalog 无读路径、Groups 包装模式、client 丢 `PlatformAdmin`、`ACCESS_AUTHENTICATED→["users"]` 改写、console cookie `CredentialType` 矛盾、realtime 禁 API key、app 生产代码 import infra 清单、worker Wire 拉起全量、经济表落在 `tw_<project>`（K-23）等。逐项 accept/reject 表态与排期仍按 §13 流程进行。
