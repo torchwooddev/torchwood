@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
@@ -68,6 +69,7 @@ type Payments struct {
 	projects     projects.Repository
 	index        domainpayments.ProviderIndexRepo
 	logger       *slog.Logger
+	scanCursor   appshared.ProjectRotation // CloseExpiredOrders 轮转游标（tick 串行）
 }
 
 // NewPayments 构造 use-case 聚合（Wire：*clients.Database 满足 txRunner）。

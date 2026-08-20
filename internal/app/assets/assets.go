@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
@@ -56,14 +57,15 @@ type txRunner interface {
 
 // Assets 是资产子域 use-case 聚合。
 type Assets struct {
-	db       txRunner
-	defs     domainassets.DefRepo
-	holdings domainassets.HoldingRepo
-	ledger   domainassets.LedgerRepo
-	events   shared.EventPublisher
-	projects projects.Repository
-	logger   *slog.Logger
-	now      func() time.Time
+	db         txRunner
+	defs       domainassets.DefRepo
+	holdings   domainassets.HoldingRepo
+	ledger     domainassets.LedgerRepo
+	events     shared.EventPublisher
+	projects   projects.Repository
+	logger     *slog.Logger
+	now        func() time.Time
+	scanCursor appshared.ProjectRotation // ExpireDue 轮转游标（tick 串行）
 }
 
 // NewAssets 构造 use-case 聚合（Wire：*clients.Database 满足 txRunner）。

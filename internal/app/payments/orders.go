@@ -234,6 +234,7 @@ func (p *Payments) ListOrders(ctx context.Context, limit int, before time.Time) 
 
 // CloseExpiredOrders 把超时未付（created/paying 超 expires_at）订单翻
 // closed（worker 周期任务，设计 §1.3；closed 不在 §5.1 事件目录，不发事件）。
+// 全局预算 closeExpiredBatch（K22）；项目遍历按轮转游标起始（队尾饥饿防护）。
 func (p *Payments) CloseExpiredOrders(ctx context.Context, now time.Time) (int64, error) {
 	if p.projects == nil {
 		return 0, nil
@@ -242,24 +243,34 @@ func (p *Payments) CloseExpiredOrders(ctx context.Context, now time.Time) (int64
 	if err != nil {
 		return 0, err
 	}
+	n := len(all)
+	start := p.scanCursor.Start(n)
 	remaining := closeExpiredBatch
-	var n int64
-	for i := range all {
+	var closed int64
+	stopped := -1
+	for i := 0; i < n; i++ {
+		idx := (start + i) % n
 		if remaining <= 0 {
+			stopped = idx
 			break
 		}
-		if all[i].Status != "active" {
+		if all[idx].Status != "active" {
 			continue
 		}
-		c, err := p.orders.CloseExpiredInProject(ctx, all[i].ID, now, remaining)
+		c, err := p.orders.CloseExpiredInProject(ctx, all[idx].ID, now, remaining)
 		if err != nil {
-			p.logger.Error("close expired orders failed", "project_id", all[i].ID, "error", err)
+			p.logger.Error("close expired orders failed", "project_id", all[idx].ID, "error", err)
 			continue
 		}
-		n += c
+		closed += c
 		remaining -= int(c)
 	}
-	return n, nil
+	if stopped >= 0 {
+		p.scanCursor.ResumeAt(stopped)
+	} else {
+		p.scanCursor.Complete()
+	}
+	return closed, nil
 }
 
 func (p *Payments) insertOrderWithIndex(ctx context.Context, order *domainpayments.Order) (*domainpayments.Order, bool, error) {

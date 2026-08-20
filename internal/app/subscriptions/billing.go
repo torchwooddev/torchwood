@@ -15,6 +15,7 @@ import (
 )
 
 // RunBillingCycle 扫描 platform 到期订阅：取消 / 过期 / 扣款续期（worker）。
+// 全局预算 billingBatch（K22）；项目遍历按轮转游标起始（队尾饥饿防护）。
 func (s *Subscriptions) RunBillingCycle(ctx context.Context, now time.Time) (int64, error) {
 	if now.IsZero() {
 		now = s.ts()
@@ -26,18 +27,23 @@ func (s *Subscriptions) RunBillingCycle(ctx context.Context, now time.Time) (int
 	if err != nil {
 		return 0, err
 	}
+	n := len(all)
+	start := s.scanCursor.Start(n)
 	remaining := billingBatch
-	var n int64
-	for i := range all {
+	var billed int64
+	stopped := -1
+	for i := 0; i < n; i++ {
+		idx := (start + i) % n
 		if remaining <= 0 {
+			stopped = idx
 			break
 		}
-		if all[i].Status != "active" {
+		if all[idx].Status != "active" {
 			continue
 		}
-		batch, err := s.subs.ListDueForBillingInProject(ctx, all[i].ID, now, remaining)
+		batch, err := s.subs.ListDueForBillingInProject(ctx, all[idx].ID, now, remaining)
 		if err != nil {
-			s.logger.Error("list due subscriptions failed", "project_id", all[i].ID, "error", err)
+			s.logger.Error("list due subscriptions failed", "project_id", all[idx].ID, "error", err)
 			continue
 		}
 		for j := range batch {
@@ -46,14 +52,19 @@ func (s *Subscriptions) RunBillingCycle(ctx context.Context, now time.Time) (int
 					"subscription_id", batch[j].ID, "error", err)
 				continue
 			}
-			n++
+			billed++
 			remaining--
 			if remaining <= 0 {
 				break
 			}
 		}
 	}
-	return n, nil
+	if stopped >= 0 {
+		s.scanCursor.ResumeAt(stopped)
+	} else {
+		s.scanCursor.Complete()
+	}
+	return billed, nil
 }
 
 func (s *Subscriptions) processDue(ctx context.Context, seed *domainsubs.Subscription, now time.Time) error {

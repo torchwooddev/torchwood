@@ -400,7 +400,8 @@ func (f *Functions) MarkExecutionFailed(ctx context.Context, projectID, function
 
 // RecoverOrphanExecutions 按 public.projects 枚举 active 项目，将停留
 // building/running 超过 staleAfter 的记录标记为 failed（worker 启动对账）。
-// 全局预算 recoverOrphanBatch，foreach 项目扣减 remaining。
+// 全局预算 recoverOrphanBatch（K22），foreach 项目扣减 remaining；项目遍历
+// 按轮转游标起始（队尾饥饿防护）。
 func (f *Functions) RecoverOrphanExecutions(ctx context.Context, staleAfter time.Duration) (int64, error) {
 	if f.projects == nil {
 		return 0, nil
@@ -409,24 +410,34 @@ func (f *Functions) RecoverOrphanExecutions(ctx context.Context, staleAfter time
 	if err != nil {
 		return 0, err
 	}
+	n := len(all)
+	start := f.scanCursor.Start(n)
 	olderThan := time.Now().Add(-staleAfter)
 	remaining := recoverOrphanBatch
-	var n int64
-	for i := range all {
+	var recovered int64
+	stopped := -1
+	for i := 0; i < n; i++ {
+		idx := (start + i) % n
 		if remaining <= 0 {
+			stopped = idx
 			break
 		}
-		if all[i].Status != "active" {
+		if all[idx].Status != "active" {
 			continue
 		}
-		c, err := f.repo.RecoverOrphanExecutionsInProject(ctx, all[i].ID, olderThan, remaining)
+		c, err := f.repo.RecoverOrphanExecutionsInProject(ctx, all[idx].ID, olderThan, remaining)
 		if err != nil {
 			continue
 		}
-		n += c
+		recovered += c
 		remaining -= int(c)
 	}
-	return n, nil
+	if stopped >= 0 {
+		f.scanCursor.ResumeAt(stopped)
+	} else {
+		f.scanCursor.Complete()
+	}
+	return recovered, nil
 }
 
 func (f *Functions) ListExecutions(ctx context.Context, projectID, functionID string) ([]domainfunctions.ExecutionRecord, error) {

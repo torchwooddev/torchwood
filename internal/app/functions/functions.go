@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
 	"github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
@@ -14,12 +15,13 @@ import (
 
 // Functions 是 Functions 服务的 use-case 聚合。
 type Functions struct {
-	cfg      *config.AppConfig
-	executor functions.Executor
-	repo     functions.FunctionRepo
-	queue    shared.Queue
-	usage    domainbilling.UsageCounter // 可选：函数执行时长计量
-	projects projects.Repository        // 可选：启动对账枚举项目（nil 则 Recover 空操作）
+	cfg        *config.AppConfig
+	executor   functions.Executor
+	repo       functions.FunctionRepo
+	queue      shared.Queue
+	usage      domainbilling.UsageCounter // 可选：函数执行时长计量
+	projects   projects.Repository        // 可选：启动对账枚举项目（nil 则 Recover 空操作）
+	scanCursor appshared.ProjectRotation  // RecoverOrphanExecutions 轮转游标（串行）
 }
 
 func NewFunctions(cfg *config.AppConfig, executor functions.Executor, repo functions.FunctionRepo, queue shared.Queue) *Functions {
