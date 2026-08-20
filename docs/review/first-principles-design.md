@@ -1,10 +1,10 @@
 # Torchwood 第一性原理设计评审
 
-> 日期：2026-08-20（2026-08-21 评审修订）  
+> 日期：2026-08-20（2026-08-21 评审修订；同日 owner 逐项表态）  
 > 基线：`main` @ `202211d`（落笔时工作区干净；提交 SHA 以 git 为准）  
-> 状态：**已独立核对并经评审修订的规划底稿**（事实经两轮独立抽查；2026-08-21 评审接受总体判断与 K/E/T 框架，修正 13 处事实细节、拆出 2 项独立缺陷单——见附录 B。逐项 accept/reject 表态与排期**尚未**完成）  
-> 方法：不考虑既有预设前提与已拍板决策，只从最优设计评估当前代码。已排期的另案（系统表化、Agent overlay）在判断里标明，避免当成未规划的永久错误。  
-> 读者：后续逐项验证与重新规划。只认带前缀的稳定 ID，不按段落语序。
+> 状态：**判断已表态的规划底稿**（事实经两轮独立抽查；2026-08-21 评审接受总体判断与 K 清单，修正 13 处事实细节——见附录 B。同日 owner 完成逐项 accept/修正——见附录 C；正文已吸收判断层修正。系统表化是方向而非已排期施工）  
+> 方法：不考虑既有预设前提与已拍板决策，只从最优设计评估当前代码。已标明的另案（系统表化方向、Agent overlay）在判断里分开写，避免当成未规划的永久错误，也避免当成已有执行规格。  
+> 读者：按已接受的判断重排与施工。只认带前缀的稳定 ID，不按段落语序。
 
 本文不是 Round 1–3 那种分模块代码审计，也不替代 `docs/design/` 下已批准的实施方案。它回答的是：
 
@@ -37,7 +37,7 @@ ID 前缀（不与 Round 1–3 的 F/G/H 批次碰撞）。**`P-` 是产品定�
 - **事实**：可对照源码核对（路径、方法数、适配器个数）。
 - **判断**：在事实成立的前提下，从最优设计给出的结论。验证阶段先核事实，再决定是否接受判断。
 
-§0 总判不是可验收发现，只作阅读入口。独立核对记录见 [附录 A](#附录-a独立核对记录)。
+§0 总判不是可验收发现，只作阅读入口。独立核对记录见 [附录 A](#附录-a独立核对记录)；owner 逐项表态见 [附录 C](#附录-cowner-逐项表态)。
 
 ---
 
@@ -53,11 +53,13 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 
 ## 1. 分类总表
 
-后续验证与规划只认本表及 §1.9 / §1.10 的 ID。交叉从属见各条正文，规划时合并以免双工：
+后续规划只认本表及 §1.9 / §1.10 的 ID。交叉从属见各条正文，规划时合并以免双工：
 
-- 系统表化史诗：M-2 + D-1 + D-3 + E-5（M-2 是领域语言，D-1 是存储形态）
+- 系统表化史诗：M-2 + D-1 + D-3 + E-5（M-2 是领域语言，D-1 是存储形态）。**E-5 未出独立设计前不排进施工**
 - Agent overlay：P-2 + D-4 + R-2 + R-5 + T-4 + E-7（不删产品 RPC）
 - 拆端口不删引擎：M-3 + E-6
+- 独立缺陷（Wave 0，不绑史诗）：A-5 admin refresh、A-4 `secret_hash`、D-5 `Array`、D-5 `_version` 迁入 `projectschema`、R-6 建单入口
+- 产品默认（非 E-5）：D-9 用户 collection `read:any`
 
 ### 1.1 产品定位
 
@@ -73,7 +75,7 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 | M-1 | `internal/domain` 多数是端口目录；有不变式的是订单/订阅/ACL/资产 class | 中 | §3 |
 | M-2 | 系统实体是无类型文档（无 User/Session/Group 聚合） | 高 | §3 |
 | M-3 | 用户文档引擎是产品；`DocumentDB` 端口是神对象 | 高 | §3 / §5 |
-| M-4 | 资产五动词在 app 编排，不在聚合上 | 中 | §3 |
+| M-4 | 资产五动词在 app 编排；应收进 Assets 领域服务（不放 Holding） | 中 | §3 |
 | M-5 | Database 无独立类型（`GetDatabase` 返回 `*Collection`） | 中 | §3 / §5 |
 | M-6 | 事件信封超载（文档事件 + 经济事件） | 中 | §3 |
 
@@ -91,14 +93,15 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 
 | ID | 标题 | 冲击 | 章节 |
 |---|---|---|---|
-| D-1 | 系统资源仍是文档（形态错；系统表化已是既定另案） | 高 | §5 |
+| D-1 | 系统资源仍是文档（形态错；系统表化是方向，尚无独立设计） | 高 | §5 |
 | D-2 | 三层 schema 已买到隔离；过渡税是 sentinel 寻址与双 catalog | 中 | §5 |
 | D-3 | `_perms` 接口过深，系统路径用 SystemPrincipal 绕过 | 高 | §5 |
 | D-4 | 查询是 Appwrite 字符串，不是类型化 AST | 高 | §5 / §7 |
-| D-5 | 读路径触发项目 DDL；`Array` 声明不落地；懒 ALTER `_version` | 高 | §5 |
+| D-5 | 三件独立缺口：读路径 migrator、`Array` 不落地、懒 ALTER `_version` | 高（应拆开） | §5 |
 | D-6 | Staged transactions 是兼容层，不是数据面原语 | 中 | §5 |
 | D-7 | catalog 双份（public 幽灵表 + 项目 schema） | 中 | §5 |
 | D-8 | Client/Server Databases 用例分叉（R-1 的实例） | 中 | §5 / §7 |
+| D-9 | 用户 collection 默认 `read:any` 是产品默认，不是系统表化遗产 | 中 | §5 |
 
 ### 1.5 身份与授权
 
@@ -120,10 +123,10 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 | R-1 | Documents 等 Client/Server 资源克隆（对照 K-8 / 经济单用例） | 高 | §7 |
 | R-2 | 201 RPC 对 Agent 过大；对 Console/CLI/SDK 是完整产品 API | 中 | §7 |
 | R-3 | gRPC handler 九成是浅映射 | 中 | §7 |
-| R-4 | scope/角色表是第二份 API 规格（118 条；fail-closed 见 K-9） | 中 | §7 |
+| R-4 | scope/角色表是第二份 API 规格（120 条；fail-closed 见 K-9） | 中 | §7 |
 | R-5 | 自定义 HTTP / Realtime 对 Agent 不可见 | 中 | §7 |
 | R-6 | CreateOrder 仍拒绝 `PurposeSubscription`，Subscribe 自行建同类订单 | 低 | §7 |
-| R-7 | Storage/Functions 无 Client 投影 | 低 | §7 |
+| R-7 | Storage/Functions 保持 Server-only（v1 产品决定） | 低 | §7 |
 
 ### 1.7 进程与装配
 
@@ -164,14 +167,15 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 | ID | 标题 | 章节 |
 |---|---|---|
 | T-1 | 目标模块图 | §10 |
-| T-2 | 目标身份：Actor × Credential × Grant | §10 |
+| T-2 | 目标身份：Actor（EndUser \| Admin \| Service \| System）× Credential × Grant | §10 |
 | T-3 | 目标数据面 | §10 |
-| T-4 | 完整 RPC 保留；Agent 工具目录是 overlay（约 20 个） | §10 |
+| T-4 | 完整 RPC 保留；Agent 工具目录是 overlay（量级约 20，非规格） | §10 |
 | E-1 | 抽出 User/Session 聚合 | §11 |
-| E-2 | 合并 Documents 为单一 use-case + 共享消息 | §11 |
-| E-3 | 一个 Authenticate + Actor ADT | §11 |
+| E-2a | 合并 Documents 为单一 use-case（非 breaking） | §11 |
+| E-2b | 合并 client/server `message Document`（breaking，单独版本策略） | §11 |
+| E-3 | 一个 Authenticate + Actor ADT（`Service` 不是 `Agent`） | §11 |
 | E-4 | Query AST 进 proto；字符串 DSL 降为 codec | §11 |
-| E-5 | 系统表化；删除 sentinel 与系统集合守卫 | §11 |
+| E-5 | 系统表化（先写独立设计）；删除 sentinel 与系统集合守卫 | §11 |
 | E-6 | 拆 DocumentDB 为 Catalog / SchemaApplier / Documents | §11 |
 | E-7 | Tool catalog overlay；201 RPC 留作完整 API | §11 |
 | E-8 | 收 Redis 挑战存储、删死端口、gRPC status 退出 domain | §11 |
@@ -220,7 +224,7 @@ BaaS + 经济 + Agent 叠层本身合法（Firebase/Appwrite 类产品就是大 
 
 > Project 是租户。User / Session / File / Order / Holding 是一等资源。Collection 只装开发者文档。Agent 看到的是资源树 + 一层工具 overlay，不是三套 RPC 目录。
 
-### P-2 Agent-native 是营销叠加，不是表面设计
+### P-2 Agent-native 是挂钩，还不是工具表面
 
 **事实**
 
@@ -235,7 +239,7 @@ BaaS + 经济 + Agent 叠层本身合法（Firebase/Appwrite 类产品就是大 
 
 **判断**
 
-OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。缺口是：机器填不出类型化查询、非 unary 半边不进 swagger、没有 ~20 个高杠杆工具 overlay。不要把这件事写成「把产品 API 砍到 20 个动词」——完整 RPC 留给人类 / Console / CLI（E-7 / T-4）。详见 D-4、R-2、R-5。
+OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。roadmap 里「仅凭 API Key + OpenAPI/Swagger 可完成列出用户、CRUD 文档、上传文件」已经达到**挂钩级**验收，不是当前声明作假。缺口是下一层：机器填不出类型化查询、非 unary 半边不进 swagger、没有高杠杆工具 overlay（「约 20 个」是规划量级，不是规格）。不要把这件事写成「把产品 API 砍到 20 个动词」——完整 RPC 留给人类 / Console / CLI（E-7 / T-4）。详见 D-4、R-2、R-5。
 
 ---
 
@@ -277,7 +281,7 @@ OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。缺口是：机�
 
 系统集合作为存储技巧可以暂时存在，但不能成为领域语言。User 应有邮箱唯一、状态、密码、匿名属性等不变式；Session 应有签发/轮换/吊销；Membership 应有 owner 不能离开等规则。这些今天全在 use-case 的 `map[string]any` + DSL 里。
 
-与 D-1 同一事实的两端：M-2 是领域语言缺失，D-1 是存储形态。系统表化是 `docs/design/project-data-plane-schema.md` 已写明的既定另案（E-5），不要再立一张「未规划的永久错误」新单。第一性原理贡献的是 **User 聚合**，不是再发明一次搬 schema。
+与 D-1 同一事实的两端：M-2 是领域语言缺失，D-1 是存储形态。系统表化在 `docs/design/project-data-plane-schema.md` 里是**方向**（该稿仍为 Draft；K2 拍的是「本方案只搬位置，形态另案」），**没有**独立设计、执行计划或 ADR。不要再立一张「未规划的永久错误」新单，也不要把本文当成 E-5 规格。第一性原理贡献的是 **User 聚合**（E-1），不是再发明一次搬 schema。
 
 ### M-3 用户文档引擎是产品；`DocumentDB` 端口是神对象
 
@@ -306,7 +310,7 @@ OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。缺口是：机�
 
 **判断**
 
-class 矩阵已经是深模块。五动词应成为聚合上的行为（或单一 `Assets` 领域服务的接口），仓储只负责持久化，不把锁策略暴露给所有调用方。冲击低于 User-as-document，因为经济路径至少有不变式函数可测。
+class 矩阵已经是深模块。五动词应成为单一 **`Assets` 领域服务**的接口，不要放上 `Holding` 实体——Grant / Consume / Transfer 跨 Def + Holding + Ledger，放实体上是反向的 Feature Envy。仓储只负责持久化；锁策略按 S-2 留在模块内部，不暴露给所有调用方。冲击低于 User-as-document，因为经济路径至少有不变式函数可测。
 
 ### M-5 Database 无独立类型
 
@@ -324,7 +328,7 @@ class 矩阵已经是深模块。五动词应成为聚合上的行为（或单�
 
 `internal/domain/events/envelope.go`：一个 `Envelope` 同时服务文档写事件与 v3 经济事件（`Domain` / `Channel` / `Attrs`）。出站用 `ClientPayload()` 剥 ACL。表名仍是 `document_events_outbox`。
 
-`accounts.{userId}` 频道常量在 `assets`、`payments`、`subscriptions` 各写一份。
+`AccountsChannel()` 在 `assets`、`payments`、`subscriptions` 各写一份同构函数（不是包级常量）。
 
 生产 publisher 一个（outbox）。`EventPublisher` 注释要求感知 `bun.Tx` / `clients.Conn`。
 
@@ -415,7 +419,7 @@ gRPC handler 与 201 个 RPC 基本 1:1，典型形状是取 Principal → 调 u
 
 **判断**
 
-调用方必须知道「我现在在不在事务里」。应是 `uow.Run(ctx, func(tx Tx) error)`，适配器接收 `Tx`，而不是在领域端口注释里写 bun。
+调用方必须知道「我现在在不在事务里」。对外缝应是 `uow.Run(ctx, func(tx Tx) error)`，适配器接收 `Tx`，而不是在领域端口注释里写 bun。落地从宽：实现仍可用 ctx 传连接，不必一夜重写所有 bun 调用点；先消灭端口注释里的 `bun.Tx` 契约。
 
 ### S-5 `domain.ProviderSet` 为空（M-1 的诊断信号，非独立债）
 
@@ -443,7 +447,7 @@ gRPC handler 与 201 个 RPC 基本 1:1，典型形状是取 Principal → 调 u
 
 DDL 分叉（真不变式）：`documentSchema` 允许 sentinel → `ProjectSchemaName`；`businessSchema`（Create/DeleteDatabase）永不映射一段式。见 `internal/infra/documentdb/postgres.go`。
 
-### D-1 系统资源仍是文档
+### D-1 系统资源仍是文档（形态错；系统表化是方向，尚无独立设计）
 
 **事实**
 
@@ -463,7 +467,7 @@ Account 注册/登录走 `ListDocuments` + `query.BuildEqual("email", …)`，�
 
 **判断**
 
-形态仍错（无 FK、Account 走 `ListDocuments`+DSL、`SystemPrincipal` 旁路）。物理位置搬到 `tw_<project>` 已做对（K-5）。系统表化是数据面文档已写明的既定另案，载体是 `projectschema`（K-14 / E-5）。第一性原理贡献的是领域语言（M-2 User 聚合），不是再发明一次搬 schema。退役 sentinel 与 Databases 系统集合守卫是 E-5 的验收项，完成前不要拆 `businessSchema` / `RejectExternalDatabaseID`（K-15）。
+形态仍错（无 FK、Account 走 `ListDocuments`+DSL、`SystemPrincipal` 旁路）。物理位置搬到 `tw_<project>` 已做对（K-5）。系统表化是数据面文档写明的**方向**，载体仍应是 `projectschema`（K-14 / E-5），但该另案尚无独立设计——未设计前不排进施工。第一性原理贡献的是领域语言（M-2 User 聚合），不是再发明一次搬 schema。退役 sentinel 与 Databases 系统集合守卫是 E-5 的验收项，完成前不要拆 `businessSchema` / `RejectExternalDatabaseID`（K-15）。
 
 ### D-2 三层 schema 已买到隔离；过渡税是 sentinel 寻址与双 catalog
 
@@ -508,20 +512,26 @@ proto `ListRequest` 同时有 AIP `filter`/`order_by` 与 Appwrite `queries`（`
 
 对人类抄 Appwrite 友好，对 Agent 不友好。应升格为 proto `Query` AST（eq/in/range/text/and/or + keyset page）；`pkg/query` 变成 Appwrite codec。集合 schema 作为工具描述。这是 P-2 在数据面上的具体化。
 
-### D-5 读路径触发项目 DDL；`Array` 声明不落地；懒 ALTER `_version`
+### D-5 三件独立缺口：读路径 migrator、`Array` 不落地、懒 ALTER `_version`
 
 **事实**
 
-CreateCollection/Attribute/Index 与 catalog 同事务（正向写路径正确）。缺口：
+CreateCollection/Attribute/Index 与 catalog 同事务（正向写路径正确）。缺口是三件独立的事，不要绑成一条架构债：
 
 - 只对系统集合单向补列（`reconcileSystemCollectionAttrs`）。用户 collection 无 physical↔catalog 对账。
-- `Attribute.Array` 写入 catalog，DDL 忽略（`attributeColumnSQL` 无 array 类型）。
+- `Attribute.Array` 写入 catalog，DDL 忽略（`attributeColumnSQL` 无 array 类型；`pgTypeFor` 不产出 array）。
 - `_version` 不在 catalog，靠写路径 `information_schema` + `ALTER TABLE ... ADD COLUMN`（AccessExclusiveLock）。
 - 每次 `GetCollection` 先 `projectschema.Apply`（`ensureProjectCatalog`）。`Apply` 取 advisory lock 并 `CREATE SCHEMA IF NOT EXISTS`；已迁移版本会跳过，**不是**每次读都跑完整 DDL，但仍把 migrator 焊进读路径。
 
 **判断**
 
-可查询字段用真列是对的（K-6）。`Array` 声明撒谎、懒 ALTER `_version`（AccessExclusiveLock）、读路径挂 migrator，把正确策略做成运行时地雷。独立 SchemaApplier 应只走写路径 / 启动对账。
+可查询字段用真列是对的（K-6）。三件事拆开处理：
+
+| 事 | 性质 | 建议 |
+|---|---|---|
+| `Attribute.Array` catalog 写入、DDL 忽略 | **产品撒谎**，独立缺陷（Wave 0） | 立刻二选一：实现 PG array，或 `CreateAttribute` 拒绝 `array=true` |
+| 写路径懒 `ALTER _version`（AccessExclusiveLock） | **运维地雷**，独立缺陷（Wave 0） | 列进 `projectschema` 迁移，不要热路径 ALTER |
+| `GetCollection` → `projectschema.Apply` | 架构 | 随 E-6：SchemaApplier 只走写路径 / 启动对账。已迁移版本会 skip，冲击低于前两件 |
 
 ### D-6 Staged transactions 是兼容层，不是数据面原语
 
@@ -555,7 +565,25 @@ proto `message Document` 在 client 与 server 各一份。
 
 **判断**
 
-这是 R-1 的实例。应学 Groups（K-8）与经济：一个 Documents 核心 + 策略对象（client：owner 默认权限、guest 读；server：脱敏、platform admin）。Handler 只做投影。
+这是 R-1 的实例。应学 Groups（K-8）与经济：一个 Documents 核心 + 策略对象（client：owner 默认权限、guest 读；server：脱敏、platform admin）。Handler 只做投影。抄的是组合模式，不是 Groups 仍返回 `*databases.Document` 的领域形状（K-8 / E-2a）。proto 消息合并是 breaking，单独做（E-2b）。
+
+### D-9 用户 collection 默认 `read:any` 是产品默认，不是系统表化遗产
+
+**事实**
+
+`DefaultCollectionPermissions`（`internal/domain/databases/permissions.go`）对未声明权限的**用户集合**给：
+
+- `read:any`（公开读）
+- `users` / `keys` / `admin` 的 create/update/delete
+
+Server `CreateCollection` 在 `len(perms)==0` 时套用这组默认（`app/server/databases.go`）。这是用户 collection 的产品默认，不是系统集合寄居留下的疤。
+
+**判断**
+
+系统表化（E-5）之后这组默认仍然在。不要塞进 E-5 退役清单。
+
+- `read:any` 是产品脚枪：集合默认公开读。是否改为 `read:users`（或创建时强制显式权限）是产品决定，独立于表形态。
+- `keys` / `admin` 全开是 Server / Agent / Console 能不逐集合授权的前提，应显式承认，不能当 Appwrite 遗产删掉。
 
 ---
 
@@ -571,7 +599,7 @@ proto `message Document` 在 client 与 server 各一份。
 | Session（端用户） | `sessions` 文档 + access/refresh JWT + Redis rotation；另有 HMAC cookie | `domain/auth/session.go`；`infra/auth/session_service.go`；`session_cookie.go` |
 | Admin | 控制面 `admins` 表，挂在 **projects** domain | `domain/projects`；签发 `app/console/auth.go` |
 | Admin「session」 | 无 session 文档。Access JWT 进 `TORCHWOOD_session_console` cookie + 全局 revoke + 按 adminID rotation | `api/consolegrpc/cookies.go`；`domain/auth/admin_token.go` |
-| API key / Agent | `api_keys`；`ActorKind=service`，`Roles=["keys"]`，`Permissions=scopes` | `infra/auth/validator.go` |
+| API key（Service actor；Agent 是其消费者之一） | `api_keys`；`ActorKind=service`，`Roles=["keys"]`，`Permissions=scopes` | `infra/auth/validator.go` |
 | System / worker | 伪造 `ActorKind=service` + 空 `APIKeyID` | `app/assets/authz.go` |
 | JWT claims | 平行结构：`akd`/`uid`/`sid`/`rls`/`scp`/`one_time` | `pkg/jwtparser/jwt.go` |
 | Document principal | 第二套 Principal：只有 `Roles` + `PlatformAdmin` | `domain/databases/access.go` |
@@ -603,11 +631,11 @@ Anonymous 不是 kind：带 `label:anonymous` 的全权 end_user。
 ```text
 Actor = EndUser { ProjectID, UserID, SessionID?, Anonymous }
       | Admin   { AdminID, PlatformRole, ProjectBinding? }
-      | Agent   { ProjectID, KeyID, Scopes }
+      | Service { ProjectID, KeyID, Scopes }
       | System  { Reason }
 ```
 
-禁止 `UserID` 复用。投影到文档 ACL 是 Actor 的方法，不是各 handler 手写 `Roles: p.Roles`。
+禁止 `UserID` 复用。投影到文档 ACL 是 Actor 的方法，不是各 handler 手写 `Roles: p.Roles`。`Service` 对应今日 `ActorKind=service`（API key）；Agent 是 Service 的一种消费者（走 T-4 overlay），不是第四种身份。
 
 ### A-2 两套 Principal，投影时丢语义
 
@@ -620,6 +648,8 @@ Client Databases / Transactions（`app/client/databases.go:50` 与 `app/client/t
 **判断**
 
 这是包依赖驱动的身份分裂，不是领域需要。同一主体在 Databases 与 Groups 上变成不同文档权限。应一个 identity 类型；ACL 视图在 use-case 边缘派生。
+
+Client 丢 `PlatformAdmin` 是这条的实例，但生产影响低：Console 打 Server（K-7），端用户 Principal 没有 `IsPlatformAdmin`。当作 E-3 的回归用例，**不要当独立 P0 缺陷单**。
 
 ### A-3 六套授权词汇重叠且碰撞
 
@@ -647,10 +677,10 @@ Client Databases / Transactions（`app/client/databases.go:50` 与 `app/client/t
 | 面 | Actor | Grant |
 |---|---|---|
 | Client | EndUser（anonymous 为属性） | 文档/存储 ACL |
-| Server | Agent 或 Admin（显式委托） | 资源 scope：`databases.write` 等 |
+| Server | Service 或 Admin（显式委托） | 资源 scope：`databases.write` 等 |
 | Console | Admin | 控制面 RBAC |
 
-拦截器只做 authenticate + 匹配 principal class + 匹配 grant。use-case 调同一 `authz.Check(ctx, Grant)`，不再复制 `RequireServerWriteActor`。`HasPermission` 大 OR 应删除。`Roles` 只服务文档 ACL；scopes 只服务 Agent；console RBAC 只服务 Admin。
+拦截器只做 authenticate + 匹配 principal class + 匹配 grant。use-case 调同一 `authz.Check(ctx, Grant)`，不再复制 `RequireServerWriteActor`。`HasPermission` 大 OR 应删除。`Roles` 只服务文档 ACL；scopes 只服务 Service（含 Agent 消费者）；console RBAC 只服务 Admin。
 
 ### A-4 CredentialType 在验证边界被改写
 
@@ -776,7 +806,7 @@ Groups 已经是「一个核心 + Client 策略包装」。经济也是一个 us
 
 **判断**
 
-BaaS 产品就是大 CRUD。Agent 用 API Key 打 Server，几乎不调 `CreateEmailOTP`。Console 已经打 Server（K-7）；CLI 靠 `InvokeJSON` 覆盖 Server unary。工具层应**叠在上面**（约 20 个高杠杆工具 + 类型化查询，roadmap P3 MCP），不是把产品 API 砍到 20 个动词。E-7 与 T-4 必须一致：201 RPC 留作完整 API。
+BaaS 产品就是大 CRUD。Agent 用 API Key 打 Server，几乎不调 `CreateEmailOTP`。Console 已经打 Server（K-7）；CLI 靠 `InvokeJSON` 覆盖 Server unary。工具层应**叠在上面**（高杠杆工具 + 类型化查询，roadmap P3 MCP；「约 20 个」是规划量级），不是把产品 API 砍到 20 个动词。E-7 与 T-4 必须一致：201 RPC 留作完整 API。
 
 ### R-3 gRPC handler 九成是浅映射
 
@@ -820,7 +850,7 @@ Agent 用 swagger / InvokeJSON 操作不了产品的非 unary 半边。上传/�
 
 模块缝基本对。不要在还债时按 Documents 的克隆模式去「拆」经济。边缘未闭合是一个具体缺陷，验证阶段开单或直接修，不挡架构规划。验收点：要么 `CreateOrder` 接受 `PurposeSubscription`，要么 `Subscribe` 复用同一建单入口——不允许第三条插单路径长期存在。
 
-### R-7 Storage/Functions 无 Client 投影
+### R-7 Storage/Functions 保持 Server-only（v1 产品决定）
 
 **事实**
 
@@ -828,7 +858,7 @@ Agent 用 swagger / InvokeJSON 操作不了产品的非 unary 半边。上传/�
 
 **判断**
 
-要么提供 Client 投影（权限检查过的下载 / `CreateExecution`），要么明确承认它们是后端专用。现在是 Appwrite 分类的未完成镜像，不是有意识的产品决定。冲击低，先承认再选。File token 本身保留（K-17）。
+v1 **决定**：Storage / Functions 保持后端专用。端用户下载走 file token（K-17）；不提供 Client 直传 / 用户侧 `CreateExecution`。这不是「没抄完 Appwrite」，是后端优先。需要移动端直传或用户侧 invoke 时再加 Client 投影，届时另开产品单。
 
 ---
 
@@ -882,7 +912,7 @@ Console proto 保持极小（auth + admins）。资源页打 Server。没有第�
 
 ### K-8 Groups 包装模式
 
-`client.Groups` 包 `server.Groups`。Documents / Transactions 应抄这个，而不是再克隆。
+`client.Groups` 包 `server.Groups`。Documents / Transactions 应抄这个**组合**（一个核心 + Client 策略包装），而不是再克隆。不要抄 Groups 仍返回 `*databases.Document` 的领域形状——Groups 自己仍受 M-2，系统表化后才是一等资源。
 
 ### K-9 启动期 scope/角色表与 proto 对齐
 
@@ -926,7 +956,7 @@ go:embed SQL、advisory lock、dirty 标志、CreateProject 同 Tx。E-5 的系�
 
 ### K-19 `billing.HourBucket` / 小时 rollup
 
-48h Redis TTL 与小时桶是小而真的不变式。T-1 未列 metering 时不要把用量计费当附带删除。
+48h Redis TTL 与小时桶是小而真的不变式。T-1 已列 `billing/`；还债时仍不要把用量计费当附带删除。
 
 ### K-20 `pkg/crud` AIP 列表/分页
 
@@ -950,37 +980,40 @@ AGENTS.md 已要求。D-4 / E-4 升 Query AST 时不要另起一套分页；AIP 
 
 ### T-1 目标模块图
 
-按「深模块 = 小接口后面大量行为」重切，不按 Clean 文件夹：
+按「深模块 = 小接口后面大量行为」重切，不按 Clean 文件夹。下图是**概念模块**，不是第一天必须切出的 Go 包；第一刀是 E-1 + E-3 的内部缝。
 
 ```text
 identity/          Actor × Credential × Grant（唯一身份模块）
-tenancy/           Project, API Key, 平台 Admin
+tenancy/           Project, API Key, 平台 Admin, audit
 users/             User 聚合（邮箱唯一、状态、密码、匿名属性）
+                   + OAuth identities
 sessions/          签发/轮换/吊销（Client 与 Console 共用 TokenService）
+groups/            Group + Membership（系统表化后的一等资源；今日仍受 M-2）
 documents/         仅用户 collection：schema + CRUD + 可选 ACL
 storage/           Bucket/File 元数据（表）+ ObjectStore 端口
 functions/         函数聚合 + Executor 端口 + JobQueue
 economy/
   payments/        订单状态机 + PaymentProvider（已接近）
-  assets/          五动词在聚合上
+  assets/          五动词在 Assets 领域服务上（不放 Holding）
   subscriptions/   周期状态机；履约=调资产
+  billing/         HourBucket / 小时 rollup（K-19）
 events/            Envelope + Publisher（outbox 是实现，不是注释契约）
 realtime/          进程内 Hub（不属于 domain/shared）
 ```
 
-外部真缝只留：`PaymentProvider`、`ObjectStore`、`OAuthAuthenticator`、`Mailer`/`SMS`、以及**当真有第二实现时**的 `Executor`。
+外部真缝只留：`PaymentProvider`、`ObjectStore`、`OAuthAuthenticator`、`Mailer`/`SMS`、以及**当真有第二实现时**的 `Executor`（与 S-1 同一规则：单适配器先当实现细节）。
 
 Postgres：空 CRUD 仓储可以是模块内部；带锁/幂等契约的经济仓储接口要留（S-2）。测试用本地 PG 或现有 fake（K-21）。Redis：一次性挑战可收成 `NonceStore`；旋转 / 限流 / 上传会话单独留（K-16）。
 
 ### T-2 目标身份
 
 ```text
-Actor      = EndUser | Admin | Agent | System
+Actor      = EndUser | Admin | Service | System
 Credential = Password | OTP | Session | AccessJWT | RefreshJWT | APIKey | OneShot | FileToken
 Grant      = 文档 ACL 角色  ≠  API scope  ≠  console RBAC
 ```
 
-Cookie 只是运输。三面是三种 Grant 配置。传输层只调一次 `Authenticate`。
+`Service` 对应今日 `ActorKind=service`（项目 API key，调用方可以是 CLI / SDK / 脚本 / Agent）。**Agent 不是 Actor 变体**，是 Service 的一种消费者（T-4 overlay）。Cookie 只是运输。三面是三种 Grant 配置。传输层只调一次 `Authenticate`。
 
 ### T-3 目标数据面
 
@@ -995,8 +1028,8 @@ tw_<project>_<database>        仅用户 collection（需要硬隔离/独立 dum
 |---|---|
 | `Catalog` | Get/List Database/Collection/Attribute/Index，不跑 DDL |
 | `SchemaApplier` | `Apply(diff)`，与 catalog 同 Tx |
-| `Documents` | Get/List/Mutate，**不带 Principal** |
-| `DocACL` | Check / Grant / ListFilter，仅用户 collection |
+| `Documents` | Get / Mutate **不带 Actor**；`List(ctx, q, acl Filter)` 消费 `DocACL` 派生的过滤器（`_perms` 子查询必须下推 SQL，不能先 List 再 Check） |
+| `DocACL` | Check / Grant / Filter，仅用户 collection。身份袋不进 Documents 每个方法 |
 | `Users` 等 | `GetByEmail`、`CreateSession`；静态表 + FK |
 | `Query` | proto AST → SQL；`ParseAppwrite(string)` 只是 codec |
 
@@ -1007,37 +1040,59 @@ tw_<project>_<database>        仅用户 collection（需要硬隔离/独立 dum
 1. **Project API**（今日 Server，**201 中的主体**）——完整资源树。Agent、Console、CLI 都打这里。DDL/bulk **不要删**。
 2. **User API**（今日 Client）——策略投影，不复制 Document 类型；认证流（Account 35 RPC）留在这里。
 3. **Platform API** —— admins / bootstrap，保持极小。
-4. **Tool catalog（overlay，不是替换）** —— 约 20 个高杠杆工具映射到内部 RPC；`InvokeJSON` 当逃生舱。这是 Agent 投影，不是唯一资源树。
+4. **Tool catalog（overlay，不是替换）** —— 高杠杆工具映射到内部 RPC（「约 20 个」是规划量级，不是规格）；`InvokeJSON` 当逃生舱。这是 Agent 投影，不是唯一资源树。是否暴露任何 key 管理类工具由本条显式决定（R-5：`InvokeJSON` 排除 `APIKeysService` 是有意安全设计）。
 
 ---
 
 ## 11. 建议演化顺序
 
-不必停机重写。按杠杆，**先核事实、再接受判断、再排期**。本顺序是规划输入，不是承诺。
+不必停机重写。判断已表态（附录 C）。本顺序是规划输入，不是承诺。**拒绝**用旧 8 条「Appwrite 遗产」清单当 E-5 完工定义。
+
+### Wave 0 — 独立缺陷（不动模块图）
+
+| 来源 | 做什么 |
+|---|---|
+| A-5 | admin refresh 路径加一次 `GetAdmin`（存在性 + 当前角色） |
+| A-4 / K-22 | `sessions.secret_hash`：写入哈希 + 校验两半同改，并处理存量会话 |
+| D-5 | `Attribute.Array`：实现 PG array，或 `CreateAttribute` 拒绝 `array=true` |
+| D-5 | `_version` 列进 `projectschema` 迁移；去掉热路径 `ALTER` |
+| R-6 | `CreateOrder` 接受 `PurposeSubscription`，或 `Subscribe` 走同一建单入口 |
+
+### Wave 1–3 — 架构
 
 | ID | 步骤 | 依赖 | 不改物理存储即可？ |
 |---|---|---|---|
-| E-1 | 抽出 `User` / `Session` 聚合；Account 与 CreateUser 不再说 Document | 无 | 是（可暂读同一张表） |
-| E-2 | 合并 Documents 为单一 use-case + 单一 proto 消息；Client/Server 只保留 authz 投影（抄 Groups） | 无 | 是（proto 合并是 breaking，需版本策略） |
-| E-3 | 一个 `Authenticate` + Actor ADT；HTTP/Realtime/gRPC 共用；删除 `HasPermission` 大 OR | 弱依赖 E-1 | 是 |
+| E-1 | 抽出 `User` / `Session` 聚合。验收：Account / CreateUser 调用 `GetByEmail` / `User.Register`，**不是** DocumentDB 薄包装（只转调 `ListDocuments` 则深度为零）。存储可暂同一张表 | 无 | 是 |
+| E-2a | 合并 Documents 为单一 use-case + 策略投影（抄 K-8 **组合**，不抄 Groups 的 Document 领域形状） | 无 | 是 |
+| E-2b | 合并 client/server `message Document` | E-2a | **否**（proto breaking，单独版本策略） |
+| E-3 | 一个 `Authenticate` + Actor ADT（`EndUser \| Admin \| Service \| System`）；HTTP/Realtime/gRPC 共用；删除 `HasPermission` 大 OR | 弱依赖 E-1 | 是 |
 | E-4 | Query AST 进 proto；字符串 DSL 降为 codec | 无 | 是（可双栈） |
-| E-5 | 系统表化（已有 `projectschema` 引擎）；删除 sentinel 与 Databases 系统集合守卫 | E-1 | **否**（数据迁移） |
-| E-6 | 拆 DocumentDB 为 Catalog / SchemaApplier / Documents(+可选 ACL) | E-5 更干净，可先拆接口 | 接口先、实现后 |
-| E-7 | Tool catalog（约 20 个）作为 Agent 表面；201 RPC 留作完整 API | E-2、E-4 收益更大 | 是 |
+| E-5 | **先写独立设计**，再用 `projectschema` 系统表化；删除 sentinel 与 Databases 系统集合守卫 | E-1；未设计不施工 | **否**（数据迁移） |
+| E-6 | 拆 DocumentDB 为 Catalog / SchemaApplier / Documents（List 消费 DocACL Filter） | E-5 更干净，可先拆接口 | 接口先、实现后 |
+| E-7 | Tool catalog 作为 Agent 表面；201 RPC 留作完整 API | E-2a、E-4 收益更大（叠在错误表面上会重做） | 是 |
 | E-8 | 收 Redis 一次性挑战存储、删死端口、gRPC status 退出 domain（不含旋转/限流/经济仓储） | 随时可做 | 是 |
 
-E-1～E-4 可在不改物理存储的情况下降低克隆和身份袋成本。E-5 是一次认真迁移，之后平台脊柱会轻一个数量级。
+波次：Wave 1 = E-1、E-2a、E-3、E-8（不改物理存储，不合 proto 消息）；Wave 2 = E-4、E-6 先拆接口（不删 sentinel / `businessSchema`）；Wave 3 = E-5（先设计）、E-2b、E-7。
 
-只因 Appwrite 兼容才存在、系统表化后应消失的复杂度（供 E-5 验收对照）：
+E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成本。E-5 是一次认真迁移；「脊柱轻一个数量级」是方向，不是验收指标。
 
-1. 系统集合必须是 collection（含历史上的 `default` 假寄居 → 今日 `"_"` sentinel）
-2. `type:role` 字符串 ACE + `write` 展开 + `user:{id}` 模板 + `documentSecurity` 覆盖
-3. Appwrite 查询字符串作为唯一查询面
-4. 默认权限 `read:any` + `keys`/`admin` 全开
-5. Staged transactions 作为**唯一**用户可见事务（可降级为草稿适配器；已发布 API 需要版本策略，不可当 E-5 验收第 5 条直接砍掉）
-6. Upsert 的 replace-permissions 语义（若仅因兼容）
-7. Client 文档 API 的认证字段黑名单（系统集合寄居留下的疤）
-8. 系统集合无 `_version`、出站 version=0（两套文档契约）
+**E-5 验收只含系统表化真正退役的东西**（对照数据面草案「与系统表化的衔接」；编号沿用旧清单，便于对照）：
+
+| 旧号 | 退役项 |
+|---|---|
+| 1 | 系统集合必须是 collection（含历史上的 `default` 假寄居 → 今日 `"_"` sentinel） |
+| 7 | Client 文档 API 的认证字段黑名单（系统集合寄居留下的疤） |
+| 8 | 系统集合无 `_version`、出站 version=0（两套文档契约） |
+
+其余旧清单条目**不属于 E-5**：
+
+| 旧号 | 条目 | 归属 |
+|---|---|---|
+| 2 | `type:role` 字符串 ACE / `documentSecurity` | 用户 collection 产品，K-3 要留。E-5 只退役**系统集合**上的 ACE |
+| 3 | Appwrite 查询字符串当唯一查询面 | E-4，与表形态无关 |
+| 4 | 默认 `read:any` + `keys`/`admin` 全开 | D-9，用户 collection 产品默认 |
+| 5 | Staged transactions | 已发布 API；可降为草稿适配器，不可当 E-5 验收砍掉（D-6） |
+| 6 | Upsert replace-permissions | 产品语义，不是系统表化 |
 
 相对地，**列存 collection、schema-per-project、catalog 驱动 DDL、outbox 同事务** 不是 Appwrite 遗产，该留（K-4、K-5、K-6）。
 
@@ -1052,19 +1107,16 @@ E-1～E-4 可在不改物理存储的情况下降低克隆和身份袋成本。E
 | V-1 | CreateUser / SignUp | 中、重复 | 两边 `map[string]any` 写 users 文档；权限切片还出现第三份拷贝 | 一个 `User.Register` / `Users.Create` |
 | V-2 | CreateDocument | 薄策略 × 2 | Client owner 默认 ACL；Server 不同 grant；都调同一 `docDB.CreateDocument` | 一个 Documents 服务 + Policy |
 | V-3 | CreateOrder | **深** | 幂等插入、渠道下单、`Order.Transition` 在事务内 | 保持；闭合订阅 purpose 边缘（R-6） |
-| V-4 | CreateExecution | 深编排 + 残留双路径 | `CreateExecution` 有记录/队列/prune；`Functions.Execute` 是更简的第二条执行 | 一个 Execute 动词 |
+| V-4 | CreateExecution | 深编排 + 死方法 | `CreateExecution` 有记录/队列/prune，是生产 RPC 路径；`Functions.Execute` 只被单元测试调用，不是第二条已接线的执行 API | 删掉测试用薄包装，保留一个 Execute 动词 |
 
 ---
 
 ## 13. 后续怎么用本文
 
-1. **逐项验证**：按 §1 总表 ID，先核「事实」段是否仍与代码一致；不一致则改本文，不改结论假装成立。
-2. **接受或驳回判断**：事实成立后，owner 对每条「判断」表态（接受 / 修正 / 驳回并写原因）。K 项核「仍成立」后表态是否保留。T/E 是规划提案，可重排合并。
-3. **分别表态的捆条**：S-3（app→infra vs domain 返回 gRPC）、A-8（三处认证 vs System 假 API key）。
-4. **重新规划**：只把已接受的判断纳入演进计划；优先合并三条史诗（系统表化、Agent overlay、拆端口不删引擎）。不要在未验证时直接施工。
-5. **不与 Round 1–3 混单**：那些是代码缺陷修复（`docs/review/README.md`、`round2/`、`round3/`）。本文是架构还债。两本账分开。
-
-建议的验收字段（可另开 tracker，不必写进本表）：`事实核对`（属实/过时/部分属实）、`判断`（接受/修正/驳回+原因）、`owner`、`日期`。
+1. **事实**：附录 A / B 已核对；漂移时改本文事实段，不改结论假装成立。
+2. **判断**：2026-08-21 owner 已逐项表态（[附录 C](#附录-cowner-逐项表态)）。正文已吸收修正。捆条 S-3、A-8 已分开接受。
+3. **规划**：只把已接受的判断纳入演进计划。按 §11 波次（Wave 0 缺陷 → 三条史诗）。E-5 未出独立设计前不施工。
+4. **不与 Round 1–3 混单**：那些是代码缺陷修复（`docs/review/README.md`、`round2/`、`round3/`）。本文是架构还债。两本账分开。Wave 0 缺陷可进缺陷账，但 ID 仍用本文前缀，避免与 F/G/H 碰撞。
 
 ---
 
@@ -1078,7 +1130,7 @@ E-1～E-4 可在不改物理存储的情况下降低克隆和身份袋成本。E
 | 完整性 / ID | Yes with edits。§13 曾承诺附录但未写；S-1 事实表无 ID；E-1…E-8 总表一行；K-1 标题不一致。已改。 |
 | 过声称 / Keep | 不可直接当执行规格。冲击评级偏高、假缝定义过宽（不计测试 fake）、D-1 与已排期系统表化双计、T-4 会被读成砍 RPC。已下调冲击、收窄假缝、补 K-13…K-23、T-4 改为 overlay。 |
 
-主代理吸收后的硬约束（规划时勿删）：
+主代理吸收后的硬约束（规划时勿删；附录 C 仍有效）：
 
 - 用户文档引擎是产品；拆的是端口，不是引擎。
 - 201 RPC 留给 Console/CLI/SDK；工具目录是 overlay。
@@ -1086,12 +1138,14 @@ E-1～E-4 可在不改物理存储的情况下降低克隆和身份袋成本。E
 - `RefreshRotationStore` 不是 nonce。
 - 经济表在 `tw_<project>`，不要按过时的 v3「必须 public」搬回去。
 - `sessions.secret_hash` 明文是缺陷，不是 keep。
+- Actor 变体是 `Service`，不是 `Agent`。
+- 不要用旧 8 条 Appwrite 清单当 E-5 验收。
 
 ---
 
 ## 附录 B：owner 评审核对记录
 
-日期：2026-08-21。针对当前 `main`（基线 `202211d` 之后仅 docs 提交，代码未漂移）做第二轮独立事实抽查（身份授权 / 数据面 / API 表面 / 领域模型四路并行，逐条落到 file:line），随后评审表态：**接受总体判断、K 清单与 E/T 顺序**；以下事实细节已改入正文（均不改变判断方向）：
+日期：2026-08-21。针对当前 `main`（基线 `202211d` 之后仅 docs 提交，代码未漂移）做第二轮独立事实抽查（身份授权 / 数据面 / API 表面 / 领域模型四路并行，逐条落到 file:line），随后评审表态：**接受总体判断与 K 清单**（E/T 顺序见附录 C 修正）；以下事实细节已改入正文（均不改变判断方向）：
 
 | 位置 | 修正 |
 |---|---|
@@ -1109,9 +1163,84 @@ E-1～E-4 可在不改物理存储的情况下降低克隆和身份袋成本。E
 | R-5 | 补 `InvokeJSON` 显式排除 `APIKeysService`（`invoke.go:61`） |
 | R-6 | 补 `subscribe.go:228-258` 直接 `orders.Insert` 绕过 `CreateOrder`；验收点已更新 |
 
-排期层修正（判断不变，拆出独立缺陷单，不绑架构史诗）：
+排期层修正（判断不变，拆出独立缺陷单，不绑架构史诗；附录 C 扩为 Wave 0 五条）：
 
 1. **admin refresh 不读库**（A-5）：被删/改角色 admin 凭未吊销 refresh token 可无限续签（`app/console/auth.go:75-111`；`firstRole` 空默认 `"admin"`）。refresh 路径加一次 `GetAdmin` 即可闭合，不等 E-3。
 2. **`sessions.secret_hash` 明文**（A-4 / K-22）：与上一条同批开单；修复需哈希写入与校验两半同改并处理存量会话。
 
-其余核对项均属实：RPC 201（69+122+10）、Account 19 构造依赖、`ProjectResolver` 零引用、`HasAnyPermission([])` fail-open、`Attribute.Array` DDL 忽略、`GetDatabase` 返回 `*Collection`、public catalog 无读路径、Groups 包装模式、client 丢 `PlatformAdmin`、`ACCESS_AUTHENTICATED→["users"]` 改写、console cookie `CredentialType` 矛盾、realtime 禁 API key、app 生产代码 import infra 清单、worker Wire 拉起全量、经济表落在 `tw_<project>`（K-23）等。逐项 accept/reject 表态与排期仍按 §13 流程进行。
+其余核对项均属实：RPC 201（69+122+10）、Account 19 构造依赖、`ProjectResolver` 零引用、`HasAnyPermission([])` fail-open、`Attribute.Array` DDL 忽略、`GetDatabase` 返回 `*Collection`、public catalog 无读路径、Groups 包装模式、client 丢 `PlatformAdmin`、`ACCESS_AUTHENTICATED→["users"]` 改写、console cookie `CredentialType` 矛盾、realtime 禁 API key、app 生产代码 import infra 清单、worker Wire 拉起全量、经济表落在 `tw_<project>`（K-23）等。逐项判断表态见附录 C。
+
+---
+
+## 附录 C：owner 逐项表态
+
+日期：2026-08-21。针对附录 B 核对后的正文做判断层表态。**没有整条驳回的发现**；修正已吸收进正文。施工只认本表 + §11 波次。
+
+### 总体
+
+| 对象 | 表态 |
+|---|---|
+| §0 总判 | **接受**。冲突点钉在 User/Session，不是「不该同时做 BaaS+经济+Agent」 |
+| K-1…K-23 | **全部保留**。尤其 K-5/K-13/K-14/K-15（系统表化前勿拆）、K-8（组合模式，不是 Groups 领域终点）、K-9、K-16、K-21、K-23 |
+| T / E 方向 | **接受**，切口与顺序按正文修正（E-2 拆步、T-2 `Service`、T-3 List 下推 Filter、E-5 先设计） |
+
+### 发现
+
+| ID | 表态 | 备注 |
+|---|---|---|
+| P-1 | 接受 | |
+| P-2 | 接受 | 挂钩级 roadmap 验收已达到；缺口是下一层工具表面 |
+| M-1 | 接受 | S-5 只当诊断 |
+| M-2 | 接受 | 与 D-1 分语言/形态 |
+| M-3 | 接受 | 拆端口不删引擎 |
+| M-4 | **修正已入正文** | 五动词进 Assets 领域服务，不放 Holding |
+| M-5 | 接受 | 随 E-6 |
+| M-6 | 接受 | `AccountsChannel()` 是同构函数 |
+| S-1 | 接受 | `ProjectResolver` 进 E-8 |
+| S-2 | 接受 | 不可换成无锁假仓储 |
+| S-3.1 | 接受 | app→infra、domain 返回 gRPC status |
+| S-3.2 | 接受 | 空 CRUD 才是仪式；经济仓储不是 |
+| S-4 | **修正已入正文** | 对外 `uow.Run`；实现可暂用 ctx |
+| S-5 | 接受为诊断，不立债 | |
+| D-1 | **修正已入正文** | 系统表化是方向，尚无独立设计 |
+| D-2 | 接受 | `_` 是过渡寻址 |
+| D-3 | 接受 | |
+| D-4 | 接受 | ListProjects 已是 E-4 先例 |
+| D-5 | **修正已入正文** | 拆成 Array / `_version` / 读路径 migrator 三件 |
+| D-6 | 接受 | 不可当 E-5 验收砍 Staged API |
+| D-7 | 接受 | public `document_*` 删除安全 |
+| D-8 | 接受 | |
+| D-9 | **新增** | 用户 collection `read:any` 是产品默认 |
+| A-1 | 接受（最高杠杆） | Actor = EndUser \| Admin \| **Service** \| System |
+| A-2 | 接受为设计分裂 | Client 丢 `PlatformAdmin` 不当独立 P0 |
+| A-3 | 接受 | 三面三种 Grant |
+| A-4 | 接受 | cookie 是运输；`secret_hash` 是缺陷 |
+| A-5 | 接受 | refresh 加 `GetAdmin`，不等 E-3 |
+| A-6 | 接受 | ChallengeStore 不含旋转/限流/上传会话 |
+| A-7 | 接受 | |
+| A-8.1 | 接受 | 共享 `Authenticate` |
+| A-8.2 | 接受 | System 是第四变体 |
+| R-1 | 接受 | 信任边界留；克隆的是 Documents 实现 |
+| R-2 | 接受 | 不砍 201 RPC |
+| R-3 | 接受 | 薄 handler 可接受 |
+| R-4 | 接受 | |
+| R-5 | 接受 | key 管理工具由 T-4 显式决定 |
+| R-6 | 接受 | Wave 0 缺陷 |
+| R-7 | **修正已入正文** | v1 Server-only + file token |
+| C-1 | 接受，后波 | |
+| V-1…V-3 | 抽样，不单独表态 | |
+| V-4 | **修正已入正文** | `Functions.Execute` 是测试用死方法 |
+
+### 规划时不得从本文推出的读法
+
+- 把 201 RPC 砍成约 20 个动词
+- 删用户文档引擎
+- 系统表化完成前拆 `ident` / `businessSchema` / `projectschema` / sentinel 守卫
+- 把 `RefreshRotationStore` 折进 NonceStore
+- 按过时 v3 文稿把经济表搬回 `public`
+- 用旧 8 条 Appwrite 清单当 E-5 完工定义
+- 把 T-2 的 Agent 当成身份种类去改 `ActorKind`
+- 把 T-1 概念图当成第一天必须切出的四个 Go 包
+- 把 Documents「不带 Principal」读成 List 也不下推授权过滤
+
+施工顺序见 §11：Wave 0 五条独立缺陷 → Wave 1（E-1 / E-2a / E-3 / E-8）→ Wave 2（E-4 / E-6 接口）→ Wave 3（E-5 先设计、E-2b、E-7）。
