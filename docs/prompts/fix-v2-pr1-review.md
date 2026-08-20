@@ -111,7 +111,7 @@
 - 不要开始 PR2（outbox / 事件 / Realtime / 事务）。
 - 不要改 proto 字段号，不要手改 `genproto`。
 - 不要把系统集合改成带 `_version` 列。
-- 不要为了「adapter 也归零 Version」大改 Users/Teams/Storage；系统集合出站契约维持 Get/List 归零即可。可在 `scanDocumentJSON` 旁保留现有注释。
+- 不要为了「adapter 也归零 Version」大改 Users/Groups/Storage；系统集合出站契约维持 Get/List 归零即可。可在 `scanDocumentJSON` 旁保留现有注释。
 - 不要扩大 Console / SDK 重构范围。
 
 ---

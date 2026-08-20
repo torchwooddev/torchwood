@@ -96,10 +96,10 @@ task dev-server    # 前台常驻正常（gRPC 127.0.0.1:9060 / HTTP :9080 / Met
 9. **rpc --data 透传**：`rpc /torchwood.server.v1.UsersService/ListUsers --data '{"pageSize": 1}'` 响应 `meta.pageSize == 1`。
 10. **rpc 未知方法**：`torchwood rpc /torchwood.server.v1.UsersService/Bogus --api-key <key>` → 退出码 1，stderr 含「未知方法」与完整方法名示例。
 11. **projects**：`torchwood projects get default --api-key <key>` → 退出码 0 返回项目 JSON；`torchwood projects list --api-key <key>` → 退出码 0（**列表为空是服务端安全设计 M7**：非平台 admin 列表恒空，`internal/app/server/projects.go:114`，判通过并注明，不得视为 CLI 缺陷）。
-12. **users create/update 全链路**：create 带 `--data '{"labels":{"team":"core"}}'` → 响应含新用户；update `--status inactive` → 响应 `status == "inactive"`；delete → 成功。完成后清理测试用户。
+12. **users create/update 全链路**：create 带 `--data '{"labels":{"group":"core"}}'` → 响应含新用户；update `--status inactive` → 响应 `status == "inactive"`；delete → 成功。完成后清理测试用户。
 13. **环境变量**：仅设 `TORCHWOOD_CLI_API_KEY=<key>`（不传 flag）跑 `users list` → 成功；`TORCHWOOD_CLI_ENDPOINT` 指向错误端口 → 退出码 1 且错误信息可读（Unavailable）。
 14. **占位参数**：`torchwood health get --tls` → 退出码 1、stderr 含「尚未支持」；`torchwood health get --output yaml` → 退出码 1、stderr 含「不支持的输出格式」。
-15. **rpc 注册表抽查**：任选 Databases/Teams/Storage 服务的一个读方法与一个写方法（如 `ListTeams`、`CreateTeam`）走 `rpc` 调用，读方法返回 200 语义、写方法按 scope 返回对应结果（证明注册表非仅 health/users/projects 三服务）。
+15. **rpc 注册表抽查**：任选 Databases/Groups/Storage 服务的一个读方法与一个写方法（如 `ListGroups`、`CreateGroup`）走 `rpc` 调用，读方法返回 200 语义、写方法按 scope 返回对应结果（证明注册表非仅 health/users/projects 三服务）。
 
 ## 三、工程化
 

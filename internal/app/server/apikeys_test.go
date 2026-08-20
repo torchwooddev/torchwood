@@ -39,7 +39,7 @@ func TestAPIKeys_Create_ScopeValidation(t *testing.T) {
 		{"all"},
 		{"databases"},
 		{"databases.read", "databases.write"},
-		{"users.read", "storage.write", "oauthproviders", "teams"},
+		{"users.read", "storage.write", "oauthproviders", "groups"},
 	} {
 		_, _, err := uc.Create(ctx, CreateAPIKeyCommand{Name: "k", Scopes: scopes})
 		require.NoError(t, err, "scopes %v should be accepted", scopes)

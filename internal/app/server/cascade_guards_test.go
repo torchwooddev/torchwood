@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
-	"github.com/torchwooddev/torchwood/internal/domain/teams"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
@@ -201,44 +201,44 @@ func (f *fakeDocDB) BulkDeleteDocuments(context.Context, string, string, string,
 	return 0, nil
 }
 
-func fakeMembership(id, teamID, userID, statusVal string, roles []string) databases.Document {
+func fakeMembership(id, groupID, userID, statusVal string, roles []string) databases.Document {
 	return databases.Document{
 		ID: id,
 		Data: map[string]any{
-			"team_id": teamID,
-			"user_id": userID,
-			"status":  statusVal,
-			"roles":   roles,
+			"group_id": groupID,
+			"user_id":  userID,
+			"status":   statusVal,
+			"roles":    roles,
 		},
 	}
 }
 
-// TestTeams_LastOwnerProtection_DeleteMembership: 删除唯一 accepted owner → 拒绝；
+// TestGroups_LastOwnerProtection_DeleteMembership: 删除唯一 accepted owner → 拒绝；
 // 删除非 owner 或存在第二 owner 时放行。
-func TestTeams_LastOwnerProtection_DeleteMembership(t *testing.T) {
+func TestGroups_LastOwnerProtection_DeleteMembership(t *testing.T) {
 	t.Run("last owner rejected", func(t *testing.T) {
 		db := newFakeDocDB()
 		db.seed("memberships",
-			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
-			fakeMembership("m-member", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleMember}),
+			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
+			fakeMembership("m-member", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleMember}),
 		)
-		uc := NewTeams(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db)
 
-		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-owner", databases.Principal{Roles: []string{"admin"}})
+		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-owner", databases.Principal{Roles: []string{"admin"}})
 		require.Error(t, err)
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	})
 
 	t.Run("second owner allows removal", func(t *testing.T) {
 		db := newFakeDocDB()
-		db.seed("teams", databases.Document{ID: "team-1", Data: map[string]any{"total": int64(2)}})
+		db.seed("groups", databases.Document{ID: "group-1", Data: map[string]any{"total": int64(2)}})
 		db.seed("memberships",
-			fakeMembership("m-owner1", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
-			fakeMembership("m-owner2", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-owner1", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
+			fakeMembership("m-owner2", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleOwner}),
 		)
-		uc := NewTeams(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db)
 
-		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-owner1", databases.Principal{Roles: []string{"admin"}})
+		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-owner1", databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
 		require.NotContains(t, db.docs["memberships"], "m-owner1")
 	})
@@ -246,41 +246,41 @@ func TestTeams_LastOwnerProtection_DeleteMembership(t *testing.T) {
 	t.Run("pending owner removal allowed", func(t *testing.T) {
 		db := newFakeDocDB()
 		db.seed("memberships",
-			fakeMembership("m-pending", "team-1", "user-a", teams.StatusPending, []string{teams.RoleOwner}),
+			fakeMembership("m-pending", "group-1", "user-a", groups.StatusPending, []string{groups.RoleOwner}),
 		)
-		uc := NewTeams(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db)
 
-		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-pending", databases.Principal{Roles: []string{"admin"}})
+		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-pending", databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
 	})
 
 	t.Run("non-owner removal allowed", func(t *testing.T) {
 		db := newFakeDocDB()
-		db.seed("teams", databases.Document{ID: "team-1", Data: map[string]any{"total": int64(2)}})
+		db.seed("groups", databases.Document{ID: "group-1", Data: map[string]any{"total": int64(2)}})
 		db.seed("memberships",
-			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
-			fakeMembership("m-member", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleMember}),
+			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
+			fakeMembership("m-member", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleMember}),
 		)
-		uc := NewTeams(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db)
 
-		err := uc.DeleteMembership(context.Background(), "proj-1", "team-1", "m-member", databases.Principal{Roles: []string{"admin"}})
+		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-member", databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
 	})
 }
 
-// TestTeams_LastOwnerProtection_UpdateMembership: 唯一 owner 降级 → 拒绝；
+// TestGroups_LastOwnerProtection_UpdateMembership: 唯一 owner 降级 → 拒绝；
 // 有第二 owner 时降级放行；仍保留 owner 角色时放行。
-func TestTeams_LastOwnerProtection_UpdateMembership(t *testing.T) {
+func TestGroups_LastOwnerProtection_UpdateMembership(t *testing.T) {
 	t.Run("downgrade last owner rejected", func(t *testing.T) {
 		db := newFakeDocDB()
 		db.seed("memberships",
-			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
-			fakeMembership("m-member", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleMember}),
+			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
+			fakeMembership("m-member", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleMember}),
 		)
-		uc := NewTeams(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db)
 
-		_, err := uc.UpdateMembership(context.Background(), "proj-1", "team-1", "m-owner",
-			UpdateMembershipCommand{Roles: []string{teams.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
+		_, err := uc.UpdateMembership(context.Background(), "proj-1", "group-1", "m-owner",
+			UpdateMembershipCommand{Roles: []string{groups.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
 		require.Error(t, err)
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	})
@@ -288,28 +288,28 @@ func TestTeams_LastOwnerProtection_UpdateMembership(t *testing.T) {
 	t.Run("downgrade with second owner allowed", func(t *testing.T) {
 		db := newFakeDocDB()
 		db.seed("memberships",
-			fakeMembership("m-owner1", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
-			fakeMembership("m-owner2", "team-1", "user-b", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-owner1", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
+			fakeMembership("m-owner2", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleOwner}),
 		)
-		uc := NewTeams(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db)
 
-		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "team-1", "m-owner1",
-			UpdateMembershipCommand{Roles: []string{teams.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
+		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "group-1", "m-owner1",
+			UpdateMembershipCommand{Roles: []string{groups.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
-		require.Equal(t, []string{teams.RoleMember}, updated.Data["roles"])
+		require.Equal(t, []string{groups.RoleMember}, updated.Data["roles"])
 	})
 
 	t.Run("keep owner role allowed", func(t *testing.T) {
 		db := newFakeDocDB()
 		db.seed("memberships",
-			fakeMembership("m-owner", "team-1", "user-a", teams.StatusAccepted, []string{teams.RoleOwner}),
+			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
 		)
-		uc := NewTeams(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db)
 
-		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "team-1", "m-owner",
-			UpdateMembershipCommand{Roles: []string{teams.RoleOwner, teams.RoleAdmin}}, databases.Principal{Roles: []string{"admin"}})
+		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "group-1", "m-owner",
+			UpdateMembershipCommand{Roles: []string{groups.RoleOwner, groups.RoleAdmin}}, databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
-		require.Equal(t, []string{teams.RoleOwner, teams.RoleAdmin}, updated.Data["roles"])
+		require.Equal(t, []string{groups.RoleOwner, groups.RoleAdmin}, updated.Data["roles"])
 	})
 }
 

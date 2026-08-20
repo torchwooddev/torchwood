@@ -1,4 +1,4 @@
-# 验收 Prompt：Torchwood CLI 资源命令（databases/teams/storage/functions/oauth-providers）严格验收
+# 验收 Prompt：Torchwood CLI 资源命令（databases/groups/storage/functions/oauth-providers）严格验收
 
 > 将本文件整体作为验收任务分派给验收 agent。仓库路径：`D:/Codes/qiulin/torchwood`
 > 任务定义：`docs/prompts/cli-resources.md`（**先通读再动手**，以代码现状为准）
@@ -9,7 +9,7 @@
 
 ## 任务目标
 
-对「cmd/client 补齐 Server API 资源具名子命令：databases / teams / storage / functions / oauth-providers」实现做**严格验收**：
+对「cmd/client 补齐 Server API 资源具名子命令：databases / groups / storage / functions / oauth-providers」实现做**严格验收**：
 逐项核对代码与任务定义「覆盖范围/参数约定」的一致性，并实测全部验收项。
 
 - **只读验收**：不得修改任何代码/文档文件（临时验证数据库除外）；发现偏差只报告，不修复。
@@ -41,12 +41,12 @@ task dev-server    # 前台常驻正常（gRPC 127.0.0.1:9060 / HTTP :9080 / Met
 
 ## 一、代码层面核对
 
-### C1. 命令树与覆盖（`cmd/client/main.go`、`cmd_databases.go`、`cmd_teams.go`、`cmd_storage.go`、`cmd_functions.go`、`cmd_oauth.go`）
+### C1. 命令树与覆盖（`cmd/client/main.go`、`cmd_databases.go`、`cmd_groups.go`、`cmd_storage.go`、`cmd_functions.go`、`cmd_oauth.go`）
 
 | 服务 | 期望 CLI 命令（以 proto 实际方法为准） |
 |----|----|
 | DatabasesService（22 方法） | `databases` create/list/get/delete；`databases collections` create/list/get/update/delete；`databases attributes` create/delete；`databases indexes` create/delete；`databases documents` create/list/get/update/upsert/delete/count/bulk-update/bulk-delete |
-| TeamsService（12 方法） | `teams` create/list/get/delete；`teams prefs` get/update；`teams memberships` create/list/get/update/update-status/delete |
+| GroupsService（12 方法） | `groups` create/list/get/delete；`groups prefs` get/update；`groups memberships` create/list/get/update/update-status/delete |
 | StorageService（12 方法中做 10） | `storage buckets` create/list/get/update/delete；`storage files` list/get/update/delete；`storage usage`。**不做** `files create`（bytes 上传）与 `files token`（CreateFileToken），代码与 help 中均不得出现 |
 | FunctionsService（16 方法） | `functions` runtimes/specifications/create/list/get/update/delete；`functions deployments` **create**（gRPC 纯消息 bytes code，允许）/list/get/delete；`functions variables` set/get；`functions executions` create/list/get |
 | OAuthProvidersService（3 方法） | `oauth-providers` list/upsert/delete（proto 无 get 方法，不得出现 `get`） |
@@ -60,10 +60,10 @@ task dev-server    # 前台常驻正常（gRPC 127.0.0.1:9060 / HTTP :9080 / Met
 - 标量参数用具名 flag；列表类命令统一 `--page-size`/`--page-token`（以各 proto 实际字段为准：`ListCollections/ListDocuments/ListMemberships/ListFiles` 有，`ListDeployments/ListExecutions` 无分页字段**不得提供**）。
 - 复杂结构一律 JSON 字符串 flag：`--queries`（Appwrite 风格查询字符串数组）、`--permissions`/`--roles`/`--scopes`/`--attributes`/`--orders`/`--document-ids`/`--conflict-columns`（字符串数组）、`--metadata`/`--vars`（string→string 对象）、`--increment`（string→int64 对象）。非法 JSON → CLI 侧报错（提示期望格式）、退出码 1。
 - `--data` 语义必须区分（验收重点）：
-  - `databases documents create/update/upsert/bulk-update` 与 `teams prefs update`：`--data` 为**字段本体**（document data / prefs 的 Struct 对象），如 `--data '{"title":"hi"}'`；
+  - `databases documents create/update/upsert/bulk-update` 与 `groups prefs update`：`--data` 为**字段本体**（document data / prefs 的 Struct 对象），如 `--data '{"title":"hi"}'`；
   - 其余命令（users 等 Prompt B 命令）沿用请求级 `protojson` 合并（`mergeData`），不得被本次改动破坏。
 - proto3 optional 字段用 presence 语义（未显式传 flag 不得设置字段）：`--document-security`/`--disabled`/`--public`/`--enabled`/`--async`（bool，`changedBoolPtr`）、`--timeout-seconds`（int32，`changedInt32Ptr`）、`--spec`/`--deployment-id`（string，`changedStringPtr`）；字符串 optional 字段沿用「非空即设置」也可接受，但需与任务定义一致。
-- 必填校验与服务端一致（对照 `internal/app/server/*.go` 的 InvalidArgument 校验）：databases 的 id/name/key/type/attributes/data/conflict-columns/document-ids、teams 的 name/user-id+email 二选一/roles/status、storage 的 name/至少一个更新字段、functions 的 id/name/runtime/input、oauth 的 provider/client-id。
+- 必填校验与服务端一致（对照 `internal/app/server/*.go` 的 InvalidArgument 校验）：databases 的 id/name/key/type/attributes/data/conflict-columns/document-ids、groups 的 name/user-id+email 二选一/roles/status、storage 的 name/至少一个更新字段、functions 的 id/name/runtime/input、oauth 的 provider/client-id。
 - 输出、错误处理、退出码沿用 `cmd/client/output.go`：成功 stdout 缩进 JSON（protojson camelCase）；错误 `code + message` 到 stderr、退出码 1；`PermissionDenied` 附带 scope 提示。
 
 ### C3. 注册表（`cmd/client/registry.go`）
@@ -74,7 +74,7 @@ task dev-server    # 前台常驻正常（gRPC 127.0.0.1:9060 / HTTP :9080 / Met
 ### C4. 测试存在性（`cmd/client/cmd_*_test.go`）
 
 - 每个资源的「flag → request message」构造函数 table-driven 单测：**至少一条成功路径 + 一条参数校验失败路径**（缺必填、非法 JSON、presence 未设置等）；
-- 覆盖所有构造器：databases 的 buildCreateDatabaseReq / buildCreateCollectionReq / buildUpdateCollectionReq / buildCreateAttributeReq / buildCreateIndexReq / buildCreateDocumentReq / buildListDocumentsReq / buildUpdateDocumentReq / buildUpsertDocumentReq / buildBulkUpdate+DeleteDocumentsReq；teams 的 5 个；storage 的 3 个；functions 的 5 个（含 `--code` 文件读取）；oauth 的 1 个；
+- 覆盖所有构造器：databases 的 buildCreateDatabaseReq / buildCreateCollectionReq / buildUpdateCollectionReq / buildCreateAttributeReq / buildCreateIndexReq / buildCreateDocumentReq / buildListDocumentsReq / buildUpdateDocumentReq / buildUpsertDocumentReq / buildBulkUpdate+DeleteDocumentsReq；groups 的 5 个；storage 的 3 个；functions 的 5 个（含 `--code` 文件读取）；oauth 的 1 个；
 - `go test ./cmd/client/...` 全部通过。
 
 ### C5. 文档
@@ -96,7 +96,7 @@ task dev-server    # 前台常驻正常（gRPC 127.0.0.1:9060 / HTTP :9080 / Met
 
 前置：dev server 运行中；`bin/torchwood[.exe]` 已构建；以下 `torchwood` 指该二进制；`FULL=cli-verify-full`、`RO=cli-verify-ro`（方案 B）或等价 key。**每项记录退出码与 stdout/stderr 摘要。**
 
-1. **命令树**：`torchwood --help` 含 databases/teams/storage/functions/oauth-providers/rpc 等全部命令；`torchwood databases --help` 含 8 个子命令；`torchwood databases documents --help` 含 9 个子命令；storage/teams/functions/oauth-providers 各层 help 与 C1 表一致，**help 中不得出现 files create / token / 分片 / multipart 上传命令**。
+1. **命令树**：`torchwood --help` 含 databases/groups/storage/functions/oauth-providers/rpc 等全部命令；`torchwood databases --help` 含 8 个子命令；`torchwood databases documents --help` 含 9 个子命令；storage/groups/functions/oauth-providers 各层 help 与 C1 表一致，**help 中不得出现 files create / token / 分片 / multipart 上传命令**。
 2. **databases 全链路**（全用 `FULL`）：
    - `databases create --id clivdb --name <任意>` → 成功；`databases list` / `get clivdb` → 成功；
    - `collections create clivdb --id col1 --name <任意> --permissions '["read(\"users\")"]'` → 成功且 permissions 回显；`collections list clivdb` / `get clivdb col1` → 成功；
@@ -107,18 +107,18 @@ task dev-server    # 前台常驻正常（gRPC 127.0.0.1:9060 / HTTP :9080 / Met
    - `documents update clivdb col1 d1 --data '{"title":"hi2"}'` → 成功；`documents bulk-update clivdb col1 --document-ids '["d1"]' --data '{"title":"bulk"}'` → 成功；`documents bulk-delete clivdb col1 --document-ids '["d1"]'` → 成功；`documents delete clivdb col1 d1` → 成功；
    - 清理 `databases delete clivdb`。
    - **对照项**：`--queries` 引用集合不存在的字段（如 `"equal(\"bogus\",1)"`）→ 服务端 InvalidArgument 属正常（非 CLI 缺陷，注明即可）；`documents upsert`（C6.1）与 `--document-security=false`（C6.2）按 C6 结论核对。
-3. **teams 全链路**：`teams create --name <任意>` → 记录 team id；`teams list` / `get <id>` → 成功；`teams prefs update <id> --data '{"theme":"dark"}'` → 成功且 `prefs.theme=dark`；`teams prefs get <id>` → 回显一致；`memberships create <id> --email <任意> --name <任意> --roles '["admin"]'` → 成功；`memberships list <id>` → 成功；`memberships update <id> <mid> --roles '["member"]'` → 成功；`memberships update-status <id> <mid> --status accepted` → 成功（合法取值：roles ∈ owner/admin/member，status ∈ pending/accepted/rejected）；`memberships delete <id> <mid>` → 成功；清理 `teams delete <id>`。
+3. **groups 全链路**：`groups create --name <任意>` → 记录 group id；`groups list` / `get <id>` → 成功；`groups prefs update <id> --data '{"theme":"dark"}'` → 成功且 `prefs.theme=dark`；`groups prefs get <id>` → 回显一致；`memberships create <id> --email <任意> --name <任意> --roles '["admin"]'` → 成功；`memberships list <id>` → 成功；`memberships update <id> <mid> --roles '["member"]'` → 成功；`memberships update-status <id> <mid> --status accepted` → 成功（合法取值：roles ∈ owner/admin/member，status ∈ pending/accepted/rejected）；`memberships delete <id> <mid>` → 成功；清理 `groups delete <id>`。
 4. **storage 全链路**：`storage buckets create --name clivbkt --public` → 成功且 `public=true`；`storage buckets list` / `get <id>` → 成功；`storage buckets update <id> --name clivbkt2 --public=false` → 成功且 `public=false`（验证 optional bool presence）；`storage usage` → 成功（buckets/files/totalSize）；`storage files list <id>` → 成功；清理 `storage buckets delete <id>`。
 5. **functions 全链路**：`functions runtimes` / `functions specifications` → 成功（记录 runtime id 与 spec id）；`functions create --id clivfn --name <任意> --runtime <记录值> --timeout-seconds 30 --enabled` → 成功（**必须显式传 --timeout-seconds，否则按 C6.3 失败，不判 CLI 失败**）；`functions get clivfn` / `functions list` → 成功；`functions update clivfn --name <新名> --timeout-seconds 60` → 成功；`functions variables set clivfn --vars '{"FOO":"bar"}'` → 成功；`functions variables get clivfn` → 回显一致；制作真实 zip（如 `index.js` 内容 `module.exports = async function () { return {}; }`，Node 运行时为 CommonJS 入口），`functions deployments create clivfn --code <zip>` → 成功且 `status=ready`（构建需数秒，必要时加大 `--timeout`）；`functions deployments list clivfn` / `get clivfn <dep-id>` → 成功；`functions executions create clivfn --input '{"a":1}' --async` → 成功（status=queued）；`functions executions list clivfn` / `get clivfn <ex-id>` → 成功；`functions deployments delete clivfn <dep-id>` 与 `functions delete clivfn` → 成功。
    - `deployments create --code` 指向不存在文件 → CLI 报「读取 --code 失败」、退出码 1（服务端未触达）。
 6. **oauth-providers**：`oauth-providers upsert google --client-id <任意> --client-secret <任意> --enabled --scopes '["email"]'` → 成功（必须带 secret，否则按 C6.4 服务端拒绝，不判 CLI 失败）；`oauth-providers list` → 回显一致；`oauth-providers delete google` → 成功。
-7. **错误路径（不触达服务端）**：缺必填 flag（`databases create` 缺 `--id`、`databases collections create <db>` 缺 `--name`、`storage files update <bid> <fid>` 无任何更新字段、`teams memberships update <tid> <mid>` 缺 `--roles`）→ 退出码 1、stderr 含必填提示、**stdout 为空**；非法 JSON（`--queries 'oops'`、`--permissions '[1]'`、`--increment '{"v":"x"}'`）→ 退出码 1、stderr 含「解析失败」。
+7. **错误路径（不触达服务端）**：缺必填 flag（`databases create` 缺 `--id`、`databases collections create <db>` 缺 `--name`、`storage files update <bid> <fid>` 无任何更新字段、`groups memberships update <tid> <mid>` 缺 `--roles`）→ 退出码 1、stderr 含必填提示、**stdout 为空**；非法 JSON（`--queries 'oops'`、`--permissions '[1]'`、`--increment '{"v":"x"}'`）→ 退出码 1、stderr 含「解析失败」。
 8. **scope 不足**：用 `RO`（users.read）调写命令（如 `databases create --id x --name x`、`storage buckets create --name x`）→ 退出码 1、stderr 含 `PermissionDenied` **且** 含 scope 提示（`users.read/users.write` 或 `* / all` 字样）；用 `RO` 调 `users list` → 成功（对照）。
-9. **rpc 与具名一致**：`torchwood rpc /torchwood.server.v1.DatabasesService/ListDatabases --data '{}' --api-key <FULL>` 与 `torchwood databases list --api-key <FULL>` 的 stdout **逐字节一致**；`rpc /torchwood.server.v1.TeamsService/ListTeams` 与 `teams list` 同样对照。
+9. **rpc 与具名一致**：`torchwood rpc /torchwood.server.v1.DatabasesService/ListDatabases --data '{}' --api-key <FULL>` 与 `torchwood databases list --api-key <FULL>` 的 stdout **逐字节一致**；`rpc /torchwood.server.v1.GroupsService/ListGroups` 与 `groups list` 同样对照。
 10. **gateway REST 语义一致**：对同一资源（如 `databases get clivdb`）对比 `torchwood` 输出与
     `curl -H "x-api-key: <FULL>" http://127.0.0.1:9080/v1/server/databases/clivdb`：
     字段名约定差异（CLI 为 protojson camelCase，如 `createdAt`；gateway 为 snake_case，如 `created_at`）属设计约定，**字段名与取值集合须语义一致**；二者不一致判失败。
-11. **清理**：删除本次验收创建的全部资源（databases/teams/buckets/functions/oauth providers）与测试 key，确认无残留。
+11. **清理**：删除本次验收创建的全部资源（databases/groups/buckets/functions/oauth providers）与测试 key，确认无残留。
 
 ## 三、工程化
 

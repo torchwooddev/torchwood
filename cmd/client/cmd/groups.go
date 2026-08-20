@@ -8,69 +8,69 @@ import (
 )
 
 const (
-	methodTeamsCreate                 = "/torchwood.server.v1.TeamsService/CreateTeam"
-	methodTeamsList                   = "/torchwood.server.v1.TeamsService/ListTeams"
-	methodTeamsGet                    = "/torchwood.server.v1.TeamsService/GetTeam"
-	methodTeamsDelete                 = "/torchwood.server.v1.TeamsService/DeleteTeam"
-	methodTeamsGetPrefs               = "/torchwood.server.v1.TeamsService/GetTeamPrefs"
-	methodTeamsUpdatePrefs            = "/torchwood.server.v1.TeamsService/UpdateTeamPrefs"
-	methodTeamsCreateMembership       = "/torchwood.server.v1.TeamsService/CreateMembership"
-	methodTeamsListMemberships        = "/torchwood.server.v1.TeamsService/ListMemberships"
-	methodTeamsGetMembership          = "/torchwood.server.v1.TeamsService/GetMembership"
-	methodTeamsUpdateMembership       = "/torchwood.server.v1.TeamsService/UpdateMembership"
-	methodTeamsUpdateMembershipStatus = "/torchwood.server.v1.TeamsService/UpdateMembershipStatus"
-	methodTeamsDeleteMembership       = "/torchwood.server.v1.TeamsService/DeleteMembership"
+	methodGroupsCreate                 = "/torchwood.server.v1.GroupsService/CreateGroup"
+	methodGroupsList                   = "/torchwood.server.v1.GroupsService/ListGroups"
+	methodGroupsGet                    = "/torchwood.server.v1.GroupsService/GetGroup"
+	methodGroupsDelete                 = "/torchwood.server.v1.GroupsService/DeleteGroup"
+	methodGroupsGetPrefs               = "/torchwood.server.v1.GroupsService/GetGroupPrefs"
+	methodGroupsUpdatePrefs            = "/torchwood.server.v1.GroupsService/UpdateGroupPrefs"
+	methodGroupsCreateMembership       = "/torchwood.server.v1.GroupsService/CreateMembership"
+	methodGroupsListMemberships        = "/torchwood.server.v1.GroupsService/ListMemberships"
+	methodGroupsGetMembership          = "/torchwood.server.v1.GroupsService/GetMembership"
+	methodGroupsUpdateMembership       = "/torchwood.server.v1.GroupsService/UpdateMembership"
+	methodGroupsUpdateMembershipStatus = "/torchwood.server.v1.GroupsService/UpdateMembershipStatus"
+	methodGroupsDeleteMembership       = "/torchwood.server.v1.GroupsService/DeleteMembership"
 )
 
-// NewTeamsCmd 覆盖 TeamsService 全部 12 个方法：
-// 团队（create/list/get/delete）、prefs（get/update）、
+// NewGroupsCmd 覆盖 GroupsService 全部 12 个方法：
+// 用户组（create/list/get/delete）、prefs（get/update）、
 // memberships（create/list/get/update/update-status/delete）。
-func NewTeamsCmd(g *globalFlags) *cobra.Command {
+func NewGroupsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "teams",
-		Short: "团队管理（TeamsService 全部方法）",
+		Use:   "groups",
+		Short: "用户组管理（GroupsService 全部方法）",
 	}
 	cmd.AddCommand(
-		newTeamsCreateCmd(g),
-		newTeamsListCmd(g),
-		newTeamsGetCmd(g),
-		newTeamsDeleteCmd(g),
-		newTeamsPrefsCmd(g),
-		newTeamsMembershipsCmd(g),
+		newGroupsCreateCmd(g),
+		newGroupsListCmd(g),
+		newGroupsGetCmd(g),
+		newGroupsDeleteCmd(g),
+		newGroupsPrefsCmd(g),
+		newGroupsMembershipsCmd(g),
 	)
 	return cmd
 }
 
-func newTeamsCreateCmd(g *globalFlags) *cobra.Command {
+func newGroupsCreateCmd(g *globalFlags) *cobra.Command {
 	var name, permissions string
 	cmd := &cobra.Command{
 		Use:   "create --name <name>",
-		Short: "创建团队",
+		Short: "创建用户组",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildCreateTeamReq(name, permissions)
+			req, err := buildCreateGroupReq(name, permissions)
 			if err != nil {
 				return err
 			}
-			resp, err := invoke(g, methodTeamsCreate, req)
+			resp, err := invoke(g, methodGroupsCreate, req)
 			if err != nil {
 				return err
 			}
 			return printJSON(os.Stdout, resp)
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "团队名称（必填）")
+	cmd.Flags().StringVar(&name, "name", "", "用户组名称（必填）")
 	cmd.Flags().StringVar(&permissions, "permissions", "", "权限 JSON 数组")
 	return cmd
 }
 
-func newTeamsListCmd(g *globalFlags) *cobra.Command {
+func newGroupsListCmd(g *globalFlags) *cobra.Command {
 	var pageSize int32
 	var pageToken string
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "列出团队",
+		Short: "列出用户组",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := invoke(g, methodTeamsList, listJSON(pageSize, pageToken))
+			resp, err := invoke(g, methodGroupsList, listJSON(pageSize, pageToken))
 			if err != nil {
 				return err
 			}
@@ -82,13 +82,13 @@ func newTeamsListCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-func newTeamsGetCmd(g *globalFlags) *cobra.Command {
+func newGroupsGetCmd(g *globalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
-		Short: "按 ID 获取团队",
+		Short: "按 ID 获取用户组",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := invoke(g, methodTeamsGet, map[string]any{"id": args[0]})
+			resp, err := invoke(g, methodGroupsGet, map[string]any{"id": args[0]})
 			if err != nil {
 				return err
 			}
@@ -97,13 +97,13 @@ func newTeamsGetCmd(g *globalFlags) *cobra.Command {
 	}
 }
 
-func newTeamsDeleteCmd(g *globalFlags) *cobra.Command {
+func newGroupsDeleteCmd(g *globalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <id>",
-		Short: "删除团队",
+		Short: "删除用户组",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := invoke(g, methodTeamsDelete, map[string]any{"id": args[0]})
+			resp, err := invoke(g, methodGroupsDelete, map[string]any{"id": args[0]})
 			if err != nil {
 				return err
 			}
@@ -112,42 +112,42 @@ func newTeamsDeleteCmd(g *globalFlags) *cobra.Command {
 	}
 }
 
-// newTeamsPrefsCmd: teams prefs get <id> / update <id> --data。
-func newTeamsPrefsCmd(g *globalFlags) *cobra.Command {
+// newGroupsPrefsCmd: groups prefs get <id> / update <id> --data。
+func newGroupsPrefsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prefs",
-		Short: "团队偏好管理",
+		Short: "用户组偏好管理",
 	}
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:   "get <id>",
-			Short: "获取团队偏好",
+			Short: "获取用户组偏好",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				resp, err := invoke(g, methodTeamsGetPrefs, map[string]any{"id": args[0]})
+				resp, err := invoke(g, methodGroupsGetPrefs, map[string]any{"id": args[0]})
 				if err != nil {
 					return err
 				}
 				return printJSON(os.Stdout, resp)
 			},
 		},
-		newTeamsPrefsUpdateCmd(g),
+		newGroupsPrefsUpdateCmd(g),
 	)
 	return cmd
 }
 
-func newTeamsPrefsUpdateCmd(g *globalFlags) *cobra.Command {
+func newGroupsPrefsUpdateCmd(g *globalFlags) *cobra.Command {
 	var data string
 	cmd := &cobra.Command{
 		Use:   "update <id> --data '{...}'",
-		Short: "全量替换团队偏好（--data 为 prefs 对象本身）",
+		Short: "全量替换用户组偏好（--data 为 prefs 对象本身）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, err := buildUpdateTeamPrefsReq(args[0], data)
+			req, err := buildUpdateGroupPrefsReq(args[0], data)
 			if err != nil {
 				return err
 			}
-			resp, err := invoke(g, methodTeamsUpdatePrefs, req)
+			resp, err := invoke(g, methodGroupsUpdatePrefs, req)
 			if err != nil {
 				return err
 			}
@@ -158,36 +158,36 @@ func newTeamsPrefsUpdateCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-// newTeamsMembershipsCmd: teams memberships create/list/get/update/
+// newGroupsMembershipsCmd: groups memberships create/list/get/update/
 // update-status/delete。
-func newTeamsMembershipsCmd(g *globalFlags) *cobra.Command {
+func newGroupsMembershipsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "memberships",
-		Short: "团队成员管理",
+		Short: "用户组成员管理",
 	}
 	cmd.AddCommand(
-		newTeamsMembershipsCreateCmd(g),
-		newTeamsMembershipsListCmd(g),
-		newTeamsMembershipsGetCmd(g),
-		newTeamsMembershipsUpdateCmd(g),
-		newTeamsMembershipsUpdateStatusCmd(g),
-		newTeamsMembershipsDeleteCmd(g),
+		newGroupsMembershipsCreateCmd(g),
+		newGroupsMembershipsListCmd(g),
+		newGroupsMembershipsGetCmd(g),
+		newGroupsMembershipsUpdateCmd(g),
+		newGroupsMembershipsUpdateStatusCmd(g),
+		newGroupsMembershipsDeleteCmd(g),
 	)
 	return cmd
 }
 
-func newTeamsMembershipsCreateCmd(g *globalFlags) *cobra.Command {
+func newGroupsMembershipsCreateCmd(g *globalFlags) *cobra.Command {
 	var userID, email, name, roles, status string
 	cmd := &cobra.Command{
-		Use:   "create <team-id> [--user-id <uid> | --email <email>]",
-		Short: "创建团队成员（--user-id 或 --email 至少一个）",
+		Use:   "create <group-id> [--user-id <uid> | --email <email>]",
+		Short: "创建用户组成员（--user-id 或 --email 至少一个）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			req, err := buildCreateMembershipReq(args[0], userID, email, name, roles, status)
 			if err != nil {
 				return err
 			}
-			resp, err := invoke(g, methodTeamsCreateMembership, req)
+			resp, err := invoke(g, methodGroupsCreateMembership, req)
 			if err != nil {
 				return err
 			}
@@ -202,20 +202,20 @@ func newTeamsMembershipsCreateCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-func newTeamsMembershipsListCmd(g *globalFlags) *cobra.Command {
+func newGroupsMembershipsListCmd(g *globalFlags) *cobra.Command {
 	var queries string
 	var pageSize int32
 	var pageToken string
 	cmd := &cobra.Command{
-		Use:   "list <team-id>",
-		Short: "列出团队成员",
+		Use:   "list <group-id>",
+		Short: "列出用户组成员",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			req, err := buildListMembershipsReq(args[0], queries, pageSize, pageToken)
 			if err != nil {
 				return err
 			}
-			resp, err := invoke(g, methodTeamsListMemberships, req)
+			resp, err := invoke(g, methodGroupsListMemberships, req)
 			if err != nil {
 				return err
 			}
@@ -228,13 +228,13 @@ func newTeamsMembershipsListCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-func newTeamsMembershipsGetCmd(g *globalFlags) *cobra.Command {
+func newGroupsMembershipsGetCmd(g *globalFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <team-id> <membership-id>",
-		Short: "按 ID 获取团队成员",
+		Use:   "get <group-id> <membership-id>",
+		Short: "按 ID 获取用户组成员",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := invoke(g, methodTeamsGetMembership, map[string]any{"teamId": args[0], "membershipId": args[1]})
+			resp, err := invoke(g, methodGroupsGetMembership, map[string]any{"groupId": args[0], "membershipId": args[1]})
 			if err != nil {
 				return err
 			}
@@ -243,10 +243,10 @@ func newTeamsMembershipsGetCmd(g *globalFlags) *cobra.Command {
 	}
 }
 
-func newTeamsMembershipsUpdateCmd(g *globalFlags) *cobra.Command {
+func newGroupsMembershipsUpdateCmd(g *globalFlags) *cobra.Command {
 	var roles string
 	cmd := &cobra.Command{
-		Use:   "update <team-id> <membership-id> --roles '[...]'",
+		Use:   "update <group-id> <membership-id> --roles '[...]'",
 		Short: "全量替换成员角色",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -254,7 +254,7 @@ func newTeamsMembershipsUpdateCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := invoke(g, methodTeamsUpdateMembership, req)
+			resp, err := invoke(g, methodGroupsUpdateMembership, req)
 			if err != nil {
 				return err
 			}
@@ -265,10 +265,10 @@ func newTeamsMembershipsUpdateCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-func newTeamsMembershipsUpdateStatusCmd(g *globalFlags) *cobra.Command {
+func newGroupsMembershipsUpdateStatusCmd(g *globalFlags) *cobra.Command {
 	var status string
 	cmd := &cobra.Command{
-		Use:   "update-status <team-id> <membership-id> --status <status>",
+		Use:   "update-status <group-id> <membership-id> --status <status>",
 		Short: "更新成员状态（active/blocked；pending 不可回退）",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -276,7 +276,7 @@ func newTeamsMembershipsUpdateStatusCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := invoke(g, methodTeamsUpdateMembershipStatus, req)
+			resp, err := invoke(g, methodGroupsUpdateMembershipStatus, req)
 			if err != nil {
 				return err
 			}
@@ -287,13 +287,13 @@ func newTeamsMembershipsUpdateStatusCmd(g *globalFlags) *cobra.Command {
 	return cmd
 }
 
-func newTeamsMembershipsDeleteCmd(g *globalFlags) *cobra.Command {
+func newGroupsMembershipsDeleteCmd(g *globalFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <team-id> <membership-id>",
-		Short: "删除团队成员",
+		Use:   "delete <group-id> <membership-id>",
+		Short: "删除用户组成员",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := invoke(g, methodTeamsDeleteMembership, map[string]any{"teamId": args[0], "membershipId": args[1]})
+			resp, err := invoke(g, methodGroupsDeleteMembership, map[string]any{"groupId": args[0], "membershipId": args[1]})
 			if err != nil {
 				return err
 			}
@@ -302,8 +302,8 @@ func newTeamsMembershipsDeleteCmd(g *globalFlags) *cobra.Command {
 	}
 }
 
-// buildCreateTeamReq 构造 CreateTeamRequest（name 必填）。
-func buildCreateTeamReq(name, permissions string) (map[string]any, error) {
+// buildCreateGroupReq 构造 CreateGroupRequest（name 必填）。
+func buildCreateGroupReq(name, permissions string) (map[string]any, error) {
 	if name == "" {
 		return nil, fmt.Errorf("--name 必填")
 	}
@@ -318,10 +318,10 @@ func buildCreateTeamReq(name, permissions string) (map[string]any, error) {
 	return req, nil
 }
 
-// buildUpdateTeamPrefsReq 构造 UpdateTeamPrefsRequest（--data 为 prefs 对象本体）。
-func buildUpdateTeamPrefsReq(id, data string) (map[string]any, error) {
+// buildUpdateGroupPrefsReq 构造 UpdateGroupPrefsRequest（--data 为 prefs 对象本体）。
+func buildUpdateGroupPrefsReq(id, data string) (map[string]any, error) {
 	if id == "" {
-		return nil, fmt.Errorf("缺少团队 ID")
+		return nil, fmt.Errorf("缺少用户组 ID")
 	}
 	req := map[string]any{"id": id}
 	prefs, err := jsonObject(data, "--data")
@@ -336,14 +336,14 @@ func buildUpdateTeamPrefsReq(id, data string) (map[string]any, error) {
 }
 
 // buildCreateMembershipReq 构造 CreateMembershipRequest（user-id/email 至少一个）。
-func buildCreateMembershipReq(teamID, userID, email, name, roles, status string) (map[string]any, error) {
-	if teamID == "" {
-		return nil, fmt.Errorf("缺少 team-id")
+func buildCreateMembershipReq(groupID, userID, email, name, roles, status string) (map[string]any, error) {
+	if groupID == "" {
+		return nil, fmt.Errorf("缺少 group-id")
 	}
 	if userID == "" && email == "" {
 		return nil, fmt.Errorf("--user-id 与 --email 至少提供一个")
 	}
-	req := map[string]any{"teamId": teamID}
+	req := map[string]any{"groupId": groupID}
 	if userID != "" {
 		req["userId"] = userID
 	}
@@ -367,11 +367,11 @@ func buildCreateMembershipReq(teamID, userID, email, name, roles, status string)
 }
 
 // buildListMembershipsReq 构造 ListMembershipsRequest。
-func buildListMembershipsReq(teamID, queries string, pageSize int32, pageToken string) (map[string]any, error) {
-	if teamID == "" {
-		return nil, fmt.Errorf("缺少 team-id")
+func buildListMembershipsReq(groupID, queries string, pageSize int32, pageToken string) (map[string]any, error) {
+	if groupID == "" {
+		return nil, fmt.Errorf("缺少 group-id")
 	}
-	req := map[string]any{"teamId": teamID}
+	req := map[string]any{"groupId": groupID}
 	if queries != "" {
 		qs, err := jsonStringList(queries, "--queries")
 		if err != nil {
@@ -389,9 +389,9 @@ func buildListMembershipsReq(teamID, queries string, pageSize int32, pageToken s
 }
 
 // buildUpdateMembershipReq 构造 UpdateMembershipRequest（roles 必填）。
-func buildUpdateMembershipReq(teamID, membershipID, roles string) (map[string]any, error) {
-	if teamID == "" {
-		return nil, fmt.Errorf("缺少 team-id")
+func buildUpdateMembershipReq(groupID, membershipID, roles string) (map[string]any, error) {
+	if groupID == "" {
+		return nil, fmt.Errorf("缺少 group-id")
 	}
 	if membershipID == "" {
 		return nil, fmt.Errorf("缺少 membership-id")
@@ -403,13 +403,13 @@ func buildUpdateMembershipReq(teamID, membershipID, roles string) (map[string]an
 	if len(roleList) == 0 {
 		return nil, fmt.Errorf("--roles 必填")
 	}
-	return map[string]any{"teamId": teamID, "membershipId": membershipID, "roles": roleList}, nil
+	return map[string]any{"groupId": groupID, "membershipId": membershipID, "roles": roleList}, nil
 }
 
 // buildUpdateMembershipStatusReq 构造 UpdateMembershipStatusRequest（status 必填）。
-func buildUpdateMembershipStatusReq(teamID, membershipID, status string) (map[string]any, error) {
-	if teamID == "" {
-		return nil, fmt.Errorf("缺少 team-id")
+func buildUpdateMembershipStatusReq(groupID, membershipID, status string) (map[string]any, error) {
+	if groupID == "" {
+		return nil, fmt.Errorf("缺少 group-id")
 	}
 	if membershipID == "" {
 		return nil, fmt.Errorf("缺少 membership-id")
@@ -417,5 +417,5 @@ func buildUpdateMembershipStatusReq(teamID, membershipID, status string) (map[st
 	if status == "" {
 		return nil, fmt.Errorf("--status 必填")
 	}
-	return map[string]any{"teamId": teamID, "membershipId": membershipID, "status": status}, nil
+	return map[string]any{"groupId": groupID, "membershipId": membershipID, "status": status}, nil
 }

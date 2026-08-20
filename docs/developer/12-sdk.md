@@ -32,8 +32,8 @@ MCP Tool Server 以类型安全的方式调用后端。
 | 路径 | 说明 |
 |------|------|
 | `sdk/typescript/` | SDK 包 `@torchwood/sdk` |
-| `sdk/typescript/src/client/` | Client API 服务（Account / Databases / Teams） |
-| `sdk/typescript/src/server/` | Server API 服务（Health / Projects / Users / Teams / Databases / APIKeys / OAuthProviders / Storage） |
+| `sdk/typescript/src/client/` | Client API 服务（Account / Databases / Groups） |
+| `sdk/typescript/src/server/` | Server API 服务（Health / Projects / Users / Groups / Databases / APIKeys / OAuthProviders / Storage） |
 | `sdk/typescript/src/graviton.ts` | `Torchwood` 门面类与静态工厂 |
 | `sdk/typescript/src/http.ts` | `HttpTransport` 传输层与 `TorchwoodConfig` 配置类型 |
 | `sdk/typescript/src/types.ts` | 手写 API 数据类型（Account、Document、User 等） |
@@ -109,12 +109,12 @@ const tw = Torchwood.withApiKey("http://localhost:9080", "default", apiKey);
 
 tw.account;              // Client: 注册/登录/会话/偏好（AccountService）
 tw.databases;            // Client: 文档 CRUD + count（ClientDatabasesService）
-tw.teams;                // Client: 我的团队与成员（ClientTeamsService）
+tw.groups;                // Client: 我的用户组与成员（ClientGroupsService）
 
 tw.server.health;        // Server: 健康检查
 tw.server.projects;      // Server: 项目
 tw.server.users;         // Server: 用户
-tw.server.teams;         // Server: 团队与成员
+tw.server.groups;         // Server: 用户组与成员
 tw.server.databases;     // Server: 库/集合/属性/索引/文档/Bulk
 tw.server.apiKeys;       // Server: API Key 管理
 tw.server.oauthProviders;// Server: OAuth Provider 配置
@@ -183,15 +183,15 @@ client.setAccessToken(await client.account.refresh(refreshToken).then(t => t.acc
 | `deleteDocument(databaseId, collectionId, documentId)` | 删除文档 |
 | `countDocuments(databaseId, collectionId, params?)` | 计数，返回 `number` |
 
-### 4.3 Teams（`tw.teams`）
+### 4.3 Groups（`tw.groups`）
 
 | 方法 | 说明 |
 |------|------|
-| `createTeam(name)` / `listTeams(params?)` / `getTeam(id)` / `deleteTeam(id)` | 团队 CRUD |
-| `createMembership(teamId, {email, name?, roles?})` | 创建成员/邀请 |
-| `listMemberships(teamId)` | 成员列表 |
-| `updateMembershipStatus(teamId, membershipId, "accepted" \| "rejected")` | 接受/拒绝邀请 |
-| `deleteMembership(teamId, membershipId)` | 删除成员 |
+| `createGroup(name)` / `listGroups(params?)` / `getGroup(id)` / `deleteGroup(id)` | 用户组 CRUD |
+| `createMembership(groupId, {email, name?, roles?})` | 创建成员/邀请 |
+| `listMemberships(groupId)` | 成员列表 |
+| `updateMembershipStatus(groupId, membershipId, "accepted" \| "rejected")` | 接受/拒绝邀请 |
+| `deleteMembership(groupId, membershipId)` | 删除成员 |
 
 ---
 
@@ -230,16 +230,16 @@ tw.server.oauthProviders.upsert({ provider, enabled, client_id, client_secret?, 
 tw.server.oauthProviders.delete(provider)
 ```
 
-### 5.2 Server Teams（`tw.server.teams`）
+### 5.2 Server Groups（`tw.server.groups`）
 
 | 方法 | 说明 |
 |------|------|
-| `create({name, permissions?})` / `list(params?)` / `get(id)` / `delete(id)` | 团队 CRUD |
-| `createMembership(teamId, {email? \| user_id?, name?, roles?, status?})` | 创建成员（支持直接按 user_id 添加） |
-| `listMemberships(teamId, params?)` / `getMembership(teamId, membershipId)` | 成员查询 |
-| `updateMembership(teamId, membershipId, roles)` | 更新角色 |
-| `updateMembershipStatus(teamId, membershipId, status)` | 更新状态（invited/accepted/rejected） |
-| `deleteMembership(teamId, membershipId)` | 删除成员 |
+| `create({name, permissions?})` / `list(params?)` / `get(id)` / `delete(id)` | 用户组 CRUD |
+| `createMembership(groupId, {email? \| user_id?, name?, roles?, status?})` | 创建成员（支持直接按 user_id 添加） |
+| `listMemberships(groupId, params?)` / `getMembership(groupId, membershipId)` | 成员查询 |
+| `updateMembership(groupId, membershipId, roles)` | 更新角色 |
+| `updateMembershipStatus(groupId, membershipId, status)` | 更新状态（invited/accepted/rejected） |
+| `deleteMembership(groupId, membershipId)` | 删除成员 |
 
 ### 5.3 Server Databases（`tw.server.databases`）
 
@@ -330,7 +330,7 @@ try {
 > 与 swagger 中 `"type": "string", "format": "date-time"` 一致。
 
 SDK 类型为**手写维护**（`src/types.ts`），并非由 proto 自动生成：`Account`、`Document`、
-`User`、`Team`、`Membership`、`Project`、`APIKey`、`Database`、`Collection`、
+`User`、`Group`、`Membership`、`Project`、`APIKey`、`Database`、`Collection`、
 `Attribute`、`Index`、`Bucket`、`FileItem`、`TokenBundle`、`Session`、`ListMeta`、
 `ListParams`、`BulkDocumentsResponse`、`UpdateDocumentInput` 等接口与 HTTP JSON
 响应一一对应（snake_case 字段，与 proto JSON 映射一致）。若服务端字段演进，需同步
@@ -348,7 +348,7 @@ SDK 采用简短命名。下表为全量映射（权威来源：`sdk/typescript/
 | 服务 | RPC → 方法 |
 |------|------------|
 | UsersService | `CreateUser→create`、`ListUsers→list`、`GetUser→get`、`UpdateUser→update`、`UpdateUserPassword→updatePassword`、`DeleteUser→delete`、`ListUserSessions→listSessions`、`DeleteUserSession→deleteSession`、`CreateUserToken→createToken` |
-| TeamsService | `CreateTeam→create`、`ListTeams→list`、`GetTeam→get`、`DeleteTeam→delete`、`GetTeamPrefs→getPrefs`、`UpdateTeamPrefs→updatePrefs`、`CreateMembership→createMembership`、`ListMemberships→listMemberships`、`GetMembership→getMembership`、`UpdateMembership→updateMembership`、`UpdateMembershipStatus→updateMembershipStatus`、`DeleteMembership→deleteMembership` |
+| GroupsService | `CreateGroup→create`、`ListGroups→list`、`GetGroup→get`、`DeleteGroup→delete`、`GetGroupPrefs→getPrefs`、`UpdateGroupPrefs→updatePrefs`、`CreateMembership→createMembership`、`ListMemberships→listMemberships`、`GetMembership→getMembership`、`UpdateMembership→updateMembership`、`UpdateMembershipStatus→updateMembershipStatus`、`DeleteMembership→deleteMembership` |
 | DatabasesService | `CreateDatabase→createDatabase`、`ListDatabases→listDatabases`、`GetDatabase→getDatabase`、`DeleteDatabase→deleteDatabase`、`CreateCollection→createCollection`、`ListCollections→listCollections`、`GetCollection→getCollection`、`DeleteCollection→deleteCollection`、`UpdateCollection→updateCollection`、`CreateAttribute→createAttribute`、`DeleteAttribute→deleteAttribute`、`CreateIndex→createIndex`、`DeleteIndex→deleteIndex`、`CreateDocument→createDocument`、`ListDocuments→listDocuments`、`GetDocument→getDocument`、`UpdateDocument→updateDocument`、`UpsertDocument→upsertDocument`、`DeleteDocument→deleteDocument`、`CountDocuments→countDocuments`、`BulkUpdateDocuments→bulkUpdateDocuments`、`BulkDeleteDocuments→bulkDeleteDocuments` |
 | FunctionsService | `ListRuntimes→listRuntimes`、`ListSpecifications→listSpecifications`、`CreateFunction→create`、`ListFunctions→list`、`GetFunction→get`、`UpdateFunction→update`、`DeleteFunction→delete`、`CreateDeployment→createDeployment`、`ListDeployments→listDeployments`、`GetDeployment→getDeployment`、`DeleteDeployment→deleteDeployment`、`SetVariables→setVariables`、`GetVariables→getVariables`、`CreateExecution→createExecution`、`ListExecutions→listExecutions`、`GetExecution→getExecution` |
 | StorageService | `CreateBucket→createBucket`、`ListBuckets→listBuckets`、`GetBucket→getBucket`、`DeleteBucket→deleteBucket`、`UpdateBucket→updateBucket`、`CreateFile→uploadFile`、`ListFiles→listFiles`、`GetFile→getFile`、`DeleteFile→deleteFile`、`UpdateFile→updateFile`、`CreateFileToken→createFileToken`、`GetStorageUsage→getStorageUsage` |
@@ -363,9 +363,9 @@ SDK 采用简短命名。下表为全量映射（权威来源：`sdk/typescript/
 |------------|
 | `SignUp→signUp`、`SignIn→signIn`、`SignOut→signOut`、`RefreshToken→refresh`、`Me→me`、`UpdateAccount→updateAccount`、`ListSessions→listSessions`、`DeleteSession→deleteSession`、`DeleteSessions→deleteSessions`、`GetPrefs→getPrefs`、`UpdatePrefs→updatePrefs`、`CreateEmailOTP→createEmailOTP`、`CreateEmailOTPSession→createEmailOTPSession`、`CreateOAuth2Session→createOAuth2Session`、`CreateOAuth2TokenSession→createOAuth2TokenSession`、`CreatePhoneOTP→createPhoneOTP`、`CreatePhoneOTPSession→createPhoneOTPSession`、`CreateWeChatMiniProgramSession→createWeChatMiniProgramSession`、`CreateAnonymousSession→createAnonymousSession`、`CreateOAuth2LinkSession→createOAuth2LinkSession`、`CreateOAuth2LinkTokenSession→createOAuth2LinkTokenSession`、`CreateVerification→createVerification`、`UpdateVerification→updateVerification`、`CreateRecovery→createRecovery`、`UpdateRecovery→updateRecovery`、`ListFactors→listFactors`、`CreateTOTPFactor→createTOTPFactor`、`VerifyTOTPFactor→verifyTOTPFactor`、`DeleteFactor→deleteFactor`、`CreateMFASession→createMFASession`、`CreateJWT→createJWT`、`CreateMagicURLSession→createMagicURLSession`、`UpdateMagicURLSession→updateMagicURLSession`、`ListLogs→listLogs` |
 
-Client 的 DatabasesService / TeamsService 使用同名映射（`createDocument`、`listDocuments`、
+Client 的 DatabasesService / GroupsService 使用同名映射（`createDocument`、`listDocuments`、
 `getDocument`、`updateDocument`、`upsertDocument`、`deleteDocument`、`countDocuments`；
-`createTeam`、`listTeams`、`getTeam`、`deleteTeam`、`createMembership`、`listMemberships`、
+`createGroup`、`listGroups`、`getGroup`、`deleteGroup`、`createMembership`、`listMemberships`、
 `updateMembershipStatus`、`deleteMembership`）。
 
 ---
@@ -394,8 +394,8 @@ VITE_TORCHWOOD_PROJECT_ID=default
 | `/login/oauth/callback` | OAuth2 回调处理（`createOAuth2TokenSession`） |
 | `/app/account` | `me` / prefs / sessions / refresh |
 | `/app/databases` | Server + Client Databases 全功能验证：一键初始化演示环境（建库/集合/属性/索引/种子文档）、单按钮逐项调用、**全量验证**（30 余步端到端：CRUD、increment、Bulk、清理） |
-| `/app/teams` | 建队、刷新 Token、邀请成员 |
-| `/app/server` | `health.check` / `projects.list` / `users.list` / `teams.create` / `databases.listDatabases` |
+| `/app/groups` | 创建用户组、刷新 Token、邀请成员 |
+| `/app/server` | `health.check` / `projects.list` / `users.list` / `groups.create` / `databases.listDatabases` |
 | `/app/settings` | Endpoint、Project ID、API Key 配置（本地持久化） |
 
 Server API 页面需要先在设置页填入首次部署引导展示的默认 API Key；设置与登录态
@@ -414,8 +414,8 @@ Server API 页面需要先在设置页填入首次部署引导展示的默认 AP
 
 | 包 | 类型 | 认证 | 服务 |
 |----|------|------|------|
-| `sdk/go/client` | `client.New(target, opts...)` | `Authorization: Bearer <JWT>`（自动刷新） | `Account`（SignUp/SignIn/RefreshToken/Me/SignOut）/ `Teams` / `Databases`（文档 CRUD） |
-| `sdk/go/server` | `server.New(target, opts...)` | `x-api-key`（+ 可选 `x-torchwood-project`） | `Health` / `Users` / `Teams` / `Databases` / `Projects` / `Storage` / `Functions` / `OAuthProviders` + `InvokeJSON` |
+| `sdk/go/client` | `client.New(target, opts...)` | `Authorization: Bearer <JWT>`（自动刷新） | `Account`（SignUp/SignIn/RefreshToken/Me/SignOut）/ `Groups` / `Databases`（文档 CRUD） |
+| `sdk/go/server` | `server.New(target, opts...)` | `x-api-key`（+ 可选 `x-torchwood-project`） | `Health` / `Users` / `Groups` / `Databases` / `Projects` / `Storage` / `Functions` / `OAuthProviders` + `InvokeJSON` |
 
 server 包 Options：`WithAPIKey` / `WithProjectID` / `WithDatabaseID` / `WithDialOptions`；
 client 包 Options：`WithProjectID` / `WithDatabaseID` / `WithTokenStore` /

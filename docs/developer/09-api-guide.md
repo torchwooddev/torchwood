@@ -353,7 +353,7 @@ func (r *projectRepo) GetProject(ctx context.Context, id string) (*projects.Proj
 
 ### 5.2 动态文档：documentdb adapter
 
-用户资源（users/sessions/files/buckets/teams）与用户动态集合走 PostgreSQL 动态文档 adapter：
+用户资源（users/sessions/files/buckets/groups）与用户动态集合走 PostgreSQL 动态文档 adapter：
 `schema-per-database + _tenant + _perms`。端口定义在 `internal/domain/databases/document.go`
 （`DocumentDB` interface，含 `CreateDatabase`/`CreateCollection`/`ListDocuments`/`CountDocuments` 等），
 实现为 `internal/infra/documentdb/postgres.go` 的 `NewPostgresDocumentDB(db)`。
@@ -615,7 +615,7 @@ grpc-gateway 用自定义 `HTTPErrorHandler` 把 gRPC status 转为统一结构�
 torchwood health get
 torchwood uuid
 torchwood users list --api-key <secret> --page-size 20
-torchwood users create --email a@b.c --password 'pw' --data '{"labels":{"team":"core"}}'
+torchwood users create --email a@b.c --password 'pw' --data '{"labels":{"group":"core"}}'
 torchwood projects get default
 torchwood databases documents create app notes --data '{"title":"hi"}'
 torchwood storage usage
@@ -631,7 +631,7 @@ uuid         生成本地 UUID v4（无需 API key；纯文本输出，便于传
 databases    create/list/get/delete；collections create/list/get/update/delete；
              attributes create/delete；indexes create/delete；
              documents create/list/get/update/upsert/delete/count/bulk-update/bulk-delete
-teams        create/list/get/delete；prefs get/update；memberships create/list/get/
+groups        create/list/get/delete；prefs get/update；memberships create/list/get/
              update/update-status/delete
 storage      buckets create/list/get/update/delete；files list/get/update/delete；
              usage（不做文件上传/下载与分片会话，也不提供 files create/token）
@@ -649,7 +649,7 @@ oauth-providers list/upsert/delete（proto 无 get 方法）
   `torchwood.server.v1.*` 且排除 `APIKeysService`。**新增 Server API RPC 无需
   在 CLI 登记**，proto 方法自动获得支持；`cmd/client/import_guard_test.go` 兜底
   禁止 CLI 源码直接 import genproto/grpc/protobuf。
-- **具名命令**覆盖 `proto/server/v1` 全部资源（health/projects/users/databases/teams/
+- **具名命令**覆盖 `proto/server/v1` 全部资源（health/projects/users/databases/groups/
   storage/functions/oauth-providers）以及本地 `uuid` 工具，方法级覆盖见上方命令树。
 - **请求参数**：标量用具名 flag，复杂结构（labels/prefs 等 `Struct`、document data）
   用 `--data` 传 protojson（camelCase 字段名），与 flag 冲突时以 `--data` 为准。

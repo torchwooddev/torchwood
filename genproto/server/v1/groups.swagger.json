@@ -1,12 +1,12 @@
 {
   "swagger": "2.0",
   "info": {
-    "title": "server/v1/teams.proto",
+    "title": "server/v1/groups.proto",
     "version": "version not set"
   },
   "tags": [
     {
-      "name": "TeamsService"
+      "name": "GroupsService"
     }
   ],
   "consumes": [
@@ -16,14 +16,14 @@
     "application/json"
   ],
   "paths": {
-    "/v1/server/teams": {
+    "/v1/server/groups": {
       "get": {
-        "operationId": "TeamsService_ListTeams",
+        "operationId": "GroupsService_ListGroups",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodserverv1ListTeamsResponse"
+              "$ref": "#/definitions/torchwoodserverv1ListGroupsResponse"
             }
           },
           "default": {
@@ -71,16 +71,16 @@
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
         ]
       },
       "post": {
-        "operationId": "TeamsService_CreateTeam",
+        "operationId": "GroupsService_CreateGroup",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodserverv1Team"
+              "$ref": "#/definitions/torchwoodserverv1Group"
             }
           },
           "default": {
@@ -96,142 +96,18 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/torchwoodserverv1CreateTeamRequest"
+              "$ref": "#/definitions/torchwoodserverv1CreateGroupRequest"
             }
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
         ]
       }
     },
-    "/v1/server/teams/{id}": {
+    "/v1/server/groups/{groupId}/memberships": {
       "get": {
-        "operationId": "TeamsService_GetTeam",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/torchwoodserverv1Team"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "TeamsService"
-        ]
-      },
-      "delete": {
-        "operationId": "TeamsService_DeleteTeam",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1Empty"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "TeamsService"
-        ]
-      }
-    },
-    "/v1/server/teams/{id}/prefs": {
-      "get": {
-        "operationId": "TeamsService_GetTeamPrefs",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetTeamPrefsResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "TeamsService"
-        ]
-      },
-      "put": {
-        "operationId": "TeamsService_UpdateTeamPrefs",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1GetTeamPrefsResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/TeamsServiceUpdateTeamPrefsBody"
-            }
-          }
-        ],
-        "tags": [
-          "TeamsService"
-        ]
-      }
-    },
-    "/v1/server/teams/{teamId}/memberships": {
-      "get": {
-        "operationId": "TeamsService_ListMemberships",
+        "operationId": "GroupsService_ListMemberships",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -248,7 +124,7 @@
         },
         "parameters": [
           {
-            "name": "teamId",
+            "name": "groupId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -278,11 +154,11 @@
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
         ]
       },
       "post": {
-        "operationId": "TeamsService_CreateMembership",
+        "operationId": "GroupsService_CreateMembership",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -299,7 +175,7 @@
         },
         "parameters": [
           {
-            "name": "teamId",
+            "name": "groupId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -309,18 +185,18 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/torchwoodserverv1TeamsServiceCreateMembershipBody"
+              "$ref": "#/definitions/torchwoodserverv1GroupsServiceCreateMembershipBody"
             }
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
         ]
       }
     },
-    "/v1/server/teams/{teamId}/memberships/{membershipId}": {
+    "/v1/server/groups/{groupId}/memberships/{membershipId}": {
       "get": {
-        "operationId": "TeamsService_GetMembership",
+        "operationId": "GroupsService_GetMembership",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -337,7 +213,7 @@
         },
         "parameters": [
           {
-            "name": "teamId",
+            "name": "groupId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -350,11 +226,11 @@
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
         ]
       },
       "delete": {
-        "operationId": "TeamsService_DeleteMembership",
+        "operationId": "GroupsService_DeleteMembership",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -371,7 +247,7 @@
         },
         "parameters": [
           {
-            "name": "teamId",
+            "name": "groupId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -384,11 +260,11 @@
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
         ]
       },
       "patch": {
-        "operationId": "TeamsService_UpdateMembership",
+        "operationId": "GroupsService_UpdateMembership",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -405,7 +281,7 @@
         },
         "parameters": [
           {
-            "name": "teamId",
+            "name": "groupId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -421,18 +297,18 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/TeamsServiceUpdateMembershipBody"
+              "$ref": "#/definitions/GroupsServiceUpdateMembershipBody"
             }
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
         ]
       }
     },
-    "/v1/server/teams/{teamId}/memberships/{membershipId}/status": {
+    "/v1/server/groups/{groupId}/memberships/{membershipId}/status": {
       "patch": {
-        "operationId": "TeamsService_UpdateMembershipStatus",
+        "operationId": "GroupsService_UpdateMembershipStatus",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -449,7 +325,7 @@
         },
         "parameters": [
           {
-            "name": "teamId",
+            "name": "groupId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -465,18 +341,150 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/torchwoodserverv1TeamsServiceUpdateMembershipStatusBody"
+              "$ref": "#/definitions/torchwoodserverv1GroupsServiceUpdateMembershipStatusBody"
             }
           }
         ],
         "tags": [
-          "TeamsService"
+          "GroupsService"
+        ]
+      }
+    },
+    "/v1/server/groups/{id}": {
+      "get": {
+        "operationId": "GroupsService_GetGroup",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1Group"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "GroupsService"
+        ]
+      },
+      "delete": {
+        "operationId": "GroupsService_DeleteGroup",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Empty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "GroupsService"
+        ]
+      }
+    },
+    "/v1/server/groups/{id}/prefs": {
+      "get": {
+        "operationId": "GroupsService_GetGroupPrefs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetGroupPrefsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "GroupsService"
+        ]
+      },
+      "put": {
+        "operationId": "GroupsService_UpdateGroupPrefs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetGroupPrefsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/GroupsServiceUpdateGroupPrefsBody"
+            }
+          }
+        ],
+        "tags": [
+          "GroupsService"
         ]
       }
     }
   },
   "definitions": {
-    "TeamsServiceUpdateMembershipBody": {
+    "GroupsServiceUpdateGroupPrefsBody": {
+      "type": "object",
+      "properties": {
+        "prefs": {
+          "type": "object"
+        }
+      }
+    },
+    "GroupsServiceUpdateMembershipBody": {
       "type": "object",
       "properties": {
         "roles": {
@@ -484,14 +492,6 @@
           "items": {
             "type": "string"
           }
-        }
-      }
-    },
-    "TeamsServiceUpdateTeamPrefsBody": {
-      "type": "object",
-      "properties": {
-        "prefs": {
-          "type": "object"
         }
       }
     },
@@ -531,7 +531,7 @@
         }
       }
     },
-    "torchwoodserverv1CreateTeamRequest": {
+    "torchwoodserverv1CreateGroupRequest": {
       "type": "object",
       "properties": {
         "name": {
@@ -542,6 +542,81 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "torchwoodserverv1Group": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "torchwoodserverv1GroupsServiceCreateMembershipBody": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "torchwoodserverv1GroupsServiceUpdateMembershipStatusBody": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "torchwoodserverv1ListGroupsResponse": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/torchwoodserverv1Group"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/v1ListResponseMeta"
         }
       }
     },
@@ -560,28 +635,13 @@
         }
       }
     },
-    "torchwoodserverv1ListTeamsResponse": {
-      "type": "object",
-      "properties": {
-        "teams": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/torchwoodserverv1Team"
-          }
-        },
-        "meta": {
-          "$ref": "#/definitions/v1ListResponseMeta"
-        }
-      }
-    },
     "torchwoodserverv1Membership": {
       "type": "object",
       "properties": {
         "id": {
           "type": "string"
         },
-        "teamId": {
+        "groupId": {
           "type": "string"
         },
         "userId": {
@@ -620,70 +680,10 @@
         }
       }
     },
-    "torchwoodserverv1Team": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "total": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "permissions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      }
-    },
-    "torchwoodserverv1TeamsServiceCreateMembershipBody": {
-      "type": "object",
-      "properties": {
-        "userId": {
-          "type": "string"
-        },
-        "email": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "roles": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "status": {
-          "type": "string"
-        }
-      }
-    },
-    "torchwoodserverv1TeamsServiceUpdateMembershipStatusBody": {
-      "type": "object",
-      "properties": {
-        "status": {
-          "type": "string"
-        }
-      }
-    },
     "v1Empty": {
       "type": "object"
     },
-    "v1GetTeamPrefsResponse": {
+    "v1GetGroupPrefsResponse": {
       "type": "object",
       "properties": {
         "prefs": {

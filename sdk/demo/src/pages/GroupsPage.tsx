@@ -3,13 +3,13 @@ import { useTorchwood } from "@/lib/torchwood-context";
 import { suffix } from "@/lib/storage";
 import { ErrorBanner, JsonPanel, MethodTag, PageHeader } from "@/components/Ui";
 
-export function TeamsPage() {
+export function GroupsPage() {
   const { client, auth, setAuth, run, lastError } = useTorchwood();
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
-  const [teamName, setTeamName] = useState(`Web Team ${suffix()}`);
+  const [groupName, setGroupName] = useState(`Web Group ${suffix()}`);
   const [inviteEmail, setInviteEmail] = useState("invitee@torchwood.local");
-  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState("");
 
   async function exec(label: string, fn: () => Promise<unknown>) {
     setLoading(true);
@@ -24,11 +24,11 @@ export function TeamsPage() {
     }
   }
 
-  async function createTeamFlow() {
+  async function createGroupFlow() {
     setLoading(true);
     try {
-      const team = await run(() => client.teams.createTeam(teamName));
-      setSelectedTeamId(team.id);
+      const group = await run(() => client.groups.createGroup(groupName));
+      setSelectedGroupId(group.id);
       if (auth?.refreshToken) {
         const tokens = await run(() => client.account.refresh(auth.refreshToken));
         setAuth({
@@ -36,9 +36,9 @@ export function TeamsPage() {
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
         });
-        setResult({ action: "createTeam() + refresh()", data: { team, tokens } });
+        setResult({ action: "createGroup() + refresh()", data: { group, tokens } });
       } else {
-        setResult({ action: "createTeam()", data: team });
+        setResult({ action: "createGroup()", data: group });
       }
     } catch {
       /* banner */
@@ -50,23 +50,23 @@ export function TeamsPage() {
   return (
     <div>
       <PageHeader
-        title="Teams API"
-        description="创建团队、刷新 Token 获取 team 角色、邀请成员并列出成员。"
+        title="Groups API"
+        description="创建用户组、刷新 Token 获取 group 角色、邀请成员并列出成员。"
       />
       <ErrorBanner message={lastError} />
 
       <div className="mb-4 grid gap-3 md:grid-cols-2">
         <label className="block space-y-1">
-          <span className="text-xs text-Torchwood-muted">团队名称</span>
-          <input className="field" value={teamName} onChange={(e) => setTeamName(e.target.value)} />
+          <span className="text-xs text-Torchwood-muted">用户组名称</span>
+          <input className="field" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
         </label>
         <label className="block space-y-1">
-          <span className="text-xs text-Torchwood-muted">teamId（邀请/列表用）</span>
+          <span className="text-xs text-Torchwood-muted">groupId（邀请/列表用）</span>
           <input
             className="field"
-            value={selectedTeamId}
-            onChange={(e) => setSelectedTeamId(e.target.value)}
-            placeholder="创建团队后自动填入"
+            value={selectedGroupId}
+            onChange={(e) => setSelectedGroupId(e.target.value)}
+            placeholder="创建用户组后自动填入"
           />
         </label>
         <label className="block space-y-1 md:col-span-2">
@@ -81,24 +81,24 @@ export function TeamsPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <button type="button" className="btn-primary" disabled={loading} onClick={createTeamFlow}>
-          <MethodTag method="POST" /> createTeam() + refresh()
+        <button type="button" className="btn-primary" disabled={loading} onClick={createGroupFlow}>
+          <MethodTag method="POST" /> createGroup() + refresh()
         </button>
         <button
           type="button"
           className="btn-secondary"
           disabled={loading}
-          onClick={() => exec("teams.listTeams()", () => client.teams.listTeams())}
+          onClick={() => exec("groups.listGroups()", () => client.groups.listGroups())}
         >
-          <MethodTag method="GET" /> listTeams()
+          <MethodTag method="GET" /> listGroups()
         </button>
         <button
           type="button"
           className="btn-secondary"
-          disabled={loading || !selectedTeamId}
+          disabled={loading || !selectedGroupId}
           onClick={() =>
-            exec("teams.createMembership()", () =>
-              client.teams.createMembership(selectedTeamId, {
+            exec("groups.createMembership()", () =>
+              client.groups.createMembership(selectedGroupId, {
                 email: inviteEmail,
                 name: "Invited Member",
                 roles: ["member"],
@@ -111,10 +111,10 @@ export function TeamsPage() {
         <button
           type="button"
           className="btn-secondary"
-          disabled={loading || !selectedTeamId}
+          disabled={loading || !selectedGroupId}
           onClick={() =>
-            exec("teams.listMemberships()", () =>
-              client.teams.listMemberships(selectedTeamId)
+            exec("groups.listMemberships()", () =>
+              client.groups.listMemberships(selectedGroupId)
             )
           }
         >

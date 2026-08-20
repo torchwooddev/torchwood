@@ -341,14 +341,14 @@ func TestAdminRoleWriteCoverageDiff_DetectsMissingAndExtra(t *testing.T) {
 }
 
 // Round3 H1-1：viewer 调全部补登的写方法（DeleteAPIKey/UpdateUser/
-// CreateDocument/CreateTeam/DeleteBucket/CreateFileToken）必须 PermissionDenied。
+// CreateDocument/CreateGroup/DeleteBucket/CreateFileToken）必须 PermissionDenied。
 func TestAuthInterceptor_RejectsViewerOnNewlyRegisteredWrites(t *testing.T) {
 	t.Parallel()
 	methods := []string{
 		"/torchwood.server.v1.APIKeysService/DeleteAPIKey",
 		"/torchwood.server.v1.UsersService/UpdateUser",
 		"/torchwood.server.v1.DatabasesService/CreateDocument",
-		"/torchwood.server.v1.TeamsService/CreateTeam",
+		"/torchwood.server.v1.GroupsService/CreateGroup",
 		"/torchwood.server.v1.StorageService/DeleteBucket",
 		"/torchwood.server.v1.StorageService/CreateFileToken",
 	}
@@ -372,7 +372,7 @@ func TestAuthInterceptor_RejectsViewerOnNewlyRegisteredWrites(t *testing.T) {
 }
 
 // Round3 H1-1：member 调接管面写（DeleteAPIKey/UpdateUser）必须
-// PermissionDenied；调业务写（CreateDocument/CreateTeam）过拦截器。
+// PermissionDenied；调业务写（CreateDocument/CreateGroup）过拦截器。
 func TestAuthInterceptor_MemberDeniedOnTakeoverWritesAllowedOnBusinessWrites(t *testing.T) {
 	t.Parallel()
 	for _, method := range []string{
@@ -397,7 +397,7 @@ func TestAuthInterceptor_MemberDeniedOnTakeoverWritesAllowedOnBusinessWrites(t *
 
 	for _, method := range []string{
 		"/torchwood.server.v1.DatabasesService/CreateDocument",
-		"/torchwood.server.v1.TeamsService/CreateTeam",
+		"/torchwood.server.v1.GroupsService/CreateGroup",
 	} {
 		ic, err := NewAuthInterceptor(stubValidator{principal: &shared.Principal{
 			ActorKind:      shared.ActorKindAdmin,

@@ -3,7 +3,7 @@
 -- _perms 表按项目 schema 动态存在（TORCHWOOD_<internalID>_default._perms），
 -- 这里通过 pg_namespace 遍历全部存量 schema 执行清理；
 -- document_collections.permissions 集合级元数据同步收窄。
--- teams/memberships 的 keys 管理权限是合法语义，不在清理范围。
+-- groups/memberships 的 keys 管理权限是合法语义，不在清理范围。
 -- 幂等：可重复执行（无匹配行时为空操作）。
 DO $$
 DECLARE

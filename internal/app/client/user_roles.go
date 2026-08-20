@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
-	"github.com/torchwooddev/torchwood/internal/domain/teams"
+	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
@@ -33,21 +33,21 @@ func (r *UserRoles) LoadUserRoles(ctx context.Context, projectID, userID string)
 	for _, label := range userLabels(doc.Data["labels"]) {
 		baseRoles = append(baseRoles, "label:"+label)
 	}
-	teamRoles, err := r.loadTeamRoles(ctx, projectID, userID)
+	groupRoles, err := r.loadGroupRoles(ctx, projectID, userID)
 	if err != nil {
 		return baseRoles, err
 	}
-	return append(baseRoles, teamRoles...), nil
+	return append(baseRoles, groupRoles...), nil
 }
 
-func (r *UserRoles) loadTeamRoles(ctx context.Context, projectID, userID string) ([]string, error) {
+func (r *UserRoles) loadGroupRoles(ctx context.Context, projectID, userID string) ([]string, error) {
 	if userID == "" {
 		return nil, nil
 	}
 	list, err := r.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
 		Queries: []string{
 			query.BuildEqual("user_id", userID),
-			query.BuildEqual("status", teams.StatusAccepted),
+			query.BuildEqual("status", groups.StatusAccepted),
 		},
 	}, databases.SystemPrincipal)
 	if err != nil {
@@ -55,13 +55,13 @@ func (r *UserRoles) loadTeamRoles(ctx context.Context, projectID, userID string)
 	}
 	out := make([]string, 0, len(list.Documents)*3)
 	for _, doc := range list.Documents {
-		teamID, _ := doc.Data["team_id"].(string)
-		if teamID == "" {
+		groupID, _ := doc.Data["group_id"].(string)
+		if groupID == "" {
 			continue
 		}
-		out = append(out, fmt.Sprintf("team:%s", teamID), fmt.Sprintf("member:%s", doc.ID))
+		out = append(out, fmt.Sprintf("group:%s", groupID), fmt.Sprintf("member:%s", doc.ID))
 		for _, role := range membershipRoles(doc.Data["roles"]) {
-			out = append(out, fmt.Sprintf("team:%s/%s", teamID, role))
+			out = append(out, fmt.Sprintf("group:%s/%s", groupID, role))
 		}
 	}
 	return out, nil

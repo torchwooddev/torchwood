@@ -15,16 +15,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type TeamsService struct {
-	serverv1.UnimplementedTeamsServiceServer
-	teams *appserver.Teams
+type GroupsService struct {
+	serverv1.UnimplementedGroupsServiceServer
+	groups *appserver.Groups
 }
 
-func NewTeamsService(teams *appserver.Teams) *TeamsService {
-	return &TeamsService{teams: teams}
+func NewGroupsService(groups *appserver.Groups) *GroupsService {
+	return &GroupsService{groups: groups}
 }
 
-func (s *TeamsService) projectID(ctx context.Context) string {
+func (s *GroupsService) projectID(ctx context.Context) string {
 	p, ok := contexts.Principal(ctx)
 	if !ok {
 		return ""
@@ -32,24 +32,24 @@ func (s *TeamsService) projectID(ctx context.Context) string {
 	return p.ProjectID
 }
 
-func (s *TeamsService) CreateTeam(ctx context.Context, req *serverv1.CreateTeamRequest) (*serverv1.Team, error) {
+func (s *GroupsService) CreateGroup(ctx context.Context, req *serverv1.CreateGroupRequest) (*serverv1.Group, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	doc, err := s.teams.CreateTeam(ctx, projectID, req.GetName(), req.GetPermissions())
+	doc, err := s.groups.CreateGroup(ctx, projectID, req.GetName(), req.GetPermissions())
 	if err != nil {
 		return nil, err
 	}
-	return mapTeamDoc(doc), nil
+	return mapGroupDoc(doc), nil
 }
 
-func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListTeamsResponse, error) {
+func (s *GroupsService) ListGroups(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListGroupsResponse, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	docs, total, next, err := s.teams.ListTeams(ctx, projectID, databases.Query{
+	docs, total, next, err := s.groups.ListGroups(ctx, projectID, databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -57,48 +57,48 @@ func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*serverv1.Team, len(docs))
+	out := make([]*serverv1.Group, len(docs))
 	for i := range docs {
-		out[i] = mapTeamDoc(&docs[i])
+		out[i] = mapGroupDoc(&docs[i])
 	}
-	return &serverv1.ListTeamsResponse{
-		Teams: out,
-		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
+	return &serverv1.ListGroupsResponse{
+		Groups: out,
+		Meta:   &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 
-func (s *TeamsService) GetTeam(ctx context.Context, req *serverv1.GetTeamRequest) (*serverv1.Team, error) {
+func (s *GroupsService) GetGroup(ctx context.Context, req *serverv1.GetGroupRequest) (*serverv1.Group, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	doc, err := s.teams.GetTeam(ctx, projectID, req.GetId(), dbPrincipal(ctx))
+	doc, err := s.groups.GetGroup(ctx, projectID, req.GetId(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
 	if doc == nil {
-		return nil, status.Error(codes.NotFound, "team not found")
+		return nil, status.Error(codes.NotFound, "group not found")
 	}
-	return mapTeamDoc(doc), nil
+	return mapGroupDoc(doc), nil
 }
 
-func (s *TeamsService) DeleteTeam(ctx context.Context, req *serverv1.GetTeamRequest) (*sharedv1.Empty, error) {
+func (s *GroupsService) DeleteGroup(ctx context.Context, req *serverv1.GetGroupRequest) (*sharedv1.Empty, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	if err := s.teams.DeleteTeam(ctx, projectID, req.GetId(), dbPrincipal(ctx)); err != nil {
+	if err := s.groups.DeleteGroup(ctx, projectID, req.GetId(), dbPrincipal(ctx)); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
 }
 
-func (s *TeamsService) GetTeamPrefs(ctx context.Context, req *serverv1.GetTeamRequest) (*serverv1.GetTeamPrefsResponse, error) {
+func (s *GroupsService) GetGroupPrefs(ctx context.Context, req *serverv1.GetGroupRequest) (*serverv1.GetGroupPrefsResponse, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	prefs, err := s.teams.GetTeamPrefs(ctx, projectID, req.GetId(), dbPrincipal(ctx))
+	prefs, err := s.groups.GetGroupPrefs(ctx, projectID, req.GetId(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -106,10 +106,10 @@ func (s *TeamsService) GetTeamPrefs(ctx context.Context, req *serverv1.GetTeamRe
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "prefs is not serializable")
 	}
-	return &serverv1.GetTeamPrefsResponse{Prefs: data}, nil
+	return &serverv1.GetGroupPrefsResponse{Prefs: data}, nil
 }
 
-func (s *TeamsService) UpdateTeamPrefs(ctx context.Context, req *serverv1.UpdateTeamPrefsRequest) (*serverv1.GetTeamPrefsResponse, error) {
+func (s *GroupsService) UpdateGroupPrefs(ctx context.Context, req *serverv1.UpdateGroupPrefsRequest) (*serverv1.GetGroupPrefsResponse, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -117,7 +117,7 @@ func (s *TeamsService) UpdateTeamPrefs(ctx context.Context, req *serverv1.Update
 	if req.GetPrefs() == nil {
 		return nil, status.Error(codes.InvalidArgument, "prefs is required")
 	}
-	prefs, err := s.teams.UpdateTeamPrefs(ctx, projectID, req.GetId(), req.GetPrefs().AsMap(), dbPrincipal(ctx))
+	prefs, err := s.groups.UpdateGroupPrefs(ctx, projectID, req.GetId(), req.GetPrefs().AsMap(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -125,21 +125,21 @@ func (s *TeamsService) UpdateTeamPrefs(ctx context.Context, req *serverv1.Update
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "prefs is not serializable")
 	}
-	return &serverv1.GetTeamPrefsResponse{Prefs: data}, nil
+	return &serverv1.GetGroupPrefsResponse{Prefs: data}, nil
 }
 
-func (s *TeamsService) CreateMembership(ctx context.Context, req *serverv1.CreateMembershipRequest) (*serverv1.Membership, error) {
+func (s *GroupsService) CreateMembership(ctx context.Context, req *serverv1.CreateMembershipRequest) (*serverv1.Membership, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	doc, err := s.teams.CreateMembership(ctx, projectID, appserver.CreateMembershipCommand{
-		TeamID: req.GetTeamId(),
-		UserID: req.GetUserId(),
-		Email:  req.GetEmail(),
-		Name:   req.GetName(),
-		Roles:  req.GetRoles(),
-		Status: req.GetStatus(),
+	doc, err := s.groups.CreateMembership(ctx, projectID, appserver.CreateMembershipCommand{
+		GroupID: req.GetGroupId(),
+		UserID:  req.GetUserId(),
+		Email:   req.GetEmail(),
+		Name:    req.GetName(),
+		Roles:   req.GetRoles(),
+		Status:  req.GetStatus(),
 	}, dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
@@ -147,12 +147,12 @@ func (s *TeamsService) CreateMembership(ctx context.Context, req *serverv1.Creat
 	return mapMembershipDoc(doc), nil
 }
 
-func (s *TeamsService) ListMemberships(ctx context.Context, req *serverv1.ListMembershipsRequest) (*serverv1.ListMembershipsResponse, error) {
+func (s *GroupsService) ListMemberships(ctx context.Context, req *serverv1.ListMembershipsRequest) (*serverv1.ListMembershipsResponse, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	docs, total, next, err := s.teams.ListMemberships(ctx, projectID, req.GetTeamId(), databases.Query{
+	docs, total, next, err := s.groups.ListMemberships(ctx, projectID, req.GetGroupId(), databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -170,12 +170,12 @@ func (s *TeamsService) ListMemberships(ctx context.Context, req *serverv1.ListMe
 	}, nil
 }
 
-func (s *TeamsService) GetMembership(ctx context.Context, req *serverv1.GetMembershipRequest) (*serverv1.Membership, error) {
+func (s *GroupsService) GetMembership(ctx context.Context, req *serverv1.GetMembershipRequest) (*serverv1.Membership, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	doc, err := s.teams.GetMembership(ctx, projectID, req.GetTeamId(), req.GetMembershipId(), dbPrincipal(ctx))
+	doc, err := s.groups.GetMembership(ctx, projectID, req.GetGroupId(), req.GetMembershipId(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -185,12 +185,12 @@ func (s *TeamsService) GetMembership(ctx context.Context, req *serverv1.GetMembe
 	return mapMembershipDoc(doc), nil
 }
 
-func (s *TeamsService) UpdateMembership(ctx context.Context, req *serverv1.UpdateMembershipRequest) (*serverv1.Membership, error) {
+func (s *GroupsService) UpdateMembership(ctx context.Context, req *serverv1.UpdateMembershipRequest) (*serverv1.Membership, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	doc, err := s.teams.UpdateMembership(ctx, projectID, req.GetTeamId(), req.GetMembershipId(), appserver.UpdateMembershipCommand{
+	doc, err := s.groups.UpdateMembership(ctx, projectID, req.GetGroupId(), req.GetMembershipId(), appserver.UpdateMembershipCommand{
 		Roles: req.GetRoles(),
 	}, dbPrincipal(ctx))
 	if err != nil {
@@ -199,34 +199,34 @@ func (s *TeamsService) UpdateMembership(ctx context.Context, req *serverv1.Updat
 	return mapMembershipDoc(doc), nil
 }
 
-func (s *TeamsService) UpdateMembershipStatus(ctx context.Context, req *serverv1.UpdateMembershipStatusRequest) (*serverv1.Membership, error) {
+func (s *GroupsService) UpdateMembershipStatus(ctx context.Context, req *serverv1.UpdateMembershipStatusRequest) (*serverv1.Membership, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	doc, err := s.teams.UpdateMembershipStatus(ctx, projectID, req.GetTeamId(), req.GetMembershipId(), req.GetStatus(), dbPrincipal(ctx))
+	doc, err := s.groups.UpdateMembershipStatus(ctx, projectID, req.GetGroupId(), req.GetMembershipId(), req.GetStatus(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
 	return mapMembershipDoc(doc), nil
 }
 
-func (s *TeamsService) DeleteMembership(ctx context.Context, req *serverv1.GetMembershipRequest) (*sharedv1.Empty, error) {
+func (s *GroupsService) DeleteMembership(ctx context.Context, req *serverv1.GetMembershipRequest) (*sharedv1.Empty, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	if err := s.teams.DeleteMembership(ctx, projectID, req.GetTeamId(), req.GetMembershipId(), dbPrincipal(ctx)); err != nil {
+	if err := s.groups.DeleteMembership(ctx, projectID, req.GetGroupId(), req.GetMembershipId(), dbPrincipal(ctx)); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
 }
 
-func mapTeamDoc(doc *databases.Document) *serverv1.Team {
+func mapGroupDoc(doc *databases.Document) *serverv1.Group {
 	if doc == nil {
 		return nil
 	}
-	t := &serverv1.Team{
+	t := &serverv1.Group{
 		Id:        doc.ID,
 		CreatedAt: timestamppb.New(doc.CreatedAt),
 		UpdatedAt: timestamppb.New(doc.UpdatedAt),
@@ -259,8 +259,8 @@ func mapMembershipDoc(doc *databases.Document) *serverv1.Membership {
 		CreatedAt: timestamppb.New(doc.CreatedAt),
 		UpdatedAt: timestamppb.New(doc.UpdatedAt),
 	}
-	if v, ok := doc.Data["team_id"].(string); ok {
-		m.TeamId = v
+	if v, ok := doc.Data["group_id"].(string); ok {
+		m.GroupId = v
 	}
 	if v, ok := doc.Data["user_id"].(string); ok {
 		m.UserId = v

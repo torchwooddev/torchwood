@@ -39,7 +39,7 @@ console/
     ├── App.tsx                 # QueryClientProvider + AuthProvider + BrowserRouter + 路由表
     ├── api/                    # 每个资源的 API 封装（axios）
     │   ├── client.ts           # axios 实例 + 拦截器（cookie/refresh/项目头/错误 toast）
-    │   ├── auth.ts / admins.ts / projects.ts / users.ts / teams.ts
+    │   ├── auth.ts / admins.ts / projects.ts / users.ts / groups.ts
     │   ├── apiKeys.ts / databases.ts / storage.ts / functions.ts / oauthProviders.ts
     ├── components/
     │   ├── Layout.tsx          # 侧边栏 + 顶部栏 + 项目选择器 + 路由出口
@@ -59,7 +59,7 @@ console/
     └── routes/                 # 按资源分目录，每目录一个 pages.tsx
         ├── Login.tsx / Dashboard.tsx
         ├── admins/  api-keys/  databases/  functions/  projects/
-        ├── settings/  storage/  teams/  users/
+        ├── settings/  storage/  groups/  users/
 ```
 
 约定：

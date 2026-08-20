@@ -4,7 +4,7 @@ import {
   ClientDatabasesService,
   ClientPaymentsService,
   ClientSubscriptionsService,
-  ClientTeamsService,
+  ClientGroupsService,
   RealtimeService,
 } from "./client/index.js";
 import type { TorchwoodConfig } from "./http.js";
@@ -20,7 +20,7 @@ import {
   ServerDatabasesService,
   ServerPaymentsService,
   ServerSubscriptionsService,
-  ServerTeamsService,
+  ServerGroupsService,
   StorageService,
   UsersService,
 } from "./server/index.js";
@@ -42,7 +42,7 @@ export * from "./types.js";
 export class Torchwood {
   readonly account: AccountService;
   readonly databases: ClientDatabasesService;
-  readonly teams: ClientTeamsService;
+  readonly groups: ClientGroupsService;
   readonly realtime: RealtimeService;
   readonly payments: ClientPaymentsService;
   readonly assets: ClientAssetsService;
@@ -52,7 +52,7 @@ export class Torchwood {
     health: HealthService;
     projects: ProjectsService;
     users: UsersService;
-    teams: ServerTeamsService;
+    groups: ServerGroupsService;
     databases: ServerDatabasesService;
     apiKeys: APIKeysService;
     oauthProviders: OAuthProvidersService;
@@ -70,7 +70,7 @@ export class Torchwood {
     this.transport = new HttpTransport(config);
     this.account = new AccountService(this.transport);
     this.databases = new ClientDatabasesService(this.transport);
-    this.teams = new ClientTeamsService(this.transport);
+    this.groups = new ClientGroupsService(this.transport);
     this.realtime = new RealtimeService(this.transport);
     this.payments = new ClientPaymentsService(this.transport);
     this.assets = new ClientAssetsService(this.transport);
@@ -79,7 +79,7 @@ export class Torchwood {
       health: new HealthService(this.transport),
       projects: new ProjectsService(this.transport),
       users: new UsersService(this.transport),
-      teams: new ServerTeamsService(this.transport),
+      groups: new ServerGroupsService(this.transport),
       databases: new ServerDatabasesService(this.transport),
       apiKeys: new APIKeysService(this.transport),
       oauthProviders: new OAuthProvidersService(this.transport),

@@ -63,7 +63,7 @@ type Client struct {
 	now func() time.Time
 
 	account       clientv1.AccountServiceClient
-	teams         clientv1.TeamsServiceClient
+	groups        clientv1.GroupsServiceClient
 	databases     clientv1.DatabasesServiceClient
 	payments      clientv1.PaymentsServiceClient
 	assets        clientv1.AssetsServiceClient
@@ -71,8 +71,8 @@ type Client struct {
 
 	// Account 提供注册/登录/账户管理。
 	Account *AccountService
-	// Teams 提供团队与成员管理。
-	Teams *TeamsService
+	// Groups 提供用户组与成员管理。
+	Groups *GroupsService
 	// Databases 提供文档 CRUD，绑定默认 DatabaseID。
 	Databases *DatabasesService
 	// Payments 提供终端用户建单与本人订单查询。
@@ -106,13 +106,13 @@ func New(target string, opts ...Option) (*Client, error) {
 	}
 	c.conn = gc
 	c.account = clientv1.NewAccountServiceClient(gc)
-	c.teams = clientv1.NewTeamsServiceClient(gc)
+	c.groups = clientv1.NewGroupsServiceClient(gc)
 	c.databases = clientv1.NewDatabasesServiceClient(gc)
 	c.payments = clientv1.NewPaymentsServiceClient(gc)
 	c.assets = clientv1.NewAssetsServiceClient(gc)
 	c.subscriptions = clientv1.NewSubscriptionsServiceClient(gc)
 	c.Account = &AccountService{c: c}
-	c.Teams = &TeamsService{c: c}
+	c.Groups = &GroupsService{c: c}
 	c.Databases = c.UseDatabase(cfg.DatabaseID)
 	c.Payments = &PaymentsService{c: c}
 	c.Assets = &AssetsService{c: c}

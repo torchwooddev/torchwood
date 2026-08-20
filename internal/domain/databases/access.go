@@ -6,7 +6,7 @@ package databases
 // dependency on internal/domain/shared from the document port.
 type Principal struct {
 	// Roles carries the caller's role strings (e.g. "users", "user:<id>",
-	// "team:<id>", "keys", "any"). The "__system__" role bypasses all
+	// "group:<id>", "keys", "any"). The "__system__" role bypasses all
 	// document-level permission checks.
 	Roles []string
 

@@ -191,7 +191,7 @@ func Example_gRPCIntegration() {
 	//
 	//     // Parse filter with validation
 	//     filterValidator := restapi.NewFilterValidator().
-	//         AddFields("name", "status", "team_id")
+	//         AddFields("name", "status", "group_id")
 	//
 	//     filter, err := filterValidator.Parse(params.Filter)
 	//     if err != nil {

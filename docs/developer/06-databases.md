@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | 层 | 技术 | 职责 | 表 |
 |----|------|------|-----|
 | 元数据静态层 | bun + golang-migrate（`db/migrations/`） | 项目、API Key、库/集合目录、审计等平台元数据 | `projects`、`api_keys`、`admins`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`audit_logs`、`admin_projects`、`project_oauth_providers`、`functions` 等 |
-| 动态文档层 | schema-per-database 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、teams 等）与用户动态集合的真实数据 | `TORCHWOOD_<internalID>_<dbID>.*` |
+| 动态文档层 | schema-per-database 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、groups 等）与用户动态集合的真实数据 | `TORCHWOOD_<internalID>_<dbID>.*` |
 
 - `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。
 - 动态层表结构由目录驱动：`CreateCollection` 先建表 + 索引，再写目录元数据（用户集合重复创建返回 `ErrDuplicateKey` → `AlreadyExists`；系统集合幂等成功）。
@@ -91,14 +91,14 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | `users` | email、password_hash、name、status、email_verified、pending_email、phone、labels、prefs、factors | email 唯一、phone | Account / Server Users |
 | `sessions` | user_id、secret_hash、provider、user_agent、ip、expire_at | user_id | Account |
 | `identities` | user_id、provider、provider_uid、provider_email、provider_data | user_id、(provider,provider_uid) 唯一 | OAuth / OTP |
-| `teams` | name、permissions、total、prefs | name | Teams |
-| `memberships` | team_id、user_id、email、roles、status、invited_at、joined_at | team_id、user_id、email | Teams |
+| `groups` | name、permissions、total、prefs | name | Groups |
+| `memberships` | group_id、user_id、email、roles、status、invited_at、joined_at | group_id、user_id、email | Groups |
 | `buckets` | name、permissions、public | name | Storage |
 | `files` | bucket_id、name、mime_type、size、metadata | bucket_id、name fulltext | Storage |
 
 - `SensitiveSystemCollectionIDs`（users / sessions / identities）：Server API 仅 PlatformAdmin 可读（返回前脱敏），Client API 一律拒绝（走 Account 专用 API）。
 - `isWriteProtectedSystemCollection`（纵深防御）：`default` 库的 users/sessions/identities 禁止非 System 主体直接写；更新路径对文档 owner（`user:<id>` 匹配）放行，以支持 `UpdateAccount` / `UpdatePrefs` 自助路径。
-- `EnsureSystemCollections` 在项目首次使用时引导创建全部系统集合（幂等，进程内缓存 + `DO NOTHING`），并执行存量 `keys` 角色写权限收窄清理（`cleanupKeysWritePerms`：移除 users/sessions/identities 的 `update:keys` / `delete:keys`，teams/memberships 保留）；对**已存在**的存量集合按 spec 幂等补齐缺失属性（`reconcileSystemCollectionAttrs`：直接调 `CreateAttribute` 补物理列 + `document_attributes` 元数据，按属性 Key 比对，并发元数据 INSERT 撞唯一约束 23505 忽略）。
+- `EnsureSystemCollections` 在项目首次使用时引导创建全部系统集合（幂等，进程内缓存 + `DO NOTHING`），并执行存量 `keys` 角色写权限收窄清理（`cleanupKeysWritePerms`：移除 users/sessions/identities 的 `update:keys` / `delete:keys`，groups/memberships 保留）；对**已存在**的存量集合按 spec 幂等补齐缺失属性（`reconcileSystemCollectionAttrs`：直接调 `CreateAttribute` 补物理列 + `document_attributes` 元数据，按属性 Key 比对，并发元数据 INSERT 撞唯一约束 23505 忽略）。
 
 ---
 
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | `any` | 公开（匿名） | **合成角色**：`ExpandPermissionRoles` 无条件注入；只允许 read 类授予，写类授予一律拒绝（`syntheticRoles` 校验） |
 | `users` | 任何已认证终端用户 | 仅当调用方持有 `users` 角色时注入 |
 | `user:{id}` | 指定用户（模板，落库前展开为 `user:<uuid>`） | `ExpandPermissionTemplates` 按调用方首个 `user:` 角色替换 |
-| `team:{id}` | 指定团队（模板，同上） | 按调用方首个 `team:` 角色替换 |
+| `group:{id}` | 指定用户组（模板，同上） | 按调用方首个 `group:` 角色替换 |
 | `keys` | API Key / 自动化主体 | 不默认 bypass；按 scope 限权 |
 | `admin` | 平台管理员（Console admin） | PlatformAdmin 走 `IsSystem()` 完全绕过 |
 | `guests` | 匿名 Client API 读（`GuestPrincipal`） | 用于公开 bucket 匿名读等场景 |
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 - `documentSecurity = false`：只按**集合级**权限判定；
 - `documentSecurity = true`：
   - 文档无 `_perms` 行 → 集合级权限兜底；
-  - 文档有 `_perms` 行 → 用户集合**文档权限覆盖集合权限**（私有文档）；系统集合保持 **OR** 语义（D1 豁免，匿名读 teams/buckets 依赖此行为）。
+  - 文档有 `_perms` 行 → 用户集合**文档权限覆盖集合权限**（私有文档）；系统集合保持 **OR** 语义（D1 豁免，匿名读 groups/buckets 依赖此行为）。
 
 ### 3.3 各操作的检查点
 

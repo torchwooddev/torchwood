@@ -10,7 +10,7 @@ import { RegisterPage } from "@/pages/RegisterPage";
 import { EconomyPage } from "@/pages/EconomyPage";
 import { ServerPage } from "@/pages/ServerPage";
 import { SettingsPage } from "@/pages/SettingsPage";
-import { TeamsPage } from "@/pages/TeamsPage";
+import { GroupsPage } from "@/pages/GroupsPage";
 
 export default function App() {
   return (
@@ -32,7 +32,7 @@ export default function App() {
               <Route path="/app" element={<HomePage />} />
               <Route path="/app/account" element={<AccountPage />} />
               <Route path="/app/databases" element={<DatabasesPage />} />
-              <Route path="/app/teams" element={<TeamsPage />} />
+              <Route path="/app/groups" element={<GroupsPage />} />
               <Route path="/app/server" element={<ServerPage />} />
               <Route path="/app/economy" element={<EconomyPage />} />
               <Route path="/app/settings" element={<SettingsPage />} />

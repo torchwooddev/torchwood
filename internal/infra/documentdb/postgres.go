@@ -1463,7 +1463,7 @@ func (p *postgresDocumentDB) reconcileSystemCollectionAttrs(ctx context.Context,
 }
 
 // cleanupKeysWritePerms 移除 keys 角色对系统敏感集合（users/sessions/identities）的
-// update/delete 权限，只作用于这三个集合；teams/memberships 的 keys 管理权限是
+// update/delete 权限，只作用于这三个集合；groups/memberships 的 keys 管理权限是
 // 合法语义，保留不动。幂等：无匹配行时均为空操作。
 func (p *postgresDocumentDB) cleanupKeysWritePerms(ctx context.Context, schema string) error {
 	del := fmt.Sprintf(`DELETE FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection IN ('users','sessions','identities')`, permsTableName(schema))

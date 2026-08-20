@@ -61,14 +61,14 @@ const FunctionsListPage = lazy(() =>
 const FunctionDetailPage = lazy(() =>
   import("@/routes/functions/pages").then((m) => ({ default: m.FunctionDetailPage }))
 );
-const TeamsListPage = lazy(() =>
-  import("@/routes/teams/pages").then((m) => ({ default: m.TeamsListPage }))
+const GroupsListPage = lazy(() =>
+  import("@/routes/groups/pages").then((m) => ({ default: m.GroupsListPage }))
 );
-const TeamNewPage = lazy(() =>
-  import("@/routes/teams/pages").then((m) => ({ default: m.TeamNewPage }))
+const GroupNewPage = lazy(() =>
+  import("@/routes/groups/pages").then((m) => ({ default: m.GroupNewPage }))
 );
-const TeamDetailPage = lazy(() =>
-  import("@/routes/teams/pages").then((m) => ({ default: m.TeamDetailPage }))
+const GroupDetailPage = lazy(() =>
+  import("@/routes/groups/pages").then((m) => ({ default: m.GroupDetailPage }))
 );
 const DatabasesListPage = lazy(() =>
   import("@/routes/databases/pages").then((m) => ({ default: m.DatabasesListPage }))
@@ -328,28 +328,28 @@ function AppRoutes() {
         />
 
         <Route
-          path="teams"
+          path="groups"
           element={
             <RouteErrorBoundary>
-              <TeamsListPage />
+              <GroupsListPage />
             </RouteErrorBoundary>
           }
         />
         <Route
-          path="teams/new"
+          path="groups/new"
           element={
             <RequireRole>
               <RouteErrorBoundary>
-                <TeamNewPage />
+                <GroupNewPage />
               </RouteErrorBoundary>
             </RequireRole>
           }
         />
         <Route
-          path="teams/:id"
+          path="groups/:id"
           element={
             <RouteErrorBoundary>
-              <TeamDetailPage />
+              <GroupDetailPage />
             </RouteErrorBoundary>
           }
         />

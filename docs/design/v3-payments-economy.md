@@ -241,7 +241,7 @@ asset_defs            id, project_id, code, name, class, decimals(currency 展�
                       metadata JSONB, status
 
 asset_holdings        id, project_id,
-                      owner_type 默认 'user'（一期只用 user；列保留 team/project 开放，D14）,
+                      owner_type 默认 'user'（一期只用 user；列保留 group/project 开放，D14）,
                       owner_id, def_id,
                       quantity bigint,
                       expires_at timestamptz 可空,
@@ -466,7 +466,7 @@ subscriptions.activated | renewed | past_due | canceled | expired
 | D11 | holdings 是物化视图、ledger 是真相；消耗/过期删行不留尸体 | 对账/审计/客服全部由流水回答 |
 | D12 | 退款一期只翻转订单状态 + 事件，不动已发放资产 | owner 拍板；资产回收人工/二期 |
 | D13 | Transfer 一期仅 Server/Functions 发起；用户间自由交易后置 | owner 拍板 |
-| D14 | 资产 owner 一期只挂 user；`owner_type` 列入表保持 team/project 开放 | owner 拍板 |
+| D14 | 资产 owner 一期只挂 user；`owner_type` 列入表保持 group/project 开放 | owner 拍板 |
 | D15 | 付费/免费代币建模为两个 currency 定义；消耗顺序策略二期 | owner 拍板 |
 | D16 | 订阅宽限期为 plan 级配置（`grace_days`） | owner 拍板 |
 | D17 | Realtime 经济频道合并为单一 `accounts.{userId}` | owner 拍板；客户端按事件 domain 分流 |

@@ -9,8 +9,8 @@ import (
 	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
-	"github.com/torchwooddev/torchwood/internal/domain/teams"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -331,7 +331,7 @@ func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, princi
 		return err
 	}
 	// M10：删除 users 文档前级联清理 sessions/identities/memberships，
-	// 避免 identity 残留阻塞同 provider 重新注册、memberships 残留遗留孤儿团队角色。
+	// 避免 identity 残留阻塞同 provider 重新注册、memberships 残留遗留孤儿用户组角色。
 	// 级联与主文档删除包在同一事务：中途失败整体回滚，不残留半删除状态
 	// （docDB 文档操作经 conn(ctx) 感知外层事务）。
 	err := u.db.RunInTx(ctx, func(txCtx context.Context) error {
@@ -347,7 +347,7 @@ func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, princi
 }
 
 // deleteUserCascade 以 SystemPrincipal 清理用户的 sessions/identities/memberships，
-// 并按 team_id 聚合递减 teams 文档 total（与 Teams.adjustTeamTotal 语义一致，
+// 并按 group_id 聚合递减 groups 文档 total（与 Groups.adjustGroupTotal 语义一致，
 // 内联实现避免跨用例结构体耦合）。
 func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string) error {
 	for _, coll := range []string{"sessions", "identities"} {
@@ -362,34 +362,34 @@ func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string)
 		}
 	}
 
-	// memberships：仅 accepted 状态计入团队 total（与 CreateMembership/DeleteMembership 一致）。
-	teamsToAdjust := map[string]struct{}{}
+	// memberships：仅 accepted 状态计入用户组 total（与 CreateMembership/DeleteMembership 一致）。
+	groupsToAdjust := map[string]struct{}{}
 	docs, err := cascadeListAll(ctx, u.docDB, projectID, "memberships", []string{query.BuildEqual("user_id", userID)})
 	if err != nil {
 		return fmt.Errorf("list memberships for user: %w", err)
 	}
 	for _, doc := range docs {
-		if statusVal, _ := doc.Data["status"].(string); statusVal == teams.StatusAccepted {
-			if teamID, _ := doc.Data["team_id"].(string); teamID != "" {
-				teamsToAdjust[teamID] = struct{}{}
+		if statusVal, _ := doc.Data["status"].(string); statusVal == groups.StatusAccepted {
+			if groupID, _ := doc.Data["group_id"].(string); groupID != "" {
+				groupsToAdjust[groupID] = struct{}{}
 			}
 		}
 		if err := u.docDB.DeleteDocument(ctx, projectID, "default", "memberships", doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
 			return fmt.Errorf("delete membership: %w", err)
 		}
 	}
-	for teamID := range teamsToAdjust {
-		if err := u.adjustTeamTotal(ctx, projectID, teamID, -1); err != nil {
+	for groupID := range groupsToAdjust {
+		if err := u.adjustGroupTotal(ctx, projectID, groupID, -1); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// adjustTeamTotal 递增/递减团队 total（与 Teams.adjustTeamTotal 逻辑一致，
+// adjustGroupTotal 递增/递减用户组 total（与 Groups.adjustGroupTotal 逻辑一致，
 // 此处针对 Users 内联实现，避免跨用例结构体依赖）。
-func (u *Users) adjustTeamTotal(ctx context.Context, projectID, teamID string, delta int) error {
-	doc, err := u.docDB.GetDocument(ctx, projectID, "default", "teams", teamID, databases.SystemPrincipal)
+func (u *Users) adjustGroupTotal(ctx context.Context, projectID, groupID string, delta int) error {
+	doc, err := u.docDB.GetDocument(ctx, projectID, "default", "groups", groupID, databases.SystemPrincipal)
 	if err != nil {
 		return err
 	}
@@ -409,8 +409,8 @@ func (u *Users) adjustTeamTotal(ctx context.Context, projectID, teamID string, d
 	if total < 0 {
 		total = 0
 	}
-	_, err = u.docDB.UpdateDocument(ctx, projectID, "default", "teams", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   teamID,
+	_, err = u.docDB.UpdateDocument(ctx, projectID, "default", "groups", databases.SimpleDocumentUpdate(databases.Document{
+		ID:   groupID,
 		Data: map[string]any{"total": total},
 	}, nil), databases.SystemPrincipal)
 	return err

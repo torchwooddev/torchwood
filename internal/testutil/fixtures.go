@@ -15,7 +15,7 @@ import (
 // CreateTestAPIKey inserts an API key and returns its raw secret plus a cleanup func.
 func CreateTestAPIKey(ctx context.Context, db *clients.Database, projectID string, scopes []string) (string, func()) {
 	if len(scopes) == 0 {
-		scopes = []string{"users", "storage", "databases", "teams"}
+		scopes = []string{"users", "storage", "databases", "groups"}
 	}
 	secret := idgen.UUID().String() + idgen.UUID().String()
 	hash := sha256.Sum256([]byte(secret))

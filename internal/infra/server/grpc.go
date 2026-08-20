@@ -37,7 +37,7 @@ func NewGRPCServer(
 	checkers *health.Checkers,
 	account *clientgrpc.AccountService,
 	clientDatabases *clientgrpc.DatabasesService,
-	clientTeams *clientgrpc.TeamsService,
+	clientGroups *clientgrpc.GroupsService,
 	clientPayments *clientgrpc.PaymentsService,
 	clientAssets *clientgrpc.AssetsService,
 	clientSubscriptions *clientgrpc.SubscriptionsService,
@@ -47,7 +47,7 @@ func NewGRPCServer(
 	users *servergrpc.UsersService,
 	apiKeys *servergrpc.APIKeysService,
 	oauthProviders *servergrpc.OAuthProvidersService,
-	teams *servergrpc.TeamsService,
+	groups *servergrpc.GroupsService,
 	databases *servergrpc.DatabasesService,
 	functions *servergrpc.FunctionsService,
 	serverPayments *servergrpc.PaymentsService,
@@ -64,7 +64,7 @@ func NewGRPCServer(
 	publicMethods, apiKeyMethods, permissionMethods, err := collectMethodsByAccess(
 		clientv1.File_client_v1_account_proto,
 		clientv1.File_client_v1_databases_proto,
-		clientv1.File_client_v1_teams_proto,
+		clientv1.File_client_v1_groups_proto,
 		clientv1.File_client_v1_payments_proto,
 		clientv1.File_client_v1_assets_proto,
 		clientv1.File_client_v1_subscriptions_proto,
@@ -74,7 +74,7 @@ func NewGRPCServer(
 		serverv1.File_server_v1_users_proto,
 		serverv1.File_server_v1_apikeys_proto,
 		serverv1.File_server_v1_oauth_providers_proto,
-		serverv1.File_server_v1_teams_proto,
+		serverv1.File_server_v1_groups_proto,
 		serverv1.File_server_v1_databases_proto,
 		serverv1.File_server_v1_functions_proto,
 		serverv1.File_server_v1_payments_proto,
@@ -132,7 +132,7 @@ func NewGRPCServer(
 
 	clientv1.RegisterAccountServiceServer(grpcSrv, account)
 	clientv1.RegisterDatabasesServiceServer(grpcSrv, clientDatabases)
-	clientv1.RegisterTeamsServiceServer(grpcSrv, clientTeams)
+	clientv1.RegisterGroupsServiceServer(grpcSrv, clientGroups)
 	clientv1.RegisterPaymentsServiceServer(grpcSrv, clientPayments)
 	clientv1.RegisterAssetsServiceServer(grpcSrv, clientAssets)
 	clientv1.RegisterSubscriptionsServiceServer(grpcSrv, clientSubscriptions)
@@ -142,7 +142,7 @@ func NewGRPCServer(
 	serverv1.RegisterUsersServiceServer(grpcSrv, users)
 	serverv1.RegisterAPIKeysServiceServer(grpcSrv, apiKeys)
 	serverv1.RegisterOAuthProvidersServiceServer(grpcSrv, oauthProviders)
-	serverv1.RegisterTeamsServiceServer(grpcSrv, teams)
+	serverv1.RegisterGroupsServiceServer(grpcSrv, groups)
 	serverv1.RegisterDatabasesServiceServer(grpcSrv, databases)
 	serverv1.RegisterFunctionsServiceServer(grpcSrv, functions)
 	serverv1.RegisterPaymentsServiceServer(grpcSrv, serverPayments)

@@ -13,25 +13,25 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type TeamsService struct {
-	clientv1.UnimplementedTeamsServiceServer
-	teams *client.Teams
+type GroupsService struct {
+	clientv1.UnimplementedGroupsServiceServer
+	groups *client.Groups
 }
 
-func NewTeamsService(teams *client.Teams) *TeamsService {
-	return &TeamsService{teams: teams}
+func NewGroupsService(groups *client.Groups) *GroupsService {
+	return &GroupsService{groups: groups}
 }
 
-func (s *TeamsService) CreateTeam(ctx context.Context, req *clientv1.CreateTeamRequest) (*clientv1.Team, error) {
-	doc, err := s.teams.CreateTeam(ctx, req.GetName())
+func (s *GroupsService) CreateGroup(ctx context.Context, req *clientv1.CreateGroupRequest) (*clientv1.Group, error) {
+	doc, err := s.groups.CreateGroup(ctx, req.GetName())
 	if err != nil {
 		return nil, err
 	}
-	return mapClientTeamDoc(doc), nil
+	return mapClientGroupDoc(doc), nil
 }
 
-func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest) (*clientv1.ListTeamsResponse, error) {
-	docs, total, next, err := s.teams.ListTeams(ctx, databases.Query{
+func (s *GroupsService) ListGroups(ctx context.Context, req *sharedv1.ListRequest) (*clientv1.ListGroupsResponse, error) {
+	docs, total, next, err := s.groups.ListGroups(ctx, databases.Query{
 		Queries:   req.GetQueries(),
 		PageSize:  req.GetPageSize(),
 		PageToken: req.GetPageToken(),
@@ -39,44 +39,44 @@ func (s *TeamsService) ListTeams(ctx context.Context, req *sharedv1.ListRequest)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*clientv1.Team, len(docs))
+	out := make([]*clientv1.Group, len(docs))
 	for i := range docs {
-		out[i] = mapClientTeamDoc(&docs[i])
+		out[i] = mapClientGroupDoc(&docs[i])
 	}
-	return &clientv1.ListTeamsResponse{
-		Teams: out,
-		Meta:  &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
+	return &clientv1.ListGroupsResponse{
+		Groups: out,
+		Meta:   &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 
-func (s *TeamsService) GetTeam(ctx context.Context, req *clientv1.GetTeamRequest) (*clientv1.Team, error) {
-	doc, err := s.teams.GetTeam(ctx, req.GetId())
+func (s *GroupsService) GetGroup(ctx context.Context, req *clientv1.GetGroupRequest) (*clientv1.Group, error) {
+	doc, err := s.groups.GetGroup(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
 	if doc == nil {
-		return nil, status.Error(codes.NotFound, "team not found")
+		return nil, status.Error(codes.NotFound, "group not found")
 	}
-	return mapClientTeamDoc(doc), nil
+	return mapClientGroupDoc(doc), nil
 }
 
-func (s *TeamsService) DeleteTeam(ctx context.Context, req *clientv1.GetTeamRequest) (*sharedv1.Empty, error) {
-	if err := s.teams.DeleteTeam(ctx, req.GetId()); err != nil {
+func (s *GroupsService) DeleteGroup(ctx context.Context, req *clientv1.GetGroupRequest) (*sharedv1.Empty, error) {
+	if err := s.groups.DeleteGroup(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
 }
 
-func (s *TeamsService) CreateMembership(ctx context.Context, req *clientv1.CreateMembershipRequest) (*clientv1.Membership, error) {
-	doc, err := s.teams.CreateMembership(ctx, req.GetTeamId(), req.GetEmail(), req.GetName(), req.GetRoles())
+func (s *GroupsService) CreateMembership(ctx context.Context, req *clientv1.CreateMembershipRequest) (*clientv1.Membership, error) {
+	doc, err := s.groups.CreateMembership(ctx, req.GetGroupId(), req.GetEmail(), req.GetName(), req.GetRoles())
 	if err != nil {
 		return nil, err
 	}
 	return mapClientMembershipDoc(doc), nil
 }
 
-func (s *TeamsService) ListMemberships(ctx context.Context, req *clientv1.ListMembershipsRequest) (*clientv1.ListMembershipsResponse, error) {
-	docs, err := s.teams.ListMemberships(ctx, req.GetTeamId())
+func (s *GroupsService) ListMemberships(ctx context.Context, req *clientv1.ListMembershipsRequest) (*clientv1.ListMembershipsResponse, error) {
+	docs, err := s.groups.ListMemberships(ctx, req.GetGroupId())
 	if err != nil {
 		return nil, err
 	}
@@ -87,26 +87,26 @@ func (s *TeamsService) ListMemberships(ctx context.Context, req *clientv1.ListMe
 	return &clientv1.ListMembershipsResponse{Memberships: out}, nil
 }
 
-func (s *TeamsService) UpdateMembershipStatus(ctx context.Context, req *clientv1.UpdateMembershipStatusRequest) (*clientv1.Membership, error) {
-	doc, err := s.teams.UpdateMembershipStatus(ctx, req.GetTeamId(), req.GetMembershipId(), req.GetStatus())
+func (s *GroupsService) UpdateMembershipStatus(ctx context.Context, req *clientv1.UpdateMembershipStatusRequest) (*clientv1.Membership, error) {
+	doc, err := s.groups.UpdateMembershipStatus(ctx, req.GetGroupId(), req.GetMembershipId(), req.GetStatus())
 	if err != nil {
 		return nil, err
 	}
 	return mapClientMembershipDoc(doc), nil
 }
 
-func (s *TeamsService) DeleteMembership(ctx context.Context, req *clientv1.GetMembershipRequest) (*sharedv1.Empty, error) {
-	if err := s.teams.DeleteMembership(ctx, req.GetTeamId(), req.GetMembershipId()); err != nil {
+func (s *GroupsService) DeleteMembership(ctx context.Context, req *clientv1.GetMembershipRequest) (*sharedv1.Empty, error) {
+	if err := s.groups.DeleteMembership(ctx, req.GetGroupId(), req.GetMembershipId()); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
 }
 
-func mapClientTeamDoc(doc *databases.Document) *clientv1.Team {
+func mapClientGroupDoc(doc *databases.Document) *clientv1.Group {
 	if doc == nil {
 		return nil
 	}
-	t := &clientv1.Team{
+	t := &clientv1.Group{
 		Id:        doc.ID,
 		CreatedAt: timestamppb.New(doc.CreatedAt),
 		UpdatedAt: timestamppb.New(doc.UpdatedAt),
@@ -132,8 +132,8 @@ func mapClientMembershipDoc(doc *databases.Document) *clientv1.Membership {
 		CreatedAt: timestamppb.New(doc.CreatedAt),
 		UpdatedAt: timestamppb.New(doc.UpdatedAt),
 	}
-	if v, ok := doc.Data["team_id"].(string); ok {
-		m.TeamId = v
+	if v, ok := doc.Data["group_id"].(string); ok {
+		m.GroupId = v
 	}
 	if v, ok := doc.Data["user_id"].(string); ok {
 		m.UserId = v

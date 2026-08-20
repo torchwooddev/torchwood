@@ -1,32 +1,32 @@
 import { listQuery, type HttpTransport } from "../http.js";
-import type { ListParams, Membership, Team } from "../types.js";
+import type { ListParams, Membership, Group } from "../types.js";
 
-export class ServerTeamsService {
+export class ServerGroupsService {
   constructor(private readonly http: HttpTransport) {}
 
-  async create(input: { name: string; permissions?: string[] }): Promise<Team> {
-    return this.http.request<Team>("POST", "/v1/server/teams", {
+  async create(input: { name: string; permissions?: string[] }): Promise<Group> {
+    return this.http.request<Group>("POST", "/v1/server/groups", {
       auth: "apiKey",
       body: input,
     });
   }
 
-  async list(params?: ListParams): Promise<Team[]> {
-    const res = await this.http.request<{ teams: Team[] }>("GET", "/v1/server/teams", {
+  async list(params?: ListParams): Promise<Group[]> {
+    const res = await this.http.request<{ groups: Group[] }>("GET", "/v1/server/groups", {
       auth: "apiKey",
       query: listQuery(params),
     });
-    return res.teams ?? [];
+    return res.groups ?? [];
   }
 
-  async get(id: string): Promise<Team> {
-    return this.http.request<Team>("GET", `/v1/server/teams/${id}`, { auth: "apiKey" });
+  async get(id: string): Promise<Group> {
+    return this.http.request<Group>("GET", `/v1/server/groups/${id}`, { auth: "apiKey" });
   }
 
   async getPrefs(id: string): Promise<Record<string, unknown>> {
     const res = await this.http.request<{ prefs: Record<string, unknown> }>(
       "GET",
-      `/v1/server/teams/${id}/prefs`,
+      `/v1/server/groups/${id}/prefs`,
       { auth: "apiKey" }
     );
     return res.prefs ?? {};
@@ -35,18 +35,18 @@ export class ServerTeamsService {
   async updatePrefs(id: string, prefs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const res = await this.http.request<{ prefs: Record<string, unknown> }>(
       "PUT",
-      `/v1/server/teams/${id}/prefs`,
+      `/v1/server/groups/${id}/prefs`,
       { auth: "apiKey", body: { id, prefs } }
     );
     return res.prefs ?? {};
   }
 
   async delete(id: string): Promise<void> {
-    await this.http.request<void>("DELETE", `/v1/server/teams/${id}`, { auth: "apiKey" });
+    await this.http.request<void>("DELETE", `/v1/server/groups/${id}`, { auth: "apiKey" });
   }
 
   async createMembership(
-    teamId: string,
+    groupId: string,
     input: {
       email?: string;
       user_id?: string;
@@ -55,63 +55,63 @@ export class ServerTeamsService {
       status?: string;
     }
   ): Promise<Membership> {
-    return this.http.request<Membership>("POST", `/v1/server/teams/${teamId}/memberships`, {
+    return this.http.request<Membership>("POST", `/v1/server/groups/${groupId}/memberships`, {
       auth: "apiKey",
-      body: { team_id: teamId, ...input },
+      body: { group_id: groupId, ...input },
     });
   }
 
-  async listMemberships(teamId: string, params?: ListParams): Promise<Membership[]> {
+  async listMemberships(groupId: string, params?: ListParams): Promise<Membership[]> {
     const res = await this.http.request<{ memberships: Membership[] }>(
       "GET",
-      `/v1/server/teams/${teamId}/memberships`,
+      `/v1/server/groups/${groupId}/memberships`,
       { auth: "apiKey", query: listQuery(params) }
     );
     return res.memberships ?? [];
   }
 
-  async getMembership(teamId: string, membershipId: string): Promise<Membership> {
+  async getMembership(groupId: string, membershipId: string): Promise<Membership> {
     return this.http.request<Membership>(
       "GET",
-      `/v1/server/teams/${teamId}/memberships/${membershipId}`,
+      `/v1/server/groups/${groupId}/memberships/${membershipId}`,
       { auth: "apiKey" }
     );
   }
 
   async updateMembership(
-    teamId: string,
+    groupId: string,
     membershipId: string,
     roles: string[]
   ): Promise<Membership> {
     return this.http.request<Membership>(
       "PATCH",
-      `/v1/server/teams/${teamId}/memberships/${membershipId}`,
+      `/v1/server/groups/${groupId}/memberships/${membershipId}`,
       {
         auth: "apiKey",
-        body: { team_id: teamId, membership_id: membershipId, roles },
+        body: { group_id: groupId, membership_id: membershipId, roles },
       }
     );
   }
 
   async updateMembershipStatus(
-    teamId: string,
+    groupId: string,
     membershipId: string,
     status: string
   ): Promise<Membership> {
     return this.http.request<Membership>(
       "PATCH",
-      `/v1/server/teams/${teamId}/memberships/${membershipId}/status`,
+      `/v1/server/groups/${groupId}/memberships/${membershipId}/status`,
       {
         auth: "apiKey",
-        body: { team_id: teamId, membership_id: membershipId, status },
+        body: { group_id: groupId, membership_id: membershipId, status },
       }
     );
   }
 
-  async deleteMembership(teamId: string, membershipId: string): Promise<void> {
+  async deleteMembership(groupId: string, membershipId: string): Promise<void> {
     await this.http.request<void>(
       "DELETE",
-      `/v1/server/teams/${teamId}/memberships/${membershipId}`,
+      `/v1/server/groups/${groupId}/memberships/${membershipId}`,
       { auth: "apiKey" }
     );
   }

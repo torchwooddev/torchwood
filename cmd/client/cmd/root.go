@@ -65,7 +65,7 @@ x-api-key metadata（scope 见 API Key 的 scopes）。默认连接 127.0.0.1:90
 		NewProjectsCmd(g),
 		NewUsersCmd(g),
 		NewDatabasesCmd(g),
-		NewTeamsCmd(g),
+		NewGroupsCmd(g),
 		NewStorageCmd(g),
 		NewFunctionsCmd(g),
 		NewOAuthProvidersCmd(g),

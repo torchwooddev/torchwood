@@ -101,7 +101,7 @@ func AllowsDocumentAccess(coll *Collection, docPerms []Permission, docHasPerms b
 	}
 	if coll.IsSystem {
 		// D1 豁免：系统集合保持 OR 语义，保证显式 permissions（不含 read:any）的
-		// 系统集合文档仍由集合级兜底（匿名读 teams/buckets 依赖此行为）。
+		// 系统集合文档仍由集合级兜底（匿名读 groups/buckets 依赖此行为）。
 		return collOK || CollectionAllows(docPerms, permType, expanded)
 	}
 	// 用户集合：文档权限覆盖集合权限（Appwrite 语义，"私有文档"生效）。
@@ -168,7 +168,7 @@ func ParsePermissionStrings(items []string) ([]Permission, error) {
 }
 
 // ExpandPermissionTemplates replaces the Appwrite-style placeholders
-// "user:{id}" and "team:{id}" in permission roles with the caller's first
+// "user:{id}" and "group:{id}" in permission roles with the caller's first
 // matching concrete role (e.g. "user:<uuid>"), preserving original entries
 // when no matching role is held. The expanded set is used for grant
 // validation and persistence, mirroring Appwrite's create/update semantics.
@@ -176,8 +176,8 @@ func ExpandPermissionTemplates(perms []Permission, roles []string) []Permission 
 	if len(perms) == 0 {
 		return perms
 	}
-	firstUser, firstTeam := firstPrefixedRole(roles, "user:"), firstPrefixedRole(roles, "team:")
-	if firstUser == "" && firstTeam == "" {
+	firstUser, firstGroup := firstPrefixedRole(roles, "user:"), firstPrefixedRole(roles, "group:")
+	if firstUser == "" && firstGroup == "" {
 		return perms
 	}
 	out := make([]Permission, len(perms))
@@ -188,9 +188,9 @@ func ExpandPermissionTemplates(perms []Permission, roles []string) []Permission 
 				out[i] = Permission{Type: p.Type, Role: firstUser}
 				continue
 			}
-		case "team:{id}":
-			if firstTeam != "" {
-				out[i] = Permission{Type: p.Type, Role: firstTeam}
+		case "group:{id}":
+			if firstGroup != "" {
+				out[i] = Permission{Type: p.Type, Role: firstGroup}
 				continue
 			}
 		}

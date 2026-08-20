@@ -14,12 +14,12 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-// fakeServices 实现 Server API 的 Health/Users/Teams/Databases fake 服务。
+// fakeServices 实现 Server API 的 Health/Users/Groups/Databases fake 服务。
 type fakeServices struct {
 	rec *recorder
 	serverv1.UnimplementedHealthServiceServer
 	serverv1.UnimplementedUsersServiceServer
-	serverv1.UnimplementedTeamsServiceServer
+	serverv1.UnimplementedGroupsServiceServer
 	serverv1.UnimplementedDatabasesServiceServer
 }
 
@@ -83,60 +83,60 @@ func (s *fakeServices) CreateUserToken(ctx context.Context, _ *serverv1.GetUserR
 	return &serverv1.CreateUserTokenResponse{Tokens: &serverv1.TokenBundle{AccessToken: "agent-token"}}, nil
 }
 
-func (s *fakeServices) CreateTeam(ctx context.Context, req *serverv1.CreateTeamRequest) (*serverv1.Team, error) {
-	return &serverv1.Team{Id: "team-1", Name: req.Name, Permissions: req.Permissions}, nil
+func (s *fakeServices) CreateGroup(ctx context.Context, req *serverv1.CreateGroupRequest) (*serverv1.Group, error) {
+	return &serverv1.Group{Id: "group-1", Name: req.Name, Permissions: req.Permissions}, nil
 }
 
-func (s *fakeServices) GetTeam(ctx context.Context, req *serverv1.GetTeamRequest) (*serverv1.Team, error) {
-	return &serverv1.Team{Id: req.Id, Name: "Team One"}, nil
+func (s *fakeServices) GetGroup(ctx context.Context, req *serverv1.GetGroupRequest) (*serverv1.Group, error) {
+	return &serverv1.Group{Id: req.Id, Name: "Group One"}, nil
 }
 
-func (s *fakeServices) DeleteTeam(ctx context.Context, _ *serverv1.GetTeamRequest) (*sharedv1.Empty, error) {
-	if err := s.rec.fail("DeleteTeam"); err != nil {
+func (s *fakeServices) DeleteGroup(ctx context.Context, _ *serverv1.GetGroupRequest) (*sharedv1.Empty, error) {
+	if err := s.rec.fail("DeleteGroup"); err != nil {
 		return nil, err
 	}
 	return &sharedv1.Empty{}, nil
 }
 
-func (s *fakeServices) GetTeamPrefs(ctx context.Context, _ *serverv1.GetTeamRequest) (*serverv1.GetTeamPrefsResponse, error) {
-	if err := s.rec.fail("GetTeamPrefs"); err != nil {
+func (s *fakeServices) GetGroupPrefs(ctx context.Context, _ *serverv1.GetGroupRequest) (*serverv1.GetGroupPrefsResponse, error) {
+	if err := s.rec.fail("GetGroupPrefs"); err != nil {
 		return nil, err
 	}
-	return &serverv1.GetTeamPrefsResponse{Prefs: &structpb.Struct{}}, nil
+	return &serverv1.GetGroupPrefsResponse{Prefs: &structpb.Struct{}}, nil
 }
 
-func (s *fakeServices) UpdateTeamPrefs(ctx context.Context, req *serverv1.UpdateTeamPrefsRequest) (*serverv1.GetTeamPrefsResponse, error) {
-	if err := s.rec.fail("UpdateTeamPrefs"); err != nil {
+func (s *fakeServices) UpdateGroupPrefs(ctx context.Context, req *serverv1.UpdateGroupPrefsRequest) (*serverv1.GetGroupPrefsResponse, error) {
+	if err := s.rec.fail("UpdateGroupPrefs"); err != nil {
 		return nil, err
 	}
 	s.rec.mu.Lock()
-	s.rec.lastTeamPrefs = req
+	s.rec.lastGroupPrefs = req
 	s.rec.mu.Unlock()
-	return &serverv1.GetTeamPrefsResponse{Prefs: req.Prefs}, nil
+	return &serverv1.GetGroupPrefsResponse{Prefs: req.Prefs}, nil
 }
 
-func (s *fakeServices) ListTeams(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListTeamsResponse, error) {
-	return &serverv1.ListTeamsResponse{Teams: []*serverv1.Team{{Id: "team-1", Name: "Team One"}}}, nil
+func (s *fakeServices) ListGroups(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListGroupsResponse, error) {
+	return &serverv1.ListGroupsResponse{Groups: []*serverv1.Group{{Id: "group-1", Name: "Group One"}}}, nil
 }
 
 func (s *fakeServices) CreateMembership(ctx context.Context, req *serverv1.CreateMembershipRequest) (*serverv1.Membership, error) {
-	return &serverv1.Membership{Id: "mem-1", TeamId: req.TeamId, UserId: req.UserId, Roles: req.Roles, Status: req.Status}, nil
+	return &serverv1.Membership{Id: "mem-1", GroupId: req.GroupId, UserId: req.UserId, Roles: req.Roles, Status: req.Status}, nil
 }
 
 func (s *fakeServices) ListMemberships(ctx context.Context, req *serverv1.ListMembershipsRequest) (*serverv1.ListMembershipsResponse, error) {
-	return &serverv1.ListMembershipsResponse{Memberships: []*serverv1.Membership{{Id: "mem-1", TeamId: req.TeamId}}}, nil
+	return &serverv1.ListMembershipsResponse{Memberships: []*serverv1.Membership{{Id: "mem-1", GroupId: req.GroupId}}}, nil
 }
 
 func (s *fakeServices) GetMembership(ctx context.Context, req *serverv1.GetMembershipRequest) (*serverv1.Membership, error) {
-	return &serverv1.Membership{Id: req.MembershipId, TeamId: req.TeamId}, nil
+	return &serverv1.Membership{Id: req.MembershipId, GroupId: req.GroupId}, nil
 }
 
 func (s *fakeServices) UpdateMembership(ctx context.Context, req *serverv1.UpdateMembershipRequest) (*serverv1.Membership, error) {
-	return &serverv1.Membership{Id: req.MembershipId, TeamId: req.TeamId, Roles: req.Roles}, nil
+	return &serverv1.Membership{Id: req.MembershipId, GroupId: req.GroupId, Roles: req.Roles}, nil
 }
 
 func (s *fakeServices) UpdateMembershipStatus(ctx context.Context, req *serverv1.UpdateMembershipStatusRequest) (*serverv1.Membership, error) {
-	return &serverv1.Membership{Id: req.MembershipId, TeamId: req.TeamId, Status: req.Status}, nil
+	return &serverv1.Membership{Id: req.MembershipId, GroupId: req.GroupId, Status: req.Status}, nil
 }
 
 func (s *fakeServices) DeleteMembership(ctx context.Context, _ *serverv1.GetMembershipRequest) (*sharedv1.Empty, error) {
@@ -257,7 +257,7 @@ func (s *fakeServices) BulkDeleteDocuments(ctx context.Context, req *serverv1.Bu
 	return &serverv1.BulkDocumentsResponse{Affected: int64(len(req.DocumentIds))}, nil
 }
 
-// newServicesBufconn 启动注册了 Health/Users/Teams/Databases fake 的 bufconn gRPC 服务。
+// newServicesBufconn 启动注册了 Health/Users/Groups/Databases fake 的 bufconn gRPC 服务。
 func newServicesBufconn(t *testing.T) (*bufconn.Listener, *recorder) {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
@@ -266,7 +266,7 @@ func newServicesBufconn(t *testing.T) (*bufconn.Listener, *recorder) {
 	fake := &fakeServices{rec: rec}
 	serverv1.RegisterHealthServiceServer(srv, fake)
 	serverv1.RegisterUsersServiceServer(srv, fake)
-	serverv1.RegisterTeamsServiceServer(srv, fake)
+	serverv1.RegisterGroupsServiceServer(srv, fake)
 	serverv1.RegisterDatabasesServiceServer(srv, fake)
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
@@ -330,25 +330,25 @@ func TestUsers_ListSessionsAndDelete(t *testing.T) {
 	require.NoError(t, c.Users.DeleteUser(ctx, "user-1"))
 }
 
-func TestTeams_CreateTeamAndMembership(t *testing.T) {
+func TestGroups_CreateGroupAndMembership(t *testing.T) {
 	c := newServicesClient(t, WithAPIKey("key-1"))
 	ctx := context.Background()
 
-	team, err := c.Teams.CreateTeam(ctx, "Team One", []string{"read"})
+	group, err := c.Groups.CreateGroup(ctx, "Group One", []string{"read"})
 	require.NoError(t, err)
-	require.Equal(t, "Team One", team.Name)
-	require.Equal(t, []string{"read"}, team.Permissions)
+	require.Equal(t, "Group One", group.Name)
+	require.Equal(t, []string{"read"}, group.Permissions)
 
-	got, err := c.Teams.GetTeam(ctx, "team-1")
+	got, err := c.Groups.GetGroup(ctx, "group-1")
 	require.NoError(t, err)
-	require.Equal(t, "team-1", got.Id)
+	require.Equal(t, "group-1", got.Id)
 
-	mem, err := c.Teams.CreateMembership(ctx, "team-1", "user-1", "", "", []string{"member"}, "active")
+	mem, err := c.Groups.CreateMembership(ctx, "group-1", "user-1", "", "", []string{"member"}, "active")
 	require.NoError(t, err)
 	require.Equal(t, "user-1", mem.UserId)
 	require.Equal(t, "active", mem.Status)
 
-	listed, err := c.Teams.ListMemberships(ctx, "team-1")
+	listed, err := c.Groups.ListMemberships(ctx, "group-1")
 	require.NoError(t, err)
 	require.Len(t, listed.Memberships, 1)
 }
@@ -433,25 +433,25 @@ func TestUsers_UpdateUserPassword(t *testing.T) {
 	require.Equal(t, "new-pw", rec.lastUserPassword.Password)
 }
 
-func TestTeams_DeleteAndPrefs(t *testing.T) {
+func TestGroups_DeleteAndPrefs(t *testing.T) {
 	lis, rec := newServicesBufconn(t)
 	c := newTestClient(t, lis, WithAPIKey("key-1"))
 	ctx := context.Background()
 
-	require.NoError(t, c.Teams.DeleteTeam(ctx, "team-1"))
+	require.NoError(t, c.Groups.DeleteGroup(ctx, "group-1"))
 
-	prefs, err := c.Teams.GetTeamPrefs(ctx, "team-1")
+	prefs, err := c.Groups.GetGroupPrefs(ctx, "group-1")
 	require.NoError(t, err)
 	require.NotNil(t, prefs.Prefs)
 
-	updated, err := c.Teams.UpdateTeamPrefs(ctx, "team-1", map[string]any{"locale": "zh-CN"})
+	updated, err := c.Groups.UpdateGroupPrefs(ctx, "group-1", map[string]any{"locale": "zh-CN"})
 	require.NoError(t, err)
 	require.NotNil(t, updated.Prefs)
 
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	require.Equal(t, "team-1", rec.lastTeamPrefs.Id)
-	require.Equal(t, "zh-CN", rec.lastTeamPrefs.Prefs.Fields["locale"].GetStringValue())
+	require.Equal(t, "group-1", rec.lastGroupPrefs.Id)
+	require.Equal(t, "zh-CN", rec.lastGroupPrefs.Prefs.Fields["locale"].GetStringValue())
 }
 
 func TestDatabases_UpdateAndDeleteSchema(t *testing.T) {
@@ -510,13 +510,13 @@ func TestF84Methods_ErrorPropagation(t *testing.T) {
 	}{
 		{name: "UpdateUserPassword NotFound", rpc: "UpdateUserPassword", err: notFound,
 			call: func() error { _, err := c.Users.UpdateUserPassword(ctx, "user-1", "pw"); return err }},
-		{name: "DeleteTeam NotFound", rpc: "DeleteTeam", err: notFound,
-			call: func() error { return c.Teams.DeleteTeam(ctx, "team-1") }},
-		{name: "GetTeamPrefs PermissionDenied", rpc: "GetTeamPrefs", err: denied,
-			call: func() error { _, err := c.Teams.GetTeamPrefs(ctx, "team-1"); return err }},
-		{name: "UpdateTeamPrefs NotFound", rpc: "UpdateTeamPrefs", err: notFound,
+		{name: "DeleteGroup NotFound", rpc: "DeleteGroup", err: notFound,
+			call: func() error { return c.Groups.DeleteGroup(ctx, "group-1") }},
+		{name: "GetGroupPrefs PermissionDenied", rpc: "GetGroupPrefs", err: denied,
+			call: func() error { _, err := c.Groups.GetGroupPrefs(ctx, "group-1"); return err }},
+		{name: "UpdateGroupPrefs NotFound", rpc: "UpdateGroupPrefs", err: notFound,
 			call: func() error {
-				_, err := c.Teams.UpdateTeamPrefs(ctx, "team-1", map[string]any{"locale": "zh"})
+				_, err := c.Groups.UpdateGroupPrefs(ctx, "group-1", map[string]any{"locale": "zh"})
 				return err
 			}},
 		{name: "UpdateCollection NotFound", rpc: "UpdateCollection", err: notFound,

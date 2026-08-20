@@ -13,7 +13,7 @@ Torchwood 是一个受 Appwrite 启发、**AI/Agent-Native** 的后端即服务�
 - **文件存储**：S3/MinIO 兼容的对象存储，支持上传/下载/在线查看、预览缩略图、公开 bucket、HMAC File Token、分片上传与断点续传。
 - **函数执行**：基于 Docker 的真实执行器（构建/运行，含安全基线），支持同步/异步执行、异步 worker（`cmd/worker`）、执行历史与保留策略。
 - **Admin Console**：React + Vite + TanStack Query + shadcn/ui 管理后台，嵌入 Go 二进制，路径 `/console/`。
-- **Server API**：Project / API Key / User / Team / Storage / Database / Collection / Attribute / Index / Function / OAuth Provider 的 CRUD；健康与版本端点。
+- **Server API**：Project / API Key / User / Group / Storage / Database / Collection / Attribute / Index / Function / OAuth Provider 的 CRUD；健康与版本端点。
 - **可观测性**：依赖健康检查、版本端点、结构化 slog 日志、慢查询日志、Prometheus metrics。
 
 ## 技术栈
@@ -175,12 +175,12 @@ task build             # 构建 server、worker 与 CLI 二进制（含 console�
 ├── genproto/              # 生成的 protobuf 代码
 ├── internal/
 │   ├── api/               # 传输层：gRPC handler + 自定义 HTTP handler
-│   │   ├── clientgrpc/    # Client API（Account / Databases / Teams）
+│   │   ├── clientgrpc/    # Client API（Account / Databases / Groups）
 │   │   ├── consolegrpc/   # Console API（ConsoleAuth / Admins）
 │   │   ├── servergrpc/    # Server API（Projects / APIKeys / Users / Databases / ...）
 │   │   └── serverhttp/    # 自定义 HTTP：文件 multipart 上传、OAuth 回调、函数代码包
 │   ├── app/               # 用例层（client / console / functions / server / shared / storage）
-│   ├── domain/            # 领域模型与端口（audit / auth / databases / functions / idgen / messaging / projects / shared / storage / teams / users）
+│   ├── domain/            # 领域模型与端口（audit / auth / databases / functions / idgen / messaging / projects / shared / storage / groups / users）
 │   ├── infra/             # 适配器层（auth / bun / clients / documentdb / functions / health / idgen / messaging / queue / server / storage）
 │   ├── pkg/               # 进程内共享包（buildinfo / config / contexts / database）
 │   └── testutil/          # 集成测试工具

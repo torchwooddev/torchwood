@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        (unknown)
-// source: server/v1/teams.proto
+// source: server/v1/groups.proto
 
 package serverv1
 
@@ -26,7 +26,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type CreateTeamRequest struct {
+type CreateGroupRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Permissions   []string               `protobuf:"bytes,2,rep,name=permissions,proto3" json:"permissions,omitempty"`
@@ -34,21 +34,21 @@ type CreateTeamRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateTeamRequest) Reset() {
-	*x = CreateTeamRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[0]
+func (x *CreateGroupRequest) Reset() {
+	*x = CreateGroupRequest{}
+	mi := &file_server_v1_groups_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateTeamRequest) String() string {
+func (x *CreateGroupRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateTeamRequest) ProtoMessage() {}
+func (*CreateGroupRequest) ProtoMessage() {}
 
-func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[0]
+func (x *CreateGroupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_groups_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,47 +59,47 @@ func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateTeamRequest.ProtoReflect.Descriptor instead.
-func (*CreateTeamRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{0}
+// Deprecated: Use CreateGroupRequest.ProtoReflect.Descriptor instead.
+func (*CreateGroupRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *CreateTeamRequest) GetName() string {
+func (x *CreateGroupRequest) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *CreateTeamRequest) GetPermissions() []string {
+func (x *CreateGroupRequest) GetPermissions() []string {
 	if x != nil {
 		return x.Permissions
 	}
 	return nil
 }
 
-type GetTeamRequest struct {
+type GetGroupRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetTeamRequest) Reset() {
-	*x = GetTeamRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[1]
+func (x *GetGroupRequest) Reset() {
+	*x = GetGroupRequest{}
+	mi := &file_server_v1_groups_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetTeamRequest) String() string {
+func (x *GetGroupRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetTeamRequest) ProtoMessage() {}
+func (*GetGroupRequest) ProtoMessage() {}
 
-func (x *GetTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[1]
+func (x *GetGroupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_groups_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -110,41 +110,41 @@ func (x *GetTeamRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetTeamRequest.ProtoReflect.Descriptor instead.
-func (*GetTeamRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{1}
+// Deprecated: Use GetGroupRequest.ProtoReflect.Descriptor instead.
+func (*GetGroupRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *GetTeamRequest) GetId() string {
+func (x *GetGroupRequest) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-type ListTeamsResponse struct {
+type ListGroupsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Teams         []*Team                `protobuf:"bytes,1,rep,name=teams,proto3" json:"teams,omitempty"`
+	Groups        []*Group               `protobuf:"bytes,1,rep,name=groups,proto3" json:"groups,omitempty"`
 	Meta          *v1.ListResponseMeta   `protobuf:"bytes,2,opt,name=meta,proto3" json:"meta,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListTeamsResponse) Reset() {
-	*x = ListTeamsResponse{}
-	mi := &file_server_v1_teams_proto_msgTypes[2]
+func (x *ListGroupsResponse) Reset() {
+	*x = ListGroupsResponse{}
+	mi := &file_server_v1_groups_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListTeamsResponse) String() string {
+func (x *ListGroupsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListTeamsResponse) ProtoMessage() {}
+func (*ListGroupsResponse) ProtoMessage() {}
 
-func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[2]
+func (x *ListGroupsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_groups_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -155,47 +155,47 @@ func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListTeamsResponse.ProtoReflect.Descriptor instead.
-func (*ListTeamsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{2}
+// Deprecated: Use ListGroupsResponse.ProtoReflect.Descriptor instead.
+func (*ListGroupsResponse) Descriptor() ([]byte, []int) {
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ListTeamsResponse) GetTeams() []*Team {
+func (x *ListGroupsResponse) GetGroups() []*Group {
 	if x != nil {
-		return x.Teams
+		return x.Groups
 	}
 	return nil
 }
 
-func (x *ListTeamsResponse) GetMeta() *v1.ListResponseMeta {
+func (x *ListGroupsResponse) GetMeta() *v1.ListResponseMeta {
 	if x != nil {
 		return x.Meta
 	}
 	return nil
 }
 
-type GetTeamPrefsResponse struct {
+type GetGroupPrefsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Prefs         *structpb.Struct       `protobuf:"bytes,1,opt,name=prefs,proto3" json:"prefs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetTeamPrefsResponse) Reset() {
-	*x = GetTeamPrefsResponse{}
-	mi := &file_server_v1_teams_proto_msgTypes[3]
+func (x *GetGroupPrefsResponse) Reset() {
+	*x = GetGroupPrefsResponse{}
+	mi := &file_server_v1_groups_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetTeamPrefsResponse) String() string {
+func (x *GetGroupPrefsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetTeamPrefsResponse) ProtoMessage() {}
+func (*GetGroupPrefsResponse) ProtoMessage() {}
 
-func (x *GetTeamPrefsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[3]
+func (x *GetGroupPrefsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_groups_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -206,19 +206,19 @@ func (x *GetTeamPrefsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetTeamPrefsResponse.ProtoReflect.Descriptor instead.
-func (*GetTeamPrefsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{3}
+// Deprecated: Use GetGroupPrefsResponse.ProtoReflect.Descriptor instead.
+func (*GetGroupPrefsResponse) Descriptor() ([]byte, []int) {
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *GetTeamPrefsResponse) GetPrefs() *structpb.Struct {
+func (x *GetGroupPrefsResponse) GetPrefs() *structpb.Struct {
 	if x != nil {
 		return x.Prefs
 	}
 	return nil
 }
 
-type UpdateTeamPrefsRequest struct {
+type UpdateGroupPrefsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Prefs         *structpb.Struct       `protobuf:"bytes,2,opt,name=prefs,proto3" json:"prefs,omitempty"`
@@ -226,21 +226,21 @@ type UpdateTeamPrefsRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *UpdateTeamPrefsRequest) Reset() {
-	*x = UpdateTeamPrefsRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[4]
+func (x *UpdateGroupPrefsRequest) Reset() {
+	*x = UpdateGroupPrefsRequest{}
+	mi := &file_server_v1_groups_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UpdateTeamPrefsRequest) String() string {
+func (x *UpdateGroupPrefsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UpdateTeamPrefsRequest) ProtoMessage() {}
+func (*UpdateGroupPrefsRequest) ProtoMessage() {}
 
-func (x *UpdateTeamPrefsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[4]
+func (x *UpdateGroupPrefsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_groups_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -251,26 +251,26 @@ func (x *UpdateTeamPrefsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use UpdateTeamPrefsRequest.ProtoReflect.Descriptor instead.
-func (*UpdateTeamPrefsRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{4}
+// Deprecated: Use UpdateGroupPrefsRequest.ProtoReflect.Descriptor instead.
+func (*UpdateGroupPrefsRequest) Descriptor() ([]byte, []int) {
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *UpdateTeamPrefsRequest) GetId() string {
+func (x *UpdateGroupPrefsRequest) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *UpdateTeamPrefsRequest) GetPrefs() *structpb.Struct {
+func (x *UpdateGroupPrefsRequest) GetPrefs() *structpb.Struct {
 	if x != nil {
 		return x.Prefs
 	}
 	return nil
 }
 
-type Team struct {
+type Group struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
@@ -282,21 +282,21 @@ type Team struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Team) Reset() {
-	*x = Team{}
-	mi := &file_server_v1_teams_proto_msgTypes[5]
+func (x *Group) Reset() {
+	*x = Group{}
+	mi := &file_server_v1_groups_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Team) String() string {
+func (x *Group) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Team) ProtoMessage() {}
+func (*Group) ProtoMessage() {}
 
-func (x *Team) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[5]
+func (x *Group) ProtoReflect() protoreflect.Message {
+	mi := &file_server_v1_groups_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -307,47 +307,47 @@ func (x *Team) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Team.ProtoReflect.Descriptor instead.
-func (*Team) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{5}
+// Deprecated: Use Group.ProtoReflect.Descriptor instead.
+func (*Group) Descriptor() ([]byte, []int) {
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *Team) GetId() string {
+func (x *Group) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *Team) GetName() string {
+func (x *Group) GetName() string {
 	if x != nil {
 		return x.Name
 	}
 	return ""
 }
 
-func (x *Team) GetTotal() int32 {
+func (x *Group) GetTotal() int32 {
 	if x != nil {
 		return x.Total
 	}
 	return 0
 }
 
-func (x *Team) GetPermissions() []string {
+func (x *Group) GetPermissions() []string {
 	if x != nil {
 		return x.Permissions
 	}
 	return nil
 }
 
-func (x *Team) GetCreatedAt() *timestamppb.Timestamp {
+func (x *Group) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return nil
 }
 
-func (x *Team) GetUpdatedAt() *timestamppb.Timestamp {
+func (x *Group) GetUpdatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.UpdatedAt
 	}
@@ -357,7 +357,7 @@ func (x *Team) GetUpdatedAt() *timestamppb.Timestamp {
 type Membership struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	TeamId        string                 `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	GroupId       string                 `protobuf:"bytes,2,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	Email         string                 `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
 	Name          string                 `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
@@ -373,7 +373,7 @@ type Membership struct {
 
 func (x *Membership) Reset() {
 	*x = Membership{}
-	mi := &file_server_v1_teams_proto_msgTypes[6]
+	mi := &file_server_v1_groups_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -385,7 +385,7 @@ func (x *Membership) String() string {
 func (*Membership) ProtoMessage() {}
 
 func (x *Membership) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[6]
+	mi := &file_server_v1_groups_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -398,7 +398,7 @@ func (x *Membership) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Membership.ProtoReflect.Descriptor instead.
 func (*Membership) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{6}
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Membership) GetId() string {
@@ -408,9 +408,9 @@ func (x *Membership) GetId() string {
 	return ""
 }
 
-func (x *Membership) GetTeamId() string {
+func (x *Membership) GetGroupId() string {
 	if x != nil {
-		return x.TeamId
+		return x.GroupId
 	}
 	return ""
 }
@@ -480,7 +480,7 @@ func (x *Membership) GetUpdatedAt() *timestamppb.Timestamp {
 
 type CreateMembershipRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	Email         string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
 	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
@@ -492,7 +492,7 @@ type CreateMembershipRequest struct {
 
 func (x *CreateMembershipRequest) Reset() {
 	*x = CreateMembershipRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[7]
+	mi := &file_server_v1_groups_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -504,7 +504,7 @@ func (x *CreateMembershipRequest) String() string {
 func (*CreateMembershipRequest) ProtoMessage() {}
 
 func (x *CreateMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[7]
+	mi := &file_server_v1_groups_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -517,12 +517,12 @@ func (x *CreateMembershipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateMembershipRequest.ProtoReflect.Descriptor instead.
 func (*CreateMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{7}
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *CreateMembershipRequest) GetTeamId() string {
+func (x *CreateMembershipRequest) GetGroupId() string {
 	if x != nil {
-		return x.TeamId
+		return x.GroupId
 	}
 	return ""
 }
@@ -564,7 +564,7 @@ func (x *CreateMembershipRequest) GetStatus() string {
 
 type ListMembershipsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	Queries       []string               `protobuf:"bytes,2,rep,name=queries,proto3" json:"queries,omitempty"`
 	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
@@ -574,7 +574,7 @@ type ListMembershipsRequest struct {
 
 func (x *ListMembershipsRequest) Reset() {
 	*x = ListMembershipsRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[8]
+	mi := &file_server_v1_groups_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -586,7 +586,7 @@ func (x *ListMembershipsRequest) String() string {
 func (*ListMembershipsRequest) ProtoMessage() {}
 
 func (x *ListMembershipsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[8]
+	mi := &file_server_v1_groups_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -599,12 +599,12 @@ func (x *ListMembershipsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMembershipsRequest.ProtoReflect.Descriptor instead.
 func (*ListMembershipsRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{8}
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *ListMembershipsRequest) GetTeamId() string {
+func (x *ListMembershipsRequest) GetGroupId() string {
 	if x != nil {
-		return x.TeamId
+		return x.GroupId
 	}
 	return ""
 }
@@ -632,7 +632,7 @@ func (x *ListMembershipsRequest) GetPageToken() string {
 
 type GetMembershipRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	MembershipId  string                 `protobuf:"bytes,2,opt,name=membership_id,json=membershipId,proto3" json:"membership_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -640,7 +640,7 @@ type GetMembershipRequest struct {
 
 func (x *GetMembershipRequest) Reset() {
 	*x = GetMembershipRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[9]
+	mi := &file_server_v1_groups_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -652,7 +652,7 @@ func (x *GetMembershipRequest) String() string {
 func (*GetMembershipRequest) ProtoMessage() {}
 
 func (x *GetMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[9]
+	mi := &file_server_v1_groups_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -665,12 +665,12 @@ func (x *GetMembershipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMembershipRequest.ProtoReflect.Descriptor instead.
 func (*GetMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{9}
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *GetMembershipRequest) GetTeamId() string {
+func (x *GetMembershipRequest) GetGroupId() string {
 	if x != nil {
-		return x.TeamId
+		return x.GroupId
 	}
 	return ""
 }
@@ -692,7 +692,7 @@ type ListMembershipsResponse struct {
 
 func (x *ListMembershipsResponse) Reset() {
 	*x = ListMembershipsResponse{}
-	mi := &file_server_v1_teams_proto_msgTypes[10]
+	mi := &file_server_v1_groups_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -704,7 +704,7 @@ func (x *ListMembershipsResponse) String() string {
 func (*ListMembershipsResponse) ProtoMessage() {}
 
 func (x *ListMembershipsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[10]
+	mi := &file_server_v1_groups_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -717,7 +717,7 @@ func (x *ListMembershipsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMembershipsResponse.ProtoReflect.Descriptor instead.
 func (*ListMembershipsResponse) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{10}
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListMembershipsResponse) GetMemberships() []*Membership {
@@ -736,7 +736,7 @@ func (x *ListMembershipsResponse) GetMeta() *v1.ListResponseMeta {
 
 type UpdateMembershipRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	MembershipId  string                 `protobuf:"bytes,2,opt,name=membership_id,json=membershipId,proto3" json:"membership_id,omitempty"`
 	Roles         []string               `protobuf:"bytes,3,rep,name=roles,proto3" json:"roles,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -745,7 +745,7 @@ type UpdateMembershipRequest struct {
 
 func (x *UpdateMembershipRequest) Reset() {
 	*x = UpdateMembershipRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[11]
+	mi := &file_server_v1_groups_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -757,7 +757,7 @@ func (x *UpdateMembershipRequest) String() string {
 func (*UpdateMembershipRequest) ProtoMessage() {}
 
 func (x *UpdateMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[11]
+	mi := &file_server_v1_groups_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -770,12 +770,12 @@ func (x *UpdateMembershipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMembershipRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{11}
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *UpdateMembershipRequest) GetTeamId() string {
+func (x *UpdateMembershipRequest) GetGroupId() string {
 	if x != nil {
-		return x.TeamId
+		return x.GroupId
 	}
 	return ""
 }
@@ -796,7 +796,7 @@ func (x *UpdateMembershipRequest) GetRoles() []string {
 
 type UpdateMembershipStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TeamId        string                 `protobuf:"bytes,1,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	MembershipId  string                 `protobuf:"bytes,2,opt,name=membership_id,json=membershipId,proto3" json:"membership_id,omitempty"`
 	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -805,7 +805,7 @@ type UpdateMembershipStatusRequest struct {
 
 func (x *UpdateMembershipStatusRequest) Reset() {
 	*x = UpdateMembershipStatusRequest{}
-	mi := &file_server_v1_teams_proto_msgTypes[12]
+	mi := &file_server_v1_groups_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -817,7 +817,7 @@ func (x *UpdateMembershipStatusRequest) String() string {
 func (*UpdateMembershipStatusRequest) ProtoMessage() {}
 
 func (x *UpdateMembershipStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_server_v1_teams_proto_msgTypes[12]
+	mi := &file_server_v1_groups_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -830,12 +830,12 @@ func (x *UpdateMembershipStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMembershipStatusRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMembershipStatusRequest) Descriptor() ([]byte, []int) {
-	return file_server_v1_teams_proto_rawDescGZIP(), []int{12}
+	return file_server_v1_groups_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *UpdateMembershipStatusRequest) GetTeamId() string {
+func (x *UpdateMembershipStatusRequest) GetGroupId() string {
 	if x != nil {
-		return x.TeamId
+		return x.GroupId
 	}
 	return ""
 }
@@ -854,25 +854,25 @@ func (x *UpdateMembershipStatusRequest) GetStatus() string {
 	return ""
 }
 
-var File_server_v1_teams_proto protoreflect.FileDescriptor
+var File_server_v1_groups_proto protoreflect.FileDescriptor
 
-const file_server_v1_teams_proto_rawDesc = "" +
+const file_server_v1_groups_proto_rawDesc = "" +
 	"\n" +
-	"\x15server/v1/teams.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"I\n" +
-	"\x11CreateTeamRequest\x12\x12\n" +
+	"\x16server/v1/groups.proto\x12\x13torchwood.server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"J\n" +
+	"\x12CreateGroupRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
-	"\vpermissions\x18\x02 \x03(\tR\vpermissions\" \n" +
-	"\x0eGetTeamRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x7f\n" +
-	"\x11ListTeamsResponse\x12/\n" +
-	"\x05teams\x18\x01 \x03(\v2\x19.torchwood.server.v1.TeamR\x05teams\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"E\n" +
-	"\x14GetTeamPrefsResponse\x12-\n" +
-	"\x05prefs\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"W\n" +
-	"\x16UpdateTeamPrefsRequest\x12\x0e\n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"!\n" +
+	"\x0fGetGroupRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x83\x01\n" +
+	"\x12ListGroupsResponse\x122\n" +
+	"\x06groups\x18\x01 \x03(\v2\x1a.torchwood.server.v1.GroupR\x06groups\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"F\n" +
+	"\x15GetGroupPrefsResponse\x12-\n" +
+	"\x05prefs\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"X\n" +
+	"\x17UpdateGroupPrefsRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12-\n" +
-	"\x05prefs\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"\xd8\x01\n" +
-	"\x04Team\x12\x0e\n" +
+	"\x05prefs\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05prefs\"\xd9\x01\n" +
+	"\x05Group\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
 	"\x05total\x18\x03 \x01(\x05R\x05total\x12 \n" +
@@ -880,11 +880,11 @@ const file_server_v1_teams_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x90\x03\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x92\x03\n" +
 	"\n" +
 	"Membership\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
-	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12\x17\n" +
 	"\auser_id\x18\x03 \x01(\tR\x06userId\x12\x14\n" +
 	"\x05email\x18\x04 \x01(\tR\x05email\x12\x12\n" +
 	"\x04name\x18\x05 \x01(\tR\x04name\x12\x14\n" +
@@ -897,49 +897,48 @@ const file_server_v1_teams_proto_rawDesc = "" +
 	"created_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa3\x01\n" +
-	"\x17CreateMembershipRequest\x12\x17\n" +
-	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12\x17\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa5\x01\n" +
+	"\x17CreateMembershipRequest\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x14\n" +
 	"\x05email\x18\x03 \x01(\tR\x05email\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12\x14\n" +
 	"\x05roles\x18\x05 \x03(\tR\x05roles\x12\x16\n" +
-	"\x06status\x18\x06 \x01(\tR\x06status\"\x87\x01\n" +
-	"\x16ListMembershipsRequest\x12\x17\n" +
-	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12\x18\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\"\x89\x01\n" +
+	"\x16ListMembershipsRequest\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x18\n" +
 	"\aqueries\x18\x02 \x03(\tR\aqueries\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tR\tpageToken\"T\n" +
-	"\x14GetMembershipRequest\x12\x17\n" +
-	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12#\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"V\n" +
+	"\x14GetMembershipRequest\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12#\n" +
 	"\rmembership_id\x18\x02 \x01(\tR\fmembershipId\"\x97\x01\n" +
 	"\x17ListMembershipsResponse\x12A\n" +
 	"\vmemberships\x18\x01 \x03(\v2\x1f.torchwood.server.v1.MembershipR\vmemberships\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"m\n" +
-	"\x17UpdateMembershipRequest\x12\x17\n" +
-	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12#\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"o\n" +
+	"\x17UpdateMembershipRequest\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12#\n" +
 	"\rmembership_id\x18\x02 \x01(\tR\fmembershipId\x12\x14\n" +
-	"\x05roles\x18\x03 \x03(\tR\x05roles\"u\n" +
-	"\x1dUpdateMembershipStatusRequest\x12\x17\n" +
-	"\ateam_id\x18\x01 \x01(\tR\x06teamId\x12#\n" +
+	"\x05roles\x18\x03 \x03(\tR\x05roles\"w\n" +
+	"\x1dUpdateMembershipStatusRequest\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12#\n" +
 	"\rmembership_id\x18\x02 \x01(\tR\fmembershipId\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status2\xb8\r\n" +
-	"\fTeamsService\x12l\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status2\xdb\r\n" +
+	"\rGroupsService\x12p\n" +
+	"\vCreateGroup\x12'.torchwood.server.v1.CreateGroupRequest\x1a\x1a.torchwood.server.v1.Group\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/server/groups\x12r\n" +
 	"\n" +
-	"CreateTeam\x12&.torchwood.server.v1.CreateTeamRequest\x1a\x19.torchwood.server.v1.Team\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/server/teams\x12o\n" +
-	"\tListTeams\x12 .torchwood.shared.v1.ListRequest\x1a&.torchwood.server.v1.ListTeamsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/server/teams\x12h\n" +
-	"\aGetTeam\x12#.torchwood.server.v1.GetTeamRequest\x1a\x19.torchwood.server.v1.Team\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/server/teams/{id}\x12l\n" +
-	"\n" +
-	"DeleteTeam\x12#.torchwood.server.v1.GetTeamRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/server/teams/{id}\x12\x83\x01\n" +
-	"\fGetTeamPrefs\x12#.torchwood.server.v1.GetTeamRequest\x1a).torchwood.server.v1.GetTeamPrefsResponse\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/server/teams/{id}/prefs\x12\x91\x01\n" +
-	"\x0fUpdateTeamPrefs\x12+.torchwood.server.v1.UpdateTeamPrefsRequest\x1a).torchwood.server.v1.GetTeamPrefsResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\x1a\x1b/v1/server/teams/{id}/prefs\x12\x94\x01\n" +
-	"\x10CreateMembership\x12,.torchwood.server.v1.CreateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/server/teams/{team_id}/memberships\x12\x9c\x01\n" +
-	"\x0fListMemberships\x12+.torchwood.server.v1.ListMembershipsRequest\x1a,.torchwood.server.v1.ListMembershipsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/server/teams/{team_id}/memberships\x12\x9b\x01\n" +
-	"\rGetMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\">\x82\xd3\xe4\x93\x028\x126/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xa4\x01\n" +
-	"\x10UpdateMembership\x12,.torchwood.server.v1.UpdateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"A\x82\xd3\xe4\x93\x02;:\x01*26/v1/server/teams/{team_id}/memberships/{membership_id}\x12\xb7\x01\n" +
-	"\x16UpdateMembershipStatus\x122.torchwood.server.v1.UpdateMembershipStatusRequest\x1a\x1f.torchwood.server.v1.Membership\"H\x82\xd3\xe4\x93\x02B:\x01*2=/v1/server/teams/{team_id}/memberships/{membership_id}/status\x12\x99\x01\n" +
-	"\x10DeleteMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\">\x82\xd3\xe4\x93\x028*6/v1/server/teams/{team_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"ListGroups\x12 .torchwood.shared.v1.ListRequest\x1a'.torchwood.server.v1.ListGroupsResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/server/groups\x12l\n" +
+	"\bGetGroup\x12$.torchwood.server.v1.GetGroupRequest\x1a\x1a.torchwood.server.v1.Group\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/server/groups/{id}\x12o\n" +
+	"\vDeleteGroup\x12$.torchwood.server.v1.GetGroupRequest\x1a\x1a.torchwood.shared.v1.Empty\"\x1e\x82\xd3\xe4\x93\x02\x18*\x16/v1/server/groups/{id}\x12\x87\x01\n" +
+	"\rGetGroupPrefs\x12$.torchwood.server.v1.GetGroupRequest\x1a*.torchwood.server.v1.GetGroupPrefsResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/server/groups/{id}/prefs\x12\x95\x01\n" +
+	"\x10UpdateGroupPrefs\x12,.torchwood.server.v1.UpdateGroupPrefsRequest\x1a*.torchwood.server.v1.GetGroupPrefsResponse\"'\x82\xd3\xe4\x93\x02!:\x01*\x1a\x1c/v1/server/groups/{id}/prefs\x12\x96\x01\n" +
+	"\x10CreateMembership\x12,.torchwood.server.v1.CreateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"3\x82\xd3\xe4\x93\x02-:\x01*\"(/v1/server/groups/{group_id}/memberships\x12\x9e\x01\n" +
+	"\x0fListMemberships\x12+.torchwood.server.v1.ListMembershipsRequest\x1a,.torchwood.server.v1.ListMembershipsResponse\"0\x82\xd3\xe4\x93\x02*\x12(/v1/server/groups/{group_id}/memberships\x12\x9d\x01\n" +
+	"\rGetMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"@\x82\xd3\xe4\x93\x02:\x128/v1/server/groups/{group_id}/memberships/{membership_id}\x12\xa6\x01\n" +
+	"\x10UpdateMembership\x12,.torchwood.server.v1.UpdateMembershipRequest\x1a\x1f.torchwood.server.v1.Membership\"C\x82\xd3\xe4\x93\x02=:\x01*28/v1/server/groups/{group_id}/memberships/{membership_id}\x12\xb9\x01\n" +
+	"\x16UpdateMembershipStatus\x122.torchwood.server.v1.UpdateMembershipStatusRequest\x1a\x1f.torchwood.server.v1.Membership\"J\x82\xd3\xe4\x93\x02D:\x01*2?/v1/server/groups/{group_id}/memberships/{membership_id}/status\x12\x9b\x01\n" +
+	"\x10DeleteMembership\x12).torchwood.server.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\"@\x82\xd3\xe4\x93\x02:*8/v1/server/groups/{group_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\\\n" +
@@ -952,25 +951,25 @@ const file_server_v1_teams_proto_rawDesc = "" +
 	"\x12x-torchwood-access\x12\t\x1a\aapi_keyZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"
 
 var (
-	file_server_v1_teams_proto_rawDescOnce sync.Once
-	file_server_v1_teams_proto_rawDescData []byte
+	file_server_v1_groups_proto_rawDescOnce sync.Once
+	file_server_v1_groups_proto_rawDescData []byte
 )
 
-func file_server_v1_teams_proto_rawDescGZIP() []byte {
-	file_server_v1_teams_proto_rawDescOnce.Do(func() {
-		file_server_v1_teams_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_server_v1_teams_proto_rawDesc), len(file_server_v1_teams_proto_rawDesc)))
+func file_server_v1_groups_proto_rawDescGZIP() []byte {
+	file_server_v1_groups_proto_rawDescOnce.Do(func() {
+		file_server_v1_groups_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_server_v1_groups_proto_rawDesc), len(file_server_v1_groups_proto_rawDesc)))
 	})
-	return file_server_v1_teams_proto_rawDescData
+	return file_server_v1_groups_proto_rawDescData
 }
 
-var file_server_v1_teams_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
-var file_server_v1_teams_proto_goTypes = []any{
-	(*CreateTeamRequest)(nil),             // 0: torchwood.server.v1.CreateTeamRequest
-	(*GetTeamRequest)(nil),                // 1: torchwood.server.v1.GetTeamRequest
-	(*ListTeamsResponse)(nil),             // 2: torchwood.server.v1.ListTeamsResponse
-	(*GetTeamPrefsResponse)(nil),          // 3: torchwood.server.v1.GetTeamPrefsResponse
-	(*UpdateTeamPrefsRequest)(nil),        // 4: torchwood.server.v1.UpdateTeamPrefsRequest
-	(*Team)(nil),                          // 5: torchwood.server.v1.Team
+var file_server_v1_groups_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_server_v1_groups_proto_goTypes = []any{
+	(*CreateGroupRequest)(nil),            // 0: torchwood.server.v1.CreateGroupRequest
+	(*GetGroupRequest)(nil),               // 1: torchwood.server.v1.GetGroupRequest
+	(*ListGroupsResponse)(nil),            // 2: torchwood.server.v1.ListGroupsResponse
+	(*GetGroupPrefsResponse)(nil),         // 3: torchwood.server.v1.GetGroupPrefsResponse
+	(*UpdateGroupPrefsRequest)(nil),       // 4: torchwood.server.v1.UpdateGroupPrefsRequest
+	(*Group)(nil),                         // 5: torchwood.server.v1.Group
 	(*Membership)(nil),                    // 6: torchwood.server.v1.Membership
 	(*CreateMembershipRequest)(nil),       // 7: torchwood.server.v1.CreateMembershipRequest
 	(*ListMembershipsRequest)(nil),        // 8: torchwood.server.v1.ListMembershipsRequest
@@ -984,43 +983,43 @@ var file_server_v1_teams_proto_goTypes = []any{
 	(*v1.ListRequest)(nil),                // 16: torchwood.shared.v1.ListRequest
 	(*v1.Empty)(nil),                      // 17: torchwood.shared.v1.Empty
 }
-var file_server_v1_teams_proto_depIdxs = []int32{
-	5,  // 0: torchwood.server.v1.ListTeamsResponse.teams:type_name -> torchwood.server.v1.Team
-	13, // 1: torchwood.server.v1.ListTeamsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	14, // 2: torchwood.server.v1.GetTeamPrefsResponse.prefs:type_name -> google.protobuf.Struct
-	14, // 3: torchwood.server.v1.UpdateTeamPrefsRequest.prefs:type_name -> google.protobuf.Struct
-	15, // 4: torchwood.server.v1.Team.created_at:type_name -> google.protobuf.Timestamp
-	15, // 5: torchwood.server.v1.Team.updated_at:type_name -> google.protobuf.Timestamp
+var file_server_v1_groups_proto_depIdxs = []int32{
+	5,  // 0: torchwood.server.v1.ListGroupsResponse.groups:type_name -> torchwood.server.v1.Group
+	13, // 1: torchwood.server.v1.ListGroupsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	14, // 2: torchwood.server.v1.GetGroupPrefsResponse.prefs:type_name -> google.protobuf.Struct
+	14, // 3: torchwood.server.v1.UpdateGroupPrefsRequest.prefs:type_name -> google.protobuf.Struct
+	15, // 4: torchwood.server.v1.Group.created_at:type_name -> google.protobuf.Timestamp
+	15, // 5: torchwood.server.v1.Group.updated_at:type_name -> google.protobuf.Timestamp
 	15, // 6: torchwood.server.v1.Membership.invited_at:type_name -> google.protobuf.Timestamp
 	15, // 7: torchwood.server.v1.Membership.joined_at:type_name -> google.protobuf.Timestamp
 	15, // 8: torchwood.server.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
 	15, // 9: torchwood.server.v1.Membership.updated_at:type_name -> google.protobuf.Timestamp
 	6,  // 10: torchwood.server.v1.ListMembershipsResponse.memberships:type_name -> torchwood.server.v1.Membership
 	13, // 11: torchwood.server.v1.ListMembershipsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	0,  // 12: torchwood.server.v1.TeamsService.CreateTeam:input_type -> torchwood.server.v1.CreateTeamRequest
-	16, // 13: torchwood.server.v1.TeamsService.ListTeams:input_type -> torchwood.shared.v1.ListRequest
-	1,  // 14: torchwood.server.v1.TeamsService.GetTeam:input_type -> torchwood.server.v1.GetTeamRequest
-	1,  // 15: torchwood.server.v1.TeamsService.DeleteTeam:input_type -> torchwood.server.v1.GetTeamRequest
-	1,  // 16: torchwood.server.v1.TeamsService.GetTeamPrefs:input_type -> torchwood.server.v1.GetTeamRequest
-	4,  // 17: torchwood.server.v1.TeamsService.UpdateTeamPrefs:input_type -> torchwood.server.v1.UpdateTeamPrefsRequest
-	7,  // 18: torchwood.server.v1.TeamsService.CreateMembership:input_type -> torchwood.server.v1.CreateMembershipRequest
-	8,  // 19: torchwood.server.v1.TeamsService.ListMemberships:input_type -> torchwood.server.v1.ListMembershipsRequest
-	9,  // 20: torchwood.server.v1.TeamsService.GetMembership:input_type -> torchwood.server.v1.GetMembershipRequest
-	11, // 21: torchwood.server.v1.TeamsService.UpdateMembership:input_type -> torchwood.server.v1.UpdateMembershipRequest
-	12, // 22: torchwood.server.v1.TeamsService.UpdateMembershipStatus:input_type -> torchwood.server.v1.UpdateMembershipStatusRequest
-	9,  // 23: torchwood.server.v1.TeamsService.DeleteMembership:input_type -> torchwood.server.v1.GetMembershipRequest
-	5,  // 24: torchwood.server.v1.TeamsService.CreateTeam:output_type -> torchwood.server.v1.Team
-	2,  // 25: torchwood.server.v1.TeamsService.ListTeams:output_type -> torchwood.server.v1.ListTeamsResponse
-	5,  // 26: torchwood.server.v1.TeamsService.GetTeam:output_type -> torchwood.server.v1.Team
-	17, // 27: torchwood.server.v1.TeamsService.DeleteTeam:output_type -> torchwood.shared.v1.Empty
-	3,  // 28: torchwood.server.v1.TeamsService.GetTeamPrefs:output_type -> torchwood.server.v1.GetTeamPrefsResponse
-	3,  // 29: torchwood.server.v1.TeamsService.UpdateTeamPrefs:output_type -> torchwood.server.v1.GetTeamPrefsResponse
-	6,  // 30: torchwood.server.v1.TeamsService.CreateMembership:output_type -> torchwood.server.v1.Membership
-	10, // 31: torchwood.server.v1.TeamsService.ListMemberships:output_type -> torchwood.server.v1.ListMembershipsResponse
-	6,  // 32: torchwood.server.v1.TeamsService.GetMembership:output_type -> torchwood.server.v1.Membership
-	6,  // 33: torchwood.server.v1.TeamsService.UpdateMembership:output_type -> torchwood.server.v1.Membership
-	6,  // 34: torchwood.server.v1.TeamsService.UpdateMembershipStatus:output_type -> torchwood.server.v1.Membership
-	17, // 35: torchwood.server.v1.TeamsService.DeleteMembership:output_type -> torchwood.shared.v1.Empty
+	0,  // 12: torchwood.server.v1.GroupsService.CreateGroup:input_type -> torchwood.server.v1.CreateGroupRequest
+	16, // 13: torchwood.server.v1.GroupsService.ListGroups:input_type -> torchwood.shared.v1.ListRequest
+	1,  // 14: torchwood.server.v1.GroupsService.GetGroup:input_type -> torchwood.server.v1.GetGroupRequest
+	1,  // 15: torchwood.server.v1.GroupsService.DeleteGroup:input_type -> torchwood.server.v1.GetGroupRequest
+	1,  // 16: torchwood.server.v1.GroupsService.GetGroupPrefs:input_type -> torchwood.server.v1.GetGroupRequest
+	4,  // 17: torchwood.server.v1.GroupsService.UpdateGroupPrefs:input_type -> torchwood.server.v1.UpdateGroupPrefsRequest
+	7,  // 18: torchwood.server.v1.GroupsService.CreateMembership:input_type -> torchwood.server.v1.CreateMembershipRequest
+	8,  // 19: torchwood.server.v1.GroupsService.ListMemberships:input_type -> torchwood.server.v1.ListMembershipsRequest
+	9,  // 20: torchwood.server.v1.GroupsService.GetMembership:input_type -> torchwood.server.v1.GetMembershipRequest
+	11, // 21: torchwood.server.v1.GroupsService.UpdateMembership:input_type -> torchwood.server.v1.UpdateMembershipRequest
+	12, // 22: torchwood.server.v1.GroupsService.UpdateMembershipStatus:input_type -> torchwood.server.v1.UpdateMembershipStatusRequest
+	9,  // 23: torchwood.server.v1.GroupsService.DeleteMembership:input_type -> torchwood.server.v1.GetMembershipRequest
+	5,  // 24: torchwood.server.v1.GroupsService.CreateGroup:output_type -> torchwood.server.v1.Group
+	2,  // 25: torchwood.server.v1.GroupsService.ListGroups:output_type -> torchwood.server.v1.ListGroupsResponse
+	5,  // 26: torchwood.server.v1.GroupsService.GetGroup:output_type -> torchwood.server.v1.Group
+	17, // 27: torchwood.server.v1.GroupsService.DeleteGroup:output_type -> torchwood.shared.v1.Empty
+	3,  // 28: torchwood.server.v1.GroupsService.GetGroupPrefs:output_type -> torchwood.server.v1.GetGroupPrefsResponse
+	3,  // 29: torchwood.server.v1.GroupsService.UpdateGroupPrefs:output_type -> torchwood.server.v1.GetGroupPrefsResponse
+	6,  // 30: torchwood.server.v1.GroupsService.CreateMembership:output_type -> torchwood.server.v1.Membership
+	10, // 31: torchwood.server.v1.GroupsService.ListMemberships:output_type -> torchwood.server.v1.ListMembershipsResponse
+	6,  // 32: torchwood.server.v1.GroupsService.GetMembership:output_type -> torchwood.server.v1.Membership
+	6,  // 33: torchwood.server.v1.GroupsService.UpdateMembership:output_type -> torchwood.server.v1.Membership
+	6,  // 34: torchwood.server.v1.GroupsService.UpdateMembershipStatus:output_type -> torchwood.server.v1.Membership
+	17, // 35: torchwood.server.v1.GroupsService.DeleteMembership:output_type -> torchwood.shared.v1.Empty
 	24, // [24:36] is the sub-list for method output_type
 	12, // [12:24] is the sub-list for method input_type
 	12, // [12:12] is the sub-list for extension type_name
@@ -1028,26 +1027,26 @@ var file_server_v1_teams_proto_depIdxs = []int32{
 	0,  // [0:12] is the sub-list for field type_name
 }
 
-func init() { file_server_v1_teams_proto_init() }
-func file_server_v1_teams_proto_init() {
-	if File_server_v1_teams_proto != nil {
+func init() { file_server_v1_groups_proto_init() }
+func file_server_v1_groups_proto_init() {
+	if File_server_v1_groups_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_teams_proto_rawDesc), len(file_server_v1_teams_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_groups_proto_rawDesc), len(file_server_v1_groups_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_server_v1_teams_proto_goTypes,
-		DependencyIndexes: file_server_v1_teams_proto_depIdxs,
-		MessageInfos:      file_server_v1_teams_proto_msgTypes,
+		GoTypes:           file_server_v1_groups_proto_goTypes,
+		DependencyIndexes: file_server_v1_groups_proto_depIdxs,
+		MessageInfos:      file_server_v1_groups_proto_msgTypes,
 	}.Build()
-	File_server_v1_teams_proto = out.File
-	file_server_v1_teams_proto_goTypes = nil
-	file_server_v1_teams_proto_depIdxs = nil
+	File_server_v1_groups_proto = out.File
+	file_server_v1_groups_proto_goTypes = nil
+	file_server_v1_groups_proto_depIdxs = nil
 }

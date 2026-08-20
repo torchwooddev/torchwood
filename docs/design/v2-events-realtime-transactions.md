@@ -29,7 +29,7 @@ P1 MVP 已交付用户 collection 的文档 CRUD / Increment / Bulk / Upsert，�
 | Increment | 不是独立 RPC，是 `UpdateDocumentRequest.increment`（字段 6）→ `buildIncrementParts` | `proto/{client,server}/v1/databases.proto`；`postgres_permissions.go` `buildIncrementParts` |
 | 乐观并发 | **无**。`UPDATE … WHERE _id = ? AND _tenant = ?`，后写覆盖 | `updateDocument` L769–777 |
 | 系统列 | `_id` `_tenant` `_created_at` `_updated_at` `_created_by` `_updated_by` | `createCollectionTable` L1330–1356 |
-| 系统 vs 用户集合 | `databases.IsSystemCollection` = `databaseID=="default"` 且 id ∈ `{users,sessions,identities,teams,memberships,buckets,files}`；元数据列 `document_collections.is_system` | `internal/domain/databases/system_collections.go`；migration `000009` |
+| 系统 vs 用户集合 | `databases.IsSystemCollection` = `databaseID=="default"` 且 id ∈ `{users,sessions,identities,groups,memberships,buckets,files}`；元数据列 `document_collections.is_system` | `internal/domain/databases/system_collections.go`；migration `000009` |
 | 事件 / Queue | `shared.Queue` 只服务 Functions：`torchwood:queue:functions-executions`（Redis List BRPOP） | `internal/domain/shared/ports.go`；`cmd/worker/worker.go` |
 | HTTP mux | grpc-gateway + File/OAuth/Functions handler + `/console/` 前缀分流 | `internal/infra/server/grpc_gateway.go` `NewGRPCGatewayServer` |
 | Document proto | `id=1 data=2 created_at=3 updated_at=4 permissions=5`，**无 version** | 两边 `databases.proto` |
@@ -254,7 +254,7 @@ HTTP 已把 `FailedPrecondition` 映射为 `ERROR_CODE_PRECONDITION_FAILED`（`p
 
 #### 1.4 Adapter OCC 算法
 
-只对**用户集合**生效。系统集合路径（Users/Account/Teams/Storage 内部 `UpdateDocument`）**不得**要求 version，也不得 `SET _version`。
+只对**用户集合**生效。系统集合路径（Users/Account/Groups/Storage 内部 `UpdateDocument`）**不得**要求 version，也不得 `SET _version`。
 
 `updateDocument` 在现有权限检查之后：
 
@@ -837,7 +837,7 @@ for ch in [collectionChannel, documentChannel]:
 
 **出站 JSON 不得含 `acl`。** 测试：非 admin 按写前/写后 `_perms` 能收到事件；帧内无 `acl` / `collection_permissions`。
 
-Client JWT：`databases.Principal{Roles: jwt.Roles}`（含 `user:` / `team:` / `users`）。  
+Client JWT：`databases.Principal{Roles: jwt.Roles}`（含 `user:` / `group:` / `users`）。  
 Console platform admin：`PlatformAdmin: true`，旁路 `_perms`，集合频道收该集合全部事件。
 
 包缓冲建议 64 帧；慢客户端落后则丢事件（重连不补历史）。
@@ -1603,7 +1603,7 @@ Go Client 对等。不把 Realtime 放进 Server SDK（API Key 不能连）。
 ## Key Decisions
 
 1. **`_version` 只存在于用户集合**  
-   系统集合被 Users/Teams/Storage 内部高频更新，且不进事务、不发这批事件。`IsSystemCollection` 与 `createCollectionTable` 分支已足够区分。
+   系统集合被 Users/Groups/Storage 内部高频更新，且不进事务、不发这批事件。`IsSystemCollection` 与 `createCollectionTable` 分支已足够区分。
 
 2. **OCC 在 adapter 强制，Bulk/Upsert 显式 `SkipVersion`**  
    避免只在 app 层检查导致内部调用漏网；同时不破坏 Bulk LWW 与 Upsert 盲写。
@@ -1717,7 +1717,7 @@ Go Client 对等。不把 Realtime 放进 Server SDK（API Key 不能连）。
   - `cmd/client/cmd/databases.go`、`databases_test.go`（`--version`）
   - `sdk/typescript/src/types.ts`、`client/databases.ts`、`server/databases.ts`、`__tests__/contract.test.ts`
   - `sdk/go/{client,server}/databases.go`、`services_test.go`
-  - **全部实现 `DocumentDB` 的测试桩**（漏改即 PR1 编译不过）：`internal/app/storage/storage_unit_test.go`、`internal/api/clientgrpc/account_test.go`、`internal/api/clientgrpc/teams_pagination_test.go`（`clientTeamsDocDB`；仓库**没有** `teams_test.go`）、`internal/api/servergrpc/pagination_test.go`、`internal/api/serverhttp/functions_handler_test.go`、`internal/app/server/cascade_guards_test.go`（`databases_reserved_test.go` 的 `collectionDocDB` 嵌入此 `fakeDocDB`）、`internal/infra/auth/validator_test.go`
+  - **全部实现 `DocumentDB` 的测试桩**（漏改即 PR1 编译不过）：`internal/app/storage/storage_unit_test.go`、`internal/api/clientgrpc/account_test.go`、`internal/api/clientgrpc/groups_pagination_test.go`（`clientGroupsDocDB`；仓库**没有** `groups_test.go`）、`internal/api/servergrpc/pagination_test.go`、`internal/api/serverhttp/functions_handler_test.go`、`internal/app/server/cascade_guards_test.go`（`databases_reserved_test.go` 的 `collectionDocDB` 嵌入此 `fakeDocDB`）、`internal/infra/auth/validator_test.go`
 - **变更**：
   - 用户表 `_version`；**仅写路径**懒 ALTER + 类型检查；系统表不加；`createCollectionTable` 加 `isSystem`。
   - proto `Document.version=6`；`UpdateDocumentRequest.version=7` optional；新 `DeleteDocumentRequest`。

@@ -70,15 +70,15 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.StorageService/DeleteFile":      {"member", "owner", "admin"},
 	"/torchwood.server.v1.StorageService/UpdateFile":      {"member", "owner", "admin"},
 	"/torchwood.server.v1.StorageService/CreateFileToken": {"member", "owner", "admin"},
-	// TeamsService（业务写，member 可做；Client Teams API 复用同一 use-case，
+	// GroupsService（业务写，member 可做；Client Groups API 复用同一 use-case，
 	// 不套 RequireServerWriteActor）
-	"/torchwood.server.v1.TeamsService/CreateTeam":             {"member", "owner", "admin"},
-	"/torchwood.server.v1.TeamsService/DeleteTeam":             {"member", "owner", "admin"},
-	"/torchwood.server.v1.TeamsService/CreateMembership":       {"member", "owner", "admin"},
-	"/torchwood.server.v1.TeamsService/UpdateMembership":       {"member", "owner", "admin"},
-	"/torchwood.server.v1.TeamsService/UpdateMembershipStatus": {"member", "owner", "admin"},
-	"/torchwood.server.v1.TeamsService/DeleteMembership":       {"member", "owner", "admin"},
-	"/torchwood.server.v1.TeamsService/UpdateTeamPrefs":        {"member", "owner", "admin"},
+	"/torchwood.server.v1.GroupsService/CreateGroup":            {"member", "owner", "admin"},
+	"/torchwood.server.v1.GroupsService/DeleteGroup":            {"member", "owner", "admin"},
+	"/torchwood.server.v1.GroupsService/CreateMembership":       {"member", "owner", "admin"},
+	"/torchwood.server.v1.GroupsService/UpdateMembership":       {"member", "owner", "admin"},
+	"/torchwood.server.v1.GroupsService/UpdateMembershipStatus": {"member", "owner", "admin"},
+	"/torchwood.server.v1.GroupsService/DeleteMembership":       {"member", "owner", "admin"},
+	"/torchwood.server.v1.GroupsService/UpdateGroupPrefs":       {"member", "owner", "admin"},
 	// PaymentsService（金额敏感：退款 / 人工履约仅 owner/admin；
 	// 与 apikeys 同级——直接资金操作，viewer/member 不可触发）
 	"/torchwood.server.v1.PaymentsService/Refund":        {"owner", "admin"},

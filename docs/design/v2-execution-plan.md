@@ -33,7 +33,7 @@ PR3 ───────────────→  PR5 SDK + Console 试听
 - version 对不上 → `version_mismatch`，行不变。
 - Bulk 不传 version 仍成功；系统集合无 `_version` 列。
 - Console 详情保存与列表删除、CLI `--version`、TS/Go SDK 全部回传 version。
-- 全部 `DocumentDB` 假实现改完能编译（含 `teams_pagination_test.go`，仓库没有 `teams_test.go`）。
+- 全部 `DocumentDB` 假实现改完能编译（含 `groups_pagination_test.go`，仓库没有 `groups_test.go`）。
 
 **命令**：`task generate-proto`；`go test -short ./internal/infra/documentdb/... ./internal/app/client/... ./internal/app/server/... ./sdk/go/...`
 

@@ -21,7 +21,7 @@ type recorder struct {
 	lastCollectionUpdate *serverv1.UpdateCollectionRequest
 	createdUser          *serverv1.CreateUserRequest
 	lastUserPassword     *serverv1.UpdateUserPasswordRequest
-	lastTeamPrefs        *serverv1.UpdateTeamPrefsRequest
+	lastGroupPrefs       *serverv1.UpdateGroupPrefsRequest
 	deletedAttributeKey  string
 	deletedIndexID       string
 	upserts              []*serverv1.UpsertDocumentRequest

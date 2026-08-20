@@ -1,7 +1,7 @@
 import { api } from "./client";
 import type { ApiRequestConfig } from "./client";
 
-export interface Team {
+export interface Group {
   id: string;
   name: string;
   total: number;
@@ -12,7 +12,7 @@ export interface Team {
 
 export interface Membership {
   id: string;
-  team_id: string;
+  group_id: string;
   user_id: string;
   email: string;
   name: string;
@@ -24,49 +24,49 @@ export interface Membership {
   updated_at: string;
 }
 
-export async function listTeams(): Promise<Team[]> {
-  const res = await api.get<{ teams: Team[] }>("/server/teams");
-  return res.data.teams ?? [];
+export async function listGroups(): Promise<Group[]> {
+  const res = await api.get<{ groups: Group[] }>("/server/groups");
+  return res.data.groups ?? [];
 }
 
-export async function getTeam(id: string): Promise<Team> {
-  const res = await api.get<Team>(`/server/teams/${id}`);
+export async function getGroup(id: string): Promise<Group> {
+  const res = await api.get<Group>(`/server/groups/${id}`);
   return res.data;
 }
 
-export async function createTeam(input: { name: string }): Promise<Team> {
-  const res = await api.post<Team>("/server/teams", input);
+export async function createGroup(input: { name: string }): Promise<Group> {
+  const res = await api.post<Group>("/server/groups", input);
   return res.data;
 }
 
-export async function deleteTeam(id: string, config?: ApiRequestConfig): Promise<void> {
-  await api.delete(`/server/teams/${id}`, config);
+export async function deleteGroup(id: string, config?: ApiRequestConfig): Promise<void> {
+  await api.delete(`/server/groups/${id}`, config);
 }
 
-export async function getTeamPrefs(id: string): Promise<Record<string, unknown>> {
-  const res = await api.get<{ prefs: Record<string, unknown> }>(`/server/teams/${id}/prefs`);
+export async function getGroupPrefs(id: string): Promise<Record<string, unknown>> {
+  const res = await api.get<{ prefs: Record<string, unknown> }>(`/server/groups/${id}/prefs`);
   return res.data.prefs ?? {};
 }
 
-export async function updateTeamPrefs(
+export async function updateGroupPrefs(
   id: string,
   prefs: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  const res = await api.put<{ prefs: Record<string, unknown> }>(`/server/teams/${id}/prefs`, {
+  const res = await api.put<{ prefs: Record<string, unknown> }>(`/server/groups/${id}/prefs`, {
     prefs,
   });
   return res.data.prefs ?? {};
 }
 
-export async function listMemberships(teamId: string): Promise<Membership[]> {
+export async function listMemberships(groupId: string): Promise<Membership[]> {
   const res = await api.get<{ memberships: Membership[] }>(
-    `/server/teams/${teamId}/memberships`
+    `/server/groups/${groupId}/memberships`
   );
   return res.data.memberships ?? [];
 }
 
 export async function createMembership(
-  teamId: string,
+  groupId: string,
   input: {
     email?: string;
     user_id?: string;
@@ -75,22 +75,22 @@ export async function createMembership(
     status?: string;
   }
 ): Promise<Membership> {
-  const res = await api.post<Membership>(`/server/teams/${teamId}/memberships`, {
-    team_id: teamId,
+  const res = await api.post<Membership>(`/server/groups/${groupId}/memberships`, {
+    group_id: groupId,
     ...input,
   });
   return res.data;
 }
 
 export async function updateMembership(
-  teamId: string,
+  groupId: string,
   membershipId: string,
   input: { roles: string[] }
 ): Promise<Membership> {
   const res = await api.patch<Membership>(
-    `/server/teams/${teamId}/memberships/${membershipId}`,
+    `/server/groups/${groupId}/memberships/${membershipId}`,
     {
-      team_id: teamId,
+      group_id: groupId,
       membership_id: membershipId,
       roles: input.roles,
     }
@@ -99,14 +99,14 @@ export async function updateMembership(
 }
 
 export async function updateMembershipStatus(
-  teamId: string,
+  groupId: string,
   membershipId: string,
   status: string
 ): Promise<Membership> {
   const res = await api.patch<Membership>(
-    `/server/teams/${teamId}/memberships/${membershipId}/status`,
+    `/server/groups/${groupId}/memberships/${membershipId}/status`,
     {
-      team_id: teamId,
+      group_id: groupId,
       membership_id: membershipId,
       status,
     }
@@ -115,9 +115,9 @@ export async function updateMembershipStatus(
 }
 
 export async function deleteMembership(
-  teamId: string,
+  groupId: string,
   membershipId: string,
   config?: ApiRequestConfig
 ): Promise<void> {
-  await api.delete(`/server/teams/${teamId}/memberships/${membershipId}`, config);
+  await api.delete(`/server/groups/${groupId}/memberships/${membershipId}`, config);
 }

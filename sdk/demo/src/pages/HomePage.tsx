@@ -16,10 +16,10 @@ const cards = [
     code: "databases.*",
   },
   {
-    title: "Teams API",
-    path: "/app/teams",
+    title: "Groups API",
+    path: "/app/groups",
     desc: "建队、邀请成员、列表查询",
-    code: "client.teams.*",
+    code: "client.groups.*",
   },
   {
     title: "Server API",

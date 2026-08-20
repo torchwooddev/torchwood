@@ -567,7 +567,7 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 }
 
 // TestQueryVersion_SystemCollectionRejected：系统集合 $version 查询 → InvalidArgument
-// （系统表无此列），不落 PG。teams 对 keys 角色可读（非敏感系统集合），
+// （系统表无此列），不落 PG。groups 对 keys 角色可读（非敏感系统集合），
 // 走 validateQueryFields 的 isSystem 分支。
 func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	if testing.Short() {
@@ -582,7 +582,7 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	_, err := docDB.ListDocuments(ctx, projectID, "default", "teams", databases.Query{
+	_, err := docDB.ListDocuments(ctx, projectID, "default", "groups", databases.Query{
 		Queries: []string{`equal("$version", 1)`},
 	}, databases.Principal{Roles: []string{"keys"}})
 	require.Error(t, err)

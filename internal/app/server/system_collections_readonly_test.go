@@ -32,7 +32,7 @@ func TestSystemCollections_IsSystemFlag(t *testing.T) {
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 
-	for _, id := range []string{"users", "sessions", "identities", "teams", "memberships", "buckets", "files"} {
+	for _, id := range []string{"users", "sessions", "identities", "groups", "memberships", "buckets", "files"} {
 		coll, err := uc.GetCollection(ctx, projectID, "default", id)
 		require.NoError(t, err)
 		require.NotNil(t, coll)
@@ -98,8 +98,8 @@ func TestSystemCollections_SchemaOpsDenied(t *testing.T) {
 	assertDenied(uc.CreateIndex(ctx, projectID, "default", "users", databases.Index{ID: "i", Type: "key", Attributes: []string{"email"}}))
 	assertDenied(uc.DeleteIndex(ctx, projectID, "default", "users", "users_email_unique"))
 
-	// teams 等其他系统集合同样拒绝（UpdateCollection 的权限补丁）。
-	assertDenied(uc.UpdateCollection(ctx, projectID, "default", "teams", databases.CollectionPatch{Permissions: &perms}, databases.Principal{Roles: []string{"keys"}}))
+	// groups 等其他系统集合同样拒绝（UpdateCollection 的权限补丁）。
+	assertDenied(uc.UpdateCollection(ctx, projectID, "default", "groups", databases.CollectionPatch{Permissions: &perms}, databases.Principal{Roles: []string{"keys"}}))
 
 	// 自定义库同名集合不受影响。
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "App DB"))
@@ -108,7 +108,7 @@ func TestSystemCollections_SchemaOpsDenied(t *testing.T) {
 }
 
 // TestSystemCollections_DocumentReadPolicy 覆盖文档读策略：
-// teams/memberships/buckets/files 对 keys 主体放行；users 读仅 PlatformAdmin
+// groups/memberships/buckets/files 对 keys 主体放行；users 读仅 PlatformAdmin
 // 允许且脱敏；其余主体拒绝。
 func TestSystemCollections_DocumentReadPolicy(t *testing.T) {
 	if testing.Short() {
@@ -130,10 +130,10 @@ func TestSystemCollections_DocumentReadPolicy(t *testing.T) {
 	adminPrincipal := databases.Principal{PlatformAdmin: true}
 
 	// 4 个放行集合：经 SystemPrincipal 造数后 keys 主体可读。
-	for _, coll := range []string{"teams", "buckets", "files", "memberships"} {
+	for _, coll := range []string{"groups", "buckets", "files", "memberships"} {
 		data := map[string]any{"name": coll + " one"}
 		if coll == "memberships" {
-			data = map[string]any{"team_id": "teams-1", "user_id": "u-1", "name": "memberships one"}
+			data = map[string]any{"group_id": "groups-1", "user_id": "u-1", "name": "memberships one"}
 		}
 		_, err := docDB.CreateDocument(ctx, projectID, "default", coll, databases.Document{
 			ID:   coll + "-1",
@@ -142,7 +142,7 @@ func TestSystemCollections_DocumentReadPolicy(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	for _, coll := range []string{"teams", "buckets", "files", "memberships"} {
+	for _, coll := range []string{"groups", "buckets", "files", "memberships"} {
 		list, total, _, err := uc.ListDocuments(ctx, projectID, "default", coll, databases.Query{}, keysPrincipal)
 		require.NoError(t, err, "list %s should be allowed for keys principal", coll)
 		require.Equal(t, int64(1), total)
@@ -274,8 +274,8 @@ func TestSystemCollections_DocumentWriteDenied(t *testing.T) {
 		assertDenied(err)
 	}
 
-	// teams 等其他系统集合文档写同样拒绝。
-	_, err := uc.CreateDocument(ctx, projectID, "default", "teams", "", map[string]any{"name": "T"}, nil, keysPrincipal)
+	// groups 等其他系统集合文档写同样拒绝。
+	_, err := uc.CreateDocument(ctx, projectID, "default", "groups", "", map[string]any{"name": "T"}, nil, keysPrincipal)
 	assertDenied(err)
 }
 

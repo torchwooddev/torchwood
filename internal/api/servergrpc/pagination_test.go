@@ -31,9 +31,11 @@ func (paginationProjectRepo) GetProject(_ context.Context, id string) (*projects
 func (paginationProjectRepo) GetProjectByName(context.Context, string) (*projects.Project, error) {
 	return nil, nil
 }
-func (paginationProjectRepo) ListProjects(context.Context) ([]projects.Project, error) { return nil, nil }
-func (paginationProjectRepo) UpdateProject(context.Context, *projects.Project) error   { return nil }
-func (paginationProjectRepo) DeleteProject(context.Context, string) error              { return nil }
+func (paginationProjectRepo) ListProjects(context.Context) ([]projects.Project, error) {
+	return nil, nil
+}
+func (paginationProjectRepo) UpdateProject(context.Context, *projects.Project) error { return nil }
+func (paginationProjectRepo) DeleteProject(context.Context, string) error            { return nil }
 
 // paginationDocDB 是内存 DocumentDB：按集合存文档，ListDocuments 支持
 // equal（含 $id）过滤并返回固定 NextPageToken，用于断言 handler 回传。
@@ -153,15 +155,15 @@ func TestServerGRPC_ListHandlers_EchoNextPageToken(t *testing.T) {
 	docDB := &paginationDocDB{
 		token: "tok-1",
 		docs: map[string][]databases.Document{
-			"users":  {{ID: "u-1", Data: map[string]any{"email": "a@b.c", "status": "active"}}},
-			"teams":  {{ID: "team-1", Data: map[string]any{"name": "T", "total": int64(1)}}},
+			"users":   {{ID: "u-1", Data: map[string]any{"email": "a@b.c", "status": "active"}}},
+			"groups":  {{ID: "group-1", Data: map[string]any{"name": "T", "total": int64(1)}}},
 			"buckets": {{ID: "b-1", Data: map[string]any{"name": "B", "permissions": []any{"read"}, "public": false}}},
-			"files":  {{ID: "f-1", Data: map[string]any{"bucket_id": "b-1", "name": "x.png", "mime_type": "image/png", "size": int64(3)}}},
+			"files":   {{ID: "f-1", Data: map[string]any{"bucket_id": "b-1", "name": "x.png", "mime_type": "image/png", "size": int64(3)}}},
 		},
 	}
 	ctx := paginationCtx()
 	users := NewUsersService(appserver.NewUsers(paginationProjectRepo{}, docDB, nil, nil))
-	teams := NewTeamsService(appserver.NewTeams(paginationProjectRepo{}, docDB))
+	groups := NewGroupsService(appserver.NewGroups(paginationProjectRepo{}, docDB))
 	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil))
 
 	t.Run("ListUsers", func(t *testing.T) {
@@ -172,15 +174,15 @@ func TestServerGRPC_ListHandlers_EchoNextPageToken(t *testing.T) {
 		require.Equal(t, int32(1), resp.Meta.GetTotalCount())
 	})
 
-	t.Run("ListTeams", func(t *testing.T) {
-		resp, err := teams.ListTeams(ctx, &sharedv1.ListRequest{PageSize: 10})
+	t.Run("ListGroups", func(t *testing.T) {
+		resp, err := groups.ListGroups(ctx, &sharedv1.ListRequest{PageSize: 10})
 		require.NoError(t, err)
-		require.Len(t, resp.Teams, 1)
-		require.Equal(t, "tok-1", resp.Meta.GetNextPageToken(), "ListTeams 必须回传 NextPageToken")
+		require.Len(t, resp.Groups, 1)
+		require.Equal(t, "tok-1", resp.Meta.GetNextPageToken(), "ListGroups 必须回传 NextPageToken")
 	})
 
 	t.Run("ListMemberships", func(t *testing.T) {
-		resp, err := teams.ListMemberships(ctx, &serverv1.ListMembershipsRequest{TeamId: "team-1", PageSize: 10})
+		resp, err := groups.ListMemberships(ctx, &serverv1.ListMembershipsRequest{GroupId: "group-1", PageSize: 10})
 		require.NoError(t, err)
 		require.Equal(t, "tok-1", resp.Meta.GetNextPageToken(), "ListMemberships 必须回传 NextPageToken")
 	})

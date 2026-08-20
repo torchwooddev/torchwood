@@ -373,7 +373,7 @@ func TestPermissions_SystemPrincipalBypass(t *testing.T) {
 
 // TestPermissions_KeysCannotWriteSystemCollections 验证 keys 角色对系统敏感集合
 // （users/sessions/identities）的 update/delete 在集合级与文档级均被收窄
-// （安全评审 C1 第 3 层 / M2）；teams 的 keys 管理权限是合法语义，保留。
+// （安全评审 C1 第 3 层 / M2）；groups 的 keys 管理权限是合法语义，保留。
 func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -415,17 +415,17 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
-	// teams 的 keys 管理权限保留：keys 可创建团队文档（create:keys 集合级授权）。
-	_, err = docDB.CreateDocument(ctx, projectID, "default", "teams", databases.Document{
-		ID:   "team-1",
-		Data: map[string]any{"name": "Team A"},
+	// groups 的 keys 管理权限保留：keys 可创建用户组文档（create:keys 集合级授权）。
+	_, err = docDB.CreateDocument(ctx, projectID, "default", "groups", databases.Document{
+		ID:   "group-1",
+		Data: map[string]any{"name": "Group A"},
 	}, nil, keysPrincipal)
 	require.NoError(t, err)
 }
 
 // TestCleanup_KeysWritePermsLegacyProject 验证启动期存量清理：对模拟的遗留项目
 // （文档级 _perms 与集合级元数据仍含 keys 的 update/delete），EnsureSystemCollections
-// 幂等清除 users/sessions/identities 的写权限且不影响 teams/memberships。
+// 幂等清除 users/sessions/identities 的写权限且不影响 groups/memberships。
 func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -443,21 +443,21 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	schema := quoteIdent(testSchema(t, projectID, "default"))
 
 	// 模拟升级前遗留状态：文档级 _perms 存在 keys 的 update/delete 行
-	// （users/sessions/identities 各若干 + teams 一行作为对照）。
+	// （users/sessions/identities 各若干 + groups 一行作为对照）。
 	seedSQL := fmt.Sprintf(
 		`INSERT INTO %s._perms (_tenant, _collection, _document, _type, _permission) VALUES
 		 (?, 'users', 'u1', 'update', 'keys'),
 		 (?, 'users', 'u1', 'delete', 'keys'),
 		 (?, 'sessions', 's1', 'update', 'keys'),
 		 (?, 'identities', 'i1', 'delete', 'keys'),
-		 (?, 'teams', 't1', 'update', 'keys')`,
+		 (?, 'groups', 't1', 'update', 'keys')`,
 		schema)
 	_, err := db.DB.ExecContext(ctx, seedSQL, internalID, internalID, internalID, internalID, internalID)
 	require.NoError(t, err)
-	// 集合级元数据：系统集合与 teams 都补上 keys 写权限（teams 作为对照）。
+	// 集合级元数据：系统集合与 groups 都补上 keys 写权限（groups 作为对照）。
 	_, err = db.DB.ExecContext(ctx,
 		`UPDATE document_collections SET permissions = permissions || ARRAY['update:keys','delete:keys']
-		 WHERE project_id = ? AND database_id = 'default' AND id IN ('users','sessions','identities','teams')`,
+		 WHERE project_id = ? AND database_id = 'default' AND id IN ('users','sessions','identities','groups')`,
 		projectID)
 	require.NoError(t, err)
 
@@ -473,14 +473,14 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	require.NoError(t, row.Scan(&keysWriteRows))
 	require.Zero(t, keysWriteRows)
 
-	// teams 的 keys 写权限行保留。
-	var teamKeysWrite int64
+	// groups 的 keys 写权限行保留。
+	var groupKeysWrite int64
 	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection = 'teams'`, permsTable))
-	require.NoError(t, row.Scan(&teamKeysWrite))
-	require.Equal(t, int64(1), teamKeysWrite)
+		`SELECT COUNT(*) FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection = 'groups'`, permsTable))
+	require.NoError(t, row.Scan(&groupKeysWrite))
+	require.Equal(t, int64(1), groupKeysWrite)
 
-	// 集合级元数据：系统集合不再含 keys 写权限；teams 保留。
+	// 集合级元数据：系统集合不再含 keys 写权限；groups 保留。
 	var metaKeysWrite int64
 	row = db.DB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = 'default'
@@ -488,12 +488,12 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	require.NoError(t, row.Scan(&metaKeysWrite))
 	require.Zero(t, metaKeysWrite)
 
-	var teamMeta int64
+	var groupMeta int64
 	row = db.DB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = 'default'
-		 AND id = 'teams' AND permissions @> ARRAY['update:keys','delete:keys']`, projectID)
-	require.NoError(t, row.Scan(&teamMeta))
-	require.Equal(t, int64(1), teamMeta)
+		 AND id = 'groups' AND permissions @> ARRAY['update:keys','delete:keys']`, projectID)
+	require.NoError(t, row.Scan(&groupMeta))
+	require.Equal(t, int64(1), groupMeta)
 
 	// 幂等：再次清理无错误、无新副作用。
 	third := NewPostgresDocumentDB(db, nil)

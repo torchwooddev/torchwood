@@ -26,7 +26,7 @@
 - `internal/app/console/admins.go` 的 `Admins.Create` **无 principal 检查**，校验邮箱唯一、密码强度（`users.ValidatePasswordStrength`）、角色合法后可创建。
 - `internal/app/server/apikeys.go` 的 `APIKeys.Create` **无 principal 检查**；secret 为两个 UUID 拼接（64 字符），存 SHA-256 hex，明文仅创建时返回。
 - `internal/app/server/projects.go` 的 `Projects.CreateProject` **要求平台 admin principal**（安全评审 M7），内部在 `RunInTx` 中插入 project 并调用 `docDB.EnsureSystemCollections`（创建 `default` schema + 7 个系统集合）。
-- 有效 API Key scope：`*` / `all` / `<resource>[.read|.write]`，资源共 8 个（databases/users/teams/storage/projects/oauthproviders/apikeys/functions），见 `pkg/grpc/interceptor/apikey_scope.go`。
+- 有效 API Key scope：`*` / `all` / `<resource>[.read|.write]`，资源共 8 个（databases/users/groups/storage/projects/oauthproviders/apikeys/functions），见 `pkg/grpc/interceptor/apikey_scope.go`。
 - API Key 认证：metadata `x-api-key: <secret>`（或 `Authorization: ApiKey <secret>`）；`X-Torchwood-Project` **仅对 admin console session 有效**，API Key 调用不需要。
 - 拦截器**禁止 API Key 调用 `APIKeysService`**（防止自铸新 key），见 `pkg/grpc/interceptor/jwt.go`。
 - gRPC 明文监听 `127.0.0.1:9060`（仅回环），grpc-gateway 在 `:9080` 以 insecure 转发；Storage 文件上传/下载是独立 HTTP handler（`internal/api/serverhttp`），不在 gRPC 面。
@@ -175,7 +175,7 @@ cmd/client/
     projects.go      # projects list / get
     users.go         # users 子命令
     databases.go     # databases/collections/documents 子命令
-    teams.go         # teams/memberships 子命令
+    groups.go         # groups/memberships 子命令
     storage.go       # buckets 子命令
     functions.go     # functions 子命令
     oauth.go         # oauth-providers 子命令
@@ -209,7 +209,7 @@ torchwood databases list|get|create ...
 torchwood databases collections list|get|create ...
 torchwood databases documents list|get|create|update|delete ...
 
-torchwood teams ... / memberships ...
+torchwood groups ... / memberships ...
 torchwood storage buckets list|get|create|update|delete ...
 torchwood functions list|get|create|execute ...
 torchwood oauth-providers list|get|update
@@ -239,7 +239,7 @@ torchwood rpc <full-method> [--data '<json>']   # 逃生舱：覆盖全部 83 �
 |--------|------|------|------|
 | A | `docs/prompts/bootstrap-first-admin.md` | §3 全部：proto、use-case、前端、移除 seed、文档与测试 | 无 |
 | B | `docs/prompts/cli-framework.md` | §4.2/4.3/4.5 + health/projects/users/rpc 命令（§4.4 部分） | 无（与 A 并行） |
-| C | `docs/prompts/cli-resources.md` | §4.4 其余资源命令：databases/teams/storage/functions/oauth-providers | B 完成后 |
+| C | `docs/prompts/cli-resources.md` | §4.4 其余资源命令：databases/groups/storage/functions/oauth-providers | B 完成后 |
 
 A 与 B 无代码交集（A 不碰 cmd/client，B 不碰 console/bootstrap），可并行分派；C 依赖 B 的框架模式。
 

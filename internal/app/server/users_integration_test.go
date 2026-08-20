@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
-	"github.com/torchwooddev/torchwood/internal/domain/teams"
+	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
@@ -225,10 +225,10 @@ func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
 		_, err := docDB.CreateDocument(ctx, projectID, "default", "memberships", databases.Document{
 			ID: idgen.UUID().String(),
 			Data: map[string]any{
-				"team_id":   idgen.UUID().String(),
+				"group_id":  idgen.UUID().String(),
 				"user_id":   doc.ID,
-				"status":    teams.StatusAccepted,
-				"roles":     []string{teams.RoleMember},
+				"status":    groups.StatusAccepted,
+				"roles":     []string{groups.RoleMember},
 				"joined_at": time.Now().Format(time.RFC3339Nano),
 			},
 		}, nil, databases.SystemPrincipal)

@@ -42,7 +42,7 @@
 - 用户表加 _version；仅写路径懒 ALTER + 类型检查（非 bigint fail-closed）；读路径缺列视为 1，不要在读路径 ALTER。
 - createCollectionTable 增加 isSystem；系统集合不加列。
 - proto：Document.version=6；UpdateDocumentRequest.version=7 optional；独立 DeleteDocumentRequest（REST ?version=）。task generate-proto。
-- 端口用 DeleteOptions{ExpectedVersion, SkipVersion}；所有 DocumentDB 假实现一并改。仓库没有 teams_test.go，要改 teams_pagination_test.go。
+- 端口用 DeleteOptions{ExpectedVersion, SkipVersion}；所有 DocumentDB 假实现一并改。仓库没有 groups_test.go，要改 groups_pagination_test.go。
 - Bulk/Upsert SkipVersion；Increment 必带 version。
 - 拒绝用户属性名 _version。未 ALTER 表上 $version 查询返回 version_column_unavailable，不要落到 PG 未定义列。
 - Console 详情保存和列表删除都传 version；CLI 增加 --version；TS/Go SDK + contract 测试同步。

@@ -37,7 +37,7 @@ CREATE INDEX IF NOT EXISTS asset_defs_project
 CREATE TABLE IF NOT EXISTS asset_holdings (
     id          TEXT PRIMARY KEY,                      -- ULID
     project_id  TEXT NOT NULL REFERENCES projects(id),
-    owner_type  TEXT NOT NULL DEFAULT 'user',          -- 一期仅 user（D14）；列保留 team/project
+    owner_type  TEXT NOT NULL DEFAULT 'user',          -- 一期仅 user（D14）；列保留 group/project
     owner_id    TEXT NOT NULL,
     def_id      TEXT NOT NULL REFERENCES asset_defs(id),
     quantity    BIGINT NOT NULL CHECK (quantity > 0), -- 消耗到 0 则删行，不留尸体
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS asset_holdings (
     version     BIGINT NOT NULL DEFAULT 1,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT asset_holdings_owner_type CHECK (owner_type IN ('user', 'team', 'project')),
+    CONSTRAINT asset_holdings_owner_type CHECK (owner_type IN ('user', 'group', 'project')),
     CONSTRAINT asset_holdings_bucket UNIQUE NULLS NOT DISTINCT (owner_type, owner_id, def_id, expires_at, bucket_key)
 );
 
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS asset_ledger_entries (
     CONSTRAINT asset_ledger_kind CHECK (kind IN (
         'grant', 'consume', 'transfer_out', 'transfer_in', 'mutate', 'expire', 'adjust'
     )),
-    CONSTRAINT asset_ledger_owner_type CHECK (owner_type IN ('user', 'team', 'project')),
+    CONSTRAINT asset_ledger_owner_type CHECK (owner_type IN ('user', 'group', 'project')),
     -- 幂等锚点：客户端幂等键按项目唯一（租户隔离，避免跨项目碰撞）。
     CONSTRAINT asset_ledger_idempotency UNIQUE (project_id, idempotency_key)
 );

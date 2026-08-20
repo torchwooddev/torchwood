@@ -409,7 +409,7 @@ func TestOrderByValidator(t *testing.T) {
 
 func TestFilterValidator(t *testing.T) {
 	validator := NewFilterValidator().
-		AddFields("name", "status", "team_id")
+		AddFields("name", "status", "group_id")
 
 	tests := []struct {
 		name    string

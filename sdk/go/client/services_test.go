@@ -38,48 +38,48 @@ func (r *recorder) auth(key string) string {
 	return ""
 }
 
-// fakeTeams 实现 Client API Teams 服务。
-type fakeTeams struct {
-	clientv1.UnimplementedTeamsServiceServer
+// fakeGroups 实现 Client API Groups 服务。
+type fakeGroups struct {
+	clientv1.UnimplementedGroupsServiceServer
 	rec *recorder
 }
 
-func (s *fakeTeams) CreateTeam(ctx context.Context, req *clientv1.CreateTeamRequest) (*clientv1.Team, error) {
+func (s *fakeGroups) CreateGroup(ctx context.Context, req *clientv1.CreateGroupRequest) (*clientv1.Group, error) {
 	s.rec.record(ctx)
-	return &clientv1.Team{Id: "team-1", Name: req.Name}, nil
+	return &clientv1.Group{Id: "group-1", Name: req.Name}, nil
 }
 
-func (s *fakeTeams) GetTeam(ctx context.Context, req *clientv1.GetTeamRequest) (*clientv1.Team, error) {
+func (s *fakeGroups) GetGroup(ctx context.Context, req *clientv1.GetGroupRequest) (*clientv1.Group, error) {
 	s.rec.record(ctx)
-	return &clientv1.Team{Id: req.Id, Name: "Team One"}, nil
+	return &clientv1.Group{Id: req.Id, Name: "Group One"}, nil
 }
 
-func (s *fakeTeams) ListTeams(ctx context.Context, _ *sharedv1.ListRequest) (*clientv1.ListTeamsResponse, error) {
+func (s *fakeGroups) ListGroups(ctx context.Context, _ *sharedv1.ListRequest) (*clientv1.ListGroupsResponse, error) {
 	s.rec.record(ctx)
-	return &clientv1.ListTeamsResponse{Teams: []*clientv1.Team{{Id: "team-1", Name: "Team One"}}}, nil
+	return &clientv1.ListGroupsResponse{Groups: []*clientv1.Group{{Id: "group-1", Name: "Group One"}}}, nil
 }
 
-func (s *fakeTeams) CreateMembership(ctx context.Context, req *clientv1.CreateMembershipRequest) (*clientv1.Membership, error) {
+func (s *fakeGroups) CreateMembership(ctx context.Context, req *clientv1.CreateMembershipRequest) (*clientv1.Membership, error) {
 	s.rec.record(ctx)
-	return &clientv1.Membership{Id: "mem-1", TeamId: req.TeamId, Email: req.Email, Roles: req.Roles}, nil
+	return &clientv1.Membership{Id: "mem-1", GroupId: req.GroupId, Email: req.Email, Roles: req.Roles}, nil
 }
 
-func (s *fakeTeams) ListMemberships(ctx context.Context, req *clientv1.ListMembershipsRequest) (*clientv1.ListMembershipsResponse, error) {
+func (s *fakeGroups) ListMemberships(ctx context.Context, req *clientv1.ListMembershipsRequest) (*clientv1.ListMembershipsResponse, error) {
 	s.rec.record(ctx)
-	return &clientv1.ListMembershipsResponse{Memberships: []*clientv1.Membership{{Id: "mem-1", TeamId: req.TeamId}}}, nil
+	return &clientv1.ListMembershipsResponse{Memberships: []*clientv1.Membership{{Id: "mem-1", GroupId: req.GroupId}}}, nil
 }
 
-func (s *fakeTeams) UpdateMembershipStatus(ctx context.Context, req *clientv1.UpdateMembershipStatusRequest) (*clientv1.Membership, error) {
+func (s *fakeGroups) UpdateMembershipStatus(ctx context.Context, req *clientv1.UpdateMembershipStatusRequest) (*clientv1.Membership, error) {
 	s.rec.record(ctx)
-	return &clientv1.Membership{Id: req.MembershipId, TeamId: req.TeamId, Status: req.Status}, nil
+	return &clientv1.Membership{Id: req.MembershipId, GroupId: req.GroupId, Status: req.Status}, nil
 }
 
-func (s *fakeTeams) DeleteMembership(ctx context.Context, _ *clientv1.GetMembershipRequest) (*sharedv1.Empty, error) {
+func (s *fakeGroups) DeleteMembership(ctx context.Context, _ *clientv1.GetMembershipRequest) (*sharedv1.Empty, error) {
 	s.rec.record(ctx)
 	return &sharedv1.Empty{}, nil
 }
 
-func (s *fakeTeams) DeleteTeam(ctx context.Context, _ *clientv1.GetTeamRequest) (*sharedv1.Empty, error) {
+func (s *fakeGroups) DeleteGroup(ctx context.Context, _ *clientv1.GetGroupRequest) (*sharedv1.Empty, error) {
 	s.rec.record(ctx)
 	return &sharedv1.Empty{}, nil
 }
@@ -131,21 +131,21 @@ func (s *fakeDatabases) CountDocuments(ctx context.Context, _ *clientv1.ListDocu
 	return &clientv1.CountDocumentsResponse{Count: 7}, nil
 }
 
-// newFullBufconn 启动注册了 Account/Teams/Databases fake 的 bufconn gRPC 服务。
+// newFullBufconn 启动注册了 Account/Groups/Databases fake 的 bufconn gRPC 服务。
 func newFullBufconn(t *testing.T) (*bufconn.Listener, *recorder) {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	rec := &recorder{}
 	srv := grpc.NewServer()
 	clientv1.RegisterAccountServiceServer(srv, &fakeAccount{})
-	clientv1.RegisterTeamsServiceServer(srv, &fakeTeams{rec: rec})
+	clientv1.RegisterGroupsServiceServer(srv, &fakeGroups{rec: rec})
 	clientv1.RegisterDatabasesServiceServer(srv, &fakeDatabases{rec: rec})
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 	return lis, rec
 }
 
-// newFullClient 返回连接 Account/Teams/Databases fake 的 Client API 客户端。
+// newFullClient 返回连接 Account/Groups/Databases fake 的 Client API 客户端。
 func newFullClient(t *testing.T, opts ...Option) (*Client, *recorder) {
 	t.Helper()
 	lis, rec := newFullBufconn(t)
@@ -157,51 +157,51 @@ func newFullClient(t *testing.T, opts ...Option) (*Client, *recorder) {
 	return c, rec
 }
 
-func TestClientTeams_CreateAndList(t *testing.T) {
+func TestClientGroups_CreateAndList(t *testing.T) {
 	c, _ := newFullClient(t, WithInitialTokens(&clientv1.TokenBundle{AccessToken: "jwt-1"}))
 	ctx := context.Background()
 
-	team, err := c.Teams.CreateTeam(ctx, "Team One")
+	group, err := c.Groups.CreateGroup(ctx, "Group One")
 	require.NoError(t, err)
-	require.Equal(t, "team-1", team.Id)
-	require.Equal(t, "Team One", team.Name)
+	require.Equal(t, "group-1", group.Id)
+	require.Equal(t, "Group One", group.Name)
 
-	got, err := c.Teams.GetTeam(ctx, "team-1")
+	got, err := c.Groups.GetGroup(ctx, "group-1")
 	require.NoError(t, err)
-	require.Equal(t, "Team One", got.Name)
+	require.Equal(t, "Group One", got.Name)
 
-	list, err := c.Teams.ListTeams(ctx)
+	list, err := c.Groups.ListGroups(ctx)
 	require.NoError(t, err)
-	require.Len(t, list.Teams, 1)
+	require.Len(t, list.Groups, 1)
 }
 
-func TestClientTeams_Memberships(t *testing.T) {
+func TestClientGroups_Memberships(t *testing.T) {
 	c, _ := newFullClient(t, WithInitialTokens(&clientv1.TokenBundle{AccessToken: "jwt-1"}))
 	ctx := context.Background()
 
-	mem, err := c.Teams.CreateMembership(ctx, "team-1", "bob@example.com", "Bob", []string{"member"})
+	mem, err := c.Groups.CreateMembership(ctx, "group-1", "bob@example.com", "Bob", []string{"member"})
 	require.NoError(t, err)
-	require.Equal(t, "team-1", mem.TeamId)
+	require.Equal(t, "group-1", mem.GroupId)
 	require.Equal(t, []string{"member"}, mem.Roles)
 
-	listed, err := c.Teams.ListMemberships(ctx, "team-1")
+	listed, err := c.Groups.ListMemberships(ctx, "group-1")
 	require.NoError(t, err)
 	require.Len(t, listed.Memberships, 1)
 
-	updated, err := c.Teams.UpdateMembershipStatus(ctx, "team-1", "mem-1", "active")
+	updated, err := c.Groups.UpdateMembershipStatus(ctx, "group-1", "mem-1", "active")
 	require.NoError(t, err)
 	require.Equal(t, "active", updated.Status)
 
-	require.NoError(t, c.Teams.DeleteMembership(ctx, "team-1", "mem-1"))
+	require.NoError(t, c.Groups.DeleteMembership(ctx, "group-1", "mem-1"))
 }
 
-// Round3 H4-3：Go Client 补齐 DeleteTeam（对齐 TS / proto）。
-func TestClientTeams_DeleteTeam(t *testing.T) {
+// Round3 H4-3：Go Client 补齐 DeleteGroup（对齐 TS / proto）。
+func TestClientGroups_DeleteGroup(t *testing.T) {
 	c, rec := newFullClient(t, WithInitialTokens(&clientv1.TokenBundle{AccessToken: "jwt-1"}))
 	ctx := context.Background()
 
-	require.NoError(t, c.Teams.DeleteTeam(ctx, "team-1"))
-	require.Equal(t, "Bearer jwt-1", rec.auth("authorization"), "DeleteTeam 必须携带 Bearer token")
+	require.NoError(t, c.Groups.DeleteGroup(ctx, "group-1"))
+	require.Equal(t, "Bearer jwt-1", rec.auth("authorization"), "DeleteGroup 必须携带 Bearer token")
 }
 
 func TestClientDatabases_DocumentCRUD(t *testing.T) {

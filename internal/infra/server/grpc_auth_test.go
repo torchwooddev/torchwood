@@ -12,12 +12,12 @@ import (
 func TestCollectMethodsByAccess_AuthenticatedRequiresUsersRole(t *testing.T) {
 	t.Parallel()
 
-	_, _, permissionMethods, err := collectMethodsByAccess(clientv1.File_client_v1_teams_proto)
+	_, _, permissionMethods, err := collectMethodsByAccess(clientv1.File_client_v1_groups_proto)
 	require.NoError(t, err)
 
-	fullMethod := "/torchwood.client.v1.TeamsService/CreateTeam"
+	fullMethod := "/torchwood.client.v1.GroupsService/CreateGroup"
 	perms, ok := permissionMethods[fullMethod]
-	require.True(t, ok, "TeamsService methods should require users permission")
+	require.True(t, ok, "GroupsService methods should require users permission")
 	require.Equal(t, []string{"users"}, perms)
 }
 

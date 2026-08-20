@@ -1,4 +1,4 @@
-package teams
+package groups
 
 import (
 	"fmt"

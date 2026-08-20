@@ -12,7 +12,7 @@ import (
 var ProviderSet = wire.NewSet(
 	clientgrpc.NewAccountService,
 	clientgrpc.NewDatabasesService,
-	clientgrpc.NewTeamsService,
+	clientgrpc.NewGroupsService,
 	clientgrpc.NewPaymentsService,
 	clientgrpc.NewAssetsService,
 	clientgrpc.NewSubscriptionsService,
@@ -22,7 +22,7 @@ var ProviderSet = wire.NewSet(
 	servergrpc.NewUsersService,
 	servergrpc.NewAPIKeysService,
 	servergrpc.NewOAuthProvidersService,
-	servergrpc.NewTeamsService,
+	servergrpc.NewGroupsService,
 	servergrpc.NewDatabasesService,
 	servergrpc.NewFunctionsService,
 	servergrpc.NewPaymentsService,

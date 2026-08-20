@@ -66,7 +66,7 @@ export interface Document {
   version?: number;
 }
 
-export interface Team {
+export interface Group {
   id: string;
   name: string;
   total: number;
@@ -77,7 +77,7 @@ export interface Team {
 
 export interface Membership {
   id: string;
-  team_id: string;
+  group_id: string;
   user_id: string;
   email: string;
   name: string;

@@ -13,16 +13,16 @@ import (
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
 
-// oldTeamsAttrs 模拟旧版本 spec 的 teams 集合属性（无 prefs）。
-var oldTeamsAttrs = []databases.Attribute{
-	{ID: "teams_name", Key: "name", Type: "string", Size: 256},
-	{ID: "teams_permissions", Key: "permissions", Type: "json"},
-	{ID: "teams_total", Key: "total", Type: "integer", Default: 0},
+// oldGroupsAttrs 模拟旧版本 spec 的 groups 集合属性（无 prefs）。
+var oldGroupsAttrs = []databases.Attribute{
+	{ID: "groups_name", Key: "name", Type: "string", Size: 256},
+	{ID: "groups_permissions", Key: "permissions", Type: "json"},
+	{ID: "groups_total", Key: "total", Type: "integer", Default: 0},
 }
 
-// setupOldSpecTeamsCollection 模拟存量项目：default 库元数据 + 旧 spec 的 teams 集合
+// setupOldSpecGroupsCollection 模拟存量项目：default 库元数据 + 旧 spec 的 groups 集合
 // （不调 EnsureSystemCollections，即不触发任何 reconcile）。
-func setupOldSpecTeamsCollection(t *testing.T, ctx context.Context, db *clients.Database, docDB databases.DocumentDB, projectID string) {
+func setupOldSpecGroupsCollection(t *testing.T, ctx context.Context, db *clients.Database, docDB databases.DocumentDB, projectID string) {
 	t.Helper()
 	now := time.Now()
 	_, err := db.NewInsert().Model(&model.DocumentDatabase{
@@ -33,8 +33,8 @@ func setupOldSpecTeamsCollection(t *testing.T, ctx context.Context, db *clients.
 		UpdatedAt: now,
 	}).Exec(ctx)
 	require.NoError(t, err)
-	spec := systemCollectionSpecs(projectID)["teams"]
-	require.NoError(t, docDB.CreateCollection(ctx, projectID, "default", "teams", spec.name, oldTeamsAttrs, spec.indexes, spec.permissions, true))
+	spec := systemCollectionSpecs(projectID)["groups"]
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "default", "groups", spec.name, oldGroupsAttrs, spec.indexes, spec.permissions, true))
 }
 
 func attrKeyCount(attrs []databases.Attribute, key string) int {
@@ -61,32 +61,32 @@ func TestEnsureSystemCollections_ReconcileExistingCollectionAttrs(t *testing.T) 
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	setupOldSpecTeamsCollection(t, ctx, db, docDB, projectID)
+	setupOldSpecGroupsCollection(t, ctx, db, docDB, projectID)
 
-	coll, err := docDB.GetCollection(ctx, projectID, "default", "teams")
+	coll, err := docDB.GetCollection(ctx, projectID, "default", "groups")
 	require.NoError(t, err)
 	require.NotNil(t, coll)
 	require.Zero(t, attrKeyCount(coll.Attributes, "prefs"), "旧 spec 集合不应有 prefs 属性")
 
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	coll, err = docDB.GetCollection(ctx, projectID, "default", "teams")
+	coll, err = docDB.GetCollection(ctx, projectID, "default", "groups")
 	require.NoError(t, err)
 	require.Equal(t, 1, attrKeyCount(coll.Attributes, "prefs"), "reconcile 应补齐 prefs 元数据")
 
 	// 物理列存在：写一条含 prefs 的文档成功（旧 spec 下会报 42703）。
-	created, err := docDB.CreateDocument(ctx, projectID, "default", "teams", databases.Document{
+	created, err := docDB.CreateDocument(ctx, projectID, "default", "groups", databases.Document{
 		Data: map[string]any{"name": "Reconciled", "prefs": map[string]any{"theme": "dark"}},
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
-	got, err := docDB.GetDocument(ctx, projectID, "default", "teams", created.ID, databases.SystemPrincipal)
+	got, err := docDB.GetDocument(ctx, projectID, "default", "groups", created.ID, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Equal(t, map[string]any{"theme": "dark"}, got.Data["prefs"])
 
 	// 幂等：重复调用无错误，属性不重复。
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	coll, err = docDB.GetCollection(ctx, projectID, "default", "teams")
+	coll, err = docDB.GetCollection(ctx, projectID, "default", "groups")
 	require.NoError(t, err)
 	require.Equal(t, 1, attrKeyCount(coll.Attributes, "prefs"), "reconcile 必须幂等")
 }
@@ -126,12 +126,12 @@ func TestEnsureSystemCollections_ReconcileConcurrent(t *testing.T) {
 	for _, id := range databases.SystemCollectionIDs {
 		spec := specs[id]
 		attrs := spec.attrs
-		if id == "teams" {
-			attrs = oldTeamsAttrs
+		if id == "groups" {
+			attrs = oldGroupsAttrs
 		}
 		require.NoError(t, docDB.CreateCollection(ctx, projectID, "default", id, spec.name, attrs, spec.indexes, spec.permissions, true))
 	}
-	coll, err := docDB.GetCollection(ctx, projectID, "default", "teams")
+	coll, err := docDB.GetCollection(ctx, projectID, "default", "groups")
 	require.NoError(t, err)
 	require.Zero(t, attrKeyCount(coll.Attributes, "prefs"))
 
@@ -150,7 +150,7 @@ func TestEnsureSystemCollections_ReconcileConcurrent(t *testing.T) {
 		require.NoError(t, err, "并发 EnsureSystemCollections 不应报错（23505 应被吞）")
 	}
 
-	coll, err = docDB.GetCollection(ctx, projectID, "default", "teams")
+	coll, err = docDB.GetCollection(ctx, projectID, "default", "groups")
 	require.NoError(t, err)
 	require.Equal(t, 1, attrKeyCount(coll.Attributes, "prefs"), "并发 reconcile 后 prefs 元数据应恰好一条")
 }

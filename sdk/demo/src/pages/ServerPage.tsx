@@ -28,7 +28,7 @@ export function ServerPage() {
     <div>
       <PageHeader
         title="Server API"
-        description="使用 API Key 调用 Server SDK：健康检查、项目、用户、数据库与团队。"
+        description="使用 API Key 调用 Server SDK：健康检查、项目、用户、数据库与用户组。"
       />
       <ErrorBanner message={lastError} />
 
@@ -80,12 +80,12 @@ export function ServerPage() {
           className="btn-secondary"
           disabled={disabled}
           onClick={() =>
-            exec("server.teams.create()", () =>
-              serverClient().server.teams.create({ name: `Server Team ${suffix()}` })
+            exec("server.groups.create()", () =>
+              serverClient().server.groups.create({ name: `Server Group ${suffix()}` })
             )
           }
         >
-          <MethodTag method="POST" /> teams.create()
+          <MethodTag method="POST" /> groups.create()
         </button>
         <button
           type="button"

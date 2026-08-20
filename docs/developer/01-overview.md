@@ -28,7 +28,7 @@ Torchwood 是一个 **Appwrite-inspired、AI/Agent-Native 的 Backend-as-a-Servi
 - **文件存储**：S3/MinIO 兼容对象存储，multipart 上传/下载、分片上传/断点续传、预览缩略图、公开 bucket、HMAC File Token；
 - **函数执行**：Docker 真实执行器（构建/运行）与异步 worker（`cmd/worker`），含执行历史与保留策略；
 - **Admin Console**：React SPA，嵌入 Go 二进制，通过 `/console/` 提供管理界面；
-- **Server API**：Projects、API Keys、Users、Teams、Storage、Databases、Collections、Attributes、Indexes、Functions、OAuth Providers 等管理面 CRUD。
+- **Server API**：Projects、API Keys、Users、Groups、Storage、Databases、Collections、Attributes、Indexes、Functions、OAuth Providers 等管理面 CRUD。
 
 ---
 
@@ -112,15 +112,15 @@ torchwood/
 │   └── ...                             # *.pb.go / *_grpc.pb.go / *.pb.gw.go / *.swagger.json
 ├── internal/
 │   ├── api/                            # 传输层
-│   │   ├── clientgrpc/                 # Client API：Account、Databases、Teams
+│   │   ├── clientgrpc/                 # Client API：Account、Databases、Groups
 │   │   ├── consolegrpc/                # Console API：ConsoleAuth、Admins
-│   │   ├── servergrpc/                 # Server API：Projects、APIKeys、Users、Storage、Databases、Functions、Teams、Health、OAuthProviders
+│   │   ├── servergrpc/                 # Server API：Projects、APIKeys、Users、Storage、Databases、Functions、Groups、Health、OAuthProviders
 │   │   └── serverhttp/                 # 自定义 HTTP handler：文件 multipart 上传下载、OAuth 回调、Functions 代码包
 │   ├── app/                            # 用例层
 │   │   ├── client/                     # Account 注册/登录/OTP/MFA/会话/邮箱变更确认
 │   │   ├── console/                    # Console 认证（含 Setup 引导）
 │   │   ├── functions/                  # Functions use case（部署/执行/变量）
-│   │   ├── server/                     # Projects / API keys / users / databases / teams
+│   │   ├── server/                     # Projects / API keys / users / databases / groups
 │   │   ├── shared/                     # 跨用例共享逻辑（错误映射等）
 │   │   └── storage/                    # 文件 / bucket 元数据 / 分片上传会话
 │   ├── domain/                         # 领域层：模型 + 端口
@@ -133,7 +133,7 @@ torchwood/
 │   │   ├── projects/
 │   │   ├── shared/                     # 共享领域类型（Principal、Queue 端口等）
 │   │   ├── storage/
-│   │   ├── teams/
+│   │   ├── groups/
 │   │   └── users/
 │   ├── infra/                          # 适配器层
 │   │   ├── auth/                       # Principal / Validator / session cookie / TOTP
@@ -238,7 +238,7 @@ PostgreSQL
 |------|------|
 | `cmd/server` | **主服务器**。Lynx Runner 启动：gRPC（默认 `127.0.0.1:9060`）、grpc-gateway + Console SPA（`server.http.addr`）、独立 HTTP handler（multipart 上传下载、OAuth 回调）、Metrics。Wire 装配见 `provides.go` |
 | `cmd/worker` | **Worker**。后台任务进程（函数异步执行队列消费者），独立 Wire 装配（`cmd/worker/provides.go`），与 server 共享 app/domain/infra 代码 |
-| `cmd/client` | **Torchwood CLI**（`task build` 产出 `bin/torchwood[.exe]`）。面向 Agent / 自动化 / 运维，用 cobra 实现（不依赖 Wire），通过 API Key 调用 Server API。`health` 公开可调用、`uuid` 本地生成无需 key，其余命令需 API key；含 `health`、`uuid`、`projects`、`users`、`databases`、`teams`、`storage`、`functions`、`oauth-providers` 具名命令与覆盖全部 Server API 方法的 `rpc` 逃生舱命令 |
+| `cmd/client` | **Torchwood CLI**（`task build` 产出 `bin/torchwood[.exe]`）。面向 Agent / 自动化 / 运维，用 cobra 实现（不依赖 Wire），通过 API Key 调用 Server API。`health` 公开可调用、`uuid` 本地生成无需 key，其余命令需 API key；含 `health`、`uuid`、`projects`、`users`、`databases`、`groups`、`storage`、`functions`、`oauth-providers` 具名命令与覆盖全部 Server API 方法的 `rpc` 逃生舱命令 |
 
 两个服务入口都通过 `godotenv` 加载 `.env`，并从 `./configs` 绑定配置；统一使用 `config.NewBindConfigFunc()` 完成配置绑定。
 

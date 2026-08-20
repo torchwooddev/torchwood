@@ -37,5 +37,5 @@
 - `AGENTS.md` — 开发约定（分层、生成、配置、数据库约定，必读）
 - `docs/roadmap.md` — 开发路线图（含 AI/Agent-Native 战略与验收标准）
 - `docs/tech-decision.md` — 技术决策记录
-- `docs/implementation-*.md` — 各功能实现说明（bootstrap-and-cli、health-observability、functions-executor、storage-chunked-upload、teams-prefs、account-completion、settings-page 等）
+- `docs/implementation-*.md` — 各功能实现说明（bootstrap-and-cli、health-observability、functions-executor、storage-chunked-upload、groups-prefs、account-completion、settings-page 等）
 - `docs/archived/` — 归档设计文档（P0 设计、安全评审、修复计划等）

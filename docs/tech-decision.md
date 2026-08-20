@@ -6,7 +6,7 @@
 
 - **核心框架**：沿用 `Lynx`（已具备 config/logging/HTTP/gRPC/scheduler/pubsub/telemetry 生命周期）。
 - **依赖注入**：沿用 `Wire`，按模块拆分 ProviderSet。
-- **ORM**：`bun` 负责**系统级静态表**（users/projects/teams/buckets/functions 等）；用户动态 Collection/Document 层使用 **bun 作为连接池 + 原生 SQL/JSONB**（不依赖 bun 的 model 映射）。
+- **ORM**：`bun` 负责**系统级静态表**（users/projects/groups/buckets/functions 等）；用户动态 Collection/Document 层使用 **bun 作为连接池 + 原生 SQL/JSONB**（不依赖 bun 的 model 映射）。
 - **REST 暴露**：主路径用 **grpc-gateway + gRPC**；文件上传/下载/预览、OAuth 回调、Realtime WebSocket 等走 **独立 HTTP handler**，与 gateway 共存。
 - **业务架构**：**DDD/Clean Architecture**，目录结构与 fleetwork 对齐：`api / app / domain / infra`。
 
@@ -46,7 +46,7 @@ fleetwork 中 bun 的使用方式与效果：
 Appwrite 中可同样用 bun 建模的系统表：
 
 - `projects`、`tenants`/`organizations`
-- `users`、`teams`、`memberships`
+- `users`、`groups`、`memberships`
 - `buckets`、`files`（元数据）
 - `functions`、`deployments`、`executions`
 - `attributes`、`indexes`、`collections`（schema 元数据）
@@ -106,7 +106,7 @@ bun 的局限：
 
 **最终建议**：
 
-- **P0/P1 核心系统（Account/Users/Teams/Projects/Storage/Functions）**：bun 模型化。
+- **P0/P1 核心系统（Account/Users/Groups/Projects/Storage/Functions）**：bun 模型化。
 - **Databases 模块**：
   - 如果目标是“Appwrite 功能等价但允许新 schema”：采用 **JSONB 单表 + GIN 索引**，快速落地。
   - 如果目标是“与 Appwrite 现有 Postgres 数据/行为完全兼容”：采用 **动态列表 + 原生 SQL adapter**，bun 仅打底。
@@ -129,7 +129,7 @@ bun 的局限：
 
 **可行之处：**
 
-- 所有结构化 CRUD（users/teams/databases/buckets/functions/variables 等）都可用 gRPC + gateway 暴露。
+- 所有结构化 CRUD（users/groups/databases/buckets/functions/variables 等）都可用 gRPC + gateway 暴露。
 - proto 校验（buf.validate）可替代 Appwrite 的输入校验。
 - 自动生成 OpenAPI/ Swagger 方便 Console 对接。
 - 与 fleetwork 的 auth interceptor、error handler、logging/telemetry 无缝集成。
@@ -168,7 +168,7 @@ bun 的局限：
 
 | 接口类型 | 推荐方案 |
 |----------|----------|
-| 结构化 CRUD（Account/Users/Teams/Databases/Storage/Functions 元数据） | **grpc-gateway + gRPC** |
+| 结构化 CRUD（Account/Users/Groups/Databases/Storage/Functions 元数据） | **grpc-gateway + gRPC** |
 | 文件上传/下载/预览 | **独立 HTTP handler**（复用 fleework 的 storage URL resolver / S3 预签名） |
 | OAuth2 回调/重定向 | **独立 HTTP handler** |
 | Realtime WebSocket | **独立 WebSocket server** |
@@ -202,7 +202,7 @@ internal/
   app/
     account.go
     users.go
-    teams.go
+    groups.go
     databases.go
     storage.go
     functions.go
@@ -211,7 +211,7 @@ internal/
     shared/        # identity, authz, roles, permissions, events, file URL resolver
     projects/
     users/
-    teams/
+    groups/
     databases/     # DocumentDB port, Collection/Document/Attribute/Index entities
     storage/
     functions/
@@ -231,7 +231,7 @@ internal/
 #### 2.5.2 关键领域端口
 
 - `domain/users/repo.UsersRepo`：用户 CRUD、密码哈希、session/token。
-- `domain/teams/repo.TeamsRepo`：团队、membership、角色。
+- `domain/groups/repo.GroupsRepo`：用户组、membership、角色。
 - `domain/databases/repo.DocumentDatabase`：动态 collection/document/attribute/index/query 的抽象。
 - `domain/storage/repo.FileRepo / BlobStore`：文件元数据与二进制存储。
 - `domain/functions/repo.FunctionRepo / Executor`：函数、部署、执行。
@@ -295,7 +295,7 @@ internal/
 | 队列 | **允许使用 Redis**（fleetwork 已有 Redis，可作为队列/缓存）。 |
 | 文件二进制存储 | **S3 兼容存储**（本地开发可用 MinIO，生产对接 S3/MinIO/兼容对象存储）。 |
 | Functions 执行环境 | **Docker**（通过 Docker SDK 构建/运行容器）。 |
-| Realtime | **纳入 P1**（与 Account/Users/Teams/Databases/Storage/Functions 同阶段实现）。 |
+| Realtime | **纳入 P1**（与 Account/Users/Groups/Databases/Storage/Functions 同阶段实现）。 |
 
 ---
 
@@ -309,7 +309,7 @@ internal/
    - bun 仅用于系统表和连接池；动态层用 `bun.DB` 执行原生 SQL。
 
 2. **REST 接口分层**：
-   - grpc-gateway 负责结构化 CRUD（users/teams/databases/buckets/functions 等）。
+   - grpc-gateway 负责结构化 CRUD（users/groups/databases/buckets/functions 等）。
    - 独立 HTTP handler 负责：文件上传/下载/预览、OAuth2 回调/重定向、Realtime WebSocket。
 
 3. **Redis 复用**：
@@ -338,7 +338,7 @@ internal/
 
 1. **P0 底座实现**
    - 基于 fleetwork 初始化项目结构（Lynx + Wire + config + logging/telemetry）。
-   - 创建系统表 bun 模型与 migrations：projects、users、teams、memberships、buckets、files、functions、deployments、executions、api_keys、webhooks、audit、outbox。
+   - 创建系统表 bun 模型与 migrations：projects、users、groups、memberships、buckets、files、functions、deployments、executions、api_keys、webhooks、audit、outbox。
    - 实现基础认证中间件（JWT / session / API key），支持 proto authz 注解。
    - 搭建 grpc-gateway 与独立 HTTP handler 共存的服务器框架。
 
@@ -352,7 +352,7 @@ internal/
    - 实现 sign-up / sign-in / session / JWT / email verification / password recovery。
 
 4. **后续 P1 模块**
-   - Users、Teams、Databases、Storage、Functions、Project settings、Health。
+   - Users、Groups、Databases、Storage、Functions、Project settings、Health。
 
 5. **Realtime P1**
    - WebSocket 连接、channel 订阅、presence、事件广播。

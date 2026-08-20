@@ -275,7 +275,7 @@ func TestDatabases_ListCollections_Pagination(t *testing.T) {
 	require.Len(t, all, total)
 }
 
-// TestDatabases_CreateDocument_PermissionTemplates (#2a): user:{id}/team:{id}
+// TestDatabases_CreateDocument_PermissionTemplates (#2a): user:{id}/group:{id}
 // 模板在权限校验前替换为调用者真实角色并落库（B1 重写）：
 // 场景 1 — 文档权限含 update:user:alice，alice/持有 user:alice 的调用者可更新权限
 // （文档级优先下模板展开为 update:user:alice，update 检查命中）；
@@ -319,15 +319,15 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	require.Equal(t, "user:alice", created.Permissions[1].Role)
 
 	// 场景 1：文档权限含 update:user:alice → 持有 user:alice 的调用者可更新权限
-	// （模板 team:{id} 展开为 team:t1）。
-	teamPrincipal := databases.Principal{Roles: []string{"users", "user:alice", "team:t1"}}
-	upPerms, err := databases.ParsePermissionStrings([]string{"update:team:{id}"})
+	// （模板 group:{id} 展开为 group:t1）。
+	groupPrincipal := databases.Principal{Roles: []string{"users", "user:alice", "group:t1"}}
+	upPerms, err := databases.ParsePermissionStrings([]string{"update:group:{id}"})
 	require.NoError(t, err)
-	updated, err := uc.UpdateDocument(ctx, projectID, "app", "docs", created.ID, nil, upPerms, nil, teamPrincipal, &created.Version)
+	updated, err := uc.UpdateDocument(ctx, projectID, "app", "docs", created.ID, nil, upPerms, nil, groupPrincipal, &created.Version)
 	require.NoError(t, err)
 	require.Len(t, updated.Permissions, 1)
 	require.Equal(t, "update", updated.Permissions[0].Type)
-	require.Equal(t, "team:t1", updated.Permissions[0].Role)
+	require.Equal(t, "group:t1", updated.Permissions[0].Role)
 
 	// 场景 2：文档权限仅含 read（无 update）→ 更新权限被拒（B1 文档级优先，
 	// 集合级 update:user:alice 不再兜底；grantable 校验使用 alice 持有的角色）。

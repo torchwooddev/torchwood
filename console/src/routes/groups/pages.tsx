@@ -4,20 +4,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, Settings2, UserPlus } from "lucide-react";
 import {
-  listTeams,
-  getTeam,
-  createTeam,
-  deleteTeam,
+  listGroups,
+  getGroup,
+  createGroup,
+  deleteGroup,
   listMemberships,
   createMembership,
   updateMembership,
   updateMembershipStatus,
   deleteMembership,
-  getTeamPrefs,
-  updateTeamPrefs,
-  type Team,
+  getGroupPrefs,
+  updateGroupPrefs,
+  type Group,
   type Membership,
-} from "@/api/teams";
+} from "@/api/groups";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminRole, canWrite } from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
@@ -65,7 +65,7 @@ function formatTime(value?: string) {
   return new Date(value).toLocaleString();
 }
 
-const teamColumns: ColumnDef<Team>[] = [
+const groupColumns: ColumnDef<Group>[] = [
   {
     key: "id",
     header: "ID",
@@ -81,44 +81,44 @@ const teamColumns: ColumnDef<Team>[] = [
   },
 ];
 
-export function TeamsListPage() {
+export function GroupsListPage() {
   const { projectId } = useAuth();
   const { role } = useAdminRole();
   const queryClient = useQueryClient();
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const writeable = canWrite(role);
 
-  const { data: teams = [], isLoading } = useQuery({
-    queryKey: ["teams", projectId],
-    queryFn: listTeams,
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ["groups", projectId],
+    queryFn: listGroups,
     enabled: !!projectId,
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => deleteTeam(id),
+    mutationFn: (id: string) => deleteGroup(id),
     onSuccess: () => {
-      toast.success("团队已删除");
-      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
+      toast.success("用户组已删除");
+      queryClient.invalidateQueries({ queryKey: ["groups", projectId] });
     },
   });
 
-  const getSearchText = useCallback((t: Team) => `${t.id} ${t.name}`, []);
+  const getSearchText = useCallback((t: Group) => `${t.id} ${t.name}`, []);
 
-  const handleBulkDelete = async (selected: Team[], clear: () => void) => {
+  const handleBulkDelete = async (selected: Group[], clear: () => void) => {
     setBulkDeleting(true);
     try {
       // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
       const results = await Promise.allSettled(
-        selected.map((t) => deleteTeam(t.id, { __skipToast: true }))
+        selected.map((t) => deleteGroup(t.id, { __skipToast: true }))
       );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
       if (failed > 0) {
         toast.error(`删除完成：成功 ${succeeded} 个，失败 ${failed} 个`);
       } else {
-        toast.success(`已删除 ${selected.length} 个团队`);
+        toast.success(`已删除 ${selected.length} 个用户组`);
       }
-      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["groups", projectId] });
       clear();
     } finally {
       setBulkDeleting(false);
@@ -127,20 +127,20 @@ export function TeamsListPage() {
 
   return (
     <ResourceListPage
-      title="Teams"
-      description="管理项目团队与成员邀请"
-      searchPlaceholder="搜索团队名称或 ID..."
+      title="Groups"
+      description="管理项目用户组与成员邀请"
+      searchPlaceholder="搜索用户组名称或 ID..."
       isLoading={isLoading}
-      items={teams}
-      columns={teamColumns}
+      items={groups}
+      columns={groupColumns}
       getSearchText={getSearchText}
-      detailPath={(t) => `/console/teams/${t.id}`}
+      detailPath={(t) => `/console/groups/${t.id}`}
       toolbarActions={
         writeable ? (
           <Button asChild>
-            <Link to="/console/teams/new">
+            <Link to="/console/groups/new">
               <Plus className="h-4 w-4 mr-2" />
-              新建团队
+              新建用户组
             </Link>
           </Button>
         ) : undefined
@@ -163,12 +163,12 @@ export function TeamsListPage() {
             )
           : undefined
       }
-      emptyTitle="暂无团队"
-      emptyDescription="创建团队并邀请成员协作"
+      emptyTitle="暂无用户组"
+      emptyDescription="创建用户组并邀请成员协作"
       emptyAction={
         writeable ? (
           <Button asChild>
-            <Link to="/console/teams/new">新建团队</Link>
+            <Link to="/console/groups/new">新建用户组</Link>
           </Button>
         ) : undefined
       }
@@ -176,7 +176,7 @@ export function TeamsListPage() {
   );
 }
 
-export function TeamNewPage() {
+export function GroupNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { projectId } = useAuth();
@@ -184,18 +184,18 @@ export function TeamNewPage() {
   const [name, setName] = useState("");
 
   const mutation = useMutation({
-    mutationFn: createTeam,
-    onSuccess: (team) => {
-      toast.success("团队创建成功");
-      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
-      navigate(`/console/teams/${team.id}`);
+    mutationFn: createGroup,
+    onSuccess: (group) => {
+      toast.success("用户组创建成功");
+      queryClient.invalidateQueries({ queryKey: ["groups", projectId] });
+      navigate(`/console/groups/${group.id}`);
     },
   });
 
   return (
     <FormPageWrapper
-      title="新建团队"
-      backTo="/console/teams"
+      title="新建用户组"
+      backTo="/console/groups"
       submitLabel="创建"
       onSubmit={(e) => {
         e.preventDefault();
@@ -204,7 +204,7 @@ export function TeamNewPage() {
       loading={mutation.isPending}
       submitDisabled={!canWrite(role)}
     >
-      <FormField id="name" label="团队名称" value={name} onChange={setName} required placeholder="Engineering" />
+      <FormField id="name" label="用户组名称" value={name} onChange={setName} required placeholder="Engineering" />
     </FormPageWrapper>
   );
 }
@@ -234,16 +234,16 @@ function MembershipRoleSelect({
   );
 }
 
-function TeamPrefsCard({ teamId }: { teamId: string }) {
+function GroupPrefsCard({ groupId }: { groupId: string }) {
   const queryClient = useQueryClient();
   const { role } = useAdminRole();
   const [prefsText, setPrefsText] = useState("{}");
   const writeable = canWrite(role);
 
   const { data: prefs, isLoading } = useQuery({
-    queryKey: ["teams", teamId, "prefs"],
-    queryFn: () => getTeamPrefs(teamId),
-    enabled: !!teamId,
+    queryKey: ["groups", groupId, "prefs"],
+    queryFn: () => getGroupPrefs(groupId),
+    enabled: !!groupId,
   });
 
   useEffect(() => {
@@ -251,11 +251,11 @@ function TeamPrefsCard({ teamId }: { teamId: string }) {
   }, [prefs]);
 
   const save = useMutation({
-    mutationFn: (data: Record<string, unknown>) => updateTeamPrefs(teamId, data),
+    mutationFn: (data: Record<string, unknown>) => updateGroupPrefs(groupId, data),
     onSuccess: (updated) => {
-      toast.success("团队偏好已保存");
+      toast.success("用户组偏好已保存");
       setPrefsText(JSON.stringify(updated));
-      queryClient.invalidateQueries({ queryKey: ["teams", teamId, "prefs"] });
+      queryClient.invalidateQueries({ queryKey: ["groups", groupId, "prefs"] });
     },
   });
 
@@ -279,10 +279,10 @@ function TeamPrefsCard({ teamId }: { teamId: string }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Settings2 className="h-4 w-4" />
-          团队偏好
+          用户组偏好
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          以 JSON 对象整体替换团队偏好（如主题、通知开关等），保存后即时生效。
+          以 JSON 对象整体替换用户组偏好（如主题、通知开关等），保存后即时生效。
         </p>
       </CardHeader>
       <CardContent>
@@ -294,7 +294,7 @@ function TeamPrefsCard({ teamId }: { teamId: string }) {
           }}
         >
           <FormField
-            id="team-prefs-json"
+            id="group-prefs-json"
             label="prefs (JSON)"
             value={prefsText}
             onChange={setPrefsText}
@@ -309,8 +309,8 @@ function TeamPrefsCard({ teamId }: { teamId: string }) {
   );
 }
 
-export function TeamDetailPage() {
-  const { id: teamId } = useParams<{ id: string }>();
+export function GroupDetailPage() {
+  const { id: groupId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { projectId } = useAuth();
@@ -322,36 +322,36 @@ export function TeamDetailPage() {
   const [inviteStatus, setInviteStatus] = useState<string>("pending");
   const writeable = canWrite(role);
 
-  const { data: team, isLoading: teamLoading } = useQuery({
-    queryKey: ["teams", teamId],
-    queryFn: () => getTeam(teamId!),
-    enabled: !!teamId,
+  const { data: group, isLoading: groupLoading } = useQuery({
+    queryKey: ["groups", groupId],
+    queryFn: () => getGroup(groupId!),
+    enabled: !!groupId,
   });
 
   const { data: memberships = [], isLoading: membershipsLoading } = useQuery({
-    queryKey: ["memberships", teamId],
-    queryFn: () => listMemberships(teamId!),
-    enabled: !!teamId,
+    queryKey: ["memberships", groupId],
+    queryFn: () => listMemberships(groupId!),
+    enabled: !!groupId,
   });
 
-  const invalidateTeam = () => {
-    queryClient.invalidateQueries({ queryKey: ["teams", teamId] });
-    queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
-    queryClient.invalidateQueries({ queryKey: ["memberships", teamId] });
+  const invalidateGroup = () => {
+    queryClient.invalidateQueries({ queryKey: ["groups", groupId] });
+    queryClient.invalidateQueries({ queryKey: ["groups", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["memberships", groupId] });
   };
 
-  const removeTeam = useMutation({
-    mutationFn: (id: string) => deleteTeam(id),
+  const removeGroup = useMutation({
+    mutationFn: (id: string) => deleteGroup(id),
     onSuccess: () => {
-      toast.success("团队已删除");
-      queryClient.invalidateQueries({ queryKey: ["teams", projectId] });
-      navigate("/console/teams");
+      toast.success("用户组已删除");
+      queryClient.invalidateQueries({ queryKey: ["groups", projectId] });
+      navigate("/console/groups");
     },
   });
 
   const invite = useMutation({
     mutationFn: () =>
-      createMembership(teamId!, {
+      createMembership(groupId!, {
         email: inviteEmail,
         name: inviteName,
         roles: [inviteRole],
@@ -363,33 +363,33 @@ export function TeamDetailPage() {
       setInviteName("");
       setInviteRole("member");
       setInviteStatus("pending");
-      invalidateTeam();
+      invalidateGroup();
     },
   });
 
   const removeMembership = useMutation({
-    mutationFn: (membershipId: string) => deleteMembership(teamId!, membershipId),
+    mutationFn: (membershipId: string) => deleteMembership(groupId!, membershipId),
     onSuccess: () => {
       toast.success("成员已移除");
-      invalidateTeam();
+      invalidateGroup();
     },
   });
 
   const setStatus = useMutation({
     mutationFn: ({ membershipId, status }: { membershipId: string; status: string }) =>
-      updateMembershipStatus(teamId!, membershipId, status),
+      updateMembershipStatus(groupId!, membershipId, status),
     onSuccess: () => {
       toast.success("成员状态已更新");
-      invalidateTeam();
+      invalidateGroup();
     },
   });
 
   const setRole = useMutation({
     mutationFn: ({ membershipId, roles }: { membershipId: string; roles: string[] }) =>
-      updateMembership(teamId!, membershipId, { roles }),
+      updateMembership(groupId!, membershipId, { roles }),
     onSuccess: () => {
       toast.success("成员角色已更新");
-      invalidateTeam();
+      invalidateGroup();
     },
   });
 
@@ -466,7 +466,7 @@ export function TeamDetailPage() {
     try {
       // 单条失败由页面汇总展示，跳过全局 toast 避免刷屏（R11-P2-8）。
       const results = await Promise.allSettled(
-        selected.map((m) => deleteMembership(teamId!, m.id, { __skipToast: true }))
+        selected.map((m) => deleteMembership(groupId!, m.id, { __skipToast: true }))
       );
       const failed = results.filter((r) => r.status === "rejected").length;
       const succeeded = results.length - failed;
@@ -475,43 +475,43 @@ export function TeamDetailPage() {
       } else {
         toast.success(`已移除 ${selected.length} 个成员`);
       }
-      invalidateTeam();
+      invalidateGroup();
       clear();
     } finally {
       setBulkDeleting(false);
     }
   };
 
-  if (teamLoading) return <DetailSkeleton />;
-  if (!team) return <NotFound backTo="/console/teams" />;
+  if (groupLoading) return <DetailSkeleton />;
+  if (!group) return <NotFound backTo="/console/groups" />;
 
   return (
     <div className="space-y-6">
       <DetailPageWrapper
-        title={team.name}
-        description="团队详情与成员管理"
-        backTo="/console/teams"
+        title={group.name}
+        description="用户组详情与成员管理"
+        backTo="/console/groups"
         actions={
           writeable ? (
             <DeleteButton
-              onConfirm={() => removeTeam.mutate(team.id)}
-              loading={removeTeam.isPending}
+              onConfirm={() => removeGroup.mutate(group.id)}
+              loading={removeGroup.isPending}
             />
           ) : undefined
         }
       >
         <DetailGrid
           items={[
-            { label: "ID", value: team.id, mono: true },
-            { label: "名称", value: team.name },
-            { label: "成员数", value: String(team.total ?? 0) },
-            { label: "创建时间", value: formatTime(team.created_at) },
-            { label: "更新时间", value: formatTime(team.updated_at) },
+            { label: "ID", value: group.id, mono: true },
+            { label: "名称", value: group.name },
+            { label: "成员数", value: String(group.total ?? 0) },
+            { label: "创建时间", value: formatTime(group.created_at) },
+            { label: "更新时间", value: formatTime(group.updated_at) },
           ]}
         />
       </DetailPageWrapper>
 
-      <TeamPrefsCard teamId={team.id} />
+      <GroupPrefsCard groupId={group.id} />
 
       <Card>
         <CardHeader>
@@ -608,7 +608,7 @@ export function TeamDetailPage() {
             : undefined
         }
         emptyTitle="暂无成员"
-        emptyDescription="使用上方表单邀请成员加入团队"
+        emptyDescription="使用上方表单邀请成员加入用户组"
       />
     </div>
   );

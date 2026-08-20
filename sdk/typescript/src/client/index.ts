@@ -14,4 +14,4 @@ export type {
   RealtimeSubscription,
   RealtimeWebSocket,
 } from "./realtime.js";
-export { ClientTeamsService } from "./teams.js";
+export { ClientGroupsService } from "./groups.js";

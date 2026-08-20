@@ -48,7 +48,7 @@ P2 先夯 BaaS 门面（Realtime + 事件 + 事务），Agent 表面后置。P1 
 | 阶段 | 目标 | 时间范围 | 状态 |
 |------|------|----------|------|
 | **P0 底座** | 可运行的工程骨架：动态文档层、Admin Console、基础认证、Storage/Functions 端口 | 已完成 | 完成 |
-| **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Teams、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **完成** |
+| **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Groups、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **完成** |
 | **P2 / v2** | 轻量 Realtime、事件脊柱（outbox）、单库事务；按内测需要补生产底座 | 中期：3-6 个月 | **实施完成（PR1–PR5 已合入），owner 审查中** |
 | **P2.5 / v3 经济系统** | 支付（Stripe/微信/支付宝/iOS IAP）、订阅、统一资产系统（代币/物品/权益）、平台用量计费 | 中期 | **设计已批准，待实施**（`docs/design/v3-payments-economy.md` + 执行计划 + 派发稿） |
 | **P3 生态** | Agent 表面（MCP / Tool Schema / Key 模板）、完整 Messaging、关系/向量、Sites / Proxy / VCS / GraphQL、多区域 | 长期：6-12 个月 | 规划中 |
@@ -109,24 +109,24 @@ Server API 当前支持列表/获取/更新/删除，缺少创建用户、会话
 
 ---
 
-### 2.3 Teams & Memberships
+### 2.3 Groups & Memberships
 
-Sprint 1 已完成成员、邀请、角色与 Client/Console 页面；团队偏好已交付（2026-08-10，含存量集合 reconcile 自愈）。
+Sprint 1 已完成成员、邀请、角色与 Client/Console 页面；用户组偏好已交付（2026-08-10，含存量集合 reconcile 自愈）。
 
 | 任务 | 说明 | 关键端点 | 状态 |
 |------|------|----------|------|
-| 成员 CRUD | 列出、创建、获取、更新、删除成员 | `/v1/server/teams/{id}/memberships` | ✅ 完成 |
+| 成员 CRUD | 列出、创建、获取、更新、删除成员 | `/v1/server/groups/{id}/memberships` | ✅ 完成 |
 | 邀请流程 | 创建邀请 → 被邀请人接受/拒绝 | `POST` + `PATCH .../status` | ✅ 完成 |
-| 角色体系 | owner / admin / member → JWT `team:{id}`、`member:{id}` | `PATCH .../memberships/{id}` | ✅ 完成 |
-| 团队偏好 | `GET/PUT /v1/server/teams/{id}/prefs` | 扩展 `teams` 集合 | ✅ 完成 |
-| Client Teams API | 当前用户创建/加入/退出团队 | `/v1/teams/*` | ✅ 完成 |
-| Console Teams | 团队列表、详情、邀请与成员管理 | `/console/teams` | ✅ 完成 |
+| 角色体系 | owner / admin / member → JWT `group:{id}`、`member:{id}` | `PATCH .../memberships/{id}` | ✅ 完成 |
+| 用户组偏好 | `GET/PUT /v1/server/groups/{id}/prefs` | 扩展 `groups` 集合 | ✅ 完成 |
+| Client Groups API | 当前用户创建/加入/退出用户组 | `/v1/groups/*` | ✅ 完成 |
+| Console Groups | 用户组列表、详情、邀请与成员管理 | `/console/groups` | ✅ 完成 |
 
 **验收标准**：
 
-- 邀请被接受后，被邀请人拥有 `team:{teamID}` read 权限。
-- owner 可删除团队；member 只能退出。
-- 删除团队级联删除 memberships。
+- 邀请被接受后，被邀请人拥有 `group:{groupID}` read 权限。
+- owner 可删除用户组；member 只能退出。
+- 删除用户组级联删除 memberships。
 
 ---
 
@@ -251,10 +251,10 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 | Storage 文件上传 | 在 Storage 页面直接上传文件、展示下载链接 | `console/src/routes/storage/` | ✅ 完成 |
 | Databases 文档编辑器 | collection 下文档列表、新增/编辑/删除 | `console/src/routes/databases/` | ✅ 完成 |
 | Attributes / Indexes 管理 | 在 collection 详情中增删属性与索引（含 Attribute/Index 行内删除） | Databases 子页面 | ✅ 完成 |
-| Teams Memberships | 管理团队邀请与成员 | `console/src/routes/teams/` | ✅ 完成 |
+| Groups Memberships | 管理用户组邀请与成员 | `console/src/routes/groups/` | ✅ 完成 |
 | Functions 管理 | Functions / Deployments / Executions 页面 | 新增 `Functions.tsx` | 待办 |
 | Settings 页面 | 项目基本信息编辑（`PATCH /v1/server/projects/{id}`）、OAuth Providers 配置、SMTP 只读说明 | `console/src/routes/settings/pages.tsx` | ✅ 完成 |
-| 侧边栏菜单分组 | Dashboard 置顶；Develop（API Keys/Databases/Storage）、Auth（Users/Teams）、System（Projects/Admins/Settings）分组 | `console/src/components/Layout.tsx` | ✅ 完成 |
+| 侧边栏菜单分组 | Dashboard 置顶；Develop（API Keys/Databases/Storage）、Auth（Users/Groups）、System（Projects/Admins/Settings）分组 | `console/src/components/Layout.tsx` | ✅ 完成 |
 
 **验收标准**：
 
@@ -296,7 +296,7 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 | 高压 Realtime | 不自研集群；通道与 payload 归 Torchwood，投递可换 `D:/Codes/qiulin/messageloop` |
 | 事务形态 | 单库本地 ACID：staged ops + 一次 `COMMIT`；不上 2PC / XA / Saga |
 | 事务范围 | 同一 `database_id` 下的**用户自建 collection**；禁止跨 database / 跨 project |
-| 系统集合 | `users` / `teams` / `memberships` / `files` 等不进事务，继续走现有 API |
+| 系统集合 | `users` / `groups` / `memberships` / `files` 等不进事务，继续走现有 API |
 | 事件与写路径 | transactional outbox 与事务同一 `COMMIT`；不和 Redis / S3 / Function 做分布式事务 |
 | Bulk API | 保持立即执行、非原子；不与事务混为一谈 |
 | Messaging | 现有 OTP / 验证 / 找回够用；完整 Provider + Topic + Push **不做** |
@@ -480,13 +480,13 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 
 - [x] Client Account 核心会话与 prefs（Refresh / Sessions / UpdateAccount / Prefs）。
 - [x] Client Account 完整能力（密码重置、邮箱验证、OAuth、MFA、Magic URL、JWT、账号日志、匿名登录）。
-- [x] Server Teams / Memberships 管理可用。
+- [x] Server Groups / Memberships 管理可用。
 - [x] Server Users 创建与会话/令牌管理。
 - [x] Databases Documents CRUD、Client API 权限可用。
 - [x] Databases 批量操作、attribute/index 删除。
 - [x] Storage preview、公开 bucket、file token 可用。
 - [x] Functions 可上传代码、构建、同步/异步执行。
-- [x] Admin Console 覆盖 Database 文档编辑、Teams 页面。
+- [x] Admin Console 覆盖 Database 文档编辑、Groups 页面。
 - [x] Admin Console 覆盖系统管理员管理（Admins 页面，owner 权限保护）。
 - [x] Admin Console 覆盖 Functions 页面。
 - [x] Admin Console 覆盖 Settings 页面（项目基本信息编辑、OAuth Providers、Messaging 只读说明）。

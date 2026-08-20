@@ -86,7 +86,7 @@ func TestNormalizeOwnerType_Phase1UserOnly(t *testing.T) {
 	got, err := NormalizeOwnerType("")
 	require.NoError(t, err)
 	require.Equal(t, OwnerTypeUser, got)
-	_, err = NormalizeOwnerType(OwnerTypeTeam)
+	_, err = NormalizeOwnerType(OwnerTypeGroup)
 	require.ErrorIs(t, err, ErrInvalidOwnerType)
 	_, err = NormalizeOwnerType("guild")
 	require.ErrorIs(t, err, ErrInvalidOwnerType)

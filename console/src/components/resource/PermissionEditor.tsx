@@ -48,7 +48,7 @@ export function PermissionEditor({
     <div className="space-y-3">
       <Label>权限规则 (Permissions)</Label>
       <p className="text-sm text-muted-foreground">
-        格式 <code className="text-xs">操作类型:角色</code>，例如 <code className="text-xs">read:any</code>、<code className="text-xs">update:user:&lt;id&gt;</code>、<code className="text-xs">delete:team:&lt;id&gt;</code>
+        格式 <code className="text-xs">操作类型:角色</code>，例如 <code className="text-xs">read:any</code>、<code className="text-xs">update:user:&lt;id&gt;</code>、<code className="text-xs">delete:group:&lt;id&gt;</code>
       </p>
 
       {permissions.length > 0 && (
@@ -92,7 +92,7 @@ export function PermissionEditor({
                 addPermission();
               }
             }}
-            placeholder="any / users / keys / admin / user:<id> / team:<id>"
+            placeholder="any / users / keys / admin / user:<id> / group:<id>"
           />
         </div>
         <Button type="button" size="sm" onClick={addPermission}>

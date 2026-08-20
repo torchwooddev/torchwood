@@ -1,7 +1,7 @@
 # Torchwood P0 人工验收清单
 
 > 基于 `docs/archived/completed-tasks.md` 及近期提交整理。
-> 对应提交：`11af6f8`（P1 Sprint 1：Account 会话、Document CRUD、Teams Memberships、Console Teams）。
+> 对应提交：`11af6f8`（P1 Sprint 1：Account 会话、Document CRUD、Groups Memberships、Console Groups）。
 >
 > **用法**：逐项执行操作，在 `[ ]` 中打 `x` 标记通过；未通过项在「备注」列记录现象与复现步骤。
 
@@ -75,7 +75,7 @@ Console Admin: <注册时填写的 email>（owner）
 | 2.13 | 会话列表 | `GET /v1/account/sessions` | 返回当前用户 session 列表 | [ ] |
 | 2.14 | 删除会话 | `DELETE /v1/account/sessions/{id}` | 指定 session 被删除 | [ ] |
 | 2.15 | Prefs 读写 | `GET/PATCH /v1/account/prefs` | prefs JSON 正确读写 | [ ] |
-| 2.16 | Team JWT roles | 用户接受 team 邀请后重新登录，`/v1/account/me` 或解码 access token | roles 含 `team:{teamId}`、`member:{membershipId}` | [ ] |
+| 2.16 | Group JWT roles | 用户接受 group 邀请后重新登录，`/v1/account/me` 或解码 access token | roles 含 `group:{groupId}`、`member:{membershipId}` | [ ] |
 
 **示例（注册）：**
 
@@ -108,7 +108,7 @@ curl -s -X POST http://localhost:8088/v1/account/refresh \
 | 3.7 | Storage 页 | 创建 Bucket、上传文件（若 UI 支持） | Bucket / File 列表有数据 | [x] |
 | 3.8 | Databases 页 | 创建 Database / Collection | 元数据 catalog 可查看 | [x] |
 | 3.9 | Databases 文档 | 在 Collection 详情中新建/编辑/删除 Document | 文档列表与编辑器正常 | [ ] |
-| 3.10 | Teams 页 | 导航至 Teams → 新建团队 → 邀请成员 | 成员列表显示 pending；无「接受/拒绝」按钮（管理员视角） | [ ] |
+| 3.10 | Groups 页 | 导航至 Groups → 新建用户组 → 邀请成员 | 成员列表显示 pending；无「接受/拒绝」按钮（管理员视角） | [ ] |
 | 3.11 | 登出 / 会话 | 刷新页面或重新打开 | 未登录时跳转登录；已登录保持状态 | [x] |
 
 **Console API（可选 curl 验证）：**
@@ -138,8 +138,8 @@ curl -s -X POST http://localhost:8088/v1/console/auth/sign-in \
 | 4.6 | 列出用户 | `GET /v1/server/users` | 含 2.1 注册的用户 | [x] |
 | 4.7 | 获取用户 | `GET /v1/server/users/{id}` | 返回单个用户（无 password_hash） | [x] |
 | 4.8 | 更新用户 | `PATCH /v1/server/users/{id}`，如 `status` | 更新成功 | [x] |
-| 4.9 | 创建团队 | `POST /v1/server/teams` | 返回 team | [x] |
-| 4.10 | 列出 / 删除团队 | `GET` / `DELETE /v1/server/teams/{id}` | 符合 CRUD 预期 | [x] |
+| 4.9 | 创建用户组 | `POST /v1/server/groups` | 返回 group | [x] |
+| 4.10 | 列出 / 删除用户组 | `GET` / `DELETE /v1/server/groups/{id}` | 符合 CRUD 预期 | [x] |
 | 4.11 | 创建 Bucket | `POST /v1/server/storage/buckets` | 返回 bucket id | [x] |
 | 4.12 | 创建文件（gRPC 小文件） | `POST /v1/server/storage/buckets/{id}/files` | 元数据写入 `files` 集合 | [x] |
 | 4.13 | 列出 / 获取 / 删除文件 | 对应 GET / DELETE | 符合预期 | [x] |
@@ -150,11 +150,11 @@ curl -s -X POST http://localhost:8088/v1/console/auth/sign-in \
 | 4.18 | Document CRUD | `POST/GET/PATCH/DELETE .../documents` | 文档增删改查成功 | [ ] |
 | 4.19 | Document 列表/计数 | `GET .../documents`、`.../documents/count` + queries | 过滤与计数正确 | [ ] |
 | 4.20 | 删除链路 | 按 Database → Collection 逆序删除 | 无残留错误 | [x] |
-| 4.21 | 创建成员邀请 | `POST /v1/server/teams/{id}/memberships`，email + pending | 返回 membership，status=pending | [ ] |
+| 4.21 | 创建成员邀请 | `POST /v1/server/groups/{id}/memberships`，email + pending | 返回 membership，status=pending | [ ] |
 | 4.22 | 成员状态（管理员） | `PATCH .../memberships/{id}/status`，body `{"status":"accepted"}` | 仅当邮箱对应用户已注册时成功 | [ ] |
 | 4.23 | 成员角色 | `PATCH .../memberships/{id}`，body `{"roles":["admin"]}` | roles 更新成功 | [ ] |
-| 4.24 | 删除团队级联 | `DELETE /v1/server/teams/{id}` | team 及 memberships 均被删除 | [ ] |
-| 4.25 | 团队偏好 | `GET` / `PUT /v1/server/teams/{id}/prefs` | 未设置返回 `{}`；PUT 整体替换并返回更新值；无团队角色的 users 主体 PUT 返回 403 | [ ] |
+| 4.24 | 删除用户组级联 | `DELETE /v1/server/groups/{id}` | group 及 memberships 均被删除 | [ ] |
+| 4.25 | 用户组偏好 | `GET` / `PUT /v1/server/groups/{id}/prefs` | 未设置返回 `{}`；PUT 整体替换并返回更新值；无用户组角色的 users 主体 PUT 返回 403 | [ ] |
 
 ---
 
@@ -246,8 +246,8 @@ LIMIT 10;
 | 9.5 | 系统集合标记 | `GET /v1/server/databases/default/collections/users` | `is_system=true`；自定义库同名集合 `is_system=false` | [ ] |
 | 9.6 | 系统集合只读（Server） | 以 databases scope API key 对 `default` 库系统集合执行 UpdateCollection/DeleteCollection/CreateAttribute/DeleteAttribute/CreateIndex/DeleteIndex/CreateCollection | 全部 `PermissionDenied` | [ ] |
 | 9.7 | 系统集合文档写 | 以 API key 对 `default` 库系统集合 Create/Update/Delete/Bulk 文档 | 全部 `PermissionDenied` | [ ] |
-| 9.8 | 系统集合文档读 | 以 keys 主体读 teams/buckets/files；读 users | teams 等放行；users `PermissionDenied`；Console 会话可读 users 且无 `password_hash`/`phone` 等敏感字段 | [ ] |
-| 9.9 | 客户端读放行 | 匿名读 teams/buckets（read:any） | 放行；users/sessions/identities 读/写全拒 | [ ] |
+| 9.8 | 系统集合文档读 | 以 keys 主体读 groups/buckets/files；读 users | groups 等放行；users `PermissionDenied`；Console 会话可读 users 且无 `password_hash`/`phone` 等敏感字段 | [ ] |
+| 9.9 | 客户端读放行 | 匿名读 groups/buckets（read:any） | 放行；users/sessions/identities 读/写全拒 | [ ] |
 
 ---
 
@@ -274,15 +274,15 @@ LIMIT 10;
 
 ---
 
-## 12. Client Teams API（P1）
+## 12. Client Groups API（P1）
 
 | # | 验收项 | 路径 / 方法 | 预期结果 | 通过 |
 |---|--------|-------------|----------|------|
-| 12.1 | 创建团队 | `POST /v1/teams`，body `{"name":"..."}` | 返回 team；创建者为 owner 成员 | [ ] |
-| 12.2 | 邀请成员 | `POST /v1/teams/{id}/memberships`，email | pending membership | [ ] |
-| 12.3 | 被邀请人接受 | 被邀请用户 token 调 `PATCH .../memberships/{id}/status` `accepted` | status=accepted；team total +1 | [ ] |
+| 12.1 | 创建用户组 | `POST /v1/groups`，body `{"name":"..."}` | 返回 group；创建者为 owner 成员 | [ ] |
+| 12.2 | 邀请成员 | `POST /v1/groups/{id}/memberships`，email | pending membership | [ ] |
+| 12.3 | 被邀请人接受 | 被邀请用户 token 调 `PATCH .../memberships/{id}/status` `accepted` | status=accepted；group total +1 | [ ] |
 | 12.4 | 非被邀请人拒绝 | 其他用户调同上接口 | `PermissionDenied` | [ ] |
-| 12.5 | 退出团队 | `DELETE .../memberships/{id}`（成员本人） | 成员移除；total -1 | [ ] |
+| 12.5 | 退出用户组 | `DELETE .../memberships/{id}`（成员本人） | 成员移除；total -1 | [ ] |
 | 12.6 | 邀请未注册用户 | 仅邮箱 pending 邀请（用户尚不存在） | 创建成功；接受前需先注册同邮箱账号 | [ ] |
 
 ---
@@ -339,7 +339,7 @@ LIMIT 10;
 
 ```
 P0：§6.7–§10.3 已由自动化测试覆盖（见附录 C）。
-P1：Document / Teams 有部分集成测试，但仍建议 Console 与 Client API 走查一遍。
+P1：Document / Groups 有部分集成测试，但仍建议 Console 与 Client API 走查一遍。
 ```
 
 ---
@@ -390,8 +390,8 @@ go test ./internal/app/server/... -run TestDatabases_AcceptanceChain -count=1 -v
 go test ./internal/app/server/... -run TestDatabases_DocumentCRUD -count=1 -v
 go test ./internal/app/client/... -run TestDatabases_DocumentCRUD -count=1 -v
 
-# P1 Teams Memberships（§4.21–§4.24、§12）
-go test ./internal/app/server/... -run TestTeams_Memberships -count=1 -v
+# P1 Groups Memberships（§4.21–§4.24、§12）
+go test ./internal/app/server/... -run TestGroups_Memberships -count=1 -v
 
 # Client Account 会话 / Prefs（§2.12–§2.15）
 go test ./internal/app/client/... -run TestAccount_SessionsUpdatePrefs -count=1 -v
@@ -407,5 +407,5 @@ go test ./internal/app/client/... -run TestAccount_SessionsUpdatePrefs -count=1 
 | §9.1–§9.4 | `tests/acceptance/p0_acceptance_test.go` → `TestP0_Section9_*` |
 | §10.1–§10.3 | `internal/infra/server/observability_acceptance_test.go` |
 | §4.18–§4.19、§11 | `internal/app/server/documents_integration_test.go`、`internal/app/client/databases_integration_test.go` |
-| §4.21–§4.24、§12 | `internal/app/server/teams_memberships_integration_test.go` |
+| §4.21–§4.24、§12 | `internal/app/server/groups_memberships_integration_test.go` |
 | §2.12–§2.15 | `internal/app/client/account_sessions_test.go` |

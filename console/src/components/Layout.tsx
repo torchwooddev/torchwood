@@ -23,7 +23,7 @@ const navSections = [
     title: "Auth",
     items: [
       { to: "/console/users", label: "Users", icon: Users },
-      { to: "/console/teams", label: "Teams", icon: UsersRound },
+      { to: "/console/groups", label: "Groups", icon: UsersRound },
     ],
   },
   {

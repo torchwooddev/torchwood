@@ -6,15 +6,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
-	"github.com/torchwooddev/torchwood/internal/domain/teams"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
 
-func TestTeams_Memberships(t *testing.T) {
+func TestGroups_Memberships(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -30,17 +30,17 @@ func TestTeams_Memberships(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	uc := NewTeams(projectRepo, docDB)
+	uc := NewGroups(projectRepo, docDB)
 	ownerID := "owner-user-id"
 	ownerEmail := "owner@torchwood.local"
 	principal := databases.Principal{Roles: []string{"users", "user:" + ownerID}}
-	team, ownerMembership, err := uc.CreateTeamWithOwner(ctx, projectID, "Engineering", ownerID, ownerEmail, principal)
+	group, ownerMembership, err := uc.CreateGroupWithOwner(ctx, projectID, "Engineering", ownerID, ownerEmail, principal)
 	require.NoError(t, err)
-	require.NotEmpty(t, team.ID)
-	require.Equal(t, teams.StatusAccepted, ownerMembership.Data["status"])
-	require.Equal(t, int64(1), teamTotal(t, team))
+	require.NotEmpty(t, group.ID)
+	require.Equal(t, groups.StatusAccepted, ownerMembership.Data["status"])
+	require.Equal(t, int64(1), groupTotal(t, group))
 
-	ownerRoles := databases.Principal{Roles: []string{"users", "user:" + ownerID, "team:" + team.ID}}
+	ownerRoles := databases.Principal{Roles: []string{"users", "user:" + ownerID, "group:" + group.ID}}
 
 	memberUserID := "member-user-id"
 	_, err = docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
@@ -55,13 +55,13 @@ func TestTeams_Memberships(t *testing.T) {
 	require.NoError(t, err)
 
 	invite, err := uc.CreateMembership(ctx, projectID, CreateMembershipCommand{
-		TeamID: team.ID,
-		Email:  "member@torchwood.local",
-		Name:   "Member User",
-		Roles:  []string{teams.RoleMember},
+		GroupID: group.ID,
+		Email:   "member@torchwood.local",
+		Name:    "Member User",
+		Roles:   []string{groups.RoleMember},
 	}, ownerRoles)
 	require.NoError(t, err)
-	require.Equal(t, teams.StatusPending, invite.Data["status"])
+	require.Equal(t, groups.StatusPending, invite.Data["status"])
 	require.Equal(t, memberUserID, invite.Data["user_id"])
 
 	memberRoles := databases.Principal{Roles: []string{"users", "user:" + memberUserID}}
@@ -72,43 +72,43 @@ func TestTeams_Memberships(t *testing.T) {
 		Roles:     memberRoles.Roles,
 	})
 
-	accepted, err := uc.UpdateMembershipStatus(authCtx, projectID, team.ID, invite.ID, teams.StatusAccepted, memberRoles)
+	accepted, err := uc.UpdateMembershipStatus(authCtx, projectID, group.ID, invite.ID, groups.StatusAccepted, memberRoles)
 	require.NoError(t, err)
-	require.Equal(t, teams.StatusAccepted, accepted.Data["status"])
+	require.Equal(t, groups.StatusAccepted, accepted.Data["status"])
 	require.Equal(t, memberUserID, accepted.Data["user_id"])
 
-	teamAfter, err := uc.GetTeam(ctx, projectID, team.ID, ownerRoles)
+	groupAfter, err := uc.GetGroup(ctx, projectID, group.ID, ownerRoles)
 	require.NoError(t, err)
-	require.Equal(t, int64(2), teamTotal(t, teamAfter))
+	require.Equal(t, int64(2), groupTotal(t, groupAfter))
 
-	list, _, _, err := uc.ListMemberships(ctx, projectID, team.ID, databases.Query{}, ownerRoles)
+	list, _, _, err := uc.ListMemberships(ctx, projectID, group.ID, databases.Query{}, ownerRoles)
 	require.NoError(t, err)
 	require.Len(t, list, 2)
 
-	updated, err := uc.UpdateMembership(ctx, projectID, team.ID, accepted.ID, UpdateMembershipCommand{
-		Roles: []string{teams.RoleAdmin},
+	updated, err := uc.UpdateMembership(ctx, projectID, group.ID, accepted.ID, UpdateMembershipCommand{
+		Roles: []string{groups.RoleAdmin},
 	}, ownerRoles)
 	require.NoError(t, err)
-	require.Equal(t, []string{teams.RoleAdmin}, stringSliceField(updated.Data["roles"]))
+	require.Equal(t, []string{groups.RoleAdmin}, stringSliceField(updated.Data["roles"]))
 
-	teamRoles, err := uc.ListAcceptedTeamRoles(ctx, projectID, memberUserID)
+	groupRoles, err := uc.ListAcceptedGroupRoles(ctx, projectID, memberUserID)
 	require.NoError(t, err)
-	require.Contains(t, teamRoles, "team:"+team.ID)
-	require.Contains(t, teamRoles, "member:"+accepted.ID)
+	require.Contains(t, groupRoles, "group:"+group.ID)
+	require.Contains(t, groupRoles, "member:"+accepted.ID)
 
-	require.NoError(t, uc.DeleteMembership(authCtx, projectID, team.ID, accepted.ID, memberRoles))
+	require.NoError(t, uc.DeleteMembership(authCtx, projectID, group.ID, accepted.ID, memberRoles))
 
-	teamAfterLeave, err := uc.GetTeam(ctx, projectID, team.ID, ownerRoles)
+	groupAfterLeave, err := uc.GetGroup(ctx, projectID, group.ID, ownerRoles)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), teamTotal(t, teamAfterLeave))
+	require.Equal(t, int64(1), groupTotal(t, groupAfterLeave))
 
-	require.NoError(t, uc.DeleteTeam(ctx, projectID, team.ID, ownerRoles))
-	left, err := uc.GetTeam(ctx, projectID, team.ID, ownerRoles)
+	require.NoError(t, uc.DeleteGroup(ctx, projectID, group.ID, ownerRoles))
+	left, err := uc.GetGroup(ctx, projectID, group.ID, ownerRoles)
 	require.NoError(t, err)
 	require.Nil(t, left)
 }
 
-func teamTotal(t *testing.T, doc *databases.Document) int64 {
+func groupTotal(t *testing.T, doc *databases.Document) int64 {
 	t.Helper()
 	switch v := doc.Data["total"].(type) {
 	case float64:

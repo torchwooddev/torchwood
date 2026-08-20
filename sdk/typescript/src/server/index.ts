@@ -1,7 +1,7 @@
 export { HealthService } from "./health.js";
 export { ProjectsService } from "./projects.js";
 export { UsersService } from "./users.js";
-export { ServerTeamsService } from "./teams.js";
+export { ServerGroupsService } from "./groups.js";
 export { ServerDatabasesService } from "./databases.js";
 export { APIKeysService } from "./apikeys.js";
 export { OAuthProvidersService } from "./oauthProviders.js";

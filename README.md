@@ -13,7 +13,7 @@ Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (Baa
 - **File storage**: S3/MinIO-compatible object storage with upload/download/view, preview thumbnails, public buckets, HMAC file tokens, and chunked upload with resume.
 - **Function execution**: Docker-based executor (build/run with security baseline) with sync/async execution, an async worker (`cmd/worker`), and execution history with retention policy.
 - **Admin Console**: React + Vite + TanStack Query + shadcn/ui admin UI, embedded in the Go binary at `/console/`.
-- **Server API**: CRUD for Projects, API Keys, Users, Teams, Storage, Databases, Collections, Attributes, Indexes, Functions, and OAuth Providers; health & version endpoints.
+- **Server API**: CRUD for Projects, API Keys, Users, Groups, Storage, Databases, Collections, Attributes, Indexes, Functions, and OAuth Providers; health & version endpoints.
 - **Observability**: dependency health checks, version endpoint, structured slog logging, slow query logging, and Prometheus metrics.
 
 ## Tech Stack
@@ -175,12 +175,12 @@ task build             # build server, worker and CLI binaries (includes console
 ├── genproto/              # generated protobuf code
 ├── internal/
 │   ├── api/               # transport layer: gRPC handlers + custom HTTP handlers
-│   │   ├── clientgrpc/    # Client API (Account / Databases / Teams)
+│   │   ├── clientgrpc/    # Client API (Account / Databases / Groups)
 │   │   ├── consolegrpc/   # Console API (ConsoleAuth / Admins)
 │   │   ├── servergrpc/    # Server API (Projects / APIKeys / Users / Databases / ...)
 │   │   └── serverhttp/    # custom HTTP: file multipart uploads, OAuth callbacks, functions
 │   ├── app/               # use cases (client / console / functions / server / shared / storage)
-│   ├── domain/            # domain models and ports (audit / auth / databases / functions / idgen / messaging / projects / shared / storage / teams / users)
+│   ├── domain/            # domain models and ports (audit / auth / databases / functions / idgen / messaging / projects / shared / storage / groups / users)
 │   ├── infra/             # adapters (auth / bun / clients / documentdb / functions / health / idgen / messaging / queue / server / storage)
 │   ├── pkg/               # in-process shared packages (buildinfo / config / contexts / database)
 │   └── testutil/          # integration test helpers

@@ -10,7 +10,7 @@ import { ClientAssetsService } from "../client/assets.js";
 import { ClientDatabasesService } from "../client/databases.js";
 import { ClientPaymentsService } from "../client/payments.js";
 import { ClientSubscriptionsService } from "../client/subscriptions.js";
-import { ClientTeamsService } from "../client/teams.js";
+import { ClientGroupsService } from "../client/groups.js";
 import { HttpTransport } from "../http.js";
 import {
   APIKeysService,
@@ -23,7 +23,7 @@ import {
   ServerDatabasesService,
   ServerPaymentsService,
   ServerSubscriptionsService,
-  ServerTeamsService,
+  ServerGroupsService,
   StorageService,
   UsersService,
 } from "../server/index.js";
@@ -44,7 +44,7 @@ const SDK_SERVICES: Record<string, ClassLike> = {
   DatabasesService: ServerDatabasesService,
   FunctionsService: FunctionsService,
   StorageService: StorageService,
-  TeamsService: ServerTeamsService,
+  GroupsService: ServerGroupsService,
   UsersService: UsersService,
   APIKeysService: APIKeysService,
   OAuthProvidersService: OAuthProvidersService,
@@ -57,7 +57,7 @@ const SDK_SERVICES: Record<string, ClassLike> = {
   // Client API（swagger 服务名与 Server API 重名，加 client. 前缀区分）
   "client.AccountService": AccountService,
   "client.DatabasesService": ClientDatabasesService,
-  "client.TeamsService": ClientTeamsService,
+  "client.GroupsService": ClientGroupsService,
   "client.PaymentsService": ClientPaymentsService,
   "client.AssetsService": ClientAssetsService,
   "client.SubscriptionsService": ClientSubscriptionsService,
@@ -129,13 +129,13 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     CreateFileToken: "createFileToken",
     GetStorageUsage: "getStorageUsage",
   },
-  TeamsService: {
-    CreateTeam: "create",
-    ListTeams: "list",
-    GetTeam: "get",
-    DeleteTeam: "delete",
-    GetTeamPrefs: "getPrefs",
-    UpdateTeamPrefs: "updatePrefs",
+  GroupsService: {
+    CreateGroup: "create",
+    ListGroups: "list",
+    GetGroup: "get",
+    DeleteGroup: "delete",
+    GetGroupPrefs: "getPrefs",
+    UpdateGroupPrefs: "updatePrefs",
     CreateMembership: "createMembership",
     ListMemberships: "listMemberships",
     GetMembership: "getMembership",
@@ -213,7 +213,7 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     UpdateMagicURLSession: "updateMagicURLSession",
     ListLogs: "listLogs",
   },
-  // Client API（swagger 文件内服务名为 DatabasesService / TeamsService，
+  // Client API（swagger 文件内服务名为 DatabasesService / GroupsService，
   // 与 Server API 重名，SDK 类为 Client* 前缀，见 loadServiceFiles 重映射）。
   "client.DatabasesService": {
     CreateDocument: "createDocument",
@@ -232,11 +232,11 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     CommitTransaction: "commitTransaction",
     RollbackTransaction: "rollbackTransaction",
   },
-  "client.TeamsService": {
-    CreateTeam: "createTeam",
-    ListTeams: "listTeams",
-    GetTeam: "getTeam",
-    DeleteTeam: "deleteTeam",
+  "client.GroupsService": {
+    CreateGroup: "createGroup",
+    ListGroups: "listGroups",
+    GetGroup: "getGroup",
+    DeleteGroup: "deleteGroup",
     CreateMembership: "createMembership",
     ListMemberships: "listMemberships",
     UpdateMembershipStatus: "updateMembershipStatus",
@@ -428,7 +428,7 @@ const FACADE_SERVICES: Record<string, string> = {
   DatabasesService: "databases",
   FunctionsService: "functions",
   StorageService: "storage",
-  TeamsService: "teams",
+  GroupsService: "groups",
   UsersService: "users",
   APIKeysService: "apiKeys",
   OAuthProvidersService: "oauthProviders",
@@ -532,7 +532,7 @@ it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）
       db: new ServerDatabasesService(h),
       storage: new StorageService(h),
       functions: new FunctionsService(h),
-      teams: new ServerTeamsService(h),
+      groups: new ServerGroupsService(h),
       projects: new ProjectsService(h),
       apiKeys: new APIKeysService(h),
       oauth: new OAuthProvidersService(h),
@@ -578,9 +578,9 @@ it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）
       { side: "server", operationId: "FunctionsService_DeleteFunction", invoke: (h) => server(h).functions.delete("fn1") },
       { side: "server", operationId: "FunctionsService_SetVariables", invoke: (h) => server(h).functions.setVariables("fn1", [{ key: "K", value: "V" }]) },
       { side: "server", operationId: "FunctionsService_GetVariables", invoke: (h) => server(h).functions.getVariables("fn1") },
-      { side: "server", operationId: "TeamsService_CreateTeam", invoke: (h) => server(h).teams.create({ name: "T", permissions: ["read"] }) },
-      { side: "server", operationId: "TeamsService_DeleteTeam", invoke: (h) => server(h).teams.delete("t1") },
-      { side: "server", operationId: "TeamsService_UpdateTeamPrefs", invoke: (h) => server(h).teams.updatePrefs("t1", { locale: "zh" }) },
+      { side: "server", operationId: "GroupsService_CreateGroup", invoke: (h) => server(h).groups.create({ name: "T", permissions: ["read"] }) },
+      { side: "server", operationId: "GroupsService_DeleteGroup", invoke: (h) => server(h).groups.delete("t1") },
+      { side: "server", operationId: "GroupsService_UpdateGroupPrefs", invoke: (h) => server(h).groups.updatePrefs("t1", { locale: "zh" }) },
       { side: "server", operationId: "ProjectsService_CreateProject", invoke: (h) => server(h).projects.create({ id: "p", name: "P", description: "d" }) },
       { side: "server", operationId: "ProjectsService_UpdateProject", invoke: (h) => server(h).projects.update("p1", { name: "P2" }) },
       { side: "server", operationId: "APIKeysService_CreateAPIKey", invoke: (h) => server(h).apiKeys.create({ name: "k", scopes: ["users"] }) },

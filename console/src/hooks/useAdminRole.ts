@@ -5,7 +5,7 @@ export type AdminRole = "owner" | "admin" | "member" | "viewer";
 
 // 角色判定辅助（与后端 console admins 角色语义对齐）：
 // - owner/admin：平台管理员，可执行全部操作（含项目级/DDL/API Key/环境变量等敏感写操作）。
-// - member：可写业务资源（用户创建/编辑、团队、存储、函数部署与执行、文档 CRUD），
+// - member：可写业务资源（用户创建/编辑、用户组、存储、函数部署与执行、文档 CRUD），
 //   不可做平台级写操作（projects/settings/api-keys/databases DDL/functions 变量）。
 // - viewer：只读。
 export function isPlatformAdmin(role: string | undefined): boolean {

@@ -14,7 +14,7 @@ const StorageServiceGetFile = "/torchwood.server.v1.StorageService/GetFile"
 
 // apiKeyScopeRule 是单个 gRPC 方法对应的 scope 资源名与读写方向（B2）。
 type apiKeyScopeRule struct {
-	resource string // scope 资源名（databases/users/teams/storage/projects/oauthproviders/apikeys/functions）
+	resource string // scope 资源名（databases/users/groups/storage/projects/oauthproviders/apikeys/functions）
 	op       string // "read" 或 "write"
 }
 
@@ -65,19 +65,19 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.UsersService/ListUserSessions":   {"users", "read"},
 	"/torchwood.server.v1.UsersService/DeleteUserSession":  {"users", "write"},
 	"/torchwood.server.v1.UsersService/CreateUserToken":    {"users", "write"},
-	// TeamsService
-	"/torchwood.server.v1.TeamsService/CreateTeam":             {"teams", "write"},
-	"/torchwood.server.v1.TeamsService/ListTeams":              {"teams", "read"},
-	"/torchwood.server.v1.TeamsService/GetTeam":                {"teams", "read"},
-	"/torchwood.server.v1.TeamsService/DeleteTeam":             {"teams", "write"},
-	"/torchwood.server.v1.TeamsService/CreateMembership":       {"teams", "write"},
-	"/torchwood.server.v1.TeamsService/ListMemberships":        {"teams", "read"},
-	"/torchwood.server.v1.TeamsService/GetMembership":          {"teams", "read"},
-	"/torchwood.server.v1.TeamsService/UpdateMembership":       {"teams", "write"},
-	"/torchwood.server.v1.TeamsService/UpdateMembershipStatus": {"teams", "write"},
-	"/torchwood.server.v1.TeamsService/DeleteMembership":       {"teams", "write"},
-	"/torchwood.server.v1.TeamsService/GetTeamPrefs":           {"teams", "read"},
-	"/torchwood.server.v1.TeamsService/UpdateTeamPrefs":        {"teams", "write"},
+	// GroupsService
+	"/torchwood.server.v1.GroupsService/CreateGroup":            {"groups", "write"},
+	"/torchwood.server.v1.GroupsService/ListGroups":             {"groups", "read"},
+	"/torchwood.server.v1.GroupsService/GetGroup":               {"groups", "read"},
+	"/torchwood.server.v1.GroupsService/DeleteGroup":            {"groups", "write"},
+	"/torchwood.server.v1.GroupsService/CreateMembership":       {"groups", "write"},
+	"/torchwood.server.v1.GroupsService/ListMemberships":        {"groups", "read"},
+	"/torchwood.server.v1.GroupsService/GetMembership":          {"groups", "read"},
+	"/torchwood.server.v1.GroupsService/UpdateMembership":       {"groups", "write"},
+	"/torchwood.server.v1.GroupsService/UpdateMembershipStatus": {"groups", "write"},
+	"/torchwood.server.v1.GroupsService/DeleteMembership":       {"groups", "write"},
+	"/torchwood.server.v1.GroupsService/GetGroupPrefs":          {"groups", "read"},
+	"/torchwood.server.v1.GroupsService/UpdateGroupPrefs":       {"groups", "write"},
 	// StorageService
 	"/torchwood.server.v1.StorageService/CreateBucket":    {"storage", "write"},
 	"/torchwood.server.v1.StorageService/UpdateBucket":    {"storage", "write"},
@@ -120,10 +120,10 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.AssetsService/Consume":        {"economy", "write"},
 	"/torchwood.server.v1.AssetsService/Transfer":       {"economy", "write"},
 	"/torchwood.server.v1.AssetsService/Mutate":         {"economy", "write"},
-	"/torchwood.server.v1.AssetsService/Expire":          {"economy", "write"},
-	"/torchwood.server.v1.AssetsService/Reconcile":       {"economy", "write"},
-	"/torchwood.server.v1.AssetsService/ListUserAssets":  {"economy", "read"},
-	"/torchwood.server.v1.AssetsService/ListUserLedger":  {"economy", "read"},
+	"/torchwood.server.v1.AssetsService/Expire":         {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/Reconcile":      {"economy", "write"},
+	"/torchwood.server.v1.AssetsService/ListUserAssets": {"economy", "read"},
+	"/torchwood.server.v1.AssetsService/ListUserLedger": {"economy", "read"},
 	// SubscriptionsService（v3 设计 §6：读 subscriptions.read，写 subscriptions.write）
 	"/torchwood.server.v1.SubscriptionsService/CreatePlan":         {"subscriptions", "write"},
 	"/torchwood.server.v1.SubscriptionsService/ListPlans":          {"subscriptions", "read"},
@@ -217,7 +217,7 @@ func IsAPIKeysServiceMethod(fullMethod string) bool {
 // APIKeyScopeRule 是单个 gRPC 方法对应的 scope 资源名与读写方向（B2），
 // 导出供启动期一致性断言与工具使用。
 type APIKeyScopeRule struct {
-	Resource string // scope 资源名（databases/users/teams/storage/projects/oauthproviders/apikeys/functions）
+	Resource string // scope 资源名（databases/users/groups/storage/projects/oauthproviders/apikeys/functions）
 	Op       string // "read" 或 "write"
 }
 

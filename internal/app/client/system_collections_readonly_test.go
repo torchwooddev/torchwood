@@ -17,7 +17,7 @@ import (
 )
 
 // TestClientDatabases_SystemCollectionReadPolicy 覆盖客户端读路径：
-// teams/buckets 匿名（read:any）放行；users/sessions/identities 全拒。
+// groups/buckets 匿名（read:any）放行；users/sessions/identities 全拒。
 func TestClientDatabases_SystemCollectionReadPolicy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -36,8 +36,8 @@ func TestClientDatabases_SystemCollectionReadPolicy(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
 
-	// teams/buckets 经 SystemPrincipal 造数，集合级 read:any 对匿名访客放行。
-	for _, coll := range []string{"teams", "buckets"} {
+	// groups/buckets 经 SystemPrincipal 造数，集合级 read:any 对匿名访客放行。
+	for _, coll := range []string{"groups", "buckets"} {
 		_, err := docDB.CreateDocument(ctx, projectID, "default", coll, databases.Document{
 			ID:   coll + "-1",
 			Data: map[string]any{"name": coll + " one"},
@@ -46,7 +46,7 @@ func TestClientDatabases_SystemCollectionReadPolicy(t *testing.T) {
 	}
 
 	clientUC := NewDatabases(projectRepo, docDB)
-	for _, coll := range []string{"teams", "buckets"} {
+	for _, coll := range []string{"groups", "buckets"} {
 		list, total, _, err := clientUC.ListDocuments(ctx, projectID, "default", coll, databases.Query{})
 		require.NoError(t, err, "anonymous list %s should be allowed", coll)
 		require.Equal(t, int64(1), total)
@@ -146,7 +146,7 @@ func TestClientDatabases_SystemCollectionWriteDenied(t *testing.T) {
 	clientUC := NewDatabases(projectRepo, docDB)
 
 	// 写路径：全部系统集合拒绝。
-	for _, coll := range []string{"users", "sessions", "identities", "teams", "memberships", "buckets", "files"} {
+	for _, coll := range []string{"users", "sessions", "identities", "groups", "memberships", "buckets", "files"} {
 		_, err := clientUC.CreateDocument(userCtx, "default", coll, "", map[string]any{"name": "x"}, nil)
 		require.Equal(t, codes.PermissionDenied, status.Code(err), "create into %s should be denied", coll)
 

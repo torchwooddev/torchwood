@@ -22,7 +22,7 @@ type Index struct {
 
 type Permission struct {
 	Type string // read, create, update, delete
-	Role string // any, users, user:{id}, keys, admin, team:{id}, ...
+	Role string // any, users, user:{id}, keys, admin, group:{id}, ...
 }
 
 type Document struct {

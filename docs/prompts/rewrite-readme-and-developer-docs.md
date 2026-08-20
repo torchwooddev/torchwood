@@ -25,7 +25,7 @@
   - 用户认证：实际支持 Email/Phone OTP、OAuth2（Google/GitHub/WeChat）、匿名会话、Magic URL、一次性 JWT、TOTP MFA、邮箱变更两阶段确认（`ConfirmEmailChange`，public RPC，改邮箱先写 `pending_email` 再邮件确认）。证据：`proto/client/v1/account.proto`、`internal/app/client/account.go`。
   - 文件存储：实际还有预览缩略图、公开 bucket、HMAC File Token、分片上传/断点续传。证据：`proto/server/v1/storage.proto`、`docs/developer/07-storage.md`。
   - 函数执行：实际还有执行历史（Executions）、保留策略、同步/异步执行。证据：`proto/server/v1/functions.proto`、`internal/app/functions/executions.go`。
-  - Server API：实际还覆盖 Teams、Functions、OAuth Providers、Health/Version。证据：`proto/server/v1/*.proto`。
+  - Server API：实际还覆盖 Groups、Functions、OAuth Providers、Health/Version。证据：`proto/server/v1/*.proto`。
 - **首次引导（bootstrap）必须配置 `security.setup_token`**：旧文档（README 两个版本、02-quickstart、13-operations）均未提及；`Setup.SignUp` 在 token 为空时直接拒绝。证据：`internal/app/console/setup.go:122-124`、`.env.example`、`internal/pkg/config/config.proto`。Quick Start、bootstrap 说明、生产必配项表都要补上 `TORCHWOOD_SECURITY_SETUP_TOKEN`。
 - **CLI 登记流程描述已过时**：02-quickstart 与 09-api-guide 引用 `cmd/client/registry.go` / `registry_test.go`，并称"新增 Server API 方法需同步登记"——这两个文件不存在。现状：CLI 通过 `sdk/go/server` 的 `InvokeJSON` 动态分发，`cmd/client/import_guard_test.go` 禁止 CLI 直接 import genproto/grpc，**新增 RPC 无需在 CLI 登记**。证据：`cmd/client/cmd/rpc.go`、`cmd/client/import_guard_test.go`、`AGENTS.md`。
 - **03-configuration.md**：
@@ -38,7 +38,7 @@
 
 - **README.md / 01-overview.md / 02-quickstart.md**：Go 版本写 1.25/1.26，实际 `go.mod` 要求 **Go 1.26.5**（`go.mod:3`）。
 - **README.md**：`console-install`/`console-dev` 注释写的是 npm，实际用 **pnpm**（`console/package.json` 的 `packageManager` 与 Taskfile）；`task build` 实际编译 server + worker + client 三个产物（`bin/torchwood` 即 CLI），不只 server（`Taskfile.yml` build 任务）。
-- **目录树遗漏**（README 两个版本、01-overview.md）：`cmd/client`、`sdk/go`、`pkg/secretbox`、`internal/app/shared`、`internal/domain/{audit,auth,idgen,messaging,teams,users}`、`internal/infra/{health,idgen,messaging,queue}`、`internal/pkg/{buildinfo,contexts,database}`。01-overview 还把 `cmd/client` 文件组成写成 `conn.go/registry.go`，实际入口是 `main.go` + `cmd/` 子包（`root.go`、`output.go`、`helpers.go`、`rpc.go`）。
+- **目录树遗漏**（README 两个版本、01-overview.md）：`cmd/client`、`sdk/go`、`pkg/secretbox`、`internal/app/shared`、`internal/domain/{audit,auth,idgen,messaging,groups,users}`、`internal/infra/{health,idgen,messaging,queue}`、`internal/pkg/{buildinfo,contexts,database}`。01-overview 还把 `cmd/client` 文件组成写成 `conn.go/registry.go`，实际入口是 `main.go` + `cmd/` 子包（`root.go`、`output.go`、`helpers.go`、`rpc.go`）。
 - **SDK 章节遗漏 Go SDK**（README 两个版本）：仓库同时有 `sdk/typescript` 与 `sdk/go` 两个官方 SDK（`sdk/README.md`、`sdk/go/go.mod`）。
 - **08-functions.md**：`CreateExecution` 的 `data` 上限是 **32 KB**（`maxExecutionDataBytes = 32 << 10`），不是 64 KB；"已知边界"已过时——worker 对瞬时失败会重抛回队，最多 `maxProcessAttempts = 3` 次，重试计数持久化在队列 payload（`cmd/worker/worker.go`）。
 - **09-api-guide.md**：错误映射表中 `ResourceExhausted` 实际映射为 `ERROR_CODE_QUOTA_EXCEEDED` + HTTP 429，不是 INTERNAL_ERROR（`internal/infra/server/errors.go:40-41`）。

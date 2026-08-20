@@ -1,4 +1,4 @@
-# 实施 Prompt C：Torchwood CLI 资源命令补全（databases/teams/storage/functions/oauth-providers）
+# 实施 Prompt C：Torchwood CLI 资源命令补全（databases/groups/storage/functions/oauth-providers）
 
 > 将本文件整体作为任务说明分派给实施 agent。仓库路径：`D:/Codes/qiulin/torchwood`
 > 完整设计文档：`docs/implementation-bootstrap-and-cli.md` §4.4、§6
@@ -15,7 +15,7 @@
 | 服务 | 方法数 | CLI 命令 |
 |------|--------|----------|
 | `DatabasesService` | 21 | `torchwood databases ...`、`databases collections ...`、`databases attributes/indexes ...`、`databases documents ...`（按 proto 语义分组，层级过深时允许扁平化并在 help 中注明） |
-| `TeamsService` | 12 | `torchwood teams ...`、`teams memberships ...` |
+| `GroupsService` | 12 | `torchwood groups ...`、`groups memberships ...` |
 | `StorageService` | 12 | `torchwood storage buckets ...`、`storage files list/get/update/delete`、`storage usage`；**不做**文件上传/下载（独立 HTTP handler，非 gRPC）与分片上传会话 |
 | `FunctionsService` | 16 | `torchwood functions ...`、`functions deployments list/get/delete`、`functions variables ...`、`functions executions list/get/create`；**不做** deployment 上传（如上传走 gRPC 纯消息则可做，以 proto 为准） |
 | `OAuthProvidersService` | 3 | `torchwood oauth-providers list/get/update` |
@@ -32,7 +32,7 @@
 ## 实施步骤
 
 1. 通读 `cmd/client/` 现有代码与 `proto/server/v1` 中上述 5 个 proto 文件。
-2. 按资源一个文件（`cmd_databases.go`、`cmd_teams.go`、`cmd_storage.go`、`cmd_functions.go`、`cmd_oauth.go`）实现子命令，接入 root 命令树。
+2. 按资源一个文件（`cmd_databases.go`、`cmd_groups.go`、`cmd_storage.go`、`cmd_functions.go`、`cmd_oauth.go`）实现子命令，接入 root 命令树。
 3. 为每个资源的「flag → request message」构造函数补 table-driven 单测；覆盖至少一条成功路径与一条参数校验失败路径。
 4. 更新 `--help` 与 `docs/developer/` 中 CLI 用法小节（补齐命令树示例）。
 5. `task build && task test` 通过。

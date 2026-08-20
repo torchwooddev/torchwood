@@ -54,56 +54,56 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   }
 };
 
-service TeamsService {
+service GroupsService {
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_AUTHENTICATED };
 
-  rpc CreateTeam(CreateTeamRequest) returns (Team) {
-    option (google.api.http) = { post: "/v1/teams", body: "*" };
+  rpc CreateGroup(CreateGroupRequest) returns (Group) {
+    option (google.api.http) = { post: "/v1/groups", body: "*" };
   }
 
-  rpc ListTeams(shared.v1.ListRequest) returns (ListTeamsResponse) {
-    option (google.api.http) = { get: "/v1/teams" };
+  rpc ListGroups(shared.v1.ListRequest) returns (ListGroupsResponse) {
+    option (google.api.http) = { get: "/v1/groups" };
   }
 
-  rpc GetTeam(GetTeamRequest) returns (Team) {
-    option (google.api.http) = { get: "/v1/teams/{id}" };
+  rpc GetGroup(GetGroupRequest) returns (Group) {
+    option (google.api.http) = { get: "/v1/groups/{id}" };
   }
 
-  rpc DeleteTeam(GetTeamRequest) returns (shared.v1.Empty) {
-    option (google.api.http) = { delete: "/v1/teams/{id}" };
+  rpc DeleteGroup(GetGroupRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { delete: "/v1/groups/{id}" };
   }
 
   rpc CreateMembership(CreateMembershipRequest) returns (Membership) {
-    option (google.api.http) = { post: "/v1/teams/{team_id}/memberships", body: "*" };
+    option (google.api.http) = { post: "/v1/groups/{group_id}/memberships", body: "*" };
   }
 
   rpc ListMemberships(ListMembershipsRequest) returns (ListMembershipsResponse) {
-    option (google.api.http) = { get: "/v1/teams/{team_id}/memberships" };
+    option (google.api.http) = { get: "/v1/groups/{group_id}/memberships" };
   }
 
   rpc UpdateMembershipStatus(UpdateMembershipStatusRequest) returns (Membership) {
-    option (google.api.http) = { patch: "/v1/teams/{team_id}/memberships/{membership_id}/status", body: "*" };
+    option (google.api.http) = { patch: "/v1/groups/{group_id}/memberships/{membership_id}/status", body: "*" };
   }
 
   rpc DeleteMembership(GetMembershipRequest) returns (shared.v1.Empty) {
-    option (google.api.http) = { delete: "/v1/teams/{team_id}/memberships/{membership_id}" };
+    option (google.api.http) = { delete: "/v1/groups/{group_id}/memberships/{membership_id}" };
   }
 }
 
-message CreateTeamRequest {
+message CreateGroupRequest {
   string name = 1;
 }
 
-message GetTeamRequest {
+message GetGroupRequest {
   string id = 1;
 }
 
-message ListTeamsResponse {
-  repeated Team teams = 1;
+message ListGroupsResponse {
+  repeated Group groups = 1;
   shared.v1.ListResponseMeta meta = 2;
 }
 
-message Team {
+message Group {
   string id = 1;
   string name = 2;
   int32 total = 3;
@@ -113,7 +113,7 @@ message Team {
 
 message Membership {
   string id = 1;
-  string team_id = 2;
+  string group_id = 2;
   string user_id = 3;
   string email = 4;
   string name = 5;
@@ -126,18 +126,18 @@ message Membership {
 }
 
 message CreateMembershipRequest {
-  string team_id = 1;
+  string group_id = 1;
   string email = 2;
   string name = 3;
   repeated string roles = 4;
 }
 
 message ListMembershipsRequest {
-  string team_id = 1;
+  string group_id = 1;
 }
 
 message GetMembershipRequest {
-  string team_id = 1;
+  string group_id = 1;
   string membership_id = 2;
 }
 
@@ -146,7 +146,7 @@ message ListMembershipsResponse {
 }
 
 message UpdateMembershipStatusRequest {
-  string team_id = 1;
+  string group_id = 1;
   string membership_id = 2;
   string status = 3;
 }

@@ -26,19 +26,19 @@ func (c Class) IsValid() bool {
 	return false
 }
 
-// OwnerType 是持有者类型（D14：一期仅 user，列保留 team/project）。
+// OwnerType 是持有者类型（D14：一期仅 user，列保留 group/project）。
 type OwnerType string
 
 const (
 	OwnerTypeUser    OwnerType = "user"
-	OwnerTypeTeam    OwnerType = "team"
+	OwnerTypeGroup   OwnerType = "group"
 	OwnerTypeProject OwnerType = "project"
 )
 
 // IsValid 报告 owner_type 取值是否合法。
 func (t OwnerType) IsValid() bool {
 	switch t {
-	case OwnerTypeUser, OwnerTypeTeam, OwnerTypeProject:
+	case OwnerTypeUser, OwnerTypeGroup, OwnerTypeProject:
 		return true
 	}
 	return false

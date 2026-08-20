@@ -1,12 +1,12 @@
 package databases
 
-// SystemCollectionIDs 是 default 库中由专用服务（Users/Teams/Storage/Auth）
+// SystemCollectionIDs 是 default 库中由专用服务（Users/Groups/Storage/Auth）
 // 独占管理的系统集合名单；Databases API 对其实行只读策略（读分级放行、写全拒）。
 var SystemCollectionIDs = []string{
 	"users",
 	"sessions",
 	"identities",
-	"teams",
+	"groups",
 	"memberships",
 	"buckets",
 	"files",

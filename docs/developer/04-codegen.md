@@ -82,8 +82,8 @@ breaking:
 
 | 组 | 目录 | 用途 | genproto 输出目录 |
 |----|------|------|-------------------|
-| Client API | `proto/client/v1/` | 终端用户直接调用（Account、Databases、Teams 等） | `genproto/client/v1/` |
-| Server API | `proto/server/v1/` | Agent / 自动化通过 scoped API Key 调用管理面（Projects、Users、Storage、Databases、Functions、APIKeys、Teams、Health、OAuthProviders） | `genproto/server/v1/` |
+| Client API | `proto/client/v1/` | 终端用户直接调用（Account、Databases、Groups 等） | `genproto/client/v1/` |
+| Server API | `proto/server/v1/` | Agent / 自动化通过 scoped API Key 调用管理面（Projects、Users、Storage、Databases、Functions、APIKeys、Groups、Health、OAuthProviders） | `genproto/server/v1/` |
 | Console API | `proto/console/v1/` | Admin Console 后台（ConsoleAuth、Admins） | `genproto/console/v1/` |
 | Shared | `proto/shared/v1/` | 跨组共享：`authz.proto`（鉴权注解）、`common.proto`（列表/响应元数据） | `genproto/shared/v1/` |
 

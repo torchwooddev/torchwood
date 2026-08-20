@@ -35,7 +35,7 @@ import (
     "github.com/torchwooddev/torchwood/sdk/go/server"
 )
 
-// Server API：以 API Key 管理用户/团队/文档库
+// Server API：以 API Key 管理用户/用户组/文档库
 srv, err := server.New("127.0.0.1:9060",
     server.WithAPIKey(apiKey),
     server.WithDatabaseID("app"),
@@ -96,8 +96,8 @@ task sdk-demo
 | `/register` `/login` | 用户注册与登录（Client Account SDK） |
 | `/app/account` | me / prefs / sessions / refresh |
 | `/app/databases` | Server + Client Databases API 全功能验证 |
-| `/app/teams` | 建队、刷新 Token、邀请成员 |
-| `/app/server` | Health / Projects / Users / Teams / Databases |
+| `/app/groups` | 创建用户组、刷新 Token、邀请成员 |
+| `/app/server` | Health / Projects / Users / Groups / Databases |
 | `/app/settings` | Endpoint、Project ID、API Key 配置 |
 
 Server API 相关功能需在设置页填写首次部署引导展示的默认 API Key。
@@ -119,6 +119,6 @@ await client.databases.createDocument("app", "notes", { data: { title: "Hi" } })
 
 ## 已实现 API surface
 
-**Client：** Account（注册/登录/会话/偏好）、Databases（文档 CRUD + count）、Teams 与 Memberships。
+**Client：** Account（注册/登录/会话/偏好）、Databases（文档 CRUD + count）、Groups 与 Memberships。
 
-**Server：** Health、Projects、Users、Teams、Databases（库/集合/属性/索引/文档/Bulk）、API Keys、Storage（Bucket/File）。
+**Server：** Health、Projects、Users、Groups、Databases（库/集合/属性/索引/文档/Bulk）、API Keys、Storage（Bucket/File）。

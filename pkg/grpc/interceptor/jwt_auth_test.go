@@ -36,13 +36,13 @@ func TestAuthInterceptor_RejectsAPIKeyOnUsersPermissionMethod(t *testing.T) {
 		Roles:          []string{"keys"},
 		Permissions:    []string{"projects.read"},
 	}}, nil, nil, map[string][]string{
-		"/torchwood.client.v1.TeamsService/CreateTeam": {"users"},
+		"/torchwood.client.v1.GroupsService/CreateGroup": {"users"},
 	})
 	requireNoError(t, err)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-api-key", "test-key"))
 	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
-		FullMethod: "/torchwood.client.v1.TeamsService/CreateTeam",
+		FullMethod: "/torchwood.client.v1.GroupsService/CreateGroup",
 	}, func(context.Context, any) (any, error) {
 		t.Fatal("handler should not run")
 		return nil, nil
@@ -58,14 +58,14 @@ func TestAuthInterceptor_AllowsEndUserOnUsersPermissionMethod(t *testing.T) {
 		UserID:    "user-1",
 		Roles:     []string{"users", "user:user-1"},
 	}}, nil, nil, map[string][]string{
-		"/torchwood.client.v1.TeamsService/CreateTeam": {"users"},
+		"/torchwood.client.v1.GroupsService/CreateGroup": {"users"},
 	})
 	requireNoError(t, err)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer token"))
 	called := false
 	_, err = ic.UnaryAuthMiddleware(ctx, nil, &grpc.UnaryServerInfo{
-		FullMethod: "/torchwood.client.v1.TeamsService/CreateTeam",
+		FullMethod: "/torchwood.client.v1.GroupsService/CreateGroup",
 	}, func(context.Context, any) (any, error) {
 		called = true
 		return "ok", nil

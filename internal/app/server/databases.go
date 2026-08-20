@@ -306,7 +306,7 @@ func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID,
 }
 
 // ensureReadableCollection 是文档读路径（List/Get/Count）的集合校验：
-// teams/memberships/buckets/files 放行（docDB 权限过滤兜底）；
+// groups/memberships/buckets/files 放行（docDB 权限过滤兜底）；
 // users/sessions/identities 仅 PlatformAdmin 可读，其余主体直接拒绝。
 func (d *Databases) ensureReadableCollection(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) error {
 	if err := d.ValidateIdentifier(databaseID); err != nil {

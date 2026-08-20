@@ -269,7 +269,7 @@ torchwood
 ├── projects               # list/get（create/update 限平台 admin）
 ├── users                  # 全部方法（含 sessions/tokens 子命令）
 ├── databases              # 库；collections/attributes/indexes/documents 子命令
-├── teams                  # 团队；prefs/memberships 子命令
+├── groups                  # 用户组；prefs/memberships 子命令
 ├── storage                # buckets；files（元数据）；usage（不做上传/下载）
 ├── functions              # 函数；deployments/variables/executions 子命令
 ├── oauth-providers        # list/upsert/delete
@@ -286,8 +286,8 @@ torchwood
   --data '{"title":"hi"}' --document-id doc1
 ./bin/torchwood databases documents list app notes \
   --queries '["equal(\"status\",\"active\")"]' --page-size 20
-./bin/torchwood teams create --name '核心组'
-./bin/torchwood teams memberships create <team-id> --user-id <uid> --roles '["admin"]'
+./bin/torchwood groups create --name '核心组'
+./bin/torchwood groups memberships create <group-id> --user-id <uid> --roles '["admin"]'
 ./bin/torchwood storage buckets create --name assets --public
 ./bin/torchwood storage usage
 ./bin/torchwood functions create --id hello --name hello --runtime nodejs18
