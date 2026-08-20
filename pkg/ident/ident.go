@@ -12,6 +12,13 @@ const (
 	MaxSchemaResourceIDLen = 28
 	// SchemaPrefix 是动态文档 PostgreSQL schema 的固定前缀。
 	SchemaPrefix = "tw_"
+	// ProjectDataPlaneID 是项目数据面（tw_<project>）的内部 database 标识。
+	// 它不是合法的 SchemaResourceID（ValidateSchemaResourceID 拒绝 "_"），
+	// 仅用于系统集合寻址：documentSchema 在 databaseID==ProjectDataPlaneID 时
+	// 映射到 ProjectSchemaName。对外 database_id 走 RejectExternalDatabaseID
+	// 拒绝；Create/DeleteDatabase 的 businessSchema 显式拒绝 sentinel。
+	// 见 docs/design/project-data-plane-schema.md §3.0/§3.1。
+	ProjectDataPlaneID = "_"
 )
 
 const errSchemaResourceID = "id must match ^[a-z][a-z0-9]{0,27}$"
@@ -20,6 +27,34 @@ const errSchemaResourceID = "id must match ^[a-z][a-z0-9]{0,27}$"
 var schemaResourceIDRe = regexp.MustCompile(`^[a-z][a-z0-9]{0,27}$`)
 
 var schemaNameRe = regexp.MustCompile(`^tw_[a-z][a-z0-9]{0,27}_[a-z][a-z0-9]{0,27}$`)
+
+// projectSchemaNameRe 匹配一段式项目数据面 schema tw_{project.id}。
+// 与 schemaNameRe（两段式）不相交：project.id 不含 "_"，故 tw_<p> 恰好一道
+// 下划线（前缀后），tw_<p>_<db> 恰好两道。见 §2.1。
+var projectSchemaNameRe = regexp.MustCompile(`^tw_[a-z][a-z0-9]{0,27}$`)
+
+// ProjectSchemaName 拼出项目数据面 schema tw_{project.id}（一段式）。
+// 系统文档集合（users/sessions/...）落在该 schema，而非 tw_<p>_default。
+// projectID 非法时返回 error，不拼接。
+func ProjectSchemaName(projectID string) (string, error) {
+	if err := ValidateSchemaResourceID(projectID); err != nil {
+		return "", err
+	}
+	name := SchemaPrefix + projectID
+	if !projectSchemaNameRe.MatchString(name) {
+		// 理论不可达：projectID 已过 ValidateSchemaResourceID（小写字母+数字、
+		// 无下划线）。保留断言作纵深防御。
+		return "", status.Error(codes.InvalidArgument, errSchemaResourceID)
+	}
+	return name, nil
+}
+
+// IsTwoSegmentSchema 报告 name 是否为两段式业务文档面 schema（tw_<project>_<database>）。
+// 供 DeleteDatabase/businessSchema 硬断言：DDL 目标必须匹配两段式，绝不能是
+// 一段式 ProjectSchemaName。与 ProjectSchemaName 的返回值不相交。
+func IsTwoSegmentSchema(name string) bool {
+	return schemaNameRe.MatchString(name)
+}
 
 // ValidateSchemaResourceID 校验 project.id / database.id。
 func ValidateSchemaResourceID(id string) error {

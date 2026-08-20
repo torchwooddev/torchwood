@@ -31,7 +31,7 @@
 | 决策 | 选择 | 理由 |
 |---|---|---|
 | 物理名用公开 id，不用 name | `project.id` + `database.id` | id 创建后不可变；name 是展示字段，`UpdateProject` 可改 |
-| schema 前缀 | **`tw_`**（小写、3 字节） | 不用 `TORCHWOOD_`：未引用标识符在 PG 中折成小写，大写前缀在 psql 里必须加引号；10 字节也挤占 id 长度。不用零前缀：会撞 `pg_*` / `information_schema`。`tw_` 保留命名空间，运维可 `LIKE 'tw_%'` |
+| schema 前缀 | **`tw_`**（小写、3 字节） | 不用 `TORCHWOOD_`：未引用标识符在 PG 中折成小写，大写前缀在 psql 里必须加引号；10 字节也挤占 id 长度。不用零前缀：会撞 `pg_*` / `information_schema`。`tw_` 保留命名空间。**运维扫描需精确匹配**（见 §2.2 LIKE 陷阱），`LIKE 'tw_%'` 仅作「本实例全部 Torchwood 动态 schema」的整体扫描，不得当「某项目」过滤器 |
 | 字母表 | `^[a-z][a-z0-9]{0,27}$` | 小写字母开头 + 小写字母/数字；无连字符、无下划线、无大写 |
 | 两侧长度 | 各 **28** | `tw_`(3)+28+`_`(1)+28 = **60**，低于 63，留 3 字节余量 |
 | 项目 id 来源 | 创建时 **显式传入**，不再从 name slug | 展示名含空格/中文，slug 会丢信息或重新引入 `-` |
@@ -40,6 +40,26 @@
 | 从 schema 反解析 database id | **废除** `schemaDatabaseID` | 调用链显式传 `databaseID`，避免按 `_` 拆名 |
 | 存量兼容 | 不做 | 开发期允许重建；旧 migration 000008 对空库是空操作，不改写 |
 | 落地方式 | **单 PR** | charset 与 schema 名必须同提交，否则测试项目 id 带 `-` 会建出非法 schema |
+
+## 2.1 LIKE 陷阱（运维必须精确匹配）
+
+本仓库存在**一段式**项目数据面 schema `tw_<project>`（见 `docs/design/project-data-plane-schema.md`）与**两段式**业务文档面 schema `tw_<project>_<database>`。项目 id 不含 `_`（`^[a-z][a-z0-9]{0,27}$`），因此：
+
+| 模式 | `tw_shop` | `tw_shop_app` | `tw_shop_default` | `tw_shopx` | `tw_shopx_default` |
+|------|-----------|---------------|-------------------|------------|---------------------|
+| `= 'tw_shop'` | ✓ | | | | |
+| `LIKE 'tw_shop%'` | ✓ | ✓ | ✓ | ✓ **误伤** | ✓ **误伤** |
+| `LIKE 'tw_shop\_%' ESCAPE '\'` | | ✓ | ✓ | | |
+| `LIKE 'tw_%'` | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+规则：
+
+1. **项目数据面**：`nspname = ident.ProjectSchemaName(id)`（等值，禁止 LIKE）。
+2. **某项目的业务库**：权威是 catalog（`document_databases`），不是 namespace。运维若必须扫 PG：`nspname LIKE ident.ProjectSchemaName(id) || '\_%' ESCAPE '\'`。
+3. **DeleteProject / 运维脚本禁止** `LIKE 'tw_' || id || '%'`。
+4. **Worker / 业务代码禁止扫 `pg_namespace`。** 业务库列表的权威是 catalog；项目列表的权威是 `public.projects`。
+5. **`LIKE 'tw_%'` 仅允许作为「本实例全部 Torchwood 动态 schema」的运维整体扫描**（会同时命中一段式与两段式），不得当「某项目」过滤器。
+6. **SQL `LIKE` 里 `_` 是单字符通配。** catalog / AIP-160 filter 禁止把未转义的 sentinel `ProjectDataPlaneID`（`"_"`）当 LIKE 操作数。
 
 ---
 
@@ -55,13 +75,21 @@ package ident
 const (
     MaxSchemaResourceIDLen = 28
     SchemaPrefix           = "tw_"
+    // ProjectDataPlaneID 是项目数据面（tw_<project>）的内部 database sentinel。
+    // 非法 SchemaResourceID（charset 拒绝 "_"），仅供系统集合寻址。
+    ProjectDataPlaneID = "_"
 )
 
 // 小写字母开头，后接 0–27 个小写字母或数字。合计最长 28。
 var schemaResourceIDRe = regexp.MustCompile(`^[a-z][a-z0-9]{0,27}$`)
 
+// 一段式项目数据面 schema。
+var projectSchemaNameRe = regexp.MustCompile(`^tw_[a-z][a-z0-9]{0,27}$`)
+
 func ValidateSchemaResourceID(id string) error
-func SchemaName(projectID, databaseID string) (string, error)
+func SchemaName(projectID, databaseID string) (string, error)       // 两段式 tw_<p>_<db>
+func ProjectSchemaName(projectID string) (string, error)           // 一段式 tw_<p>
+func IsTwoSegmentSchema(name string) bool                          // 供 DDL 分叉硬断言
 ```
 
 合法 / 非法样例：
@@ -85,27 +113,34 @@ id must match ^[a-z][a-z0-9]{0,27}$
 
 ### 3.2 Schema 名
 
-```text
-tw_{project.id}_{database.id}
-```
+本仓库存在两类动态 schema：
 
-`SchemaName` 必须先校验两端 id，再拼接；校验失败返回 error，禁止 silently concat。使用处继续 `quoteIdent`（纵深防御，双引号 + `"` → `""`）。全小写，psql 里未引用也可写 `tw_shop_app.posts`。
+| 类别 | 形式 | 示例 | 生成函数 |
+|------|------|------|----------|
+| 项目数据面（一段式） | `tw_{project.id}` | `tw_shop` | `ident.ProjectSchemaName(projectID)` |
+| 业务文档面（两段式） | `tw_{project.id}_{database.id}` | `tw_shop_app` | `ident.SchemaName(projectID, databaseID)` |
+
+两类都由 `ident` 包生成，校验失败返回 error，禁止 silently concat。使用处继续 `quoteIdent`（纵深防御，双引号 + `"` → `""`）。全小写，psql 里未引用也可写 `tw_shop_app.posts`。
 
 整串校验（测试与 adapter 防御）：
 
 ```text
-^tw_[a-z][a-z0-9]{0,27}_[a-z][a-z0-9]{0,27}$
+一段式：^tw_[a-z][a-z0-9]{0,27}$            （projectSchemaNameRe）
+两段式：^tw_[a-z][a-z0-9]{0,27}_[a-z][a-z0-9]{0,27}$  （schemaNameRe）
 ```
 
-长度恒 ≤ 60，无需再截断。
+长度：一段式 ≤ 31（`tw_`+28）；两段式 ≤ 60，均无需截断。
 
-因为 id 不含 `_`，`tw_` 之后 **有且仅有一道** `_`，左右两侧分别是 project.id、database.id。即便如此，运行时也不从 schema 名反推 id（§5.2）。
+因为 id 不含 `_`（`^[a-z][a-z0-9]{0,27}$`），`tw_` 之后**恰好一道** `_`（一段式：前缀后；两段式：前缀后一道 + project/database 之间一道）。两段式 `tw_` 之后有且仅有两道 `_`，左右两侧分别是 project.id、database.id。一段式与两段式不相交（`IsTwoSegmentSchema` 对一段式返回 false），这是 LIKE 陷阱防护的结构性基础（§2.2）。即便如此，运行时也不从 schema 名反推 id（§5.2）。
+
+业务库列表的权威是 catalog（`document_databases`），**禁止**用 `LIKE 'tw_'||id||'%'` 扫 `pg_namespace` 枚举某项目的业务库。
 
 ### 3.3 保留 id
 
 | 资源 | id | 规则 |
 |---|---|---|
-| database | `default` | 创建项目时由 `EnsureSystemCollections` 建立；`CreateDatabase` / `DeleteDatabase` 拒绝（现有行为保留） |
+| database（业务库） | `default` | 普通业务库：CreateProject 自动建，`CreateDatabase`/`DeleteDatabase` 视为普通库（见 `docs/design/project-data-plane-schema.md` §4 PR7）。本期（PR7 前）仍按现状禁删 |
+| database（内部 sentinel） | `_`（`ident.ProjectDataPlaneID`） | 非法 SchemaResourceID（charset 拒绝）。仅供系统集合寻址项目数据面；对外 database_id 走 `RejectExternalDatabaseID` 拒绝；DDL 分叉 `businessSchema` 显式拒绝。见 project-data-plane-schema.md §3.1 |
 | project | `default` | bootstrap 显式使用；其它创建路径允许同名失败于 PK，不额外保留 |
 
 不以 PG 关键字（`public`、`pg_*`）为由拒绝用户 id：前缀 `tw_` 已隔开（`tw_pg_default` 不以 `pg_` 开头，也不会拼出 `information_schema`）。
