@@ -1,4 +1,6 @@
 server:
+  # 关停排水不在 YAML：TORCHWOOD_ENV=development 跳过排水；production（默认）30s。
+  # 覆盖：TORCHWOOD_SERVER_DRAIN_TIMEOUT=0s|30s
   http:
     addr: ":9080"
     timeout: "60s"

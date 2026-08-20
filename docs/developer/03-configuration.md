@@ -37,6 +37,8 @@
 | `server.http.cors.*` | message | CORS：`allow_origins`、`allow_methods`、`allow_headers`、`expose_headers`、`allow_credentials`、`max_age`（`allow_credentials=true` 时 `*` 会被拒绝） |
 | `server.metrics.addr` | string | Metrics（Prometheus）监听地址（默认 `127.0.0.1:9040`；留空回退同值，`internal/infra/server/metrics.go` 的 `NewMetricsServer`） |
 
+关停排水窗口（Lynx `WithDrainTimeout`）**不在 proto/YAML 里**：Lynx 在 `NewRunner` 时就要该值，早于配置绑定。由进程环境决定，见 §3.3。
+
 **security**
 
 | 路径 | 类型 | 说明 |
@@ -148,6 +150,19 @@
 | `idgen.snowflake.node_id` | `TORCHWOOD_IDGEN_SNOWFLAKE_NODE_ID` | 雪花节点号 |
 
 > **注意**：MinIO/S3 凭据的环境变量名为 `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` 与 `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY`（由 `bind.go` 的 `envNameForKey` 按字段名 `access_key_id` / `secret_access_key` 映射）；`config.yaml.template` 注释、`.env.example` 与 `AGENTS.md` 三者一致。
+
+### 3.3 运行时环境与关停排水
+
+`TORCHWOOD_ENV` 只影响 **Lynx 关停排水窗口**（readiness 先变不健康，再 `time.Sleep` 满窗口）。本地调试 Stop 进程会走同一条路径，development 必须关掉排水，否则每次关停固定卡 30 秒。
+
+| `TORCHWOOD_ENV` | 归一化 | 默认 `DrainTimeout` |
+|-----------------|--------|---------------------|
+| `development` / `dev` / `local` / `test` | development | `0`（跳过排水） |
+| `production` / `prod` / `staging`、空、未知值 | production | `30s` |
+
+覆盖：`TORCHWOOD_SERVER_DRAIN_TIMEOUT` 为合法非负 duration（如 `0s`、`5s`、`30s`）时优先生效。非法或负值忽略，回退到上表默认。
+
+本地 `.env.example` 默认 `TORCHWOOD_ENV=development`。生产部署设 `TORCHWOOD_ENV=production`（或不设），并保证编排的 `terminationGracePeriodSeconds` 覆盖 `DrainTimeout + ShutdownTimeout + 各服务 StopTimeout`（约 40s+）。
 
 ---
 

@@ -17,9 +17,17 @@ var version, commit, date string
 func main() {
 	_ = godotenv.Load()
 
+	// DrainTimeout 必须在 NewRunner 时确定（lynx 在 newLynx 注册 drainChecker，
+	// 早于 YAML 绑定）。development 默认 0（本地 Stop 立刻关）；production
+	// 默认 30s（LB 摘流）。显式 TORCHWOOD_SERVER_DRAIN_TIMEOUT 可覆盖。
+	drainTimeout := config.CurrentDrainTimeout()
+
 	var cleanup func()
 	runner := lynx.NewRunner(func(app lynx.App) error {
 		app.SetLogger(lynxzap.MustNewLogger(app))
+		app.Logger().Info("runtime environment",
+			"env", string(config.CurrentRuntimeEnv()),
+			"drain_timeout", drainTimeout.String())
 
 		bootstrap, c, err := wireBootstrap(app)
 		if err != nil {
@@ -36,9 +44,7 @@ func main() {
 			f.String("log-level", "info", "log level")
 		}),
 		lynx.WithBindConfigFunc(config.NewBindConfigFunc()),
-		// 排水窗口：关停信号到达后先置 readiness 为不健康（LB 摘流），
-		// 窗口内服务保持运行让在途请求收尾。
-		lynx.WithDrainTimeout(30*time.Second),
+		lynx.WithDrainTimeout(drainTimeout),
 		lynx.WithShutdownTimeout(30*time.Second),
 	)
 

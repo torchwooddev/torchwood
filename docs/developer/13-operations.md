@@ -133,6 +133,7 @@ security:
 
 ### 4.3 其他生产相关配置
 
+- `TORCHWOOD_ENV`：`production`（默认/未设置）关停先排水 30s 再停服务，给 LB 摘流；`development` 跳过排水。可用 `TORCHWOOD_SERVER_DRAIN_TIMEOUT` 覆盖。K8s `terminationGracePeriodSeconds` 需大于排水 + 关停上界（默认约 40s+），否则排水未结束就会被 SIGKILL。
 - `server.http.public_url`：对外公共地址（OAuth 回调等生成链接用）。
 - `server.http.cors.allow_origins`：显式允许来源；`*` 在 `allow_credentials=true`
   时会被拒绝。

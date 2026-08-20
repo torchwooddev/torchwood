@@ -32,6 +32,7 @@
 ## 配置与环境约定
 - 配置 schema 由 `internal/pkg/config/config.proto` 定义，运行时绑定位于 `internal/pkg/config/bind.go`。
 - 环境变量覆盖前缀为 `TORCHWOOD_`；键名会从点号路径映射而来，例如 `data.database.source` -> `TORCHWOOD_DATA_DATABASE_SOURCE`。
+- `TORCHWOOD_ENV`（development/production）决定关停排水窗口：development 为 0，production 默认 30s；可被 `TORCHWOOD_SERVER_DRAIN_TIMEOUT` 覆盖。Lynx 在绑定 YAML 之前就需要该值，因此不进 `config.proto`。
 - MinIO 凭据请使用 `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` 和 `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY`。
 - `cmd/server/main.go` 会通过 `godotenv` 尝试加载 `.env`，然后默认从 `./configs` 绑定配置。
 - 请使用 `configs/config.yaml.template` 作为基础模板，并将敏感信息保持在环境变量中。
