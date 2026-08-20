@@ -75,13 +75,16 @@ func (a *Adapter) CreatePayment(ctx context.Context, in payments.CreatePaymentIn
 	if a.cfg.SecretKey == "" {
 		return nil, payments.ErrProviderNotConfigured(providerName)
 	}
+	if in.ProjectID == "" {
+		// metadata[project_id] 必写（设计 §9.2）：它是 K21 区分「早到 webhook
+		// （503 重试）」与「他人账号噪音（200 丢弃）」的依据，缺失会吞掉早到事件。
+		return nil, payments.ErrMissingProjectMetadata
+	}
 	form := url.Values{}
 	form.Set("mode", "payment")
 	form.Set("client_reference_id", in.OrderID)
 	form.Set("metadata[order_id]", in.OrderID)
-	if in.ProjectID != "" {
-		form.Set("metadata[project_id]", in.ProjectID)
-	}
+	form.Set("metadata[project_id]", in.ProjectID)
 	form.Set("line_items[0][quantity]", "1")
 	form.Set("line_items[0][price_data][currency]", strings.ToLower(in.Currency))
 	// 金额最小货币单位（bigint）直接透传，任何浮点换算都不允许。

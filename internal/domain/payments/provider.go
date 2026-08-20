@@ -33,6 +33,11 @@ var ErrProviderIndexMiss = errors.New("payments: provider resource index miss")
 // （设计 §Security 5：一份 receipt 绑一个 user，跨用户领取拒绝）。
 var ErrReceiptBoundToOtherUser = errors.New("payments: receipt already bound to another user")
 
+// ErrMissingProjectMetadata 表示渠道下单未携带 project_id（调用方缺陷）：
+// metadata[project_id] 必写（设计 §9.2 / K21），缺失会使早到 webhook 被
+// 误判为无关噪音吞掉。
+var ErrMissingProjectMetadata = errors.New("payments: project_id metadata is required for payment creation")
+
 // errNotConfigured 是渠道凭据未配置的统一错误（服务可启动，
 // 相关操作 fail-closed）。
 var errNotConfigured = errors.New("payments: provider not configured")

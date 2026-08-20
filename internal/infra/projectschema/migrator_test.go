@@ -87,3 +87,55 @@ func TestKickoffEnsureAll_EmptyIsNoop(t *testing.T) {
 	projectschema.KickoffEnsureAll(nil, nil, nil)
 	projectschema.KickoffEnsureAll(nil, []string{}, nil)
 }
+
+// TestApply_FailureMarksDirtyPersistently 注入坏 DDL（把 subscriptions 表替换
+// 为缺列残缺版，重跑 000006 时 CREATE INDEX 失败），断言：
+//  1. Apply 返回错误且事务回滚（无 version=6 成功行）；
+//  2. dirty 标记经独立连接持久化（事务 ROLLBACK 撤不掉）；
+//  3. 后续 Apply 拒绝脏项目，不再尝试后续版本。
+func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	quoted := testutil.CatalogQuoted(projectID)
+	schema, err := ident.ProjectSchemaName(projectID)
+	require.NoError(t, err)
+
+	// 回退到「已应用 1–5」：删 6/7 版本行，把 subscriptions 表替换为
+	// 缺列残缺版（provider/provider_sub_id 不存在），令 000006 的
+	// subscriptions_provider_sub 建索引失败。
+	_, err = db.DB.ExecContext(ctx,
+		`DELETE FROM `+quoted+`.schema_migrations WHERE version IN (6, 7)`)
+	require.NoError(t, err)
+	_, err = db.DB.ExecContext(ctx, `DROP TABLE `+quoted+`.subscriptions CASCADE`)
+	require.NoError(t, err)
+	_, err = db.DB.ExecContext(ctx, `CREATE TABLE `+quoted+`.subscriptions (id TEXT PRIMARY KEY)`)
+	require.NoError(t, err)
+
+	err = projectschema.Apply(ctx, db, projectID)
+	require.ErrorContains(t, err, "apply 000006")
+
+	// 事务内无成功行：version 6 未被记为 applied。
+	var applied6 bool
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM `+quoted+`.schema_migrations WHERE version = 6 AND NOT dirty)`).Scan(&applied6))
+	require.False(t, applied6)
+
+	// dirty 标记在 ROLLBACK 之后仍持久可见（独立连接补写）。
+	var dirty bool
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COALESCE(bool_or(dirty), false) FROM `+quoted+`.schema_migrations`).Scan(&dirty))
+	require.True(t, dirty)
+
+	// 后续 Apply 拒绝脏项目。
+	err = projectschema.Apply(ctx, db, projectID)
+	require.ErrorContains(t, err, "is dirty")
+	require.Contains(t, err.Error(), schema)
+}

@@ -19,6 +19,9 @@ var migrationFS embed.FS
 
 // Apply 在调用方已打开的 tx（或自行 RunInTx）上执行待应用的项目 DDL。
 // SQL 文件替换 {{schema}} 后零查询参数，走 simple protocol 多语句 Exec。
+// 中途失败：事务内标记随 ROLLBACK 撤销，随后经独立连接补写 dirty=true
+// 持久化（EnsureAll 路径靠它跳过脏项目；CreateProject 路径整体回滚后
+// schema 不存在，补写失败属预期，best-effort 忽略）。
 func Apply(ctx context.Context, db *clients.Database, projectID string) error {
 	if err := ident.ValidateSchemaResourceID(projectID); err != nil {
 		return err
@@ -28,7 +31,8 @@ func Apply(ctx context.Context, db *clients.Database, projectID string) error {
 		return err
 	}
 	quoted := quoteIdent(schema)
-	return db.RunInTx(ctx, func(txCtx context.Context) error {
+	var failedVersion int64
+	err = db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := db.Conn(txCtx).ExecContext(txCtx,
 			`SELECT pg_advisory_xact_lock(hashtext('tw_schema'), hashtext(?))`, projectID); err != nil {
 			return fmt.Errorf("project schema lock: %w", err)
@@ -74,9 +78,7 @@ CREATE TABLE IF NOT EXISTS %s.schema_migrations (
 			}
 			body := strings.ReplaceAll(f.sql, "{{schema}}", quoted)
 			if _, err := db.Conn(txCtx).ExecContext(txCtx, body); err != nil {
-				_, _ = db.Conn(txCtx).ExecContext(txCtx,
-					fmt.Sprintf(`INSERT INTO %s.schema_migrations (version, dirty) VALUES (%d, true)
-ON CONFLICT (version) DO UPDATE SET dirty = true`, quoted, f.version))
+				failedVersion = f.version
 				return fmt.Errorf("apply %s: %w", f.name, err)
 			}
 			if _, err := db.Conn(txCtx).ExecContext(txCtx,
@@ -86,6 +88,19 @@ ON CONFLICT (version) DO UPDATE SET dirty = true`, quoted, f.version))
 		}
 		return nil
 	})
+	if err != nil && failedVersion > 0 {
+		markDirtyStandalone(ctx, db, quoted, failedVersion)
+	}
+	return err
+}
+
+// markDirtyStandalone 经池连接（不并入 ctx 已有事务）把失败版本标记为
+// dirty，使事务 ROLLBACK 后标记仍持久可见。best-effort：写入失败（如
+// CreateProject 回滚后 schema 已不存在）时静默，Apply 的原错误仍向上传播。
+func markDirtyStandalone(ctx context.Context, db *clients.Database, quotedSchema string, version int64) {
+	_, _ = db.DB.ExecContext(ctx, fmt.Sprintf(
+		`INSERT INTO %s.schema_migrations (version, dirty) VALUES (%d, true)
+ON CONFLICT (version) DO UPDATE SET dirty = true`, quotedSchema, version))
 }
 
 // EnsureAll 对每个项目 Apply；最多 4 路并行。脏项目记入返回 error。

@@ -294,12 +294,24 @@ func TestCreatePayment_ProviderError(t *testing.T) {
 	}))
 	defer srv.Close()
 	a := New(Config{SecretKey: "sk_bad", APIBaseURL: srv.URL})
-	_, err := a.CreatePayment(context.Background(), payments.CreatePaymentInput{OrderID: "o1", Amount: 100, Currency: "USD"})
+	_, err := a.CreatePayment(context.Background(), payments.CreatePaymentInput{OrderID: "o1", ProjectID: "shop", Amount: 100, Currency: "USD"})
 	require.Error(t, err)
 	pe := payments.AsProviderError(err)
 	require.NotNil(t, pe)
 	require.Equal(t, 401, pe.Status)
 	require.Equal(t, payments.ProviderStripe, pe.Provider)
+}
+
+// TestCreatePayment_RequiresProjectMetadata 锁死设计 §9.2「必写」护栏：
+// 空 ProjectID 直接拒绝，不向渠道发请求。
+func TestCreatePayment_RequiresProjectMetadata(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("CreatePayment must not reach Stripe without project_id")
+	}))
+	defer srv.Close()
+	a := New(Config{SecretKey: "sk_test_x", WebhookSecret: testWebhookSecret, APIBaseURL: srv.URL})
+	_, err := a.CreatePayment(context.Background(), payments.CreatePaymentInput{OrderID: "o1", Amount: 100, Currency: "USD"})
+	require.ErrorIs(t, err, payments.ErrMissingProjectMetadata)
 }
 
 func TestRefund_FormAndResponse(t *testing.T) {
