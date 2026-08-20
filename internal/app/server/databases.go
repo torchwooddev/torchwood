@@ -54,9 +54,6 @@ func (d *Databases) CreateDatabase(ctx context.Context, projectID, id, name stri
 	if err := shared.RejectExternalDatabaseID(id); err != nil {
 		return err
 	}
-	if id == "default" {
-		return status.Error(codes.InvalidArgument, "default database cannot be created")
-	}
 	if name == "" {
 		return status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -100,10 +97,6 @@ func (d *Databases) DeleteDatabase(ctx context.Context, projectID, databaseID st
 	}
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
-	}
-	// use-case 仍禁删 default（PR7 才解禁）；系统集合已迁出，禁令是过渡态。
-	if databaseID == "default" {
-		return status.Error(codes.InvalidArgument, "default database cannot be deleted")
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err

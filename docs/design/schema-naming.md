@@ -264,7 +264,7 @@ CreateProjectCommand{ID: cmd.ProjectID, Name: cmd.ProjectID, Description: "Boots
 
 ### 5.4 数据库创建
 
-`CreateDatabase` 把 `ValidateIdentifier(id)` 换成 `ident.ValidateSchemaResourceID(id)`。`id == "default"` 的拒绝保留在其后（更具体的错误：`default database cannot be created`）。
+`CreateDatabase` 把 `ValidateIdentifier(id)` 换成 `ident.ValidateSchemaResourceID(id)`。`default` 是普通业务库 id，允许创建与删除。
 
 `name` 仍为展示字段，不校验 charset。
 

@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 ### 2.1 系统集合
 
-`internal/domain/databases/system_collections.go` 是系统集合名单的单一事实来源。系统性由**所在 schema** 决定：`IsSystemCollection` 当且仅当 `databaseID == ident.ProjectDataPlaneID`（sentinel `_`）且 id 命中下表。物理表在 `tw_<project>`，**不**寄居 `default` 业务库。`default` 是 CreateProject 自动创建的普通第一库（本期 use-case 仍禁 Create/Delete；PR7 解禁），其中的同名 `users` 是普通用户集合（`is_system=false`，有 `_version`）。
+`internal/domain/databases/system_collections.go` 是系统集合名单的单一事实来源。系统性由**所在 schema** 决定：`IsSystemCollection` 当且仅当 `databaseID == ident.ProjectDataPlaneID`（sentinel `_`）且 id 命中下表。物理表在 `tw_<project>`，**不**寄居 `default` 业务库。`default` 是 CreateProject 自动创建的普通第一库（可删可重建），其中的同名 `users` 是普通用户集合（`is_system=false`，有 `_version`）。
 
 对外 Databases API 摸不到系统集合：`RejectExternalDatabaseID("_")` → InvalidArgument；ListDatabases 过滤 sentinel。系统用户 / 文件 / 组只经 Account、Server Users、Storage、Groups 专用 RPC。
 

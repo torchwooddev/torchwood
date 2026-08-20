@@ -45,9 +45,3 @@ func TestCreateDatabase_InvalidID(t *testing.T) {
 		require.Equal(t, codes.InvalidArgument, st.Code(), "id %q should be rejected", id)
 	}
 }
-
-func TestCreateDatabase_DefaultRejected(t *testing.T) {
-	d := &Databases{}
-	st, _ := status.FromError(d.CreateDatabase(platformAdminCtx(context.Background()), "proj", "default", "name"))
-	require.Equal(t, codes.InvalidArgument, st.Code())
-}

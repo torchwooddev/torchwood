@@ -55,21 +55,16 @@ func TestDatabases_DDLMethods_RequireServerWriteActor(t *testing.T) {
 	}
 }
 
-// Round3 H3：守卫放开后系统集合拒绝与 default 库保护保持不变（不被
-// RequireServerWriteActor 的放行吞掉）。
-func TestDatabases_DDLMethods_KeepSystemCollectionAndDefaultProtection(t *testing.T) {
+// Round3 H3：守卫放开后 sentinel 库仍拒（不被 RequireServerWriteActor 的放行吞掉）。
+func TestDatabases_DDLMethods_KeepSystemCollectionProtection(t *testing.T) {
 	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
 		Permissions: []string{"databases.write"},
 	})
 
-	// default 库不可删除（保护不变）。
-	err := uc.DeleteDatabase(ctx, "proj-1", "default")
-	require.Equal(t, codes.InvalidArgument, status.Code(err), "default 库删除必须被拒")
-
 	// 对外 database_id 拒 sentinel（系统集合不经 Databases API）。
-	err = uc.CreateCollection(ctx, "proj-1", databases.SystemDatabaseID, "users", "Users",
+	err := uc.CreateCollection(ctx, "proj-1", databases.SystemDatabaseID, "users", "Users",
 		nil, nil, nil, false)
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "sentinel 库创建集合必须被拒")
 
@@ -94,8 +89,7 @@ func ddlCalls(uc *Databases, ctx context.Context) []ddlCall {
 			return uc.CreateDatabase(ctx, "proj-1", "bad id!", "App")
 		}},
 		{"DeleteDatabase", func() error {
-			// 守卫通过后 default 库保护先于 adapter 生效（InvalidArgument）。
-			return uc.DeleteDatabase(ctx, "proj-1", "default")
+			return uc.DeleteDatabase(ctx, "proj-1", "bad id!")
 		}},
 		{"CreateCollection", func() error {
 			return uc.CreateCollection(ctx, "proj-1", "bad id!", "coll", "Coll", nil, nil, nil, false)

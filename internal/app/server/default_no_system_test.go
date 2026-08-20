@@ -10,14 +10,13 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
-// TestDefaultDatabase_NoSystemCollections 覆盖 PR3：系统集合不寄居 default。
-// catalog 系统行只在 database_id='_'；ListCollections("default") 不含 7 个系统
-// 集合；业务库（含 default）可建普通 users（is_system=false）。use-case 仍禁
-// Create/Delete default。
+// TestDefaultDatabase_NoSystemCollections 覆盖 PR3 + PR7：系统集合不寄居
+// default。catalog 系统行只在 database_id='_'；ListCollections("default") 不含
+// 7 个系统集合；业务库（含 default）可建普通 users（is_system=false）。
+// use-case 允许 Delete/Create default；重建后业务 users is_system=false，
+// 系统 users 仍在 sentinel。
 func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -81,8 +80,28 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 	require.NotNil(t, sysUsers)
 	require.True(t, sysUsers.IsSystem)
 
-	err = uc.CreateDatabase(ctx, p.ID, "default", "default")
-	require.Equal(t, codes.InvalidArgument, status.Code(err), "use-case 仍禁 Create default")
-	err = uc.DeleteDatabase(ctx, p.ID, "default")
-	require.Equal(t, codes.InvalidArgument, status.Code(err), "use-case 仍禁 Delete default")
+	require.NoError(t, uc.DeleteDatabase(ctx, p.ID, "default"))
+	gone, err := uc.GetDatabase(ctx, p.ID, "default")
+	require.NoError(t, err)
+	require.Nil(t, gone)
+
+	var businessNS, projectNS any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_"+p.ID+"_default").Scan(&businessNS))
+	require.Nil(t, businessNS)
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_"+p.ID).Scan(&projectNS))
+	require.NotNil(t, projectNS)
+
+	sysUsers, err = docDB.GetCollection(ctx, p.ID, databases.SystemDatabaseID, "users")
+	require.NoError(t, err)
+	require.NotNil(t, sysUsers, "DeleteDatabase(default) 不得碰到系统集合")
+	require.True(t, sysUsers.IsSystem)
+
+	require.NoError(t, uc.CreateDatabase(ctx, p.ID, "default", "default"))
+	require.NoError(t, uc.CreateCollection(ctx, p.ID, "default", "users", "Users", []databases.Attribute{
+		{ID: "name", Key: "name", Type: "string", Size: 256},
+	}, nil, nil, true))
+	recreated, err := uc.GetCollection(ctx, p.ID, "default", "users")
+	require.NoError(t, err)
+	require.NotNil(t, recreated)
+	require.False(t, recreated.IsSystem, "重建 default 后业务 users 不得是系统集合")
 }
