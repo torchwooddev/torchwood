@@ -110,8 +110,8 @@ message SignUpRequest {
   string setup_token = 3;
   // 首个项目 ID，须匹配 ^[a-z][a-z0-9]{0,27}$。
   string project_id = 4;
-  // 首个业务数据库 ID，规则同 project_id。系统集合所在的 default 库会随
-  // 项目自动创建；填写 default 即使用该库，填写其他 id 则额外创建业务库。
+  // 首个业务数据库 ID，规则同 project_id。CreateProject 把它作为第一业务库
+  // 创建（缺省 default）；系统集合在项目数据面 tw_<project>，不在该库。
   string database_id = 5;
 }
 

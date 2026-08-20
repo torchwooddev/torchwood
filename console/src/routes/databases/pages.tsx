@@ -816,6 +816,7 @@ export function DatabaseDetailPage() {
       cell: (c) => (
         <span className="flex items-center gap-2">
           <span className="truncate">{c.id}</span>
+          {/* 系统集合已不经 Databases 页列出（在 tw_<project>，走 Users/Storage/Groups）；徽章仅兜底 is_system。 */}
           {c.is_system && <Badge variant="secondary">系统</Badge>}
         </span>
       ),

@@ -7,21 +7,25 @@
 
 ## 1. 架构总览
 
-Torchwood 采用 **schema-per-database** 的 PostgreSQL 映射：
+Torchwood 采用 **三层 PostgreSQL schema** 映射（见 `docs/design/project-data-plane-schema.md`）：
 
-- 每个 `(project, database)` 对应一个真实 PostgreSQL schema；
+- `public`：平台控制面与事件脊柱；
+- `tw_<project>`（一段式）：项目数据面，容纳系统文档集合（users / sessions / …）；
+- `tw_<project>_<database>`（两段式）：每个开发者 database 一个业务文档面，只放用户 collection；
 - 每个 collection 对应 schema 内的一张**真实表**（不是 JSONB 堆表）；
-- 表名 / schema 名均经过严格标识符白名单校验（`^[a-zA-Z_][a-zA-Z0-9_]*$`）与引用转义，杜绝 SQL 注入。
+- 表名 / schema 名均经过严格标识符白名单校验与引用转义，杜绝 SQL 注入。
 
 ### 1.1 命名规则
 
 | 对象 | 命名 | 示例 |
 |------|------|------|
-| Schema | `tw_<projectID>_<databaseID>` | `tw_shop_default`、`tw_shop_app` |
-| 集合表 | `<schema>.<collectionID>` | `tw_shop_default.users` |
-| 权限表 | `<schema>._perms` | `tw_shop_default._perms` |
+| 项目数据面 schema | `tw_<projectID>` | `tw_shop` |
+| 业务库 schema | `tw_<projectID>_<databaseID>` | `tw_shop_default`、`tw_shop_app` |
+| 系统集合表 | `tw_<project>.<collectionID>` | `tw_shop.users` |
+| 业务集合表 | `tw_<project>_<database>.<collectionID>` | `tw_shop_app.posts` |
+| 权限表 | `<schema>._perms`（每 schema 一张） | `tw_shop._perms`、`tw_shop_app._perms` |
 
-`projectID` / `databaseID` 须匹配 `^[a-z][a-z0-9]{0,27}$`（`pkg/ident`）。`CreateDatabase` 即 `CREATE SCHEMA IF NOT EXISTS`，`DeleteDatabase` 即 `DROP SCHEMA ... CASCADE`。行内 `_tenant` 仍取 `projects.internal_id`（`resolveInternalID`，进程内缓存）。
+`projectID` / `databaseID` 须匹配 `^[a-z][a-z0-9]{0,27}$`（`pkg/ident`）。对外 `database_id` 另走 `RejectExternalDatabaseID`（charset + 显式拒绝 sentinel `_`）。`CreateDatabase` 即 `CREATE SCHEMA IF NOT EXISTS` 两段式，`DeleteDatabase` 即 `DROP SCHEMA ... CASCADE`（**永不** DROP 一段式 `tw_<project>`）。行内 `_tenant` 仍取 `projects.internal_id`（`resolveInternalID`，进程内缓存）。
 
 ### 1.2 集合表结构
 
@@ -77,14 +81,16 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | 层 | 技术 | 职责 | 表 |
 |----|------|------|-----|
 | 元数据静态层 | bun + golang-migrate（`db/migrations/`） | 项目、API Key、库/集合目录、审计等平台元数据 | `projects`、`api_keys`、`admins`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`audit_logs`、`admin_projects`、`project_oauth_providers`、`functions` 等 |
-| 动态文档层 | schema-per-database 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、groups 等）与用户动态集合的真实数据 | `TORCHWOOD_<internalID>_<dbID>.*` |
+| 动态文档层 | schema-per-project + schema-per-database 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、groups 等）在 `tw_<project>`；用户动态集合在 `tw_<project>_<database>` | `tw_shop.users`、`tw_shop_app.posts` |
 
 - `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。
 - 动态层表结构由目录驱动：`CreateCollection` 先建表 + 索引，再写目录元数据（用户集合重复创建返回 `ErrDuplicateKey` → `AlreadyExists`；系统集合幂等成功）。
 
 ### 2.1 系统集合
 
-`internal/domain/databases/system_collections.go` 是系统集合名单的单一事实来源（仅对 `default` 库生效）：
+`internal/domain/databases/system_collections.go` 是系统集合名单的单一事实来源。系统性由**所在 schema** 决定：`IsSystemCollection` 当且仅当 `databaseID == ident.ProjectDataPlaneID`（sentinel `_`）且 id 命中下表。物理表在 `tw_<project>`，**不**寄居 `default` 业务库。`default` 是 CreateProject 自动创建的普通第一库（本期 use-case 仍禁 Create/Delete；PR7 解禁），其中的同名 `users` 是普通用户集合（`is_system=false`，有 `_version`）。
+
+对外 Databases API 摸不到系统集合：`RejectExternalDatabaseID("_")` → InvalidArgument；ListDatabases 过滤 sentinel。系统用户 / 文件 / 组只经 Account、Server Users、Storage、Groups 专用 RPC。
 
 | 集合 | 属性（节选） | 索引 | 独占管理服务 |
 |------|-------------|------|-------------|
@@ -96,9 +102,9 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | `buckets` | name、permissions、public | name | Storage |
 | `files` | bucket_id、name、mime_type、size、metadata | bucket_id、name fulltext | Storage |
 
-- `SensitiveSystemCollectionIDs`（users / sessions / identities）：Server API 仅 PlatformAdmin 可读（返回前脱敏），Client API 一律拒绝（走 Account 专用 API）。
-- `isWriteProtectedSystemCollection`（纵深防御）：`default` 库的 users/sessions/identities 禁止非 System 主体直接写；更新路径对文档 owner（`user:<id>` 匹配）放行，以支持 `UpdateAccount` / `UpdatePrefs` 自助路径。
-- `EnsureSystemCollections` 在项目首次使用时引导创建全部系统集合（幂等，进程内缓存 + `DO NOTHING`），并执行存量 `keys` 角色写权限收窄清理（`cleanupKeysWritePerms`：移除 users/sessions/identities 的 `update:keys` / `delete:keys`，groups/memberships 保留）；对**已存在**的存量集合按 spec 幂等补齐缺失属性（`reconcileSystemCollectionAttrs`：直接调 `CreateAttribute` 补物理列 + `document_attributes` 元数据，按属性 Key 比对，并发元数据 INSERT 撞唯一约束 23505 忽略）。
+- `SensitiveSystemCollectionIDs`（users / sessions / identities）：专用 API 读写；Databases API 因 sentinel 被拒而不可达。
+- `isWriteProtectedSystemCollection`（纵深防御）：项目数据面的 users/sessions/identities 禁止非 System 主体直接写；更新路径对文档 owner（`user:<id>` 匹配）放行，以支持 `UpdateAccount` / `UpdatePrefs` 自助路径。业务库同名集合不受影响。
+- `EnsureSystemCollections` 在项目首次使用时引导创建 `tw_<project>`、catalog sentinel 行 `document_databases(id='_')` 与全部系统集合（幂等，进程内缓存 + `DO NOTHING`），并执行存量 `keys` 角色写权限收窄清理（`cleanupKeysWritePerms`：`WHERE project_id = ? AND database_id = '_'`，移除 users/sessions/identities 的 `update:keys` / `delete:keys`，groups/memberships 保留）；对**已存在**的存量集合按 spec 幂等补齐缺失属性（`reconcileSystemCollectionAttrs`：直接调 `CreateAttribute` 补物理列 + `document_attributes` 元数据，按属性 Key 比对，并发元数据 INSERT 撞唯一约束 23505 忽略）。
 
 ---
 

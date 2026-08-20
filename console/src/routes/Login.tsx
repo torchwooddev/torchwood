@@ -176,8 +176,8 @@ export function Login() {
                   placeholder="app"
                 />
                 <p className="text-xs text-muted-foreground">
-                  规则同上。系统 default 库会随项目自动创建；填 default 使用该库，填其他 id
-                  则额外创建业务库。
+                  规则同上。将作为项目自动创建的第一业务库（可填 default 或其它合法
+                  id）。系统用户 / 文件 / 组不在此库，走 Users / Storage / Groups。
                 </p>
               </div>
             )}

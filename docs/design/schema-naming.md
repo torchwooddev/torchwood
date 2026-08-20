@@ -96,7 +96,7 @@ func IsTwoSegmentSchema(name string) bool                          // 供 DDL �
 
 | id | 结果 |
 |---|---|
-| `default` | 合法（bootstrap 项目、系统库） |
+| `default` | 合法（bootstrap 项目、CreateProject 第一业务库） |
 | `shop` / `app` / `cms` | 合法 |
 | `acmeprodshop2026` | 合法（16 字符） |
 | `Shop` / `my-shop` / `my_shop` | 非法 |

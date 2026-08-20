@@ -65,6 +65,7 @@ export function CollectionLayout() {
           <span className="inline-flex items-center gap-2">
             {collection.name}
             {collection.disabled && <Badge variant="destructive">已停用</Badge>}
+            {/* 系统集合不经本页管理；徽章仅兜底 is_system。 */}
             {collection.is_system && <Badge variant="secondary">系统</Badge>}
           </span>
         }

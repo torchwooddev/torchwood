@@ -244,11 +244,11 @@ LIMIT 10;
 | 9.2 | 查询过滤 | `GET /v1/server/users?queries=equal("email","qa@torchwood.local")`（参数格式以 gateway 为准） | 仅返回匹配用户 | [x] |
 | 9.3 | 自定义库 | 创建 app 库 + posts 集合 + attribute | 元数据与 schema 一致 | [x] |
 | 9.4 | 列表权限 | 非 admin 角色列表用户（若可模拟） | 仅返回有 `_perms` 的文档 | [x] |
-| 9.5 | 系统集合标记 | `GET /v1/server/databases/default/collections/users` | `is_system=true`；自定义库同名集合 `is_system=false` | [ ] |
-| 9.6 | 系统集合只读（Server） | 以 databases scope API key 对 `default` 库系统集合执行 UpdateCollection/DeleteCollection/CreateAttribute/DeleteAttribute/CreateIndex/DeleteIndex/CreateCollection | 全部 `PermissionDenied` | [ ] |
-| 9.7 | 系统集合文档写 | 以 API key 对 `default` 库系统集合 Create/Update/Delete/Bulk 文档 | 全部 `PermissionDenied` | [ ] |
-| 9.8 | 系统集合文档读 | 以 keys 主体读 groups/buckets/files；读 users | groups 等放行；users `PermissionDenied`；Console 会话可读 users 且无 `password_hash`/`phone` 等敏感字段 | [ ] |
-| 9.9 | 客户端读放行 | 匿名读 groups/buckets（read:any） | 放行；users/sessions/identities 读/写全拒 | [ ] |
+| 9.5 | 系统集合不在 default | `GET /v1/server/databases/default/collections`；`GET .../default/collections/users` | List 不含 7 系统集合；未自建则 users NotFound。adapter/专用 RPC 可见 `tw_<project>.users` 且 `is_system=true` | [ ] |
+| 9.6 | Databases API 拒 sentinel | 以 databases scope 调 `GET /v1/server/databases/_` 或带 `database_id=_` 的集合/文档 RPC | 全部 `InvalidArgument` | [ ] |
+| 9.7 | 业务库可建普通 users | 在 `default` 或 `app` 上 `CreateCollection(users)` | 成功且 `is_system=false`；与系统 `tw_<project>.users` 无关 | [ ] |
+| 9.8 | 系统用户只经专用 API | Account / Server Users 读写用户 | 成功；Databases API 摸不到系统 users | [ ] |
+| 9.9 | Console Databases 页 | 打开 default 库集合列表 | 无「系统」徽章、无 7 个系统集合；Users / Storage / Groups 走专用页 | [ ] |
 
 ---
 

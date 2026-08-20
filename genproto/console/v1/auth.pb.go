@@ -315,8 +315,8 @@ type SignUpRequest struct {
 	SetupToken string `protobuf:"bytes,3,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
 	// 首个项目 ID，须匹配 ^[a-z][a-z0-9]{0,27}$。
 	ProjectId string `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	// 首个业务数据库 ID，规则同 project_id。系统集合所在的 default 库会随
-	// 项目自动创建；填写 default 即使用该库，填写其他 id 则额外创建业务库。
+	// 首个业务数据库 ID，规则同 project_id。CreateProject 把它作为第一业务库
+	// 创建（缺省 default）；系统集合在项目数据面 tw_<project>，不在该库。
 	DatabaseId    string `protobuf:"bytes,5,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
