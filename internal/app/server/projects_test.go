@@ -64,6 +64,19 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	sentinel, err := docDB.GetDatabase(ctx, p.ID, databases.SystemDatabaseID)
 	require.NoError(t, err)
 	require.NotNil(t, sentinel)
+
+	var publicCatalog int
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM public.document_collections WHERE project_id = ?`, p.ID).Scan(&publicCatalog))
+	require.Zero(t, publicCatalog, "PR4: catalog 不得再写 public")
+
+	cat := testutil.CatalogIdent(p.ID)
+	projectCatalog, err := db.NewSelect().Model((*model.DocumentCollection)(nil)).
+		ModelTableExpr("?.document_collections AS dc", cat).
+		Where("project_id = ? AND is_system = TRUE", p.ID).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, len(databases.SystemCollectionIDs), projectCatalog)
 }
 
 func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
@@ -154,10 +167,9 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, got)
 
-	exists, err := db.NewSelect().Model((*model.DocumentDatabase)(nil)).
-		Where("project_id = ? AND id = ?", projectID, databases.SystemDatabaseID).Exists(ctx)
-	require.NoError(t, err)
-	require.False(t, exists)
+	var ns any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_"+projectID).Scan(&ns))
+	require.Nil(t, ns)
 }
 
 // createTestProject 直接经 repo 落库一个项目（UpdateProject 不需要 docDB）。

@@ -18,6 +18,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/ident"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -98,6 +99,13 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 	if err != nil {
 		return err
 	}
+	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+		return err
+	}
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return err
+	}
 	// R02-P1-2：schema / _perms 表与 document_databases 元数据包进同一事务，
 	// 任一步失败整体回滚，避免"schema 已建而元数据缺失"。
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
@@ -114,14 +122,24 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		_, err := p.conn(txCtx).NewInsert().Model(m).Exec(txCtx)
+		_, err := p.conn(txCtx).NewInsert().Model(m).
+			ModelTableExpr("?.document_databases AS ddb", cat).Exec(txCtx)
 		return err
 	})
 }
 
 func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Collection, error) {
+	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+		return nil, err
+	}
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.DocumentDatabase)
-	err := p.conn(ctx).NewSelect().Model(m).Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
+	err = p.conn(ctx).NewSelect().Model(m).
+		ModelTableExpr("?.document_databases AS ddb", cat).
+		Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -138,8 +156,17 @@ func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id stri
 }
 
 func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Collection, error) {
+	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+		return nil, err
+	}
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return nil, err
+	}
 	var ms []model.DocumentDatabase
-	err := p.conn(ctx).NewSelect().Model(&ms).Where("project_id = ?", projectID).Order("created_at DESC").Scan(ctx)
+	err = p.conn(ctx).NewSelect().Model(&ms).
+		ModelTableExpr("?.document_databases AS ddb", cat).
+		Where("project_id = ?", projectID).Order("created_at DESC").Scan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -161,24 +188,33 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 	if err != nil {
 		return err
 	}
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return err
+	}
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
 			return err
 		}
 		// F4-2：物理对象删除后必须清理元数据，否则同名库/集合无法重建。
 		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
+			ModelTableExpr("?.document_collections AS dc", cat).
 			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
 			return err
 		}
 		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
+			ModelTableExpr("?.document_attributes AS da", cat).
 			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
 			return err
 		}
 		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+			ModelTableExpr("?.document_indexes AS di", cat).
 			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
 			return err
 		}
-		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentDatabase)(nil)).Where("id = ? AND project_id = ?", id, projectID).Exec(txCtx)
+		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentDatabase)(nil)).
+			ModelTableExpr("?.document_databases AS ddb", cat).
+			Where("id = ? AND project_id = ?", id, projectID).Exec(txCtx)
 		return err
 	})
 }
@@ -212,8 +248,16 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 }
 
 func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
+	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+		return nil, err
+	}
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.DocumentCollection)
-	err := p.conn(ctx).NewSelect().Model(m).
+	err = p.conn(ctx).NewSelect().Model(m).
+		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -241,8 +285,17 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		offset = off
 	}
 
+	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+		return nil, databases.ListMeta{}, err
+	}
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return nil, databases.ListMeta{}, err
+	}
+
 	var total int64
 	count, err := p.conn(ctx).NewSelect().Model((*model.DocumentCollection)(nil)).
+		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).Count(ctx)
 	if err != nil {
 		return nil, databases.ListMeta{}, err
@@ -251,6 +304,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 
 	var ms []model.DocumentCollection
 	err = p.conn(ctx).NewSelect().Model(&ms).
+		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Order("created_at DESC").
 		Limit(pageSize).Offset(offset).Scan(ctx)
@@ -268,6 +322,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 
 	var allAttrs []model.DocumentAttribute
 	if err := p.conn(ctx).NewSelect().Model(&allAttrs).
+		ModelTableExpr("?.document_attributes AS da", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Where("collection_id IN (?)", bun.In(collectionIDs)).
 		Scan(ctx); err != nil {
@@ -280,6 +335,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 
 	var allIdxs []model.DocumentIndex
 	if err := p.conn(ctx).NewSelect().Model(&allIdxs).
+		ModelTableExpr("?.document_indexes AS di", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Where("collection_id IN (?)", bun.In(collectionIDs)).
 		Scan(ctx); err != nil {
@@ -317,16 +373,23 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, collectionID))); err != nil {
 			return err
 		}
+		cat, err := p.catalogIdent(projectID)
+		if err != nil {
+			return err
+		}
 		// F4-2：物理表删除后同步清理属性/索引元数据，否则删了建不回来。
 		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
+			ModelTableExpr("?.document_attributes AS da", cat).
 			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx); err != nil {
 			return err
 		}
 		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+			ModelTableExpr("?.document_indexes AS di", cat).
 			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx); err != nil {
 			return err
 		}
-		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
+		_, err = p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
+			ModelTableExpr("?.document_collections AS dc", cat).
 			Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Exec(txCtx)
 		return err
 	})
@@ -360,8 +423,12 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 	}
 	sets = append(sets, "updated_at = ?")
 	args = append(args, time.Now(), projectID, databaseID, collectionID)
-	_, err := p.conn(ctx).ExecContext(ctx,
-		`UPDATE document_collections SET `+strings.Join(sets, ", ")+` WHERE project_id = ? AND database_id = ? AND id = ?`,
+	catSQL, err := p.catalogQuoted(projectID)
+	if err != nil {
+		return err
+	}
+	_, err = p.conn(ctx).ExecContext(ctx,
+		fmt.Sprintf(`UPDATE %s.document_collections SET `, catSQL)+strings.Join(sets, ", ")+` WHERE project_id = ? AND database_id = ? AND id = ?`,
 		args...,
 	)
 	return err
@@ -402,7 +469,12 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		if attr.Size > 0 {
 			m.Size = &attr.Size
 		}
-		_, err := p.conn(txCtx).NewInsert().Model(m).Exec(txCtx)
+		cat, err := p.catalogIdent(projectID)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).NewInsert().Model(m).
+			ModelTableExpr("?.document_attributes AS da", cat).Exec(txCtx)
 		return err
 	})
 }
@@ -426,7 +498,12 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 			Orders:       idx.Orders,
 			CreatedAt:    time.Now(),
 		}
-		_, err := p.conn(txCtx).NewInsert().Model(m).Exec(txCtx)
+		cat, err := p.catalogIdent(projectID)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).NewInsert().Model(m).
+			ModelTableExpr("?.document_indexes AS di", cat).Exec(txCtx)
 		return err
 	})
 }
@@ -1353,8 +1430,15 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 			return err
 		}
 	}
+	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+		return err
+	}
 	dbID := ident.ProjectDataPlaneID
 	schema, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		return err
+	}
+	cat, err := p.catalogIdent(projectID)
 	if err != nil {
 		return err
 	}
@@ -1370,13 +1454,16 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		}
 		// Catalog-only sentinel 行（无 tw_<p>_ schema）；复合 PK (project_id, id)。
 		exists, err := p.conn(ctx).NewSelect().Model((*model.DocumentDatabase)(nil)).
+			ModelTableExpr("?.document_databases AS ddb", cat).
 			Where("id = ? AND project_id = ?", dbID, projectID).Exists(ctx)
 		if err != nil {
 			return err
 		}
 		if !exists {
 			m := &model.DocumentDatabase{ID: dbID, ProjectID: projectID, Name: "(project)", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-			if _, err := p.conn(ctx).NewInsert().Model(m).On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx); err != nil {
+			if _, err := p.conn(ctx).NewInsert().Model(m).
+				ModelTableExpr("?.document_databases AS ddb", cat).
+				On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx); err != nil {
 				return err
 			}
 		}
@@ -1444,9 +1531,13 @@ func (p *postgresDocumentDB) cleanupKeysWritePerms(ctx context.Context, projectI
 	if _, err := p.conn(ctx).ExecContext(ctx, del); err != nil {
 		return fmt.Errorf("cleanup keys perms: %w", err)
 	}
-	upd := `UPDATE document_collections
+	catSQL, err := p.catalogQuoted(projectID)
+	if err != nil {
+		return err
+	}
+	upd := fmt.Sprintf(`UPDATE %s.document_collections
 		SET permissions = ARRAY(SELECT x FROM unnest(permissions) AS x WHERE x NOT IN ('update:keys','delete:keys'))
-		WHERE project_id = ? AND database_id = ? AND id IN ('users','sessions','identities') AND permissions IS NOT NULL`
+		WHERE project_id = ? AND database_id = ? AND id IN ('users','sessions','identities') AND permissions IS NOT NULL`, catSQL)
 	if _, err := p.conn(ctx).ExecContext(ctx, upd, projectID, ident.ProjectDataPlaneID); err != nil {
 		return fmt.Errorf("cleanup keys collection perms: %w", err)
 	}
@@ -1459,6 +1550,26 @@ func (p *postgresDocumentDB) cleanupKeysWritePerms(ctx context.Context, projectI
 
 func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+func (p *postgresDocumentDB) ensureProjectCatalog(ctx context.Context, projectID string) error {
+	return projectschema.Apply(ctx, p.db, projectID)
+}
+
+func (p *postgresDocumentDB) catalogIdent(projectID string) (bun.Ident, error) {
+	s, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		return bun.Ident(""), err
+	}
+	return bun.Ident(s), nil
+}
+
+func (p *postgresDocumentDB) catalogQuoted(projectID string) (string, error) {
+	s, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		return "", err
+	}
+	return quoteIdent(s), nil
 }
 
 // documentSchema 解析文档读写 / EnsureSystemCollections / CreateCollection 的
@@ -1823,7 +1934,13 @@ func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, proje
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
-	res, err := p.conn(ctx).NewInsert().Model(coll).On("CONFLICT (project_id, database_id, id) DO NOTHING").Exec(ctx)
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return err
+	}
+	res, err := p.conn(ctx).NewInsert().Model(coll).
+		ModelTableExpr("?.document_collections AS dc", cat).
+		On("CONFLICT (project_id, database_id, id) DO NOTHING").Exec(ctx)
 	if err != nil {
 		return err
 	}
@@ -1854,7 +1971,8 @@ func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, proje
 		if attr.Size > 0 {
 			m.Size = &attr.Size
 		}
-		if _, err := p.conn(ctx).NewInsert().Model(m).Exec(ctx); err != nil {
+		if _, err := p.conn(ctx).NewInsert().Model(m).
+			ModelTableExpr("?.document_attributes AS da", cat).Exec(ctx); err != nil {
 			return err
 		}
 	}
@@ -1869,7 +1987,8 @@ func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, proje
 			Orders:       idx.Orders,
 			CreatedAt:    time.Now(),
 		}
-		if _, err := p.conn(ctx).NewInsert().Model(m).Exec(ctx); err != nil {
+		if _, err := p.conn(ctx).NewInsert().Model(m).
+			ModelTableExpr("?.document_indexes AS di", cat).Exec(ctx); err != nil {
 			return err
 		}
 	}
@@ -1877,14 +1996,20 @@ func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, proje
 }
 
 func (p *postgresDocumentDB) mapCollection(ctx context.Context, m *model.DocumentCollection) (*databases.Collection, error) {
+	cat, err := p.catalogIdent(m.ProjectID)
+	if err != nil {
+		return nil, err
+	}
 	var attrs []model.DocumentAttribute
 	if err := p.conn(ctx).NewSelect().Model(&attrs).
+		ModelTableExpr("?.document_attributes AS da", cat).
 		Where("project_id = ? AND database_id = ? AND collection_id = ?", m.ProjectID, m.DatabaseID, m.ID).
 		Scan(ctx); err != nil {
 		return nil, err
 	}
 	var idxs []model.DocumentIndex
 	if err := p.conn(ctx).NewSelect().Model(&idxs).
+		ModelTableExpr("?.document_indexes AS di", cat).
 		Where("project_id = ? AND database_id = ? AND collection_id = ?", m.ProjectID, m.DatabaseID, m.ID).
 		Scan(ctx); err != nil {
 		return nil, err
@@ -1933,8 +2058,12 @@ func (p *postgresDocumentDB) setCollectionPermissions(ctx context.Context, proje
 	for _, perm := range perms {
 		raw = append(raw, fmt.Sprintf("%s:%s", perm.Type, perm.Role))
 	}
-	_, err := p.conn(ctx).ExecContext(ctx,
-		`UPDATE document_collections SET permissions = ? WHERE project_id = ? AND database_id = ? AND id = ?`,
+	catSQL, err := p.catalogQuoted(projectID)
+	if err != nil {
+		return err
+	}
+	_, err = p.conn(ctx).ExecContext(ctx,
+		fmt.Sprintf(`UPDATE %s.document_collections SET permissions = ? WHERE project_id = ? AND database_id = ? AND id = ?`, catSQL),
 		pgdialect.Array(raw), projectID, databaseID, collectionID)
 	return err
 }

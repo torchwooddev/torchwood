@@ -38,7 +38,7 @@ type functionsAPIKeyRepo struct {
 }
 
 func (r *functionsAPIKeyRepo) CreateAPIKey(context.Context, *projects.APIKey) error { return nil }
-func (r *functionsAPIKeyRepo) GetAPIKey(context.Context, string) (*projects.APIKey, error) {
+func (r *functionsAPIKeyRepo) GetAPIKey(context.Context, string, string) (*projects.APIKey, error) {
 	return nil, nil
 }
 func (r *functionsAPIKeyRepo) GetAPIKeyBySecretHash(_ context.Context, hash string) (*projects.APIKey, error) {
@@ -47,7 +47,7 @@ func (r *functionsAPIKeyRepo) GetAPIKeyBySecretHash(_ context.Context, hash stri
 func (r *functionsAPIKeyRepo) ListAPIKeys(context.Context, string) ([]projects.APIKey, error) {
 	return nil, nil
 }
-func (r *functionsAPIKeyRepo) DeleteAPIKey(context.Context, string) error { return nil }
+func (r *functionsAPIKeyRepo) DeleteAPIKey(context.Context, string, string) error { return nil }
 
 type functionsAdminRepo struct {
 	admins map[string]*projects.Admin
@@ -440,7 +440,7 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 			ExpiresAt: time.Now().Add(time.Hour).Unix(),
 		})
 		r := newUploadRequest(t, map[string]string{
-			"Authorization":     "Bearer " + token,
+			"Authorization":       "Bearer " + token,
 			"X-Torchwood-Project": projectID,
 		})
 		rec := httptest.NewRecorder()

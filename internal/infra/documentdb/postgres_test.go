@@ -1207,8 +1207,9 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	// 预插同 (project_id, id) 元数据行，令 INSERT 撞复合主键。
-	_, err := db.DB.ExecContext(ctx,
-		`INSERT INTO document_databases (id, project_id, name, created_at, updated_at) VALUES ('app', ?, 'preexisting', NOW(), NOW())`,
+	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
+		`INSERT INTO %s.document_databases (id, project_id, name, created_at, updated_at) VALUES ('app', ?, 'preexisting', NOW(), NOW())`,
+		quoteIdent(testProjectSchema(t, projectID))),
 		projectID)
 	require.NoError(t, err)
 

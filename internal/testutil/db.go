@@ -16,6 +16,8 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
@@ -172,8 +174,43 @@ func CreateTestProject(ctx context.Context, db *clients.Database) (string, int64
 	if err := db.NewSelect().Model((*model.Project)(nil)).Column("internal_id").Where("id = ?", project.ID).Scan(ctx, &internalID); err != nil {
 		panic(err)
 	}
+	if err := projectschema.Apply(ctx, db, project.ID); err != nil {
+		panic(err)
+	}
 	cleanup := func() {
 		_, _ = db.NewDelete().Model((*model.Project)(nil)).Where("id = ?", project.ID).Exec(ctx)
 	}
 	return project.ID, internalID, cleanup
+}
+
+// CatalogIdent 返回项目数据面 schema 的 bun.Ident，供测试 ModelTableExpr。
+func CatalogIdent(projectID string) bun.Ident {
+	s, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		panic(err)
+	}
+	return bun.Ident(s)
+}
+
+// CatalogQuoted 返回 quoteIdent 后的项目 schema 名，供测试拼接 Raw SQL。
+func CatalogQuoted(projectID string) string {
+	s, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		panic(err)
+	}
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+}
+
+// InsertCatalogDatabase 向项目 schema 的 document_databases 插入一行。
+func InsertCatalogDatabase(ctx context.Context, db *clients.Database, projectID, id, name string) {
+	now := time.Now()
+	if _, err := db.NewInsert().Model(&model.DocumentDatabase{
+		ID:        id,
+		ProjectID: projectID,
+		Name:      name,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}).ModelTableExpr("?.document_databases AS ddb", CatalogIdent(projectID)).Exec(ctx); err != nil {
+		panic(err)
+	}
 }

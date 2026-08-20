@@ -7,7 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -17,7 +19,7 @@ type fakeAPIKeyRepository struct{}
 func (f *fakeAPIKeyRepository) CreateAPIKey(ctx context.Context, key *projects.APIKey) error {
 	return nil
 }
-func (f *fakeAPIKeyRepository) GetAPIKey(ctx context.Context, id string) (*projects.APIKey, error) {
+func (f *fakeAPIKeyRepository) GetAPIKey(ctx context.Context, projectID, id string) (*projects.APIKey, error) {
 	return nil, nil
 }
 func (f *fakeAPIKeyRepository) GetAPIKeyBySecretHash(ctx context.Context, hash string) (*projects.APIKey, error) {
@@ -26,7 +28,9 @@ func (f *fakeAPIKeyRepository) GetAPIKeyBySecretHash(ctx context.Context, hash s
 func (f *fakeAPIKeyRepository) ListAPIKeys(ctx context.Context, projectID string) ([]projects.APIKey, error) {
 	return nil, nil
 }
-func (f *fakeAPIKeyRepository) DeleteAPIKey(ctx context.Context, id string) error { return nil }
+func (f *fakeAPIKeyRepository) DeleteAPIKey(ctx context.Context, projectID, id string) error {
+	return nil
+}
 
 // TestAPIKeys_Create_ScopeValidation (B2): Create 时校验 scope 格式
 // ∈ {*, all, 裸资源名, <resource>.read, <resource>.write}，上限 32 项/64 字符。
@@ -121,6 +125,41 @@ func TestAPIKeys_Delete_RequiresPlatformAdmin(t *testing.T) {
 
 	err = uc.Delete(platformAdminCtx(context.Background()), "p1", "key-1")
 	require.Equal(t, codes.NotFound, status.Code(err), "平台 admin 应通过守卫，随后因 key 不存在返回 NotFound")
+}
+
+// TestAPIKeys_CrossProjectGetDeleteNotFound：仓储 project_id 谓词生效后，
+// 跨项目 Get/Delete 一律 404，不得靠 Go 侧比对。
+func TestAPIKeys_CrossProjectGetDeleteNotFound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	p1, _, c1 := testutil.CreateTestProject(ctx, db)
+	defer c1()
+	p2, _, c2 := testutil.CreateTestProject(ctx, db)
+	defer c2()
+
+	uc := NewAPIKeys(bunrepo.NewAPIKeyRepository(db))
+	key, _, err := uc.CreateInternal(ctx, CreateAPIKeyCommand{
+		ProjectID: p1,
+		Name:      "k",
+		Scopes:    []string{"*"},
+	})
+	require.NoError(t, err)
+
+	_, err = uc.Get(ctx, p2, key.ID)
+	require.Equal(t, codes.NotFound, status.Code(err), "跨项目 GetAPIKey → 404")
+
+	err = uc.Delete(platformAdminCtx(ctx), p2, key.ID)
+	require.Equal(t, codes.NotFound, status.Code(err), "跨项目 DeleteAPIKey → 404")
+
+	got, err := uc.Get(ctx, p1, key.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, key.ID, got.ID)
 }
 
 // TestAPIKeys_EnsureScopesWithinCaller（G2-5/R06-P3）：cmd.Scopes 必须 ⊆

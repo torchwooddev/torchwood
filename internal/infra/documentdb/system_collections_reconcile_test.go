@@ -4,11 +4,9 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
-	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/ident"
@@ -25,15 +23,7 @@ var oldGroupsAttrs = []databases.Attribute{
 // （不调 EnsureSystemCollections，即不触发任何 reconcile）。
 func setupOldSpecGroupsCollection(t *testing.T, ctx context.Context, db *clients.Database, docDB databases.DocumentDB, projectID string) {
 	t.Helper()
-	now := time.Now()
-	_, err := db.NewInsert().Model(&model.DocumentDatabase{
-		ID:        ident.ProjectDataPlaneID,
-		ProjectID: projectID,
-		Name:      "(project)",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}).Exec(ctx)
-	require.NoError(t, err)
+	testutil.InsertCatalogDatabase(ctx, db, projectID, ident.ProjectDataPlaneID, "(project)")
 	spec := systemCollectionSpecs(projectID)["groups"]
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, databases.SystemDatabaseID, "groups", spec.name, oldGroupsAttrs, spec.indexes, spec.permissions, true))
 }
@@ -113,15 +103,7 @@ func TestEnsureSystemCollections_ReconcileConcurrent(t *testing.T) {
 	internalID, err := docDB.resolveInternalID(ctx, projectID)
 	require.NoError(t, err)
 	require.NoError(t, docDB.ensureSchemaAndPerms(ctx, testProjectSchema(t, projectID)))
-	now := time.Now()
-	_, err = db.NewInsert().Model(&model.DocumentDatabase{
-		ID:        ident.ProjectDataPlaneID,
-		ProjectID: projectID,
-		Name:      "(project)",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}).Exec(ctx)
-	require.NoError(t, err)
+	testutil.InsertCatalogDatabase(ctx, db, projectID, ident.ProjectDataPlaneID, "(project)")
 
 	specs := systemCollectionSpecs(projectID)
 	for _, id := range databases.SystemCollectionIDs {

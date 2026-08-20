@@ -3,12 +3,10 @@ package server
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/ident"
@@ -84,15 +82,7 @@ func TestGroups_Prefs_SelfHealReconcile(t *testing.T) {
 
 	// 模拟存量项目：只建项目数据面 catalog sentinel + 旧 spec 的 groups 集合，绝不调
 	// EnsureSystemCollections（否则 reconcile 提前发生，测不出自愈路径）。
-	now := time.Now()
-	_, err := db.NewInsert().Model(&model.DocumentDatabase{
-		ID:        ident.ProjectDataPlaneID,
-		ProjectID: projectID,
-		Name:      "(project)",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}).Exec(ctx)
-	require.NoError(t, err)
+	testutil.InsertCatalogDatabase(ctx, db, projectID, ident.ProjectDataPlaneID, "(project)")
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, ident.ProjectDataPlaneID, "groups", "groups", oldGroupsAttrsV2, nil, []databases.Permission{
 		{Type: "create", Role: "keys"},
 		{Type: "read", Role: "any"},
@@ -107,7 +97,7 @@ func TestGroups_Prefs_SelfHealReconcile(t *testing.T) {
 	}, true))
 
 	groupID := "legacy-group-id"
-	_, err = docDB.CreateDocument(ctx, projectID, ident.ProjectDataPlaneID, "groups", databases.Document{
+	_, err := docDB.CreateDocument(ctx, projectID, ident.ProjectDataPlaneID, "groups", databases.Document{
 		ID:   groupID,
 		Data: map[string]any{"name": "Legacy Group", "total": 0},
 	}, nil, databases.SystemPrincipal)

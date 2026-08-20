@@ -11,6 +11,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/ident"
@@ -93,6 +94,9 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 		if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
 			return fmt.Errorf("create project schema: %w", err)
 		}
+		if err := projectschema.Apply(txCtx, s.db, p.ID); err != nil {
+			return fmt.Errorf("apply project schema: %w", err)
+		}
 		if err := s.docDB.EnsureSystemCollections(txCtx, p.ID, p.InternalID); err != nil {
 			return fmt.Errorf("ensure system collections: %w", err)
 		}
@@ -163,17 +167,8 @@ func (s *Projects) deletePublicProjectRows(ctx context.Context, projectID string
 	if _, err := conn.NewDelete().Model((*model.AdminProject)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
 		return fmt.Errorf("delete admin_projects: %w", err)
 	}
-	if _, err := conn.NewDelete().Model((*model.DocumentAttribute)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete catalog attributes: %w", err)
-	}
-	if _, err := conn.NewDelete().Model((*model.DocumentIndex)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete catalog indexes: %w", err)
-	}
-	if _, err := conn.NewDelete().Model((*model.DocumentCollection)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete catalog collections: %w", err)
-	}
-	if _, err := conn.NewDelete().Model((*model.DocumentDatabase)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete catalog databases: %w", err)
+	if _, err := conn.ExecContext(ctx, `DELETE FROM provider_resource_index WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("delete provider_resource_index: %w", err)
 	}
 	return nil
 }

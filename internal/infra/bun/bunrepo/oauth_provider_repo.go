@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/secretbox"
 )
@@ -27,8 +28,15 @@ func NewOAuthProviderRepository(db *clients.Database, cfg *config.AppConfig) pro
 }
 
 func (r *oauthProviderRepo) GetOAuthProvider(ctx context.Context, projectID, provider string) (*projects.OAuthProvider, error) {
+	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+		return nil, err
+	}
+	sch, expr, err := ProjectTable(projectID, "project_oauth_providers", "pop")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.ProjectOAuthProvider)
-	err := r.db.NewSelect().Model(m).
+	err = r.db.Conn(ctx).NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("project_id = ? AND provider = ?", projectID, provider).
 		Scan(ctx)
 	if err != nil {
@@ -41,8 +49,15 @@ func (r *oauthProviderRepo) GetOAuthProvider(ctx context.Context, projectID, pro
 }
 
 func (r *oauthProviderRepo) ListOAuthProviders(ctx context.Context, projectID string) ([]projects.OAuthProvider, error) {
+	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+		return nil, err
+	}
+	sch, expr, err := ProjectTable(projectID, "project_oauth_providers", "pop")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.ProjectOAuthProvider
-	err := r.db.NewSelect().Model(&rows).
+	err = r.db.Conn(ctx).NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("project_id = ?", projectID).
 		Order("provider ASC").
 		Scan(ctx)
@@ -82,7 +97,14 @@ func (r *oauthProviderRepo) UpsertOAuthProvider(ctx context.Context, cfg *projec
 		Scopes:       append([]string(nil), cfg.Scopes...),
 		UpdatedAt:    now,
 	}
-	_, err := r.db.NewInsert().Model(m).
+	if err := projectschema.Apply(ctx, r.db, cfg.ProjectID); err != nil {
+		return err
+	}
+	sch, expr, err := ProjectTable(cfg.ProjectID, "project_oauth_providers", "pop")
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Conn(ctx).NewInsert().Model(m).ModelTableExpr(expr, sch).
 		On("CONFLICT (project_id, provider) DO UPDATE").
 		Set("enabled = EXCLUDED.enabled").
 		Set("client_id = EXCLUDED.client_id").
@@ -94,7 +116,15 @@ func (r *oauthProviderRepo) UpsertOAuthProvider(ctx context.Context, cfg *projec
 }
 
 func (r *oauthProviderRepo) DeleteOAuthProvider(ctx context.Context, projectID, provider string) error {
-	_, err := r.db.NewDelete().Model((*model.ProjectOAuthProvider)(nil)).
+	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+		return err
+	}
+	sch, expr, err := ProjectTable(projectID, "project_oauth_providers", "pop")
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Conn(ctx).NewDelete().Model((*model.ProjectOAuthProvider)(nil)).
+		ModelTableExpr(expr, sch).
 		Where("project_id = ? AND provider = ?", projectID, provider).
 		Exec(ctx)
 	return err

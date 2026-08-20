@@ -258,7 +258,12 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		); err != nil {
 			return err
 		}
-		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
+		cat, err := p.catalogIdent(projectID)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
+			ModelTableExpr("?.document_attributes AS da", cat).
 			Where("project_id = ? AND database_id = ? AND collection_id = ? AND key = ?", projectID, databaseID, collectionID, key).
 			Exec(txCtx)
 		return err
@@ -282,7 +287,12 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 		); err != nil {
 			return err
 		}
-		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+		cat, err := p.catalogIdent(projectID)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+			ModelTableExpr("?.document_indexes AS di", cat).
 			Where("project_id = ? AND database_id = ? AND collection_id = ? AND id = ?", projectID, databaseID, collectionID, indexID).
 			Exec(txCtx)
 		return err

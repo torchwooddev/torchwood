@@ -455,9 +455,9 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	_, err := db.DB.ExecContext(ctx, seedSQL, internalID, internalID, internalID, internalID, internalID)
 	require.NoError(t, err)
 	// 集合级元数据：系统集合与 groups 都补上 keys 写权限（groups 作为对照）。
-	_, err = db.DB.ExecContext(ctx,
-		`UPDATE document_collections SET permissions = permissions || ARRAY['update:keys','delete:keys']
-		 WHERE project_id = ? AND database_id = '_' AND id IN ('users','sessions','identities','groups')`,
+	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+		`UPDATE %s.document_collections SET permissions = permissions || ARRAY['update:keys','delete:keys']
+		 WHERE project_id = ? AND database_id = '_' AND id IN ('users','sessions','identities','groups')`, schema),
 		projectID)
 	require.NoError(t, err)
 
@@ -482,16 +482,16 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 
 	// 集合级元数据：系统集合不再含 keys 写权限；groups 保留。
 	var metaKeysWrite int64
-	row = db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = '_'
-		 AND id IN ('users','sessions','identities') AND permissions @> ARRAY['update:keys','delete:keys']`, projectID)
+	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
+		`SELECT COUNT(*) FROM %s.document_collections WHERE project_id = ? AND database_id = '_'
+		 AND id IN ('users','sessions','identities') AND permissions @> ARRAY['update:keys','delete:keys']`, schema), projectID)
 	require.NoError(t, row.Scan(&metaKeysWrite))
 	require.Zero(t, metaKeysWrite)
 
 	var groupMeta int64
-	row = db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = '_'
-		 AND id = 'groups' AND permissions @> ARRAY['update:keys','delete:keys']`, projectID)
+	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
+		`SELECT COUNT(*) FROM %s.document_collections WHERE project_id = ? AND database_id = '_'
+		 AND id = 'groups' AND permissions @> ARRAY['update:keys','delete:keys']`, schema), projectID)
 	require.NoError(t, row.Scan(&groupMeta))
 	require.Equal(t, int64(1), groupMeta)
 

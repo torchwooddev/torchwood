@@ -90,7 +90,7 @@ type stubAPIKeyRepo struct {
 }
 
 func (r *stubAPIKeyRepo) CreateAPIKey(context.Context, *projects.APIKey) error { return nil }
-func (r *stubAPIKeyRepo) GetAPIKey(context.Context, string) (*projects.APIKey, error) {
+func (r *stubAPIKeyRepo) GetAPIKey(context.Context, string, string) (*projects.APIKey, error) {
 	return nil, nil
 }
 func (r *stubAPIKeyRepo) GetAPIKeyBySecretHash(_ context.Context, hash string) (*projects.APIKey, error) {
@@ -99,7 +99,7 @@ func (r *stubAPIKeyRepo) GetAPIKeyBySecretHash(_ context.Context, hash string) (
 func (r *stubAPIKeyRepo) ListAPIKeys(context.Context, string) ([]projects.APIKey, error) {
 	return nil, nil
 }
-func (r *stubAPIKeyRepo) DeleteAPIKey(context.Context, string) error { return nil }
+func (r *stubAPIKeyRepo) DeleteAPIKey(context.Context, string, string) error { return nil }
 
 type stubAdminRepo struct {
 	admins map[string]*projects.Admin

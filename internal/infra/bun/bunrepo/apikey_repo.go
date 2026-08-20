@@ -24,9 +24,9 @@ func (r *apiKeyRepo) CreateAPIKey(ctx context.Context, key *projects.APIKey) err
 	return err
 }
 
-func (r *apiKeyRepo) GetAPIKey(ctx context.Context, id string) (*projects.APIKey, error) {
+func (r *apiKeyRepo) GetAPIKey(ctx context.Context, projectID, id string) (*projects.APIKey, error) {
 	m := new(model.APIKey)
-	err := r.db.NewSelect().Model(m).Where("id = ?", id).Scan(ctx)
+	err := r.db.Conn(ctx).NewSelect().Model(m).Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -38,7 +38,7 @@ func (r *apiKeyRepo) GetAPIKey(ctx context.Context, id string) (*projects.APIKey
 
 func (r *apiKeyRepo) GetAPIKeyBySecretHash(ctx context.Context, hash string) (*projects.APIKey, error) {
 	m := new(model.APIKey)
-	err := r.db.NewSelect().Model(m).Where("secret_hash = ?", hash).Scan(ctx)
+	err := r.db.Conn(ctx).NewSelect().Model(m).Where("secret_hash = ?", hash).Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -61,8 +61,8 @@ func (r *apiKeyRepo) ListAPIKeys(ctx context.Context, projectID string) ([]proje
 	return out, nil
 }
 
-func (r *apiKeyRepo) DeleteAPIKey(ctx context.Context, id string) error {
-	_, err := r.db.NewDelete().Model((*model.APIKey)(nil)).Where("id = ?", id).Exec(ctx)
+func (r *apiKeyRepo) DeleteAPIKey(ctx context.Context, projectID, id string) error {
+	_, err := r.db.Conn(ctx).NewDelete().Model((*model.APIKey)(nil)).Where("project_id = ? AND id = ?", projectID, id).Exec(ctx)
 	return err
 }
 

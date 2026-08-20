@@ -13,10 +13,10 @@ type Repository interface {
 
 type APIKeyRepository interface {
 	CreateAPIKey(ctx context.Context, key *APIKey) error
-	GetAPIKey(ctx context.Context, id string) (*APIKey, error)
+	GetAPIKey(ctx context.Context, projectID, id string) (*APIKey, error)
 	GetAPIKeyBySecretHash(ctx context.Context, hash string) (*APIKey, error)
 	ListAPIKeys(ctx context.Context, projectID string) ([]APIKey, error)
-	DeleteAPIKey(ctx context.Context, id string) error
+	DeleteAPIKey(ctx context.Context, projectID, id string) error
 }
 
 type AdminRepository interface {

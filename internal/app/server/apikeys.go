@@ -111,12 +111,12 @@ func (a *APIKeys) List(ctx context.Context, projectID string) ([]projects.APIKey
 }
 
 func (a *APIKeys) Get(ctx context.Context, projectID, id string) (*projects.APIKey, error) {
-	key, err := a.repo.GetAPIKey(ctx, id)
+	key, err := a.repo.GetAPIKey(ctx, projectID, id)
 	if err != nil {
 		return nil, err
 	}
-	if key != nil && key.ProjectID != projectID {
-		return nil, nil
+	if key == nil {
+		return nil, status.Error(codes.NotFound, "api key not found")
 	}
 	return key, nil
 }
@@ -127,12 +127,12 @@ func (a *APIKeys) Delete(ctx context.Context, projectID, id string) error {
 	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
 		return err
 	}
-	key, err := a.repo.GetAPIKey(ctx, id)
+	key, err := a.repo.GetAPIKey(ctx, projectID, id)
 	if err != nil {
 		return err
 	}
-	if key == nil || key.ProjectID != projectID {
+	if key == nil {
 		return status.Error(codes.NotFound, "api key not found")
 	}
-	return a.repo.DeleteAPIKey(ctx, id)
+	return a.repo.DeleteAPIKey(ctx, projectID, id)
 }

@@ -53,8 +53,10 @@ func TestOAuthProviderRepository_CRUD(t *testing.T) {
 	require.Equal(t, "id-1", stored.ClientID)
 	require.Equal(t, "secret-1", stored.ClientSecret)
 
+	sch, expr, err := bunrepo.ProjectTable(projectID, "project_oauth_providers", "pop")
+	require.NoError(t, err)
 	var row model.ProjectOAuthProvider
-	require.NoError(t, db.NewSelect().Model(&row).
+	require.NoError(t, db.NewSelect().Model(&row).ModelTableExpr(expr, sch).
 		Where("project_id = ? AND provider = ?", projectID, domainauth.ProviderGoogle).
 		Scan(ctx))
 	require.NotEqual(t, "secret-1", row.ClientSecret)
@@ -62,6 +64,11 @@ func TestOAuthProviderRepository_CRUD(t *testing.T) {
 	plain, err := secretbox.Decrypt(row.ClientSecret, "test-jwt-secret")
 	require.NoError(t, err)
 	require.Equal(t, "secret-1", plain)
+
+	var publicOAuth int
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM public.project_oauth_providers WHERE project_id = ?`, projectID).Scan(&publicOAuth))
+	require.Zero(t, publicOAuth, "PR4: oauth 不得再写 public")
 
 	cfg.ClientID = "id-2"
 	cfg.ClientSecret = "secret-2"
