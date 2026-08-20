@@ -122,7 +122,7 @@ func (t *Groups) UpdateMembershipStatus(ctx context.Context, groupID, membership
 		// 接受邀请一律要求调用者邮箱已验证：SignUp 不强制验证邮箱，
 		// 若邀请创建时目标邮箱已被未验证账号抢注（user_id 绑定为该账号），
 		// 仅按 memUserID 判断会绕过验证，因此这里无条件校验 email_verified。
-		userDoc, err := t.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+		userDoc, err := t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 		if err != nil {
 			return nil, err
 		}

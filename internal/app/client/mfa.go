@@ -38,7 +38,7 @@ func (a *Account) mfaSignInChallenge(ctx context.Context, projectID string, user
 	if a.mfaChallenges == nil || a.mfa == nil || user == nil {
 		return nil, nil
 	}
-	doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", user.ID, databases.SystemPrincipal)
+	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", user.ID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func (a *Account) CreateTOTPFactor(ctx context.Context, projectID, userID, email
 		return nil, "", "", status.Error(codes.PermissionDenied, "cannot create mfa factor for another user")
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, "default", "users", p.UserID, databases.Principal{Roles: p.Roles})
+	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -288,7 +288,7 @@ func (a *Account) CompleteMFASession(ctx context.Context, projectID, challengeTo
 		return nil, nil, "", status.Error(codes.InvalidArgument, "code is required")
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -323,7 +323,7 @@ func (a *Account) CompleteMFASession(ctx context.Context, projectID, challengeTo
 
 // loadFactors 读取用户文档中的 factors JSON 数组。
 func (a *Account) loadFactors(ctx context.Context, p *shared.Principal) ([]domainauth.Factor, error) {
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, "default", "users", p.UserID, databases.Principal{Roles: p.Roles})
+	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,7 @@ func (a *Account) loadFactors(ctx context.Context, p *shared.Principal) ([]domai
 // saveFactors 把因子列表写回用户文档（读-改-写；UpdateDocument 失败时调用方
 // 必须放弃内存状态，由本函数原样返回错误）。
 func (a *Account) saveFactors(ctx context.Context, p *shared.Principal, factors []domainauth.Factor) (*databases.Document, error) {
-	updated, err := a.docDB.UpdateDocument(ctx, p.ProjectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+	updated, err := a.docDB.UpdateDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   p.UserID,
 		Data: map[string]any{"factors": factorDocs(factors)},
 	}, nil), databases.Principal{Roles: p.Roles})

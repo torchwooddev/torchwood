@@ -20,7 +20,7 @@ func NewUserRoles(docDB databases.DocumentDB) *UserRoles {
 
 func (r *UserRoles) LoadUserRoles(ctx context.Context, projectID, userID string) ([]string, error) {
 	baseRoles := []string{"users", fmt.Sprintf("user:%s", userID)}
-	doc, err := r.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := r.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return baseRoles, err
 	}
@@ -44,7 +44,7 @@ func (r *UserRoles) loadGroupRoles(ctx context.Context, projectID, userID string
 	if userID == "" {
 		return nil, nil
 	}
-	list, err := r.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+	list, err := r.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
 		Queries: []string{
 			query.BuildEqual("user_id", userID),
 			query.BuildEqual("status", groups.StatusAccepted),

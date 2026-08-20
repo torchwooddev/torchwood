@@ -354,7 +354,7 @@ func TestAccountService_DeleteSessions_KeepCurrentPassthrough(t *testing.T) {
 	authCtx := principalCtx(ctx, projectID, userID, currentSessionID)
 
 	// 额外插入一个"其他会话"。
-	_, err := docDB.CreateDocument(ctx, projectID, "default", "sessions", databases.Document{
+	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Document{
 		ID:   "session-2",
 		Data: map[string]any{"user_id": userID, "expire_at": "2099-01-01T00:00:00Z"},
 	}, nil, databases.SystemPrincipal)

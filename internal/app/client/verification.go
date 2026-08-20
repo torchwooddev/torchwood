@@ -56,7 +56,7 @@ func (a *Account) CreateVerification(ctx context.Context, cmd CreateVerification
 		return nil, err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", p.UserID, databases.Principal{Roles: p.Roles})
+	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
 	if err != nil {
 		return nil, err
 	}
@@ -112,14 +112,14 @@ func (a *Account) UpdateVerification(ctx context.Context, cmd UpdateVerification
 		return nil, err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, err
 	}
 	if doc == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
-	updated, err := a.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+	updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   userID,
 		Data: map[string]any{"email_verified": true},
 	}, nil), databases.SystemPrincipal)

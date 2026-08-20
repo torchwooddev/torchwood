@@ -128,7 +128,7 @@ func (a *Account) CreatePhoneOTPSession(ctx context.Context, cmd CreatePhoneOTPS
 }
 
 func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone string) (*User, error) {
-	list, err := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries:  []string{query.BuildEqual("phone", phone)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
@@ -138,7 +138,7 @@ func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone 
 	if len(list.Documents) > 0 {
 		user := mapUserDoc(&list.Documents[0])
 		if verified, _ := list.Documents[0].Data["phone_verified"].(bool); !verified {
-			updated, err := a.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+			updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 				ID:   user.ID,
 				Data: map[string]any{"phone_verified": true},
 			}, nil), databases.SystemPrincipal)
@@ -169,9 +169,9 @@ func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone 
 		},
 	}
 	userPerms := userDocumentPermissions(userID)
-	if _, err := a.docDB.CreateDocument(ctx, projectID, "default", "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
+	if _, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
 		if errors.Is(err, documentdb.ErrDuplicateKey) {
-			list, listErr := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+			list, listErr := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 				Queries:  []string{query.BuildEqual("phone", phone)},
 				PageSize: 1,
 			}, databases.SystemPrincipal)

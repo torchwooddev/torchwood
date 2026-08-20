@@ -59,7 +59,7 @@ func (a *Account) CreateRecovery(ctx context.Context, cmd CreateRecoveryCommand)
 		return err
 	}
 
-	list, err := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries:  []string{query.BuildEqual("email", email)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
@@ -115,7 +115,7 @@ func (a *Account) UpdateRecovery(ctx context.Context, cmd UpdateRecoveryCommand)
 		return err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (a *Account) UpdateRecovery(ctx context.Context, cmd UpdateRecoveryCommand)
 	if err := a.sessions.DeleteSessionsByUser(ctx, projectID, userID); err != nil {
 		return fmt.Errorf("delete sessions after password reset: %w", err)
 	}
-	if _, err := a.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+	if _, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   userID,
 		Data: map[string]any{"password_hash": hash},
 	}, nil), databases.SystemPrincipal); err != nil {

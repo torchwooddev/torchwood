@@ -77,7 +77,7 @@ func (s *SessionService) CreateSessionAndTokens(ctx context.Context, projectID, 
 		},
 	}
 	sessionPerms := sessionPermissions(userID)
-	if _, err := s.docDB.CreateDocument(ctx, projectID, "default", "sessions", sessionDoc, sessionPerms, databases.SystemPrincipal); err != nil {
+	if _, err := s.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionDoc, sessionPerms, databases.SystemPrincipal); err != nil {
 		return nil, "", err
 	}
 	return s.IssueTokens(ctx, projectID, userID, email, sessionID)
@@ -144,7 +144,7 @@ func (s *SessionService) IssueTokensWithRefreshID(ctx context.Context, projectID
 }
 
 func (s *SessionService) EnsureActiveSession(ctx context.Context, projectID, sessionID, userID string) error {
-	sessionDoc, err := s.docDB.GetDocument(ctx, projectID, "default", "sessions", sessionID, databases.SystemPrincipal)
+	sessionDoc, err := s.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.SystemPrincipal)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "session lookup failed")
 	}
@@ -174,7 +174,7 @@ func (s *SessionService) DeleteSessionsByUser(ctx context.Context, projectID, us
 	pageToken := ""
 	var ids []string
 	for {
-		list, err := s.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+		list, err := s.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
 			Queries:   []string{query.BuildEqual("user_id", userID)},
 			PageSize:  1000,
 			PageToken: pageToken,
@@ -193,7 +193,7 @@ func (s *SessionService) DeleteSessionsByUser(ctx context.Context, projectID, us
 	if len(ids) == 0 {
 		return nil
 	}
-	deleted, err := s.docDB.BulkDeleteDocuments(ctx, projectID, "default", "sessions", ids, databases.SystemPrincipal)
+	deleted, err := s.docDB.BulkDeleteDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", ids, databases.SystemPrincipal)
 	if err != nil {
 		slog.Warn("delete sessions by user failed", "project_id", projectID, "user_id", userID, "deleted", deleted, "error", err)
 		return err
@@ -223,7 +223,7 @@ func (s *SessionService) evictOldestSessions(ctx context.Context, projectID, use
 	pageToken := ""
 	var ids []string
 	for {
-		list, err := s.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+		list, err := s.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
 			Queries:   []string{query.BuildEqual("user_id", userID), query.BuildFilter("orderAsc", "expire_at")},
 			PageSize:  1000,
 			PageToken: pageToken,
@@ -243,7 +243,7 @@ func (s *SessionService) evictOldestSessions(ctx context.Context, projectID, use
 		return nil
 	}
 	evict := ids[:len(ids)-max+1]
-	if _, err := s.docDB.BulkDeleteDocuments(ctx, projectID, "default", "sessions", evict, databases.SystemPrincipal); err != nil {
+	if _, err := s.docDB.BulkDeleteDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", evict, databases.SystemPrincipal); err != nil {
 		slog.Warn("evict old sessions failed", "project_id", projectID, "user_id", userID, "error", err)
 		return err
 	}

@@ -54,7 +54,7 @@ func (a *Account) CreateAnonymousSession(ctx context.Context, cmd CreateAnonymou
 			"prefs":          map[string]any{},
 		},
 	}
-	if _, err := a.docDB.CreateDocument(ctx, projectID, "default", "users", userDoc, userDocumentPermissions(userID), databases.SystemPrincipal); err != nil {
+	if _, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userDocumentPermissions(userID), databases.SystemPrincipal); err != nil {
 		return nil, nil, "", nil, err
 	}
 	user := mapUserDoc(&userDoc)

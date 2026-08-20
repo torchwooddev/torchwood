@@ -30,13 +30,13 @@ func TestGroups_CreateMembership_Idempotent(t *testing.T) {
 	principal := databases.Principal{Roles: []string{"admin"}}
 
 	groupTotal := func() int64 {
-		doc, err := docDB.GetDocument(context.Background(), "proj-1", "default", "groups", "group-1", databases.SystemPrincipal)
+		doc, err := docDB.GetDocument(context.Background(), "proj-1", databases.SystemDatabaseID, "groups", "group-1", databases.SystemPrincipal)
 		require.NoError(t, err)
 		require.NotNil(t, doc)
 		return doc.Data["total"].(int64)
 	}
 	membershipCount := func() int {
-		list, err := docDB.ListDocuments(context.Background(), "proj-1", "default", "memberships", databases.Query{}, databases.SystemPrincipal)
+		list, err := docDB.ListDocuments(context.Background(), "proj-1", databases.SystemDatabaseID, "memberships", databases.Query{}, databases.SystemPrincipal)
 		require.NoError(t, err)
 		return len(list.Documents)
 	}

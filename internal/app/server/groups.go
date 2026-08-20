@@ -52,7 +52,7 @@ func (t *Groups) resolveProject(ctx context.Context, projectID string) (*project
 }
 
 func (t *Groups) getGroupDoc(ctx context.Context, projectID, groupID string, principal databases.Principal) (*databases.Document, error) {
-	doc, err := t.docDB.GetDocument(ctx, projectID, "default", "groups", groupID, principal)
+	doc, err := t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, principal)
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +78,10 @@ func (t *Groups) CreateGroup(ctx context.Context, projectID, name string, perms 
 			"total":       0,
 		},
 	}
-	if _, err := t.docDB.CreateDocument(ctx, projectID, "default", "groups", doc, defaultGroupPermissions(groupID, perms), databases.SystemPrincipal); err != nil {
+	if _, err := t.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", doc, defaultGroupPermissions(groupID, perms), databases.SystemPrincipal); err != nil {
 		return nil, fmt.Errorf("create group: %w", err)
 	}
-	return t.docDB.GetDocument(ctx, projectID, "default", "groups", groupID, databases.SystemPrincipal)
+	return t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, databases.SystemPrincipal)
 }
 
 func (t *Groups) CreateGroupWithOwner(ctx context.Context, projectID, name, ownerUserID, ownerEmail string, principal databases.Principal) (*databases.Document, *databases.Document, error) {
@@ -97,7 +97,7 @@ func (t *Groups) CreateGroupWithOwner(ctx context.Context, projectID, name, owne
 		Status:  groups.StatusAccepted,
 	}, principal)
 	if err != nil {
-		_ = t.docDB.DeleteDocument(ctx, projectID, "default", "groups", group.ID, databases.DeleteOptions{}, databases.SystemPrincipal)
+		_ = t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "groups", group.ID, databases.DeleteOptions{}, databases.SystemPrincipal)
 		return nil, nil, err
 	}
 	group, err = t.GetGroup(ctx, projectID, group.ID, databases.SystemPrincipal)
@@ -111,7 +111,7 @@ func (t *Groups) ListGroups(ctx context.Context, projectID string, q databases.Q
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, 0, "", err
 	}
-	list, err := t.docDB.ListDocuments(ctx, projectID, "default", "groups", q, principal)
+	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", q, principal)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -122,7 +122,7 @@ func (t *Groups) GetGroup(ctx context.Context, projectID, groupID string, princi
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	return t.docDB.GetDocument(ctx, projectID, "default", "groups", groupID, principal)
+	return t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, principal)
 }
 
 func (t *Groups) GetGroupPrefs(ctx context.Context, projectID, groupID string, principal databases.Principal) (map[string]any, error) {
@@ -149,7 +149,7 @@ func (t *Groups) UpdateGroupPrefs(ctx context.Context, projectID, groupID string
 	if _, err := t.getGroupDoc(ctx, projectID, groupID, principal); err != nil {
 		return nil, err
 	}
-	updated, err := t.docDB.UpdateDocument(ctx, projectID, "default", "groups", databases.SimpleDocumentUpdate(databases.Document{
+	updated, err := t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   groupID,
 		Data: map[string]any{"prefs": prefs},
 	}, nil), principal)
@@ -174,11 +174,11 @@ func (t *Groups) DeleteGroup(ctx context.Context, projectID, groupID string, pri
 		return err
 	}
 	for _, m := range memberships {
-		if err := t.docDB.DeleteDocument(ctx, projectID, "default", "memberships", m.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
+		if err := t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", m.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
 			return err
 		}
 	}
-	return t.docDB.DeleteDocument(ctx, projectID, "default", "groups", groupID, databases.DeleteOptions{}, principal)
+	return t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, databases.DeleteOptions{}, principal)
 }
 
 func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd CreateMembershipCommand, principal databases.Principal) (*databases.Document, error) {
@@ -248,7 +248,7 @@ func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd Cre
 	}
 
 	membershipID := idgen.UUID().String()
-	created, err := t.docDB.CreateDocument(ctx, projectID, "default", "memberships", databases.Document{
+	created, err := t.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Document{
 		ID:   membershipID,
 		Data: data,
 	}, membershipPermissions(cmd.GroupID, userID), principal)
@@ -260,7 +260,7 @@ func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd Cre
 			return nil, err
 		}
 	}
-	return t.docDB.GetDocument(ctx, projectID, "default", "memberships", created.ID, databases.SystemPrincipal)
+	return t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", created.ID, databases.SystemPrincipal)
 }
 
 func (t *Groups) ListMemberships(ctx context.Context, projectID, groupID string, q databases.Query, principal databases.Principal) ([]databases.Document, int64, string, error) {
@@ -271,7 +271,7 @@ func (t *Groups) ListMemberships(ctx context.Context, projectID, groupID string,
 		return nil, 0, "", err
 	}
 	queries := append([]string{query.BuildEqual("group_id", groupID)}, q.Queries...)
-	list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
 		Queries:   queries,
 		PageSize:  q.PageSize,
 		PageToken: q.PageToken,
@@ -305,7 +305,7 @@ func (t *Groups) UpdateMembership(ctx context.Context, projectID, groupID, membe
 			return nil, err
 		}
 	}
-	updated, err := t.docDB.UpdateDocument(ctx, projectID, "default", "memberships", databases.SimpleDocumentUpdate(databases.Document{
+	updated, err := t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   membershipID,
 		Data: map[string]any{"roles": cmd.Roles},
 	}, nil), principal)
@@ -355,7 +355,7 @@ func (t *Groups) UpdateMembershipStatus(ctx context.Context, projectID, groupID,
 	if _, ok := updates["user_id"]; ok {
 		perms = membershipPermissions(groupID, userID)
 	}
-	updated, err := t.docDB.UpdateDocument(ctx, projectID, "default", "memberships", databases.SimpleDocumentUpdate(databases.Document{
+	updated, err := t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   membershipID,
 		Data: updates,
 	}, perms), principal)
@@ -385,14 +385,14 @@ func (t *Groups) DeleteMembership(ctx context.Context, projectID, groupID, membe
 			return err
 		}
 	}
-	return t.docDB.DeleteDocument(ctx, projectID, "default", "memberships", membershipID, databases.DeleteOptions{}, principal)
+	return t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", membershipID, databases.DeleteOptions{}, principal)
 }
 
 func (t *Groups) ListAcceptedGroupRoles(ctx context.Context, projectID, userID string) ([]string, error) {
 	if userID == "" {
 		return nil, nil
 	}
-	list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
 		Queries: []string{
 			query.BuildEqual("user_id", userID),
 			query.BuildEqual("status", groups.StatusAccepted),
@@ -418,7 +418,7 @@ func (t *Groups) AcceptedGroupRoleLabels(ctx context.Context, projectID, userID 
 	if userID == "" {
 		return nil, nil
 	}
-	list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
 		Queries: []string{
 			query.BuildEqual("user_id", userID),
 			query.BuildEqual("status", groups.StatusAccepted),
@@ -460,7 +460,7 @@ func (t *Groups) getMembershipDoc(ctx context.Context, projectID, groupID, membe
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	doc, err := t.docDB.GetDocument(ctx, projectID, "default", "memberships", membershipID, principal)
+	doc, err := t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", membershipID, principal)
 	if err != nil {
 		return nil, err
 	}
@@ -518,7 +518,7 @@ func containsRole(roles []string, want string) bool {
 }
 
 func (t *Groups) resolveUserIDByEmail(ctx context.Context, projectID, email string) (string, error) {
-	list, err := t.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries:  []string{query.BuildEqual("email", email)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
@@ -539,7 +539,7 @@ func (t *Groups) resolveUserIDByEmail(ctx context.Context, projectID, email stri
 func (t *Groups) ensureMembershipUnique(ctx context.Context, projectID, groupID, userID, email string) error {
 	base := []string{query.BuildEqual("group_id", groupID)}
 	if userID != "" {
-		list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+		list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
 			Queries:  append(append([]string{}, base...), query.BuildEqual("user_id", userID)),
 			PageSize: 1,
 		}, databases.SystemPrincipal)
@@ -551,7 +551,7 @@ func (t *Groups) ensureMembershipUnique(ctx context.Context, projectID, groupID,
 		}
 	}
 	if email != "" {
-		list, err := t.docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+		list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
 			Queries:  append(append([]string{}, base...), query.BuildEqual("email", email)),
 			PageSize: 1,
 		}, databases.SystemPrincipal)
@@ -583,7 +583,7 @@ func (t *Groups) adjustGroupTotal(ctx context.Context, projectID, groupID string
 	if total < 0 {
 		total = 0
 	}
-	_, err = t.docDB.UpdateDocument(ctx, projectID, "default", "groups", databases.SimpleDocumentUpdate(databases.Document{
+	_, err = t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   groupID,
 		Data: map[string]any{"total": total},
 	}, nil), databases.SystemPrincipal)

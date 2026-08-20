@@ -69,7 +69,7 @@ func (a *Account) resolveWeChatUser(ctx context.Context, projectID, provider str
 		return nil, err
 	}
 	if identity != nil {
-		doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", identity.UserID, databases.SystemPrincipal)
+		doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", identity.UserID, databases.SystemPrincipal)
 		if err != nil {
 			return nil, err
 		}
@@ -99,7 +99,7 @@ func (a *Account) resolveWeChatUser(ctx context.Context, projectID, provider str
 		return nil, err
 	}
 	if info.Name != "" && user.Name != info.Name {
-		updated, updateErr := a.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+		updated, updateErr := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 			ID:   user.ID,
 			Data: map[string]any{"name": info.Name},
 		}, nil), databases.SystemPrincipal)
@@ -107,7 +107,7 @@ func (a *Account) resolveWeChatUser(ctx context.Context, projectID, provider str
 			user = mapUserDoc(&updated)
 		}
 	} else if user.Name == "" || user.Name == emailLocalPart(email) {
-		updated, updateErr := a.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+		updated, updateErr := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 			ID:   user.ID,
 			Data: map[string]any{"name": name},
 		}, nil), databases.SystemPrincipal)

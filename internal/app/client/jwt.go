@@ -22,7 +22,7 @@ func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, "default", "users", p.UserID, databases.SystemPrincipal)
+	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.SystemPrincipal)
 	if err != nil {
 		return "", err
 	}

@@ -204,7 +204,7 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 }
 
 func (v *Validator) principalFromSession(ctx context.Context, projectID, sessionID string) (*shared.Principal, error) {
-	sessionDoc, err := v.docDB.GetDocument(ctx, projectID, "default", "sessions", sessionID, databases.SystemPrincipal)
+	sessionDoc, err := v.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "session lookup failed")
 	}
@@ -245,7 +245,7 @@ func (v *Validator) principalFromSession(ctx context.Context, projectID, session
 }
 
 func (v *Validator) validateEndUserSession(ctx context.Context, projectID, sessionID, userID string) error {
-	sessionDoc, err := v.docDB.GetDocument(ctx, projectID, "default", "sessions", sessionID, databases.SystemPrincipal)
+	sessionDoc, err := v.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.SystemPrincipal)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "session lookup failed")
 	}
@@ -285,7 +285,7 @@ func (v *Validator) ensureUserCanAuthenticate(ctx context.Context, projectID, us
 	if projectID == "" || userID == "" {
 		return nil
 	}
-	doc, err := v.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := v.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "user lookup failed")
 	}

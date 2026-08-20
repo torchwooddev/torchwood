@@ -110,8 +110,8 @@ func (t *Transactions) Create(ctx context.Context, projectID, databaseID string)
 	if err != nil {
 		return nil, err
 	}
-	if databaseID == "" {
-		return nil, status.Error(codes.InvalidArgument, "database_id is required")
+	if err := RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, err
 	}
 	dbRow, err := t.docDB.GetDatabase(ctx, projectID, databaseID)
 	if err != nil {
@@ -139,6 +139,9 @@ func (t *Transactions) Create(ctx context.Context, projectID, databaseID string)
 
 // Get 读取事务及其 ops；仅创建者 / platform admin / databases 写 Key 可见。
 func (t *Transactions) Get(ctx context.Context, projectID, databaseID, txID string) (*databases.Transaction, []databases.TransactionOp, error) {
+	if err := RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, nil, err
+	}
 	tx, err := t.txRepo.Get(ctx, projectID, databaseID, txID)
 	if err != nil {
 		return nil, nil, err
@@ -160,6 +163,9 @@ func (t *Transactions) Get(ctx context.Context, projectID, databaseID, txID stri
 // Append 在行锁内追加一条 op（设计 §5.2.1：禁止裸 INSERT；seq 在锁内按
 // COALESCE(MAX(seq),0)+1 分配；非 pending / 过期 / 超 100 上限在此拒绝）。
 func (t *Transactions) Append(ctx context.Context, projectID, databaseID, txID string, op databases.TransactionOp, prepare PrepareTransactionOpFunc) (*databases.TransactionOp, error) {
+	if err := RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, err
+	}
 	var (
 		out       *databases.TransactionOp
 		expiredTx *databases.Transaction
@@ -215,6 +221,9 @@ func (t *Transactions) Append(ctx context.Context, projectID, databaseID, txID s
 // 不二次 INSERT）；空事务直接置 committed、无事件。apply 因 version/perm
 // 失败时 applyTx 整段回滚，另开短事务标 rolled_back。
 func (t *Transactions) Commit(ctx context.Context, projectID, databaseID, txID string, principal databases.Principal) (*databases.Transaction, []databases.TransactionOp, error) {
+	if err := RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, nil, err
+	}
 	var (
 		committed *databases.Transaction
 		ops       []databases.TransactionOp
@@ -277,6 +286,9 @@ func (t *Transactions) Commit(ctx context.Context, projectID, databaseID, txID s
 
 // Rollback 将 pending 事务置 rolled_back；非 pending → transaction_not_pending。
 func (t *Transactions) Rollback(ctx context.Context, projectID, databaseID, txID string) (*databases.Transaction, error) {
+	if err := RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, err
+	}
 	var (
 		out       *databases.Transaction
 		expiredTx *databases.Transaction

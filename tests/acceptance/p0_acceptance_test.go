@@ -250,7 +250,7 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 	require.Equal(t, email, filtered[0].Data["email"])
 
 	// §9.4 non-admin list returns only documents with matching _perms.
-	privateUser, err := docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
+	privateUser, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		Data: map[string]any{
 			"email": "private@torchwood.local",
 			"name":  "Private",
@@ -260,13 +260,13 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	aliceList, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	aliceList, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("$id","` + privateUser.ID + `")`},
 	}, databases.Principal{Roles: []string{"user:alice"}})
 	require.NoError(t, err)
 	require.Len(t, aliceList.Documents, 1)
 
-	bobList, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	bobList, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("$id","` + privateUser.ID + `")`},
 	}, databases.Principal{Roles: []string{"user:bob"}})
 	require.NoError(t, err)

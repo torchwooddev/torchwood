@@ -305,7 +305,7 @@ func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2Code
 		if err := a.linkOAuthIdentity(ctx, projectID, oauthState.LinkUserID, provider, profile); err != nil {
 			return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, err
 		}
-		doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", oauthState.LinkUserID, databases.SystemPrincipal)
+		doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", oauthState.LinkUserID, databases.SystemPrincipal)
 		if err != nil {
 			return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, err
 		}

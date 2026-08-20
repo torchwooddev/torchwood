@@ -1,0 +1,57 @@
+package server
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/ident"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+func TestDatabases_ListFiltersSentinelAndGetRejects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := platformAdminCtx(context.Background())
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App"))
+
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+
+	list, err := uc.ListDatabases(ctx, projectID)
+	require.NoError(t, err)
+	for _, item := range list {
+		require.NotEqual(t, ident.ProjectDataPlaneID, item.ID, "ListDatabases 不得返回 sentinel")
+		require.NotEqual(t, "(project)", item.Name)
+	}
+
+	_, err = uc.GetDatabase(ctx, projectID, ident.ProjectDataPlaneID)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	infra, err := docDB.GetDatabase(ctx, projectID, ident.ProjectDataPlaneID)
+	require.NoError(t, err)
+	require.NotNil(t, infra, "infra 可见 sentinel 供 Ensure reconcile")
+	require.Equal(t, ident.ProjectDataPlaneID, infra.ID)
+}
+
+func TestDatabases_CreateDeleteSentinelRejected(t *testing.T) {
+	ctx := platformAdminCtx(context.Background())
+	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
+
+	err := uc.CreateDatabase(ctx, "proj-1", ident.ProjectDataPlaneID, "x")
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	err = uc.DeleteDatabase(ctx, "proj-1", ident.ProjectDataPlaneID)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}

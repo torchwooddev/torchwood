@@ -89,7 +89,7 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 		},
 	}
 	perms := bucketPermissions(bucketID, cmd.Permissions)
-	if _, err := s.docDB.CreateDocument(ctx, project.ID, "default", "buckets", bucketDoc, perms, databases.SystemPrincipal); err != nil {
+	if _, err := s.docDB.CreateDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", bucketDoc, perms, databases.SystemPrincipal); err != nil {
 		return nil, fmt.Errorf("create bucket document: %w", err)
 	}
 
@@ -115,7 +115,7 @@ func (s *Storage) ListBuckets(ctx context.Context, projectID string, q databases
 		return nil, 0, "", err
 	}
 
-	list, err := s.docDB.ListDocuments(ctx, project.ID, "default", "buckets", q, principal)
+	list, err := s.docDB.ListDocuments(ctx, project.ID, databases.SystemDatabaseID, "buckets", q, principal)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -150,7 +150,7 @@ func (s *Storage) UpdateBucket(ctx context.Context, cmd UpdateBucketCommand) (*s
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "nothing to update")
 	}
-	updated, err := s.docDB.UpdateDocument(ctx, project.ID, "default", "buckets", databases.DocumentUpdate{
+	updated, err := s.docDB.UpdateDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", databases.DocumentUpdate{
 		Document: databases.Document{ID: cmd.ID, Data: data},
 	}, cmd.Principal)
 	if err != nil {
@@ -178,7 +178,7 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 			if derr := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, f.ID)); derr != nil {
 				slog.Warn("delete file object failed", "bucket", bucketID, "file", f.ID, "error", derr)
 			}
-			if derr := s.docDB.DeleteDocument(ctx, project.ID, "default", "files", f.ID, databases.DeleteOptions{}, databases.SystemPrincipal); derr != nil {
+			if derr := s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "files", f.ID, databases.DeleteOptions{}, databases.SystemPrincipal); derr != nil {
 				slog.Warn("delete file document failed", "bucket", bucketID, "file", f.ID, "error", derr)
 			}
 		}
@@ -199,7 +199,7 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 			}
 		}
 	}
-	return s.docDB.DeleteDocument(ctx, project.ID, "default", "buckets", bucketID, databases.DeleteOptions{}, principal)
+	return s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", bucketID, databases.DeleteOptions{}, principal)
 }
 
 func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content io.Reader, size int64, principal databases.Principal) (*storage.File, error) {
@@ -219,7 +219,7 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 	}
 
 	// Verify bucket exists.
-	bucketDoc, err := s.docDB.GetDocument(ctx, project.ID, "default", "buckets", cmd.BucketID, principal)
+	bucketDoc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", cmd.BucketID, principal)
 	if err != nil {
 		return nil, err
 	}
@@ -245,12 +245,12 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 		return nil, fmt.Errorf("ensure storage bucket: %w", err)
 	}
 	perms := filePermissions(fileID, cmd.OwnerUserID, cmd.Permissions)
-	if _, err := s.docDB.CreateDocument(ctx, project.ID, "default", "files", fileDoc, perms, principal); err != nil {
+	if _, err := s.docDB.CreateDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileDoc, perms, principal); err != nil {
 		return nil, fmt.Errorf("create file document: %w", err)
 	}
 	if err := s.store.Put(ctx, defaultBucketName(s.cfg), objectKey(project.ID, cmd.BucketID, fileID), content, size, cmd.MimeType); err != nil {
 		// Attempt rollback metadata.
-		_ = s.docDB.DeleteDocument(ctx, project.ID, "default", "files", fileID, databases.DeleteOptions{}, databases.SystemPrincipal)
+		_ = s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, databases.DeleteOptions{}, databases.SystemPrincipal)
 		return nil, fmt.Errorf("upload file: %w", err)
 	}
 
@@ -272,7 +272,7 @@ func (s *Storage) GetFile(ctx context.Context, projectID, bucketID, fileID strin
 	if err != nil {
 		return nil, nil, err
 	}
-	doc, err := s.docDB.GetDocument(ctx, project.ID, "default", "files", fileID, principal)
+	doc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, principal)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -298,7 +298,7 @@ func (s *Storage) DeleteFile(ctx context.Context, projectID, bucketID, fileID st
 	if err := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID)); err != nil {
 		// Continue to delete metadata even if object missing.
 	}
-	return s.docDB.DeleteDocument(ctx, project.ID, "default", "files", fileID, databases.DeleteOptions{}, principal)
+	return s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, databases.DeleteOptions{}, principal)
 }
 
 func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q databases.Query, principal databases.Principal) ([]storage.File, int64, string, error) {
@@ -310,7 +310,7 @@ func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q d
 		return nil, 0, "", err
 	}
 
-	list, err := s.docDB.ListDocuments(ctx, project.ID, "default", "files", q, principal)
+	list, err := s.docDB.ListDocuments(ctx, project.ID, databases.SystemDatabaseID, "files", q, principal)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -337,7 +337,7 @@ func (s *Storage) UpdateFile(ctx context.Context, cmd UpdateFileCommand) (*stora
 	if err != nil {
 		return nil, err
 	}
-	doc, err := s.docDB.GetDocument(ctx, project.ID, "default", "files", cmd.FileID, cmd.Principal)
+	doc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "files", cmd.FileID, cmd.Principal)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func (s *Storage) UpdateFile(ctx context.Context, cmd UpdateFileCommand) (*stora
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "nothing to update")
 	}
-	updated, err := s.docDB.UpdateDocument(ctx, project.ID, "default", "files", databases.DocumentUpdate{
+	updated, err := s.docDB.UpdateDocument(ctx, project.ID, databases.SystemDatabaseID, "files", databases.DocumentUpdate{
 		Document: databases.Document{ID: cmd.FileID, Data: data},
 	}, cmd.Principal)
 	if err != nil {
@@ -380,15 +380,15 @@ func (s *Storage) GetStorageUsage(ctx context.Context, projectID string, princip
 	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
 		return nil, err
 	}
-	buckets, err := s.docDB.CountDocuments(ctx, project.ID, "default", "buckets", nil, principal)
+	buckets, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "buckets", nil, principal)
 	if err != nil {
 		return nil, err
 	}
-	files, err := s.docDB.CountDocuments(ctx, project.ID, "default", "files", nil, principal)
+	files, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "files", nil, principal)
 	if err != nil {
 		return nil, err
 	}
-	totalSize, err := s.docDB.SumDocumentField(ctx, project.ID, "default", "files", "size", principal)
+	totalSize, err := s.docDB.SumDocumentField(ctx, project.ID, databases.SystemDatabaseID, "files", "size", principal)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +413,7 @@ func (s *Storage) CreateFileToken(ctx context.Context, projectID, bucketID, file
 	if err != nil {
 		return nil, err
 	}
-	doc, err := s.docDB.GetDocument(ctx, project.ID, "default", "files", fileID, principal)
+	doc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, principal)
 	if err != nil {
 		return nil, err
 	}

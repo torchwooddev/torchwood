@@ -90,8 +90,12 @@ func (d *Databases) ensureCollectionForRead(ctx context.Context, projectID, data
 }
 
 func (d *Databases) ensureCollectionForProject(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal, readOnly bool) (string, databases.Principal, error) {
-	// 系统集合仅限 default 库判定；写路径拒绝全部系统集合，
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return "", databases.Principal{}, err
+	}
+	// 系统集合仅限项目数据面判定；写路径拒绝全部系统集合，
 	// 读路径仅拒绝高敏系统集合（users/sessions/identities，有 Account 专用 API）。
+	// 对外 database_id 已拒 `_`，本守卫是纵深防御。
 	if databases.IsSystemCollection(projectID, databaseID, collectionID) &&
 		(!readOnly || databases.IsSensitiveSystemCollectionID(collectionID)) {
 		return "", databases.Principal{}, shared.MapDocumentDBError(databases.ErrPermissionDenied)

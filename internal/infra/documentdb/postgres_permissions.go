@@ -8,7 +8,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/pkg/ident"
 )
 
 func (p *postgresDocumentDB) ensureCollectionAccessible(coll *databases.Collection, principal databases.Principal) error {
@@ -249,7 +248,7 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 	if !safeNameRe.MatchString(key) {
 		return fmt.Errorf("invalid attribute key: %s", key)
 	}
-	schema, err := ident.SchemaName(projectID, databaseID)
+	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
@@ -270,7 +269,7 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
 		return err
 	}
-	schema, err := ident.SchemaName(projectID, databaseID)
+	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}

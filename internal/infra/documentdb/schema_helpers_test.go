@@ -13,3 +13,10 @@ func testSchema(t *testing.T, projectID, databaseID string) string {
 	require.NoError(t, err)
 	return s
 }
+
+func testProjectSchema(t *testing.T, projectID string) string {
+	t.Helper()
+	s, err := ident.ProjectSchemaName(projectID)
+	require.NoError(t, err)
+	return s
+}

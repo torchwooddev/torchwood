@@ -1,6 +1,13 @@
 package databases
 
-// SystemCollectionIDs 是 default 库中由专用服务（Users/Groups/Storage/Auth）
+import "github.com/torchwooddev/torchwood/pkg/ident"
+
+// SystemDatabaseID 是系统集合的内部 database 寻址 id（项目数据面 sentinel `_`）。
+// 与 ident.ProjectDataPlaneID 同值；对外 API 必须经 RejectExternalDatabaseID 拒绝。
+// 物理表落在 tw_<project>，不建 tw_<project>_ 两段式 schema。
+const SystemDatabaseID = ident.ProjectDataPlaneID
+
+// SystemCollectionIDs 是项目数据面中由专用服务（Users/Groups/Storage/Auth）
 // 独占管理的系统集合名单；Databases API 对其实行只读策略（读分级放行、写全拒）。
 var SystemCollectionIDs = []string{
 	"users",
@@ -40,8 +47,8 @@ func IsSensitiveSystemCollectionID(id string) bool {
 	return false
 }
 
-// IsSystemCollection 仅在 default 库中按名单判定系统集合；
-// 自定义数据库中的同名集合不受影响。
+// IsSystemCollection 仅在项目数据面（databaseID == SystemDatabaseID）按名单
+// 判定系统集合；业务库（含 default）中的同名集合不受影响。
 func IsSystemCollection(projectID, databaseID, collectionID string) bool {
-	return databaseID == "default" && IsSystemCollectionID(collectionID)
+	return databaseID == SystemDatabaseID && IsSystemCollectionID(collectionID)
 }

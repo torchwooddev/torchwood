@@ -43,7 +43,7 @@ func TestGroups_Memberships(t *testing.T) {
 	ownerRoles := databases.Principal{Roles: []string{"users", "user:" + ownerID, "group:" + group.ID}}
 
 	memberUserID := "member-user-id"
-	_, err = docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
+	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID: memberUserID,
 		Data: map[string]any{
 			"email":         "member@torchwood.local",

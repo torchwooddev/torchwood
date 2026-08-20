@@ -50,9 +50,8 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	apiKeyRepo := bunrepo.NewAPIKeyRepository(db)
 	admins := console.NewAdmins(adminRepo)
 	projects := server.NewProjects(projectRepo, docDB, db)
-	databases := server.NewDatabases(projectRepo, docDB)
 	auth := console.NewAuth(cfg, adminRepo, nil, nil, nil)
-	setupUC := console.NewSetup(cfg, admins, projects, databases, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
+	setupUC := console.NewSetup(cfg, admins, projects, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
 	svc := NewAuthService(auth, setupUC)
 
 	// 生产网关用 authOutgoingHeaderMatcher 透传 set-cookie + protojson
@@ -120,7 +119,7 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	appDB, err := fixture.docDB.GetDatabase(ctx, "shop", "app")
 	require.NoError(t, err)
 	require.NotNil(t, appDB)
-	sysDB, err := fixture.docDB.GetDatabase(ctx, "shop", "default")
+	sysDB, err := fixture.docDB.GetDatabase(ctx, "shop", databases.SystemDatabaseID)
 	require.NoError(t, err)
 	require.NotNil(t, sysDB)
 	keys, err := fixture.apiKeyRepo.ListAPIKeys(ctx, "shop")

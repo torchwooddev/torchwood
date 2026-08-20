@@ -51,7 +51,7 @@ func (d *Databases) CreateDatabase(ctx context.Context, projectID, id, name stri
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := ident.ValidateSchemaResourceID(id); err != nil {
+	if err := shared.RejectExternalDatabaseID(id); err != nil {
 		return err
 	}
 	if id == "default" {
@@ -70,10 +70,24 @@ func (d *Databases) ListDatabases(ctx context.Context, projectID string) ([]data
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	return d.docDB.ListDatabases(ctx, projectID)
+	list, err := d.docDB.ListDatabases(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]databases.Collection, 0, len(list))
+	for _, db := range list {
+		if db.ID == ident.ProjectDataPlaneID {
+			continue
+		}
+		out = append(out, db)
+	}
+	return out, nil
 }
 
 func (d *Databases) GetDatabase(ctx context.Context, projectID, databaseID string) (*databases.Collection, error) {
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, err
+	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -84,8 +98,10 @@ func (d *Databases) DeleteDatabase(ctx context.Context, projectID, databaseID st
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	// "default" 库承载全部系统集合，删除会破坏"项目存在 ⇒ schema 存在"不变式
-	// （安全评审 M6 配套），禁止删除。
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
+	}
+	// use-case 仍禁删 default（PR7 才解禁）；系统集合已迁出，禁令是过渡态。
 	if databaseID == "default" {
 		return status.Error(codes.InvalidArgument, "default database cannot be deleted")
 	}
@@ -99,8 +115,8 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "id is required")
@@ -134,6 +150,9 @@ func (d *Databases) validateAttributeKey(key string) error {
 }
 
 func (d *Databases) ListCollections(ctx context.Context, projectID, databaseID string, q databases.ListQuery) ([]databases.Collection, int64, string, error) {
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, 0, "", err
+	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return nil, 0, "", err
 	}
@@ -145,6 +164,9 @@ func (d *Databases) ListCollections(ctx context.Context, projectID, databaseID s
 }
 
 func (d *Databases) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, err
+	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -153,6 +175,9 @@ func (d *Databases) GetCollection(ctx context.Context, projectID, databaseID, co
 
 func (d *Databases) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
+		return err
+	}
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
@@ -168,8 +193,8 @@ func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID,
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
@@ -192,8 +217,8 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
@@ -221,8 +246,8 @@ func (d *Databases) CreateIndex(ctx context.Context, projectID, databaseID, coll
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
@@ -243,8 +268,8 @@ func (d *Databases) DeleteAttribute(ctx context.Context, projectID, databaseID, 
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
@@ -262,8 +287,8 @@ func (d *Databases) DeleteIndex(ctx context.Context, projectID, databaseID, coll
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
@@ -278,8 +303,8 @@ func (d *Databases) DeleteIndex(ctx context.Context, projectID, databaseID, coll
 }
 
 func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) error {
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
@@ -287,8 +312,9 @@ func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID,
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
-	// 禁止直接写入系统集合（仅限 default 库），先于 GetCollection 拦截
-	// （避免泄露集合存在性，安全评审 C1 第 1 层）。
+	// 禁止直接写入系统集合（项目数据面 sentinel），先于 GetCollection 拦截
+	// （避免泄露集合存在性，安全评审 C1 第 1 层）。对外 database_id 已拒 `_`，
+	// 本守卫是 adapter 绕过时的纵深防御。
 	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
@@ -309,8 +335,8 @@ func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID,
 // groups/memberships/buckets/files 放行（docDB 权限过滤兜底）；
 // users/sessions/identities 仅 PlatformAdmin 可读，其余主体直接拒绝。
 func (d *Databases) ensureReadableCollection(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) error {
-	if err := d.ValidateIdentifier(databaseID); err != nil {
-		return status.Error(codes.InvalidArgument, "database_id is required")
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
 	}
 	if err := d.ValidateIdentifier(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
@@ -337,8 +363,8 @@ func (d *Databases) ensureReadableCollection(ctx context.Context, projectID, dat
 	return nil
 }
 
-// redactSensitiveCollectionData 剔除 default 库高敏系统集合文档中的敏感字段
-// （专用 API 不公开的字段），空 data 允许；自定义库同名集合不受影响。
+// redactSensitiveCollectionData 剔除项目数据面高敏系统集合文档中的敏感字段
+// （专用 API 不公开的字段），空 data 允许；业务库同名集合不受影响。
 func redactSensitiveCollectionData(projectID, databaseID, collectionID string, doc *databases.Document) {
 	if !databases.IsSystemCollection(projectID, databaseID, collectionID) || !databases.IsSensitiveSystemCollectionID(collectionID) {
 		return

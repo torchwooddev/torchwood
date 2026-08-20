@@ -102,7 +102,7 @@ func (b *Billing) sampleStorage(ctx context.Context, hour time.Time) error {
 				"project_id", p.ID, "error", err)
 			continue
 		}
-		total, err := b.docDB.SumDocumentField(ctx, p.ID, "default", "files", "size", databases.SystemPrincipal)
+		total, err := b.docDB.SumDocumentField(ctx, p.ID, databases.SystemDatabaseID, "files", "size", databases.SystemPrincipal)
 		if err != nil {
 			b.logger.Warn("sum storage bytes failed", "project_id", p.ID, "error", err)
 			continue

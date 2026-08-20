@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
@@ -49,12 +50,20 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, p.ID)
 	t.Cleanup(func() {
-		_, _ = db.NewDelete().Model((*model.Project)(nil)).Where("id = ?", p.ID).Exec(ctx)
+		_ = projectsUC.DeleteProject(ctx, p.ID)
 	})
 
-	coll, err := docDB.GetCollection(ctx, p.ID, "default", "users")
+	coll, err := docDB.GetCollection(ctx, p.ID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.NotNil(t, coll)
+
+	def, err := docDB.GetDatabase(ctx, p.ID, "default")
+	require.NoError(t, err)
+	require.NotNil(t, def, "CreateProject 应建第一业务库 default")
+
+	sentinel, err := docDB.GetDatabase(ctx, p.ID, databases.SystemDatabaseID)
+	require.NoError(t, err)
+	require.NotNil(t, sentinel)
 }
 
 func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
@@ -146,7 +155,7 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 	require.Nil(t, got)
 
 	exists, err := db.NewSelect().Model((*model.DocumentDatabase)(nil)).
-		Where("project_id = ? AND id = ?", projectID, "default").Exists(ctx)
+		Where("project_id = ? AND id = ?", projectID, databases.SystemDatabaseID).Exists(ctx)
 	require.NoError(t, err)
 	require.False(t, exists)
 }
@@ -398,6 +407,43 @@ func TestProjects_CreateProject_RejectsLongDescription(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = db.NewDelete().Model((*model.Project)(nil)).Where("id = ?", p.ID).Exec(ctx)
+		_ = projectsUC.DeleteProject(ctx, p.ID)
 	})
+}
+
+func TestProjects_DeleteProject_DropsSchemas(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	repo := bunrepo.NewProjectRepository(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	projectsUC := NewProjects(repo, docDB, db)
+
+	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:              "delme",
+		Name:            "Delete Me",
+		FirstDatabaseID: "app",
+	})
+	require.NoError(t, err)
+
+	_, err = docDB.CreateDocument(ctx, p.ID, databases.SystemDatabaseID, "users", databases.Document{
+		Data: map[string]any{"email": "gone@torchwood.local", "name": "Gone"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	require.NoError(t, projectsUC.DeleteProject(ctx, p.ID))
+
+	got, err := repo.GetProject(ctx, p.ID)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	var projectNS, appNS any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_delme").Scan(&projectNS))
+	require.Nil(t, projectNS)
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_delme_app").Scan(&appNS))
+	require.Nil(t, appNS)
 }

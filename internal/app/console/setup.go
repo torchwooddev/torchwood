@@ -20,8 +20,6 @@ import (
 // 的 ASCII 编码），用于串行化首个管理员检查+创建。
 const bootstrapLockKey = int64(0x546F726368776F6F)
 
-const defaultDatabaseID = "default"
-
 // Setup 处理首个管理员 bootstrap：查询初始化状态（GetSetupStatus）与首个
 // 管理员注册（SignUp）。SignUp 是公开端点（ConsoleAuthService 服务级
 // ACCESS_PUBLIC），「仅首次可用 + 需 setup token」的保证必须在本 use-case
@@ -30,7 +28,6 @@ type Setup struct {
 	setupToken       string
 	admins           adminCreator
 	projects         projectCreator
-	databases        databaseCreator
 	auth             tokenIssuer
 	adminRepo        projects.AdminRepository
 	adminProjectRepo projects.AdminProjectRepository
@@ -45,11 +42,7 @@ type Setup struct {
 //   - tokenIssuer:    *Auth
 type projectCreator interface {
 	CreateProjectInternal(ctx context.Context, cmd server.CreateProjectCommand) (*projects.Project, error)
-}
-
-type databaseCreator interface {
-	CreateDatabase(ctx context.Context, projectID, id, name string) error
-	DeleteDatabase(ctx context.Context, projectID, databaseID string) error
+	DeleteProject(ctx context.Context, id string) error
 }
 
 type adminCreator interface {
@@ -64,7 +57,6 @@ func NewSetup(
 	cfg *config.AppConfig,
 	admins *Admins,
 	projects *server.Projects,
-	databases *server.Databases,
 	auth *Auth,
 	adminRepo projects.AdminRepository,
 	adminProjectRepo projects.AdminProjectRepository,
@@ -78,7 +70,6 @@ func NewSetup(
 		setupToken:       setupToken,
 		admins:           admins,
 		projects:         projects,
-		databases:        databases,
 		auth:             auth,
 		adminRepo:        adminRepo,
 		adminProjectRepo: adminProjectRepo,
@@ -166,19 +157,10 @@ func (s *Setup) SignUp(ctx context.Context, cmd SignUpCommand) (*SignUpResult, e
 		return nil, err
 	}
 
-	var (
-		project        *projects.Project
-		createdUserDB  bool
-		bootstrapWrite = bootstrapPrincipalCtx(ctx)
-	)
+	var project *projects.Project
 	rollback := func() {
-		if createdUserDB {
-			if err := s.databases.DeleteDatabase(bootstrapWrite, project.ID, databaseID); err != nil {
-				slog.Warn("setup rollback: delete database failed", "project", project.ID, "database", databaseID, "error", err)
-			}
-		}
 		if project != nil {
-			if err := s.projectRepo.DeleteProject(ctx, project.ID); err != nil {
+			if err := s.projects.DeleteProject(ctx, project.ID); err != nil {
 				slog.Warn("setup rollback: delete project failed", "project", project.ID, "error", err)
 			}
 		}
@@ -190,23 +172,14 @@ func (s *Setup) SignUp(ctx context.Context, cmd SignUpCommand) (*SignUpResult, e
 	}
 
 	project, err = s.projects.CreateProjectInternal(ctx, server.CreateProjectCommand{
-		ID:          projectID,
-		Name:        projectID,
-		Description: "Bootstrap project",
+		ID:              projectID,
+		Name:            projectID,
+		Description:     "Bootstrap project",
+		FirstDatabaseID: databaseID,
 	})
 	if err != nil {
 		rollback()
 		return nil, status.Errorf(codes.Internal, "create project: %v", err)
-	}
-
-	// 项目创建会 EnsureSystemCollections，自动带上系统 default 库。
-	// 调用方指定其它 database_id 时再额外创建业务库。
-	if databaseID != defaultDatabaseID {
-		if err := s.databases.CreateDatabase(bootstrapWrite, project.ID, databaseID, databaseID); err != nil {
-			rollback()
-			return nil, status.Errorf(codes.Internal, "create database: %v", err)
-		}
-		createdUserDB = true
 	}
 
 	// 保持 admin_projects 关联数据完整（owner 实际会被
@@ -230,7 +203,7 @@ func (s *Setup) SignUp(ctx context.Context, cmd SignUpCommand) (*SignUpResult, e
 }
 
 // bootstrapPrincipalCtx 注入引导路径专用的平台 admin 主体，供 Admins.Create
-// 与 Databases 写方法的 actor 守卫放行。SignUp 已完成 setup token 授权。
+// 的 actor 守卫放行。SignUp 已完成 setup token 授权。
 func bootstrapPrincipalCtx(ctx context.Context) context.Context {
 	return contexts.WithPrincipal(ctx, &shared.Principal{
 		ActorID:         "setup",

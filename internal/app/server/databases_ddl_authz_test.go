@@ -68,16 +68,16 @@ func TestDatabases_DDLMethods_KeepSystemCollectionAndDefaultProtection(t *testin
 	err := uc.DeleteDatabase(ctx, "proj-1", "default")
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "default 库删除必须被拒")
 
-	// 系统集合拒绝（users 在 default 库）先于 adapter 调用（保护不变）。
-	err = uc.CreateCollection(ctx, "proj-1", "default", "users", "Users",
+	// 对外 database_id 拒 sentinel（系统集合不经 Databases API）。
+	err = uc.CreateCollection(ctx, "proj-1", databases.SystemDatabaseID, "users", "Users",
 		nil, nil, nil, false)
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "default 库系统集合创建必须被拒")
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "sentinel 库创建集合必须被拒")
 
-	err = uc.DeleteCollection(ctx, "proj-1", "default", "users")
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "default 库系统集合删除必须被拒")
+	err = uc.DeleteCollection(ctx, "proj-1", databases.SystemDatabaseID, "users")
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "sentinel 库删除集合必须被拒")
 
-	err = uc.DeleteAttribute(ctx, "proj-1", "default", "users", "email")
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "default 库系统集合删属性必须被拒")
+	err = uc.DeleteAttribute(ctx, "proj-1", databases.SystemDatabaseID, "users", "email")
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "sentinel 库删属性必须被拒")
 }
 
 // ddlCall 封装一次 DDL use-case 调用。

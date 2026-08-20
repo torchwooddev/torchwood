@@ -39,8 +39,8 @@ var safeNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 var docIDRe = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,64}$`)
 
 // systemCollectionsWriteProtected 是禁止非系统主体直接写入的系统集合（纵深防御，
-// 正常情况下客户端 API 已在用例层拦截）。仅对 default 库生效，
-// 自定义数据库中的同名集合不受影响。
+// 正常情况下客户端 API 已在用例层拦截）。仅对项目数据面 sentinel 生效，
+// 业务库（含 default）中的同名集合不受影响。
 var systemCollectionsWriteProtected = map[string]struct{}{
 	"users":      {},
 	"sessions":   {},
@@ -48,7 +48,7 @@ var systemCollectionsWriteProtected = map[string]struct{}{
 }
 
 func isWriteProtectedSystemCollection(databaseID, collectionID string) bool {
-	if databaseID != "default" {
+	if databaseID != ident.ProjectDataPlaneID {
 		return false
 	}
 	_, ok := systemCollectionsWriteProtected[collectionID]
@@ -94,7 +94,7 @@ func (p *postgresDocumentDB) conn(ctx context.Context) bun.IDB {
 }
 
 func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, name string) error {
-	_, schema, err := p.tenantAndSchema(ctx, projectID, id)
+	schema, err := p.businessSchema(projectID, id)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string
 }
 
 func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id string) error {
-	_, schema, err := p.tenantAndSchema(ctx, projectID, id)
+	schema, err := p.businessSchema(projectID, id)
 	if err != nil {
 		return err
 	}
@@ -184,7 +184,10 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 }
 
 func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
-	internalID, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
+	if databaseID == ident.ProjectDataPlaneID && !databases.IsSystemCollectionID(collectionID) {
+		return status.Error(codes.InvalidArgument, "only system collections may be created in the project data plane")
+	}
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
@@ -303,7 +306,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
-	internalID, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
@@ -373,7 +376,7 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
 	}
-	schema, err := ident.SchemaName(projectID, databaseID)
+	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
@@ -405,7 +408,7 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
-	_, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
+	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
@@ -449,17 +452,13 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 // createDocument 是 CreateDocument 的事务体：数据行与 _perms 写入在同一事务内，
 // 任一步失败整体回滚，避免权限写入失败时文档数据 fail-open。
 func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return doc, err
 	}
 	if doc.ID == "" {
 		doc.ID = idgen.UUID().String()
 	} else if err := validateDocID(doc.ID); err != nil {
-		return doc, err
-	}
-	schema, err := ident.SchemaName(projectID, databaseID)
-	if err != nil {
 		return doc, err
 	}
 	tbl := tableName(schema, collectionID)
@@ -571,11 +570,7 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 // 攻击者的预查发生在受害者提交之后（取锁后重查命中行），按 update
 // 权限拒绝，无法再借 create 权限改写他人行；权限替换与读回同事务。
 func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, conflictCols, conflictColumns []string, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	internalID, err := p.resolveInternalID(ctx, projectID)
-	if err != nil {
-		return doc, err
-	}
-	schema, err := ident.SchemaName(projectID, databaseID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return doc, err
 	}
@@ -744,11 +739,7 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 	if err := validateDocID(docID); err != nil {
 		return nil, err
 	}
-	internalID, err := p.resolveInternalID(ctx, projectID)
-	if err != nil {
-		return nil, err
-	}
-	schema, err := ident.SchemaName(projectID, databaseID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return nil, err
 	}
@@ -796,11 +787,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	if err := validateDocID(doc.ID); err != nil {
 		return doc, err
 	}
-	internalID, err := p.resolveInternalID(ctx, projectID)
-	if err != nil {
-		return doc, err
-	}
-	schema, err := ident.SchemaName(projectID, databaseID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return doc, err
 	}
@@ -940,7 +927,7 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 // 事务内，删除失败时不会残留权限行。用户集合（非系统）强制 OCC：
 // ExpectedVersion 必填且须等于当前行 _version（行锁下比较，防止竞态）。
 func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
-	internalID, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
@@ -1045,7 +1032,7 @@ func (p *postgresDocumentDB) publishDocumentEvent(
 }
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return nil, err
 	}
@@ -1055,11 +1042,6 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	parsed, err := query.ParseMany(q.Queries)
 	if err != nil {
 		return nil, fmt.Errorf("invalid query: %w", err)
-	}
-
-	schema, err := ident.SchemaName(projectID, databaseID)
-	if err != nil {
-		return nil, err
 	}
 	tbl := tableName(schema, collectionID)
 
@@ -1231,7 +1213,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 }
 
 func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string, principal databases.Principal) (int64, error) {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return 0, err
 	}
@@ -1244,10 +1226,6 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	}
 	if parsed.Offset > maxQueryOffset {
 		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
-	}
-	schema, err := ident.SchemaName(projectID, databaseID)
-	if err != nil {
-		return 0, err
 	}
 	tbl := tableName(schema, collectionID)
 
@@ -1301,11 +1279,7 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 	if !validColumnName(field) {
 		return 0, status.Error(codes.InvalidArgument, "invalid field name")
 	}
-	internalID, err := p.resolveInternalID(ctx, projectID)
-	if err != nil {
-		return 0, err
-	}
-	schema, err := ident.SchemaName(projectID, databaseID)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return 0, err
 	}
@@ -1379,8 +1353,8 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 			return err
 		}
 	}
-	dbID := "default"
-	schema, err := ident.SchemaName(projectID, dbID)
+	dbID := ident.ProjectDataPlaneID
+	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
 		return err
 	}
@@ -1394,14 +1368,14 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		if err := p.ensureSchemaAndPerms(ctx, schema); err != nil {
 			return err
 		}
-		// Ensure default database metadata row exists.
+		// Catalog-only sentinel 行（无 tw_<p>_ schema）；复合 PK (project_id, id)。
 		exists, err := p.conn(ctx).NewSelect().Model((*model.DocumentDatabase)(nil)).
 			Where("id = ? AND project_id = ?", dbID, projectID).Exists(ctx)
 		if err != nil {
 			return err
 		}
 		if !exists {
-			m := &model.DocumentDatabase{ID: dbID, ProjectID: projectID, Name: "default", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+			m := &model.DocumentDatabase{ID: dbID, ProjectID: projectID, Name: "(project)", CreatedAt: time.Now(), UpdatedAt: time.Now()}
 			if _, err := p.conn(ctx).NewInsert().Model(m).On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx); err != nil {
 				return err
 			}
@@ -1429,7 +1403,7 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 	// users/sessions/identities 的 update:keys/delete:keys（文档级 _perms +
 	// 集合级 document_collections.permissions 元数据），进程内仅执行一次。
 	if _, ok := p.keysPermsCleaned.Load(projectID); !ok {
-		if err := p.cleanupKeysWritePerms(ctx, schema); err != nil {
+		if err := p.cleanupKeysWritePerms(ctx, projectID, schema); err != nil {
 			return err
 		}
 		p.keysPermsCleaned.Store(projectID, struct{}{})
@@ -1465,15 +1439,15 @@ func (p *postgresDocumentDB) reconcileSystemCollectionAttrs(ctx context.Context,
 // cleanupKeysWritePerms 移除 keys 角色对系统敏感集合（users/sessions/identities）的
 // update/delete 权限，只作用于这三个集合；groups/memberships 的 keys 管理权限是
 // 合法语义，保留不动。幂等：无匹配行时均为空操作。
-func (p *postgresDocumentDB) cleanupKeysWritePerms(ctx context.Context, schema string) error {
+func (p *postgresDocumentDB) cleanupKeysWritePerms(ctx context.Context, projectID, schema string) error {
 	del := fmt.Sprintf(`DELETE FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection IN ('users','sessions','identities')`, permsTableName(schema))
 	if _, err := p.conn(ctx).ExecContext(ctx, del); err != nil {
 		return fmt.Errorf("cleanup keys perms: %w", err)
 	}
 	upd := `UPDATE document_collections
 		SET permissions = ARRAY(SELECT x FROM unnest(permissions) AS x WHERE x NOT IN ('update:keys','delete:keys'))
-		WHERE database_id = 'default' AND id IN ('users','sessions','identities') AND permissions IS NOT NULL`
-	if _, err := p.conn(ctx).ExecContext(ctx, upd); err != nil {
+		WHERE project_id = ? AND database_id = ? AND id IN ('users','sessions','identities') AND permissions IS NOT NULL`
+	if _, err := p.conn(ctx).ExecContext(ctx, upd, projectID, ident.ProjectDataPlaneID); err != nil {
 		return fmt.Errorf("cleanup keys collection perms: %w", err)
 	}
 	return nil
@@ -1487,16 +1461,38 @@ func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
-func (p *postgresDocumentDB) tenantAndSchema(ctx context.Context, projectID, databaseID string) (int64, string, error) {
+// documentSchema 解析文档读写 / EnsureSystemCollections / CreateCollection 的
+// 目标 schema。仅此处允许 sentinel → ProjectSchemaName（一段式 tw_<project>）。
+func (p *postgresDocumentDB) documentSchema(ctx context.Context, projectID, databaseID string) (int64, string, error) {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
 		return 0, "", err
 	}
+	if databaseID == ident.ProjectDataPlaneID {
+		schema, err := ident.ProjectSchemaName(projectID)
+		return internalID, schema, err
+	}
+	schema, err := ident.SchemaName(projectID, databaseID)
+	return internalID, schema, err
+}
+
+// businessSchema 供 CreateDatabase / DeleteDatabase：只许两段式。显式拒
+// sentinel、拒一段式，DROP SCHEMA 永不映射到 tw_<project>。
+func (p *postgresDocumentDB) businessSchema(projectID, databaseID string) (string, error) {
+	if databaseID == ident.ProjectDataPlaneID {
+		return "", status.Error(codes.InvalidArgument, "database_id is reserved")
+	}
 	schema, err := ident.SchemaName(projectID, databaseID)
 	if err != nil {
-		return 0, "", err
+		return "", err
 	}
-	return internalID, schema, nil
+	if !ident.IsTwoSegmentSchema(schema) {
+		return "", status.Error(codes.Internal, "refusing to DDL a non two-segment schema")
+	}
+	if one, err := ident.ProjectSchemaName(projectID); err == nil && schema == one {
+		return "", status.Error(codes.Internal, "refusing to DROP/CREATE project data-plane schema")
+	}
+	return schema, nil
 }
 
 func tableName(schema, collectionID string) string {

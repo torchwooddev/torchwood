@@ -371,18 +371,18 @@ func TestOutbox_SystemCollectionNoRows(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, events.NewEventOutbox(db))
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	_, err := docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
+	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "u1",
 		Data: map[string]any{"email": "a@b.c", "status": "active"},
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	_, err = docDB.UpdateDocument(ctx, projectID, "default", "users", databases.DocumentUpdate{
+	_, err = docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.DocumentUpdate{
 		Document: databases.Document{ID: "u1", Data: map[string]any{"status": "blocked"}},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	require.NoError(t, docDB.DeleteDocument(ctx, projectID, "default", "users", "u1",
+	require.NoError(t, docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "users", "u1",
 		databases.DeleteOptions{SkipVersion: true}, databases.SystemPrincipal))
 
 	require.Len(t, outboxRows(t, db, ctx), 0, "系统集合写不得产生 outbox 行")

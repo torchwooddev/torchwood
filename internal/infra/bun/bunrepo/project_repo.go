@@ -71,7 +71,7 @@ func (r *projectRepo) UpdateProject(ctx context.Context, p *projects.Project) er
 }
 
 func (r *projectRepo) DeleteProject(ctx context.Context, id string) error {
-	_, err := r.db.NewDelete().Model((*model.Project)(nil)).Where("id = ?", id).Exec(ctx)
+	_, err := r.db.Conn(ctx).NewDelete().Model((*model.Project)(nil)).Where("id = ?", id).Exec(ctx)
 	return err
 }
 

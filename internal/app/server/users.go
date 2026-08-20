@@ -50,7 +50,7 @@ func (u *Users) ListUsers(ctx context.Context, projectID string, q databases.Que
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, 0, "", err
 	}
-	list, err := u.docDB.ListDocuments(ctx, projectID, "default", "users", q, principal)
+	list, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", q, principal)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -61,7 +61,7 @@ func (u *Users) GetUser(ctx context.Context, projectID, userID string, principal
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	return u.docDB.GetDocument(ctx, projectID, "default", "users", userID, principal)
+	return u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, principal)
 }
 
 var userUpdateProtectedFields = map[string]struct{}{
@@ -94,7 +94,7 @@ func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUser
 		cmd.Status = users.StatusActive
 	}
 
-	list, err := u.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries:  []string{query.BuildEqual("email", email)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
@@ -129,7 +129,7 @@ func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUser
 	if cmd.Prefs != nil {
 		userDoc.Data["prefs"] = cmd.Prefs
 	}
-	if _, err := u.docDB.CreateDocument(ctx, projectID, "default", "users", userDoc, userDocumentPermissions(userID), databases.SystemPrincipal); err != nil {
+	if _, err := u.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userDocumentPermissions(userID), databases.SystemPrincipal); err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	return &userDoc, nil
@@ -165,7 +165,7 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 			return nil, status.Error(codes.InvalidArgument, "email must not be empty")
 		}
 		// 改邮箱查重（排除自身 userID）：users_email_unique 唯一索引兜底并发冲突。
-		existing, err := u.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+		existing, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 			Queries:  []string{query.BuildEqual("email", email), "limit(1)"},
 			PageSize: 1,
 		}, databases.SystemPrincipal)
@@ -197,7 +197,7 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 	// 用例层即权限层：keys 角色已由拦截器 scope 把关，docDB 调用统一走 SystemPrincipal，
 	// 避免非 System 主体触发系统集合写保护（安全评审 C1 方案 (a)）。
 	doc := databases.Document{ID: userID, Data: filtered}
-	updated, err := u.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(doc, nil), databases.SystemPrincipal)
+	updated, err := u.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(doc, nil), databases.SystemPrincipal)
 	if err != nil {
 		// 并发下唯一索引冲突（ErrDuplicateKey/23505）映射为 AlreadyExists。
 		return nil, fmt.Errorf("update user: %w", appshared.MapDocumentDBError(err))
@@ -217,7 +217,7 @@ func (u *Users) UpdateUserPassword(ctx context.Context, projectID, userID, newPa
 	if err := users.ValidatePasswordStrength(newPassword); err != nil {
 		return nil, err
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (u *Users) UpdateUserPassword(ctx context.Context, projectID, userID, newPa
 	if err != nil {
 		return nil, err
 	}
-	updated, err := u.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+	updated, err := u.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   userID,
 		Data: map[string]any{"password_hash": hash},
 	}, nil), databases.SystemPrincipal)
@@ -246,14 +246,14 @@ func (u *Users) ListUserSessions(ctx context.Context, projectID, userID string) 
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, err
 	}
 	if doc == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
-	list, err := u.docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+	list, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
 		Queries:  []string{query.BuildEqual("user_id", userID)},
 		PageSize: 100,
 	}, databases.SystemPrincipal)
@@ -272,7 +272,7 @@ func (u *Users) DeleteUserSession(ctx context.Context, projectID, userID, sessio
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, "default", "sessions", sessionID, databases.SystemPrincipal)
+	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.SystemPrincipal)
 	if err != nil {
 		return err
 	}
@@ -282,7 +282,7 @@ func (u *Users) DeleteUserSession(ctx context.Context, projectID, userID, sessio
 	if uid, _ := doc.Data["user_id"].(string); uid != userID {
 		return status.Error(codes.NotFound, "session not found")
 	}
-	return u.docDB.DeleteDocument(ctx, projectID, "default", "sessions", sessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
+	return u.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
 }
 
 // CreateUserToken 模拟登录：以指定用户身份创建会话并签发 token（调试/客服场景）。
@@ -295,7 +295,7 @@ func (u *Users) CreateUserToken(ctx context.Context, projectID, userID string) (
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +338,7 @@ func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, princi
 		if err := u.deleteUserCascade(txCtx, projectID, userID); err != nil {
 			return err
 		}
-		return u.docDB.DeleteDocument(txCtx, projectID, "default", "users", userID, databases.DeleteOptions{}, databases.SystemPrincipal)
+		return u.docDB.DeleteDocument(txCtx, projectID, databases.SystemDatabaseID, "users", userID, databases.DeleteOptions{}, databases.SystemPrincipal)
 	})
 	if err != nil {
 		return err
@@ -356,7 +356,7 @@ func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string)
 			return fmt.Errorf("list %s for user: %w", coll, err)
 		}
 		for _, doc := range docs {
-			if err := u.docDB.DeleteDocument(ctx, projectID, "default", coll, doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
+			if err := u.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, coll, doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
 				return fmt.Errorf("delete %s: %w", coll, err)
 			}
 		}
@@ -374,7 +374,7 @@ func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string)
 				groupsToAdjust[groupID] = struct{}{}
 			}
 		}
-		if err := u.docDB.DeleteDocument(ctx, projectID, "default", "memberships", doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
+		if err := u.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
 			return fmt.Errorf("delete membership: %w", err)
 		}
 	}
@@ -389,7 +389,7 @@ func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string)
 // adjustGroupTotal 递增/递减用户组 total（与 Groups.adjustGroupTotal 逻辑一致，
 // 此处针对 Users 内联实现，避免跨用例结构体依赖）。
 func (u *Users) adjustGroupTotal(ctx context.Context, projectID, groupID string, delta int) error {
-	doc, err := u.docDB.GetDocument(ctx, projectID, "default", "groups", groupID, databases.SystemPrincipal)
+	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, databases.SystemPrincipal)
 	if err != nil {
 		return err
 	}
@@ -409,7 +409,7 @@ func (u *Users) adjustGroupTotal(ctx context.Context, projectID, groupID string,
 	if total < 0 {
 		total = 0
 	}
-	_, err = u.docDB.UpdateDocument(ctx, projectID, "default", "groups", databases.SimpleDocumentUpdate(databases.Document{
+	_, err = u.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   groupID,
 		Data: map[string]any{"total": total},
 	}, nil), databases.SystemPrincipal)
@@ -436,7 +436,7 @@ func cascadeListAll(ctx context.Context, docDB databases.DocumentDB, projectID, 
 	var out []databases.Document
 	token := ""
 	for {
-		list, err := docDB.ListDocuments(ctx, projectID, "default", collectionID, databases.Query{
+		list, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, collectionID, databases.Query{
 			Queries:   append(append([]string{}, queries...), "limit(1000)"),
 			PageSize:  cascadePageSize,
 			PageToken: token,

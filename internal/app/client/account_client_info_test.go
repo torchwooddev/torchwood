@@ -49,7 +49,7 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	list, err := docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+	list, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
 		Queries:  []string{query.BuildEqual("ip", "198.51.100.42")},
 		PageSize: 1,
 	}, databases.SystemPrincipal)

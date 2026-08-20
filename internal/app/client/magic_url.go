@@ -61,7 +61,7 @@ func (a *Account) CreateMagicURLSession(ctx context.Context, cmd CreateMagicURLS
 		return nil, err
 	}
 
-	list, err := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries:  []string{query.BuildEqual("email", email)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
@@ -116,7 +116,7 @@ func (a *Account) UpdateMagicURLSession(ctx context.Context, cmd UpdateMagicURLS
 		return nil, nil, "", nil, err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}

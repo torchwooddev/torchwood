@@ -299,7 +299,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
-	created, err := docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
+	created, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		Data: map[string]any{
 			"email": "perm@torchwood.local",
 			"name":  "Permission Test",
@@ -310,30 +310,30 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	require.NoError(t, err)
 
 	// User without permission cannot read.
-	list, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("$id","` + created.ID + `")`},
 	}, databases.Principal{Roles: []string{"user:bob"}})
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)
 
 	// User with permission can read.
-	list, err = docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("$id","` + created.ID + `")`},
 	}, databases.Principal{Roles: []string{"user:alice"}})
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
 
 	// System roles bypass permissions.
-	list, err = docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{}, databases.SystemPrincipal)
+	list, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(list.Documents), 1)
 
 	// Get without permission is denied.
-	_, err = docDB.GetDocument(ctx, projectID, "default", "users", created.ID, databases.Principal{Roles: []string{"user:bob"}})
+	_, err = docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", created.ID, databases.Principal{Roles: []string{"user:bob"}})
 	require.ErrorIs(t, err, ErrPermissionDenied)
 
 	// Get with permission succeeds.
-	got, err := docDB.GetDocument(ctx, projectID, "default", "users", created.ID, databases.Principal{Roles: []string{"user:alice"}})
+	got, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", created.ID, databases.Principal{Roles: []string{"user:alice"}})
 	require.NoError(t, err)
 	require.Equal(t, "perm@torchwood.local", got.Data["email"])
 }
@@ -369,11 +369,11 @@ func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {
 
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectB.ID, internalB))
 
-	collA, err := docDB.GetCollection(ctx, projectA, "default", "users")
+	collA, err := docDB.GetCollection(ctx, projectA, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.NotNil(t, collA)
 
-	collB, err := docDB.GetCollection(ctx, projectB.ID, "default", "users")
+	collB, err := docDB.GetCollection(ctx, projectB.ID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.NotNil(t, collB)
 }
@@ -846,7 +846,7 @@ func TestEnsureSystemCollections_Idempotent(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	fresh := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
-	coll, err := fresh.GetCollection(ctx, projectID, "default", "users")
+	coll, err := fresh.GetCollection(ctx, projectID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.NotNil(t, coll)
 }
@@ -869,7 +869,7 @@ func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
 
 	spec := systemCollectionSpecs(projectID)["users"]
 	p := &postgresDocumentDB{db: db}
-	err := p.createCollectionMetadata(ctx, projectID, "default", "users", spec.name, spec.attrs, spec.indexes, spec.permissions, true)
+	err := p.createCollectionMetadata(ctx, projectID, databases.SystemDatabaseID, "users", spec.name, spec.attrs, spec.indexes, spec.permissions, true)
 	require.NoError(t, err)
 }
 
@@ -951,7 +951,7 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
-	_, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("nonexistent_col","x")`},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
@@ -1012,7 +1012,7 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 
 	// search 命中 fulltext 索引列（files.name_fulltext）→ 可用。
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
-	_, err = docDB.ListDocuments(ctx, projectID, "default", "files", databases.Query{
+	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "files", databases.Query{
 		Queries: []string{`search("name","hello")`},
 	}, keysPrincipal)
 	require.NoError(t, err)
@@ -1043,26 +1043,26 @@ func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 
 	// users（default 库系统集合）：password_hash 禁止过滤。
-	_, err := docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("password_hash","x")`},
 	}, keysPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// sessions.secret_hash / identities.provider_data 同样禁止。
-	_, err = docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
 		Queries: []string{`equal("secret_hash","x")`},
 	}, keysPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = docDB.ListDocuments(ctx, projectID, "default", "identities", databases.Query{
+	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "identities", databases.Query{
 		Queries: []string{`equal("provider_data","x")`},
 	}, keysPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 非敏感声明列（email）可查。
-	_, err = docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("email","x@y.z")`},
 	}, keysPrincipal)
 	require.NoError(t, err)

@@ -136,7 +136,7 @@ func (a *Account) CreateEmailOTPSession(ctx context.Context, cmd CreateEmailOTPS
 }
 
 func (a *Account) findOrCreateUserByEmail(ctx context.Context, projectID, email string, markVerified bool) (*User, error) {
-	list, err := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries:  []string{query.BuildEqual("email", email)},
 		PageSize: 1,
 	}, databases.SystemPrincipal)
@@ -164,9 +164,9 @@ func (a *Account) findOrCreateUserByEmail(ctx context.Context, projectID, email 
 		},
 	}
 	userPerms := userDocumentPermissions(userID)
-	if _, err := a.docDB.CreateDocument(ctx, projectID, "default", "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
+	if _, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
 		if errors.Is(err, documentdb.ErrDuplicateKey) {
-			list, listErr := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+			list, listErr := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 				Queries:  []string{query.BuildEqual("email", email)},
 				PageSize: 1,
 			}, databases.SystemPrincipal)

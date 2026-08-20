@@ -391,7 +391,7 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 
 	// 构造一个"遗留文档"：文档级 _perms 仍含 keys 的 update/delete（模拟升级前数据）。
-	userDoc, err := docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
+	userDoc, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "legacy-user",
 		Data: map[string]any{"email": "legacy@example.com", "status": "active"},
 	}, []databases.Permission{
@@ -402,21 +402,21 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	require.NoError(t, err)
 
 	// keys 更新/删除 users 文档被拒（集合级与文档级均已收窄）。
-	_, err = docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+	_, err = docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   userDoc.ID,
 		Data: map[string]any{"name": "hacked"},
 	}, nil), keysPrincipal)
 	require.ErrorIs(t, err, ErrPermissionDenied)
-	err = docDB.DeleteDocument(ctx, projectID, "default", "users", userDoc.ID, databases.DeleteOptions{}, keysPrincipal)
+	err = docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc.ID, databases.DeleteOptions{}, keysPrincipal)
 	require.ErrorIs(t, err, ErrPermissionDenied)
 
 	// keys 读 users 文档仍然放行（read:keys 保留）。
-	got, err := docDB.GetDocument(ctx, projectID, "default", "users", userDoc.ID, keysPrincipal)
+	got, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc.ID, keysPrincipal)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
 	// groups 的 keys 管理权限保留：keys 可创建用户组文档（create:keys 集合级授权）。
-	_, err = docDB.CreateDocument(ctx, projectID, "default", "groups", databases.Document{
+	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Document{
 		ID:   "group-1",
 		Data: map[string]any{"name": "Group A"},
 	}, nil, keysPrincipal)
@@ -440,7 +440,7 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	schema := quoteIdent(testSchema(t, projectID, "default"))
+	schema := quoteIdent(testProjectSchema(t, projectID))
 
 	// 模拟升级前遗留状态：文档级 _perms 存在 keys 的 update/delete 行
 	// （users/sessions/identities 各若干 + groups 一行作为对照）。
@@ -457,7 +457,7 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	// 集合级元数据：系统集合与 groups 都补上 keys 写权限（groups 作为对照）。
 	_, err = db.DB.ExecContext(ctx,
 		`UPDATE document_collections SET permissions = permissions || ARRAY['update:keys','delete:keys']
-		 WHERE project_id = ? AND database_id = 'default' AND id IN ('users','sessions','identities','groups')`,
+		 WHERE project_id = ? AND database_id = '_' AND id IN ('users','sessions','identities','groups')`,
 		projectID)
 	require.NoError(t, err)
 
@@ -483,14 +483,14 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	// 集合级元数据：系统集合不再含 keys 写权限；groups 保留。
 	var metaKeysWrite int64
 	row = db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = 'default'
+		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = '_'
 		 AND id IN ('users','sessions','identities') AND permissions @> ARRAY['update:keys','delete:keys']`, projectID)
 	require.NoError(t, row.Scan(&metaKeysWrite))
 	require.Zero(t, metaKeysWrite)
 
 	var groupMeta int64
 	row = db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = 'default'
+		`SELECT COUNT(*) FROM document_collections WHERE project_id = ? AND database_id = '_'
 		 AND id = 'groups' AND permissions @> ARRAY['update:keys','delete:keys']`, projectID)
 	require.NoError(t, row.Scan(&groupMeta))
 	require.Equal(t, int64(1), groupMeta)

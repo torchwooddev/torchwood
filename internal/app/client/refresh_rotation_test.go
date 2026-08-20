@@ -87,7 +87,7 @@ func TestAccount_RefreshToken_RotationAndReuseDetection(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, st.Code())
 
 	claims := parseRefreshClaims(t, buildTestConfig().GetSecurity().GetJwt().GetSecret(), tokens.RefreshToken)
-	sessionDoc, err := docDB.GetDocument(ctx, projectID, "default", "sessions", claims.SessionID, databases.SystemPrincipal)
+	sessionDoc, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", claims.SessionID, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Nil(t, sessionDoc)
 

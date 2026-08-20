@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
@@ -32,9 +33,10 @@ func NewProjects(projectRepo projects.Repository, docDB databases.DocumentDB, db
 }
 
 type CreateProjectCommand struct {
-	ID          string
-	Name        string
-	Description string
+	ID              string
+	Name            string
+	Description     string
+	FirstDatabaseID string // 缺省 "default"；CreateProject 内部调 infra 建空业务库
 }
 
 func (s *Projects) CreateProject(ctx context.Context, cmd CreateProjectCommand) (*projects.Project, error) {
@@ -64,6 +66,13 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 	if len(cmd.Description) > maxProjectDescriptionLen {
 		return nil, status.Error(codes.InvalidArgument, "description must be at most 512 characters")
 	}
+	firstDBID := strings.TrimSpace(cmd.FirstDatabaseID)
+	if firstDBID == "" {
+		firstDBID = "default"
+	}
+	if err := ident.ValidateSchemaResourceID(firstDBID); err != nil {
+		return nil, err
+	}
 	p := &projects.Project{
 		ID:          cmd.ID,
 		Name:        cmd.Name,
@@ -77,8 +86,18 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 		if err := s.projectRepo.CreateProject(txCtx, p); err != nil {
 			return fmt.Errorf("insert project: %w", err)
 		}
+		schema, err := ident.ProjectSchemaName(p.ID)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
+			return fmt.Errorf("create project schema: %w", err)
+		}
 		if err := s.docDB.EnsureSystemCollections(txCtx, p.ID, p.InternalID); err != nil {
 			return fmt.Errorf("ensure system collections: %w", err)
+		}
+		if err := s.docDB.CreateDatabase(txCtx, p.ID, firstDBID, firstDBID); err != nil {
+			return fmt.Errorf("create first database: %w", err)
 		}
 		return nil
 	})
@@ -86,6 +105,81 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 		return nil, fmt.Errorf("create project: %w", err)
 	}
 	return p, nil
+}
+
+// DeleteProject 级联删除项目（内部；setup 回滚必须走这里）。同一事务：
+// 业务 schema DROP → 清理 public 行 → DROP tw_<project> → 删 projects 行。
+func (s *Projects) DeleteProject(ctx context.Context, id string) error {
+	if err := ident.ValidateSchemaResourceID(id); err != nil {
+		return err
+	}
+	return s.db.RunInTx(ctx, func(txCtx context.Context) error {
+		dbs, err := s.docDB.ListDatabases(txCtx, id)
+		if err != nil {
+			return fmt.Errorf("list databases: %w", err)
+		}
+		for _, db := range dbs {
+			if db.ID == ident.ProjectDataPlaneID {
+				continue
+			}
+			if err := s.docDB.DeleteDatabase(txCtx, id, db.ID); err != nil {
+				return fmt.Errorf("drop business schema %s: %w", db.ID, err)
+			}
+		}
+		if err := s.deletePublicProjectRows(txCtx, id); err != nil {
+			return err
+		}
+		schema, err := ident.ProjectSchemaName(id)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
+			return fmt.Errorf("drop project schema: %w", err)
+		}
+		if err := s.projectRepo.DeleteProject(txCtx, id); err != nil {
+			return fmt.Errorf("delete project row: %w", err)
+		}
+		return nil
+	})
+}
+
+func (s *Projects) deletePublicProjectRows(ctx context.Context, projectID string) error {
+	conn := s.db.Conn(ctx)
+	if _, err := conn.NewDelete().Model((*model.DocumentEventsOutbox)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete outbox: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `DELETE FROM document_events_outbox_dead WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("delete outbox dead: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.DocumentTransaction)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete transactions: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.APIKey)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete api_keys: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.AuditLog)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete audit_logs: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.AdminProject)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete admin_projects: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.DocumentAttribute)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete catalog attributes: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.DocumentIndex)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete catalog indexes: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.DocumentCollection)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete catalog collections: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.DocumentDatabase)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete catalog databases: %w", err)
+	}
+	return nil
+}
+
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 func (s *Projects) ListProjects(ctx context.Context, pageSize int32, pageToken, filter, orderBy string) ([]projects.Project, *crud.PaginationInfo, error) {

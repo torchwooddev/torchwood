@@ -50,7 +50,7 @@ func (s *Storage) CreateUploadSession(ctx context.Context, cmd CreateUploadComma
 		return nil, err
 	}
 	// Verify bucket exists.
-	bucketDoc, err := s.docDB.GetDocument(ctx, project.ID, "default", "buckets", cmd.BucketID, principal)
+	bucketDoc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", cmd.BucketID, principal)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 		},
 	}
 	perms := filePermissions(session.FileID, ownerUserID, session.Permissions)
-	if _, err := s.docDB.CreateDocument(ctx, project.ID, "default", "files", fileDoc, perms, principal); err != nil {
+	if _, err := s.docDB.CreateDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileDoc, perms, principal); err != nil {
 		// 回滚：确认「自己仍是锁持有者 + 会话仍存在」双重条件后才删最终对象。
 		// 锁 TTL（1h）若已过期，第二个 complete 可能已重新加锁并成功建文档，
 		// 此时无条件删对象会误删其成果 → 数据损坏。

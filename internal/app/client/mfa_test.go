@@ -87,7 +87,7 @@ func TestAccount_CreateTOTPFactor_SecretEncrypted(t *testing.T) {
 	require.Contains(t, otpauthURL, "otpauth://totp/")
 
 	// 落库密文：非明文、带 enc:v1: 前缀。
-	doc, err := account.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := account.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 	rawFactors := doc.Data["factors"]
@@ -281,7 +281,7 @@ func TestAccount_VerifyTOTPFactor_ExpiredPending(t *testing.T) {
 
 	// 把因子 created_at 改成 11 分钟前，模拟激活超时。
 	old := factor.CreatedAt.Add(-11 * time.Minute)
-	doc, err := account.docDB.GetDocument(ctx, projectID, "default", "users", userID, databases.SystemPrincipal)
+	doc, err := account.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	require.NoError(t, err)
 	factors := parseFactors(doc.Data["factors"])
 	for i := range factors {
@@ -289,7 +289,7 @@ func TestAccount_VerifyTOTPFactor_ExpiredPending(t *testing.T) {
 			factors[i].CreatedAt = old
 		}
 	}
-	_, err = account.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+	_, err = account.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   userID,
 		Data: map[string]any{"factors": factorDocs(factors)},
 	}, nil), databases.SystemPrincipal)

@@ -118,7 +118,7 @@ func newSignInService(t *testing.T, cfg *config.AppConfig) *AuthService {
 // newTestSetup 构造一个仅用于既有 SignIn/RefreshToken/SignOut 测试的 Setup
 // 桩（SignUp/GetSetupStatus 相关测试不依赖其内部字段）。
 func newTestSetup() *console.Setup {
-	return console.NewSetup(nil, nil, nil, nil, nil, nil, nil, nil)
+	return console.NewSetup(nil, nil, nil, nil, nil, nil, nil)
 }
 
 // findCookie 在 set-cookie metadata 值里按 cookie 名查找。

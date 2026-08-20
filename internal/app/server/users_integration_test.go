@@ -209,7 +209,7 @@ func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
 
 	// 直插 61 条 sessions（> 默认 50 条页上限）。
 	for i := 0; i < 61; i++ {
-		_, err := docDB.CreateDocument(ctx, projectID, "default", "sessions", databases.Document{
+		_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Document{
 			ID: idgen.UUID().String(),
 			Data: map[string]any{
 				"user_id":    doc.ID,
@@ -222,7 +222,7 @@ func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
 	}
 	// 直插 61 条 memberships。
 	for i := 0; i < 61; i++ {
-		_, err := docDB.CreateDocument(ctx, projectID, "default", "memberships", databases.Document{
+		_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Document{
 			ID: idgen.UUID().String(),
 			Data: map[string]any{
 				"group_id":  idgen.UUID().String(),
@@ -238,15 +238,15 @@ func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
 	require.NoError(t, uc.DeleteUser(ctx, projectID, doc.ID, databases.Principal{Roles: []string{"keys"}}))
 
 	// 用户文档与全部级联文档均已清理。
-	me, err := docDB.GetDocument(ctx, projectID, "default", "users", doc.ID, databases.SystemPrincipal)
+	me, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", doc.ID, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Nil(t, me)
-	sessions, err := docDB.ListDocuments(ctx, projectID, "default", "sessions", databases.Query{
+	sessions, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
 		Queries: []string{query.BuildEqual("user_id", doc.ID)},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Zero(t, sessions.TotalCount)
-	memberships, err := docDB.ListDocuments(ctx, projectID, "default", "memberships", databases.Query{
+	memberships, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
 		Queries: []string{query.BuildEqual("user_id", doc.ID)},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
@@ -282,7 +282,7 @@ func TestServerUsers_CreateUserToken(t *testing.T) {
 
 	// 以用户身份可读取自己的文档。
 	tokenPrincipal := databases.Principal{Roles: []string{"users", "user:" + doc.ID}}
-	me, err := docDB.GetDocument(ctx, projectID, "default", "users", doc.ID, tokenPrincipal)
+	me, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", doc.ID, tokenPrincipal)
 	require.NoError(t, err)
 	require.NotNil(t, me)
 

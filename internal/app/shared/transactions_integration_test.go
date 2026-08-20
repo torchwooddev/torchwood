@@ -310,16 +310,8 @@ func TestTransactions_SystemCollectionRejected(t *testing.T) {
 	env := setupTxTest(t, ctx)
 	keyCtx := txKeyCtx(ctx, env.projectID, "k1", []string{"databases"})
 
-	tx, err := env.core.Create(keyCtx, env.projectID, "default")
-	require.NoError(t, err)
-	_, err = env.core.Append(keyCtx, env.projectID, "default", tx.ID, databases.TransactionOp{
-		OpType:       databases.TransactionOpCreate,
-		CollectionID: "users",
-		DocumentID:   "x1",
-		Data:         map[string]any{"email": "a@b.c"},
-	}, env.prepare("default"))
-	requireGRPCCode(t, err, codes.FailedPrecondition, databases.ErrSystemCollectionNotAllowed.Error())
-	require.Equal(t, databases.TransactionStatusPending, env.getTxStatus(t, ctx, tx.ID))
+	_, err := env.core.Create(keyCtx, env.projectID, databases.SystemDatabaseID)
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "事务不得指向 sentinel")
 }
 
 // 第二笔 pending 拒（部分唯一索引 → transaction_already_pending）。

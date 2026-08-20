@@ -14,7 +14,7 @@ import (
 )
 
 func (a *Account) findIdentity(ctx context.Context, projectID, provider, providerUID string) (*domainauth.Identity, error) {
-	list, err := a.docDB.ListDocuments(ctx, projectID, "default", "identities", databases.Query{
+	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "identities", databases.Query{
 		Queries: []string{
 			query.BuildEqual("provider", provider),
 			query.BuildEqual("provider_uid", providerUID),
@@ -60,7 +60,7 @@ func (a *Account) createIdentity(ctx context.Context, projectID, userID string, 
 		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
 		{Type: "delete", Role: "admin"},
 	}
-	_, err := a.docDB.CreateDocument(ctx, projectID, "default", "identities", doc, perms, databases.SystemPrincipal)
+	_, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "identities", doc, perms, databases.SystemPrincipal)
 	return err
 }
 
@@ -102,7 +102,7 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 		return nil, err
 	}
 	if identity != nil {
-		doc, err := a.docDB.GetDocument(ctx, projectID, "default", "users", identity.UserID, databases.SystemPrincipal)
+		doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", identity.UserID, databases.SystemPrincipal)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +113,7 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 	}
 
 	if info.Email != "" {
-		list, err := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+		list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 			Queries:  []string{query.BuildEqual("email", info.Email)},
 			PageSize: 1,
 		}, databases.SystemPrincipal)
@@ -134,7 +134,7 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 		return nil, err
 	}
 	if name != "" && user.Name == emailLocalPart(info.Email) {
-		updated, err := a.docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+		updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 			ID:   user.ID,
 			Data: map[string]any{"name": name},
 		}, nil), databases.SystemPrincipal)
@@ -164,7 +164,7 @@ func (a *Account) linkOAuthIdentity(ctx context.Context, projectID, userID, prov
 		return nil
 	}
 	if strings.TrimSpace(info.Email) != "" {
-		list, err := a.docDB.ListDocuments(ctx, projectID, "default", "users", databases.Query{
+		list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 			Queries:  []string{query.BuildEqual("email", info.Email)},
 			PageSize: 1,
 		}, databases.SystemPrincipal)

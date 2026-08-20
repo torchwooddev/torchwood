@@ -255,7 +255,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	schema := testSchema(t, projectID, "default")
+	schema := testProjectSchema(t, projectID)
 	var count int
 	require.NoError(t, db.DB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_version'`,
@@ -263,12 +263,12 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	require.Zero(t, count, "系统集合 users 表不得有 _version 列")
 
 	// 系统集合写路径不要求 version（内部 Users 等高频更新）且不 SET _version。
-	userDoc, err := docDB.CreateDocument(ctx, projectID, "default", "users", databases.Document{
+	userDoc, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "u1",
 		Data: map[string]any{"email": "a@b.c", "status": "active"},
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
-	updated, err := docDB.UpdateDocument(ctx, projectID, "default", "users", databases.SimpleDocumentUpdate(databases.Document{
+	updated, err := docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 		ID:   userDoc.ID,
 		Data: map[string]any{"name": "n"},
 	}, nil), databases.SystemPrincipal)
@@ -278,7 +278,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	// 归零，wire 契约 Document.version 系统集合为 0。
 	require.Equal(t, int64(1), updated.Version)
 
-	require.NoError(t, docDB.DeleteDocument(ctx, projectID, "default", "users", userDoc.ID, databases.DeleteOptions{}, databases.SystemPrincipal))
+	require.NoError(t, docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc.ID, databases.DeleteOptions{}, databases.SystemPrincipal))
 }
 
 // TestVersionColumn_LazyAlterAndReadFallback：存量用户表（无 _version 列）
@@ -582,7 +582,7 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	_, err := docDB.ListDocuments(ctx, projectID, "default", "groups", databases.Query{
+	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{
 		Queries: []string{`equal("$version", 1)`},
 	}, databases.Principal{Roles: []string{"keys"}})
 	require.Error(t, err)
