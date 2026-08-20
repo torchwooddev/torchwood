@@ -2,8 +2,9 @@
 
 > 作者：待定  
 > 日期：2026-08-20  
-> 状态：**Draft**（已完成一轮代码审查修订，待 owner 评审）  
+> 状态：**Draft**（代码审查修订完成；K14/K15/K17/K12 关键取舍已由 owner 裁决，待终审）  
 > 修订：2026-08-20 按代码审查结论：修正事实引用与文件路径；补齐遗漏（`PruneOldExecutions`、`ListProjectIDsInRange`、go:embed、§8.2 清单等）；钉死排空型 worker 语义（K22）；Stripe metadata 写入升为必做；CreateProject 第一库 id 参数化（K23）；PR8 改为条件执行（系统表化另案既定，见 §「与系统表化的衔接」）。  
+> 修订2：2026-08-20 owner 决策落地——`api_keys` / `audit_logs` 按 K14 规则重裁**留 public**（作废 `api_key_lookup` 方案，改为 `UNIQUE(secret_hash)` 全局索引 + 仓储 projectID 谓词）；PR8 移除（`_tenant` 全保留）；K8 新增项目 DDL 纪律与规模触发点；补 schema≠安全边界、单项目导出/导入收益、跨 schema FK 恢复顺序、平台聚合出路。  
 > 前置：`docs/design/schema-naming.md`（已实施）、`docs/design/v3-payments-economy.md` D1、`docs/developer/06-databases.md`、`docs/design/v2-events-realtime-transactions.md`
 
 ---
@@ -117,12 +118,12 @@ tw_shop_app                     真正的业务库
 | K9 | 运行时 SQL | **禁止**在连接池上 `SET search_path`；一律 `quoteIdent(schema).table` | 池化连接串租户会串 schema。CreateProject 同 Tx 也不靠池级 search_path |
 | K10 | Worker 枚举 | `public.projects` 列出 id，再查 `tw_<id>`；循环在 **app / `cmd/worker`**；禁止 `pg_namespace` | LIKE 陷阱；目录是权威；bunrepo 不依赖项目目录 |
 | K11 | 跨 schema 事务 | 同一 `sql.Tx` 写 `tw_shop.payment_orders` + `public.document_events_outbox` | 已是 v2/v3 既有能力；PG 跨 schema FK 合法 |
-| K12 | 系统表 `_tenant` | 项目 schema 内去掉，PK = `_id`；`_perms` 同步去掉 `_tenant`。**PR8 条件执行**：系统表化排期临近则整体跳过 | schema 已 1:1 项目；列是历史包袱。但表形态本身是过渡态——先 DROP COLUMN 再整表重写是三连迁移（见 Open Q6） |
+| K12 | 系统表 `_tenant` | **保留**（原 PR8 已移除，owner 2026-08-20）；待系统表化整表重写时自然消失 | 表形态是过渡态：先 DROP COLUMN 再整表重写是三连迁移；保留代价只是一列 + 建表 DEFAULT + 恒真谓词，无正确性影响 |
 | K13 | 业务表 `_tenant` | 本期保留，另案再去 | 查询形状、OCC、advisory lock、导入 remap 爆炸半径太大 |
-| K14 | `admin_projects` | **留在 public** | `admins` 是平台主体；点查虽有 project id，列出授权项目与 bootstrap `GrantProjectAccess` 不得依赖项目 schema 已 Ensure |
-| K15 | `api_keys` 本体 | 进 `tw_<project>`；**必须**配套 `public.api_key_lookup(secret_hash → project_id)` | 认证热路径只有 hash、没有 project 上下文（`validator.validateAPIKey`）；今日 `api_keys.secret_hash` **无索引**（000001 仅建 project 索引），lookup 兼具性能止血 |
+| K14 | public 留表判据（**规则化**） | 需要「**无项目上下文访问**」或「**项目 schema Ensure 之前访问**」的表留 public：`admin_projects`、`api_keys`、`audit_logs`、`provider_resource_index`；其余项目资源迁 `tw_<project>` | 控制面不得依赖项目 schema 已 Ensure。`api_keys` / `audit_logs` 原拟迁入，按此规则重裁**留 public**（owner 2026-08-20） |
+| K15 | `api_keys` | **留 public**（按 K14 规则重裁；原「迁入 + `api_key_lookup`」方案作废） | 认证热路径只有 hash、无项目上下文——控制面。补救（PR4）：全局迁移 `UNIQUE(secret_hash)`（今日**无索引**，热路径顺序扫描）+ `GetAPIKey`/`DeleteAPIKey` 仓储补 `project_id` 谓词 |
 | K16 | 无项目头路由 | `public.provider_resource_index (provider, kind, provider_ref) → project_id`；`kind ∈ {payment_session, payment_order, subscription, ios_transaction}`。**`locateOrder` 只走 index → 带 projectID 的 Get**；domain 端口禁止 `projectID==""`。本地 ULID 在 INSERT 订单同事务写入 `kind=payment_session, ref=order.ID`（覆盖微信/支付宝 `out_trade_no`） | 今日国内主路径是 `GetByID("", OrderID)`；分 schema 后空 project 无法选 schema，禁止扫全项目（K10） |
-| K17 | `audit_logs` | 项目内审计进 `tw_<project>`；平台级（`project_id` 为空：登录、CreateProject、admins CRUD）留 `public.audit_logs` | 写点是全局 gRPC 拦截器（`pkg/grpc/interceptor/audit.go`），须按 `principal.ProjectID` 路由；现状唯一读路径是 client ListLogs（project+actor 点查），无跨项目 UNION 需求 |
+| K17 | `audit_logs` | **留 public**（项目行 + 平台行同表，`project_id` 区分；原「拆入项目 schema」方案作废） | 写点是全局拦截器 best-effort（`pkg/grpc/interceptor/audit.go`），按项目路由会徒增复杂度；跨项目审计天然可查；DeleteProject 已按 `project_id` 清理 |
 | K18 | 系统集合不进文档 outbox | 维持 v2 | Users/Storage 高频写；经济走 `accounts.{uid}`；不新增 `databases._.collections.*` 频道 |
 | K19 | Appwrite 兼容 | 不做 | 不为假 default 寄居保留任何兼容层 |
 | K20 | 账本迁表与 Worker | 无存量环境禁止双读 flag；**账本切片与 economy worker 同一合并窗口**（PR6）。有存量再引入 `TORCHWOOD_PROJECT_LEDGER_SCHEMA` | 表迁走而 Closer 仍扫 public 会漏关单 |
@@ -142,11 +143,11 @@ flowchart TB
     projects[projects]
     admins[admins]
     adminProjects[admin_projects]
-    lookup[api_key_lookup]
+    apiKeys[api_keys]
     idx[provider_resource_index]
     outbox[document_events_outbox / dead]
     txns[document_transactions / ops]
-    platAudit[audit_logs 平台级]
+    platAudit[audit_logs 全量]
   end
 
   subgraph projectSchema["tw_shop — 项目数据面"]
@@ -154,7 +155,7 @@ flowchart TB
     ledger["账本: payment_* asset_* subscription_* usage_rollups billing_statements"]
     fn["functions / deployments / variables / executions"]
     catalog["document_databases / collections / attributes / indexes"]
-    creds["api_keys / project_oauth_providers / audit_logs"]
+    oauth["project_oauth_providers"]
     mig[schema_migrations]
   end
 
@@ -172,7 +173,6 @@ flowchart TB
   catalog -->|database_id=app| dbApp
   catalog -->|database_id=_ 仅内部| sysDocs
   ledger -->|同 sql.Tx| outbox
-  lookup -->|secret_hash| creds
   idx -->|kind+ref 定位| ledger
 ```
 
@@ -185,11 +185,11 @@ flowchart TB
 | `projects` | 项目登记；Worker / 认证 / Console 的枚举源 |
 | `admins` | 平台管理员，不属于任一项目 |
 | `admin_projects` | admin↔project 授权。今日查询形状是 `HasProjectAccess(adminID, projectID)` **等值点查**（`admin_project_repo.go`）；`ListProjects` 对非平台 admin 直接空列表。留 public 不是因为「现在就能 JOIN 所有项目」，而是控制面：bootstrap `GrantProjectAccess` 与未来「我的项目」不得依赖 `tw_<project>` 已 Ensure |
-| `api_key_lookup` | `secret_hash` PK → `project_id`；认证无项目头 |
+| `api_keys` | API Key 凭据；认证热路径只有 secret_hash、无项目头——按 K14 规则**留 public**（PR4 补 `UNIQUE(secret_hash)`，今日无索引） |
 | `provider_resource_index` | `(provider, kind, provider_ref)` PK → `project_id`；支付 / 托管订阅 / iOS 无项目头 |
 | `document_events_outbox` / `document_events_outbox_dead` | OutboxWorker 跨项目领取（v2） |
 | `document_transactions` / `document_transaction_ops` | 事务元数据按 `(created_by, project_id, database_id)` 约束；Worker/过期扫描跨项目；**database_id 不得为 `_`**（系统集合不进事务，v2 已定；Create 入口必须拒 sentinel） |
-| `audit_logs`（仅平台级） | 无项目或项目尚未创建的事件 |
+| `audit_logs` | **全量**（项目行 + 平台行，`project_id` 区分）；写点是全局拦截器、best-effort——按 K14 规则**留 public**，无需按项目路由 |
 
 `projects.internal_id` 仍存在，继续服务业务库 `_tenant`（本期不删）。
 
@@ -202,13 +202,15 @@ flowchart TB
 1. **系统文档**（仍走 `DocumentDB`）：`users` `sessions` `identities` `groups` `memberships` `buckets` `files` + `_perms`
 2. **项目账本**（bun，非文档）：`payment_orders` `payment_callback_events` `payment_fulfillments` `asset_defs` `asset_holdings` `asset_ledger_entries` `subscription_plans` `subscriptions` `usage_rollups` `billing_statements`
 3. **Functions**（bun）：`functions` `function_deployments` `function_variables` `function_executions`
-4. **项目凭据 / 项目审计**（bun）：`api_keys` `project_oauth_providers` `audit_logs`
+4. **项目 OAuth 配置**（bun）：`project_oauth_providers`（`api_keys` / `audit_logs` 按 K14 规则留 public，见 §1.1）
 5. **文档目录**（bun）：`document_databases` `document_collections` `document_attributes` `document_indexes`
 6. **DDL 版本表**：`schema_migrations`
 
 #### 1.3 `tw_<project>_<database>`：业务文档面
 
 保持 `ident.SchemaName(project, database)` 两段式。只放开发者 collection 与该库的 `_perms`。**没有**系统集合。`default` 与 `app` 同等：一个 catalog 行 + 一个 PG schema。
+
+本方案顺带补全 `schema-naming.md` 的初衷：**单项目物理导出/导入**从此可行——`pg_dump -n tw_<project> -n tw_<project>_<db> ...` + `public.projects` 行。恢复顺序受跨 schema FK 约束：先建项目行（含 Ensure）再恢复 schema（见 §6.2）。
 
 ### 2. 命名：`ProjectSchemaName` 与 LIKE 陷阱
 
@@ -369,6 +371,8 @@ Catalog 的 `is_system=true` 只出现在 `database_id='_'` 的行。migration `
 
 Infra 的 `ListDatabases` / `GetDatabase` 可以看见 sentinel（供 Ensure reconcile）。**use-case / gRPC 必须过滤**：List 去掉该行，Get(`"_"`) → `NotFound`（或 `InvalidArgument`；锁定 **InvalidArgument**，与 charset 失败一致，避免存在性探测）。
 
+sentinel 是**验证式**不变式（charset + 显式拒绝 + 测试守住），不是类型式（专用端口让 `_` 不可表示）。过渡态接受验证式——真正的结构性保险是 §3.0 的 DDL 分叉（Create/DeleteDatabase 永远拿不到一段式名字）；系统表化落地时 sentinel 整体退役（见 §「与系统表化的衔接」）。
+
 #### 3.2 业务库允许同名 collection
 
 `CreateCollection(shop, "app", "users", ...)`：`IsSystemCollection` 为 false → 普通用户集合，有 `_version`，发文档 outbox，频道 `databases.app.collections.users`。物理表 `tw_shop_app.users`，与 `tw_shop.users` 无关。
@@ -435,7 +439,7 @@ DeleteProject(shop)   -- app 层；setup 回滚必须走这里，禁止只调 pr
   3. DELETE public.document_events_outbox      WHERE project_id='shop'
      DELETE public.document_events_outbox_dead WHERE project_id='shop'
      DELETE public.document_transactions       WHERE project_id='shop'
-     DELETE public.api_key_lookup              WHERE project_id='shop'   -- 表尚未建则为 no-op
+     DELETE public.api_keys                   WHERE project_id='shop'
      DELETE public.provider_resource_index     WHERE project_id='shop'
      DELETE public.audit_logs                  WHERE project_id='shop'
      DELETE public.admin_projects              WHERE project_id='shop'
@@ -455,13 +459,13 @@ DeleteProject(shop)   -- app 层；setup 回滚必须走这里，禁止只调 pr
 
 ```
 internal/infra/projectschema/migrations/
-  000001_catalog_and_keys.up.sql
+  000001_catalog.up.sql
   000002_payments.up.sql
   000003_assets.up.sql
   000004_subscriptions.up.sql
   000005_usage_billing.up.sql
   000006_functions.up.sql
-  000007_audit_oauth.up.sql
+  000007_oauth.up.sql
 ```
 
 > 目录放在包内而不是 `db/`：`go:embed` 不支持引用包目录之外的路径，而 server 与 worker 二进制都要跑 `EnsureAll`，SQL 文件必须打进二进制（今日 `db/` 不被任何二进制 embed，`task migrate` 是 CLI 从磁盘执行）。全局 `db/migrations/` 继续服务 `public`，两者互不影响。
@@ -488,6 +492,12 @@ func (m *Migrator) EnsureAll(ctx context.Context, projectIDs []string) error
 6. 每文件成功后 `INSERT schema_migrations`。中途失败：CreateProject 路径靠外层 ROLLBACK；EnsureAll 路径标记 `dirty=true` 并返回错误，**不**在脏项目上继续跑后续版本。
 
 执行约束：驱动是 **bun/pgdriver**（非 pgx / lib/pq）。无参数 `Exec` 走 simple protocol、可整文件多语句执行（`internal/testutil/db.go` 的 `runMigrations` 已有先例）——`Apply` 在替换 `{{schema}}` 后必须保持**零查询参数**，禁止占位符与 SQL 参数混用。
+
+**项目 DDL 纪律**（`Apply` 在事务内 Exec、跨 N 个 schema 扇出，逐条硬约束）：
+1. **`CREATE INDEX CONCURRENTLY` 不可用**（PG 禁止事务块内执行）。项目 DDL 只允许秒级操作：建表、加列（常量 DEFAULT，PG 11+ 为元数据级）、小表索引。
+2. 大表索引 / 重写类变更**不进 project_migrations**。逃生通道：把该项目标 dirty（EnsureAll 跳过）→ 停写窗口或手工 `CREATE INDEX CONCURRENTLY` → 回填 `schema_migrations` 版本行 → 解除 dirty。流程留在文档里，不许临场发明。
+3. 每个版本文件合入前评估**最差规模项目上的执行时长**；预计超过秒级即需 owner 评审。
+4. **规模触发点**：schema-per-project 的舒适区是数百到数千项目。项目数 **> 5,000** 时重估分片/归并策略（pg_dump、监控工具、relcache、迁移扇出会集体退化）——这是本模型的已知天花板，不是失败信号。
 
 **否决：**
 
@@ -579,6 +589,8 @@ sequenceDiagram
 
 与今日「用户文档写 `tw_shop_app.posts` + outbox 写 `public`」同构。PG 允许 `tw_shop.payment_orders.project_id REFERENCES public.projects(id)`。DeleteProject 先 DROP 项目 schema 再删 `public.projects`。
 
+跨 schema FK 也约束**恢复顺序**：单项目 schema 的 dump 恢复前必须先有 `public.projects` 行。导入工具流程固定为「先建项目（含 Ensure）→ 再恢复 schema 数据」。
+
 #### 6.3 Catalog bun model
 
 迁入后 documentdb catalog 查询 `ModelTableExpr("?.document_collections AS dc", bun.Ident(projectSchema))`。`WHERE project_id=?` 防御谓词可保留。
@@ -644,6 +656,7 @@ func (p *Payments) CloseExpiredOrders(ctx context.Context, now time.Time) (int64
 5. UsageRollup `SumDocumentField` 改 sentinel；月账单 `upsertMonth` 改 `ListProjects` 驱动（删 `ListProjectIDsInRange` 的全局扫描）。
 6. **排空型 worker（AssetExpirer / SubscriptionBiller）统一改为 K22 全局预算**：今日「循环排空」语义（`expire.go:21-49`、`billing.go:24-43`）在 per-project 下会变成 项目数 × 排空；预算用尽即止，排空靠下一 tick 继续。
 7. `PruneOldExecutions` 加 `projectID`（与 `RecoverOrphanExecutions` 同批）。
+8. **平台级聚合出路**：v3 用量计费已是「逐项目 rollup → per-project 账单」，与 K10 枚举自洽；平台级财务汇总目前 out-of-scope，将来若需要走 **public rollup 表**，禁止扫 schema 聚合。
 
 ### 8. API / 寻址 / Console / Realtime
 
@@ -730,25 +743,17 @@ GetDocument|ListDocuments|CreateDocument|UpdateDocument|DeleteDocument|SumDocume
 
 不变：用户集合 `databases.{db}.collections.{coll}`；经济 `accounts.{uid}`；系统集合不发文档 outbox；**不**新增 `databases._.collections.users`。
 
-### 9. 认证与回调的公共薄索引
+### 9. 认证热路径与回调路由
 
-#### 9.1 `public.api_key_lookup`
+#### 9.1 `api_keys` 留 public（K15 重裁，owner 2026-08-20）
 
-```sql
-CREATE TABLE api_key_lookup (
-    secret_hash TEXT PRIMARY KEY,
-    project_id  TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE
-);
-```
+按 K14 规则裁决：认证热路径只有 secret_hash、**无项目上下文**——属控制面，留 public。原 `api_key_lookup` 方案作废。必做补救（PR4）：
 
-热路径 **必须与迁表同 PR**（PR4），否则 `api_keys` 一离开 `public`，全部 API Key 401：
+1. 全局迁移 `CREATE UNIQUE INDEX api_keys_secret_hash_key ON api_keys (secret_hash)`——今日**无任何索引**，热路径顺序扫描；唯一约束即原 lookup 方案想新增的全部不变式（hash 全局唯一）。
+2. `GetAPIKey` / `DeleteAPIKey` 仓储补 `project_id` 谓词（今日按全局 id 查、Go 内比对，`apikeys.go:113-137`）。
+3. `validator.validateAPIKey` **零改动**：继续点查 `public.api_keys`，走新索引。
 
-1. `CreateAPIKey` / `CreateInternal`：同一 `RunInTx` 写 `tw_<project>.api_keys` + `public.api_key_lookup`。
-2. `DeleteAPIKey`：同一 Tx 删两边；仓储改为 `GetAPIKey(ctx, projectID, id)` / `DeleteAPIKey(ctx, projectID, id)`（gRPC 已有 `principal.ProjectID`，今日 repo 仍按全局 `id` 查，`apikeys.go:113-137`）。
-3. `validator.validateAPIKey`：`GetAPIKeyBySecretHash` **先等值查 lookup**，再 `ProjectSchemaName` 读完整行（enabled / expire / scopes）。**无 lookup 行不得扫任何项目 schema**。
-4. `GetAPIKeyBySecretHash` 可留在端口上，实现改为 lookup + 项目表；禁止再 `SELECT FROM api_keys WHERE secret_hash=?` 打 public 空表。
-
-验收：无 lookup 的 hash → 401 且 SQL 不含 `tw_%`；Create 后两边都在；Delete 两边消失；热路径集成测试。
+验收：EXPLAIN 命中 `secret_hash` 索引；跨项目 GetAPIKey / DeleteAPIKey → 404；Create / Delete 行为不变。
 
 #### 9.2 `public.provider_resource_index`
 
@@ -875,67 +880,37 @@ domain 扫描方法加 `projectID`（§7）。支付仓储 `GetByID` / `GetByPro
 
 ## Data Model Changes
 
-### 系统文档表（`tw_<project>`，去 `_tenant` 后）
+### 系统文档表（`tw_<project>`，`_tenant` 保留）
 
 ```sql
 CREATE TABLE tw_shop.users (
-    _id          TEXT PRIMARY KEY,
-    _created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    _updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    _created_by  TEXT,
-    _updated_by  TEXT
+    _tenant     BIGINT NOT NULL DEFAULT <internal_id>,
+    _id         TEXT NOT NULL,
+    _created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    _updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    _created_by TEXT,
+    _updated_by TEXT,
     -- spec 属性，无 _version
+    PRIMARY KEY (_tenant, _id)
 );
 
 CREATE TABLE tw_shop._perms (
     _id         BIGSERIAL PRIMARY KEY,
+    _tenant     BIGINT NOT NULL,
     _collection TEXT NOT NULL,
     _document   TEXT NOT NULL,
     _type       TEXT NOT NULL,
     _permission TEXT NOT NULL,
     _created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (_collection, _document, _type, _permission)
+    UNIQUE (_tenant, _collection, _document, _type, _permission)
 );
 ```
 
-业务库表结构**不变**（本期）：`PRIMARY KEY (_tenant, _id)`。
+系统表与业务表结构**均不变**（本期）：`_tenant` 全保留，`PRIMARY KEY (_tenant, _id)`；`createCollectionTable` / `ensurePermsTable` / 全部读写谓词**零改动**（建表 DEFAULT = `internal_id` 的语义原样保留）。
 
-### 为什么系统表去 `_tenant`、业务表暂留
+### `_tenant` 决策：全部保留（owner 2026-08-20）
 
-（理由表同前：系统表 7 张已知、schema 1:1 项目；业务表动态、OCC/advisory lock/导入 remap 爆炸半径大。）
-
-去列放在 **PR8**，与迁 schema 解耦：先搬到 `tw_<project>`（仍带 `_tenant`），再 DROP COLUMN。
-
-#### PR8 实现形状（禁止复制整份 `postgres.go`）
-
-共享 SQL 构建器按 **schema 角色 / `isSystem`** 分支，不要两套文件：
-
-```go
-func tenantColumnSQL(isSystem bool) string {
-    if isSystem {
-        return "" // PR8 起系统表无此列
-    }
-    return fmt.Sprintf("_tenant BIGINT NOT NULL DEFAULT %d", tenant)
-}
-
-func primaryKeySQL(isSystem bool) string {
-    if isSystem {
-        return "PRIMARY KEY (_id)"
-    }
-    return "PRIMARY KEY (_tenant, _id)"
-}
-
-func tenantPred(alias string, isSystem bool) (clause string, args []any) {
-    if isSystem {
-        return "", nil
-    }
-    return alias + "._tenant = ?", []any{internalID}
-}
-```
-
-- `createCollectionTable` / `ensurePermsTable`：按 `isSystem`（或「是否项目数据面 `_perms`」）选 DDL。项目 schema 的 `_perms` 用无 `_tenant` 的 UNIQUE；业务 schema 的 `_perms` 不变。
-- Get/List/Update/Delete/Upsert / advisory lock：`isSystem` 决定是否绑定 `_tenant`。业务路径谓词 **零改动**。
-- 测试：两项目相同 `_id` 的 users 互不干扰；业务库查询仍带 `_tenant`（现有隔离测试不得删）。
+原计划的「系统表去 `_tenant`」（PR8：DROP COLUMN、PK 改 `_id`、`_perms` 去 `_tenant`、`tenantPred` 谓词分支）**整体移除**：表形态是过渡态（系统表化在途），先改形态再整表重写是三连迁移；保留 `_tenant` 的代价只是一列 + 建表 DEFAULT + 恒真谓词，无正确性影响。系统表化落地时随整表重写自然消失（见 §「与系统表化的衔接」退役清单）。业务表 `_tenant` 原本就另案，不变。
 
 ### 存量迁移草图
 
@@ -971,13 +946,7 @@ UPDATE document_collections SET database_id = '_'
 - 无存量时开发重建即可，不必双写。有存量时：Apply 建空表 → 拆行 → `DROP` public 表（全局 migrate 新版本）。
 - catalog 四表同理：先在 `tw_shop` 有表结构，再按 `project_id='shop'` 拆行，最后 public 侧删该项目行（或 drop 旧表）。
 
-**阶段 C（对齐 PR8）**
-
-```sql
-ALTER TABLE tw_shop.users DROP CONSTRAINT users_pkey;
-ALTER TABLE tw_shop.users DROP COLUMN _tenant;
-ALTER TABLE tw_shop.users ADD PRIMARY KEY (_id);
-```
+（原阶段 C「去 `_tenant`」已随 PR8 移除，见 §Data Model。）
 
 ---
 
@@ -989,7 +958,7 @@ users / buckets / files 等系统集合保持文档形态是**临时决策**：�
 
 1. **物理位置与表形态正交。** 无论 users 是文档还是系统表，它都该在 `tw_<project>` 里。先搬 schema 的投资全部保留。
 2. **`project_migrations` 机制就是将来系统表 DDL 的载体。** 系统表化落地时新增版本文件（如 `000008_system_tables.up.sql`），复用 `{{schema}}` 占位符、每 schema 版本表、CreateProject 同 Tx Apply、EnsureAll 自愈全套机制。
-3. **PR8（系统表去 `_tenant`）条件执行。** 若系统表化排期临近，跳过 PR8：先 DROP COLUMN 再整表重写是「搬 schema → 改形态 → 再重写」三连迁移；保留 `_tenant` 的代价只是一列与一个恒真谓词，无正确性影响。过渡期长短由 Open Q6 决定。
+3. **系统表 `_tenant` 保留（原 PR8 已移除，owner 2026-08-20）。** 搬 schema → 改形态 → 再重写是三连迁移；保留 `_tenant` 的代价只是一列与一个恒真谓词，无正确性影响，待系统表化一并处理。
 
 **系统表化落地时的退役清单**（届时另案，此处留锚点）：
 
@@ -1001,8 +970,9 @@ users / buckets / files 等系统集合保持文档形态是**临时决策**：�
 | `tw_<project>._perms` 中系统集合行 + `cleanupKeysWritePerms` | ACL 重写后整体替换 |
 | §8.2 的 sentinel 实参（account / storage / groups / auth 各处） | 改调系统表 repo |
 | billing `SumDocumentField(files)` | 改 SQL 直查系统表 |
+| 系统文档表的 `_tenant` 列与恒真谓词 | 整表重写时自然消失（原 PR8 已移除） |
 
-**保留不变的资产**：三层 schema 布局、`businessSchema` DDL 分叉、`RejectExternalDatabaseID`、`project_migrations`、Worker 枚举模式、`api_key_lookup` / `provider_resource_index`。
+**保留不变的资产**：三层 schema 布局、`businessSchema` DDL 分叉、`RejectExternalDatabaseID`、`project_migrations`、Worker 枚举模式、`provider_resource_index`、public 控制面（`api_keys` / `audit_logs`，K14/K15/K17）。
 
 ---
 
@@ -1040,6 +1010,8 @@ users / buckets / files 等系统集合保持文档形态是**临时决策**：�
 
 ## Security & Privacy Considerations
 
+先立一条边界：schema 划分是**逻辑/运维边界，不是安全边界**——所有 `tw_*` schema 同属一个 PG role，SQL 注入面前 schema 之间没有墙。真正的防线仍是 `quoteIdent` + 参数化 + use-case 校验（§3.0 的 DDL 分叉是结构性保险，sentinel 校验是验证性保险）。不得以「物理隔离」为由放松注入防护。
+
 | 威胁 | 严重度 | 缓解 |
 |------|--------|------|
 | 池上 `search_path` 串租户 | **P0** | K9；`quoteIdent`；项目 DDL 在当前 Tx 限定名 |
@@ -1047,10 +1019,10 @@ users / buckets / files 等系统集合保持文档形态是**临时决策**：�
 | `DeleteDatabase("default")` 误伤一段式 | **P0** | 只 `SchemaName`；PR2 adapter 测试 users 仍在 |
 | `LIKE 'tw_shop%'` / LIKE `_` 通配 | **P0** | 等值 `ProjectSchemaName`；禁止未转义 sentinel 进 LIKE |
 | 业务库 `users` ↔ 系统集合误判 | **P0** | `IsSystemCollection` 只认 sentinel；API 拒 `_`；adapter 白名单 |
-| API Key / 回调扫全项目 | **P1** | lookup / `provider_resource_index` 等值 |
+| 回调扫全项目 | **P1** | `provider_resource_index` 等值；`api_keys` 留 public 唯一索引点查 |
 | 早到 webhook 被 200 吞掉 | **P1** | K21：`hasPlatformRef` 未命中 → 503 + FAIL 体，不走 `CallbackAck(true)` |
 | Stripe 无关事件 503 风暴 | **P1** | 无我方 ref → 200 + 日志 |
-| `api_keys` 迁走当天全站 401 | **P0** | PR4 同改 `validateAPIKey` + lookup |
+| `api_keys.secret_hash` 无索引（热路径顺序扫描） | P1 | PR4 全局迁移 `UNIQUE(secret_hash)` |
 | 订单 INSERT 与 index 写入非同事务 | P1 | PR6 两处建单路径（`orders.go` / `subscribe.go`）包进同一 RunInTx |
 | 排空型 worker 单 tick 放大 | P1 | K22 统一全局预算，排空移到 tick 级 |
 | 漏迁表 / Worker 漏项目 / dirty schema | **P1** | EnsureAll；`worker_project_failures`；标脏跳过 |
@@ -1089,10 +1061,9 @@ Worker 缺表验收：Ensure 失败标脏 + 扫描 continue（关掉 EnsureAll �
 
 - PR1 无数据风险。
 - PR2–PR3：开发期重建；有流量后不要回滚二进制。
-- PR4 起凭据/catalog 迁走视为单向。
+- PR4 起 catalog / oauth 迁走视为单向（`api_keys` / `audit_logs` 留 public 未动）。
 - PR6 账本单向。
 - PR7 解禁后回滚二进制不恢复「default 不可删」，但系统集合已不在 default。
-- PR8（若执行）DROP COLUMN 单向；若因系统表化临近而跳过（Open Q6），则无此步骤。
 
 ---
 
@@ -1104,11 +1075,10 @@ Worker 缺表验收：Ensure 失败标脏 + 扫描 continue（关掉 EnsureAll �
 flowchart LR
   PR1[PR1 ident] --> PR2[PR2 系统 schema + 级联 DeleteProject]
   PR2 --> PR3[PR3 去掉 default 寄居]
-  PR3 --> PR4[PR4 catalog + keys + lookup]
+  PR3 --> PR4[PR4 catalog + oauth + secret_hash 索引]
   PR4 --> PR5[PR5 Functions]
   PR4 --> PR6[PR6 账本 + economy workers]
   PR3 --> PR7[PR7 删 default 禁令]
-  PR7 -.->|条件执行·见 Open Q6| PR8[PR8 系统表去 _tenant]
 ```
 
 PR7 的前置只需要 PR2/PR3（系统集合已迁走、§4.2 验收前两条已过）；原依赖 PR5/PR6 的边无必要，已去除。
@@ -1144,20 +1114,19 @@ PR7 的前置只需要 PR2/PR3（系统集合已迁走、§4.2 验收前两条�
 - Console 徽章；`06-databases.md` §1.1 / §2.1。
 - 禁令仍在。
 
-### PR4 — catalog + 凭据 + 公共 lookup（无 Worker 扫描）
+### PR4 — catalog + oauth + secret_hash 索引（无 Worker 扫描）
 
-- `internal/infra/projectschema/migrations` 中 catalog/keys/oauth/audit 版本 + `Apply` 进 CreateProject 同一 Tx。
-- `public.api_key_lookup`、`public.provider_resource_index`（全局 CLI migrate）。表可先建；支付写入路径在 PR6 才用 index。
-- bun：`api_keys` / oauth / 项目 audit / catalog 四表 `ModelTableExpr`；Raw SQL 清单。
-- **认证热路径同 PR（P0）：**
-  - `validator.validateAPIKey` / `GetAPIKeyBySecretHash` 改走 lookup → `tw_<project>.api_keys`；无 lookup 行禁止扫项目 schema。
-  - `CreateAPIKey` / `DeleteAPIKey` 同事务写/删 lookup。
-  - `GetAPIKey` / `DeleteAPIKey` 仓储带 `projectID`。
-  - 测试：Create 后两边都在；Delete 两边消失；未知 hash → 401 且无 `tw_` schema 扫描。
-- `cleanupKeysWritePerms` 改项目 schema 限定名。
-- **audit 写路径路由**：全局拦截器（`pkg/grpc/interceptor/audit.go`）按 `principal.ProjectID` 写 `tw_<project>.audit_logs`；空（登录、CreateProject、admins CRUD）留 `public.audit_logs`。现状唯一读路径 client ListLogs（project+actor）回归验证。
+- `internal/infra/projectschema/migrations` 中 catalog / oauth 版本 + `Apply` 进 CreateProject 同一 Tx。
+- `public.provider_resource_index`（全局 CLI migrate）。表可先建；支付写入路径在 PR6 才用 index。
+- **`api_keys` / `audit_logs` 留 public**（K15 / K17 按 K14 规则重裁，owner 2026-08-20）：
+  - 全局迁移 `CREATE UNIQUE INDEX api_keys_secret_hash_key ON api_keys (secret_hash)`——今日**无任何索引**，认证热路径顺序扫描；唯一约束即原 lookup 方案想新增的全部不变式。
+  - `GetAPIKey` / `DeleteAPIKey` 仓储补 `project_id` 谓词（今日按全局 id 查再 Go 内比对，`apikeys.go:113-137`）。
+  - `validator.validateAPIKey` 与 audit 拦截器**零改动**（继续点查 public 表）。
+  - 测试：EXPLAIN 命中 secret_hash 索引；跨项目 GetAPIKey / DeleteAPIKey → 404。
+- bun：oauth / catalog 四表 `ModelTableExpr`；Raw SQL 清单（§6.1）。
+- `cleanupKeysWritePerms` 改项目 schema 限定名（catalog 已迁）。
 - `admin_projects` 不动。
-- **不迁** payment/asset/subscription/functions，Worker 无需改扫描。
+- **不迁** payment/asset/subscription/functions/api_keys/audit_logs，Worker 无需改扫描。
 
 ### PR5 — Functions
 
@@ -1186,13 +1155,9 @@ PR7 的前置只需要 PR2/PR3（系统集合已迁走、§4.2 验收前两条�
 - 验收 §4.2 第 3 条（重建 default + 业务 `users` `is_system=false`）。
 - 不把级联删除塞回本 PR（已在 PR2）。
 
-### PR8 — 系统表去 `_tenant`（**条件执行**）
+### PR8 — 系统表去 `_tenant`（**已移除**）
 
-执行与否取决于「users/buckets/files 系统表化」的排期（Open Q6）：排期临近则**整体跳过**——先 DROP COLUMN 再整表重写是三连迁移，保留 `_tenant` 的代价只是一列与一个恒真谓词，无正确性影响。过渡期很长才值得做。
-
-- §Data Model helper：`tenantPred` / `primaryKeySQL` / perms DDL 分支。
-- 存量 DROP COLUMN。
-- 业务路径零改动测试 + 两项目同 `_id` users。
+owner 2026-08-20 决策：不执行。`_tenant` 全保留，待系统表化整表重写时自然消失（K12、§「与系统表化的衔接」退役清单）。原「`tenantColumnSQL` / `primaryKeySQL` / `tenantPred` 分支 + DROP COLUMN」方案作废。
 
 ---
 
@@ -1220,7 +1185,7 @@ PR7 的前置只需要 PR2/PR3（系统集合已迁走、§4.2 验收前两条�
 3. **DeleteProject 对外 API 是否顺带做？** 内部级联 PR2 必做；Server RPC 仍可另 PR。
 4. **catalog 迁入后是否丢掉 `project_id` 列？** 建议保留作防御与 FK。可另案瘦身。
 5. Worker 队尾饥饿：第一版按 `project_id` 轮转是否够用，待内测量级再看（不挡开工）。
-6. **PR8 是否执行**：取决于「系统表化 + ACL 重写」的排期（过渡期长短）。系统表化已定、只待排期——PR8 开工前必须先回答。
+6. ~~PR8 是否执行？~~ **已决策（2026-08-20）：不执行。** `_tenant` 全保留，待系统表化一并处理（K12）。
 
 ---
 
@@ -1235,7 +1200,7 @@ PR7 的前置只需要 PR2/PR3（系统集合已迁走、§4.2 验收前两条�
 - `internal/app/payments/{callback,receipt,orders}.go`、`internal/app/subscriptions/{hosted,subscribe}.go`、`internal/infra/payments/{wechat,alipay,stripe}/` — 无项目头定位；订单 INSERT 事务形态；适配器实际路径在 infra
 - `internal/infra/bun/bunrepo/{payments,assets,subscriptions,function,billing,apikey}_repo.go` — 未限定 Raw SQL；全局扫描（含 `ListProjectIDsInRange`、`PruneOldExecutions`）
 - `internal/app/client/{jwt,user_roles}.go`、`internal/app/server/users.go:435-439` — §8.2 补充清单与变量集合名陷阱
-- `pkg/grpc/interceptor/audit.go` — audit 写路径路由（K17）
+- `pkg/grpc/interceptor/audit.go` — audit 写点（全局拦截器；留 public，无需路由）
 - `internal/app/console/setup.go` — bootstrap project/database id（K23）
 - `internal/infra/clients/database.go`（pgdriver）、`internal/testutil/db.go`（整文件 Exec 先例）、`console/embed.go`（今日唯一 embed） — K8 实现约束
 - `db/migrations/000003_document_catalog_composite_keys.up.sql` — catalog 复合 PK
