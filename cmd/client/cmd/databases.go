@@ -32,7 +32,7 @@ const (
 	methodDBBulkDeleteDocuments = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
 )
 
-// newDatabasesCmd 覆盖 DatabasesService 全部 22 个方法：
+// NewDatabasesCmd 覆盖 DatabasesService 全部 22 个方法：
 // 库（create/list/get/delete）、集合（create/list/get/update/delete）、
 // 属性（create/delete）、索引（create/delete）、文档（create/list/get/
 // update/upsert/delete/count/bulk-update/bulk-delete）。

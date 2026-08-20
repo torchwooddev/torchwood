@@ -19,7 +19,7 @@ const (
 	methodUsersCreateToken    = "/torchwood.server.v1.UsersService/CreateUserToken"
 )
 
-// newUsersCmd 覆盖 UsersService 全部 9 个方法：
+// NewUsersCmd 覆盖 UsersService 全部 9 个方法：
 // list/get/create/update/update-password/delete、sessions list/delete、tokens create。
 // 标量参数用具名 flag，labels/prefs 等 Struct 字段用 --data 传入 JSON 合并。
 func NewUsersCmd(g *globalFlags) *cobra.Command {

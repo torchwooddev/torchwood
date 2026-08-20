@@ -20,7 +20,7 @@ const (
 	methodStorageUsage        = "/torchwood.server.v1.StorageService/GetStorageUsage"
 )
 
-// newStorageCmd 覆盖 StorageService 元数据操作：buckets（create/list/get/
+// NewStorageCmd 覆盖 StorageService 元数据操作：buckets（create/list/get/
 // update/delete）、files（list/get/update/delete）、usage。
 // 不做文件上传/下载（独立 HTTP handler）与分片上传会话；CreateFile（bytes
 // 上传）与 CreateFileToken 亦不提供（token 用途为 HTTP 下载签名）。

@@ -11,7 +11,7 @@ const (
 	methodProjectsGet  = "/torchwood.server.v1.ProjectsService/GetProject"
 )
 
-// newProjectsCmd 提供 ProjectsService 的 list/get。
+// NewProjectsCmd 提供 ProjectsService 的 list/get。
 // CreateProject/UpdateProject 限平台 admin（console session），API Key 无法调用，CLI 不提供。
 func NewProjectsCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{

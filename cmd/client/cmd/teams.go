@@ -22,7 +22,7 @@ const (
 	methodTeamsDeleteMembership       = "/torchwood.server.v1.TeamsService/DeleteMembership"
 )
 
-// newTeamsCmd 覆盖 TeamsService 全部 12 个方法：
+// NewTeamsCmd 覆盖 TeamsService 全部 12 个方法：
 // 团队（create/list/get/delete）、prefs（get/update）、
 // memberships（create/list/get/update/update-status/delete）。
 func NewTeamsCmd(g *globalFlags) *cobra.Command {

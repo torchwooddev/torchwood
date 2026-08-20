@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newRPCCmd 是逃生舱命令：按完整 gRPC 方法名调用任意 Server API 方法，
+// NewRPCCmd 是逃生舱命令：按完整 gRPC 方法名调用任意 Server API 方法，
 // --data 以 protojson 填充请求体（动态分发见 sdk/go/server.InvokeJSON，
 // 完整性由 SDK 测试保证）。
 func NewRPCCmd(g *globalFlags) *cobra.Command {

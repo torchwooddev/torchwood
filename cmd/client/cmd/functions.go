@@ -27,7 +27,7 @@ const (
 	methodFunctionsGetExecution     = "/torchwood.server.v1.FunctionsService/GetExecution"
 )
 
-// newFunctionsCmd 覆盖 FunctionsService 全部 16 个方法：
+// NewFunctionsCmd 覆盖 FunctionsService 全部 16 个方法：
 // runtimes/specifications、functions（create/list/get/update/delete）、
 // deployments（create/list/get/delete）、variables（set/get）、
 // executions（create/list/get）。

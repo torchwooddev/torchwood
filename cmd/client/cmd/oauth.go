@@ -13,7 +13,7 @@ const (
 	methodOAuthDelete = "/torchwood.server.v1.OAuthProvidersService/DeleteOAuthProvider"
 )
 
-// newOAuthProvidersCmd 覆盖 OAuthProvidersService 全部 3 个方法：
+// NewOAuthProvidersCmd 覆盖 OAuthProvidersService 全部 3 个方法：
 // list/upsert/delete（proto 无 get 方法；upsert 即 create+update 语义）。
 func NewOAuthProvidersCmd(g *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
