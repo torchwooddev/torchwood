@@ -263,6 +263,7 @@ func TestCreatePayment_FormAndResponse(t *testing.T) {
 	a := New(Config{SecretKey: "sk_test_x", WebhookSecret: testWebhookSecret, APIBaseURL: srv.URL})
 	session, err := a.CreatePayment(context.Background(), payments.CreatePaymentInput{
 		OrderID:        "order_9",
+		ProjectID:      "shop",
 		Amount:         1999,
 		Currency:       "USD",
 		Description:    "Torchwood order order_9",
@@ -281,6 +282,8 @@ func TestCreatePayment_FormAndResponse(t *testing.T) {
 	require.Equal(t, "payment", gotForm.Get("mode"))
 	require.Equal(t, "order_9", gotForm.Get("client_reference_id"))
 	require.Equal(t, "order_9", gotForm.Get("metadata[order_id]"))
+	require.Equal(t, "shop", gotForm.Get("metadata[project_id]"))
+	require.Equal(t, "pi_test_1", session.ProviderOrderID)
 	require.Equal(t, strconv.FormatInt(1700003600, 10), gotForm.Get("expires_at"))
 }
 

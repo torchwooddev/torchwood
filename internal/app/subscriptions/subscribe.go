@@ -152,8 +152,7 @@ func (s *Subscriptions) startHosted(ctx context.Context, sub *domainsubs.Subscri
 		return err
 	}
 	result.PaymentURL = sess.PaymentURL
-	// hosted：不履约、不扣款；等 invoice.paid / subscription.updated。
-	return nil
+	return s.upsertIndex(ctx, sub.Provider, domainpayments.IndexKindSubscription, sub.ID, sub.ProjectID)
 }
 
 func (s *Subscriptions) startPlatform(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, result *SubscribeResult, now time.Time) error {
@@ -247,8 +246,12 @@ func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.
 	if !inserted {
 		return existing, "", nil
 	}
+	if err := s.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentSession, order.ID, order.ProjectID); err != nil {
+		return nil, "", err
+	}
 	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{
 		OrderID:        order.ID,
+		ProjectID:      order.ProjectID,
 		Amount:         order.Amount,
 		Currency:       order.Currency,
 		Description:    "Torchwood subscription " + sub.ID,
@@ -259,13 +262,22 @@ func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.
 		return nil, "", err
 	}
 	order.ProviderSessionID = session.SessionID
+	if session.ProviderOrderID != "" {
+		order.ProviderOrderID = session.ProviderOrderID
+	}
 	if err := order.Transition(domainpayments.OrderStatusPaying, now); err != nil {
 		return nil, "", err
 	}
 	if err := s.orders.Update(ctx, order, domainpayments.OrderStatusCreated); err != nil {
 		return nil, "", err
 	}
+	if err := s.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentSession, session.SessionID, order.ProjectID); err != nil {
+		return nil, "", err
+	}
+	if session.ProviderOrderID != "" {
+		if err := s.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentOrder, session.ProviderOrderID, order.ProjectID); err != nil {
+			return nil, "", err
+		}
+	}
 	return order, session.PaymentURL, nil
 }
-
-

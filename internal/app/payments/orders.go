@@ -100,7 +100,7 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 		UpdatedAt:      now,
 		ExpiresAt:      now.Add(ttl),
 	}
-	existing, inserted, err := p.orders.Insert(ctx, order)
+	existing, inserted, err := p.insertOrderWithIndex(ctx, order)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +122,7 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 	// 渠道下单（Checkout Session / 预下单）：成功后同一短事务回填渠道引用并翻 paying。
 	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{
 		OrderID:        order.ID,
+		ProjectID:      order.ProjectID,
 		Amount:         order.Amount,
 		Currency:       order.Currency,
 		Description:    orderDescription(order),
@@ -144,10 +145,22 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 			return nil // 并发已推进（重放 / 回调先到）：保持现状态。
 		}
 		locked.ProviderSessionID = session.SessionID
+		if session.ProviderOrderID != "" {
+			locked.ProviderOrderID = session.ProviderOrderID
+		}
 		if err := locked.Transition(domainpayments.OrderStatusPaying, time.Now()); err != nil {
 			return err
 		}
-		return p.orders.Update(txCtx, locked, domainpayments.OrderStatusCreated)
+		if err := p.orders.Update(txCtx, locked, domainpayments.OrderStatusCreated); err != nil {
+			return err
+		}
+		if err := p.upsertIndex(txCtx, locked.Provider, domainpayments.IndexKindPaymentSession, session.SessionID, locked.ProjectID); err != nil {
+			return err
+		}
+		if session.ProviderOrderID != "" {
+			return p.upsertIndex(txCtx, locked.Provider, domainpayments.IndexKindPaymentOrder, session.ProviderOrderID, locked.ProjectID)
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -222,7 +235,55 @@ func (p *Payments) ListOrders(ctx context.Context, limit int, before time.Time) 
 // CloseExpiredOrders 把超时未付（created/paying 超 expires_at）订单翻
 // closed（worker 周期任务，设计 §1.3；closed 不在 §5.1 事件目录，不发事件）。
 func (p *Payments) CloseExpiredOrders(ctx context.Context, now time.Time) (int64, error) {
-	return p.orders.CloseExpired(ctx, now, closeExpiredBatch)
+	if p.projects == nil {
+		return 0, nil
+	}
+	all, err := p.projects.ListProjects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	remaining := closeExpiredBatch
+	var n int64
+	for i := range all {
+		if remaining <= 0 {
+			break
+		}
+		if all[i].Status != "active" {
+			continue
+		}
+		c, err := p.orders.CloseExpiredInProject(ctx, all[i].ID, now, remaining)
+		if err != nil {
+			p.logger.Error("close expired orders failed", "project_id", all[i].ID, "error", err)
+			continue
+		}
+		n += c
+		remaining -= int(c)
+	}
+	return n, nil
+}
+
+func (p *Payments) insertOrderWithIndex(ctx context.Context, order *domainpayments.Order) (*domainpayments.Order, bool, error) {
+	var existing *domainpayments.Order
+	var inserted bool
+	err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		var err error
+		existing, inserted, err = p.orders.Insert(txCtx, order)
+		if err != nil {
+			return err
+		}
+		if !inserted {
+			return nil
+		}
+		return p.upsertIndex(txCtx, order.Provider, domainpayments.IndexKindPaymentSession, order.ID, order.ProjectID)
+	})
+	return existing, inserted, err
+}
+
+func (p *Payments) upsertIndex(ctx context.Context, provider, kind, ref, projectID string) error {
+	if p.index == nil || ref == "" {
+		return nil
+	}
+	return p.index.Upsert(ctx, provider, kind, ref, projectID)
 }
 
 // endUser 解析 Client 面调用者：必须为登录终端用户（session JWT）。

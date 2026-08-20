@@ -12,6 +12,7 @@ import (
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainsubs "github.com/torchwooddev/torchwood/internal/domain/subscriptions"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -20,12 +21,12 @@ import (
 )
 
 type memStore struct {
-	plans   map[string]*domainsubs.Plan
-	byCode  map[string]string
-	subs    map[string]*domainsubs.Subscription
-	byIdem  map[string]string
-	outbox  []domainevents.Envelope
-	now     time.Time
+	plans  map[string]*domainsubs.Plan
+	byCode map[string]string
+	subs   map[string]*domainsubs.Subscription
+	byIdem map[string]string
+	outbox []domainevents.Envelope
+	now    time.Time
 }
 
 func newMemStore(now time.Time) *memStore {
@@ -162,16 +163,16 @@ func (r memSubs) GetByIdempotencyKey(_ context.Context, projectID, key string) (
 	id := r.s.byIdem[projectID+"/"+key]
 	return cloneSub(r.s.subs[id]), nil
 }
-func (r memSubs) GetByProviderSubID(_ context.Context, provider, providerSubID string) (*domainsubs.Subscription, error) {
+func (r memSubs) GetByProviderSubID(_ context.Context, projectID, provider, providerSubID string) (*domainsubs.Subscription, error) {
 	for _, sub := range r.s.subs {
-		if sub.Provider == provider && sub.ProviderSubID == providerSubID {
+		if sub.ProjectID == projectID && sub.Provider == provider && sub.ProviderSubID == providerSubID {
 			return cloneSub(sub), nil
 		}
 	}
 	return nil, nil
 }
-func (r memSubs) GetByProviderSubIDForUpdate(ctx context.Context, provider, providerSubID string) (*domainsubs.Subscription, error) {
-	return r.GetByProviderSubID(ctx, provider, providerSubID)
+func (r memSubs) GetByProviderSubIDForUpdate(ctx context.Context, projectID, provider, providerSubID string) (*domainsubs.Subscription, error) {
+	return r.GetByProviderSubID(ctx, projectID, provider, providerSubID)
 }
 func (r memSubs) GetCurrentByUser(_ context.Context, projectID, userID, planID string) (*domainsubs.Subscription, error) {
 	var best *domainsubs.Subscription
@@ -211,9 +212,15 @@ func (r memSubs) Update(_ context.Context, sub *domainsubs.Subscription, expect 
 	r.s.subs[sub.ID] = cloneSub(sub)
 	return nil
 }
-func (r memSubs) ListDueForBilling(_ context.Context, now time.Time, limit int) ([]domainsubs.Subscription, error) {
+func (r memSubs) ListDueForBillingInProject(_ context.Context, projectID string, now time.Time, limit int) ([]domainsubs.Subscription, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
 	var out []domainsubs.Subscription
 	for _, sub := range r.s.subs {
+		if sub.ProjectID != projectID {
+			continue
+		}
 		if sub.Mode != domainsubs.ModePlatform {
 			continue
 		}
@@ -272,6 +279,15 @@ func (a *stubAssets) LiveHoldingForUpdate(context.Context, string, string) (*dom
 	return a.holding, nil
 }
 
+type listProjectsStub struct {
+	projects.Repository
+	list []projects.Project
+}
+
+func (s *listProjectsStub) ListProjects(context.Context) ([]projects.Project, error) {
+	return s.list, nil
+}
+
 func userCtx(projectID, userID string) context.Context {
 	return contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorKind:      shared.ActorKindEndUser,
@@ -299,7 +315,7 @@ func setupSub(t *testing.T, now time.Time, assets assetOps) (*Subscriptions, *me
 		st = &stubAssets{}
 		assets = st
 	}
-	uc := newSubscriptions(nil, store, store, memSubs{store}, assets, nil, nil, nil, memPublisher{store}, nil)
+	uc := newSubscriptions(nil, store, store, memSubs{store}, assets, nil, nil, nil, memPublisher{store}, nil, &listProjectsStub{list: []projects.Project{{ID: "proj", Status: "active"}}}, nil)
 	uc.now = func() time.Time { return store.now }
 	return uc, store, st
 }
@@ -464,6 +480,7 @@ func TestHostedWebhookReplayIdempotent(t *testing.T) {
 		Type:                domainpayments.CallbackSubscriptionActivated,
 		LocalSubscriptionID: "sub_h",
 		ProviderSubID:       "sub_stripe_1",
+		MetadataProjectID:   "proj",
 		PeriodStart:         now,
 		PeriodEnd:           now.Add(30 * 24 * time.Hour),
 		ReceivedAt:          now,

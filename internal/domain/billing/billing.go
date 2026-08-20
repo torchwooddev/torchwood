@@ -140,8 +140,6 @@ type UsageRepo interface {
 	SumByMetric(ctx context.Context, projectID string, from, to time.Time) (map[string]int64, error)
 	// DistinctHours 返回时间窗内 distinct period_start 数。
 	DistinctHours(ctx context.Context, projectID string, from, to time.Time) (int, error)
-	// ListProjectIDsInRange 返回时间窗内出现过 rollup 的项目 id。
-	ListProjectIDsInRange(ctx context.Context, from, to time.Time) ([]string, error)
 }
 
 // StatementRepo 持久化 billing_statements。

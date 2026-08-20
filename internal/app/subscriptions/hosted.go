@@ -34,6 +34,9 @@ func (s *Subscriptions) HandleHostedCallback(ctx context.Context, event *domainp
 	if event.ProviderSubID != "" && sub.ProviderSubID == "" {
 		sub.ProviderSubID = event.ProviderSubID
 		sub.Provider = event.Provider
+		if err := s.upsertIndex(ctx, event.Provider, domainpayments.IndexKindSubscription, event.ProviderSubID, sub.ProjectID); err != nil {
+			return err
+		}
 	}
 	if !event.PeriodStart.IsZero() {
 		sub.CurrentPeriodStart = event.PeriodStart
@@ -59,14 +62,34 @@ func (s *Subscriptions) HandleHostedCallback(ctx context.Context, event *domainp
 }
 
 func (s *Subscriptions) locateHosted(ctx context.Context, event *domainpayments.CallbackEvent) (*domainsubs.Subscription, error) {
+	projectID := event.MetadataProjectID
+	if projectID == "" && s.index != nil {
+		if event.LocalSubscriptionID != "" {
+			pid, err := s.index.Lookup(ctx, event.Provider, domainpayments.IndexKindSubscription, event.LocalSubscriptionID)
+			if err != nil {
+				return nil, err
+			}
+			projectID = pid
+		}
+		if projectID == "" && event.ProviderSubID != "" {
+			pid, err := s.index.Lookup(ctx, event.Provider, domainpayments.IndexKindSubscription, event.ProviderSubID)
+			if err != nil {
+				return nil, err
+			}
+			projectID = pid
+		}
+	}
+	if projectID == "" {
+		return nil, nil
+	}
 	if event.LocalSubscriptionID != "" {
-		sub, err := s.subs.GetByIDForUpdate(ctx, "", event.LocalSubscriptionID)
+		sub, err := s.subs.GetByIDForUpdate(ctx, projectID, event.LocalSubscriptionID)
 		if err != nil || sub != nil {
 			return sub, err
 		}
 	}
 	if event.ProviderSubID != "" {
-		return s.subs.GetByProviderSubIDForUpdate(ctx, event.Provider, event.ProviderSubID)
+		return s.subs.GetByProviderSubIDForUpdate(ctx, projectID, event.Provider, event.ProviderSubID)
 	}
 	return nil, nil
 }

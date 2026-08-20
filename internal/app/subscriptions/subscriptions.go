@@ -16,6 +16,7 @@ import (
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainsubs "github.com/torchwooddev/torchwood/internal/domain/subscriptions"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
@@ -70,6 +71,8 @@ type Subscriptions struct {
 	providers domainpayments.ProviderRegistry
 	hosted    domainsubs.HostedBilling
 	events    shared.EventPublisher
+	projects  projects.Repository
+	index     domainpayments.ProviderIndexRepo
 	logger    *slog.Logger
 	now       func() time.Time
 }
@@ -86,8 +89,10 @@ func NewSubscriptions(
 	hosted domainsubs.HostedBilling,
 	events shared.EventPublisher,
 	logger *slog.Logger,
+	projectRepo projects.Repository,
+	index domainpayments.ProviderIndexRepo,
 ) *Subscriptions {
-	return newSubscriptions(cfg, db, plans, subs, assets, orders, providers, hosted, events, logger)
+	return newSubscriptions(cfg, db, plans, subs, assets, orders, providers, hosted, events, logger, projectRepo, index)
 }
 
 func newSubscriptions(
@@ -101,6 +106,8 @@ func newSubscriptions(
 	hosted domainsubs.HostedBilling,
 	events shared.EventPublisher,
 	logger *slog.Logger,
+	projectRepo projects.Repository,
+	index domainpayments.ProviderIndexRepo,
 ) *Subscriptions {
 	if logger == nil {
 		logger = slog.Default()
@@ -115,9 +122,18 @@ func newSubscriptions(
 		providers: providers,
 		hosted:    hosted,
 		events:    events,
+		projects:  projectRepo,
+		index:     index,
 		logger:    logger,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+func (s *Subscriptions) upsertIndex(ctx context.Context, provider, kind, ref, projectID string) error {
+	if s.index == nil || ref == "" {
+		return nil
+	}
+	return s.index.Upsert(ctx, provider, kind, ref, projectID)
 }
 
 func (s *Subscriptions) ts() time.Time {

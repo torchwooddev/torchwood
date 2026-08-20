@@ -132,7 +132,7 @@ func (p *Payments) ManualFulfill(ctx context.Context, orderID, reason string) (*
 				fulfillment = existing
 				return nil // 幂等。
 			}
-			if err := p.fulfillments.MarkDone(txCtx, existing.ID, existing.Ref, map[string]any{
+			if err := p.fulfillments.MarkDone(txCtx, projectID, existing.ID, existing.Ref, map[string]any{
 				"manual": true,
 				"reason": reason,
 			}); err != nil {
@@ -160,7 +160,7 @@ func (p *Payments) ManualFulfill(ctx context.Context, orderID, reason string) (*
 			fulfillment, err = p.fulfillments.GetByOrder(txCtx, projectID, orderID)
 			return err
 		}
-		if err := p.fulfillments.MarkDone(txCtx, f.ID, f.Ref, f.Detail); err != nil {
+		if err := p.fulfillments.MarkDone(txCtx, projectID, f.ID, f.Ref, f.Detail); err != nil {
 			return err
 		}
 		fulfillment, err = p.fulfillments.GetByOrder(txCtx, projectID, orderID)

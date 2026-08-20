@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/uptrace/bun/driver/pgdriver"
 )
 
-// assetDefRepo 实现 assets.DefRepo（public.asset_defs）。
+// assetDefRepo 实现 assets.DefRepo（项目 schema asset_defs）。
 type assetDefRepo struct {
 	db *clients.Database
 }
@@ -24,7 +25,11 @@ func NewAssetDefRepository(db *clients.Database) assets.DefRepo {
 }
 
 func (r *assetDefRepo) Insert(ctx context.Context, def *assets.Def) error {
-	_, err := r.db.Conn(ctx).NewInsert().Model(mapDefToModel(def)).Exec(ctx)
+	conn, sch, expr, err := Scoped(ctx, r.db, def.ProjectID, "asset_defs", "ad")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewInsert().Model(mapDefToModel(def)).ModelTableExpr(expr, sch).Exec(ctx)
 	if isAssetUniqueViolation(err) {
 		return assets.ErrDuplicateCode
 	}
@@ -48,7 +53,11 @@ func (r *assetDefRepo) GetByIDForShare(ctx context.Context, projectID, defID str
 }
 
 func (r *assetDefRepo) selectDef(ctx context.Context, projectID, pred string, arg any, lock string) (*assets.Def, error) {
-	q := r.db.Conn(ctx).NewSelect().Model((*model.AssetDef)(nil)).
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_defs", "ad")
+	if err != nil {
+		return nil, err
+	}
+	q := conn.NewSelect().Model((*model.AssetDef)(nil)).ModelTableExpr(expr, sch).
 		Where("ad.project_id = ?", projectID).
 		Where(pred, arg)
 	if lock != "" {
@@ -65,14 +74,18 @@ func (r *assetDefRepo) selectDef(ctx context.Context, projectID, pred string, ar
 }
 
 func (r *assetDefRepo) List(ctx context.Context, projectID string, includeArchived bool, limit int, before time.Time) ([]assets.Def, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_defs", "ad")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetDef
-	q := r.db.Conn(ctx).NewSelect().Model(&rows).
+	q := conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("ad.project_id = ?", projectID).
 		Where("ad.created_at < ?", before)
 	if !includeArchived {
 		q = q.Where("ad.status = ?", string(assets.DefStatusActive))
 	}
-	err := q.Order("ad.created_at DESC").Limit(limit).Scan(ctx)
+	err = q.Order("ad.created_at DESC").Limit(limit).Scan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +97,11 @@ func (r *assetDefRepo) List(ctx context.Context, projectID string, includeArchiv
 }
 
 func (r *assetDefRepo) Update(ctx context.Context, def *assets.Def) error {
-	_, err := r.db.Conn(ctx).NewUpdate().Model(mapDefToModel(def)).
+	conn, sch, expr, err := Scoped(ctx, r.db, def.ProjectID, "asset_defs", "ad")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewUpdate().Model(mapDefToModel(def)).ModelTableExpr(expr, sch).
 		WherePK().
 		Where("ad.project_id = ?", def.ProjectID).
 		Exec(ctx)
@@ -102,7 +119,11 @@ func NewAssetHoldingRepository(db *clients.Database) assets.HoldingRepo {
 }
 
 func (r *assetHoldingRepo) Insert(ctx context.Context, h *assets.Holding) error {
-	_, err := r.db.Conn(ctx).NewInsert().Model(mapHoldingToModel(h)).Exec(ctx)
+	conn, sch, expr, err := Scoped(ctx, r.db, h.ProjectID, "asset_holdings", "ah")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewInsert().Model(mapHoldingToModel(h)).ModelTableExpr(expr, sch).Exec(ctx)
 	return err
 }
 
@@ -115,7 +136,11 @@ func (r *assetHoldingRepo) GetByIDForUpdate(ctx context.Context, projectID, hold
 }
 
 func (r *assetHoldingRepo) selectHolding(ctx context.Context, projectID, holdingID, lock string) (*assets.Holding, error) {
-	q := r.db.Conn(ctx).NewSelect().Model((*model.AssetHolding)(nil)).
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_holdings", "ah")
+	if err != nil {
+		return nil, err
+	}
+	q := conn.NewSelect().Model((*model.AssetHolding)(nil)).ModelTableExpr(expr, sch).
 		Where("ah.project_id = ?", projectID).
 		Where("ah.id = ?", holdingID)
 	if lock != "" {
@@ -132,8 +157,12 @@ func (r *assetHoldingRepo) selectHolding(ctx context.Context, projectID, holding
 }
 
 func (r *assetHoldingRepo) ListForUpdate(ctx context.Context, projectID string, ownerType assets.OwnerType, ownerID, defID string) ([]assets.Holding, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_holdings", "ah")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetHolding
-	err := r.db.Conn(ctx).NewSelect().Model(&rows).
+	err = conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("ah.project_id = ?", projectID).
 		Where("ah.owner_type = ?", string(ownerType)).
 		Where("ah.owner_id = ?", ownerID).
@@ -148,8 +177,12 @@ func (r *assetHoldingRepo) ListForUpdate(ctx context.Context, projectID string, 
 }
 
 func (r *assetHoldingRepo) ListByOwner(ctx context.Context, projectID string, ownerType assets.OwnerType, ownerID string, limit int, before time.Time) ([]assets.Holding, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_holdings", "ah")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetHolding
-	err := r.db.Conn(ctx).NewSelect().Model(&rows).
+	err = conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("ah.project_id = ?", projectID).
 		Where("ah.owner_type = ?", string(ownerType)).
 		Where("ah.owner_id = ?", ownerID).
@@ -164,7 +197,11 @@ func (r *assetHoldingRepo) ListByOwner(ctx context.Context, projectID string, ow
 }
 
 func (r *assetHoldingRepo) Update(ctx context.Context, h *assets.Holding, expectVersion int64) error {
-	res, err := r.db.Conn(ctx).NewUpdate().Model((*model.AssetHolding)(nil)).
+	conn, sch, expr, err := Scoped(ctx, r.db, h.ProjectID, "asset_holdings", "ah")
+	if err != nil {
+		return err
+	}
+	res, err := conn.NewUpdate().Model((*model.AssetHolding)(nil)).ModelTableExpr(expr, sch).
 		Set("quantity = ?", h.Quantity).
 		Set("expires_at = ?", h.ExpiresAt).
 		Set("level = ?", h.Level).
@@ -186,7 +223,11 @@ func (r *assetHoldingRepo) Update(ctx context.Context, h *assets.Holding, expect
 }
 
 func (r *assetHoldingRepo) Delete(ctx context.Context, projectID, holdingID string, expectVersion int64) error {
-	res, err := r.db.Conn(ctx).NewDelete().Model((*model.AssetHolding)(nil)).
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_holdings", "ah")
+	if err != nil {
+		return err
+	}
+	res, err := conn.NewDelete().Model((*model.AssetHolding)(nil)).ModelTableExpr(expr, sch).
 		Where("ah.id = ?", holdingID).
 		Where("ah.project_id = ?", projectID).
 		Where("ah.version = ?", expectVersion).
@@ -200,17 +241,26 @@ func (r *assetHoldingRepo) Delete(ctx context.Context, projectID, holdingID stri
 	return nil
 }
 
-func (r *assetHoldingRepo) ListExpired(ctx context.Context, now time.Time, limit int) ([]assets.Holding, error) {
+func (r *assetHoldingRepo) ListExpiredInProject(ctx context.Context, projectID string, now time.Time, limit int) ([]assets.Holding, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	if _, _, _, err := Scoped(ctx, r.db, projectID, "asset_holdings", "ah"); err != nil {
+		return nil, err
+	}
+	quoted, err := ProjectQuoted(projectID)
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetHolding
-	err := r.db.Conn(ctx).NewRaw(
-		`SELECT id, project_id, owner_type, owner_id, def_id, quantity, expires_at,
-		        level, metadata, bucket_key, version, created_at, updated_at
-		 FROM asset_holdings
-		 WHERE expires_at IS NOT NULL AND expires_at <= ?
-		 ORDER BY expires_at
-		 LIMIT ?
-		 FOR UPDATE SKIP LOCKED`,
-		now, limit).Scan(ctx, &rows)
+	err = r.db.Conn(ctx).NewRaw(fmt.Sprintf(`
+SELECT id, project_id, owner_type, owner_id, def_id, quantity, expires_at,
+       level, metadata, bucket_key, version, created_at, updated_at
+FROM %s.asset_holdings
+WHERE expires_at IS NOT NULL AND expires_at <= ?
+ORDER BY expires_at
+LIMIT ?
+FOR UPDATE SKIP LOCKED`, quoted), now, limit).Scan(ctx, &rows)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +268,12 @@ func (r *assetHoldingRepo) ListExpired(ctx context.Context, now time.Time, limit
 }
 
 func (r *assetHoldingRepo) ListAllInProject(ctx context.Context, projectID string) ([]assets.Holding, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_holdings", "ah")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetHolding
-	err := r.db.Conn(ctx).NewSelect().Model(&rows).
+	err = conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("ah.project_id = ?", projectID).
 		Order("ah.owner_id", "ah.def_id", "ah.id").
 		Scan(ctx)
@@ -240,7 +294,11 @@ func NewAssetLedgerRepository(db *clients.Database) assets.LedgerRepo {
 }
 
 func (r *assetLedgerRepo) InsertIfAbsent(ctx context.Context, e *assets.LedgerEntry) (*assets.LedgerEntry, bool, error) {
-	res, err := r.db.Conn(ctx).NewInsert().Model(mapLedgerToModel(e)).
+	conn, sch, expr, err := Scoped(ctx, r.db, e.ProjectID, "asset_ledger_entries", "ale")
+	if err != nil {
+		return nil, false, err
+	}
+	res, err := conn.NewInsert().Model(mapLedgerToModel(e)).ModelTableExpr(expr, sch).
 		On("CONFLICT (project_id, idempotency_key) DO NOTHING").
 		Exec(ctx)
 	if err != nil {
@@ -257,8 +315,12 @@ func (r *assetLedgerRepo) InsertIfAbsent(ctx context.Context, e *assets.LedgerEn
 }
 
 func (r *assetLedgerRepo) GetByIdempotencyKey(ctx context.Context, projectID, key string) (*assets.LedgerEntry, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_ledger_entries", "ale")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.AssetLedgerEntry)
-	err := r.db.Conn(ctx).NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("ale.project_id = ?", projectID).
 		Where("ale.idempotency_key = ?", key).
 		Scan(ctx)
@@ -275,8 +337,12 @@ func (r *assetLedgerRepo) ListByRef(ctx context.Context, projectID, refType, ref
 	if refID == "" {
 		return nil, nil
 	}
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_ledger_entries", "ale")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetLedgerEntry
-	err := r.db.Conn(ctx).NewSelect().Model(&rows).
+	err = conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("ale.project_id = ?", projectID).
 		Where("ale.ref_type = ?", refType).
 		Where("ale.ref_id = ?", refID).
@@ -289,8 +355,12 @@ func (r *assetLedgerRepo) ListByRef(ctx context.Context, projectID, refType, ref
 }
 
 func (r *assetLedgerRepo) ListByOwner(ctx context.Context, projectID string, ownerType assets.OwnerType, ownerID, defID string, limit int, before time.Time) ([]assets.LedgerEntry, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_ledger_entries", "ale")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetLedgerEntry
-	q := r.db.Conn(ctx).NewSelect().Model(&rows).
+	q := conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("ale.project_id = ?", projectID).
 		Where("ale.owner_type = ?", string(ownerType)).
 		Where("ale.owner_id = ?", ownerID).
@@ -298,7 +368,7 @@ func (r *assetLedgerRepo) ListByOwner(ctx context.Context, projectID string, own
 	if defID != "" {
 		q = q.Where("ale.def_id = ?", defID)
 	}
-	err := q.Order("ale.created_at DESC").Limit(limit).Scan(ctx)
+	err = q.Order("ale.created_at DESC").Limit(limit).Scan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -306,8 +376,12 @@ func (r *assetLedgerRepo) ListByOwner(ctx context.Context, projectID string, own
 }
 
 func (r *assetLedgerRepo) ListAllInProject(ctx context.Context, projectID string) ([]assets.LedgerEntry, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "asset_ledger_entries", "ale")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.AssetLedgerEntry
-	err := r.db.Conn(ctx).NewSelect().Model(&rows).
+	err = conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("ale.project_id = ?", projectID).
 		Order("ale.created_at ASC", "ale.id ASC").
 		Scan(ctx)

@@ -17,6 +17,7 @@ var ProviderSet = wire.NewSet(
 	bunrepo.NewPaymentOrderRepository,
 	bunrepo.NewPaymentCallbackEventRepository,
 	bunrepo.NewPaymentFulfillmentRepository,
+	bunrepo.NewProviderIndexRepository,
 	bunrepo.NewAssetDefRepository,
 	bunrepo.NewAssetHoldingRepository,
 	bunrepo.NewAssetLedgerRepository,

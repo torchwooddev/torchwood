@@ -79,6 +79,9 @@ func (a *Adapter) CreatePayment(ctx context.Context, in payments.CreatePaymentIn
 	form.Set("mode", "payment")
 	form.Set("client_reference_id", in.OrderID)
 	form.Set("metadata[order_id]", in.OrderID)
+	if in.ProjectID != "" {
+		form.Set("metadata[project_id]", in.ProjectID)
+	}
 	form.Set("line_items[0][quantity]", "1")
 	form.Set("line_items[0][price_data][currency]", strings.ToLower(in.Currency))
 	// 金额最小货币单位（bigint）直接透传，任何浮点换算都不允许。
@@ -105,7 +108,7 @@ func (a *Adapter) CreatePayment(ctx context.Context, in payments.CreatePaymentIn
 	if out.ID == "" || out.URL == "" {
 		return nil, fmt.Errorf("stripe: checkout session response missing id/url")
 	}
-	return &payments.PaymentSession{SessionID: out.ID, PaymentURL: out.URL}, nil
+	return &payments.PaymentSession{SessionID: out.ID, PaymentURL: out.URL, ProviderOrderID: out.PaymentIntent}, nil
 }
 
 // checkoutSessionResponse 是 Checkout Session 的最小响应形状。
@@ -158,15 +161,15 @@ type stripeSubscriptionObject struct {
 
 // stripeInvoiceObject 是 invoice.paid / invoice.payment_failed 载荷。
 type stripeInvoiceObject struct {
-	ID             string `json:"id"`
-	Subscription   string `json:"subscription"`
-	BillingReason  string `json:"billing_reason"`
-	AmountPaid     int64  `json:"amount_paid"`
-	AmountDue      int64  `json:"amount_due"`
-	Currency       string `json:"currency"`
-	PeriodStart    int64  `json:"period_start"`
-	PeriodEnd      int64  `json:"period_end"`
-	Status         string `json:"status"`
+	ID            string `json:"id"`
+	Subscription  string `json:"subscription"`
+	BillingReason string `json:"billing_reason"`
+	AmountPaid    int64  `json:"amount_paid"`
+	AmountDue     int64  `json:"amount_due"`
+	Currency      string `json:"currency"`
+	PeriodStart   int64  `json:"period_start"`
+	PeriodEnd     int64  `json:"period_end"`
+	Status        string `json:"status"`
 }
 
 // chargeObject 是 charge.refunded 事件载荷。
@@ -268,6 +271,7 @@ func (a *Adapter) normalize(rawBody []byte) (*payments.CallbackEvent, error) {
 		out.CheckoutMode = obj.Mode
 		out.Amount = obj.AmountTotal
 		out.Currency = strings.ToUpper(obj.Currency)
+		out.MetadataProjectID = obj.Metadata["project_id"]
 		if obj.Mode == "subscription" {
 			out.ProviderSubID = obj.Subscription
 			out.LocalSubscriptionID = firstNonEmpty(obj.Metadata["subscription_id"], obj.ClientReferenceID)
@@ -291,6 +295,7 @@ func (a *Adapter) normalize(rawBody []byte) (*payments.CallbackEvent, error) {
 		out.OrderID = firstNonEmpty(obj.ClientReferenceID, obj.Metadata["order_id"])
 		out.Amount = obj.AmountTotal
 		out.Currency = strings.ToUpper(obj.Currency)
+		out.MetadataProjectID = obj.Metadata["project_id"]
 		out.Type = payments.CallbackFailed
 	case ev.Type == "payment_intent.payment_failed":
 		var obj paymentIntentObject
@@ -301,6 +306,7 @@ func (a *Adapter) normalize(rawBody []byte) (*payments.CallbackEvent, error) {
 		out.OrderID = obj.Metadata["order_id"]
 		out.Amount = obj.Amount
 		out.Currency = strings.ToUpper(obj.Currency)
+		out.MetadataProjectID = obj.Metadata["project_id"]
 		out.Type = payments.CallbackFailed
 	case ev.Type == "charge.refunded":
 		var obj chargeObject
@@ -350,6 +356,7 @@ func (a *Adapter) normalize(rawBody []byte) (*payments.CallbackEvent, error) {
 func fillSubscriptionEvent(out *payments.CallbackEvent, obj *stripeSubscriptionObject) {
 	out.ProviderSubID = obj.ID
 	out.LocalSubscriptionID = obj.Metadata["subscription_id"]
+	out.MetadataProjectID = obj.Metadata["project_id"]
 	out.HostedStatus = obj.Status
 	out.CancelAtPeriodEnd = obj.CancelAtPeriodEnd
 	start, end := obj.CurrentPeriodStart, obj.CurrentPeriodEnd

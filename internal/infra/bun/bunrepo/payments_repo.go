@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/payments"
@@ -28,9 +29,12 @@ func NewPaymentOrderRepository(db *clients.Database) payments.OrderRepo {
 }
 
 func (r *paymentOrderRepo) Insert(ctx context.Context, order *payments.Order) (*payments.Order, bool, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, order.ProjectID, "payment_orders", "po")
+	if err != nil {
+		return nil, false, err
+	}
 	m := mapOrderToModel(order)
-	res, err := r.db.Conn(ctx).NewInsert().Model(m).
-		// 幂等锚点一：同 (project_id, idempotency_key) 不新建，返回原单。
+	res, err := conn.NewInsert().Model(m).ModelTableExpr(expr, sch).
 		On("CONFLICT (project_id, idempotency_key) DO NOTHING").
 		Exec(ctx)
 	if err != nil {
@@ -39,7 +43,6 @@ func (r *paymentOrderRepo) Insert(ctx context.Context, order *payments.Order) (*
 	if n, _ := res.RowsAffected(); n == 1 {
 		return nil, true, nil
 	}
-	// 冲突：按幂等键取原单（注意不能按新单 id 查——那是刚被拒插的 id）。
 	existing, err := r.GetByIDempotencyKey(ctx, order.ProjectID, order.IdempotencyKey)
 	if err != nil {
 		return nil, false, err
@@ -50,10 +53,13 @@ func (r *paymentOrderRepo) Insert(ctx context.Context, order *payments.Order) (*
 	return existing, false, nil
 }
 
-// GetByIDempotencyKey 按建单幂等键取单（幂等重放返回原单）。
 func (r *paymentOrderRepo) GetByIDempotencyKey(ctx context.Context, projectID, key string) (*payments.Order, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.PaymentOrder)
-	err := r.db.Conn(ctx).NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("po.project_id = ?", projectID).
 		Where("po.idempotency_key = ?", key).
 		Scan(ctx)
@@ -74,15 +80,14 @@ func (r *paymentOrderRepo) GetByIDForUpdate(ctx context.Context, projectID, orde
 	return r.selectOne(ctx, projectID, orderID, "UPDATE")
 }
 
-// selectOne 按 id 取单；projectID 为空时不做项目过滤（回调路径：订单 id
-// 来自已验签的渠道 metadata，信任根是渠道签名而非项目上下文）。
-// lock 非空时附加 FOR UPDATE（要求 ctx 已在事务内）。
 func (r *paymentOrderRepo) selectOne(ctx context.Context, projectID, orderID, lock string) (*payments.Order, error) {
-	q := r.db.Conn(ctx).NewSelect().Model((*model.PaymentOrder)(nil)).
-		Where("po.id = ?", orderID)
-	if projectID != "" {
-		q = q.Where("po.project_id = ?", projectID)
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	if err != nil {
+		return nil, err
 	}
+	q := conn.NewSelect().Model((*model.PaymentOrder)(nil)).ModelTableExpr(expr, sch).
+		Where("po.id = ?", orderID).
+		Where("po.project_id = ?", projectID)
 	if lock != "" {
 		q = q.For(lock)
 	}
@@ -100,11 +105,13 @@ func (r *paymentOrderRepo) GetByProviderRef(ctx context.Context, projectID, prov
 	if providerSessionID == "" && providerOrderID == "" {
 		return nil, nil
 	}
-	q := r.db.Conn(ctx).NewSelect().Model((*model.PaymentOrder)(nil)).
-		Where("po.provider = ?", provider)
-	if projectID != "" {
-		q = q.Where("po.project_id = ?", projectID)
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	if err != nil {
+		return nil, err
 	}
+	q := conn.NewSelect().Model((*model.PaymentOrder)(nil)).ModelTableExpr(expr, sch).
+		Where("po.provider = ?", provider).
+		Where("po.project_id = ?", projectID)
 	if providerSessionID != "" && providerOrderID != "" {
 		q = q.Where("(po.provider_session_id = ? OR po.provider_order_id = ?)", providerSessionID, providerOrderID)
 	} else if providerSessionID != "" {
@@ -123,16 +130,19 @@ func (r *paymentOrderRepo) GetByProviderRef(ctx context.Context, projectID, prov
 	return mapOrderToDomain(m), nil
 }
 
-// Update 写回订单；expectStatus 为状态前置条件（乐观并发：行不在期望状态
-// 即失败），rows=0 视为并发修改冲突。
 func (r *paymentOrderRepo) Update(ctx context.Context, order *payments.Order, expectStatus payments.OrderStatus) error {
-	res, err := r.db.Conn(ctx).NewUpdate().Model((*model.PaymentOrder)(nil)).
+	conn, sch, expr, err := Scoped(ctx, r.db, order.ProjectID, "payment_orders", "po")
+	if err != nil {
+		return err
+	}
+	res, err := conn.NewUpdate().Model((*model.PaymentOrder)(nil)).ModelTableExpr(expr, sch).
 		Set("status = ?", string(order.Status)).
 		Set("updated_at = ?", order.UpdatedAt).
 		Set("paid_at = ?", order.PaidAt).
 		Set("provider_session_id = ?", nullIfEmpty(order.ProviderSessionID)).
 		Set("provider_order_id = ?", nullIfEmpty(order.ProviderOrderID)).
 		Where("po.id = ?", order.ID).
+		Where("po.project_id = ?", order.ProjectID).
 		Where("po.status = ?", string(expectStatus)).
 		Exec(ctx)
 	if err != nil {
@@ -145,8 +155,12 @@ func (r *paymentOrderRepo) Update(ctx context.Context, order *payments.Order, ex
 }
 
 func (r *paymentOrderRepo) ListByUser(ctx context.Context, projectID, userID string, limit int, before time.Time) ([]payments.Order, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.PaymentOrder
-	err := r.db.Conn(ctx).NewSelect().Model(&rows).
+	err = conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("po.project_id = ?", projectID).
 		Where("po.user_id = ?", userID).
 		Where("po.created_at < ?", before).
@@ -160,8 +174,12 @@ func (r *paymentOrderRepo) ListByUser(ctx context.Context, projectID, userID str
 }
 
 func (r *paymentOrderRepo) ListByProject(ctx context.Context, projectID string, limit int, before time.Time) ([]payments.Order, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	if err != nil {
+		return nil, err
+	}
 	var rows []model.PaymentOrder
-	err := r.db.Conn(ctx).NewSelect().Model(&rows).
+	err = conn.NewSelect().Model(&rows).ModelTableExpr(expr, sch).
 		Where("po.project_id = ?", projectID).
 		Where("po.created_at < ?", before).
 		Order("po.created_at DESC").
@@ -173,27 +191,32 @@ func (r *paymentOrderRepo) ListByProject(ctx context.Context, projectID string, 
 	return mapOrdersToDomain(rows), nil
 }
 
-// CloseExpired 把 created/paying 且超时的订单翻 closed（worker 周期任务，
-// 设计 §1.3；closed 不在事件目录 §5.1，不发 outbox 事件）。
-// 状态机非法迁移（并发已翻转）由 WHERE status 条件自动跳过；
-// FOR UPDATE SKIP LOCKED 保证多副本 worker 互不阻塞、不重复关单。
-func (r *paymentOrderRepo) CloseExpired(ctx context.Context, now time.Time, limit int) (int64, error) {
-	res, err := r.db.Conn(ctx).NewRaw(
-		`UPDATE payment_orders po
-		 SET status = ?, updated_at = ?
-		 WHERE po.id IN (
-		     SELECT id FROM payment_orders
-		     WHERE status IN ('created', 'paying') AND expires_at <= ?
-		     ORDER BY expires_at
-		     LIMIT ?
-		     FOR UPDATE SKIP LOCKED
-		 )`,
-		string(payments.OrderStatusClosed), now, now, limit).Exec(ctx)
+func (r *paymentOrderRepo) CloseExpiredInProject(ctx context.Context, projectID string, now time.Time, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	if _, _, _, err := Scoped(ctx, r.db, projectID, "payment_orders", "po"); err != nil {
+		return 0, err
+	}
+	quoted, err := ProjectQuoted(projectID)
 	if err != nil {
 		return 0, err
 	}
-	n, err := res.RowsAffected()
-	return n, err
+	res, err := r.db.Conn(ctx).ExecContext(ctx, fmt.Sprintf(`
+UPDATE %s.payment_orders po
+SET status = ?, updated_at = ?
+WHERE po.id IN (
+    SELECT id FROM %s.payment_orders
+    WHERE status IN ('created', 'paying') AND expires_at <= ?
+    ORDER BY expires_at
+    LIMIT ?
+    FOR UPDATE SKIP LOCKED
+)`, quoted, quoted),
+		string(payments.OrderStatusClosed), now, now, limit)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // paymentCallbackEventRepo 实现 payments.CallbackEventRepo。
@@ -223,7 +246,11 @@ func (r *paymentCallbackEventRepo) InsertIfAbsent(ctx context.Context, event *pa
 	if err != nil {
 		return false, err
 	}
-	res, err := r.db.Conn(ctx).NewInsert().Model(&model.PaymentCallbackEvent{
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_callback_events", "pce")
+	if err != nil {
+		return false, err
+	}
+	res, err := conn.NewInsert().Model(&model.PaymentCallbackEvent{
 		ID:              idgen.ULID().String(),
 		ProjectID:       nullIfEmpty(projectID),
 		Provider:        event.Provider,
@@ -232,7 +259,7 @@ func (r *paymentCallbackEventRepo) InsertIfAbsent(ctx context.Context, event *pa
 		OrderID:         nullIfEmpty(orderID),
 		Payload:         payload,
 		CreatedAt:       event.ReceivedAt,
-	}).On("CONFLICT (provider, provider_event_id) DO NOTHING").Exec(ctx)
+	}).ModelTableExpr(expr, sch).On("CONFLICT (provider, provider_event_id) DO NOTHING").Exec(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -251,7 +278,11 @@ func NewPaymentFulfillmentRepository(db *clients.Database) payments.FulfillmentR
 }
 
 func (r *paymentFulfillmentRepo) InsertPending(ctx context.Context, f *payments.Fulfillment) (*payments.Fulfillment, bool, error) {
-	res, err := r.db.Conn(ctx).NewInsert().Model(&model.PaymentFulfillment{
+	conn, sch, expr, err := Scoped(ctx, r.db, f.ProjectID, "payment_fulfillments", "pf")
+	if err != nil {
+		return nil, false, err
+	}
+	res, err := conn.NewInsert().Model(&model.PaymentFulfillment{
 		ID:          f.ID,
 		OrderID:     f.OrderID,
 		ProjectID:   f.ProjectID,
@@ -261,7 +292,7 @@ func (r *paymentFulfillmentRepo) InsertPending(ctx context.Context, f *payments.
 		Detail:      f.Detail,
 		CreatedAt:   f.CreatedAt,
 		UpdatedAt:   f.UpdatedAt,
-	}).On("CONFLICT (order_id, purpose_kind) DO NOTHING").Exec(ctx)
+	}).ModelTableExpr(expr, sch).On("CONFLICT (order_id, purpose_kind) DO NOTHING").Exec(ctx)
 	if err != nil {
 		return nil, false, err
 	}
@@ -275,8 +306,12 @@ func (r *paymentFulfillmentRepo) InsertPending(ctx context.Context, f *payments.
 	return existing, false, nil
 }
 
-func (r *paymentFulfillmentRepo) MarkDone(ctx context.Context, fulfillmentID, ref string, detail map[string]any) error {
-	_, err := r.db.Conn(ctx).NewUpdate().Model((*model.PaymentFulfillment)(nil)).
+func (r *paymentFulfillmentRepo) MarkDone(ctx context.Context, projectID, fulfillmentID, ref string, detail map[string]any) error {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_fulfillments", "pf")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewUpdate().Model((*model.PaymentFulfillment)(nil)).ModelTableExpr(expr, sch).
 		Set("status = ?", string(payments.FulfillmentDone)).
 		Set("ref = ?", ref).
 		Set("detail = ?", detail).
@@ -286,8 +321,12 @@ func (r *paymentFulfillmentRepo) MarkDone(ctx context.Context, fulfillmentID, re
 	return err
 }
 
-func (r *paymentFulfillmentRepo) MarkFailed(ctx context.Context, fulfillmentID, reason string) error {
-	_, err := r.db.Conn(ctx).NewUpdate().Model((*model.PaymentFulfillment)(nil)).
+func (r *paymentFulfillmentRepo) MarkFailed(ctx context.Context, projectID, fulfillmentID, reason string) error {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_fulfillments", "pf")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewUpdate().Model((*model.PaymentFulfillment)(nil)).ModelTableExpr(expr, sch).
 		Set("status = ?", string(payments.FulfillmentFailed)).
 		Set("detail = ?", map[string]any{"reason": reason}).
 		Set("updated_at = ?", time.Now()).
@@ -297,8 +336,12 @@ func (r *paymentFulfillmentRepo) MarkFailed(ctx context.Context, fulfillmentID, 
 }
 
 func (r *paymentFulfillmentRepo) GetByOrder(ctx context.Context, projectID, orderID string) (*payments.Fulfillment, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_fulfillments", "pf")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.PaymentFulfillment)
-	err := r.db.Conn(ctx).NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("pf.project_id = ?", projectID).
 		Where("pf.order_id = ?", orderID).
 		Scan(ctx)

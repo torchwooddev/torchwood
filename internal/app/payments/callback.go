@@ -2,7 +2,6 @@ package payments
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -73,13 +72,28 @@ func (p *Payments) HandleCallback(ctx context.Context, providerName string, head
 	}
 
 	if domainpayments.IsSubscriptionEvent(event.Type) {
+		projectID, err := p.locateSubscriptionProject(ctx, event)
+		if err != nil {
+			return err
+		}
+		if projectID == "" {
+			if hasPlatformRef(event) {
+				return domainpayments.ErrProviderIndexMiss
+			}
+			p.logger.Info("subscription callback without platform ref",
+				"provider", event.Provider, "event_id", event.ProviderEventID)
+			return nil
+		}
+		if event.MetadataProjectID == "" {
+			event.MetadataProjectID = projectID
+		}
 		return p.db.RunInTx(ctx, func(txCtx context.Context) error {
-			inserted, err := p.callbacks.InsertIfAbsent(txCtx, event, "", event.LocalSubscriptionID)
+			inserted, err := p.callbacks.InsertIfAbsent(txCtx, event, projectID, event.LocalSubscriptionID)
 			if err != nil {
 				return err
 			}
 			if !inserted {
-				return nil // 重放：幂等 200，不重入状态机。
+				return nil
 			}
 			if p.subs == nil {
 				return nil
@@ -93,11 +107,12 @@ func (p *Payments) HandleCallback(ctx context.Context, providerName string, head
 		return err
 	}
 	if order == nil {
-		// 渠道事件与本地订单无关（如非本服务创建的支付对象）：登记后 200。
-		return p.db.RunInTx(ctx, func(txCtx context.Context) error {
-			_, err := p.callbacks.InsertIfAbsent(txCtx, event, "", "")
-			return err
-		})
+		if hasPlatformRef(event) {
+			return domainpayments.ErrProviderIndexMiss
+		}
+		p.logger.Info("payment callback without platform ref",
+			"provider", event.Provider, "event_id", event.ProviderEventID)
+		return nil
 	}
 
 	now := time.Now()
@@ -133,21 +148,8 @@ func (p *Payments) HandleCallback(ctx context.Context, providerName string, head
 // recordIgnoredCallback 登记无法驱动状态机的回调（畸形 / 忽略类型），
 // 独立短事务；登记失败按内部错误应答（渠道重推）。
 func (p *Payments) recordIgnoredCallback(ctx context.Context, provider domainpayments.PaymentProvider, rawBody []byte) error {
-	event := &domainpayments.CallbackEvent{
-		Provider:        provider.Name(),
-		ProviderEventID: ignoredEventID(rawBody),
-		Type:            "ignored",
-		Raw:             rawBody,
-		ReceivedAt:      time.Now(),
-	}
-	if event.ProviderEventID == "" {
-		// 完全无法识别身份的报文：不登记（无幂等锚点），直接按成功应答丢弃。
-		return nil
-	}
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		_, err := p.callbacks.InsertIfAbsent(txCtx, event, "", "")
-		return err
-	})
+	p.logger.Info("ignored payment callback", "provider", provider.Name(), "bytes", len(rawBody))
+	return nil
 }
 
 // applyPaid 回调 paid：金额校验 → FOR UPDATE 翻转 → 履约行 + Fulfiller
@@ -188,6 +190,16 @@ func (p *Payments) applyPaid(ctx context.Context, order *domainpayments.Order, e
 	if err := p.orders.Update(ctx, order, from); err != nil {
 		return err
 	}
+	if event.ProviderSessionID != "" {
+		if err := p.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentSession, event.ProviderSessionID, order.ProjectID); err != nil {
+			return err
+		}
+	}
+	if event.ProviderOrderID != "" {
+		if err := p.upsertIndex(ctx, order.Provider, domainpayments.IndexKindPaymentOrder, event.ProviderOrderID, order.ProjectID); err != nil {
+			return err
+		}
+	}
 	paymentOrdersTotal.WithLabelValues(order.Provider, string(order.Status)).Inc()
 
 	// 履约（设计 §1.5）：pending 行 + Fulfiller hook（PR1 占位，PR2 联通
@@ -215,12 +227,12 @@ func (p *Payments) applyPaid(ctx context.Context, order *domainpayments.Order, e
 		if ref == "" {
 			ref = fulfillment.Ref
 		}
-		if err := p.fulfillments.MarkDone(ctx, fulfillment.ID, ref, fulfillment.Detail); err != nil {
+		if err := p.fulfillments.MarkDone(ctx, order.ProjectID, fulfillment.ID, ref, fulfillment.Detail); err != nil {
 			return err
 		}
 	} else if existing != nil && existing.Status == domainpayments.FulfillmentPending {
 		// 理论不可达（与订单翻转同事务）；防御性补齐 done。
-		if err := p.fulfillments.MarkDone(ctx, existing.ID, existing.Ref, nil); err != nil {
+		if err := p.fulfillments.MarkDone(ctx, order.ProjectID, existing.ID, existing.Ref, nil); err != nil {
 			return err
 		}
 	}
@@ -266,19 +278,87 @@ func (p *Payments) applyRefunded(ctx context.Context, order *domainpayments.Orde
 	return p.events.Publish(ctx, orderEnvelope(order, domainpayments.EventOrderRefunded, now))
 }
 
-// locateOrder 按渠道 metadata 订单 id 或渠道引用定位本地订单（全局：
-// 信任根是渠道签名，无项目上下文）。
-func (p *Payments) locateOrder(ctx context.Context, event *domainpayments.CallbackEvent) (*domainpayments.Order, error) {
-	if event.OrderID != "" {
-		order, err := p.orders.GetByID(ctx, "", event.OrderID)
-		if err != nil {
-			return nil, err
-		}
-		if order != nil && order.Provider == event.Provider {
-			return order, nil
+func hasPlatformRef(event *domainpayments.CallbackEvent) bool {
+	if event == nil {
+		return false
+	}
+	if event.OrderID != "" || event.LocalSubscriptionID != "" || event.ProviderSubID != "" {
+		return true
+	}
+	if event.MetadataProjectID != "" && (event.ProviderSessionID != "" || event.ProviderOrderID != "") {
+		return true
+	}
+	return false
+}
+
+func (p *Payments) lookupIndex(ctx context.Context, provider, kind, ref string) (string, error) {
+	if p.index == nil || ref == "" {
+		return "", nil
+	}
+	return p.index.Lookup(ctx, provider, kind, ref)
+}
+
+func (p *Payments) locateSubscriptionProject(ctx context.Context, event *domainpayments.CallbackEvent) (string, error) {
+	if event.LocalSubscriptionID != "" {
+		pid, err := p.lookupIndex(ctx, event.Provider, domainpayments.IndexKindSubscription, event.LocalSubscriptionID)
+		if err != nil || pid != "" {
+			return pid, err
 		}
 	}
-	return p.orders.GetByProviderRef(ctx, "", event.Provider, event.ProviderSessionID, event.ProviderOrderID)
+	if event.ProviderSubID != "" {
+		return p.lookupIndex(ctx, event.Provider, domainpayments.IndexKindSubscription, event.ProviderSubID)
+	}
+	return "", nil
+}
+
+// locateOrder 只走 public.provider_resource_index，再带 projectID 进项目 schema。
+func (p *Payments) locateOrder(ctx context.Context, event *domainpayments.CallbackEvent) (*domainpayments.Order, error) {
+	try := func(kind, ref string, byID bool) (*domainpayments.Order, error) {
+		pid, err := p.lookupIndex(ctx, event.Provider, kind, ref)
+		if err != nil || pid == "" {
+			return nil, err
+		}
+		if byID {
+			order, err := p.orders.GetByID(ctx, pid, ref)
+			if err != nil || order == nil {
+				return order, err
+			}
+			if order.Provider == event.Provider {
+				return order, nil
+			}
+			return nil, nil
+		}
+		session, orderRef := "", ""
+		if kind == domainpayments.IndexKindPaymentSession {
+			session = ref
+		} else {
+			orderRef = ref
+		}
+		return p.orders.GetByProviderRef(ctx, pid, event.Provider, session, orderRef)
+	}
+
+	if event.OrderID != "" {
+		order, err := try(domainpayments.IndexKindPaymentSession, event.OrderID, true)
+		if err != nil || order != nil {
+			return order, err
+		}
+	}
+	if event.ProviderSessionID != "" {
+		order, err := try(domainpayments.IndexKindPaymentSession, event.ProviderSessionID, false)
+		if err != nil || order != nil {
+			return order, err
+		}
+	}
+	if event.ProviderOrderID != "" {
+		order, err := try(domainpayments.IndexKindPaymentOrder, event.ProviderOrderID, false)
+		if err != nil || order != nil {
+			return order, err
+		}
+	}
+	if hasPlatformRef(event) {
+		return nil, domainpayments.ErrProviderIndexMiss
+	}
+	return nil, nil
 }
 
 // orderEnvelope 组装订单事件信封（经济事件：domain=payments，
@@ -301,15 +381,4 @@ func orderEnvelope(order *domainpayments.Order, event string, now time.Time) dom
 			"purpose_kind": string(order.PurposeKind),
 		},
 	}
-}
-
-// ignoredEventID 尝试从畸形报文提取幂等锚点（best-effort）。
-func ignoredEventID(rawBody []byte) string {
-	var probe struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(rawBody, &probe); err != nil {
-		return ""
-	}
-	return probe.ID
 }

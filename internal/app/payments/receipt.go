@@ -48,16 +48,21 @@ func (p *Payments) VerifyReceipt(ctx context.Context, orderID string, receipt []
 		return nil, status.Error(codes.FailedPrecondition, "receipt verification returned no transaction")
 	}
 
-	// 全局唯一：已绑定的 transactionId 不得被其他用户领取。
-	bound, err := p.orders.GetByProviderRef(ctx, "", domainpayments.ProviderIOSIAP, "", purchased.TransactionID)
+	boundPID, err := p.lookupIndex(ctx, domainpayments.ProviderIOSIAP, domainpayments.IndexKindIOSTransaction, purchased.TransactionID)
 	if err != nil {
 		return nil, err
 	}
-	if bound != nil {
-		if bound.UserID != userID || bound.ProjectID != projectID {
-			return nil, status.Error(codes.PermissionDenied, "receipt already bound to another user")
+	if boundPID != "" {
+		bound, err := p.orders.GetByProviderRef(ctx, boundPID, domainpayments.ProviderIOSIAP, "", purchased.TransactionID)
+		if err != nil {
+			return nil, err
 		}
-		return &VerifyReceiptResult{Order: bound, TransactionID: purchased.TransactionID, IdempotentReplay: true}, nil
+		if bound != nil {
+			if bound.UserID != userID || bound.ProjectID != projectID {
+				return nil, status.Error(codes.PermissionDenied, "receipt already bound to another user")
+			}
+			return &VerifyReceiptResult{Order: bound, TransactionID: purchased.TransactionID, IdempotentReplay: true}, nil
+		}
 	}
 
 	order, err := p.orders.GetByID(ctx, projectID, orderID)
@@ -100,16 +105,8 @@ func (p *Payments) VerifyReceipt(ctx context.Context, orderID string, receipt []
 		if locked == nil {
 			return status.Error(codes.NotFound, "order not found")
 		}
-		// 并发下 transactionId 可能刚被另一订单占用。
-		other, err := p.orders.GetByProviderRef(txCtx, "", domainpayments.ProviderIOSIAP, "", purchased.TransactionID)
-		if err != nil {
+		if err := p.upsertIndex(txCtx, domainpayments.ProviderIOSIAP, domainpayments.IndexKindIOSTransaction, purchased.TransactionID, projectID); err != nil {
 			return err
-		}
-		if other != nil && other.ID != locked.ID {
-			if other.UserID != userID || other.ProjectID != projectID {
-				return status.Error(codes.PermissionDenied, "receipt already bound to another user")
-			}
-			return nil
 		}
 		return p.applyPaid(txCtx, locked, event, now)
 	})
@@ -124,10 +121,11 @@ func (p *Payments) VerifyReceipt(ctx context.Context, orderID string, receipt []
 	if latest == nil {
 		return nil, status.Error(codes.NotFound, "order not found")
 	}
-	// 若并发被另一本人订单占用，返回那张单（幂等重放）。
-	if bound2, err := p.orders.GetByProviderRef(ctx, "", domainpayments.ProviderIOSIAP, "", purchased.TransactionID); err == nil && bound2 != nil {
-		if bound2.ID != latest.ID && bound2.UserID == userID && bound2.ProjectID == projectID {
-			return &VerifyReceiptResult{Order: bound2, TransactionID: purchased.TransactionID, IdempotentReplay: true}, nil
+	if boundPID, err := p.lookupIndex(ctx, domainpayments.ProviderIOSIAP, domainpayments.IndexKindIOSTransaction, purchased.TransactionID); err == nil && boundPID != "" {
+		if bound2, err := p.orders.GetByProviderRef(ctx, boundPID, domainpayments.ProviderIOSIAP, "", purchased.TransactionID); err == nil && bound2 != nil {
+			if bound2.ID != latest.ID && bound2.UserID == userID && bound2.ProjectID == projectID {
+				return &VerifyReceiptResult{Order: bound2, TransactionID: purchased.TransactionID, IdempotentReplay: true}, nil
+			}
 		}
 	}
 	return &VerifyReceiptResult{Order: latest, TransactionID: purchased.TransactionID, IdempotentReplay: false}, nil

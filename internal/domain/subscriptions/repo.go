@@ -25,8 +25,8 @@ type SubscriptionRepo interface {
 	GetByID(ctx context.Context, projectID, id string) (*Subscription, error)
 	GetByIDForUpdate(ctx context.Context, projectID, id string) (*Subscription, error)
 	GetByIdempotencyKey(ctx context.Context, projectID, key string) (*Subscription, error)
-	GetByProviderSubID(ctx context.Context, provider, providerSubID string) (*Subscription, error)
-	GetByProviderSubIDForUpdate(ctx context.Context, provider, providerSubID string) (*Subscription, error)
+	GetByProviderSubID(ctx context.Context, projectID, provider, providerSubID string) (*Subscription, error)
+	GetByProviderSubIDForUpdate(ctx context.Context, projectID, provider, providerSubID string) (*Subscription, error)
 	// GetCurrentByUser 返回本人当前非终态订阅；planID 非空时限定计划。
 	// 若无非终态，返回最近一条（含终态）便于 GetMySubscription。
 	GetCurrentByUser(ctx context.Context, projectID, userID, planID string) (*Subscription, error)
@@ -35,7 +35,7 @@ type SubscriptionRepo interface {
 	ListByUser(ctx context.Context, projectID, userID string, limit int, before time.Time) ([]Subscription, error)
 	ListByProject(ctx context.Context, projectID string, limit int, before time.Time) ([]Subscription, error)
 	Update(ctx context.Context, sub *Subscription, expectStatus Status) error
-	// ListDueForBilling 扫描 platform 模式待处理行（FOR UPDATE SKIP LOCKED）：
+	// ListDueForBillingInProject 扫描 platform 模式待处理行（FOR UPDATE SKIP LOCKED）：
 	// 周期到期、past_due 宽限、cancel_at_period_end。
-	ListDueForBilling(ctx context.Context, now time.Time, limit int) ([]Subscription, error)
+	ListDueForBillingInProject(ctx context.Context, projectID string, now time.Time, limit int) ([]Subscription, error)
 }

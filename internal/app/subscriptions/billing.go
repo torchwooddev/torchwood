@@ -19,28 +19,41 @@ func (s *Subscriptions) RunBillingCycle(ctx context.Context, now time.Time) (int
 	if now.IsZero() {
 		now = s.ts()
 	}
-	ctx = withSystemPrincipal(ctx, "")
+	if s.projects == nil {
+		return 0, nil
+	}
+	all, err := s.projects.ListProjects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	remaining := billingBatch
 	var n int64
-	for {
-		batch, err := s.subs.ListDueForBilling(ctx, now, billingBatch)
+	for i := range all {
+		if remaining <= 0 {
+			break
+		}
+		if all[i].Status != "active" {
+			continue
+		}
+		batch, err := s.subs.ListDueForBillingInProject(ctx, all[i].ID, now, remaining)
 		if err != nil {
-			return n, err
+			s.logger.Error("list due subscriptions failed", "project_id", all[i].ID, "error", err)
+			continue
 		}
-		if len(batch) == 0 {
-			return n, nil
-		}
-		for i := range batch {
-			if err := s.processDue(ctx, &batch[i], now); err != nil {
+		for j := range batch {
+			if err := s.processDue(ctx, &batch[j], now); err != nil {
 				s.logger.Error("subscription billing cycle item failed",
-					"subscription_id", batch[i].ID, "error", err)
+					"subscription_id", batch[j].ID, "error", err)
 				continue
 			}
 			n++
-		}
-		if len(batch) < billingBatch {
-			return n, nil
+			remaining--
+			if remaining <= 0 {
+				break
+			}
 		}
 	}
+	return n, nil
 }
 
 func (s *Subscriptions) processDue(ctx context.Context, seed *domainsubs.Subscription, now time.Time) error {

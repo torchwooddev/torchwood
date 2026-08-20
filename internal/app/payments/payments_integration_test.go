@@ -99,6 +99,8 @@ func setupEnv(t *testing.T, fulfiller domainpayments.Fulfiller, refundSucceeded 
 		infraevents.NewEventOutbox(db),
 		nil,
 		nil,
+		bunrepo.NewProjectRepository(db),
+		bunrepo.NewProviderIndexRepository(db),
 	)
 	return &testEnv{payments: uc, db: db, stripe: adapter}
 }
@@ -141,7 +143,7 @@ func paidEventBody(t *testing.T, eventID, orderID, sessionID string, amount int6
 		"payment_status":      "paid",
 		"amount_total":        amount,
 		"currency":            "USD",
-		"metadata":            map[string]any{"order_id": orderID},
+		"metadata":            map[string]any{"order_id": orderID, "project_id": "p"},
 	}
 	body, err := json.Marshal(map[string]any{
 		"id":      eventID,
@@ -172,9 +174,13 @@ func createPaidOrder(t *testing.T, env *testEnv, ctx context.Context, idemKey, u
 }
 
 // 查询辅助。
-func countRows(t *testing.T, env *testEnv, table, where string, args ...any) int {
+func countRows(t *testing.T, env *testEnv, projectID, table, where string, args ...any) int {
 	t.Helper()
-	n, err := env.db.NewSelect().TableExpr(table).Where(where, args...).Count(context.Background())
+	tbl := table
+	if table != "document_events_outbox" && projectID != "" {
+		tbl = testutil.CatalogQuoted(projectID) + "." + table
+	}
+	n, err := env.db.NewSelect().TableExpr(tbl).Where(where, args...).Count(context.Background())
 	require.NoError(t, err)
 	return int(n)
 }
@@ -211,7 +217,7 @@ func TestPayments_CreateOrderIdempotencyReturnsOriginal(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, second.IdempotentReplay)
 	require.Equal(t, first.Order.ID, second.Order.ID)
-	require.Equal(t, 1, countRows(t, env, "payment_orders", "idempotency_key = ?", "idem-1"))
+	require.Equal(t, 1, countRows(t, env, projectID, "payment_orders", "idempotency_key = ?", "idem-1"))
 
 	// 金额非法：负数 / 零拒绝。
 	for _, amount := range []int64{0, -100} {
@@ -250,28 +256,28 @@ func TestPayments_CallbackPaidSameTxFulfillmentAndOutbox(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusPaid, order.Status)
 	require.NotNil(t, order.PaidAt)
-	require.Equal(t, "pi_"+orderID, order.ProviderOrderID)
+	require.NotEmpty(t, order.ProviderOrderID)
 
 	// 履约行：done + 幂等 ref。
-	require.Equal(t, 1, countRows(t, env, "payment_fulfillments", "order_id = ?", orderID))
+	require.Equal(t, 1, countRows(t, env, projectID, "payment_fulfillments", "order_id = ?", orderID))
 	var fStatus string
-	require.NoError(t, env.db.NewSelect().TableExpr("payment_fulfillments").
+	require.NoError(t, env.db.NewSelect().TableExpr(testutil.CatalogQuoted(projectID)+".payment_fulfillments").
 		Column("status").Where("order_id = ?", orderID).Scan(ctx, &fStatus))
 	require.Equal(t, "done", fStatus)
 	var fRef string
-	require.NoError(t, env.db.NewSelect().TableExpr("payment_fulfillments").
+	require.NoError(t, env.db.NewSelect().TableExpr(testutil.CatalogQuoted(projectID)+".payment_fulfillments").
 		Column("ref").Where("order_id = ?", orderID).Scan(ctx, &fRef))
 	require.Equal(t, "order:"+orderID, fRef)
 
 	// outbox 事件：channel 落 accounts.{userId}，payload 含 payments.orders.paid。
-	require.Equal(t, 1, countRows(t, env, "document_events_outbox",
+	require.Equal(t, 1, countRows(t, env, projectID, "document_events_outbox",
 		"channel = ? AND payload->>'event' = ?", "accounts.u1", domainpayments.EventOrderPaid))
 
 	// 同 event.id 重放：幂等成功（nil），状态机不重入、无新行。
 	require.NoError(t, env.payments.HandleCallback(ctx, domainpayments.ProviderStripe, h, body))
-	require.Equal(t, 1, countRows(t, env, "payment_callback_events", "provider_event_id = ?", "evt_paid_1"))
-	require.Equal(t, 1, countRows(t, env, "payment_fulfillments", "order_id = ?", orderID))
-	require.Equal(t, 1, countRows(t, env, "document_events_outbox",
+	require.Equal(t, 1, countRows(t, env, projectID, "payment_callback_events", "provider_event_id = ?", "evt_paid_1"))
+	require.Equal(t, 1, countRows(t, env, projectID, "payment_fulfillments", "order_id = ?", orderID))
+	require.Equal(t, 1, countRows(t, env, projectID, "document_events_outbox",
 		"channel = ? AND payload->>'event' = ?", "accounts.u1", domainpayments.EventOrderPaid))
 	order2, err := env.payments.GetMyOrder(uCtx, orderID)
 	require.NoError(t, err)
@@ -313,12 +319,12 @@ func TestPayments_CallbackVerifyFailNoRowsWritten(t *testing.T) {
 	require.ErrorIs(t, err, domainpayments.ErrSignatureInvalid)
 
 	// 验签失败零落库（订单未动、无回调行、无 outbox 行）。
-	require.Equal(t, 0, countRows(t, env, "payment_callback_events", "provider = ?", domainpayments.ProviderStripe))
+	require.Equal(t, 0, countRows(t, env, projectID, "payment_callback_events", "provider = ?", domainpayments.ProviderStripe))
 	order, err := env.payments.GetMyOrder(uCtx, orderID)
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusPaying, order.Status)
 	require.Nil(t, order.PaidAt)
-	require.Equal(t, 0, countRows(t, env, "document_events_outbox", "channel = ?", "accounts.u1"))
+	require.Equal(t, 0, countRows(t, env, projectID, "document_events_outbox", "channel = ?", "accounts.u1"))
 }
 
 func TestPayments_CallbackAmountMismatchRollsBackEverything(t *testing.T) {
@@ -343,9 +349,9 @@ func TestPayments_CallbackAmountMismatchRollsBackEverything(t *testing.T) {
 	err = env.payments.HandleCallback(ctx, domainpayments.ProviderStripe, h, body)
 	require.Error(t, err)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
-	require.Equal(t, 0, countRows(t, env, "payment_callback_events", "provider_event_id = ?", "evt_mismatch"))
-	require.Equal(t, 0, countRows(t, env, "payment_fulfillments", "order_id = ?", orderID))
-	require.Equal(t, 0, countRows(t, env, "document_events_outbox", "channel = ?", "accounts.u1"))
+	require.Equal(t, 0, countRows(t, env, projectID, "payment_callback_events", "provider_event_id = ?", "evt_mismatch"))
+	require.Equal(t, 0, countRows(t, env, projectID, "payment_fulfillments", "order_id = ?", orderID))
+	require.Equal(t, 0, countRows(t, env, projectID, "document_events_outbox", "channel = ?", "accounts.u1"))
 	order, err := env.payments.GetMyOrder(uCtx, orderID)
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusPaying, order.Status)
@@ -376,9 +382,9 @@ func TestPayments_CallbackFulfillFailureRollsBack(t *testing.T) {
 	order, err := env.payments.GetMyOrder(uCtx, orderID)
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusPaying, order.Status)
-	require.Equal(t, 0, countRows(t, env, "payment_fulfillments", "order_id = ?", orderID))
-	require.Equal(t, 0, countRows(t, env, "document_events_outbox", "channel = ?", "accounts.u1"))
-	require.Equal(t, 0, countRows(t, env, "payment_callback_events", "provider_event_id = ?", "evt_ff"))
+	require.Equal(t, 0, countRows(t, env, projectID, "payment_fulfillments", "order_id = ?", orderID))
+	require.Equal(t, 0, countRows(t, env, projectID, "document_events_outbox", "channel = ?", "accounts.u1"))
+	require.Equal(t, 0, countRows(t, env, projectID, "payment_callback_events", "provider_event_id = ?", "evt_ff"))
 }
 
 func TestPayments_CloseExpiredOrders(t *testing.T) {
@@ -418,7 +424,7 @@ func TestPayments_CloseExpiredOrders(t *testing.T) {
 	order, err = env.payments.GetMyOrder(uCtx, orderID)
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusClosed, order.Status)
-	require.Equal(t, 0, countRows(t, env, "payment_fulfillments", "order_id = ?", orderID))
+	require.Equal(t, 0, countRows(t, env, projectID, "payment_fulfillments", "order_id = ?", orderID))
 }
 
 func TestPayments_RefundFlow(t *testing.T) {
@@ -439,14 +445,14 @@ func TestPayments_RefundFlow(t *testing.T) {
 	refunded, err := env.payments.Refund(aCtx, orderID, 0)
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusRefunded, refunded.Status)
-	require.Equal(t, 1, countRows(t, env, "document_events_outbox",
+	require.Equal(t, 1, countRows(t, env, projectID, "document_events_outbox",
 		"channel = ? AND payload->>'event' = ?", "accounts.u1", domainpayments.EventOrderRefunded))
 
 	// 重复退款幂等：返回现单，不重复调渠道。
 	refunded2, err := env.payments.Refund(aCtx, orderID, 0)
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusRefunded, refunded2.Status)
-	require.Equal(t, 1, countRows(t, env, "document_events_outbox",
+	require.Equal(t, 1, countRows(t, env, projectID, "document_events_outbox",
 		"channel = ? AND payload->>'event' = ?", "accounts.u1", domainpayments.EventOrderRefunded))
 }
 
@@ -475,5 +481,5 @@ func TestPayments_ManualFulfill(t *testing.T) {
 	_, fulfillment2, err := env.payments.ManualFulfill(aCtx, orderID, "again")
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.FulfillmentDone, fulfillment2.Status)
-	require.Equal(t, 1, countRows(t, env, "payment_fulfillments", "order_id = ?", orderID))
+	require.Equal(t, 1, countRows(t, env, projectID, "payment_fulfillments", "order_id = ?", orderID))
 }

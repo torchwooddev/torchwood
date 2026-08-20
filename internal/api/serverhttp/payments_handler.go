@@ -51,6 +51,10 @@ func (h *PaymentsHandler) callback(w http.ResponseWriter, r *http.Request, pathP
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+		if errors.Is(err, domainpayments.ErrProviderIndexMiss) {
+			h.writeAckRetry(w, provider)
+			return
+		}
 		h.logger.Error("payment callback processing failed", "provider", provider, "error", err)
 		h.writeAck(w, provider, false)
 		return
@@ -64,6 +68,17 @@ func (h *PaymentsHandler) writeAck(w http.ResponseWriter, provider string, succe
 		w.Header().Set("Content-Type", contentType)
 	}
 	w.WriteHeader(status)
+	if len(body) > 0 {
+		_, _ = w.Write(body)
+	}
+}
+
+func (h *PaymentsHandler) writeAckRetry(w http.ResponseWriter, provider string) {
+	_, contentType, body := h.payments.CallbackAck(provider, false)
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
 	if len(body) > 0 {
 		_, _ = w.Write(body)
 	}

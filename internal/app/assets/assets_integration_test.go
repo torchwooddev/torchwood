@@ -33,6 +33,7 @@ func TestIntegration_PaidTopupGrantsInSameTx(t *testing.T) {
 		bunrepo.NewAssetLedgerRepository(db),
 		infraevents.NewEventOutbox(db),
 		nil,
+		bunrepo.NewProjectRepository(db),
 	)
 	admin := contexts.WithPrincipal(ctx, &domainshared.Principal{
 		ActorKind:      domainshared.ActorKindService,

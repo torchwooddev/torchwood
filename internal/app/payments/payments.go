@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -63,7 +64,9 @@ type Payments struct {
 	fulfiller    domainpayments.Fulfiller
 	providers    domainpayments.ProviderRegistry
 	events       shared.EventPublisher
-	subs         domainpayments.SubscriptionCallbackHandler // hosted 订阅 webhook（PR3，可空）
+	subs         domainpayments.SubscriptionCallbackHandler // hosted 订阅 webhook（可空）
+	projects     projects.Repository
+	index        domainpayments.ProviderIndexRepo
 	logger       *slog.Logger
 }
 
@@ -79,8 +82,10 @@ func NewPayments(
 	events shared.EventPublisher,
 	logger *slog.Logger,
 	subs domainpayments.SubscriptionCallbackHandler,
+	projectRepo projects.Repository,
+	index domainpayments.ProviderIndexRepo,
 ) *Payments {
-	return newPayments(cfg, db, orders, callbacks, fulfillments, fulfiller, providers, events, logger, subs)
+	return newPayments(cfg, db, orders, callbacks, fulfillments, fulfiller, providers, events, logger, subs, projectRepo, index)
 }
 
 // newPayments 允许单测注入内存 txRunner。
@@ -95,6 +100,8 @@ func newPayments(
 	events shared.EventPublisher,
 	logger *slog.Logger,
 	subs domainpayments.SubscriptionCallbackHandler,
+	projectRepo projects.Repository,
+	index domainpayments.ProviderIndexRepo,
 ) *Payments {
 	if logger == nil {
 		logger = slog.Default()
@@ -109,6 +116,8 @@ func newPayments(
 		providers:    providers,
 		events:       events,
 		subs:         subs,
+		projects:     projectRepo,
+		index:        index,
 		logger:       logger,
 	}
 }

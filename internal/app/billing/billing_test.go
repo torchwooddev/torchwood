@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
+	domainprojects "github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	infrabilling "github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -113,26 +114,6 @@ func (m *memRollups) DistinctHours(_ context.Context, projectID string, from, to
 	return len(seen), nil
 }
 
-func (m *memRollups) ListProjectIDsInRange(_ context.Context, from, to time.Time) ([]string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	seen := map[string]struct{}{}
-	for _, r := range m.rows {
-		if !from.IsZero() && r.PeriodStart.Before(from) {
-			continue
-		}
-		if !to.IsZero() && !r.PeriodStart.Before(to) {
-			continue
-		}
-		seen[r.ProjectID] = struct{}{}
-	}
-	out := make([]string, 0, len(seen))
-	for id := range seen {
-		out = append(out, id)
-	}
-	return out, nil
-}
-
 type memStatements struct {
 	mu   sync.Mutex
 	rows map[string]*domainbilling.Statement
@@ -192,6 +173,15 @@ func (m *memStatements) List(_ context.Context, projectID string, limit int, bef
 	return out, nil
 }
 
+type listProjectsStub struct {
+	domainprojects.Repository
+	list []domainprojects.Project
+}
+
+func (s *listProjectsStub) ListProjects(context.Context) ([]domainprojects.Project, error) {
+	return s.list, nil
+}
+
 func newTestBilling(t *testing.T) (*infrabilling.RedisCounter, *memRollups, *memStatements, *Billing) {
 	t.Helper()
 	mr, err := miniredis.Run()
@@ -202,7 +192,7 @@ func newTestBilling(t *testing.T) (*infrabilling.RedisCounter, *memRollups, *mem
 	counter := infrabilling.NewRedisCounter(rdb)
 	rollups := newMemRollups()
 	statements := newMemStatements()
-	b := NewBilling(counter, rollups, statements, nil, nil, nil)
+	b := NewBilling(counter, rollups, statements, &listProjectsStub{list: []domainprojects.Project{{ID: "proj-1", Status: "active"}}}, nil, nil)
 	b.now = func() time.Time { return time.Date(2026, 8, 20, 16, 5, 0, 0, time.UTC) }
 	return counter, rollups, statements, b
 }

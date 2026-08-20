@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
+	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

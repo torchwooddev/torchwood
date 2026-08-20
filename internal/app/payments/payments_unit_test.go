@@ -33,6 +33,7 @@ type memStore struct {
 	callbacks    map[string]struct{}
 	fulfillments map[string]*domainpayments.Fulfillment
 	byFulfillID  map[string]string
+	index        map[string]string
 	outbox       []domainevents.Envelope
 }
 
@@ -43,7 +44,25 @@ func newMemStore() *memStore {
 		callbacks:    map[string]struct{}{},
 		fulfillments: map[string]*domainpayments.Fulfillment{},
 		byFulfillID:  map[string]string{},
+		index:        map[string]string{},
 	}
+}
+
+type memIndex struct{ s *memStore }
+
+func indexKey(provider, kind, ref string) string { return provider + "|" + kind + "|" + ref }
+
+func (r memIndex) Lookup(_ context.Context, provider, kind, ref string) (string, error) {
+	return r.s.index[indexKey(provider, kind, ref)], nil
+}
+
+func (r memIndex) Upsert(_ context.Context, provider, kind, ref, projectID string) error {
+	k := indexKey(provider, kind, ref)
+	if existing, ok := r.s.index[k]; ok && existing != projectID {
+		return status.Error(codes.PermissionDenied, "provider resource already bound to another project")
+	}
+	r.s.index[k] = projectID
+	return nil
 }
 
 func (s *memStore) RunInTx(_ context.Context, fn func(context.Context) error) error {
@@ -62,6 +81,7 @@ func (s *memStore) snapshot() memStore {
 		callbacks:    make(map[string]struct{}, len(s.callbacks)),
 		fulfillments: make(map[string]*domainpayments.Fulfillment, len(s.fulfillments)),
 		byFulfillID:  make(map[string]string, len(s.byFulfillID)),
+		index:        make(map[string]string, len(s.index)),
 		outbox:       append([]domainevents.Envelope(nil), s.outbox...),
 	}
 	for k, v := range s.orders {
@@ -79,6 +99,9 @@ func (s *memStore) snapshot() memStore {
 	for k, v := range s.byFulfillID {
 		out.byFulfillID[k] = v
 	}
+	for k, v := range s.index {
+		out.index[k] = v
+	}
 	return out
 }
 
@@ -88,6 +111,7 @@ func (s *memStore) restore(snap memStore) {
 	s.callbacks = snap.callbacks
 	s.fulfillments = snap.fulfillments
 	s.byFulfillID = snap.byFulfillID
+	s.index = snap.index
 	s.outbox = snap.outbox
 }
 
@@ -184,7 +208,9 @@ func (r memOrders) ListByUser(context.Context, string, string, int, time.Time) (
 func (r memOrders) ListByProject(context.Context, string, int, time.Time) ([]domainpayments.Order, error) {
 	return nil, nil
 }
-func (r memOrders) CloseExpired(context.Context, time.Time, int) (int64, error) { return 0, nil }
+func (r memOrders) CloseExpiredInProject(context.Context, string, time.Time, int) (int64, error) {
+	return 0, nil
+}
 
 type memCallbacks struct{ s *memStore }
 
@@ -210,7 +236,7 @@ func (r memFulfillments) InsertPending(_ context.Context, f *domainpayments.Fulf
 	return nil, true, nil
 }
 
-func (r memFulfillments) MarkDone(_ context.Context, fulfillmentID, ref string, detail map[string]any) error {
+func (r memFulfillments) MarkDone(_ context.Context, _, fulfillmentID, ref string, detail map[string]any) error {
 	oid, ok := r.s.byFulfillID[fulfillmentID]
 	if !ok {
 		return errors.New("fulfillment not found")
@@ -224,7 +250,7 @@ func (r memFulfillments) MarkDone(_ context.Context, fulfillmentID, ref string, 
 	return nil
 }
 
-func (r memFulfillments) MarkFailed(_ context.Context, fulfillmentID, reason string) error {
+func (r memFulfillments) MarkFailed(_ context.Context, _, fulfillmentID, reason string) error {
 	oid, ok := r.s.byFulfillID[fulfillmentID]
 	if !ok {
 		return errors.New("fulfillment not found")
@@ -333,6 +359,8 @@ func setupUnit(t *testing.T, provider domainpayments.PaymentProvider, fulfiller 
 		memPublisher{store},
 		nil,
 		nil,
+		nil,
+		memIndex{store},
 	)
 	return &unitEnv{payments: uc, store: store, provider: fp}
 }
@@ -367,6 +395,10 @@ func seedPayingOrder(t *testing.T, store *memStore, orderID string, amount int64
 	}
 	store.orders[order.ID] = cloneOrder(order)
 	store.byIdem[idemKey(order.ProjectID, order.IdempotencyKey)] = order.ID
+	store.index[indexKey(order.Provider, domainpayments.IndexKindPaymentSession, order.ID)] = order.ProjectID
+	if order.ProviderSessionID != "" {
+		store.index[indexKey(order.Provider, domainpayments.IndexKindPaymentSession, order.ProviderSessionID)] = order.ProjectID
+	}
 	return order
 }
 
@@ -556,7 +588,7 @@ func TestHandleCallback_UnknownProviderWritesNothing(t *testing.T) {
 func TestNewPayments_WiresDatabaseAsTxRunner(t *testing.T) {
 	// 生产构造器签名不变：nil *clients.Database 仍可装配（handler 验签失败路径）。
 	adapter := stripe.New(stripe.Config{SecretKey: "sk", WebhookSecret: unitWebhookSecret})
-	uc := NewPayments(nil, nil, nil, nil, nil, NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil)
+	uc := NewPayments(nil, nil, nil, nil, nil, NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil, nil, nil)
 	require.NotNil(t, uc)
 }
 
@@ -607,6 +639,10 @@ func seedIOSOrder(t *testing.T, store *memStore, orderID, userID string, status 
 	}
 	store.orders[order.ID] = cloneOrder(order)
 	store.byIdem[idemKey(order.ProjectID, order.IdempotencyKey)] = order.ID
+	store.index[indexKey(order.Provider, domainpayments.IndexKindPaymentSession, order.ID)] = order.ProjectID
+	if order.ProviderOrderID != "" {
+		store.index[indexKey(order.Provider, domainpayments.IndexKindIOSTransaction, order.ProviderOrderID)] = order.ProjectID
+	}
 	return order
 }
 

@@ -25,6 +25,10 @@ var ErrUnsupported = errors.New("payments: operation unsupported by provider")
 // （设计 §Security：验签是唯一信任根，不返回区分性错误）。
 var ErrSignatureInvalid = errors.New("payments: callback signature invalid")
 
+// ErrProviderIndexMiss 表示验签成功、携带本平台会写入的 ref，但
+// public.provider_resource_index 未命中（早到 webhook）。HTTP 映射 503。
+var ErrProviderIndexMiss = errors.New("payments: provider resource index miss")
+
 // ErrReceiptBoundToOtherUser 表示 iOS receipt / transactionId 已绑定其他用户
 // （设计 §Security 5：一份 receipt 绑一个 user，跨用户领取拒绝）。
 var ErrReceiptBoundToOtherUser = errors.New("payments: receipt already bound to another user")
@@ -65,6 +69,7 @@ func AsProviderError(err error) *ProviderError {
 // CreatePaymentInput 是下单入参（use-case 从订单实体组装）。
 type CreatePaymentInput struct {
 	OrderID     string // 本地订单 id，回填渠道 metadata / client_reference_id
+	ProjectID   string // Stripe metadata[project_id]（K21 区分早到 vs 噪音）
 	Amount      int64  // 最小货币单位（bigint，禁止 float）
 	Currency    string // ISO-4217 三字母
 	Description string // 收银台展示名
@@ -78,8 +83,9 @@ type CreatePaymentInput struct {
 // PaymentSession 是下单结果：客户端完成支付所需的载荷
 // （Stripe → checkout URL；微信/支付宝 → 预下单参数/二维码串）。
 type PaymentSession struct {
-	SessionID  string // 渠道会话 id（Stripe Checkout Session cs_...）
-	PaymentURL string // 客户端跳转/拉起地址
+	SessionID       string // 渠道会话 id（Stripe Checkout Session cs_...）
+	PaymentURL      string // 客户端跳转/拉起地址
+	ProviderOrderID string // 渠道支付单（Stripe pi_，若下单时已知）
 }
 
 // CallbackEventType 是归一化回调类型（设计 §1.1）。subscription_* 由 PR3 消费。
@@ -132,6 +138,9 @@ type CallbackEvent struct {
 	HostedStatus        string
 	BillingReason       string
 	CheckoutMode        string
+
+	// MetadataProjectID 是 Stripe metadata[project_id]（K21 hasPlatformRef）。
+	MetadataProjectID string
 }
 
 // SubscriptionCallbackHandler 处理 hosted 订阅 webhook（PR3）：

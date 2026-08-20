@@ -169,11 +169,18 @@ func (b *Billing) upsertStatements(ctx context.Context, now time.Time) error {
 
 func (b *Billing) upsertMonth(ctx context.Context, monthStart time.Time, want domainbilling.StatementStatus, now time.Time) error {
 	monthEnd := domainbilling.NextMonth(monthStart)
-	ids, err := b.rollups.ListProjectIDsInRange(ctx, monthStart, monthEnd)
+	if b.projects == nil {
+		return nil
+	}
+	all, err := b.projects.ListProjects(ctx)
 	if err != nil {
 		return err
 	}
-	for _, projectID := range ids {
+	for _, p := range all {
+		if p.Status != "active" {
+			continue
+		}
+		projectID := p.ID
 		metrics, err := b.rollups.SumByMetric(ctx, projectID, monthStart, monthEnd)
 		if err != nil {
 			return err

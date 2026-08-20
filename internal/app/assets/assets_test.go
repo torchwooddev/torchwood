@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
+	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	domainshared "github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
@@ -251,9 +252,15 @@ func (s *memStore) DeleteHolding(_ context.Context, projectID, holdingID string,
 	return nil
 }
 
-func (s *memStore) ListExpired(_ context.Context, now time.Time, limit int) ([]domainassets.Holding, error) {
+func (s *memStore) ListExpiredInProject(_ context.Context, projectID string, now time.Time, limit int) ([]domainassets.Holding, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
 	var out []domainassets.Holding
 	for _, h := range s.holdings {
+		if h.ProjectID != projectID {
+			continue
+		}
 		if h.ExpiresAt != nil && !h.ExpiresAt.After(now) {
 			out = append(out, *cloneHolding(h))
 		}
@@ -369,8 +376,8 @@ func (r memHoldings) Update(ctx context.Context, h *domainassets.Holding, v int6
 func (r memHoldings) Delete(ctx context.Context, p, id string, v int64) error {
 	return r.s.DeleteHolding(ctx, p, id, v)
 }
-func (r memHoldings) ListExpired(ctx context.Context, now time.Time, limit int) ([]domainassets.Holding, error) {
-	return r.s.ListExpired(ctx, now, limit)
+func (r memHoldings) ListExpiredInProject(ctx context.Context, projectID string, now time.Time, limit int) ([]domainassets.Holding, error) {
+	return r.s.ListExpiredInProject(ctx, projectID, now, limit)
 }
 func (r memHoldings) ListAllInProject(ctx context.Context, p string) ([]domainassets.Holding, error) {
 	return r.s.ListAllHoldings(ctx, p)
@@ -411,6 +418,15 @@ func userCtx(projectID, userID string) context.Context {
 	})
 }
 
+type listProjectsStub struct {
+	projects.Repository
+	list []projects.Project
+}
+
+func (s *listProjectsStub) ListProjects(context.Context) ([]projects.Project, error) {
+	return s.list, nil
+}
+
 type testEnv struct {
 	assets *Assets
 	store  *memStore
@@ -421,7 +437,7 @@ func setupAssets(t *testing.T) *testEnv {
 	t.Helper()
 	store := newMemStore()
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
-	a := newAssets(store, store, memHoldings{store}, memLedger{store}, store, nil)
+	a := newAssets(store, store, memHoldings{store}, memLedger{store}, store, nil, &listProjectsStub{list: []projects.Project{{ID: "p1", Status: "active"}}})
 	a.now = func() time.Time { return now }
 	return &testEnv{assets: a, store: store, now: now}
 }

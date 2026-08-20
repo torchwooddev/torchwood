@@ -8,21 +8,21 @@ import (
 
 // Plan 是订阅计划行（public.subscription_plans）。
 type Plan struct {
-	ID                 string
-	ProjectID          string
-	Code               string
-	Name               string
-	Amount             int64 // 最小货币单位，>=0（bigint，禁止 float）
-	Currency           string
-	Interval           Interval
-	IntervalDays       int64
-	GraceDays          int32
-	TrialDays          int32
-	Benefits           Benefits
-	ProviderOverrides  ProviderOverrides
-	Status             PlanStatus
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                string
+	ProjectID         string
+	Code              string
+	Name              string
+	Amount            int64 // 最小货币单位，>=0（bigint，禁止 float）
+	Currency          string
+	Interval          Interval
+	IntervalDays      int64
+	GraceDays         int32
+	TrialDays         int32
+	Benefits          Benefits
+	ProviderOverrides ProviderOverrides
+	Status            PlanStatus
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // Benefits 是资产发放清单快照（设计 §3.2）：激活/续期成功时调资产系统发放。

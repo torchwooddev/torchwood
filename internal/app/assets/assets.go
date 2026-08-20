@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -60,6 +61,7 @@ type Assets struct {
 	holdings domainassets.HoldingRepo
 	ledger   domainassets.LedgerRepo
 	events   shared.EventPublisher
+	projects projects.Repository
 	logger   *slog.Logger
 	now      func() time.Time
 }
@@ -72,8 +74,9 @@ func NewAssets(
 	ledger domainassets.LedgerRepo,
 	events shared.EventPublisher,
 	logger *slog.Logger,
+	projectRepo projects.Repository,
 ) *Assets {
-	return newAssets(db, defs, holdings, ledger, events, logger)
+	return newAssets(db, defs, holdings, ledger, events, logger, projectRepo)
 }
 
 func newAssets(
@@ -83,6 +86,7 @@ func newAssets(
 	ledger domainassets.LedgerRepo,
 	events shared.EventPublisher,
 	logger *slog.Logger,
+	projectRepo projects.Repository,
 ) *Assets {
 	if logger == nil {
 		logger = slog.Default()
@@ -93,6 +97,7 @@ func newAssets(
 		holdings: holdings,
 		ledger:   ledger,
 		events:   events,
+		projects: projectRepo,
 		logger:   logger,
 		now:      func() time.Time { return time.Now().UTC() },
 	}

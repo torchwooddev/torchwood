@@ -2,11 +2,16 @@ package serverhttp
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/stretchr/testify/require"
@@ -44,7 +49,7 @@ func newCallbackOnlyPayments(t *testing.T) (*apppayments.Payments, *writeSpyCall
 			alipay.New(alipay.Config{AlipayPublicKey: "x"}),
 			iosiap.New(iosiap.Config{SharedSecret: "s"}),
 		),
-		nil, nil, nil,
+		nil, nil, nil, nil, nil,
 	), spy
 }
 
@@ -87,7 +92,7 @@ func TestPaymentsHandler_MissingSignatureHeaderReturns401(t *testing.T) {
 func TestPaymentsHandler_UnconfiguredProviderReturns401(t *testing.T) {
 	adapter := stripe.New(stripe.Config{})
 	uc := apppayments.NewPayments(nil, nil, nil, nil, nil,
-		apppayments.NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil)
+		apppayments.NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil, nil, nil)
 	h, err := NewPaymentsHandler(uc, nil)
 	require.NoError(t, err)
 
@@ -155,4 +160,22 @@ func TestPaymentsHandler_AckFormats(t *testing.T) {
 	require.Empty(t, body)
 
 	_ = h
+}
+
+func TestPaymentsHandler_IndexMissReturns503FailBody(t *testing.T) {
+	uc, spy := newCallbackOnlyPayments(t)
+	h, err := NewPaymentsHandler(uc, nil)
+	require.NoError(t, err)
+
+	body := `{"id":"evt_early","type":"checkout.session.completed","data":{"object":{"id":"cs_1","client_reference_id":"ord_1","payment_status":"paid","amount_total":100,"currency":"usd","metadata":{"order_id":"ord_1","project_id":"shop"}}}}`
+	ts := time.Now().Unix()
+	mac := hmac.New(sha256.New, []byte("whsec_handler_test"))
+	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	mac.Write([]byte(body))
+	hdr := http.Header{}
+	hdr.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))
+	rec := postCallback(h, "stripe", body, hdr)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Empty(t, rec.Body.String())
+	require.Equal(t, 0, spy.inserts)
 }

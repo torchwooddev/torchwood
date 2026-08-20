@@ -24,9 +24,8 @@ type OrderRepo interface {
 	ListByUser(ctx context.Context, projectID, userID string, limit int, before time.Time) ([]Order, error)
 	// ListByProject 返回项目订单（created_at DESC 分页，Server/Console 面）。
 	ListByProject(ctx context.Context, projectID string, limit int, before time.Time) ([]Order, error)
-	// CloseExpired 把 created/paying 且超时的订单翻 closed，返回关单数
-	// （worker 周期任务；状态机非法迁移自动跳过）。
-	CloseExpired(ctx context.Context, now time.Time, limit int) (int64, error)
+	// CloseExpiredInProject 把指定项目 created/paying 且超时的订单翻 closed。
+	CloseExpiredInProject(ctx context.Context, projectID string, now time.Time, limit int) (int64, error)
 }
 
 // CallbackEventRepo 登记渠道回调事件：幂等锚点二 (provider, provider_event_id)
@@ -66,10 +65,10 @@ type FulfillmentRepo interface {
 	// 返回已存在的行与 false（一单一类履约恰好一次）。
 	InsertPending(ctx context.Context, f *Fulfillment) (existing *Fulfillment, inserted bool, err error)
 	// MarkDone 把履约行置 done 并回填 ref。
-	MarkDone(ctx context.Context, fulfillmentID, ref string, detail map[string]any) error
+	MarkDone(ctx context.Context, projectID, fulfillmentID, ref string, detail map[string]any) error
 	// MarkFailed 把履约行置 failed（事务整体回滚路径一般用不到，
 	// 留给人工排查标记）。
-	MarkFailed(ctx context.Context, fulfillmentID, reason string) error
+	MarkFailed(ctx context.Context, projectID, fulfillmentID, reason string) error
 	// GetByOrder 按订单取履约行。
 	GetByOrder(ctx context.Context, projectID, orderID string) (*Fulfillment, error)
 }

@@ -31,8 +31,8 @@ type HoldingRepo interface {
 	ListByOwner(ctx context.Context, projectID string, ownerType OwnerType, ownerID string, limit int, before time.Time) ([]Holding, error)
 	Update(ctx context.Context, h *Holding, expectVersion int64) error
 	Delete(ctx context.Context, projectID, holdingID string, expectVersion int64) error
-	// ListExpired 到期扫描（worker）：expires_at <= now，FOR UPDATE SKIP LOCKED。
-	ListExpired(ctx context.Context, now time.Time, limit int) ([]Holding, error)
+	// ListExpiredInProject 到期扫描（worker）：expires_at <= now，FOR UPDATE SKIP LOCKED。
+	ListExpiredInProject(ctx context.Context, projectID string, now time.Time, limit int) ([]Holding, error)
 	// ListAllInProject 对账用：项目内全部持有（含已过期未扫行）。
 	ListAllInProject(ctx context.Context, projectID string) ([]Holding, error)
 }

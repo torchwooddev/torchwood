@@ -12,7 +12,7 @@ import (
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
-// usageRepo 实现 billing.UsageRepo（public.usage_rollups）。
+// usageRepo 实现 billing.UsageRepo（项目 schema usage_rollups）。
 type usageRepo struct {
 	db *clients.Database
 }
@@ -31,8 +31,12 @@ func (r *usageRepo) Upsert(ctx context.Context, rollup *billing.Rollup) error {
 		rollup.CreatedAt = now
 	}
 	rollup.UpdatedAt = now
+	conn, sch, expr, err := Scoped(ctx, r.db, rollup.ProjectID, "usage_rollups", "ur")
+	if err != nil {
+		return err
+	}
 	m := mapRollupToModel(rollup)
-	_, err := r.db.Conn(ctx).NewInsert().Model(m).
+	_, err = conn.NewInsert().Model(m).ModelTableExpr(expr, sch).
 		On("CONFLICT (project_id, metric, period_start) DO UPDATE").
 		Set("value = EXCLUDED.value").
 		Set("updated_at = EXCLUDED.updated_at").
@@ -41,8 +45,12 @@ func (r *usageRepo) Upsert(ctx context.Context, rollup *billing.Rollup) error {
 }
 
 func (r *usageRepo) Get(ctx context.Context, projectID, metric string, periodStart time.Time) (*billing.Rollup, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.UsageRollup)
-	err := r.db.Conn(ctx).NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("ur.project_id = ?", projectID).
 		Where("ur.metric = ?", metric).
 		Where("ur.period_start = ?", periodStart.UTC()).
@@ -57,8 +65,12 @@ func (r *usageRepo) Get(ctx context.Context, projectID, metric string, periodSta
 }
 
 func (r *usageRepo) List(ctx context.Context, projectID, metric string, from, to time.Time, limit int, before time.Time, beforeID string) ([]billing.Rollup, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	if err != nil {
+		return nil, err
+	}
 	var ms []model.UsageRollup
-	q := r.db.Conn(ctx).NewSelect().Model(&ms).
+	q := conn.NewSelect().Model(&ms).ModelTableExpr(expr, sch).
 		Where("ur.project_id = ?", projectID)
 	if metric != "" {
 		q = q.Where("ur.metric = ?", metric)
@@ -90,12 +102,16 @@ func (r *usageRepo) List(ctx context.Context, projectID, metric string, from, to
 }
 
 func (r *usageRepo) SumByMetric(ctx context.Context, projectID string, from, to time.Time) (map[string]int64, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	if err != nil {
+		return nil, err
+	}
 	type row struct {
 		Metric string `bun:"metric"`
 		Total  int64  `bun:"total"`
 	}
-	q := r.db.Conn(ctx).NewSelect().
-		TableExpr("usage_rollups AS ur").
+	q := conn.NewSelect().
+		ModelTableExpr(expr, sch).
 		ColumnExpr("ur.metric").
 		ColumnExpr("SUM(ur.value) AS total").
 		Where("ur.project_id = ?", projectID).
@@ -118,8 +134,12 @@ func (r *usageRepo) SumByMetric(ctx context.Context, projectID string, from, to 
 }
 
 func (r *usageRepo) DistinctHours(ctx context.Context, projectID string, from, to time.Time) (int, error) {
-	q := r.db.Conn(ctx).NewSelect().
-		TableExpr("usage_rollups AS ur").
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	if err != nil {
+		return 0, err
+	}
+	q := conn.NewSelect().
+		ModelTableExpr(expr, sch).
 		ColumnExpr("COUNT(DISTINCT ur.period_start)").
 		Where("ur.project_id = ?", projectID)
 	if !from.IsZero() {
@@ -133,24 +153,6 @@ func (r *usageRepo) DistinctHours(ctx context.Context, projectID string, from, t
 		return 0, err
 	}
 	return n, nil
-}
-
-func (r *usageRepo) ListProjectIDsInRange(ctx context.Context, from, to time.Time) ([]string, error) {
-	q := r.db.Conn(ctx).NewSelect().
-		TableExpr("usage_rollups AS ur").
-		ColumnExpr("DISTINCT ur.project_id").
-		OrderExpr("ur.project_id")
-	if !from.IsZero() {
-		q = q.Where("ur.period_start >= ?", from.UTC())
-	}
-	if !to.IsZero() {
-		q = q.Where("ur.period_start < ?", to.UTC())
-	}
-	var ids []string
-	if err := q.Scan(ctx, &ids); err != nil {
-		return nil, err
-	}
-	return ids, nil
 }
 
 func mapRollupToModel(r *billing.Rollup) *model.UsageRollup {
@@ -177,7 +179,7 @@ func mapRollupToDomain(m *model.UsageRollup) *billing.Rollup {
 	}
 }
 
-// statementRepo 实现 billing.StatementRepo（public.billing_statements）。
+// statementRepo 实现 billing.StatementRepo（项目 schema billing_statements）。
 type statementRepo struct {
 	db *clients.Database
 }
@@ -200,6 +202,10 @@ func (r *statementRepo) Upsert(ctx context.Context, s *billing.Statement) error 
 	if err != nil {
 		return err
 	}
+	conn, sch, expr, err := Scoped(ctx, r.db, s.ProjectID, "billing_statements", "bs")
+	if err != nil {
+		return err
+	}
 	m := &model.BillingStatement{
 		ID:          s.ID,
 		ProjectID:   s.ProjectID,
@@ -212,21 +218,25 @@ func (r *statementRepo) Upsert(ctx context.Context, s *billing.Statement) error 
 		FinalizedAt: s.FinalizedAt,
 	}
 	// 已 final 的账单不回退：冲突时仅当现行为 draft 才更新。
-	_, err = r.db.Conn(ctx).NewInsert().Model(m).
+	_, err = conn.NewInsert().Model(m).ModelTableExpr(expr, sch).
 		On("CONFLICT (project_id, period_start) DO UPDATE").
 		Set("period_end = EXCLUDED.period_end").
 		Set("status = EXCLUDED.status").
 		Set("details = EXCLUDED.details").
 		Set("updated_at = EXCLUDED.updated_at").
 		Set("finalized_at = EXCLUDED.finalized_at").
-		Where("billing_statements.status <> ?", string(billing.StatementFinal)).
+		Where("bs.status <> ?", string(billing.StatementFinal)).
 		Exec(ctx)
 	return err
 }
 
 func (r *statementRepo) Get(ctx context.Context, projectID string, periodStart time.Time) (*billing.Statement, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "billing_statements", "bs")
+	if err != nil {
+		return nil, err
+	}
 	m := new(model.BillingStatement)
-	err := r.db.Conn(ctx).NewSelect().Model(m).
+	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("bs.project_id = ?", projectID).
 		Where("bs.period_start = ?", periodStart.UTC()).
 		Scan(ctx)
@@ -240,8 +250,12 @@ func (r *statementRepo) Get(ctx context.Context, projectID string, periodStart t
 }
 
 func (r *statementRepo) List(ctx context.Context, projectID string, limit int, before time.Time) ([]billing.Statement, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "billing_statements", "bs")
+	if err != nil {
+		return nil, err
+	}
 	var ms []model.BillingStatement
-	q := r.db.Conn(ctx).NewSelect().Model(&ms).
+	q := conn.NewSelect().Model(&ms).ModelTableExpr(expr, sch).
 		Where("bs.project_id = ?", projectID)
 	if !before.IsZero() {
 		q = q.Where("bs.period_start < ?", before.UTC())
