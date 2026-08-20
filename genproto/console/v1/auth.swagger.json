@@ -254,7 +254,7 @@
         },
         "databaseId": {
           "type": "string",
-          "title": "首个业务数据库 ID，规则同 project_id。系统集合所在的 default 库会随\r\n项目自动创建；填写 default 即使用该库，填写其他 id 则额外创建业务库。"
+          "title": "首个业务数据库 ID，规则同 project_id。CreateProject 把它作为第一业务库\r\n创建（缺省 default）；系统集合在项目数据面 tw_\u003cproject\u003e，不在该库。"
         }
       }
     },
