@@ -19,6 +19,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/pkg/crud"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/query"
 	"github.com/uptrace/bun"
@@ -93,11 +94,10 @@ func (p *postgresDocumentDB) conn(ctx context.Context) bun.IDB {
 }
 
 func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, name string) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	_, schema, err := p.tenantAndSchema(ctx, projectID, id)
 	if err != nil {
 		return err
 	}
-	schema := schemaName(internalID, id)
 	// R02-P1-2：schema / _perms 表与 document_databases 元数据包进同一事务，
 	// 任一步失败整体回滚，避免"schema 已建而元数据缺失"。
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
@@ -157,11 +157,10 @@ func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string
 }
 
 func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id string) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	_, schema, err := p.tenantAndSchema(ctx, projectID, id)
 	if err != nil {
 		return err
 	}
-	schema := schemaName(internalID, id)
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
 			return err
@@ -185,11 +184,10 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 }
 
 func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	internalID, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
-	schema := schemaName(internalID, databaseID)
 
 	// DDL 与 document_* 元数据包进同一事务（PG 支持事务内 DDL），
 	// 任一步失败整体回滚，避免"物理表建成而元数据缺失"。
@@ -305,11 +303,10 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	internalID, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
-	schema := schemaName(internalID, databaseID)
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
 			return err
@@ -368,8 +365,7 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 }
 
 func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, databaseID, collectionID string, attr databases.Attribute) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
-	if err != nil {
+	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
 		return err
 	}
 	// 第二道防线（app 层已校验）：直调 adapter 也不得把系统保留列（含 _version）
@@ -377,7 +373,10 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return err
+	}
 	colSQL, err := attributeColumnSQL(attr)
 	if err != nil {
 		return err
@@ -406,11 +405,10 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	_, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
-	schema := schemaName(internalID, databaseID)
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if err := p.createCollectionIndex(txCtx, schema, collectionID, idx); err != nil {
 			return err
@@ -460,7 +458,10 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 	} else if err := validateDocID(doc.ID); err != nil {
 		return doc, err
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return doc, err
+	}
 	tbl := tableName(schema, collectionID)
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
@@ -574,7 +575,10 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	if err != nil {
 		return doc, err
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return doc, err
+	}
 	tbl := tableName(schema, collectionID)
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
@@ -621,7 +625,7 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 		// 命中已存在行 → 对该行做文档级 update 检查（UpdateDocument 语义）；
 		// 未命中 → 纯插入 → 集合级 create 权限（CreateDocument 语义）。
 		if targetID != "" {
-			if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, targetID, internalID, "update", principal, coll); err != nil {
+			if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, targetID, internalID, "update", principal, coll); err != nil {
 				return doc, err
 			}
 		} else if !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
@@ -744,7 +748,10 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 	if err != nil {
 		return nil, err
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return nil, err
+	}
 	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, collectionID)), docID, internalID)
 	doc, err := scanDocumentJSON(row)
 	if err != nil {
@@ -753,7 +760,7 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 	if doc == nil {
 		return nil, nil
 	}
-	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "read", principal, nil); err != nil {
+	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, docID, internalID, "read", principal, nil); err != nil {
 		return nil, err
 	}
 	if err := p.attachDocumentPermissions(ctx, schema, collectionID, internalID, doc); err != nil {
@@ -793,7 +800,10 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	if err != nil {
 		return doc, err
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return doc, err
+	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
 		return doc, err
@@ -816,7 +826,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	// D3：UpdateDocument 仅检查 update 权限，不再强制 read 预检
 	// （对齐 Appwrite/Supabase：update 策略独立于 select 策略；B1 文档级优先下
 	// "仅持 update 权限"的文档对持权者可用）。
-	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, doc.ID, internalID, "update", principal, nil); err != nil {
+	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, doc.ID, internalID, "update", principal, nil); err != nil {
 		return doc, err
 	}
 	// update 事件 acl=写前：在 SET / _perms 替换之前抓拍当前文档 _perms。
@@ -930,11 +940,10 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 // 事务内，删除失败时不会残留权限行。用户集合（非系统）强制 OCC：
 // ExpectedVersion 必填且须等于当前行 _version（行锁下比较，防止竞态）。
 func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	internalID, schema, err := p.tenantAndSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
 	}
-	schema := schemaName(internalID, databaseID)
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
 		return err
@@ -942,7 +951,7 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 	if !principal.IsSystem() && isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return ErrPermissionDenied
 	}
-	if err := p.checkDocumentPermission(ctx, projectID, schema, collectionID, docID, internalID, "delete", principal, nil); err != nil {
+	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, docID, internalID, "delete", principal, nil); err != nil {
 		return err
 	}
 	if !isSystem {
@@ -1048,7 +1057,10 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		return nil, fmt.Errorf("invalid query: %w", err)
 	}
 
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return nil, err
+	}
 	tbl := tableName(schema, collectionID)
 
 	// 非 System 路径显式获取集合一次（coll==nil → NotFound，行为从 403 收紧为 404），
@@ -1233,7 +1245,10 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	if parsed.Offset > maxQueryOffset {
 		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return 0, err
+	}
 	tbl := tableName(schema, collectionID)
 
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
@@ -1290,7 +1305,10 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 	if err != nil {
 		return 0, err
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return 0, err
+	}
 	tbl := tableName(schema, collectionID)
 
 	// 白名单校验：字段必须 ∈ 集合声明属性且为数值类型（integer/float），
@@ -1362,7 +1380,10 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		}
 	}
 	dbID := "default"
-	schema := schemaName(internalID, dbID)
+	schema, err := ident.SchemaName(projectID, dbID)
+	if err != nil {
+		return err
+	}
 
 	schemaBootstrapped := false
 	if _, ok := p.bootstrapCache.Load(projectID); ok {
@@ -1466,8 +1487,16 @@ func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
-func schemaName(internalID int64, databaseID string) string {
-	return fmt.Sprintf("TORCHWOOD_%d_%s", internalID, databaseID)
+func (p *postgresDocumentDB) tenantAndSchema(ctx context.Context, projectID, databaseID string) (int64, string, error) {
+	internalID, err := p.resolveInternalID(ctx, projectID)
+	if err != nil {
+		return 0, "", err
+	}
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return 0, "", err
+	}
+	return internalID, schema, nil
 }
 
 func tableName(schema, collectionID string) string {
@@ -2063,17 +2092,6 @@ func isUniqueViolation(err error) bool {
 		return pgErr.Field('C') == "23505"
 	}
 	return strings.Contains(err.Error(), "SQLSTATE 23505") || strings.Contains(err.Error(), "unique constraint")
-}
-
-func schemaDatabaseID(schema string) string {
-	// schema = "TORCHWOOD_<n>_<dbID>"; we need the dbID which follows the second "_".
-	// But internalID is numeric, so split on "TORCHWOOD_" prefix then on first "_".
-	rest := strings.TrimPrefix(schema, "TORCHWOOD_")
-	idx := strings.IndexByte(rest, '_')
-	if idx < 0 {
-		return ""
-	}
-	return rest[idx+1:]
 }
 
 func validateDocID(docID string) error {

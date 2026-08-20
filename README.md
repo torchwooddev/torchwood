@@ -7,7 +7,7 @@ Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (Baa
 ## Features
 
 - **AI / Agent-Native**: Protobuf-first APIs with auto-generated OpenAPI/Swagger specs; scoped API Keys for autonomous Server-side automation; predictable JSON REST surface and structured errors; official TypeScript and Go SDKs for agent workflows and tool integration.
-- **Project management**: Multi-project isolation; each project gets its own database schema.
+- **Project management**: Multi-project isolation; each `(project.id, database.id)` maps to a PostgreSQL schema (`tw_<projectID>_<databaseID>`).
 - **User authentication**: Email sign-up/sign-in, JWT access/refresh tokens with rotation, session cookies, Email/Phone OTP, OAuth2 (Google/GitHub/WeChat), anonymous sessions, Magic URL, one-time JWTs, TOTP MFA with sign-in challenges, and two-step email-change confirmation.
 - **Dynamic document database**: Schema-per-database with `_tenant`, `_perms`, dynamic attributes/indexes, an Appwrite-style query DSL, bulk operations, and field increments.
 - **File storage**: S3/MinIO-compatible object storage with upload/download/view, preview thumbnails, public buckets, HMAC file tokens, and chunked upload with resume.

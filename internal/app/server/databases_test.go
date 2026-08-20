@@ -40,7 +40,7 @@ func TestValidateIdentifier(t *testing.T) {
 
 func TestCreateDatabase_InvalidID(t *testing.T) {
 	d := &Databases{}
-	for _, id := range []string{"bad-id", "bad id", "1starts_with_digit"} {
+	for _, id := range []string{"bad-id", "bad id", "1starts_with_digit", "MyApp", "my_app"} {
 		st, _ := status.FromError(d.CreateDatabase(platformAdminCtx(context.Background()), "proj", id, "name"))
 		require.Equal(t, codes.InvalidArgument, st.Code(), "id %q should be rejected", id)
 	}

@@ -255,7 +255,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	schema := schemaName(internalID, "default")
+	schema := testSchema(t, projectID, "default")
 	var count int
 	require.NoError(t, db.DB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_version'`,
@@ -296,7 +296,7 @@ func TestVersionColumn_LazyAlterAndReadFallback(t *testing.T) {
 
 	// 模拟存量表：先手工建旧形状的表（无 _version），再走 CreateCollection
 	// （CREATE TABLE IF NOT EXISTS 幂等保留旧形状，只补元数据）。
-	schema := schemaName(internalID, "app")
+	schema := testSchema(t, projectID, "app")
 	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
 	require.NoError(t, err)
 	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
@@ -378,7 +378,7 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	defer cleanup()
 
 	// 模拟存量表：_version 被 TEXT 列抢占。
-	schema := schemaName(internalID, "app")
+	schema := testSchema(t, projectID, "app")
 	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
 	require.NoError(t, err)
 	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
@@ -437,7 +437,7 @@ func TestUpdateDocument_EnsureVersionRollbackDoesNotPoisonCache(t *testing.T) {
 	}, true))
 
 	// 模拟"尚未 ALTER 的存量表"：新建集合自带 _version，这里手动 DROP。
-	schema := schemaName(internalID, "app")
+	schema := testSchema(t, projectID, "app")
 	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
@@ -506,7 +506,7 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 	defer cleanup()
 
 	// 存量表：_version 被 TEXT 列抢占。
-	schema := schemaName(internalID, "app")
+	schema := testSchema(t, projectID, "app")
 	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
 	require.NoError(t, err)
 	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
@@ -558,7 +558,7 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	require.Contains(t, err.Error(), `attribute key "_version" is reserved`)
 
 	// 列未被改动：_version 仍为 bigint（未退化成用户属性）。
-	schema := schemaName(internalID, "app")
+	schema := testSchema(t, projectID, "app")
 	var udtName string
 	require.NoError(t, db.DB.QueryRowContext(ctx,
 		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,

@@ -295,7 +295,7 @@ if cmd.Name == "" {
 
 - Principal 由认证拦截器注入（`pkg/grpc/interceptor`），用例层通过 `contexts.Principal(ctx)` 读取
   （`internal/pkg/contexts/principal.go`），不要自己解析凭证；
-- 校验规则写为 package 级常量/正则，并加注释引用出处（如 `projectIDRe` 引用安全评审 M7 / P2-9）。
+- 校验规则写为 package 级常量/正则或共用包（如 `pkg/ident.ValidateSchemaResourceID` 校验 project.id / database.id）。
 
 ### 4.3 事务（CreateProject 后半段）
 
@@ -383,6 +383,7 @@ func NewProjectsService(projects *appserver.Projects) *ProjectsService {
 
 func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.CreateProjectRequest) (*serverv1.Project, error) {
 	p, err := s.projects.CreateProject(ctx, appserver.CreateProjectCommand{
+		ID:          req.GetId(),
 		Name:        req.GetName(),
 		Description: req.GetDescription(),
 	})

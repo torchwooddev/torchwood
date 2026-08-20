@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -13,14 +12,10 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
-	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-// projectIDRe 是项目 ID 白名单：小写字母、数字、连字符，长度 1-64
-// （与安全评审 M7 / P2-9 的标识符约束合并）。
-var projectIDRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 
 // maxProjectDescriptionLen 是项目 description 的长度上限，
 // CreateProject 与 UpdateProject 两侧一致约束（口径 a）。
@@ -37,6 +32,7 @@ func NewProjects(projectRepo projects.Repository, docDB databases.DocumentDB, db
 }
 
 type CreateProjectCommand struct {
+	ID          string
 	Name        string
 	Description string
 }
@@ -54,28 +50,22 @@ func (s *Projects) CreateProject(ctx context.Context, cmd CreateProjectCommand) 
 	return s.CreateProjectInternal(ctx, cmd)
 }
 
-// CreateProjectInternal 创建项目（校验 name/description、生成 id、事务内插入
+// CreateProjectInternal 创建项目（校验 id/name/description、事务内插入
 // project 并 EnsureSystemCollections）。不做 principal 检查，仅供 bootstrap 等
 // 系统路径调用，调用方负责授权；外部入口 CreateProject 保留平台 admin 校验后
 // 委托本方法。
 func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectCommand) (*projects.Project, error) {
+	if err := ident.ValidateSchemaResourceID(cmd.ID); err != nil {
+		return nil, err
+	}
 	if cmd.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 	if len(cmd.Description) > maxProjectDescriptionLen {
 		return nil, status.Error(codes.InvalidArgument, "description must be at most 512 characters")
 	}
-	id := strings.ToLower(strings.ReplaceAll(cmd.Name, " ", "-"))
-	id = strings.Trim(id, "-")
-	if id == "" {
-		id = "project-" + idgen.UUID().String()
-	}
-	// 项目 ID 白名单校验：非法字符（如非 ASCII、下划线）一律拒绝，防注入与混淆。
-	if !projectIDRe.MatchString(id) {
-		return nil, status.Error(codes.InvalidArgument, "project id must match ^[a-z0-9-]{1,64}$")
-	}
 	p := &projects.Project{
-		ID:          id,
+		ID:          cmd.ID,
 		Name:        cmd.Name,
 		Description: cmd.Description,
 		Status:      "active",

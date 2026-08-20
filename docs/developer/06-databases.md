@@ -17,16 +17,16 @@ Torchwood 采用 **schema-per-database** 的 PostgreSQL 映射：
 
 | 对象 | 命名 | 示例 |
 |------|------|------|
-| Schema | `TORCHWOOD_<projectInternalID>_<databaseID>` | `TORCHWOOD_1_default`、`TORCHWOOD_1_app` |
-| 集合表 | `<schema>.<collectionID>` | `TORCHWOOD_1_default.users` |
-| 权限表 | `<schema>._perms` | `TORCHWOOD_1_default._perms` |
+| Schema | `tw_<projectID>_<databaseID>` | `tw_shop_default`、`tw_shop_app` |
+| 集合表 | `<schema>.<collectionID>` | `tw_shop_default.users` |
+| 权限表 | `<schema>._perms` | `tw_shop_default._perms` |
 
-`internalID` 取自 `projects.internal_id`（`internal/infra/documentdb/postgres.go` 的 `resolveInternalID`，进程内缓存）；`CreateDatabase` 即 `CREATE SCHEMA IF NOT EXISTS`，`DeleteDatabase` 即 `DROP SCHEMA ... CASCADE`。
+`projectID` / `databaseID` 须匹配 `^[a-z][a-z0-9]{0,27}$`（`pkg/ident`）。`CreateDatabase` 即 `CREATE SCHEMA IF NOT EXISTS`，`DeleteDatabase` 即 `DROP SCHEMA ... CASCADE`。行内 `_tenant` 仍取 `projects.internal_id`（`resolveInternalID`，进程内缓存）。
 
 ### 1.2 集合表结构
 
 ```sql
-CREATE TABLE IF NOT EXISTS "TORCHWOOD_1_default"."posts" (
+CREATE TABLE IF NOT EXISTS tw_shop_default.posts (
     _id          TEXT NOT NULL,
     _tenant      BIGINT NOT NULL DEFAULT 1,
     _created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS "TORCHWOOD_1_default"."posts" (
 ### 1.4 权限表 `_perms`
 
 ```sql
-CREATE TABLE IF NOT EXISTS "TORCHWOOD_1_default"."_perms" (
+CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
     _id         BIGSERIAL PRIMARY KEY,
     _tenant     BIGINT NOT NULL,
     _collection TEXT NOT NULL,

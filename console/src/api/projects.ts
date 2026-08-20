@@ -25,6 +25,7 @@ export async function getProject(id: string): Promise<Project> {
 }
 
 export async function createProject(input: {
+  id: string;
   name: string;
   description?: string;
 }): Promise<Project> {

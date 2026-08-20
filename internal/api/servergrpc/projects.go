@@ -25,6 +25,7 @@ func NewProjectsService(projects *appserver.Projects) *ProjectsService {
 
 func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.CreateProjectRequest) (*serverv1.Project, error) {
 	p, err := s.projects.CreateProject(ctx, appserver.CreateProjectCommand{
+		ID:          req.GetId(),
 		Name:        req.GetName(),
 		Description: req.GetDescription(),
 	})

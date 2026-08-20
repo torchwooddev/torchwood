@@ -2,8 +2,8 @@ package realtime
 
 import "regexp"
 
-// identifierRe 与 internal/app/server/databases.go 的 identifier 校验一致
-// （databaseId/collectionId 不含 "."）。
+// identifierRe 与 internal/app/server/databases.go 的 collection/attribute
+// 标识符校验一致（不含 "."）。databaseId 走 pkg/ident。
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 // docIDRe 与 internal/infra/documentdb/postgres.go 的 docID 校验一致

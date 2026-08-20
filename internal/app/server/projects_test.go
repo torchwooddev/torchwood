@@ -42,6 +42,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	projectsUC := NewProjects(repo, docDB, db)
 
 	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:          "txapp",
 		Name:        "Transactional App",
 		Description: "integration test",
 	})
@@ -76,7 +77,7 @@ func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
 		Roles:       []string{"keys"},
 		Permissions: []string{"databases.write"},
 	})
-	_, err := projectsUC.CreateProject(apiKeyCtx, CreateProjectCommand{Name: "Hacked App"})
+	_, err := projectsUC.CreateProject(apiKeyCtx, CreateProjectCommand{ID: "hacked", Name: "Hacked App"})
 	require.Error(t, err)
 
 	// 受限 admin（非平台 admin）被拒。
@@ -86,7 +87,7 @@ func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
 		UserID:    "admin-2",
 		Roles:     []string{"viewer"},
 	})
-	_, err = projectsUC.CreateProject(viewerCtx, CreateProjectCommand{Name: "Viewer App"})
+	_, err = projectsUC.CreateProject(viewerCtx, CreateProjectCommand{ID: "viewer", Name: "Viewer App"})
 	require.Error(t, err)
 }
 
@@ -102,9 +103,10 @@ func TestProjects_CreateProject_RejectsInvalidID(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	projectsUC := NewProjects(repo, docDB, db)
 
-	// 非白名单字符（下划线/非 ASCII）的项目名派生出的 ID 必须被拒。
-	_, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{Name: "Bad_Name!"})
-	require.Error(t, err)
+	for _, id := range []string{"", "Bad_Name", "my-shop", "1shop", "MyShop"} {
+		_, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{ID: id, Name: "App"})
+		require.Error(t, err, id)
+	}
 }
 
 func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
@@ -118,7 +120,7 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	projectID := fmt.Sprintf("rollback-%d", time.Now().UnixNano())
+	projectID := fmt.Sprintf("rb%x", time.Now().UnixNano())
 	p := &projects.Project{
 		ID:        projectID,
 		Name:      fmt.Sprintf("Rollback Test %d", time.Now().UnixNano()),
@@ -381,6 +383,7 @@ func TestProjects_CreateProject_RejectsLongDescription(t *testing.T) {
 
 	// 口径 a：CreateProject 与 UpdateProject 对 description 施加同一上限 512。
 	_, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:          "longdesc",
 		Name:        "Long Description App",
 		Description: strings.Repeat("x", 513),
 	})
@@ -389,6 +392,7 @@ func TestProjects_CreateProject_RejectsLongDescription(t *testing.T) {
 
 	// 恰好 512 字符放行。
 	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:          "boundary",
 		Name:        "Boundary App",
 		Description: strings.Repeat("x", 512),
 	})

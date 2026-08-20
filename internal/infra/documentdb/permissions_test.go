@@ -40,7 +40,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	permsTable := permsTableName(schemaName(internalID, "app"))
+	permsTable := permsTableName(testSchema(t, projectID, "app"))
 	// 异租户 _perms 行（同 collection/文档/类型/角色）不得影响本租户列表。
 	foreignTenant := internalID + 1000
 	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
@@ -440,7 +440,7 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	schema := fmt.Sprintf(`"TORCHWOOD_%d_default"`, internalID)
+	schema := quoteIdent(testSchema(t, projectID, "default"))
 
 	// 模拟升级前遗留状态：文档级 _perms 存在 keys 的 update/delete 行
 	// （users/sessions/identities 各若干 + teams 一行作为对照）。
@@ -599,7 +599,7 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	require.NoError(t, err)
 
 	// 直插 _type='write' 行（模拟未展开的直调路径）。
-	permsTable := permsTableName(schemaName(internalID, "app"))
+	permsTable := permsTableName(testSchema(t, projectID, "app"))
 	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, ?, ?, 'write', 'user:alice')`,
 		permsTable), internalID, "docs", created.ID)

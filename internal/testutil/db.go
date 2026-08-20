@@ -158,7 +158,7 @@ func repoRoot() (string, error) {
 // CreateTestProject inserts a test project and returns its public id, internal id, and cleanup func.
 func CreateTestProject(ctx context.Context, db *clients.Database) (string, int64, func()) {
 	project := &model.Project{
-		ID:        fmt.Sprintf("test-%d", time.Now().UnixNano()),
+		ID:        fmt.Sprintf("t%x", time.Now().UnixNano()),
 		Name:      fmt.Sprintf("Test Project %d", time.Now().UnixNano()),
 		Status:    "active",
 		Settings:  map[string]any{},

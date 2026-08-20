@@ -581,7 +581,7 @@ it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）
       { side: "server", operationId: "TeamsService_CreateTeam", invoke: (h) => server(h).teams.create({ name: "T", permissions: ["read"] }) },
       { side: "server", operationId: "TeamsService_DeleteTeam", invoke: (h) => server(h).teams.delete("t1") },
       { side: "server", operationId: "TeamsService_UpdateTeamPrefs", invoke: (h) => server(h).teams.updatePrefs("t1", { locale: "zh" }) },
-      { side: "server", operationId: "ProjectsService_CreateProject", invoke: (h) => server(h).projects.create({ name: "P", description: "d" }) },
+      { side: "server", operationId: "ProjectsService_CreateProject", invoke: (h) => server(h).projects.create({ id: "p", name: "P", description: "d" }) },
       { side: "server", operationId: "ProjectsService_UpdateProject", invoke: (h) => server(h).projects.update("p1", { name: "P2" }) },
       { side: "server", operationId: "APIKeysService_CreateAPIKey", invoke: (h) => server(h).apiKeys.create({ name: "k", scopes: ["users"] }) },
       { side: "server", operationId: "APIKeysService_DeleteAPIKey", invoke: (h) => server(h).apiKeys.delete("k1") },

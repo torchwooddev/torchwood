@@ -40,7 +40,7 @@
 
 ## 数据库约定
 - 元数据静态表（projects、api_keys、document_*、admins）使用 bun + golang-migrate。
-- 系统资源（users、sessions、files、buckets、teams）和用户动态集合使用 PostgreSQL 动态文档 adapter（schema-per-database + `_tenant` + `_perms`）。
+- 系统资源（users、sessions、files、buckets、teams）和用户动态集合使用 PostgreSQL 动态文档 adapter（schema-per-database：`tw_<project.id>_<database.id>` + `_tenant` + `_perms`）。`project.id` / `database.id` 规则见 `docs/developer/06-databases.md`。
 - 动态文档查询使用 Appwrite 风格 DSL（`pkg/query`），支持 `equal`、`greaterThan`、`contains`、`orderDesc`、`limit` 等。
 
 ## 编辑时应遵循的模式

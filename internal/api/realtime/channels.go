@@ -1,6 +1,10 @@
 package realtime
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/torchwooddev/torchwood/pkg/ident"
+)
 
 // channelKind 区分 Realtime 频道族（v3 设计 §5.2：parseChannel 改派发表）。
 type channelKind string
@@ -47,16 +51,16 @@ func parseChannel(ch string) (parsedChannel, bool) {
 //
 //	databases . <db> . collections . <coll> [ . documents . <doc...> ]
 //
-// databaseId/collectionId 须满足 identifierRe（不含 "."）；documentId
-// 取余下全部（可含 "." ":" "-"）。禁止 strings.Split 到 channel 任意
-// 位置后凭片段拼写，防止文档 id 含 "." 造成越权。
+// databaseId 须满足 schema 资源 id（pkg/ident）；collectionId 须满足
+// identifierRe（不含 "."）；documentId 取余下全部（可含 "." ":" "-"）。
+// 禁止 strings.Split 到 channel 任意位置后凭片段拼写，防止文档 id 含 "." 造成越权。
 func parseDatabasesChannel(ch string) (parsedChannel, bool) {
 	parts := strings.Split(ch, ".")
 	if len(parts) < 4 || parts[0] != "databases" || parts[2] != "collections" {
 		return parsedChannel{}, false
 	}
 	dbID, collID := parts[1], parts[3]
-	if !identifierRe.MatchString(dbID) || !identifierRe.MatchString(collID) {
+	if ident.ValidateSchemaResourceID(dbID) != nil || !identifierRe.MatchString(collID) {
 		return parsedChannel{}, false
 	}
 	rest := parts[4:]

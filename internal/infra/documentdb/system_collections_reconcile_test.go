@@ -111,7 +111,7 @@ func TestEnsureSystemCollections_ReconcileConcurrent(t *testing.T) {
 
 	internalID, err := docDB.resolveInternalID(ctx, projectID)
 	require.NoError(t, err)
-	require.NoError(t, docDB.ensureSchemaAndPerms(ctx, schemaName(internalID, "default")))
+	require.NoError(t, docDB.ensureSchemaAndPerms(ctx, testSchema(t, projectID, "default")))
 	now := time.Now()
 	_, err = db.NewInsert().Model(&model.DocumentDatabase{
 		ID:        "default",

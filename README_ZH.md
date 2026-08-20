@@ -7,7 +7,7 @@ Torchwood 是一个受 Appwrite 启发、**AI/Agent-Native** 的后端即服务�
 ## 功能特性
 
 - **AI / Agent-Native**：Protobuf 定义 API，自动生成 OpenAPI/Swagger；细粒度 scope 的 API Key 供 Agent 与自动化调用 Server API；统一 JSON REST 面与结构化错误；官方 TypeScript 与 Go SDK 便于 Agent 工作流与 Tool 集成。
-- **项目管理**：多项目隔离，每个项目拥有独立的数据库 schema。
+- **项目管理**：多项目隔离；每个 `(project.id, database.id)` 对应一个 PostgreSQL schema（`tw_<projectID>_<databaseID>`）。
 - **用户认证**：邮箱注册/登录、JWT access/refresh token（含轮换）、会话 Cookie、Email/Phone OTP、OAuth2（Google/GitHub/WeChat）、匿名会话、Magic URL、一次性 JWT、TOTP MFA 登录挑战、邮箱变更两阶段确认。
 - **动态文档数据库**：schema-per-database，支持 `_tenant`、`_perms`、动态属性/索引，查询语言兼容 Appwrite 风格 DSL，支持批量操作与字段增量。
 - **文件存储**：S3/MinIO 兼容的对象存储，支持上传/下载/在线查看、预览缩略图、公开 bucket、HMAC File Token、分片上传与断点续传。

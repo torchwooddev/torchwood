@@ -221,6 +221,10 @@
         },
         "description": {
           "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "title": "必填；小写字母开头，仅小写字母与数字，最长 28（^[a-z][a-z0-9]{0,27}$）。"
         }
       }
     },

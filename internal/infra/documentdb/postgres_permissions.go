@@ -8,6 +8,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 )
 
 func (p *postgresDocumentDB) ensureCollectionAccessible(coll *databases.Collection, principal databases.Principal) error {
@@ -57,7 +58,7 @@ func (p *postgresDocumentDB) getDocumentPermissions(ctx context.Context, schema,
 // （避免重复查询 N+1），nil 时内部获取。
 func (p *postgresDocumentDB) checkDocumentPermission(
 	ctx context.Context,
-	projectID, schema, collectionID, docID string,
+	projectID, databaseID, schema, collectionID, docID string,
 	tenant int64,
 	permType string,
 	principal databases.Principal,
@@ -68,7 +69,7 @@ func (p *postgresDocumentDB) checkDocumentPermission(
 	}
 	if coll == nil {
 		var err error
-		coll, err = p.getCollectionForAccess(ctx, projectID, schemaDatabaseID(schema), collectionID)
+		coll, err = p.getCollectionForAccess(ctx, projectID, databaseID, collectionID)
 		if err != nil {
 			return err
 		}
@@ -242,14 +243,16 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 }
 
 func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
-	if err != nil {
+	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
 		return err
 	}
 	if !safeNameRe.MatchString(key) {
 		return fmt.Errorf("invalid attribute key: %s", key)
 	}
-	schema := schemaName(internalID, databaseID)
+	schema, err := ident.SchemaName(projectID, databaseID)
+	if err != nil {
+		return err
+	}
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx,
 			fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, collectionID), quoteIdent(key)),
@@ -264,11 +267,13 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error {
-	internalID, err := p.resolveInternalID(ctx, projectID)
+	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
+		return err
+	}
+	schema, err := ident.SchemaName(projectID, databaseID)
 	if err != nil {
 		return err
 	}
-	schema := schemaName(internalID, databaseID)
 	// R02-P1-1：DROP INDEX 与 document_indexes 元数据删除包进同一事务，
 	// 任一步失败整体回滚，避免"物理索引已删而 catalog 仍记录"。
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {

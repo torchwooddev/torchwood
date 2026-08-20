@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -50,8 +51,8 @@ func (d *Databases) CreateDatabase(ctx context.Context, projectID, id, name stri
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(id); err != nil {
-		return status.Error(codes.InvalidArgument, "id is required")
+	if err := ident.ValidateSchemaResourceID(id); err != nil {
+		return err
 	}
 	if id == "default" {
 		return status.Error(codes.InvalidArgument, "default database cannot be created")

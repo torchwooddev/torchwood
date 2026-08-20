@@ -175,9 +175,9 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 > ```
 >
 > ```sql
-> -- 动态文档层：按 collection 表检查（替换为实际项目的 internal_id / database_id / collection 名）
-> -- schema = TORCHWOOD_{projects.internal_id}_{database_id}
-> SELECT _id FROM "TORCHWOOD_1_app"."posts" WHERE _id IN ('count','bulk');
+> -- 动态文档层：按 collection 表检查（替换为实际项目的 project.id / database.id / collection 名）
+> -- schema = tw_{project.id}_{database.id}
+> SELECT _id FROM tw_shop_app.posts WHERE _id IN ('count','bulk');
 > ```
 
 ---

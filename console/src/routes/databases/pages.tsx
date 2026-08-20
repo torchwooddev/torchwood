@@ -749,7 +749,7 @@ export function DatabaseNewPage() {
       onSubmit={(e) => {
         e.preventDefault();
         mutation.mutate({
-          id: id || name.toLowerCase().replace(/\s+/g, "_"),
+          id,
           name,
         });
       }}
@@ -757,7 +757,15 @@ export function DatabaseNewPage() {
       submitDisabled={!isPlatformAdmin(role)}
     >
       <FormField id="name" label="名称" value={name} onChange={setName} required placeholder="Production DB" />
-      <FormField id="id" label="ID（可选）" value={id} onChange={setId} placeholder="production" />
+      <FormField
+        id="id"
+        label="ID"
+        value={id}
+        onChange={setId}
+        required
+        placeholder="app"
+        hint="小写字母开头，仅小写字母与数字，最长 28。创建后不可改。"
+      />
     </FormPageWrapper>
   );
 }

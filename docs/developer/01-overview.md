@@ -22,7 +22,7 @@ Torchwood 是一个 **Appwrite-inspired、AI/Agent-Native 的 Backend-as-a-Servi
 
 核心功能域：
 
-- **项目管理**：多项目隔离，每个项目对应独立 PostgreSQL schema；
+- **项目管理**：多项目隔离；每个 `(project.id, database.id)` 对应一个 PostgreSQL schema（`tw_<projectID>_<databaseID>`）；
 - **用户认证**：邮箱注册/登录、JWT access/refresh、会话 cookie、API Key 认证、Email/Phone OTP、OAuth2、匿名会话、Magic URL、一次性 JWT、TOTP MFA；
 - **动态文档数据库**：schema-per-database，集合即真实表，`_tenant` 隔离项目，`_perms` 实现文档级权限；
 - **文件存储**：S3/MinIO 兼容对象存储，multipart 上传/下载、分片上传/断点续传、预览缩略图、公开 bucket、HMAC File Token；

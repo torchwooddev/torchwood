@@ -54,6 +54,7 @@ export function FormField({
   required,
   placeholder,
   type = "text",
+  hint,
 }: {
   id: string;
   label: string;
@@ -62,6 +63,7 @@ export function FormField({
   required?: boolean;
   placeholder?: string;
   type?: string;
+  hint?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -74,6 +76,7 @@ export function FormField({
         required={required}
         placeholder={placeholder}
       />
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

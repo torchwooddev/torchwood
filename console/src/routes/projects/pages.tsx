@@ -95,6 +95,7 @@ export function ProjectNewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { role } = useAdminRole();
+  const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -115,11 +116,20 @@ export function ProjectNewPage() {
       submitLabel="创建"
       onSubmit={(e) => {
         e.preventDefault();
-        mutation.mutate({ name, description: description || undefined });
+        mutation.mutate({ id, name, description: description || undefined });
       }}
       loading={mutation.isPending}
       submitDisabled={!isPlatformAdmin(role)}
     >
+      <FormField
+        id="id"
+        label="ID"
+        value={id}
+        onChange={setId}
+        required
+        placeholder="shop"
+        hint="小写字母开头，仅小写字母与数字，最长 28。创建后不可改。"
+      />
       <FormField id="name" label="名称" value={name} onChange={setName} required placeholder="My Project" />
       <FormField
         id="description"

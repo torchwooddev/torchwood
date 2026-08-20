@@ -16,8 +16,9 @@ import (
 )
 
 // Bootstrap 默认资源常量：首个管理员注册时自动创建的 project 与 API Key。
-// project id 由 CreateProjectInternal 从名称派生（"Default" -> "default"）。
+// bootstrap 固定项目 id=`default`。
 const (
+	defaultProjectID   = "default"
 	defaultProjectName = "Default"
 	defaultProjectDesc = "Auto-created default project"
 	defaultAPIKeyName  = "Default API Key"
@@ -184,6 +185,7 @@ func (s *Setup) SignUp(ctx context.Context, email, password, setupToken string) 
 	}
 
 	project, err = s.projects.CreateProjectInternal(ctx, server.CreateProjectCommand{
+		ID:          defaultProjectID,
 		Name:        defaultProjectName,
 		Description: defaultProjectDesc,
 	})

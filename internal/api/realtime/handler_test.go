@@ -941,6 +941,8 @@ func TestParseChannelDispatcher(t *testing.T) {
 	require.False(t, ok)
 	_, ok = parseChannel("accounts.u1.extra")
 	require.False(t, ok)
+	_, ok = parseChannel("databases.my_app.collections.posts")
+	require.False(t, ok)
 }
 
 // eventsEnvelope 构造 u1 可读、u2 不可读的事件（doc perms user:u1）。

@@ -354,7 +354,7 @@ func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {
 
 	// Second project must use a unique name (projects.name is unique).
 	projectB := &model.Project{
-		ID:        "test-project-b",
+		ID:        "testprojectb",
 		Name:      "Test Project B",
 		Status:    "active",
 		Settings:  map[string]any{},
@@ -413,7 +413,7 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 	countPerms := func() int {
 		t.Helper()
 		var n int
-		sql := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schemaName(internalID, "app")))
+		sql := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(testSchema(t, projectID, "app")))
 		require.NoError(t, db.DB.QueryRowContext(ctx, sql, internalID, "notes").Scan(&n))
 		return n
 	}
@@ -1219,7 +1219,7 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 	// 事务回滚后 schema 必须不存在（to_regnamespace 返回 NULL）。
 	var reg any
 	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT to_regnamespace(?)`, schemaName(internalID, "app")).Scan(&reg))
+		`SELECT to_regnamespace(?)`, testSchema(t, projectID, "app")).Scan(&reg))
 	require.Nil(t, reg)
 
 	// 元数据未被篡改。
@@ -1316,7 +1316,7 @@ func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1337,7 +1337,7 @@ func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
 	// 拉平 _created_at：全部改为同一时间戳，使默认排序只能依赖 _id tiebreaker。
 	ts := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
-		`UPDATE %s SET _created_at = ?`, tableName(schemaName(internalID, "app"), "docs")), ts)
+		`UPDATE %s SET _created_at = ?`, tableName(testSchema(t, projectID, "app"), "docs")), ts)
 	require.NoError(t, err)
 
 	var got []string
