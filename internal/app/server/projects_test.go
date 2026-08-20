@@ -510,3 +510,69 @@ func TestProjects_DeleteProject_RequiresPlatformAdmin(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got, "被拒删除不得动项目")
 }
+
+// TestProjects_DeleteProject_CleansPublicRows 锁死设计 §4.3 第 3 步：
+// 级联删除必须清理 public 控制面里该项目的全部行（outbox / outbox_dead /
+// transactions / api_keys / audit_logs / admin_projects / provider_resource_index）。
+func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	repo := bunrepo.NewProjectRepository(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	projectsUC := NewProjects(repo, docDB, db)
+
+	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:   "delrows",
+		Name: "Delete Public Rows",
+	})
+	require.NoError(t, err)
+
+	// 预置 public 控制面行（原生 SQL：字段最小集，只验证 deletePublicProjectRows 的谓词）。
+	seed := []string{
+		`INSERT INTO document_events_outbox (event_id, project_id, topic, payload)
+		 VALUES ('evt-1', 'delrows', 'databases.app.collections.posts', '{}')`,
+		`INSERT INTO document_events_outbox_dead (event_id, project_id, topic, payload, attempts, created_at)
+		 VALUES ('evt-2', 'delrows', 'databases.app.collections.posts', '{}', 3, NOW())`,
+		`INSERT INTO document_transactions (id, project_id, database_id, status, created_by, expire_at)
+		 VALUES ('tx-1', 'delrows', 'app', 'pending', 'user-1', NOW() + INTERVAL '10 minutes')`,
+		`INSERT INTO api_keys (id, project_id, name, secret_hash)
+		 VALUES ('key-1', 'delrows', 'seed', 'hash-1')`,
+		`INSERT INTO audit_logs (id, project_id, actor_id, actor_kind, action, status)
+		 VALUES ('aud-1', 'delrows', 'admin-1', 'admin', 'DeleteProject', 'success')`,
+		`INSERT INTO admins (id, email, password_hash) VALUES ('adm-1', 'delrows@t.local', 'x')
+		 ON CONFLICT (id) DO NOTHING`,
+		`INSERT INTO admin_projects (admin_id, project_id) VALUES ('adm-1', 'delrows')
+		 ON CONFLICT (admin_id, project_id) DO NOTHING`,
+		`INSERT INTO provider_resource_index (provider, kind, provider_ref, project_id)
+		 VALUES ('stripe', 'payment_session', 'cs_seed_1', 'delrows')`,
+	}
+	for _, q := range seed {
+		_, err := db.DB.ExecContext(ctx, q)
+		require.NoError(t, err, q)
+	}
+	t.Cleanup(func() {
+		_, _ = db.DB.ExecContext(ctx, `DELETE FROM admins WHERE id = 'adm-1'`)
+	})
+
+	require.NoError(t, projectsUC.DeleteProjectInternal(ctx, p.ID))
+
+	for _, table := range []string{
+		"document_events_outbox",
+		"document_events_outbox_dead",
+		"document_transactions",
+		"api_keys",
+		"audit_logs",
+		"admin_projects",
+		"provider_resource_index",
+	} {
+		var n int
+		require.NoError(t, db.DB.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM `+table+` WHERE project_id = 'delrows'`).Scan(&n), table)
+		require.Zero(t, n, "%s rows must be cleaned by DeleteProjectInternal", table)
+	}
+}

@@ -179,3 +179,51 @@ func TestPaymentsHandler_IndexMissReturns503FailBody(t *testing.T) {
 	require.Empty(t, rec.Body.String())
 	require.Equal(t, 0, spy.inserts)
 }
+
+// TestPaymentsHandler_NoPlatformRefReturns200 锁 K21「无任何我方 ref → 200 +
+// 日志」：Stripe 账号级噪音（他人 PI，无 client_reference_id / metadata）
+// 不 503（重试三天）、不落库。
+func TestPaymentsHandler_NoPlatformRefReturns200(t *testing.T) {
+	uc, spy := newCallbackOnlyPayments(t)
+	h, err := NewPaymentsHandler(uc, nil)
+	require.NoError(t, err)
+
+	body := `{"id":"evt_noise","type":"checkout.session.completed","data":{"object":{"id":"cs_other","payment_intent":"pi_other","payment_status":"paid","amount_total":100,"currency":"usd"}}}`
+	ts := time.Now().Unix()
+	mac := hmac.New(sha256.New, []byte("whsec_handler_test"))
+	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	mac.Write([]byte(body))
+	hdr := http.Header{}
+	hdr.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))
+	rec := postCallback(h, "stripe", body, hdr)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 0, spy.inserts, "无关事件不得落 payment_callback_events")
+}
+
+// TestPaymentsHandler_RetryFailBodyPerProvider 锁 K21 表格的渠道 FAIL 体：
+// writeAckRetry（503）必须复用各渠道 CallbackAck(false) 的失败序列化——
+// 微信 {"code":"FAIL"}、支付宝 fail、Stripe 空体——而不是 200 SUCCESS / 500。
+func TestPaymentsHandler_RetryFailBodyPerProvider(t *testing.T) {
+	uc, _ := newCallbackOnlyPayments(t)
+	h, err := NewPaymentsHandler(uc, nil)
+	require.NoError(t, err)
+
+	cases := []struct {
+		provider string
+		wantBody string
+		wantCT   string
+	}{
+		{domainpayments.ProviderWeChat, `{"code":"FAIL"}`, "application/json"},
+		{domainpayments.ProviderAlipay, "fail", "text/plain"},
+		{domainpayments.ProviderStripe, "", ""},
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		h.writeAckRetry(rec, tc.provider)
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code, tc.provider)
+		require.Equal(t, tc.wantBody, rec.Body.String(), tc.provider)
+		if tc.wantCT != "" {
+			require.Contains(t, rec.Header().Get("Content-Type"), tc.wantCT, tc.provider)
+		}
+	}
+}

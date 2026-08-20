@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"strconv"
+
 	"github.com/stretchr/testify/require"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
 	domainshared "github.com/torchwooddev/torchwood/internal/domain/shared"
@@ -482,4 +484,58 @@ func TestPayments_ManualFulfill(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.FulfillmentDone, fulfillment2.Status)
 	require.Equal(t, 1, countRows(t, env, projectID, "payment_fulfillments", "order_id = ?", orderID))
+}
+
+// TestPayments_CloseExpiredOrders_GlobalBudgetAcrossProjects 锁 K22：
+// closeExpiredBatch 是每 tick 的**全局**预算（不是 per-project 再传同一 limit）。
+// 两项目共 610 张过期单：第一轮全局只关 500；轮转游标推进后第二轮清剩余 110。
+func TestPayments_CloseExpiredOrders_GlobalBudgetAcrossProjects(t *testing.T) {
+	env := setupEnv(t, NewRecordOnlyFulfiller(), true)
+	ctx := context.Background()
+	pA, _, cA := testutil.CreateTestProject(ctx, env.db)
+	defer cA()
+	pB, _, cB := testutil.CreateTestProject(ctx, env.db)
+	defer cB()
+
+	repo := bunrepo.NewPaymentOrderRepository(env.db)
+	seed := func(projectID string, count int, prefix string) {
+		t.Helper()
+		for i := 0; i < count; i++ {
+			now := time.Now()
+			o := &domainpayments.Order{
+				ID:             prefix + strconv.Itoa(i),
+				ProjectID:      projectID,
+				UserID:         "u1",
+				Provider:       domainpayments.ProviderStripe,
+				IdempotencyKey: "idem-" + prefix + strconv.Itoa(i),
+				Amount:         100,
+				Currency:       "USD",
+				PurposeKind:    domainpayments.PurposeTopup,
+				Purpose:        []byte(`{}`),
+				Status:         domainpayments.OrderStatusCreated,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+				ExpiresAt:      now.Add(-time.Hour),
+			}
+			_, inserted, err := repo.Insert(ctx, o)
+			require.NoError(t, err)
+			require.True(t, inserted, "%s/%s%d", projectID, prefix, i)
+		}
+	}
+	seed(pA, 600, "budgetA")
+	seed(pB, 10, "budgetB")
+
+	now := time.Now()
+	r1, err := env.payments.CloseExpiredOrders(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, int64(closeExpiredBatch), r1, "一轮全局预算恒为 closeExpiredBatch")
+
+	remaining := 610 - closeExpiredBatch
+	r2, err := env.payments.CloseExpiredOrders(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, int64(remaining), r2, "轮转后第二轮清剩余")
+
+	r3, err := env.payments.CloseExpiredOrders(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), r3)
 }
