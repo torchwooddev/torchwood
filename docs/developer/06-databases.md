@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 - **已删除 staged transaction**（D-6，内测无兼容）：Client/Server 不再提供 Create/Commit/Rollback 事务 RPC。多文档原子性仅内部 `uow.Run` / `clients.Database.RunInTx` 与 Server `BulkUpdate`/`BulkDelete`。
 - **批量操作原子化**：`BulkUpdateDocuments` / `BulkDeleteDocuments` 在未处于外层事务时整体包在 `clients.RunInTx` 中，中途失败整体回滚（行为从“部分成功”收紧为“原子”）；已在外层事务（`clients.InTx` 检测）时直接复用外层事务，不嵌套。
-- 每个单文档写操作本身不强制事务：`CreateDocument` = INSERT + `setPermissions`；`UpdateDocument` 的字段更新与 `_perms` 替换（clear + set）顺序执行。
+- 单文档写（Create/Update/Upsert/Delete）同样走 `RunInTx`：未在外层事务时自行开短事务，已在事务内则复用；文档行、`_perms`、outbox 同 COMMIT。
 - 系统集合引导（`EnsureSystemCollections`）依赖幂等设计（`DO NOTHING` + 行数判断）而非事务。
 
 ---

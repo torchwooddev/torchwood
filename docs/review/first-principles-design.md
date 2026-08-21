@@ -108,7 +108,7 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 | ID | 标题 | 冲击 | 章节 |
 |---|---|---|---|
 | A-1 | `Principal` 是字段袋，不是封闭身份 | 最高 | §6 |
-| A-2 | 两套 Principal；Client Databases/Transactions 投影丢 `PlatformAdmin` | 高 | §6 |
+| A-2 | 两套 Principal；Client Databases 投影丢 `PlatformAdmin` | 高 | §6 |
 | A-3 | 六套授权词汇重叠且碰撞 | 高 | §6 |
 | A-4 | CredentialType 在验证边界被改写；`sessions.secret_hash` 未哈希 | 高 | §6 |
 | A-5 | 三套签发栈；真正的洞在 admin refresh 不读库 | 高 | §6 |
@@ -253,7 +253,7 @@ OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。roadmap 里「�
 - 多数包是结构体 + CRUD/KV 接口，行为在 app 或 infra。
 - 有真正不变式的少数模块：`databases/permissions.go`（ACL 纯函数）、`payments/order.go`（`Order.Transition`）、`subscriptions/subscription.go`（`Subscription.Transition`）、`assets/class.go`（class 矩阵）。
 
-删除测试：删掉 `domain/users` 或 `domain/groups`，复杂度几乎不消失（只是校验函数挪地方）。删掉 `DocumentDB`，则 Account、Users、Groups、Storage、Session、Databases、Transactions 全部倒塌。
+删除测试：删掉 `domain/users` 或 `domain/groups`，复杂度几乎不消失（只是校验函数挪地方）。删掉 `DocumentDB`，则 Account、Users、Groups、Storage、Session、Databases 全部倒塌。
 
 **判断**
 
@@ -296,7 +296,7 @@ OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。roadmap 里「�
 
 生产适配器只有 `postgresDocumentDB`（`internal/infra/documentdb/postgres.go`）。该类型还持有连接、outbox publisher、以及五套进程缓存（internalID、bootstrap、keys 清理、`_version` 已提交列、本事务内 `_version` ALTER 标记）。
 
-调用方包括：Account、Users、Groups、Storage、SessionService、Client/Server Databases、Transactions、billing 引导。
+调用方包括：Account、Users、Groups、Storage、SessionService、Client/Server Databases、billing 引导。
 
 **判断**
 
@@ -378,7 +378,7 @@ class 矩阵已经是深模块。五动词应成为单一 **`Assets` 领域服�
 
 **事实**
 
-`GetByIDForUpdate`、`GetByCodeForShare`、`ListExpiredInProject` / `ListDueForBillingInProject` / `CloseExpiredInProject` 出现在 assets / payments / subscriptions 端口上；`LockPending` 在 databases 的 staged-transaction 仓储（`domain/databases/transaction.go`）。注释写明 `FOR UPDATE` / `FOR SHARE` / `SKIP LOCKED`。
+`GetByIDForUpdate`、`GetByCodeForShare`、`ListExpiredInProject` / `ListDueForBillingInProject` / `CloseExpiredInProject` 出现在 assets / payments / subscriptions 端口上。注释写明 `FOR UPDATE` / `FOR SHARE` / `SKIP LOCKED`。staged-transaction 仓储的 `LockPending`（曾在 `domain/databases/transaction.go`）已随 D-6 删除。
 
 **判断**
 
@@ -392,7 +392,7 @@ app 生产代码 import infra（不只是测试）：
 
 - `internal/app/client/account.go` → `infra/auth`、`infra/documentdb`
 - `internal/app/server/projects.go` → `infra/bun/model`、`infra/clients`、`infra/projectschema`
-- `internal/app/assets`、`payments`、`subscriptions`、`shared/transactions` → `infra/clients`（`RunInTx` / `Conn(ctx)`）
+- `internal/app/assets`、`payments`、`subscriptions` → `infra/clients`（`RunInTx` / `Conn(ctx)`）
 - `internal/app/client/email_otp.go`、`phone_otp.go`、`mfa.go`、`oauth2.go` → `infra/auth` / `infra/documentdb`
 
 domain / pkg 泄漏传输：
@@ -637,7 +637,7 @@ Actor = EndUser { ProjectID, UserID, SessionID?, Anonymous }
 
 `databases.Principal` 只有 `Roles` + `PlatformAdmin`。注释：避免 databases 依赖 shared——然后 `domain/shared/ports.go` 又 import `databases`（`RealtimeConn.DocPrincipal`）。
 
-Client Databases / Transactions（`app/client/databases.go:50` 与 `app/client/transactions.go:37` 的 `resolveProject`）只传 `Roles`，不传 `PlatformAdmin`。**Groups 没有丢**：`client/groups.go` 传 `PlatformAdmin: p.IsPlatformAdmin`。Server gRPC/HTTP 带上 `PlatformAdmin`。
+Client Databases（`app/client/databases.go` 的 `resolveProject`）只传 `Roles`，不传 `PlatformAdmin`。**Groups 没有丢**：`client/groups.go` 传 `PlatformAdmin: p.IsPlatformAdmin`。Server gRPC/HTTP 带上 `PlatformAdmin`。`app/client/transactions.go` 曾同样丢 `PlatformAdmin`，已随 D-6 删除。
 
 **判断**
 
@@ -784,13 +784,13 @@ app 包图实际是两套习惯并存：
 
 **事实**
 
-平行 `CreateDocument`：`app/client/databases.go` 与 `app/server/databases.go`。相同 `message Document` 两份 proto。Transactions 在共享核之上又复制 prepare/filter（`client/transactions.go` vs `server/transactions.go`）。
+平行 `CreateDocument`：`app/client/databases.go` 与 `app/server/databases.go`。相同 `message Document` 两份 proto。staged Transactions 曾在共享核之上再复制 prepare/filter（`client/transactions.go` vs `server/transactions.go`），已随 D-6 删除。
 
 Groups 已经是「一个核心 + Client 策略包装」。经济也是一个 use-case 服务两面 proto。
 
 **判断**
 
-信任边界（用户 JWT vs 项目 key vs 平台 admin）是对的产品缝。Documents 克隆是真税（D-8）；Groups（K-8）和经济单用例（R-6 对照）已经示范正确模式。不是「整平台脊柱都要推倒」，是把 Documents / Transactions 抄成 Groups 那样。Client 作为用户信任边界要留；目标是一套资源消息 + 策略投影，不是删掉 Client API。
+信任边界（用户 JWT vs 项目 key vs 平台 admin）是对的产品缝。Documents 克隆是真税（D-8）；Groups（K-8）和经济单用例（R-6 对照）已经示范正确模式。不是「整平台脊柱都要推倒」，是把 Documents 抄成 Groups 那样。Client 作为用户信任边界要留；目标是一套资源消息 + 策略投影，不是删掉 Client API。
 
 ### R-2 201 RPC 对 Agent 过大；对 Console/CLI/SDK 是完整产品 API
 
@@ -906,7 +906,7 @@ Console proto 保持极小（auth + admins）。资源页打 Server。没有第�
 
 ### K-8 Groups 包装模式
 
-`client.Groups` 包 `server.Groups`。Documents / Transactions 应抄这个**组合**（一个核心 + Client 策略包装），而不是再克隆。不要抄 Groups 仍返回 `*databases.Document` 的领域形状——Groups 自己仍受 M-2，系统表化后才是一等资源。
+`client.Groups` 包 `server.Groups`。Documents 应抄这个**组合**（一个核心 + Client 策略包装），而不是再克隆。不要抄 Groups 仍返回 `*databases.Document` 的领域形状——Groups 自己仍受 M-2，系统表化后才是一等资源。
 
 ### K-9 启动期 scope/角色表与 proto 对齐
 
@@ -1147,7 +1147,7 @@ E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成
 |---|---|
 | R-2 / R-4 / A-3 | `apiKeyScopeRules` 统一为 **120** 条（原文 118 与「约 130」两处互相矛盾）；文件为 `pkg/grpc/interceptor/apikey_scope.go`；`adminRoleMethodRules` 72 条 |
 | A-1 | `shared.Principal` 无 `IsSystem` 方法；「系统」判据两套且不一致（`app/assets/assets.go:210` vs `domain/databases/access.go:40`），反为 A-1/A-2 补强证据，已写入正文 |
-| A-2 | 补 `app/client/transactions.go:37` 同样丢 `PlatformAdmin` |
+| A-2 | 曾补 `app/client/transactions.go:37` 同样丢 `PlatformAdmin`（该路径已随 D-6 删除；Client Databases 仍丢） |
 | A-5 | client `TokenBundle` 是类型别名（`account.go:127`）非复制 DTO；仅 console `TokenPair` 为逐字段复制 |
 | A-6 | Account 方法散落 **13** 个生产文件（原 15） |
 | D-4 | 例外：`servergrpc/projects.go` ListProjects **接线** AIP `filter`/`order_by`，但 use-case 不应用（终审收窄；E-4 只当 handler 先例） |
@@ -1155,7 +1155,7 @@ E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成
 | D-8 | Database/Collection DDL 仅在 Server；两侧分叉限定为文档用例（与 §7 表面地图对齐） |
 | M-3 | 补第 5 个进程缓存 `versionAlterTx`（本事务内 `_version` ALTER 标记） |
 | M-4 | `NaturalUniquePerOwner`/`RequiresExpiry` 在 `def.go`，`ValidateDefMatrix` 在 `class.go` |
-| S-2 | `LockPending` 属 databases staged-transaction 仓储；payments 实际为 `CloseExpiredInProject` / `GetByIDForUpdate` |
+| S-2 | staged-transaction `LockPending` 已随 D-6 删除；payments 实际为 `CloseExpiredInProject` / `GetByIDForUpdate` |
 | R-5 | 补 `InvokeJSON` 显式排除 `APIKeysService`（`invoke.go:61`） |
 | R-6 | 补 `subscribe.go:228-258` 直接 `orders.Insert` 绕过 `CreateOrder`；验收点已更新 |
 

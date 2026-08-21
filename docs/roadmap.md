@@ -512,7 +512,6 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 | Docker executor 安全隔离复杂 | Functions 执行可能威胁主机 | 使用 gVisor/Firecracker 或限制容器资源与网络 |
 | 内置 Realtime 单实例上限 | 内测后连接数打满 | 通道/payload 与投递解耦；高压接 MessageLoop，不自研集群 |
 | Outbox 与 Realtime 时序 | 客户端先收到事件再读仍是旧值，或事件丢失 | 写路径与 outbox 同 `COMMIT`；投递 at-least-once，客户端按 id 去重 |
-| 事务 staged 占用与 TTL | 未提交事务堆积；过期与并发提交竞态 | 短 TTL、过期回收、Commit 用状态机（pending → committed） |
 | 文件预览性能 | 大图缩放消耗 CPU/内存 | 限制最大尺寸、异步生成、可选外部 CDN |
 | 动态 schema 迁移 | attribute/index 变更可能影响大数据量表 | 使用 `ALTER TABLE` 时加锁评估、提供异步迁移 |
 
