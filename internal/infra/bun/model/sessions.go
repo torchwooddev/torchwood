@@ -7,9 +7,9 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// Session 对应项目 schema 的 sys_sessions（E5-4 再 rename 为 sessions）。
+// Session 是项目 schema 内的会话行；表名由 ModelTableExpr 限定。
 type Session struct {
-	bun.BaseModel `bun:"table:sys_sessions,alias:s"`
+	bun.BaseModel `bun:"alias:s"`
 
 	ID         string          `bun:"id,pk"`
 	UserID     string          `bun:"user_id,notnull"`

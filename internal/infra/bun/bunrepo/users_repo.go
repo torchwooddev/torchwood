@@ -222,6 +222,10 @@ func (r *UserRepository) UpdateFactors(ctx context.Context, projectID, id string
 		if len(next) == 0 {
 			next = append(json.RawMessage(nil), jsonEmptyObject...)
 		}
+		var decoded any
+		if err := json.Unmarshal(next, &decoded); err != nil {
+			return status.Error(codes.InvalidArgument, "factors must be valid JSON")
+		}
 		_, err = conn.NewUpdate().Model((*model.User)(nil)).ModelTableExpr(expr, sch).
 			Set("factors = ?", next).
 			Set("updated_at = ?", time.Now()).

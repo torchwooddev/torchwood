@@ -7,9 +7,9 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// User 对应项目 schema 的 sys_users（E5-4 再 rename 为 users）。
+// User 是项目 schema 内的用户行；表名由 ModelTableExpr 限定。
 type User struct {
-	bun.BaseModel `bun:"table:sys_users,alias:u"`
+	bun.BaseModel `bun:"alias:u"`
 
 	ID            string          `bun:"id,pk"`
 	Email         string          `bun:"email,notnull"`

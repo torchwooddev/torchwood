@@ -233,6 +233,11 @@ func TestUserRepository_UpdateFactorsSerializes(t *testing.T) {
 	require.NoError(t, json.Unmarshal(got.Factors, &factors))
 	require.Equal(t, true, factors["a"])
 	require.Equal(t, true, factors["b"], "FOR UPDATE 后第二次必须看到第一次的 JSON")
+
+	err = repo.UpdateFactors(ctx, projectID, u.ID, func(json.RawMessage) (json.RawMessage, error) {
+		return json.RawMessage(`{`), nil
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 func seedSysUser(t *testing.T, ctx context.Context, repo *bunrepo.UserRepository, projectID string, u *domainusers.User) *domainusers.User {
