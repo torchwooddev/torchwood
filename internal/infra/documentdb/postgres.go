@@ -1456,7 +1456,7 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 	dbID := ident.ProjectDataPlaneID
 	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
-		return err
+		return mapIdentError(err)
 	}
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
@@ -1580,14 +1580,24 @@ func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
+func mapIdentError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ident.ErrInvalidSchemaResourceID) {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	return err
+}
+
 func (p *postgresDocumentDB) ensureProjectCatalog(ctx context.Context, projectID string) error {
-	return projectschema.Apply(ctx, p.db, projectID)
+	return mapIdentError(projectschema.Apply(ctx, p.db, projectID))
 }
 
 func (p *postgresDocumentDB) catalogIdent(projectID string) (bun.Ident, error) {
 	s, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
-		return bun.Ident(""), err
+		return bun.Ident(""), mapIdentError(err)
 	}
 	return bun.Ident(s), nil
 }
@@ -1595,7 +1605,7 @@ func (p *postgresDocumentDB) catalogIdent(projectID string) (bun.Ident, error) {
 func (p *postgresDocumentDB) catalogQuoted(projectID string) (string, error) {
 	s, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
-		return "", err
+		return "", mapIdentError(err)
 	}
 	return quoteIdent(s), nil
 }
@@ -1609,10 +1619,10 @@ func (p *postgresDocumentDB) documentSchema(ctx context.Context, projectID, data
 	}
 	if databaseID == ident.ProjectDataPlaneID {
 		schema, err := ident.ProjectSchemaName(projectID)
-		return internalID, schema, err
+		return internalID, schema, mapIdentError(err)
 	}
 	schema, err := ident.SchemaName(projectID, databaseID)
-	return internalID, schema, err
+	return internalID, schema, mapIdentError(err)
 }
 
 // businessSchema 供 CreateDatabase / DeleteDatabase：只许两段式。显式拒
@@ -1623,7 +1633,7 @@ func (p *postgresDocumentDB) businessSchema(projectID, databaseID string) (strin
 	}
 	schema, err := ident.SchemaName(projectID, databaseID)
 	if err != nil {
-		return "", err
+		return "", mapIdentError(err)
 	}
 	if !ident.IsTwoSegmentSchema(schema) {
 		return "", status.Error(codes.Internal, "refusing to DDL a non two-segment schema")

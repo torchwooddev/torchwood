@@ -20,13 +20,19 @@ const (
 	mfaChallengeMissing = "invalid or expired challenge"
 )
 
-// RedisMFAChallengeStore stores one-time MFA login challenge tokens in Redis.
+// RedisMFAChallengeStore stores one-time MFA login challenge tokens.
+// Token KV 走 NonceStore；用户索引仍用 Redis SET（RevokeByUser）。
 type RedisMFAChallengeStore struct {
-	rdb *redis.Client
+	nonces domainauth.NonceStore
+	rdb    *redis.Client
 }
 
 func NewRedisMFAChallengeStore(rdb *redis.Client) domainauth.MFAChallengeStore {
-	return &RedisMFAChallengeStore{rdb: rdb}
+	return newMFAChallengeStore(NewRedisNonceStore(rdb), rdb)
+}
+
+func newMFAChallengeStore(nonces domainauth.NonceStore, rdb *redis.Client) *RedisMFAChallengeStore {
+	return &RedisMFAChallengeStore{nonces: nonces, rdb: rdb}
 }
 
 func (s *RedisMFAChallengeStore) Create(ctx context.Context, projectID, userID string) (string, time.Time, error) {
@@ -37,7 +43,7 @@ func (s *RedisMFAChallengeStore) Create(ctx context.Context, projectID, userID s
 	token := hex.EncodeToString(buf)
 	key := mfaChallengeKeyPre + token
 	value := projectID + ":" + userID
-	if err := s.rdb.Set(ctx, key, value, mfaChallengeTTL).Err(); err != nil {
+	if err := s.nonces.Put(ctx, key, value, mfaChallengeTTL); err != nil {
 		return "", time.Time{}, status.Error(codes.Internal, "mfa challenge store failed")
 	}
 	// 用户索引：删除因子时作废该用户全部未消费挑战。
@@ -55,13 +61,13 @@ func (s *RedisMFAChallengeStore) Consume(ctx context.Context, token string) (str
 	if token == "" {
 		return "", "", status.Error(codes.Unauthenticated, mfaChallengeMissing)
 	}
-	value, err := s.rdb.GetDel(ctx, mfaChallengeKeyPre+token).Result()
-	if err == redis.Nil {
-		// 不区分无效/过期/已用，防探测。
-		return "", "", status.Error(codes.Unauthenticated, mfaChallengeMissing)
-	}
+	value, err := s.nonces.Consume(ctx, mfaChallengeKeyPre+token)
 	if err != nil {
 		return "", "", status.Error(codes.Internal, "mfa challenge lookup failed")
+	}
+	if value == "" {
+		// 不区分无效/过期/已用，防探测。
+		return "", "", status.Error(codes.Unauthenticated, mfaChallengeMissing)
 	}
 	projectID, userID, ok := strings.Cut(value, ":")
 	if !ok || projectID == "" || userID == "" {
@@ -78,12 +84,8 @@ func (s *RedisMFAChallengeStore) RevokeByUser(ctx context.Context, projectID, us
 	if err != nil {
 		return status.Error(codes.Internal, "mfa challenge revocation failed")
 	}
-	keys := make([]string, 0, len(tokens))
 	for _, token := range tokens {
-		keys = append(keys, mfaChallengeKeyPre+token)
-	}
-	if len(keys) > 0 {
-		if err := s.rdb.Del(ctx, keys...).Err(); err != nil {
+		if _, err := s.nonces.Consume(ctx, mfaChallengeKeyPre+token); err != nil {
 			return status.Error(codes.Internal, "mfa challenge revocation failed")
 		}
 	}
@@ -96,3 +98,5 @@ func (s *RedisMFAChallengeStore) RevokeByUser(ctx context.Context, projectID, us
 func mfaChallengeUserKey(projectID, userID string) string {
 	return mfaChallengeUserPre + projectID + ":" + userID
 }
+
+var _ domainauth.MFAChallengeStore = (*RedisMFAChallengeStore)(nil)

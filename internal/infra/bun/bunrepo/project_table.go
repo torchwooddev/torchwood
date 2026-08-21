@@ -2,6 +2,7 @@ package bunrepo
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
@@ -14,12 +15,22 @@ import (
 
 var errEmptyProjectID = status.Error(codes.InvalidArgument, "project_id is required")
 
+func mapIdentError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ident.ErrInvalidSchemaResourceID) {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	return err
+}
+
 // ProjectTable 返回项目数据面 schema 的 bun.Ident 与 ModelTableExpr 模板
 // （"?." + table + " AS " + alias）。禁止未限定表名。
 func ProjectTable(projectID, table, alias string) (bun.Ident, string, error) {
 	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
-		return bun.Ident(""), "", err
+		return bun.Ident(""), "", mapIdentError(err)
 	}
 	expr := "?." + table
 	if alias != "" {
@@ -32,7 +43,7 @@ func ProjectTable(projectID, table, alias string) (bun.Ident, string, error) {
 func ProjectQuoted(projectID string) (string, error) {
 	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
-		return "", err
+		return "", mapIdentError(err)
 	}
 	return `"` + strings.ReplaceAll(schema, `"`, `""`) + `"`, nil
 }
@@ -44,7 +55,7 @@ func Scoped(ctx context.Context, db *clients.Database, projectID, table, alias s
 		return nil, bun.Ident(""), "", errEmptyProjectID
 	}
 	if err := projectschema.Apply(ctx, db, projectID); err != nil {
-		return nil, bun.Ident(""), "", err
+		return nil, bun.Ident(""), "", mapIdentError(err)
 	}
 	sch, expr, err := ProjectTable(projectID, table, alias)
 	if err != nil {

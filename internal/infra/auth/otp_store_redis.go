@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -30,37 +31,59 @@ const otpHMACKeyNamespace = "torchwood-otp:"
 
 // otpVerifyScript 原子完成"读取 challenge -> 校验归属 -> 校验尝试次数 -> 比对验证码 ->
 // 成功删除 / 失败递增尝试次数"，避免 GET-改-SET 竞态导致正确验证码被并发重放签发多个会话。
+// challenge 以 JSON 字符串落 NonceStore（与 account token 同形）。
 // 返回值：ok / notfound / mismatch / locked / badcode。
 const otpVerifyScript = `
-local vals = redis.call('HMGET', KEYS[1], 'project_id', 'channel', 'target', 'code_hash', 'attempts')
-if not vals[1] then
+local raw = redis.call('GET', KEYS[1])
+if not raw then
   return 'notfound'
 end
-if vals[1] ~= ARGV[1] or vals[2] ~= ARGV[2] or vals[3] ~= ARGV[3] then
+local rec = cjson.decode(raw)
+if rec.project_id ~= ARGV[1] or rec.channel ~= ARGV[2] or rec.target ~= ARGV[3] then
   return 'mismatch'
 end
-local attempts = tonumber(vals[5]) or 0
+local attempts = tonumber(rec.attempts) or 0
 if attempts >= tonumber(ARGV[5]) then
   redis.call('DEL', KEYS[1])
   return 'locked'
 end
-if vals[4] ~= ARGV[4] then
-  redis.call('HINCRBY', KEYS[1], 'attempts', 1)
+if rec.code_hash ~= ARGV[4] then
+  rec.attempts = attempts + 1
+  local ttl = redis.call('PTTL', KEYS[1])
+  if ttl > 0 then
+    redis.call('SET', KEYS[1], cjson.encode(rec), 'PX', ttl)
+  else
+    redis.call('SET', KEYS[1], cjson.encode(rec))
+  end
   return 'badcode'
 end
 redis.call('DEL', KEYS[1])
 return 'ok'
 `
 
+type otpChallengeRecord struct {
+	ProjectID string `json:"project_id"`
+	Channel   string `json:"channel"`
+	Target    string `json:"target"`
+	CodeHash  string `json:"code_hash"`
+	Attempts  int    `json:"attempts"`
+}
+
 // RedisOTPChallengeStore stores OTP challenges in Redis.
 type RedisOTPChallengeStore struct {
-	rdb *redis.Client
+	nonces domainauth.NonceStore
+	rdb    *redis.Client
 	// hmacKey 用于对 OTP 验证码做 HMAC-SHA256 存储，Redis 数据泄露时无法对 6 位验证码离线爆破。
 	hmacKey []byte
 }
 
 func NewRedisOTPChallengeStore(rdb *redis.Client, cfg *config.AppConfig) *RedisOTPChallengeStore {
+	return newOTPChallengeStore(NewRedisNonceStore(rdb), rdb, cfg)
+}
+
+func newOTPChallengeStore(nonces domainauth.NonceStore, rdb *redis.Client, cfg *config.AppConfig) *RedisOTPChallengeStore {
 	return &RedisOTPChallengeStore{
+		nonces:  nonces,
 		rdb:     rdb,
 		hmacKey: []byte(otpHMACKeyNamespace + cfg.GetSecurity().GetJwt().GetSecret()),
 	}
@@ -74,7 +97,7 @@ func (s *RedisOTPChallengeStore) hashCode(code string) string {
 
 func (s *RedisOTPChallengeStore) CheckSendRateLimit(ctx context.Context, projectID, target, ip string) error {
 	sendKey := fmt.Sprintf("Torchwood:otp:send:%s:%s", projectID, target)
-	ok, err := s.rdb.SetNX(ctx, sendKey, "1", otpSendCooldown).Result()
+	ok, err := s.nonces.PutNX(ctx, sendKey, "1", otpSendCooldown)
 	if err != nil {
 		return status.Error(codes.Internal, "otp rate limit check failed")
 	}
@@ -116,17 +139,17 @@ func (s *RedisOTPChallengeStore) VerifyPhoneChallenge(ctx context.Context, proje
 func (s *RedisOTPChallengeStore) createChallenge(ctx context.Context, projectID, channel, target, code string) (string, time.Time, error) {
 	challengeID := newChallengeID()
 	expireAt := time.Now().Add(otpChallengeTTL)
-	key := challengeKey(challengeID)
-	pipe := s.rdb.TxPipeline()
-	pipe.HSet(ctx, key, map[string]any{
-		"project_id": projectID,
-		"channel":    channel,
-		"target":     target,
-		"code_hash":  s.hashCode(code),
-		"attempts":   0,
+	payload, err := json.Marshal(otpChallengeRecord{
+		ProjectID: projectID,
+		Channel:   channel,
+		Target:    target,
+		CodeHash:  s.hashCode(code),
+		Attempts:  0,
 	})
-	pipe.Expire(ctx, key, otpChallengeTTL)
-	if _, err := pipe.Exec(ctx); err != nil {
+	if err != nil {
+		return "", time.Time{}, status.Error(codes.Internal, "otp challenge store failed")
+	}
+	if err := s.nonces.Put(ctx, challengeKey(challengeID), string(payload), otpChallengeTTL); err != nil {
 		return "", time.Time{}, status.Error(codes.Internal, "otp challenge store failed")
 	}
 	return challengeID, expireAt, nil
@@ -138,7 +161,7 @@ func (s *RedisOTPChallengeStore) verifyChallenge(ctx context.Context, projectID,
 		projectID, channel, target, s.hashCode(code), otpMaxAttempts).Text()
 	if err != nil {
 		if strings.Contains(err.Error(), "WRONGTYPE") {
-			// 旧版本以 JSON 字符串格式写入的在途 challenge 按无效处理（TTL 仅 5 分钟，影响短暂）。
+			// 旧版本 HASH 格式的在途 challenge 按无效处理（TTL 仅 5 分钟）。
 			return status.Error(codes.Unauthenticated, "invalid or expired otp challenge")
 		}
 		return status.Error(codes.Internal, "otp challenge verify failed")
@@ -163,3 +186,5 @@ func challengeKey(challengeID string) string {
 func newChallengeID() string {
 	return idgen.UUID().String()
 }
+
+var _ domainauth.OTPChallengeStore = (*RedisOTPChallengeStore)(nil)

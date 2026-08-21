@@ -84,7 +84,7 @@ func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUser
 		return nil, status.Error(codes.InvalidArgument, "email is required")
 	}
 	if err := users.ValidatePasswordStrength(cmd.Password); err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if cmd.Status != "" {
 		if err := users.ValidateStatus(cmd.Status); err != nil {
@@ -215,7 +215,7 @@ func (u *Users) UpdateUserPassword(ctx context.Context, projectID, userID, newPa
 		return nil, err
 	}
 	if err := users.ValidatePasswordStrength(newPassword); err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
 	if err != nil {

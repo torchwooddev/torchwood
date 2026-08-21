@@ -33,7 +33,3 @@ type AdminRepository interface {
 	// 锁随事务提交/回滚自动释放。
 	WithBootstrapLock(ctx context.Context, key int64, fn func(ctx context.Context) error) error
 }
-
-type ProjectResolver interface {
-	InternalID(ctx context.Context, projectID string) (int64, error)
-}

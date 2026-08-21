@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -46,6 +47,9 @@ func UpdateDocumentVersionRequired(version *int64) error {
 func MapDocumentDBError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, ident.ErrInvalidSchemaResourceID) {
+		return MapIdentError(err)
 	}
 	if errors.Is(err, databases.ErrPermissionDenied) {
 		return status.Error(codes.PermissionDenied, "permission denied")

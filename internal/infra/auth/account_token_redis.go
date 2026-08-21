@@ -34,15 +34,20 @@ type accountTokenRecord struct {
 
 // RedisAccountTokenStore stores account verification and recovery tokens in Redis.
 type RedisAccountTokenStore struct {
-	rdb *redis.Client
+	nonces domainauth.NonceStore
+	rdb    *redis.Client
 }
 
 func NewRedisAccountTokenStore(rdb *redis.Client) *RedisAccountTokenStore {
-	return &RedisAccountTokenStore{rdb: rdb}
+	return newAccountTokenStore(NewRedisNonceStore(rdb), rdb)
+}
+
+func newAccountTokenStore(nonces domainauth.NonceStore, rdb *redis.Client) *RedisAccountTokenStore {
+	return &RedisAccountTokenStore{nonces: nonces, rdb: rdb}
 }
 
 func (s *RedisAccountTokenStore) CheckSendRateLimit(ctx context.Context, projectID, target, ip string) error {
-	store := &RedisOTPChallengeStore{rdb: s.rdb}
+	store := &RedisOTPChallengeStore{rdb: s.rdb, nonces: s.nonces}
 	return store.CheckSendRateLimit(ctx, projectID, target, ip)
 }
 
@@ -106,7 +111,7 @@ func (s *RedisAccountTokenStore) createToken(ctx context.Context, projectID, use
 		return "", time.Time{}, status.Error(codes.Internal, "account token encode failed")
 	}
 	key := accountTokenKey(purpose, projectID, userID)
-	if err := s.rdb.Set(ctx, key, payload, ttl).Err(); err != nil {
+	if err := s.nonces.Put(ctx, key, string(payload), ttl); err != nil {
 		return "", time.Time{}, status.Error(codes.Internal, "account token store failed")
 	}
 	return secret, expireAt, nil
@@ -182,3 +187,5 @@ func generateAccountTokenSecret() (string, error) {
 	}
 	return hex.EncodeToString(buf), nil
 }
+
+var _ domainauth.AccountTokenStore = (*RedisAccountTokenStore)(nil)

@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func TestValidateSchemaResourceID_Valid(t *testing.T) {
@@ -34,10 +32,8 @@ func TestValidateSchemaResourceID_Invalid(t *testing.T) {
 	} {
 		err := ValidateSchemaResourceID(id)
 		require.Error(t, err, id)
-		st, ok := status.FromError(err)
-		require.True(t, ok, id)
-		require.Equal(t, codes.InvalidArgument, st.Code(), id)
-		require.Equal(t, errSchemaResourceID, st.Message(), id)
+		require.ErrorIs(t, err, ErrInvalidSchemaResourceID, id)
+		require.Equal(t, errSchemaResourceID, err.Error(), id)
 	}
 }
 
@@ -64,6 +60,7 @@ func TestSchemaName_RejectsInvalid(t *testing.T) {
 	} {
 		got, err := SchemaName(tc.project, tc.database)
 		require.Error(t, err, tc)
+		require.ErrorIs(t, err, ErrInvalidSchemaResourceID, tc)
 		require.Empty(t, got, tc)
 	}
 }

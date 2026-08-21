@@ -14,11 +14,15 @@ import (
 const oauthStateTTL = 10 * time.Minute
 
 type RedisOAuthStateStore struct {
-	rdb *redis.Client
+	nonces domainauth.NonceStore
 }
 
 func NewRedisOAuthStateStore(rdb *redis.Client) *RedisOAuthStateStore {
-	return &RedisOAuthStateStore{rdb: rdb}
+	return newOAuthStateStore(NewRedisNonceStore(rdb))
+}
+
+func newOAuthStateStore(nonces domainauth.NonceStore) *RedisOAuthStateStore {
+	return &RedisOAuthStateStore{nonces: nonces}
 }
 
 func (s *RedisOAuthStateStore) Save(ctx context.Context, state domainauth.OAuthState, ttl time.Duration) error {
@@ -29,8 +33,7 @@ func (s *RedisOAuthStateStore) Save(ctx context.Context, state domainauth.OAuthS
 	if err != nil {
 		return status.Error(codes.Internal, "oauth state encode failed")
 	}
-	key := oauthStateKey(state.StateID)
-	if err := s.rdb.Set(ctx, key, payload, ttl).Err(); err != nil {
+	if err := s.nonces.Put(ctx, oauthStateKey(state.StateID), string(payload), ttl); err != nil {
 		return status.Error(codes.Internal, "oauth state store failed")
 	}
 	return nil
@@ -39,15 +42,15 @@ func (s *RedisOAuthStateStore) Save(ctx context.Context, state domainauth.OAuthS
 // Consume atomically fetches and deletes the state via GETDEL so a state can
 // only be redeemed once, closing the concurrent-callback replay window.
 func (s *RedisOAuthStateStore) Consume(ctx context.Context, stateID string) (*domainauth.OAuthState, error) {
-	raw, err := s.rdb.GetDel(ctx, oauthStateKey(stateID)).Bytes()
-	if err == redis.Nil {
-		return nil, status.Error(codes.Unauthenticated, "invalid or expired oauth state")
-	}
+	raw, err := s.nonces.Consume(ctx, oauthStateKey(stateID))
 	if err != nil {
 		return nil, status.Error(codes.Internal, "oauth state lookup failed")
 	}
+	if raw == "" {
+		return nil, status.Error(codes.Unauthenticated, "invalid or expired oauth state")
+	}
 	var state domainauth.OAuthState
-	if err := json.Unmarshal(raw, &state); err != nil {
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
 		return nil, status.Error(codes.Internal, "oauth state decode failed")
 	}
 	return &state, nil
@@ -56,3 +59,5 @@ func (s *RedisOAuthStateStore) Consume(ctx context.Context, stateID string) (*do
 func oauthStateKey(stateID string) string {
 	return "Torchwood:oauth:state:" + stateID
 }
+
+var _ domainauth.OAuthStateStore = (*RedisOAuthStateStore)(nil)

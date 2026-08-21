@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -109,4 +110,13 @@ func TestMapDocumentDBError_OCCVersionErrors(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, status.Code(UpdateDocumentVersionRequired(&zero)))
 	one := int64(1)
 	require.NoError(t, UpdateDocumentVersionRequired(&one))
+}
+
+func TestMapDocumentDBError_Ident(t *testing.T) {
+	mapped := MapDocumentDBError(ident.ErrInvalidSchemaResourceID)
+	require.Equal(t, codes.InvalidArgument, status.Code(mapped))
+	require.Equal(t, ident.ErrInvalidSchemaResourceID.Error(), status.Convert(mapped).Message())
+
+	wrapped := fmt.Errorf("schema: %w", ident.ErrInvalidSchemaResourceID)
+	require.Equal(t, codes.InvalidArgument, status.Code(MapDocumentDBError(wrapped)))
 }

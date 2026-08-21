@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
@@ -59,7 +60,7 @@ func (s *Projects) CreateProject(ctx context.Context, cmd CreateProjectCommand) 
 // 委托本方法。
 func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectCommand) (*projects.Project, error) {
 	if err := ident.ValidateSchemaResourceID(cmd.ID); err != nil {
-		return nil, err
+		return nil, appshared.MapIdentError(err)
 	}
 	if cmd.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
@@ -72,7 +73,7 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 		firstDBID = "default"
 	}
 	if err := ident.ValidateSchemaResourceID(firstDBID); err != nil {
-		return nil, err
+		return nil, appshared.MapIdentError(err)
 	}
 	p := &projects.Project{
 		ID:          cmd.ID,
@@ -89,7 +90,7 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 		}
 		schema, err := ident.ProjectSchemaName(p.ID)
 		if err != nil {
-			return err
+			return appshared.MapIdentError(err)
 		}
 		if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
 			return fmt.Errorf("create project schema: %w", err)
@@ -121,7 +122,7 @@ func (s *Projects) DeleteProject(ctx context.Context, id string) error {
 		return status.Error(codes.PermissionDenied, "platform admin required to delete projects")
 	}
 	if err := ident.ValidateSchemaResourceID(id); err != nil {
-		return err
+		return appshared.MapIdentError(err)
 	}
 	p, err := s.projectRepo.GetProject(ctx, id)
 	if err != nil {
@@ -138,7 +139,7 @@ func (s *Projects) DeleteProject(ctx context.Context, id string) error {
 // 同一事务：业务 schema DROP → 清理 public 行 → DROP tw_<project> → 删 projects 行。
 func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 	if err := ident.ValidateSchemaResourceID(id); err != nil {
-		return err
+		return appshared.MapIdentError(err)
 	}
 	return s.db.RunInTx(ctx, func(txCtx context.Context) error {
 		dbs, err := s.docDB.ListDatabases(txCtx, id)
@@ -158,7 +159,7 @@ func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 		}
 		schema, err := ident.ProjectSchemaName(id)
 		if err != nil {
-			return err
+			return appshared.MapIdentError(err)
 		}
 		if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
 			return fmt.Errorf("drop project schema: %w", err)

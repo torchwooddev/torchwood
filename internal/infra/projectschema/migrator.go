@@ -24,7 +24,7 @@ var migrationFS embed.FS
 // schema 不存在，补写失败属预期，best-effort 忽略）。
 func Apply(ctx context.Context, db *clients.Database, projectID string) error {
 	if err := ident.ValidateSchemaResourceID(projectID); err != nil {
-		return err
+		return fmt.Errorf("invalid project id: %w", err)
 	}
 	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {

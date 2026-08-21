@@ -1,11 +1,6 @@
 package groups
 
-import (
-	"fmt"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-)
+import "fmt"
 
 const (
 	StatusPending  = "pending"
@@ -22,8 +17,7 @@ func ValidateStatus(s string) error {
 	case StatusPending, StatusAccepted, StatusRejected:
 		return nil
 	default:
-		return status.Error(codes.InvalidArgument,
-			fmt.Sprintf("invalid membership status %q (allowed: pending, accepted, rejected)", s))
+		return fmt.Errorf("invalid membership status %q (allowed: pending, accepted, rejected)", s)
 	}
 }
 
@@ -32,8 +26,7 @@ func ValidateRole(role string) error {
 	case RoleOwner, RoleAdmin, RoleMember:
 		return nil
 	default:
-		return status.Error(codes.InvalidArgument,
-			fmt.Sprintf("invalid membership role %q (allowed: owner, admin, member)", role))
+		return fmt.Errorf("invalid membership role %q (allowed: owner, admin, member)", role)
 	}
 }
 

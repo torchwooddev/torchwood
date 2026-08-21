@@ -203,7 +203,7 @@ func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd Cre
 		statusVal = groups.StatusPending
 	}
 	if err := groups.ValidateStatus(statusVal); err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	membershipRoles := cmd.Roles
 	if len(membershipRoles) == 0 {
@@ -211,7 +211,7 @@ func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd Cre
 	}
 	for _, role := range membershipRoles {
 		if err := groups.ValidateRole(role); err != nil {
-			return nil, err
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
 
@@ -292,7 +292,7 @@ func (t *Groups) UpdateMembership(ctx context.Context, projectID, groupID, membe
 	}
 	for _, role := range cmd.Roles {
 		if err := groups.ValidateRole(role); err != nil {
-			return nil, err
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
 	doc, err := t.getMembershipDoc(ctx, projectID, groupID, membershipID, principal)
@@ -317,7 +317,7 @@ func (t *Groups) UpdateMembership(ctx context.Context, projectID, groupID, membe
 
 func (t *Groups) UpdateMembershipStatus(ctx context.Context, projectID, groupID, membershipID, statusVal string, principal databases.Principal) (*databases.Document, error) {
 	if err := groups.ValidateStatus(statusVal); err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if statusVal == groups.StatusPending {
 		return nil, status.Error(codes.InvalidArgument, "cannot set status back to pending")

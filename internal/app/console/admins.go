@@ -85,7 +85,7 @@ func (a *Admins) Create(ctx context.Context, cmd CreateAdminCommand) (*projects.
 		return nil, err
 	}
 	if err := users.ValidatePasswordStrength(cmd.Password); err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	existing, err := a.repo.GetAdminByEmail(ctx, email)
 	if err != nil {
@@ -146,7 +146,7 @@ func (a *Admins) Update(ctx context.Context, cmd UpdateAdminCommand) (*projects.
 
 	if cmd.Password != "" {
 		if err := users.ValidatePasswordStrength(cmd.Password); err != nil {
-			return nil, err
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		hash, err := password.Hash(cmd.Password)
 		if err != nil {

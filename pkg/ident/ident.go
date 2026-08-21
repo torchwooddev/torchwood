@@ -1,10 +1,8 @@
 package ident
 
 import (
+	"errors"
 	"regexp"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -22,6 +20,10 @@ const (
 )
 
 const errSchemaResourceID = "id must match ^[a-z][a-z0-9]{0,27}$"
+
+// ErrInvalidSchemaResourceID 表示 project.id / database.id 未通过 charset 校验。
+// 调用方（app/api/documentdb）映射为 gRPC InvalidArgument。
+var ErrInvalidSchemaResourceID = errors.New(errSchemaResourceID)
 
 // 小写字母开头，后接 0–27 个小写字母或数字。合计最长 28。
 var schemaResourceIDRe = regexp.MustCompile(`^[a-z][a-z0-9]{0,27}$`)
@@ -44,7 +46,7 @@ func ProjectSchemaName(projectID string) (string, error) {
 	if !projectSchemaNameRe.MatchString(name) {
 		// 理论不可达：projectID 已过 ValidateSchemaResourceID（小写字母+数字、
 		// 无下划线）。保留断言作纵深防御。
-		return "", status.Error(codes.InvalidArgument, errSchemaResourceID)
+		return "", ErrInvalidSchemaResourceID
 	}
 	return name, nil
 }
@@ -59,7 +61,7 @@ func IsTwoSegmentSchema(name string) bool {
 // ValidateSchemaResourceID 校验 project.id / database.id。
 func ValidateSchemaResourceID(id string) error {
 	if id == "" || !schemaResourceIDRe.MatchString(id) {
-		return status.Error(codes.InvalidArgument, errSchemaResourceID)
+		return ErrInvalidSchemaResourceID
 	}
 	return nil
 }
@@ -74,7 +76,7 @@ func SchemaName(projectID, databaseID string) (string, error) {
 	}
 	name := SchemaPrefix + projectID + "_" + databaseID
 	if !schemaNameRe.MatchString(name) {
-		return "", status.Error(codes.InvalidArgument, errSchemaResourceID)
+		return "", ErrInvalidSchemaResourceID
 	}
 	return name, nil
 }
