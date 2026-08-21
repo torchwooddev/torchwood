@@ -38,7 +38,7 @@ API 的单一事实来源是 `proto/` 下的 `.proto` 文件，分四组：
 - `proto/server/v1/`：管理面（Agent / API Key / Console 调用），如 `projects.proto`、`users.proto`；
 - `proto/client/v1/`：终端用户面，如 `account.proto`、`databases.proto`；
 - `proto/console/v1/`：Console 专用管理面，如 `admins.proto`、`auth.proto`；
-- `proto/shared/v1/`：共享定义，如 `authz.proto`（鉴权注解）、`common.proto`（`ListRequest`/`ListResponseMeta`）、`error.proto`（错误枚举）。
+- `proto/shared/v1/`：共享定义，如 `authz.proto`（鉴权注解）、`common.proto`（`ListRequest`/`ListResponseMeta`）、`error.proto`（错误枚举）、`document.proto`（`Document` 载荷）。
 
 ### 1.1 服务与方法的骨架
 
@@ -147,6 +147,15 @@ message UpdateProjectRequest {
 > **Client API 同步迁移**：`/v1/databases/{database_id}/collections/{collection_id}/
 > documents/count` 同样改为 `documents:count`（旧路径 404），Client API 的
 > `count` 不再占用 document_id 命名空间。
+
+> **⚠️ Breaking change（E-2b，Document 迁到 shared）**：Client/Server 同构的
+> `message Document` 已从 `torchwood.client.v1.Document` /
+> `torchwood.server.v1.Document` 迁到 `torchwood.shared.v1.Document`
+>（`proto/shared/v1/document.proto`）。REST JSON 字段名与编号不变
+> （`id`/`data`/`created_at`/`updated_at`/`permissions`/`version`，字段号 1–6）。
+> OpenAPI `$ref` 与 Go SDK 返回类型变为 `*sharedv1.Document`（不 bump v2）。
+> 请求消息（`ListDocumentsRequest` 等）仍分包，未合并。详见
+> `docs/review/wave3-e2b-document-proto.md`。
 
 ---
 

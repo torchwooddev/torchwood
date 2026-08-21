@@ -43,11 +43,11 @@ const (
 type DatabasesServiceClient interface {
 	// 自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用
 	// document_id 命名空间；document_id 可自由取任意合法值。
-	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
+	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*ListDocumentsResponse, error)
-	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error)
-	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
-	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*Document, error)
+	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
+	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
+	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	CountDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
 	// 单库事务（v2 设计 §5）：暂存文档写操作，Commit 单段事务应用并写 outbox。
@@ -69,9 +69,9 @@ func NewDatabasesServiceClient(cc grpc.ClientConnInterface) DatabasesServiceClie
 	return &databasesServiceClient{cc}
 }
 
-func (c *databasesServiceClient) CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_CreateDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -89,9 +89,9 @@ func (c *databasesServiceClient) ListDocuments(ctx context.Context, in *ListDocu
 	return out, nil
 }
 
-func (c *databasesServiceClient) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_GetDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -99,9 +99,9 @@ func (c *databasesServiceClient) GetDocument(ctx context.Context, in *GetDocumen
 	return out, nil
 }
 
-func (c *databasesServiceClient) UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_UpdateDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -109,9 +109,9 @@ func (c *databasesServiceClient) UpdateDocument(ctx context.Context, in *UpdateD
 	return out, nil
 }
 
-func (c *databasesServiceClient) UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_UpsertDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -225,11 +225,11 @@ func (c *databasesServiceClient) RollbackTransaction(ctx context.Context, in *Ro
 type DatabasesServiceServer interface {
 	// 自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用
 	// document_id 命名空间；document_id 可自由取任意合法值。
-	CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error)
+	CreateDocument(context.Context, *CreateDocumentRequest) (*v1.Document, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
-	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
-	UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error)
-	UpsertDocument(context.Context, *UpsertDocumentRequest) (*Document, error)
+	GetDocument(context.Context, *GetDocumentRequest) (*v1.Document, error)
+	UpdateDocument(context.Context, *UpdateDocumentRequest) (*v1.Document, error)
+	UpsertDocument(context.Context, *UpsertDocumentRequest) (*v1.Document, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error)
 	CountDocuments(context.Context, *ListDocumentsRequest) (*CountDocumentsResponse, error)
 	// 单库事务（v2 设计 §5）：暂存文档写操作，Commit 单段事务应用并写 outbox。
@@ -251,19 +251,19 @@ type DatabasesServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedDatabasesServiceServer struct{}
 
-func (UnimplementedDatabasesServiceServer) CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) CreateDocument(context.Context, *CreateDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateDocument not implemented")
 }
 func (UnimplementedDatabasesServiceServer) ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDocuments not implemented")
 }
-func (UnimplementedDatabasesServiceServer) GetDocument(context.Context, *GetDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) GetDocument(context.Context, *GetDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDocument not implemented")
 }
-func (UnimplementedDatabasesServiceServer) UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) UpdateDocument(context.Context, *UpdateDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDocument not implemented")
 }
-func (UnimplementedDatabasesServiceServer) UpsertDocument(context.Context, *UpsertDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) UpsertDocument(context.Context, *UpsertDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpsertDocument not implemented")
 }
 func (UnimplementedDatabasesServiceServer) DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error) {

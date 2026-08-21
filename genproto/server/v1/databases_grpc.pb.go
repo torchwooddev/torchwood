@@ -69,11 +69,11 @@ type DatabasesServiceClient interface {
 	DeleteAttribute(ctx context.Context, in *DeleteAttributeRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*Index, error)
 	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*v1.Empty, error)
-	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
+	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*ListDocumentsResponse, error)
-	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error)
-	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
-	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*Document, error)
+	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
+	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
+	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	CountDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
 	BulkUpdateDocuments(ctx context.Context, in *BulkUpdateDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error)
@@ -227,9 +227,9 @@ func (c *databasesServiceClient) DeleteIndex(ctx context.Context, in *DeleteInde
 	return out, nil
 }
 
-func (c *databasesServiceClient) CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_CreateDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -247,9 +247,9 @@ func (c *databasesServiceClient) ListDocuments(ctx context.Context, in *ListDocu
 	return out, nil
 }
 
-func (c *databasesServiceClient) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_GetDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -257,9 +257,9 @@ func (c *databasesServiceClient) GetDocument(ctx context.Context, in *GetDocumen
 	return out, nil
 }
 
-func (c *databasesServiceClient) UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_UpdateDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -267,9 +267,9 @@ func (c *databasesServiceClient) UpdateDocument(ctx context.Context, in *UpdateD
 	return out, nil
 }
 
-func (c *databasesServiceClient) UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*Document, error) {
+func (c *databasesServiceClient) UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Document)
+	out := new(v1.Document)
 	err := c.cc.Invoke(ctx, DatabasesService_UpsertDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -414,11 +414,11 @@ type DatabasesServiceServer interface {
 	DeleteAttribute(context.Context, *DeleteAttributeRequest) (*v1.Empty, error)
 	CreateIndex(context.Context, *CreateIndexRequest) (*Index, error)
 	DeleteIndex(context.Context, *DeleteIndexRequest) (*v1.Empty, error)
-	CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error)
+	CreateDocument(context.Context, *CreateDocumentRequest) (*v1.Document, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
-	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
-	UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error)
-	UpsertDocument(context.Context, *UpsertDocumentRequest) (*Document, error)
+	GetDocument(context.Context, *GetDocumentRequest) (*v1.Document, error)
+	UpdateDocument(context.Context, *UpdateDocumentRequest) (*v1.Document, error)
+	UpsertDocument(context.Context, *UpsertDocumentRequest) (*v1.Document, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error)
 	CountDocuments(context.Context, *ListDocumentsRequest) (*CountDocumentsResponse, error)
 	BulkUpdateDocuments(context.Context, *BulkUpdateDocumentsRequest) (*BulkDocumentsResponse, error)
@@ -481,19 +481,19 @@ func (UnimplementedDatabasesServiceServer) CreateIndex(context.Context, *CreateI
 func (UnimplementedDatabasesServiceServer) DeleteIndex(context.Context, *DeleteIndexRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteIndex not implemented")
 }
-func (UnimplementedDatabasesServiceServer) CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) CreateDocument(context.Context, *CreateDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateDocument not implemented")
 }
 func (UnimplementedDatabasesServiceServer) ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDocuments not implemented")
 }
-func (UnimplementedDatabasesServiceServer) GetDocument(context.Context, *GetDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) GetDocument(context.Context, *GetDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDocument not implemented")
 }
-func (UnimplementedDatabasesServiceServer) UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) UpdateDocument(context.Context, *UpdateDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDocument not implemented")
 }
-func (UnimplementedDatabasesServiceServer) UpsertDocument(context.Context, *UpsertDocumentRequest) (*Document, error) {
+func (UnimplementedDatabasesServiceServer) UpsertDocument(context.Context, *UpsertDocumentRequest) (*v1.Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpsertDocument not implemented")
 }
 func (UnimplementedDatabasesServiceServer) DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error) {

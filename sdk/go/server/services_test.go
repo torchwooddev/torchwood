@@ -215,23 +215,23 @@ func (s *fakeServices) CreateIndex(ctx context.Context, req *serverv1.CreateInde
 	return &serverv1.Index{Id: req.Id, Type: req.Type, Attributes: req.Attributes}, nil
 }
 
-func (s *fakeServices) CreateDocument(ctx context.Context, req *serverv1.CreateDocumentRequest) (*serverv1.Document, error) {
-	return &serverv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
+func (s *fakeServices) CreateDocument(ctx context.Context, req *serverv1.CreateDocumentRequest) (*sharedv1.Document, error) {
+	return &sharedv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
 }
 
-func (s *fakeServices) GetDocument(ctx context.Context, req *serverv1.GetDocumentRequest) (*serverv1.Document, error) {
-	return &serverv1.Document{Id: req.DocumentId}, nil
+func (s *fakeServices) GetDocument(ctx context.Context, req *serverv1.GetDocumentRequest) (*sharedv1.Document, error) {
+	return &sharedv1.Document{Id: req.DocumentId}, nil
 }
 
-func (s *fakeServices) UpdateDocument(ctx context.Context, req *serverv1.UpdateDocumentRequest) (*serverv1.Document, error) {
-	return &serverv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
+func (s *fakeServices) UpdateDocument(ctx context.Context, req *serverv1.UpdateDocumentRequest) (*sharedv1.Document, error) {
+	return &sharedv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
 }
 
-func (s *fakeServices) UpsertDocument(ctx context.Context, req *serverv1.UpsertDocumentRequest) (*serverv1.Document, error) {
+func (s *fakeServices) UpsertDocument(ctx context.Context, req *serverv1.UpsertDocumentRequest) (*sharedv1.Document, error) {
 	s.rec.mu.Lock()
 	s.rec.upserts = append(s.rec.upserts, req)
 	s.rec.mu.Unlock()
-	return &serverv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
+	return &sharedv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
 }
 
 func (s *fakeServices) DeleteDocument(ctx context.Context, _ *serverv1.DeleteDocumentRequest) (*sharedv1.Empty, error) {
@@ -240,7 +240,7 @@ func (s *fakeServices) DeleteDocument(ctx context.Context, _ *serverv1.DeleteDoc
 
 func (s *fakeServices) ListDocuments(ctx context.Context, _ *serverv1.ListDocumentsRequest) (*serverv1.ListDocumentsResponse, error) {
 	return &serverv1.ListDocumentsResponse{
-		Documents: []*serverv1.Document{{Id: "d1"}, {Id: "d2"}},
+		Documents: []*sharedv1.Document{{Id: "d1"}, {Id: "d2"}},
 		Meta:      &sharedv1.ListResponseMeta{NextPageToken: "next-token"},
 	}, nil
 }

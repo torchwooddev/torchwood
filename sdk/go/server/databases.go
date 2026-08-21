@@ -144,7 +144,7 @@ func (d *DatabasesService) DeleteIndex(ctx context.Context, collectionID, indexI
 }
 
 // CreateDocument 在集合中创建文档。
-func (d *DatabasesService) CreateDocument(ctx context.Context, collectionID, documentID string, data map[string]any, permissions []string) (*serverv1.Document, error) {
+func (d *DatabasesService) CreateDocument(ctx context.Context, collectionID, documentID string, data map[string]any, permissions []string) (*sharedv1.Document, error) {
 	st, err := toStruct(data)
 	if err != nil {
 		return nil, err
@@ -159,7 +159,7 @@ func (d *DatabasesService) CreateDocument(ctx context.Context, collectionID, doc
 }
 
 // GetDocument 读取文档，不存在时返回 codes.NotFound。
-func (d *DatabasesService) GetDocument(ctx context.Context, collectionID, documentID string) (*serverv1.Document, error) {
+func (d *DatabasesService) GetDocument(ctx context.Context, collectionID, documentID string) (*sharedv1.Document, error) {
 	return d.c.databases.GetDocument(ctx, &serverv1.GetDocumentRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
@@ -169,7 +169,7 @@ func (d *DatabasesService) GetDocument(ctx context.Context, collectionID, docume
 
 // UpdateDocument 更新文档字段；increment 对数字字段做原子增量。
 // version 为用户集合 OCC 版本（GetDocument 返回的 version），必填。
-func (d *DatabasesService) UpdateDocument(ctx context.Context, collectionID, documentID string, data map[string]any, increment map[string]int64, permissions []string, version int64) (*serverv1.Document, error) {
+func (d *DatabasesService) UpdateDocument(ctx context.Context, collectionID, documentID string, data map[string]any, increment map[string]int64, permissions []string, version int64) (*sharedv1.Document, error) {
 	st, err := toStruct(data)
 	if err != nil {
 		return nil, err
@@ -186,7 +186,7 @@ func (d *DatabasesService) UpdateDocument(ctx context.Context, collectionID, doc
 }
 
 // UpsertDocument 按 conflictColumns（须匹配集合唯一索引）插入或更新文档。
-func (d *DatabasesService) UpsertDocument(ctx context.Context, collectionID, documentID string, data map[string]any, conflictColumns, permissions []string) (*serverv1.Document, error) {
+func (d *DatabasesService) UpsertDocument(ctx context.Context, collectionID, documentID string, data map[string]any, conflictColumns, permissions []string) (*sharedv1.Document, error) {
 	st, err := toStruct(data)
 	if err != nil {
 		return nil, err
@@ -213,7 +213,7 @@ func (d *DatabasesService) DeleteDocument(ctx context.Context, collectionID, doc
 }
 
 // ListDocuments 按查询 DSL 列出文档，返回文档列表与下一页游标（空表示无更多）。
-func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, queries []string, pageSize int32, pageToken string) ([]*serverv1.Document, string, error) {
+func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, queries []string, pageSize int32, pageToken string) ([]*sharedv1.Document, string, error) {
 	resp, err := d.c.databases.ListDocuments(ctx, &serverv1.ListDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,

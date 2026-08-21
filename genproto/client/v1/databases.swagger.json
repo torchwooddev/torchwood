@@ -278,7 +278,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodclientv1Document"
+              "$ref": "#/definitions/v1Document"
             }
           },
           "default": {
@@ -322,7 +322,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodclientv1Document"
+              "$ref": "#/definitions/v1Document"
             }
           },
           "default": {
@@ -418,7 +418,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodclientv1Document"
+              "$ref": "#/definitions/v1Document"
             }
           },
           "default": {
@@ -466,7 +466,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodclientv1Document"
+              "$ref": "#/definitions/v1Document"
             }
           },
           "default": {
@@ -1459,36 +1459,6 @@
         }
       }
     },
-    "torchwoodclientv1Document": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "data": {
-          "type": "object"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "permissions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "version": {
-          "type": "string",
-          "format": "int64",
-          "title": "用户集合为当前 _version；系统集合恒为 0。"
-        }
-      }
-    },
     "torchwoodclientv1ListDocumentsResponse": {
       "type": "object",
       "properties": {
@@ -1496,7 +1466,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "$ref": "#/definitions/torchwoodclientv1Document"
+            "$ref": "#/definitions/v1Document"
           }
         },
         "meta": {
@@ -1605,6 +1575,37 @@
         }
       },
       "description": "Comparison is a leaf predicate: attribute plus one or more values."
+    },
+    "v1Document": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "version": {
+          "type": "string",
+          "format": "int64",
+          "title": "用户集合为当前 _version；系统集合恒为 0。"
+        }
+      },
+      "title": "Document 是 Client/Server 文档 RPC 的共享载荷；字段号 1–6 冻结，禁止复用或重排。"
     },
     "v1Empty": {
       "type": "object"

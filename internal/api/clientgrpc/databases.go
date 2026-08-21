@@ -26,7 +26,7 @@ func NewDatabasesService(databases *client.Databases, transactions *client.Trans
 	return &DatabasesService{databases: databases, transactions: transactions}
 }
 
-func (s *DatabasesService) CreateDocument(ctx context.Context, req *clientv1.CreateDocumentRequest) (*clientv1.Document, error) {
+func (s *DatabasesService) CreateDocument(ctx context.Context, req *clientv1.CreateDocumentRequest) (*sharedv1.Document, error) {
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
 	if req.GetDocumentId() != "" {
 		ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
@@ -64,7 +64,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *clientv1.List
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*clientv1.Document, len(docs))
+	out := make([]*sharedv1.Document, len(docs))
 	for i := range docs {
 		mapped, err := mapClientDocument(&docs[i])
 		if err != nil {
@@ -78,7 +78,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *clientv1.List
 	}, nil
 }
 
-func (s *DatabasesService) GetDocument(ctx context.Context, req *clientv1.GetDocumentRequest) (*clientv1.Document, error) {
+func (s *DatabasesService) GetDocument(ctx context.Context, req *clientv1.GetDocumentRequest) (*sharedv1.Document, error) {
 	projectID, err := resolveProjectID(ctx, req.GetProjectId())
 	if err != nil {
 		return nil, err
@@ -91,7 +91,7 @@ func (s *DatabasesService) GetDocument(ctx context.Context, req *clientv1.GetDoc
 	return mapClientDocument(doc)
 }
 
-func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.UpdateDocumentRequest) (*clientv1.Document, error) {
+func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.UpdateDocumentRequest) (*sharedv1.Document, error) {
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
 	perms, err := parseOptionalPermissions(req.GetPermissions())
 	if err != nil {
@@ -118,7 +118,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.Upd
 	return mapClientDocument(doc)
 }
 
-func (s *DatabasesService) UpsertDocument(ctx context.Context, req *clientv1.UpsertDocumentRequest) (*clientv1.Document, error) {
+func (s *DatabasesService) UpsertDocument(ctx context.Context, req *clientv1.UpsertDocumentRequest) (*sharedv1.Document, error) {
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
 	data := map[string]any{}
 	if req.GetData() != nil {
@@ -188,7 +188,7 @@ func resolveProjectID(ctx context.Context, reqProjectID string) (string, error) 
 	return "", status.Error(codes.InvalidArgument, "project_id is required")
 }
 
-func mapClientDocument(doc *databases.Document) (*clientv1.Document, error) {
+func mapClientDocument(doc *databases.Document) (*sharedv1.Document, error) {
 	if doc == nil {
 		return nil, nil
 	}
@@ -196,7 +196,7 @@ func mapClientDocument(doc *databases.Document) (*clientv1.Document, error) {
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "document data is not serializable")
 	}
-	out := &clientv1.Document{
+	out := &sharedv1.Document{
 		Id:        doc.ID,
 		Data:      data,
 		CreatedAt: timestamppb.New(doc.CreatedAt),

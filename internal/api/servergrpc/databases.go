@@ -304,7 +304,7 @@ func (s *DatabasesService) DeleteIndex(ctx context.Context, req *serverv1.Delete
 	return &sharedv1.Empty{}, nil
 }
 
-func (s *DatabasesService) CreateDocument(ctx context.Context, req *serverv1.CreateDocumentRequest) (*serverv1.Document, error) {
+func (s *DatabasesService) CreateDocument(ctx context.Context, req *serverv1.CreateDocumentRequest) (*sharedv1.Document, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -355,7 +355,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*serverv1.Document, len(docs))
+	out := make([]*sharedv1.Document, len(docs))
 	for i := range docs {
 		mapped, err := mapDocument(&docs[i])
 		if err != nil {
@@ -369,7 +369,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	}, nil
 }
 
-func (s *DatabasesService) GetDocument(ctx context.Context, req *serverv1.GetDocumentRequest) (*serverv1.Document, error) {
+func (s *DatabasesService) GetDocument(ctx context.Context, req *serverv1.GetDocumentRequest) (*sharedv1.Document, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -382,7 +382,7 @@ func (s *DatabasesService) GetDocument(ctx context.Context, req *serverv1.GetDoc
 	return mapDocument(doc)
 }
 
-func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.UpdateDocumentRequest) (*serverv1.Document, error) {
+func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.UpdateDocumentRequest) (*sharedv1.Document, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -415,7 +415,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 	return mapDocument(doc)
 }
 
-func (s *DatabasesService) UpsertDocument(ctx context.Context, req *serverv1.UpsertDocumentRequest) (*serverv1.Document, error) {
+func (s *DatabasesService) UpsertDocument(ctx context.Context, req *serverv1.UpsertDocumentRequest) (*sharedv1.Document, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -576,7 +576,7 @@ func mapCollection(c *databases.Collection) *serverv1.Collection {
 	return out
 }
 
-func mapDocument(doc *databases.Document) (*serverv1.Document, error) {
+func mapDocument(doc *databases.Document) (*sharedv1.Document, error) {
 	if doc == nil {
 		return nil, nil
 	}
@@ -584,7 +584,7 @@ func mapDocument(doc *databases.Document) (*serverv1.Document, error) {
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "document data is not serializable")
 	}
-	return &serverv1.Document{
+	return &sharedv1.Document{
 		Id:          doc.ID,
 		Data:        data,
 		CreatedAt:   timestamppb.New(doc.CreatedAt),

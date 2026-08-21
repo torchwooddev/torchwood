@@ -10,6 +10,7 @@ import "google/protobuf/timestamp.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
+import "shared/v1/document.proto";
 import "shared/v1/query.proto";
 
 // 服务默认 access=authenticated：swagger 顶层声明 Bearer security；
@@ -62,7 +63,7 @@ service DatabasesService {
 
   // 自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用
   // document_id 命名空间；document_id 可自由取任意合法值。
-  rpc CreateDocument(CreateDocumentRequest) returns (Document) {
+  rpc CreateDocument(CreateDocumentRequest) returns (shared.v1.Document) {
     option (google.api.http) = { post: "/v1/databases/{database_id}/collections/{collection_id}/documents", body: "*" };
   }
 
@@ -84,7 +85,7 @@ service DatabasesService {
     };
   }
 
-  rpc GetDocument(GetDocumentRequest) returns (Document) {
+  rpc GetDocument(GetDocumentRequest) returns (shared.v1.Document) {
     option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
@@ -96,11 +97,11 @@ service DatabasesService {
     };
   }
 
-  rpc UpdateDocument(UpdateDocumentRequest) returns (Document) {
+  rpc UpdateDocument(UpdateDocumentRequest) returns (shared.v1.Document) {
     option (google.api.http) = { patch: "/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}", body: "*" };
   }
 
-  rpc UpsertDocument(UpsertDocumentRequest) returns (Document) {
+  rpc UpsertDocument(UpsertDocumentRequest) returns (shared.v1.Document) {
     option (google.api.http) = { put: "/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}", body: "*" };
   }
 
@@ -158,16 +159,6 @@ service DatabasesService {
   rpc RollbackTransaction(RollbackTransactionRequest) returns (Transaction) {
     option (google.api.http) = { delete: "/v1/databases/{database_id}/transactions/{transaction_id}" };
   }
-}
-
-message Document {
-  string id = 1;
-  google.protobuf.Struct data = 2;
-  google.protobuf.Timestamp created_at = 3;
-  google.protobuf.Timestamp updated_at = 4;
-  repeated string permissions = 5;
-  // 用户集合为当前 _version；系统集合恒为 0。
-  int64 version = 6;
 }
 
 message CreateDocumentRequest {
@@ -228,7 +219,7 @@ message ListDocumentsRequest {
 }
 
 message ListDocumentsResponse {
-  repeated Document documents = 1;
+  repeated shared.v1.Document documents = 1;
   shared.v1.ListResponseMeta meta = 2;
 }
 

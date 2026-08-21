@@ -26,91 +26,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type Document struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Data        *structpb.Struct       `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Permissions []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
-	// 用户集合为当前 _version；系统集合恒为 0。
-	Version       int64 `protobuf:"varint,6,opt,name=version,proto3" json:"version,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Document) Reset() {
-	*x = Document{}
-	mi := &file_client_v1_databases_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Document) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Document) ProtoMessage() {}
-
-func (x *Document) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Document.ProtoReflect.Descriptor instead.
-func (*Document) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *Document) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-func (x *Document) GetData() *structpb.Struct {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-func (x *Document) GetCreatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CreatedAt
-	}
-	return nil
-}
-
-func (x *Document) GetUpdatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.UpdatedAt
-	}
-	return nil
-}
-
-func (x *Document) GetPermissions() []string {
-	if x != nil {
-		return x.Permissions
-	}
-	return nil
-}
-
-func (x *Document) GetVersion() int64 {
-	if x != nil {
-		return x.Version
-	}
-	return 0
-}
-
 type CreateDocumentRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -126,7 +41,7 @@ type CreateDocumentRequest struct {
 
 func (x *CreateDocumentRequest) Reset() {
 	*x = CreateDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[1]
+	mi := &file_client_v1_databases_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -138,7 +53,7 @@ func (x *CreateDocumentRequest) String() string {
 func (*CreateDocumentRequest) ProtoMessage() {}
 
 func (x *CreateDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[1]
+	mi := &file_client_v1_databases_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -151,7 +66,7 @@ func (x *CreateDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDocumentRequest.ProtoReflect.Descriptor instead.
 func (*CreateDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{1}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CreateDocumentRequest) GetDatabaseId() string {
@@ -205,7 +120,7 @@ type UpdateDocumentRequest struct {
 
 func (x *UpdateDocumentRequest) Reset() {
 	*x = UpdateDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[2]
+	mi := &file_client_v1_databases_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -217,7 +132,7 @@ func (x *UpdateDocumentRequest) String() string {
 func (*UpdateDocumentRequest) ProtoMessage() {}
 
 func (x *UpdateDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[2]
+	mi := &file_client_v1_databases_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -230,7 +145,7 @@ func (x *UpdateDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDocumentRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{2}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *UpdateDocumentRequest) GetDatabaseId() string {
@@ -296,7 +211,7 @@ type UpsertDocumentRequest struct {
 
 func (x *UpsertDocumentRequest) Reset() {
 	*x = UpsertDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[3]
+	mi := &file_client_v1_databases_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -308,7 +223,7 @@ func (x *UpsertDocumentRequest) String() string {
 func (*UpsertDocumentRequest) ProtoMessage() {}
 
 func (x *UpsertDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[3]
+	mi := &file_client_v1_databases_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -321,7 +236,7 @@ func (x *UpsertDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertDocumentRequest.ProtoReflect.Descriptor instead.
 func (*UpsertDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{3}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *UpsertDocumentRequest) GetDatabaseId() string {
@@ -378,7 +293,7 @@ type GetDocumentRequest struct {
 
 func (x *GetDocumentRequest) Reset() {
 	*x = GetDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[4]
+	mi := &file_client_v1_databases_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -390,7 +305,7 @@ func (x *GetDocumentRequest) String() string {
 func (*GetDocumentRequest) ProtoMessage() {}
 
 func (x *GetDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[4]
+	mi := &file_client_v1_databases_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -403,7 +318,7 @@ func (x *GetDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDocumentRequest.ProtoReflect.Descriptor instead.
 func (*GetDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{4}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetDocumentRequest) GetDatabaseId() string {
@@ -447,7 +362,7 @@ type DeleteDocumentRequest struct {
 
 func (x *DeleteDocumentRequest) Reset() {
 	*x = DeleteDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[5]
+	mi := &file_client_v1_databases_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -459,7 +374,7 @@ func (x *DeleteDocumentRequest) String() string {
 func (*DeleteDocumentRequest) ProtoMessage() {}
 
 func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[5]
+	mi := &file_client_v1_databases_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -472,7 +387,7 @@ func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDocumentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{5}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DeleteDocumentRequest) GetDatabaseId() string {
@@ -520,7 +435,7 @@ type ListDocumentsRequest struct {
 
 func (x *ListDocumentsRequest) Reset() {
 	*x = ListDocumentsRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[6]
+	mi := &file_client_v1_databases_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -532,7 +447,7 @@ func (x *ListDocumentsRequest) String() string {
 func (*ListDocumentsRequest) ProtoMessage() {}
 
 func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[6]
+	mi := &file_client_v1_databases_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -545,7 +460,7 @@ func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{6}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListDocumentsRequest) GetDatabaseId() string {
@@ -599,7 +514,7 @@ func (x *ListDocumentsRequest) GetQuery() *v1.Query {
 
 type ListDocumentsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Documents     []*Document            `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
+	Documents     []*v1.Document         `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
 	Meta          *v1.ListResponseMeta   `protobuf:"bytes,2,opt,name=meta,proto3" json:"meta,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -607,7 +522,7 @@ type ListDocumentsResponse struct {
 
 func (x *ListDocumentsResponse) Reset() {
 	*x = ListDocumentsResponse{}
-	mi := &file_client_v1_databases_proto_msgTypes[7]
+	mi := &file_client_v1_databases_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -619,7 +534,7 @@ func (x *ListDocumentsResponse) String() string {
 func (*ListDocumentsResponse) ProtoMessage() {}
 
 func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[7]
+	mi := &file_client_v1_databases_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -632,10 +547,10 @@ func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*ListDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{7}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *ListDocumentsResponse) GetDocuments() []*Document {
+func (x *ListDocumentsResponse) GetDocuments() []*v1.Document {
 	if x != nil {
 		return x.Documents
 	}
@@ -658,7 +573,7 @@ type CountDocumentsResponse struct {
 
 func (x *CountDocumentsResponse) Reset() {
 	*x = CountDocumentsResponse{}
-	mi := &file_client_v1_databases_proto_msgTypes[8]
+	mi := &file_client_v1_databases_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -670,7 +585,7 @@ func (x *CountDocumentsResponse) String() string {
 func (*CountDocumentsResponse) ProtoMessage() {}
 
 func (x *CountDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[8]
+	mi := &file_client_v1_databases_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -683,7 +598,7 @@ func (x *CountDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*CountDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{8}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CountDocumentsResponse) GetCount() int64 {
@@ -710,7 +625,7 @@ type Transaction struct {
 
 func (x *Transaction) Reset() {
 	*x = Transaction{}
-	mi := &file_client_v1_databases_proto_msgTypes[9]
+	mi := &file_client_v1_databases_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +637,7 @@ func (x *Transaction) String() string {
 func (*Transaction) ProtoMessage() {}
 
 func (x *Transaction) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[9]
+	mi := &file_client_v1_databases_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +650,7 @@ func (x *Transaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Transaction.ProtoReflect.Descriptor instead.
 func (*Transaction) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{9}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Transaction) GetId() string {
@@ -813,7 +728,7 @@ type TransactionOp struct {
 
 func (x *TransactionOp) Reset() {
 	*x = TransactionOp{}
-	mi := &file_client_v1_databases_proto_msgTypes[10]
+	mi := &file_client_v1_databases_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -825,7 +740,7 @@ func (x *TransactionOp) String() string {
 func (*TransactionOp) ProtoMessage() {}
 
 func (x *TransactionOp) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[10]
+	mi := &file_client_v1_databases_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -838,7 +753,7 @@ func (x *TransactionOp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionOp.ProtoReflect.Descriptor instead.
 func (*TransactionOp) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{10}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TransactionOp) GetId() string {
@@ -920,7 +835,7 @@ type CreateTransactionRequest struct {
 
 func (x *CreateTransactionRequest) Reset() {
 	*x = CreateTransactionRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[11]
+	mi := &file_client_v1_databases_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -932,7 +847,7 @@ func (x *CreateTransactionRequest) String() string {
 func (*CreateTransactionRequest) ProtoMessage() {}
 
 func (x *CreateTransactionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[11]
+	mi := &file_client_v1_databases_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -945,7 +860,7 @@ func (x *CreateTransactionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionRequest.ProtoReflect.Descriptor instead.
 func (*CreateTransactionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{11}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateTransactionRequest) GetDatabaseId() string {
@@ -965,7 +880,7 @@ type GetTransactionRequest struct {
 
 func (x *GetTransactionRequest) Reset() {
 	*x = GetTransactionRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[12]
+	mi := &file_client_v1_databases_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +892,7 @@ func (x *GetTransactionRequest) String() string {
 func (*GetTransactionRequest) ProtoMessage() {}
 
 func (x *GetTransactionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[12]
+	mi := &file_client_v1_databases_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +905,7 @@ func (x *GetTransactionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTransactionRequest.ProtoReflect.Descriptor instead.
 func (*GetTransactionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{12}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetTransactionRequest) GetDatabaseId() string {
@@ -1021,7 +936,7 @@ type CreateTransactionDocumentRequest struct {
 
 func (x *CreateTransactionDocumentRequest) Reset() {
 	*x = CreateTransactionDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[13]
+	mi := &file_client_v1_databases_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1033,7 +948,7 @@ func (x *CreateTransactionDocumentRequest) String() string {
 func (*CreateTransactionDocumentRequest) ProtoMessage() {}
 
 func (x *CreateTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[13]
+	mi := &file_client_v1_databases_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1046,7 +961,7 @@ func (x *CreateTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionDocumentRequest.ProtoReflect.Descriptor instead.
 func (*CreateTransactionDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{13}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateTransactionDocumentRequest) GetDatabaseId() string {
@@ -1108,7 +1023,7 @@ type UpdateTransactionDocumentRequest struct {
 
 func (x *UpdateTransactionDocumentRequest) Reset() {
 	*x = UpdateTransactionDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[14]
+	mi := &file_client_v1_databases_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1120,7 +1035,7 @@ func (x *UpdateTransactionDocumentRequest) String() string {
 func (*UpdateTransactionDocumentRequest) ProtoMessage() {}
 
 func (x *UpdateTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[14]
+	mi := &file_client_v1_databases_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1133,7 +1048,7 @@ func (x *UpdateTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTransactionDocumentRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTransactionDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{14}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *UpdateTransactionDocumentRequest) GetDatabaseId() string {
@@ -1206,7 +1121,7 @@ type DeleteTransactionDocumentRequest struct {
 
 func (x *DeleteTransactionDocumentRequest) Reset() {
 	*x = DeleteTransactionDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[15]
+	mi := &file_client_v1_databases_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1218,7 +1133,7 @@ func (x *DeleteTransactionDocumentRequest) String() string {
 func (*DeleteTransactionDocumentRequest) ProtoMessage() {}
 
 func (x *DeleteTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[15]
+	mi := &file_client_v1_databases_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1231,7 +1146,7 @@ func (x *DeleteTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTransactionDocumentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTransactionDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{15}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DeleteTransactionDocumentRequest) GetDatabaseId() string {
@@ -1284,7 +1199,7 @@ type UpsertTransactionDocumentRequest struct {
 
 func (x *UpsertTransactionDocumentRequest) Reset() {
 	*x = UpsertTransactionDocumentRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[16]
+	mi := &file_client_v1_databases_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1296,7 +1211,7 @@ func (x *UpsertTransactionDocumentRequest) String() string {
 func (*UpsertTransactionDocumentRequest) ProtoMessage() {}
 
 func (x *UpsertTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[16]
+	mi := &file_client_v1_databases_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1309,7 +1224,7 @@ func (x *UpsertTransactionDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertTransactionDocumentRequest.ProtoReflect.Descriptor instead.
 func (*UpsertTransactionDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{16}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *UpsertTransactionDocumentRequest) GetDatabaseId() string {
@@ -1371,7 +1286,7 @@ type CommitTransactionRequest struct {
 
 func (x *CommitTransactionRequest) Reset() {
 	*x = CommitTransactionRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[17]
+	mi := &file_client_v1_databases_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1383,7 +1298,7 @@ func (x *CommitTransactionRequest) String() string {
 func (*CommitTransactionRequest) ProtoMessage() {}
 
 func (x *CommitTransactionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[17]
+	mi := &file_client_v1_databases_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1396,7 +1311,7 @@ func (x *CommitTransactionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitTransactionRequest.ProtoReflect.Descriptor instead.
 func (*CommitTransactionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{17}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CommitTransactionRequest) GetDatabaseId() string {
@@ -1423,7 +1338,7 @@ type RollbackTransactionRequest struct {
 
 func (x *RollbackTransactionRequest) Reset() {
 	*x = RollbackTransactionRequest{}
-	mi := &file_client_v1_databases_proto_msgTypes[18]
+	mi := &file_client_v1_databases_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1435,7 +1350,7 @@ func (x *RollbackTransactionRequest) String() string {
 func (*RollbackTransactionRequest) ProtoMessage() {}
 
 func (x *RollbackTransactionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_client_v1_databases_proto_msgTypes[18]
+	mi := &file_client_v1_databases_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1448,7 +1363,7 @@ func (x *RollbackTransactionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackTransactionRequest.ProtoReflect.Descriptor instead.
 func (*RollbackTransactionRequest) Descriptor() ([]byte, []int) {
-	return file_client_v1_databases_proto_rawDescGZIP(), []int{18}
+	return file_client_v1_databases_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RollbackTransactionRequest) GetDatabaseId() string {
@@ -1469,16 +1384,7 @@ var File_client_v1_databases_proto protoreflect.FileDescriptor
 
 const file_client_v1_databases_proto_rawDesc = "" +
 	"\n" +
-	"\x19client/v1/databases.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\x1a\x15shared/v1/query.proto\"\xf9\x01\n" +
-	"\bDocument\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12+\n" +
-	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data\x129\n" +
-	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
-	"\n" +
-	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12 \n" +
-	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\x18\n" +
-	"\aversion\x18\x06 \x01(\x03R\aversion\"\xcd\x01\n" +
+	"\x19client/v1/databases.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\x1a\x18shared/v1/document.proto\x1a\x15shared/v1/query.proto\"\xcd\x01\n" +
 	"\x15CreateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -1541,7 +1447,7 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\x05query\x18\a \x01(\v2\x1a.torchwood.shared.v1.QueryH\x00R\x05query\x88\x01\x01B\b\n" +
 	"\x06_query\"\x8f\x01\n" +
 	"\x15ListDocumentsResponse\x12;\n" +
-	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.client.v1.DocumentR\tdocuments\x129\n" +
+	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.shared.v1.DocumentR\tdocuments\x129\n" +
 	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\".\n" +
 	"\x16CountDocumentsResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x03R\x05count\"\xe8\x02\n" +
@@ -1639,13 +1545,13 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"databaseId\x12%\n" +
 	"\x0etransaction_id\x18\x02 \x01(\tR\rtransactionId2\xf9\x18\n" +
 	"\x10DatabasesService\x12\xa9\x01\n" +
-	"\x0eCreateDocument\x12*.torchwood.client.v1.CreateDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"L\x82\xd3\xe4\x93\x02F:\x01*\"A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xaf\x02\n" +
+	"\x0eCreateDocument\x12*.torchwood.client.v1.CreateDocumentRequest\x1a\x1d.torchwood.shared.v1.Document\"L\x82\xd3\xe4\x93\x02F:\x01*\"A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xaf\x02\n" +
 	"\rListDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a*.torchwood.client.v1.ListDocumentsResponse\"\xc6\x01\x92A\"b\x00j\x1e\n" +
 	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x94\x01ZO:\x05query\"F/v1/databases/{database_id}/collections/{collection_id}/documents:list\x12A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xda\x01\n" +
-	"\vGetDocument\x12'.torchwood.client.v1.GetDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"\x82\x01\x92A\"b\x00j\x1e\n" +
+	"\vGetDocument\x12'.torchwood.client.v1.GetDocumentRequest\x1a\x1d.torchwood.shared.v1.Document\"\x82\x01\x92A\"b\x00j\x1e\n" +
 	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02Q\x12O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb7\x01\n" +
-	"\x0eUpdateDocument\x12*.torchwood.client.v1.UpdateDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*2O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb7\x01\n" +
-	"\x0eUpsertDocument\x12*.torchwood.client.v1.UpsertDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*\x1aO/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb1\x01\n" +
+	"\x0eUpdateDocument\x12*.torchwood.client.v1.UpdateDocumentRequest\x1a\x1d.torchwood.shared.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*2O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb7\x01\n" +
+	"\x0eUpsertDocument\x12*.torchwood.client.v1.UpsertDocumentRequest\x1a\x1d.torchwood.shared.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*\x1aO/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb1\x01\n" +
 	"\x0eDeleteDocument\x12*.torchwood.client.v1.DeleteDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"W\x82\xd3\xe4\x93\x02Q*O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb8\x02\n" +
 	"\x0eCountDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a+.torchwood.client.v1.CountDocumentsResponse\"\xcd\x01\x92A\"b\x00j\x1e\n" +
 	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x9b\x01ZP:\x05query\"G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x12G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x12\x99\x01\n" +
@@ -1680,92 +1586,89 @@ func file_client_v1_databases_proto_rawDescGZIP() []byte {
 	return file_client_v1_databases_proto_rawDescData
 }
 
-var file_client_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_client_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_client_v1_databases_proto_goTypes = []any{
-	(*Document)(nil),                         // 0: torchwood.client.v1.Document
-	(*CreateDocumentRequest)(nil),            // 1: torchwood.client.v1.CreateDocumentRequest
-	(*UpdateDocumentRequest)(nil),            // 2: torchwood.client.v1.UpdateDocumentRequest
-	(*UpsertDocumentRequest)(nil),            // 3: torchwood.client.v1.UpsertDocumentRequest
-	(*GetDocumentRequest)(nil),               // 4: torchwood.client.v1.GetDocumentRequest
-	(*DeleteDocumentRequest)(nil),            // 5: torchwood.client.v1.DeleteDocumentRequest
-	(*ListDocumentsRequest)(nil),             // 6: torchwood.client.v1.ListDocumentsRequest
-	(*ListDocumentsResponse)(nil),            // 7: torchwood.client.v1.ListDocumentsResponse
-	(*CountDocumentsResponse)(nil),           // 8: torchwood.client.v1.CountDocumentsResponse
-	(*Transaction)(nil),                      // 9: torchwood.client.v1.Transaction
-	(*TransactionOp)(nil),                    // 10: torchwood.client.v1.TransactionOp
-	(*CreateTransactionRequest)(nil),         // 11: torchwood.client.v1.CreateTransactionRequest
-	(*GetTransactionRequest)(nil),            // 12: torchwood.client.v1.GetTransactionRequest
-	(*CreateTransactionDocumentRequest)(nil), // 13: torchwood.client.v1.CreateTransactionDocumentRequest
-	(*UpdateTransactionDocumentRequest)(nil), // 14: torchwood.client.v1.UpdateTransactionDocumentRequest
-	(*DeleteTransactionDocumentRequest)(nil), // 15: torchwood.client.v1.DeleteTransactionDocumentRequest
-	(*UpsertTransactionDocumentRequest)(nil), // 16: torchwood.client.v1.UpsertTransactionDocumentRequest
-	(*CommitTransactionRequest)(nil),         // 17: torchwood.client.v1.CommitTransactionRequest
-	(*RollbackTransactionRequest)(nil),       // 18: torchwood.client.v1.RollbackTransactionRequest
-	nil,                                      // 19: torchwood.client.v1.UpdateDocumentRequest.IncrementEntry
-	nil,                                      // 20: torchwood.client.v1.TransactionOp.IncrementEntry
-	nil,                                      // 21: torchwood.client.v1.UpdateTransactionDocumentRequest.IncrementEntry
-	(*structpb.Struct)(nil),                  // 22: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),            // 23: google.protobuf.Timestamp
-	(*v1.Query)(nil),                         // 24: torchwood.shared.v1.Query
-	(*v1.ListResponseMeta)(nil),              // 25: torchwood.shared.v1.ListResponseMeta
+	(*CreateDocumentRequest)(nil),            // 0: torchwood.client.v1.CreateDocumentRequest
+	(*UpdateDocumentRequest)(nil),            // 1: torchwood.client.v1.UpdateDocumentRequest
+	(*UpsertDocumentRequest)(nil),            // 2: torchwood.client.v1.UpsertDocumentRequest
+	(*GetDocumentRequest)(nil),               // 3: torchwood.client.v1.GetDocumentRequest
+	(*DeleteDocumentRequest)(nil),            // 4: torchwood.client.v1.DeleteDocumentRequest
+	(*ListDocumentsRequest)(nil),             // 5: torchwood.client.v1.ListDocumentsRequest
+	(*ListDocumentsResponse)(nil),            // 6: torchwood.client.v1.ListDocumentsResponse
+	(*CountDocumentsResponse)(nil),           // 7: torchwood.client.v1.CountDocumentsResponse
+	(*Transaction)(nil),                      // 8: torchwood.client.v1.Transaction
+	(*TransactionOp)(nil),                    // 9: torchwood.client.v1.TransactionOp
+	(*CreateTransactionRequest)(nil),         // 10: torchwood.client.v1.CreateTransactionRequest
+	(*GetTransactionRequest)(nil),            // 11: torchwood.client.v1.GetTransactionRequest
+	(*CreateTransactionDocumentRequest)(nil), // 12: torchwood.client.v1.CreateTransactionDocumentRequest
+	(*UpdateTransactionDocumentRequest)(nil), // 13: torchwood.client.v1.UpdateTransactionDocumentRequest
+	(*DeleteTransactionDocumentRequest)(nil), // 14: torchwood.client.v1.DeleteTransactionDocumentRequest
+	(*UpsertTransactionDocumentRequest)(nil), // 15: torchwood.client.v1.UpsertTransactionDocumentRequest
+	(*CommitTransactionRequest)(nil),         // 16: torchwood.client.v1.CommitTransactionRequest
+	(*RollbackTransactionRequest)(nil),       // 17: torchwood.client.v1.RollbackTransactionRequest
+	nil,                                      // 18: torchwood.client.v1.UpdateDocumentRequest.IncrementEntry
+	nil,                                      // 19: torchwood.client.v1.TransactionOp.IncrementEntry
+	nil,                                      // 20: torchwood.client.v1.UpdateTransactionDocumentRequest.IncrementEntry
+	(*structpb.Struct)(nil),                  // 21: google.protobuf.Struct
+	(*v1.Query)(nil),                         // 22: torchwood.shared.v1.Query
+	(*v1.Document)(nil),                      // 23: torchwood.shared.v1.Document
+	(*v1.ListResponseMeta)(nil),              // 24: torchwood.shared.v1.ListResponseMeta
+	(*timestamppb.Timestamp)(nil),            // 25: google.protobuf.Timestamp
 	(*v1.Empty)(nil),                         // 26: torchwood.shared.v1.Empty
 }
 var file_client_v1_databases_proto_depIdxs = []int32{
-	22, // 0: torchwood.client.v1.Document.data:type_name -> google.protobuf.Struct
-	23, // 1: torchwood.client.v1.Document.created_at:type_name -> google.protobuf.Timestamp
-	23, // 2: torchwood.client.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
-	22, // 3: torchwood.client.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
-	22, // 4: torchwood.client.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
-	19, // 5: torchwood.client.v1.UpdateDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateDocumentRequest.IncrementEntry
-	22, // 6: torchwood.client.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
-	24, // 7: torchwood.client.v1.ListDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
-	0,  // 8: torchwood.client.v1.ListDocumentsResponse.documents:type_name -> torchwood.client.v1.Document
-	25, // 9: torchwood.client.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	23, // 10: torchwood.client.v1.Transaction.expire_at:type_name -> google.protobuf.Timestamp
-	23, // 11: torchwood.client.v1.Transaction.created_at:type_name -> google.protobuf.Timestamp
-	23, // 12: torchwood.client.v1.Transaction.updated_at:type_name -> google.protobuf.Timestamp
-	10, // 13: torchwood.client.v1.Transaction.operations:type_name -> torchwood.client.v1.TransactionOp
-	22, // 14: torchwood.client.v1.TransactionOp.data:type_name -> google.protobuf.Struct
-	20, // 15: torchwood.client.v1.TransactionOp.increment:type_name -> torchwood.client.v1.TransactionOp.IncrementEntry
-	22, // 16: torchwood.client.v1.CreateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
-	22, // 17: torchwood.client.v1.UpdateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
-	21, // 18: torchwood.client.v1.UpdateTransactionDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateTransactionDocumentRequest.IncrementEntry
-	22, // 19: torchwood.client.v1.UpsertTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
-	1,  // 20: torchwood.client.v1.DatabasesService.CreateDocument:input_type -> torchwood.client.v1.CreateDocumentRequest
-	6,  // 21: torchwood.client.v1.DatabasesService.ListDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
-	4,  // 22: torchwood.client.v1.DatabasesService.GetDocument:input_type -> torchwood.client.v1.GetDocumentRequest
-	2,  // 23: torchwood.client.v1.DatabasesService.UpdateDocument:input_type -> torchwood.client.v1.UpdateDocumentRequest
-	3,  // 24: torchwood.client.v1.DatabasesService.UpsertDocument:input_type -> torchwood.client.v1.UpsertDocumentRequest
-	5,  // 25: torchwood.client.v1.DatabasesService.DeleteDocument:input_type -> torchwood.client.v1.DeleteDocumentRequest
-	6,  // 26: torchwood.client.v1.DatabasesService.CountDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
-	11, // 27: torchwood.client.v1.DatabasesService.CreateTransaction:input_type -> torchwood.client.v1.CreateTransactionRequest
-	12, // 28: torchwood.client.v1.DatabasesService.GetTransaction:input_type -> torchwood.client.v1.GetTransactionRequest
-	13, // 29: torchwood.client.v1.DatabasesService.CreateTransactionDocument:input_type -> torchwood.client.v1.CreateTransactionDocumentRequest
-	14, // 30: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:input_type -> torchwood.client.v1.UpdateTransactionDocumentRequest
-	15, // 31: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:input_type -> torchwood.client.v1.DeleteTransactionDocumentRequest
-	16, // 32: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:input_type -> torchwood.client.v1.UpsertTransactionDocumentRequest
-	17, // 33: torchwood.client.v1.DatabasesService.CommitTransaction:input_type -> torchwood.client.v1.CommitTransactionRequest
-	18, // 34: torchwood.client.v1.DatabasesService.RollbackTransaction:input_type -> torchwood.client.v1.RollbackTransactionRequest
-	0,  // 35: torchwood.client.v1.DatabasesService.CreateDocument:output_type -> torchwood.client.v1.Document
-	7,  // 36: torchwood.client.v1.DatabasesService.ListDocuments:output_type -> torchwood.client.v1.ListDocumentsResponse
-	0,  // 37: torchwood.client.v1.DatabasesService.GetDocument:output_type -> torchwood.client.v1.Document
-	0,  // 38: torchwood.client.v1.DatabasesService.UpdateDocument:output_type -> torchwood.client.v1.Document
-	0,  // 39: torchwood.client.v1.DatabasesService.UpsertDocument:output_type -> torchwood.client.v1.Document
-	26, // 40: torchwood.client.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
-	8,  // 41: torchwood.client.v1.DatabasesService.CountDocuments:output_type -> torchwood.client.v1.CountDocumentsResponse
-	9,  // 42: torchwood.client.v1.DatabasesService.CreateTransaction:output_type -> torchwood.client.v1.Transaction
-	9,  // 43: torchwood.client.v1.DatabasesService.GetTransaction:output_type -> torchwood.client.v1.Transaction
-	10, // 44: torchwood.client.v1.DatabasesService.CreateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	10, // 45: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	10, // 46: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	10, // 47: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	9,  // 48: torchwood.client.v1.DatabasesService.CommitTransaction:output_type -> torchwood.client.v1.Transaction
-	9,  // 49: torchwood.client.v1.DatabasesService.RollbackTransaction:output_type -> torchwood.client.v1.Transaction
-	35, // [35:50] is the sub-list for method output_type
-	20, // [20:35] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	21, // 0: torchwood.client.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
+	21, // 1: torchwood.client.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
+	18, // 2: torchwood.client.v1.UpdateDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateDocumentRequest.IncrementEntry
+	21, // 3: torchwood.client.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
+	22, // 4: torchwood.client.v1.ListDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
+	23, // 5: torchwood.client.v1.ListDocumentsResponse.documents:type_name -> torchwood.shared.v1.Document
+	24, // 6: torchwood.client.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	25, // 7: torchwood.client.v1.Transaction.expire_at:type_name -> google.protobuf.Timestamp
+	25, // 8: torchwood.client.v1.Transaction.created_at:type_name -> google.protobuf.Timestamp
+	25, // 9: torchwood.client.v1.Transaction.updated_at:type_name -> google.protobuf.Timestamp
+	9,  // 10: torchwood.client.v1.Transaction.operations:type_name -> torchwood.client.v1.TransactionOp
+	21, // 11: torchwood.client.v1.TransactionOp.data:type_name -> google.protobuf.Struct
+	19, // 12: torchwood.client.v1.TransactionOp.increment:type_name -> torchwood.client.v1.TransactionOp.IncrementEntry
+	21, // 13: torchwood.client.v1.CreateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
+	21, // 14: torchwood.client.v1.UpdateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
+	20, // 15: torchwood.client.v1.UpdateTransactionDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateTransactionDocumentRequest.IncrementEntry
+	21, // 16: torchwood.client.v1.UpsertTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
+	0,  // 17: torchwood.client.v1.DatabasesService.CreateDocument:input_type -> torchwood.client.v1.CreateDocumentRequest
+	5,  // 18: torchwood.client.v1.DatabasesService.ListDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
+	3,  // 19: torchwood.client.v1.DatabasesService.GetDocument:input_type -> torchwood.client.v1.GetDocumentRequest
+	1,  // 20: torchwood.client.v1.DatabasesService.UpdateDocument:input_type -> torchwood.client.v1.UpdateDocumentRequest
+	2,  // 21: torchwood.client.v1.DatabasesService.UpsertDocument:input_type -> torchwood.client.v1.UpsertDocumentRequest
+	4,  // 22: torchwood.client.v1.DatabasesService.DeleteDocument:input_type -> torchwood.client.v1.DeleteDocumentRequest
+	5,  // 23: torchwood.client.v1.DatabasesService.CountDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
+	10, // 24: torchwood.client.v1.DatabasesService.CreateTransaction:input_type -> torchwood.client.v1.CreateTransactionRequest
+	11, // 25: torchwood.client.v1.DatabasesService.GetTransaction:input_type -> torchwood.client.v1.GetTransactionRequest
+	12, // 26: torchwood.client.v1.DatabasesService.CreateTransactionDocument:input_type -> torchwood.client.v1.CreateTransactionDocumentRequest
+	13, // 27: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:input_type -> torchwood.client.v1.UpdateTransactionDocumentRequest
+	14, // 28: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:input_type -> torchwood.client.v1.DeleteTransactionDocumentRequest
+	15, // 29: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:input_type -> torchwood.client.v1.UpsertTransactionDocumentRequest
+	16, // 30: torchwood.client.v1.DatabasesService.CommitTransaction:input_type -> torchwood.client.v1.CommitTransactionRequest
+	17, // 31: torchwood.client.v1.DatabasesService.RollbackTransaction:input_type -> torchwood.client.v1.RollbackTransactionRequest
+	23, // 32: torchwood.client.v1.DatabasesService.CreateDocument:output_type -> torchwood.shared.v1.Document
+	6,  // 33: torchwood.client.v1.DatabasesService.ListDocuments:output_type -> torchwood.client.v1.ListDocumentsResponse
+	23, // 34: torchwood.client.v1.DatabasesService.GetDocument:output_type -> torchwood.shared.v1.Document
+	23, // 35: torchwood.client.v1.DatabasesService.UpdateDocument:output_type -> torchwood.shared.v1.Document
+	23, // 36: torchwood.client.v1.DatabasesService.UpsertDocument:output_type -> torchwood.shared.v1.Document
+	26, // 37: torchwood.client.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
+	7,  // 38: torchwood.client.v1.DatabasesService.CountDocuments:output_type -> torchwood.client.v1.CountDocumentsResponse
+	8,  // 39: torchwood.client.v1.DatabasesService.CreateTransaction:output_type -> torchwood.client.v1.Transaction
+	8,  // 40: torchwood.client.v1.DatabasesService.GetTransaction:output_type -> torchwood.client.v1.Transaction
+	9,  // 41: torchwood.client.v1.DatabasesService.CreateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	9,  // 42: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	9,  // 43: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	9,  // 44: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	8,  // 45: torchwood.client.v1.DatabasesService.CommitTransaction:output_type -> torchwood.client.v1.Transaction
+	8,  // 46: torchwood.client.v1.DatabasesService.RollbackTransaction:output_type -> torchwood.client.v1.Transaction
+	32, // [32:47] is the sub-list for method output_type
+	17, // [17:32] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_client_v1_databases_proto_init() }
@@ -1773,19 +1676,19 @@ func file_client_v1_databases_proto_init() {
 	if File_client_v1_databases_proto != nil {
 		return
 	}
-	file_client_v1_databases_proto_msgTypes[2].OneofWrappers = []any{}
+	file_client_v1_databases_proto_msgTypes[1].OneofWrappers = []any{}
+	file_client_v1_databases_proto_msgTypes[4].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[5].OneofWrappers = []any{}
-	file_client_v1_databases_proto_msgTypes[6].OneofWrappers = []any{}
-	file_client_v1_databases_proto_msgTypes[10].OneofWrappers = []any{}
+	file_client_v1_databases_proto_msgTypes[9].OneofWrappers = []any{}
+	file_client_v1_databases_proto_msgTypes[13].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[14].OneofWrappers = []any{}
-	file_client_v1_databases_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_client_v1_databases_proto_rawDesc), len(file_client_v1_databases_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

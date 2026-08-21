@@ -90,30 +90,30 @@ type fakeDatabases struct {
 	rec *recorder
 }
 
-func (s *fakeDatabases) CreateDocument(ctx context.Context, req *clientv1.CreateDocumentRequest) (*clientv1.Document, error) {
+func (s *fakeDatabases) CreateDocument(ctx context.Context, req *clientv1.CreateDocumentRequest) (*sharedv1.Document, error) {
 	s.rec.record(ctx)
-	return &clientv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
+	return &sharedv1.Document{Id: req.DocumentId, Data: req.Data, Permissions: req.Permissions}, nil
 }
 
-func (s *fakeDatabases) GetDocument(ctx context.Context, req *clientv1.GetDocumentRequest) (*clientv1.Document, error) {
+func (s *fakeDatabases) GetDocument(ctx context.Context, req *clientv1.GetDocumentRequest) (*sharedv1.Document, error) {
 	s.rec.record(ctx)
 	s.rec.mu.Lock()
 	s.rec.lastGetDocument = req
 	s.rec.mu.Unlock()
-	return &clientv1.Document{Id: req.DocumentId}, nil
+	return &sharedv1.Document{Id: req.DocumentId}, nil
 }
 
-func (s *fakeDatabases) UpsertDocument(ctx context.Context, req *clientv1.UpsertDocumentRequest) (*clientv1.Document, error) {
+func (s *fakeDatabases) UpsertDocument(ctx context.Context, req *clientv1.UpsertDocumentRequest) (*sharedv1.Document, error) {
 	s.rec.record(ctx)
 	s.rec.mu.Lock()
 	s.rec.upserts = append(s.rec.upserts, req)
 	s.rec.mu.Unlock()
-	return &clientv1.Document{Id: req.DocumentId, Data: req.Data}, nil
+	return &sharedv1.Document{Id: req.DocumentId, Data: req.Data}, nil
 }
 
-func (s *fakeDatabases) UpdateDocument(ctx context.Context, req *clientv1.UpdateDocumentRequest) (*clientv1.Document, error) {
+func (s *fakeDatabases) UpdateDocument(ctx context.Context, req *clientv1.UpdateDocumentRequest) (*sharedv1.Document, error) {
 	s.rec.record(ctx)
-	return &clientv1.Document{Id: req.DocumentId, Data: req.Data}, nil
+	return &sharedv1.Document{Id: req.DocumentId, Data: req.Data}, nil
 }
 
 func (s *fakeDatabases) DeleteDocument(ctx context.Context, _ *clientv1.DeleteDocumentRequest) (*sharedv1.Empty, error) {
@@ -123,7 +123,7 @@ func (s *fakeDatabases) DeleteDocument(ctx context.Context, _ *clientv1.DeleteDo
 
 func (s *fakeDatabases) ListDocuments(ctx context.Context, _ *clientv1.ListDocumentsRequest) (*clientv1.ListDocumentsResponse, error) {
 	s.rec.record(ctx)
-	return &clientv1.ListDocumentsResponse{Documents: []*clientv1.Document{{Id: "d1"}}}, nil
+	return &clientv1.ListDocumentsResponse{Documents: []*sharedv1.Document{{Id: "d1"}}}, nil
 }
 
 func (s *fakeDatabases) CountDocuments(ctx context.Context, _ *clientv1.ListDocumentsRequest) (*clientv1.CountDocumentsResponse, error) {
