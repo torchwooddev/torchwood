@@ -474,6 +474,11 @@ func TestValidator_ValidateAdminProjectAccess(t *testing.T) {
 		ProjectID:       "proj-denied",
 		IsPlatformAdmin: true,
 	}))
+	require.NoError(t, v.ValidateAdminProjectAccess(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindAdmin,
+		ActorID:   "admin-1",
+		ProjectID: "proj-allowed",
+	}))
 }
 
 func TestValidator_EndUserJWT_CorruptExpireAtFailsClosed(t *testing.T) {

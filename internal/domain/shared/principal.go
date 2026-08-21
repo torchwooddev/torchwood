@@ -33,6 +33,9 @@ const (
 const (
 	ConsoleSessionCookieName = "TORCHWOOD_session_console"
 	SessionCookiePrefix      = "TORCHWOOD_session_"
+	// RoleConsole 是 proto ACCESS_PERMISSION 标签，只给拦截器 HasAnyRole 用，
+	// 不得进入文档 ACL（DocPrincipal 会剔除）。
+	RoleConsole = "console"
 )
 
 type Principal struct {
@@ -71,7 +74,7 @@ func (p *Principal) IsAuthenticated() bool {
 	case ActorKindEndUser:
 		return p.UserID != ""
 	case ActorKindAdmin:
-		return p.AdminID != "" || p.ActorID != ""
+		return p.AdminID != ""
 	case ActorKindService:
 		return p.APIKeyID != ""
 	case ActorKindSystem:
@@ -79,6 +82,33 @@ func (p *Principal) IsAuthenticated() bool {
 	default:
 		return false
 	}
+}
+
+// OwnerID 是文件/上传会话的属主：端用户用 UserID，admin 用 AdminID。
+// Service 无属主（空串），不要把 admin id 塞回 UserID。
+func (p *Principal) OwnerID() string {
+	if p == nil {
+		return ""
+	}
+	switch p.ActorKind {
+	case ActorKindEndUser:
+		return p.UserID
+	case ActorKindAdmin:
+		return p.AdminID
+	default:
+		return ""
+	}
+}
+
+// AdminLookupID 取 admin 查找键：优先 AdminID，测试桩可回退 ActorID。
+func (p *Principal) AdminLookupID() string {
+	if p == nil || p.ActorKind != ActorKindAdmin {
+		return ""
+	}
+	if p.AdminID != "" {
+		return p.AdminID
+	}
+	return string(p.ActorID)
 }
 
 func (p *Principal) HasRole(role string) bool {
@@ -120,6 +150,7 @@ func (p *Principal) HasAnyRole(roles []string) bool {
 }
 
 // DocPrincipal 投影到文档 ACL 视图。System 走 databases.SystemPrincipal。
+// 剔除拦截器标签 RoleConsole；admin 带上 user:<AdminID> 以便按属主匹配 ACE。
 func (p *Principal) DocPrincipal() databases.Principal {
 	if p == nil {
 		return databases.GuestPrincipal
@@ -127,5 +158,25 @@ func (p *Principal) DocPrincipal() databases.Principal {
 	if p.IsSystem() {
 		return databases.SystemPrincipal
 	}
-	return databases.Principal{Roles: p.Roles, PlatformAdmin: p.IsPlatformAdmin}
+	roles := make([]string, 0, len(p.Roles)+1)
+	for _, r := range p.Roles {
+		if r == RoleConsole {
+			continue
+		}
+		roles = append(roles, r)
+	}
+	if p.ActorKind == ActorKindAdmin && p.AdminID != "" {
+		owner := "user:" + p.AdminID
+		found := false
+		for _, r := range roles {
+			if r == owner {
+				found = true
+				break
+			}
+		}
+		if !found {
+			roles = append(roles, owner)
+		}
+	}
+	return databases.Principal{Roles: roles, PlatformAdmin: p.IsPlatformAdmin}
 }

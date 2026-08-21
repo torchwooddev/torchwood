@@ -26,7 +26,7 @@ func NewTransactions(projectRepo projects.Repository, core *shared.Transactions)
 
 func (t *Transactions) resolveProject(ctx context.Context) (*projects.Project, databases.Principal, *domainshared.Principal, error) {
 	p, ok := contexts.Principal(ctx)
-	if !ok || p.ProjectID == "" || p.UserID == "" {
+	if !ok || p.ProjectID == "" || !clientActorOK(p) {
 		return nil, databases.Principal{}, nil, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
 	d := &Databases{projectRepo: t.projectRepo, docDB: t.core.DocumentDB()}

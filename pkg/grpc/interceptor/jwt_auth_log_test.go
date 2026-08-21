@@ -77,6 +77,45 @@ func TestAuthInterceptor_LogsCredentialMissing(t *testing.T) {
 	}
 }
 
+func TestAuthInterceptor_LogsMultipleCredentials(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	ic, err := NewAuthInterceptor(stubValidator{}, nil, nil, nil)
+	requireNoError(t, err)
+	ic.WithLogger(captureLogger(&buf))
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		"authorization", "Bearer tok",
+		"x-api-key", "k",
+	))
+	err = invokeAuth(ic, ctx, "/torchwood.server.v1.UsersService/ListUsers")
+	if st, _ := status.FromError(err); st.Code() != codes.Unauthenticated {
+		t.Fatalf("expected unauthenticated, got %v", err)
+	}
+	if !strings.Contains(buf.String(), "reason=multiple_credentials") {
+		t.Fatalf("log output missing multiple_credentials: %s", buf.String())
+	}
+}
+
+func TestAuthInterceptor_LogsInvalidAuthorization(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	ic, err := NewAuthInterceptor(stubValidator{}, nil, nil, nil)
+	requireNoError(t, err)
+	ic.WithLogger(captureLogger(&buf))
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Basic abc"))
+	err = invokeAuth(ic, ctx, "/torchwood.server.v1.UsersService/ListUsers")
+	if st, _ := status.FromError(err); st.Code() != codes.Unauthenticated {
+		t.Fatalf("expected unauthenticated, got %v", err)
+	}
+	if !strings.Contains(buf.String(), "reason=invalid_authorization") {
+		t.Fatalf("log output missing invalid_authorization: %s", buf.String())
+	}
+}
+
 func TestAuthInterceptor_LogsInvalidCredential(t *testing.T) {
 	t.Parallel()
 

@@ -20,6 +20,7 @@ func TestPrincipal_IsAuthenticated_ByKind(t *testing.T) {
 	require.False(t, (&Principal{ActorKind: ActorKindEndUser}).IsAuthenticated())
 	require.True(t, (&Principal{ActorKind: ActorKindEndUser, UserID: "u1"}).IsAuthenticated())
 	require.False(t, (&Principal{ActorKind: ActorKindAdmin, UserID: "admin-1"}).IsAuthenticated(), "admin id 不得塞进 UserID")
+	require.False(t, (&Principal{ActorKind: ActorKindAdmin, ActorID: "admin-1"}).IsAuthenticated(), "仅 ActorID 不算已认证 admin")
 	require.True(t, (&Principal{ActorKind: ActorKindAdmin, AdminID: "admin-1"}).IsAuthenticated())
 	require.True(t, (&Principal{ActorKind: ActorKindService, APIKeyID: "k1"}).IsAuthenticated())
 	require.False(t, (&Principal{ActorKind: ActorKindService}).IsAuthenticated())
@@ -55,4 +56,27 @@ func TestPrincipal_DocPrincipal_PlatformAdmin(t *testing.T) {
 	require.True(t, got.PlatformAdmin)
 	require.False(t, got.IsSystem())
 	require.True(t, got.BypassesDocumentACL())
+}
+
+func TestPrincipal_OwnerID(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "u1", (&Principal{ActorKind: ActorKindEndUser, UserID: "u1"}).OwnerID())
+	require.Equal(t, "a1", (&Principal{ActorKind: ActorKindAdmin, AdminID: "a1", UserID: "should-not"}).OwnerID())
+	require.Empty(t, (&Principal{ActorKind: ActorKindService, APIKeyID: "k1"}).OwnerID())
+	require.Equal(t, "a1", (&Principal{ActorKind: ActorKindAdmin, AdminID: "a1", ActorID: "other"}).AdminLookupID())
+	require.Equal(t, "legacy", (&Principal{ActorKind: ActorKindAdmin, ActorID: "legacy"}).AdminLookupID())
+}
+
+func TestPrincipal_DocPrincipal_DropsConsoleTag(t *testing.T) {
+	t.Parallel()
+	p := &Principal{
+		ActorKind: ActorKindAdmin,
+		AdminID:   "a1",
+		Roles:     []string{"member", RoleConsole},
+	}
+	got := p.DocPrincipal()
+	require.NotContains(t, got.Roles, RoleConsole)
+	require.Contains(t, got.Roles, "member")
+	require.Contains(t, got.Roles, "user:a1")
+	require.True(t, p.HasAnyRole([]string{RoleConsole}))
 }

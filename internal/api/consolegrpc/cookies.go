@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	// sessionCookieName 与 pkg/grpc/interceptor 的 parseSessionCookie 约定一致。
+	// sessionCookieName 与 shared.ConsoleSessionCookieName 一致。
 	sessionCookieName = "TORCHWOOD_session_console"
 	refreshCookieName = "TORCHWOOD_console_refresh"
 	// refreshCookiePath 把 refresh cookie 限制为只发向 console auth 端点。

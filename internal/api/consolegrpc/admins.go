@@ -25,7 +25,7 @@ func NewAdminsService(admins *console.Admins) *AdminsService {
 
 func (s *AdminsService) GetCurrentAdmin(ctx context.Context, _ *consolev1.GetCurrentAdminRequest) (*consolev1.Admin, error) {
 	p, ok := principalFrom(ctx)
-	if !ok || p.ActorKind != shared.ActorKindAdmin || (p.AdminID == "" && p.ActorID == "") {
+	if !ok || p.ActorKind != shared.ActorKindAdmin || !p.IsAuthenticated() {
 		return nil, status.Error(codes.Unauthenticated, "admin context missing")
 	}
 	admin, err := s.admins.Get(ctx, callerID(ctx))
@@ -115,10 +115,7 @@ func callerID(ctx context.Context) string {
 	if !ok {
 		return ""
 	}
-	if p.AdminID != "" {
-		return p.AdminID
-	}
-	return string(p.ActorID)
+	return p.AdminLookupID()
 }
 
 func mapAdmin(a *projects.Admin) *consolev1.Admin {

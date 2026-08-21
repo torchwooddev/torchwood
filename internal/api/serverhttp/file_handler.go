@@ -225,8 +225,8 @@ func (h *FileHandler) createUpload(w http.ResponseWriter, r *http.Request, pathP
 		Size:        req.Size,
 		Metadata:    req.Metadata,
 		Permissions: req.Permissions,
-		OwnerUserID: principal.UserID,
-	}, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+		OwnerUserID: principal.OwnerID(),
+	}, principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "create-upload", bucketID, "", principal, err)
 		httpError(w, err)
@@ -261,7 +261,7 @@ func (h *FileHandler) getUpload(w http.ResponseWriter, r *http.Request, pathPara
 		httpError(w, err)
 		return
 	}
-	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "get-upload", bucketID, uploadID, principal, err)
 		httpError(w, err)
@@ -315,7 +315,7 @@ func (h *FileHandler) uploadChunk(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, status.Error(codes.InvalidArgument, "missing bucket id"))
 		return
 	}
-	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
 		httpError(w, err)
@@ -347,7 +347,7 @@ func (h *FileHandler) uploadChunk(w http.ResponseWriter, r *http.Request, pathPa
 	}
 	defer f.Close()
 
-	received, err := h.storage.UploadChunk(ctx, projectID, uploadID, partNumber, f, fh[0].Size, principal.UserID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	received, err := h.storage.UploadChunk(ctx, projectID, uploadID, partNumber, f, fh[0].Size, principal.OwnerID(), principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "upload-chunk", bucketID, uploadID, principal, err)
 		httpError(w, err)
@@ -377,7 +377,7 @@ func (h *FileHandler) completeUpload(w http.ResponseWriter, r *http.Request, pat
 		httpError(w, err)
 		return
 	}
-	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "complete-upload", bucketID, uploadID, principal, err)
 		httpError(w, err)
@@ -390,7 +390,7 @@ func (h *FileHandler) completeUpload(w http.ResponseWriter, r *http.Request, pat
 		return
 	}
 
-	file, err := h.storage.CompleteUpload(ctx, projectID, uploadID, principal.UserID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	file, err := h.storage.CompleteUpload(ctx, projectID, uploadID, principal.OwnerID(), principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "complete-upload", bucketID, uploadID, principal, err)
 		httpError(w, err)
@@ -426,7 +426,7 @@ func (h *FileHandler) abortUpload(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, err)
 		return
 	}
-	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	session, err := h.storage.GetUploadSession(ctx, projectID, uploadID, principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
 		httpError(w, err)
@@ -439,7 +439,7 @@ func (h *FileHandler) abortUpload(w http.ResponseWriter, r *http.Request, pathPa
 		return
 	}
 
-	if err := h.storage.AbortUpload(ctx, projectID, uploadID, principal.UserID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}); err != nil {
+	if err := h.storage.AbortUpload(ctx, projectID, uploadID, principal.OwnerID(), principal.DocPrincipal()); err != nil {
 		h.logOp(r, "abort-upload", bucketID, uploadID, principal, err)
 		httpError(w, err)
 		return
@@ -451,11 +451,11 @@ func (h *FileHandler) abortUpload(w http.ResponseWriter, r *http.Request, pathPa
 func (h *FileHandler) createFile(ctx context.Context, w http.ResponseWriter, r *http.Request, projectID, bucketID string, rd io.Reader, size int64, name, contentType string, principal *shared.Principal) {
 	file, err := h.storage.CreateFile(ctx, appstorage.CreateFileCommand{
 		ProjectID:   projectID,
-		OwnerUserID: principal.UserID,
+		OwnerUserID: principal.OwnerID(),
 		BucketID:    bucketID,
 		Name:        name,
 		MimeType:    contentType,
-	}, rd, size, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin})
+	}, rd, size, principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "upload", bucketID, "", principal, err)
 		httpError(w, err)
@@ -532,7 +532,7 @@ func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, b
 		if projectID == "" {
 			return "", databases.Principal{}, nil, false, status.Error(codes.Unauthenticated, "missing project context")
 		}
-		return projectID, databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin}, principal, false, nil
+		return projectID, principal.DocPrincipal(), principal, false, nil
 	}
 
 	// File token 匿名下载：token 绑定 project/bucket/file 与过期时间。

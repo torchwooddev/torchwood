@@ -26,7 +26,7 @@ func (t *Groups) dbPrincipal(ctx context.Context) (projectID, userID, email stri
 	if !ok || p.ProjectID == "" || p.UserID == "" {
 		return "", "", "", databases.Principal{}, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
-	return p.ProjectID, p.UserID, p.Email, databases.Principal{Roles: p.Roles, PlatformAdmin: p.IsPlatformAdmin}, nil
+	return p.ProjectID, p.UserID, p.Email, p.DocPrincipal(), nil
 }
 
 func (t *Groups) CreateGroup(ctx context.Context, name string) (*databases.Document, error) {

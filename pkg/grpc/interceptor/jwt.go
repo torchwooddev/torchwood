@@ -95,7 +95,7 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 	if err != nil {
 		ct, _, parseErr := shared.ParseAuthnRequest(authn)
 		if parseErr != nil {
-			i.logAuthFailure(ctx, info.FullMethod, "credential_missing", "")
+			i.logAuthFailure(ctx, info.FullMethod, parseFailureReason(parseErr), "")
 			return nil, status.Error(codes.Unauthenticated, parseErr.Error())
 		}
 		i.logAuthFailure(ctx, info.FullMethod, "credential_invalid", ct)
@@ -156,6 +156,17 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 
 	ctx = contexts.WithPrincipal(ctx, principal)
 	return handler(ctx, req)
+}
+
+func parseFailureReason(err error) string {
+	switch {
+	case errors.Is(err, shared.ErrMultipleCredentials):
+		return "multiple_credentials"
+	case errors.Is(err, shared.ErrInvalidAuthorization):
+		return "invalid_authorization"
+	default:
+		return "credential_missing"
+	}
 }
 
 func authnRequestFromMD(md metadata.MD) shared.AuthnRequest {

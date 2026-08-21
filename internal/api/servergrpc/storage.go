@@ -132,7 +132,7 @@ func (s *StorageService) CreateFile(ctx context.Context, req *serverv1.CreateFil
 	p, ok := contexts.Principal(ctx)
 	ownerUserID := ""
 	if ok {
-		ownerUserID = p.UserID
+		ownerUserID = p.OwnerID()
 	}
 	file, err := s.storage.CreateFile(ctx, appstorage.CreateFileCommand{
 		ProjectID:   projectID,
@@ -286,5 +286,5 @@ func dbPrincipal(ctx context.Context) databases.Principal {
 	if !ok {
 		return databases.Principal{}
 	}
-	return databases.Principal{Roles: p.Roles, PlatformAdmin: p.IsPlatformAdmin}
+	return p.DocPrincipal()
 }

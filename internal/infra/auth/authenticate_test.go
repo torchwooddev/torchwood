@@ -38,7 +38,8 @@ func TestValidator_Authenticate_ConsoleCookieIsAccessToken(t *testing.T) {
 	require.Equal(t, shared.CredentialTypeToken, p.CredentialType)
 	require.Equal(t, admin.ID, p.AdminID)
 	require.Empty(t, p.UserID)
-	require.True(t, p.HasRole("console"))
+	require.True(t, p.HasRole(shared.RoleConsole))
+	require.NotContains(t, p.DocPrincipal().Roles, shared.RoleConsole)
 }
 
 func TestValidator_Authenticate_APIKeyIsService(t *testing.T) {

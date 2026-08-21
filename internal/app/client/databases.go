@@ -8,6 +8,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	domainshared "github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -47,9 +48,21 @@ func (d *Databases) loadProject(ctx context.Context, projectID string) (*project
 	return project, nil
 }
 
+func clientActorOK(p *domainshared.Principal) bool {
+	if p == nil || !p.IsAuthenticated() {
+		return false
+	}
+	switch p.ActorKind {
+	case domainshared.ActorKindEndUser, domainshared.ActorKindAdmin, domainshared.ActorKindService:
+		return true
+	default:
+		return false
+	}
+}
+
 func (d *Databases) resolveProject(ctx context.Context) (*projects.Project, databases.Principal, error) {
 	p, ok := contexts.Principal(ctx)
-	if !ok || p.ProjectID == "" || p.UserID == "" {
+	if !ok || p.ProjectID == "" || !clientActorOK(p) {
 		return nil, databases.Principal{}, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
 	project, err := d.loadProject(ctx, p.ProjectID)
@@ -60,7 +73,7 @@ func (d *Databases) resolveProject(ctx context.Context) (*projects.Project, data
 }
 
 func (d *Databases) resolveReadPrincipal(ctx context.Context, projectID string) (string, databases.Principal, error) {
-	if p, ok := contexts.Principal(ctx); ok && p.UserID != "" {
+	if p, ok := contexts.Principal(ctx); ok && clientActorOK(p) && p.ProjectID != "" {
 		if projectID != "" && projectID != p.ProjectID {
 			return "", databases.Principal{}, status.Error(codes.InvalidArgument, "project_id mismatch")
 		}
@@ -134,7 +147,7 @@ func (d *Databases) CreateDocument(
 	}
 	p, _ := contexts.Principal(ctx)
 	if len(perms) == 0 {
-		perms = ownerDocumentPermissions(p.UserID)
+		perms = ownerDocumentPermissions(p.OwnerID())
 	}
 	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{})
 }
@@ -203,7 +216,7 @@ func (d *Databases) UpsertDocument(
 	}
 	p, _ := contexts.Principal(ctx)
 	if len(perms) == 0 {
-		perms = ownerDocumentPermissions(p.UserID)
+		perms = ownerDocumentPermissions(p.OwnerID())
 	}
 	filtered := filterClientProtectedFields(data)
 	if len(filtered) == 0 {

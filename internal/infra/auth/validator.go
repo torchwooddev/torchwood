@@ -160,8 +160,7 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 			IsPlatformAdmin: admin.Role == "owner" || admin.Role == "admin",
 			AdminID:         admin.ID,
 			Email:           admin.Email,
-			// "console" 是 proto ACCESS_PERMISSION 标签，不是 API scope。
-			Roles: []string{admin.Role, "console"},
+			Roles:           []string{admin.Role, shared.RoleConsole},
 		}, nil
 	default:
 		if claims.OneTime {
@@ -309,9 +308,9 @@ func (v *Validator) ValidateAdminProjectAccess(ctx context.Context, principal *s
 	if principal.IsPlatformAdmin {
 		return nil
 	}
-	adminID := principal.AdminID
+	adminID := principal.AdminLookupID()
 	if adminID == "" {
-		adminID = string(principal.ActorID)
+		return status.Error(codes.Unauthenticated, "admin context missing")
 	}
 	has, err := v.adminProjectRepo.HasProjectAccess(ctx, adminID, principal.ProjectID)
 	if err != nil {

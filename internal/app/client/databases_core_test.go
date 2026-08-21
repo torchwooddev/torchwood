@@ -28,6 +28,7 @@ func TestCreateDocument_GoesThroughSharedCoreWithOwnerACE(t *testing.T) {
 		docs:        documents.New(rec),
 	}
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: "p1",
 		UserID:    "u1",
 		Roles:     []string{"users", "user:u1"},
@@ -43,6 +44,7 @@ func TestCreateDocument_GoesThroughSharedCoreWithOwnerACE(t *testing.T) {
 func TestResolveProject_PassesPlatformAdmin(t *testing.T) {
 	d := NewDatabases(stubProjects{}, &stubDocDB{})
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind:       shared.ActorKindEndUser,
 		ProjectID:       "p1",
 		UserID:          "u1",
 		Roles:           []string{"users", "user:u1"},
@@ -52,6 +54,42 @@ func TestResolveProject_PassesPlatformAdmin(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, principal.PlatformAdmin)
 	require.Equal(t, []string{"users", "user:u1"}, principal.Roles)
+}
+
+func TestResolveProject_AdminWithoutUserID(t *testing.T) {
+	d := NewDatabases(stubProjects{}, &stubDocDB{})
+	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind:       shared.ActorKindAdmin,
+		AdminID:         "a1",
+		ProjectID:       "p1",
+		Roles:           []string{"member", shared.RoleConsole},
+		IsPlatformAdmin: true,
+	})
+	_, principal, err := d.resolveProject(ctx)
+	require.NoError(t, err)
+	require.True(t, principal.PlatformAdmin)
+	require.NotContains(t, principal.Roles, shared.RoleConsole)
+	require.Contains(t, principal.Roles, "user:a1")
+}
+
+func TestResolveReadPrincipal_AdminNotGuest(t *testing.T) {
+	rec := &stubDocDB{coll: &databases.Collection{ID: "posts"}, list: &databases.DocumentList{}}
+	d := &Databases{
+		projectRepo: stubProjects{},
+		docDB:       rec,
+		docs:        documents.New(rec),
+	}
+	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind:       shared.ActorKindAdmin,
+		AdminID:         "a1",
+		ProjectID:       "p1",
+		Roles:           []string{"member", shared.RoleConsole},
+		IsPlatformAdmin: true,
+	})
+	_, _, _, err := d.ListDocuments(ctx, "p1", "app", "posts", databases.Query{})
+	require.NoError(t, err)
+	require.True(t, rec.lastListPrincipal.PlatformAdmin)
+	require.NotEqual(t, databases.GuestPrincipal, rec.lastListPrincipal)
 }
 
 func TestListDocuments_GuestPrincipal(t *testing.T) {
@@ -77,6 +115,7 @@ func TestUpdateDocument_FiltersProtectedFields(t *testing.T) {
 		docs:        documents.New(rec),
 	}
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: "p1",
 		UserID:    "u1",
 		Roles:     []string{"users", "user:u1"},
