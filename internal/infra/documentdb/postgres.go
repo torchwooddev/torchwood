@@ -139,7 +139,7 @@ func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id stri
 		ModelTableExpr("?.document_databases AS ddb", cat).
 		Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) || isMissingCatalog(err) {
+		if p.catalogAbsent(ctx, projectID, err) {
 			return nil, nil
 		}
 		return nil, err
@@ -157,7 +157,7 @@ func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string
 		ModelTableExpr("?.document_databases AS ddb", cat).
 		Where("project_id = ?", projectID).Order("created_at DESC").Scan(ctx)
 	if err != nil {
-		if isMissingCatalog(err) {
+		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Database{}, nil
 		}
 		return nil, err
@@ -255,7 +255,7 @@ func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, datab
 		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Scan(ctx)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) || isMissingCatalog(err) {
+		if p.catalogAbsent(ctx, projectID, err) {
 			return nil, nil
 		}
 		return nil, err
@@ -290,7 +290,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).Count(ctx)
 	if err != nil {
-		if isMissingCatalog(err) {
+		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Collection{}, databases.ListMeta{}, nil
 		}
 		return nil, databases.ListMeta{}, err
@@ -304,7 +304,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		Order("created_at DESC").
 		Limit(pageSize).Offset(offset).Scan(ctx)
 	if err != nil {
-		if isMissingCatalog(err) {
+		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Collection{}, databases.ListMeta{}, nil
 		}
 		return nil, databases.ListMeta{}, err
@@ -324,6 +324,9 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Where("collection_id IN (?)", bun.In(collectionIDs)).
 		Scan(ctx); err != nil {
+		if p.catalogAbsent(ctx, projectID, err) {
+			return []databases.Collection{}, databases.ListMeta{}, nil
+		}
 		return nil, databases.ListMeta{}, err
 	}
 	attrsByColl := make(map[string][]model.DocumentAttribute, len(ms))
@@ -337,6 +340,9 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Where("collection_id IN (?)", bun.In(collectionIDs)).
 		Scan(ctx); err != nil {
+		if p.catalogAbsent(ctx, projectID, err) {
+			return []databases.Collection{}, databases.ListMeta{}, nil
+		}
 		return nil, databases.ListMeta{}, err
 	}
 	idxsByColl := make(map[string][]model.DocumentIndex, len(ms))
@@ -2330,14 +2336,55 @@ func isMissingCatalog(err error) bool {
 	if err == nil {
 		return false
 	}
-	var pgErr pgdriver.Error
-	if errors.As(err, &pgErr) {
-		switch pgErr.Field('C') {
-		case "42P01", "3F000": // undefined_table, invalid_schema_name
-			return true
-		}
+	switch missingCatalogSQLState(err) {
+	case "42P01", "3F000":
+		return true
 	}
 	return false
+}
+
+func missingCatalogSQLState(err error) string {
+	if err == nil {
+		return ""
+	}
+	var pgErr pgdriver.Error
+	if errors.As(err, &pgErr) {
+		return pgErr.Field('C')
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "SQLSTATE 3F000"):
+		return "3F000"
+	case strings.Contains(msg, "SQLSTATE 42P01"):
+		return "42P01"
+	}
+	return ""
+}
+
+// catalogAbsent 是「行不存在」或「项目 schema 不存在」。schema 在而 catalog
+// 表不在（脏迁移 42P01）返回 false，让调用方透传原错误。
+func (p *postgresDocumentDB) catalogAbsent(ctx context.Context, projectID string, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return true
+	}
+	if !isMissingCatalog(err) {
+		return false
+	}
+	if missingCatalogSQLState(err) == "3F000" {
+		return true
+	}
+	schema, identErr := ident.ProjectSchemaName(projectID)
+	if identErr != nil {
+		return false
+	}
+	var reg any
+	if qerr := p.conn(ctx).QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&reg); qerr != nil {
+		return false
+	}
+	return reg == nil
 }
 
 func mapDatabase(m *model.DocumentDatabase) *databases.Database {

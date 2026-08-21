@@ -1498,4 +1498,26 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, coll)
 	require.Equal(t, "users", coll.ID)
+
+	sentinel, err := docDB.GetDatabase(ctx, project.ID, databases.SystemDatabaseID)
+	require.NoError(t, err)
+	require.NotNil(t, sentinel)
+	require.Equal(t, databases.SystemDatabaseID, sentinel.ID)
+
+	listColl, _, err = docDB.ListCollections(ctx, project.ID, databases.SystemDatabaseID, databases.ListQuery{})
+	require.NoError(t, err)
+	ids := make([]string, 0, len(listColl))
+	for i := range listColl {
+		ids = append(ids, listColl[i].ID)
+	}
+	require.Contains(t, ids, "users")
+}
+
+func TestIsMissingCatalog_SQLStateFallback(t *testing.T) {
+	require.True(t, isMissingCatalog(errors.New(`ERROR: relation "tw_x.document_collections" does not exist (SQLSTATE 42P01)`)))
+	require.True(t, isMissingCatalog(errors.New(`ERROR: schema "tw_x" does not exist (SQLSTATE 3F000)`)))
+	require.False(t, isMissingCatalog(errors.New(`ERROR: duplicate key (SQLSTATE 23505)`)))
+	require.False(t, isMissingCatalog(nil))
+	require.Equal(t, "42P01", missingCatalogSQLState(errors.New("SQLSTATE 42P01")))
+	require.Equal(t, "3F000", missingCatalogSQLState(errors.New("SQLSTATE 3F000")))
 }

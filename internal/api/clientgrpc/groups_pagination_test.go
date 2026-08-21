@@ -142,6 +142,8 @@ func (d *clientGroupsDocDB) DeleteIndex(context.Context, string, string, string,
 	return nil
 }
 
+var _ databases.DocumentDB = (*clientGroupsDocDB)(nil)
+
 func TestClientGRPC_ListGroups_EchoesNextPageToken(t *testing.T) {
 	docDB := &clientGroupsDocDB{
 		token: "tok-9",

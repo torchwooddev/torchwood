@@ -68,13 +68,13 @@ func (s *DatabasesService) ListDatabases(ctx context.Context, _ *sharedv1.ListRe
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, "databases")
-	cols, err := s.databases.ListDatabases(ctx, projectID)
+	dbs, err := s.databases.ListDatabases(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*serverv1.Database, len(cols))
-	for i := range cols {
-		out[i] = mapDatabase(&cols[i])
+	out := make([]*serverv1.Database, len(dbs))
+	for i := range dbs {
+		out[i] = mapDatabase(&dbs[i])
 	}
 	return &serverv1.ListDatabasesResponse{Databases: out, Meta: &sharedv1.ListResponseMeta{}}, nil
 }
@@ -85,14 +85,14 @@ func (s *DatabasesService) GetDatabase(ctx context.Context, req *serverv1.GetDat
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditDatabaseResource(req.GetId()))
-	col, err := s.databases.GetDatabase(ctx, projectID, req.GetId())
+	db, err := s.databases.GetDatabase(ctx, projectID, req.GetId())
 	if err != nil {
 		return nil, err
 	}
-	if col == nil {
+	if db == nil {
 		return nil, status.Error(codes.NotFound, "database not found")
 	}
-	return mapDatabase(col), nil
+	return mapDatabase(db), nil
 }
 
 func (s *DatabasesService) DeleteDatabase(ctx context.Context, req *serverv1.GetDatabaseRequest) (*sharedv1.Empty, error) {

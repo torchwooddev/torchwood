@@ -149,6 +149,8 @@ func (d *paginationDocDB) DeleteIndex(context.Context, string, string, string, s
 	return nil
 }
 
+var _ databases.DocumentDB = (*paginationDocDB)(nil)
+
 func paginationCtx() context.Context {
 	return contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "admin-1", ActorKind: shared.ActorKindAdmin, ProjectID: "proj-1",

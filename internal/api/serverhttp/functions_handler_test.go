@@ -154,6 +154,8 @@ func (d *functionsDocDB) BulkDeleteDocuments(context.Context, string, string, st
 func (d *functionsDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
 func (d *functionsDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 
+var _ databases.DocumentDB = (*functionsDocDB)(nil)
+
 func functionsHashSecret(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
