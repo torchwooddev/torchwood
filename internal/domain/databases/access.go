@@ -6,12 +6,12 @@ package databases
 // dependency on internal/domain/shared from the document port.
 type Principal struct {
 	// Roles carries the caller's role strings (e.g. "users", "user:<id>",
-	// "group:<id>", "keys", "any"). The "__system__" role bypasses all
-	// document-level permission checks.
+	// "group:<id>", "keys", "any"). The "__system__" role is the document
+	// projection of ActorKind System and bypasses document-level checks.
 	Roles []string
 
 	// PlatformAdmin indicates the caller is a console admin with full
-	// access (bypasses document-level permission checks).
+	// access (bypasses document-level permission checks). 这不是 System actor.
 	PlatformAdmin bool
 }
 
@@ -35,8 +35,14 @@ func (p Principal) HasRole(role string) bool {
 	return false
 }
 
-// IsSystem reports whether the principal should bypass all document-level
-// permission checks.
+// IsSystem reports whether this is the internal System actor projection
+// (__system__ 角色)，不是 PlatformAdmin。
 func (p Principal) IsSystem() bool {
-	return p.PlatformAdmin || p.HasRole("__system__")
+	return p.HasRole("__system__")
+}
+
+// BypassesDocumentACL reports whether document permission checks should be
+// skipped. System（内部）与 PlatformAdmin（console）都旁路，但它们不是同一 Actor.
+func (p Principal) BypassesDocumentACL() bool {
+	return p.IsSystem() || p.PlatformAdmin
 }

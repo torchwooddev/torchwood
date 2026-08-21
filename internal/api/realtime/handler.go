@@ -50,6 +50,7 @@ const (
 // CredentialValidator 是握手所需的凭证校验面（auth.Validator 满足；
 // 接口化便于单测）。
 type CredentialValidator interface {
+	Authenticate(ctx context.Context, req shared.AuthnRequest) (*shared.Principal, error)
 	ValidateToken(ctx context.Context, token string) (*shared.Principal, error)
 	ValidateCredential(ctx context.Context, raw string, credentialType shared.CredentialType) (*shared.Principal, error)
 	ValidateAdminProjectAccess(ctx context.Context, principal *shared.Principal) error
@@ -190,7 +191,7 @@ func newConnState(principal *shared.Principal, projectID, quotaKey string, claim
 		projectID:     projectID,
 		principal:     principal,
 		platformAdmin: principal.IsPlatformAdmin,
-		docPrincipal:  databases.Principal{Roles: principal.Roles, PlatformAdmin: principal.IsPlatformAdmin},
+		docPrincipal:  principal.DocPrincipal(),
 		quotaKey:      quotaKey,
 		subs:          make(map[string]struct{}),
 	}
@@ -330,8 +331,7 @@ func readFrame(ctx context.Context, c *websocket.Conn, v any) error {
 }
 
 // authenticate 完成身份与项目绑定校验（v2 设计 §4.2）：
-//   - 拒 API Key（X-Api-Key / ApiKey scheme / API key 凭证）
-//   - 拒多凭证并存（access_token / Authorization / session cookie 任取其一）
+//   - 与 gRPC/HTTP 共用 Authenticate；拒 API Key、只收 console cookie 是 Grant
 //   - 拒 guest / 非法 / 过期 / ttp != access
 //   - admin：先 principal.ProjectID = hello.project_id（空则拒），
 //     再 ValidateAdminProjectAccess；非 platform admin 无项目访问权则拒
@@ -340,54 +340,40 @@ func (h *Handler) authenticate(ctx context.Context, r *http.Request, hello *hell
 	if hello.ProjectID == "" {
 		return nil, nil, errors.New("project_id is required")
 	}
+	// Grant：Realtime 禁止 API key（不是第三份解析器）。
 	if len(r.Header.Values("X-Api-Key")) > 0 {
 		return nil, nil, errors.New("api key credentials are not allowed")
 	}
-
-	credentialCount := 0
-	var credType shared.CredentialType
-	var cred string
-	if hello.AccessToken != "" {
-		credType, cred = shared.CredentialTypeToken, hello.AccessToken
-		credentialCount++
-	}
 	if raw := r.Header.Get("Authorization"); raw != "" {
-		ct, tok, ok := interceptor.ParseAuthorizationHeader(raw)
-		if !ok {
-			return nil, nil, errors.New("invalid authorization header")
-		}
-		if ct == shared.CredentialTypeAPIKey {
+		if ct, _, ok := interceptor.ParseAuthorizationHeader(raw); ok && ct == shared.CredentialTypeAPIKey {
 			return nil, nil, errors.New("api key credentials are not allowed")
 		}
-		if credentialCount > 0 {
-			return nil, nil, errors.New("multiple credentials provided")
-		}
-		credType, cred, credentialCount = ct, tok, 1
-	}
-	sessionCookies := consoleSessionCookiesOf(r)
-	if len(sessionCookies) > 1 {
-		return nil, nil, errors.New("multiple credentials provided")
-	}
-	if len(sessionCookies) == 1 {
-		if credentialCount > 0 {
-			return nil, nil, errors.New("multiple credentials provided")
-		}
-		credType, cred, credentialCount = shared.CredentialTypeSession, sessionCookies[0], 1
-	}
-	if credentialCount == 0 {
-		return nil, nil, errors.New("authentication required")
 	}
 
-	principal, err := h.validator.ValidateCredential(ctx, cred, credType)
+	req := shared.AuthnRequest{
+		Authorization: r.Header.Values("Authorization"),
+		CookieHeaders: consoleSessionCookieHeaders(r),
+		AccessToken:   hello.AccessToken,
+	}
+	principal, err := h.validator.Authenticate(ctx, req)
 	if err != nil || principal == nil || !principal.IsAuthenticated() {
+		if _, _, parseErr := shared.ParseAuthnRequest(req); parseErr != nil {
+			if errors.Is(parseErr, shared.ErrMissingCredential) {
+				return nil, nil, errors.New("authentication required")
+			}
+			return nil, nil, parseErr
+		}
 		return nil, nil, errors.New("invalid or expired credential")
+	}
+	if principal.ActorKind == shared.ActorKindService || principal.IsSystem() {
+		return nil, nil, errors.New("api key credentials are not allowed")
 	}
 
 	// ttp / exp：读取 JWT claims 供握手后的到期断开用（SDK access_token
-	// 与 console cookie 值都是 JWT；httponly codec 形式的端用户会话
-	// cookie 已在 consoleSessionCookiesOf 被拒，不会走到这里）。
+	// 与 console cookie 值都是 JWT）。
+	ct, cred, parseErr := shared.ParseAuthnRequest(req)
 	var claims *jwtparser.Claims
-	if credType == shared.CredentialTypeToken || credType == shared.CredentialTypeSession {
+	if parseErr == nil && (ct == shared.CredentialTypeToken || ct == shared.CredentialTypeSession) {
 		claims, _ = h.validator.ParseClaims(cred)
 	}
 	if claims != nil && claims.TokenType != "" && claims.TokenType != jwtparser.TokenTypeAccess {
@@ -412,14 +398,14 @@ func (h *Handler) authenticate(ctx context.Context, r *http.Request, hello *hell
 	return principal, claims, nil
 }
 
-// consoleSessionCookiesOf 收集 console 会话 cookie 值（v2 设计 §4.2：
-// WS 握手只接受 SDK access_token 与 Console 的 TORCHWOOD_session_console；
+// consoleSessionCookieHeaders 只收集 Console 会话 cookie（v2 设计 §4.2：
+// WS 握手只接受 SDK access_token 与 TORCHWOOD_session_console；
 // 端用户的 TORCHWOOD_session_<project> cookie 不是 WS 凭证，不接受）。
-func consoleSessionCookiesOf(r *http.Request) []string {
+func consoleSessionCookieHeaders(r *http.Request) []string {
 	var out []string
 	for _, c := range r.Cookies() {
-		if c.Name == "TORCHWOOD_session_console" && c.Value != "" {
-			out = append(out, c.Value)
+		if c.Name == shared.ConsoleSessionCookieName && c.Value != "" {
+			out = append(out, c.Name+"="+c.Value)
 		}
 	}
 	return out

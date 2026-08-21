@@ -330,9 +330,9 @@ func (a *Account) resetLoginThrottle(ctx context.Context, email, ip string) {
 }
 
 func (a *Account) Me(ctx context.Context) (*User, error) {
-	p, ok := contexts.Principal(ctx)
-	if !ok || p.UserID == "" {
-		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+	p, err := a.requireUser(ctx)
+	if err != nil {
+		return nil, err
 	}
 	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
 	if err != nil {
@@ -753,7 +753,7 @@ func (a *Account) deleteUserSession(ctx context.Context, p *shared.Principal, se
 
 func (a *Account) requireUser(ctx context.Context) (*shared.Principal, error) {
 	p, ok := contexts.Principal(ctx)
-	if !ok || p.UserID == "" {
+	if !ok || p == nil || p.ActorKind != shared.ActorKindEndUser || p.UserID == "" {
 		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
 	return p, nil

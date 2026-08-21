@@ -34,7 +34,7 @@ func (t *Transactions) resolveProject(ctx context.Context) (*projects.Project, d
 	if err != nil {
 		return nil, databases.Principal{}, nil, err
 	}
-	return project, databases.Principal{Roles: p.Roles}, p, nil
+	return project, p.DocPrincipal(), p, nil
 }
 
 func (t *Transactions) CreateTransaction(ctx context.Context, databaseID string) (*databases.Transaction, error) {

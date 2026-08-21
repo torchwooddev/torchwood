@@ -40,6 +40,20 @@ func TestCreateDocument_GoesThroughSharedCoreWithOwnerACE(t *testing.T) {
 	require.Equal(t, ownerDocumentPermissions("u1"), rec.lastCreatePerms)
 }
 
+func TestResolveProject_PassesPlatformAdmin(t *testing.T) {
+	d := NewDatabases(stubProjects{}, &stubDocDB{})
+	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ProjectID:       "p1",
+		UserID:          "u1",
+		Roles:           []string{"users", "user:u1"},
+		IsPlatformAdmin: true,
+	})
+	_, principal, err := d.resolveProject(ctx)
+	require.NoError(t, err)
+	require.True(t, principal.PlatformAdmin)
+	require.Equal(t, []string{"users", "user:u1"}, principal.Roles)
+}
+
 func TestListDocuments_GuestPrincipal(t *testing.T) {
 	catalog := &stubDocDB{coll: &databases.Collection{ID: "posts"}}
 	rec := &stubDocDB{list: &databases.DocumentList{}}

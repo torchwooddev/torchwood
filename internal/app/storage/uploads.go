@@ -320,7 +320,7 @@ func checkUploadOwner(session *storage.UploadSession, callerUserID string, princ
 	if callerUserID == session.OwnerUserID {
 		return nil
 	}
-	if principal.IsSystem() || principal.HasRole("keys") {
+	if principal.BypassesDocumentACL() || principal.HasRole("keys") {
 		return nil
 	}
 	return status.Error(codes.PermissionDenied, "upload session does not belong to caller")

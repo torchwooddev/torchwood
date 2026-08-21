@@ -18,6 +18,13 @@ import (
 
 type failingValidator struct{ err error }
 
+func (f failingValidator) Authenticate(_ context.Context, req shared.AuthnRequest) (*shared.Principal, error) {
+	if _, _, err := shared.ParseAuthnRequest(req); err != nil {
+		return nil, status.Error(codes.Unauthenticated, err.Error())
+	}
+	return nil, f.err
+}
+
 func (f failingValidator) ValidateToken(context.Context, string) (*shared.Principal, error) {
 	return nil, f.err
 }

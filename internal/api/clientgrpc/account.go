@@ -459,7 +459,7 @@ func (s *AccountService) ListLogs(ctx context.Context, req *clientv1.ListLogsReq
 
 func (s *AccountService) requirePrincipal(ctx context.Context) (*shared.Principal, error) {
 	p, ok := contexts.Principal(ctx)
-	if !ok || p == nil || p.UserID == "" {
+	if !ok || p == nil || p.ActorKind != shared.ActorKindEndUser || p.UserID == "" {
 		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
 	return p, nil

@@ -278,6 +278,13 @@ type principalValidator struct {
 	principal *shared.Principal
 }
 
+func (v *principalValidator) Authenticate(ctx context.Context, req shared.AuthnRequest) (*shared.Principal, error) {
+	if _, _, err := shared.ParseAuthnRequest(req); err != nil {
+		return nil, err
+	}
+	return v.principal, nil
+}
+
 func (v *principalValidator) ValidateToken(ctx context.Context, token string) (*shared.Principal, error) {
 	return v.ValidateCredential(ctx, token, shared.CredentialTypeToken)
 }

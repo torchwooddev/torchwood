@@ -624,6 +624,19 @@ func TestReconcile_ZeroDriftAndTamper(t *testing.T) {
 	require.NotEmpty(t, report.Drifts)
 }
 
+func TestWithSystemPrincipal_IsSystemActorNotFakeAPIKey(t *testing.T) {
+	t.Parallel()
+	ctx := withSystemPrincipal(context.Background(), "p1")
+	p, ok := contexts.Principal(ctx)
+	require.True(t, ok)
+	require.Equal(t, domainshared.ActorKindSystem, p.ActorKind)
+	require.True(t, p.IsSystem())
+	require.Empty(t, p.APIKeyID)
+	require.NotEqual(t, domainshared.CredentialTypeAPIKey, p.CredentialType)
+	require.Equal(t, "p1", p.ProjectID)
+	require.NoError(t, requireAssetWrite(ctx))
+}
+
 func TestExpireDue_DeletesAndLedger(t *testing.T) {
 	env := setupAssets(t)
 	env.createDef(t, domainassets.ClassStack, "ticket")

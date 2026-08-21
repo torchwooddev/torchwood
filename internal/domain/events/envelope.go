@@ -128,7 +128,7 @@ func (e Envelope) ClientPayload() map[string]any {
 // 用户集合事件快照不经集合级 read 预检（产品：订阅集合频道不要求
 // collection read，每条事件再按 _perms 过滤）。
 func VisibleTo(acl ACLSnapshot, p databases.Principal) bool {
-	if p.IsSystem() {
+	if p.BypassesDocumentACL() {
 		return true
 	}
 	coll := &databases.Collection{

@@ -124,7 +124,10 @@ func (a *Auth) SignOut(ctx context.Context) error {
 	}
 	adminID := ""
 	if p, ok := contexts.Principal(ctx); ok && p.ActorKind == shared.ActorKindAdmin {
-		adminID = p.UserID
+		adminID = p.AdminID
+		if adminID == "" {
+			adminID = string(p.ActorID)
+		}
 	}
 	if adminID == "" {
 		// No principal (e.g. the access token already expired): fall back to the

@@ -17,11 +17,14 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 )
+
+var _ CredentialValidator = (*infraauth.Validator)(nil)
 
 // ---- fakes ----
 
@@ -33,6 +36,14 @@ type fakeValidator struct {
 	// projectAccess 控制 ValidateAdminProjectAccess 的结果。
 	projectAccess bool
 	validated     []string // 记录 ValidateAdminProjectAccess 时的 ProjectID
+}
+
+func (v *fakeValidator) Authenticate(ctx context.Context, req shared.AuthnRequest) (*shared.Principal, error) {
+	_, raw, err := shared.ParseAuthnRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	return v.validate(raw)
 }
 
 func (v *fakeValidator) ValidateToken(ctx context.Context, token string) (*shared.Principal, error) {
@@ -246,8 +257,8 @@ func adminPrincipal(actorID string) *shared.Principal {
 		ActorKind:       shared.ActorKindAdmin,
 		CredentialType:  shared.CredentialTypeToken,
 		IsPlatformAdmin: true,
-		UserID:          actorID,
-		Roles:           []string{"admin"},
+		AdminID:         actorID,
+		Roles:           []string{"admin", "console"},
 	}
 }
 

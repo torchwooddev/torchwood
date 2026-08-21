@@ -56,7 +56,7 @@ func TestAuth_SignOut_RevokesAdminTokens(t *testing.T) {
 	t.Parallel()
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorKind: shared.ActorKindAdmin,
-		UserID:    "admin-1",
+		AdminID:   "admin-1",
 	})
 	store := newMemAdminRevokeStore()
 	authUC := console.NewAuth(testConfig(), nil, store, nil, nil)

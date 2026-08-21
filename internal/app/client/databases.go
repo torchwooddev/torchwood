@@ -56,7 +56,7 @@ func (d *Databases) resolveProject(ctx context.Context) (*projects.Project, data
 	if err != nil {
 		return nil, databases.Principal{}, err
 	}
-	return project, databases.Principal{Roles: p.Roles}, nil
+	return project, p.DocPrincipal(), nil
 }
 
 func (d *Databases) resolveReadPrincipal(ctx context.Context, projectID string) (string, databases.Principal, error) {
@@ -68,7 +68,7 @@ func (d *Databases) resolveReadPrincipal(ctx context.Context, projectID string) 
 		if err != nil {
 			return "", databases.Principal{}, err
 		}
-		return project.ID, databases.Principal{Roles: p.Roles}, nil
+		return project.ID, p.DocPrincipal(), nil
 	}
 	if projectID == "" {
 		if p, ok := contexts.Principal(ctx); ok && p.ProjectID != "" {

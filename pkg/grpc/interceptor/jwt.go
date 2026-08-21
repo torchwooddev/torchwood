@@ -16,6 +16,7 @@ import (
 
 // Validator validates a raw credential and returns the authenticated Principal.
 type Validator interface {
+	Authenticate(ctx context.Context, req shared.AuthnRequest) (*shared.Principal, error)
 	ValidateToken(ctx context.Context, token string) (*shared.Principal, error)
 	ValidateCredential(ctx context.Context, raw string, credentialType shared.CredentialType) (*shared.Principal, error)
 	ValidateAdminProjectAccess(ctx context.Context, principal *shared.Principal) error
@@ -76,10 +77,8 @@ func (i *AuthInterceptor) logAuthFailure(ctx context.Context, method, reason str
 func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	if _, ok := i.publicMethods[info.FullMethod]; ok {
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
-			if credentialType, token, err := extractCredential(md); err == nil {
-				if principal, err := i.validator.ValidateCredential(ctx, token, credentialType); err == nil && principal != nil {
-					ctx = contexts.WithPrincipal(ctx, principal)
-				}
+			if principal, err := i.validator.Authenticate(ctx, authnRequestFromMD(md)); err == nil && principal != nil {
+				ctx = contexts.WithPrincipal(ctx, principal)
 			}
 		}
 		return handler(ctx, req)
@@ -91,21 +90,22 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 		return nil, status.Error(codes.Unauthenticated, "metadata is not provided")
 	}
 
-	credentialType, token, err := extractCredential(md)
+	authn := authnRequestFromMD(md)
+	principal, err := i.validator.Authenticate(ctx, authn)
 	if err != nil {
-		i.logAuthFailure(ctx, info.FullMethod, "credential_missing", "")
-		return nil, status.Error(codes.Unauthenticated, "authentication credential is not provided")
-	}
-
-	principal, err := i.validator.ValidateCredential(ctx, token, credentialType)
-	if err != nil {
-		i.logAuthFailure(ctx, info.FullMethod, "credential_invalid", credentialType)
+		ct, _, parseErr := shared.ParseAuthnRequest(authn)
+		if parseErr != nil {
+			i.logAuthFailure(ctx, info.FullMethod, "credential_missing", "")
+			return nil, status.Error(codes.Unauthenticated, parseErr.Error())
+		}
+		i.logAuthFailure(ctx, info.FullMethod, "credential_invalid", ct)
 		return nil, err
 	}
 	if principal == nil {
-		i.logAuthFailure(ctx, info.FullMethod, "credential_invalid", credentialType)
+		i.logAuthFailure(ctx, info.FullMethod, "credential_invalid", "")
 		return nil, status.Error(codes.Unauthenticated, "invalid or expired credential")
 	}
+	credentialType := principal.CredentialType
 
 	if _, isAPIKeyMethod := i.apiKeyMethods[info.FullMethod]; isAPIKeyMethod {
 		if principal.CredentialType != shared.CredentialTypeAPIKey && principal.ActorKind != shared.ActorKindAdmin {
@@ -128,7 +128,7 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 	// Allow admin console sessions to target a specific project via header.
 	if principal.ActorKind == shared.ActorKindAdmin {
 		// 受限 admin（viewer/member）不得调用仅 owner/admin 的 Server API 写方法。
-		if perms := adminRoleMethodRules[info.FullMethod]; len(perms) > 0 && !principal.HasAnyPermission(perms) {
+		if perms := adminRoleMethodRules[info.FullMethod]; len(perms) > 0 && !principal.HasAnyRole(perms) {
 			i.logAuthFailure(ctx, info.FullMethod, "admin_role_denied", credentialType)
 			return nil, status.Error(codes.PermissionDenied, "missing required admin role")
 		}
@@ -148,7 +148,7 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 			i.logAuthFailure(ctx, info.FullMethod, "apikey_permission_method_denied", credentialType)
 			return nil, status.Error(codes.PermissionDenied, "api key credentials not allowed on permission-gated methods")
 		}
-		if !principal.HasAnyPermission(perms) {
+		if !principal.HasAnyRole(perms) {
 			i.logAuthFailure(ctx, info.FullMethod, "permission_denied", credentialType)
 			return nil, status.Error(codes.PermissionDenied, "missing required permission")
 		}
@@ -158,97 +158,17 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 	return handler(ctx, req)
 }
 
-func extractCredential(md metadata.MD) (shared.CredentialType, string, error) {
-	var (
-		credentialType shared.CredentialType
-		token          string
-		seen           bool
-	)
-	// R01-P2-2：凭证类 key 同 key 多值一律拒绝（防头部注入/解析歧义）。
-	raw, err := credentialMetadataValue(md, "authorization")
-	if err != nil {
-		return "", "", err
+func authnRequestFromMD(md metadata.MD) shared.AuthnRequest {
+	return shared.AuthnRequest{
+		Authorization: md.Get("authorization"),
+		APIKey:        md.Get("x-api-key"),
+		CookieHeaders: md.Get("cookie"),
 	}
-	if raw != "" {
-		ct, tok, ok := ParseAuthorizationHeader(raw)
-		if !ok {
-			return "", "", errors.New("invalid authorization header")
-		}
-		credentialType, token, seen = ct, tok, true
-	}
-	raw, err = credentialMetadataValue(md, "cookie")
-	if err != nil {
-		return "", "", err
-	}
-	if raw != "" {
-		if _, tok, ok := parseSessionCookie(raw); ok {
-			if seen {
-				return "", "", errors.New("multiple credentials provided")
-			}
-			credentialType, token, seen = shared.CredentialTypeSession, tok, true
-		}
-	}
-	raw, err = credentialMetadataValue(md, "x-api-key")
-	if err != nil {
-		return "", "", err
-	}
-	if raw != "" {
-		if seen {
-			return "", "", errors.New("multiple credentials provided")
-		}
-		return shared.CredentialTypeAPIKey, raw, nil
-	}
-	if seen {
-		return credentialType, token, nil
-	}
-	return "", "", errors.New("no credential")
 }
 
-// credentialMetadataValue 读取单个凭证值；同一 key 出现多个值时拒绝
-// （"multiple credentials provided"），防止多值头部导致的解析歧义。
-func credentialMetadataValue(md metadata.MD, key string) (string, error) {
-	values := md.Get(key)
-	if len(values) > 1 {
-		return "", errors.New("multiple credentials provided")
-	}
-	if len(values) == 0 {
-		return "", nil
-	}
-	return strings.TrimSpace(values[0]), nil
-}
-
-// ParseAuthorizationHeader 解析 Authorization 头，支持 Bearer / Session / ApiKey 三种 scheme；
-// scheme 无法识别或格式不合法时返回 ok=false，调用方应拒绝而不是把整串当 token。
+// ParseAuthorizationHeader 解析 Authorization 头；实现位于 shared.ParseAuthnRequest。
 func ParseAuthorizationHeader(raw string) (shared.CredentialType, string, bool) {
-	parts := strings.Fields(raw)
-	if len(parts) != 2 {
-		return "", "", false
-	}
-	switch strings.ToLower(parts[0]) {
-	case "bearer":
-		return shared.CredentialTypeToken, parts[1], true
-	case "session":
-		return shared.CredentialTypeSession, parts[1], true
-	case "apikey", "api-key":
-		return shared.CredentialTypeAPIKey, parts[1], true
-	}
-	return "", "", false
-}
-
-func parseSessionCookie(raw string) (projectID, token string, ok bool) {
-	for _, part := range strings.Split(raw, ";") {
-		name, value, found := strings.Cut(strings.TrimSpace(part), "=")
-		if !found || value == "" {
-			continue
-		}
-		if name == "TORCHWOOD_session_console" {
-			return "console", value, true
-		}
-		if strings.HasPrefix(name, "TORCHWOOD_session_") {
-			return strings.TrimPrefix(name, "TORCHWOOD_session_"), value, true
-		}
-	}
-	return "", "", false
+	return shared.ParseAuthorizationHeader(raw)
 }
 
 func firstMetadataValue(md metadata.MD, key string) string {

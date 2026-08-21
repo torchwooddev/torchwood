@@ -349,7 +349,11 @@ func TestValidator_ValidateAdminJWT(t *testing.T) {
 	p, err := v.ValidateToken(ctx, token)
 	require.NoError(t, err)
 	require.Equal(t, shared.ActorKindAdmin, p.ActorKind)
+	require.Equal(t, admin.ID, p.AdminID)
+	require.Empty(t, p.UserID)
+	require.True(t, p.IsAuthenticated())
 	require.False(t, p.IsPlatformAdmin)
+	require.False(t, p.IsSystem())
 }
 
 func TestValidator_ValidateAdminJWT_RejectsRefreshToken(t *testing.T) {
@@ -455,18 +459,18 @@ func TestValidator_ValidateAdminProjectAccess(t *testing.T) {
 
 	require.NoError(t, v.ValidateAdminProjectAccess(ctx, &shared.Principal{
 		ActorKind:       shared.ActorKindAdmin,
-		UserID:          "admin-1",
+		AdminID:         "admin-1",
 		ProjectID:       "proj-allowed",
 		IsPlatformAdmin: false,
 	}))
 	requireCode(t, v.ValidateAdminProjectAccess(ctx, &shared.Principal{
 		ActorKind: shared.ActorKindAdmin,
-		UserID:    "admin-1",
+		AdminID:   "admin-1",
 		ProjectID: "proj-denied",
 	}), codes.PermissionDenied)
 	require.NoError(t, v.ValidateAdminProjectAccess(ctx, &shared.Principal{
 		ActorKind:       shared.ActorKindAdmin,
-		UserID:          "admin-1",
+		AdminID:         "admin-1",
 		ProjectID:       "proj-denied",
 		IsPlatformAdmin: true,
 	}))

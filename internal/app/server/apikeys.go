@@ -63,7 +63,7 @@ func ensureScopesWithinCaller(ctx context.Context, scopes []string) error {
 		return nil
 	}
 	for _, s := range scopes {
-		if !principal.HasPermission(s) {
+		if !principal.HasScope(s) {
 			return status.Errorf(codes.PermissionDenied, "scope %q exceeds caller permissions", s)
 		}
 	}

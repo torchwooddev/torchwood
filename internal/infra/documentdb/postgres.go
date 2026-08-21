@@ -565,7 +565,7 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 	}
 
 	// Check collection-level "create" permission before inserting.
-	if !principal.IsSystem() {
+	if !principal.BypassesDocumentACL() {
 		if isWriteProtectedSystemCollection(databaseID, collectionID) {
 			return doc, ErrPermissionDenied
 		}
@@ -702,7 +702,7 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 		return doc, err
 	}
 
-	if !principal.IsSystem() {
+	if !principal.BypassesDocumentACL() {
 		if isWriteProtectedSystemCollection(databaseID, collectionID) {
 			return doc, ErrPermissionDenied
 		}
@@ -902,7 +902,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	// 非 System 且非文档 owner（user:<id> 匹配）时，禁止写入写保护系统集合（纵深防御，
 	// 与 CreateDocument/DeleteDocument 对齐，安全评审 C1 第 2 层）。
 	// owner 例外：end-user 自助路径（UpdateAccount/UpdatePrefs）以 user:<id> 角色更新自己的 users 文档。
-	if !principal.IsSystem() &&
+	if !principal.BypassesDocumentACL() &&
 		!principal.HasRole(fmt.Sprintf("user:%s", doc.ID)) &&
 		isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return doc, ErrPermissionDenied
@@ -1032,7 +1032,7 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
 		return err
 	}
-	if !principal.IsSystem() && isWriteProtectedSystemCollection(databaseID, collectionID) {
+	if !principal.BypassesDocumentACL() && isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return ErrPermissionDenied
 	}
 	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, docID, internalID, "delete", principal, nil); err != nil {
@@ -1146,7 +1146,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	// 复用给权限过滤与字段白名单校验；System 信任路径零额外查询（跳过白名单）。
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	var coll *databases.Collection
-	if !principal.IsSystem() {
+	if !principal.BypassesDocumentACL() {
 		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
 		if err != nil {
 			return nil, err
@@ -1158,7 +1158,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
-	if !principal.IsSystem() {
+	if !principal.BypassesDocumentACL() {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
 			return nil, err
@@ -1328,7 +1328,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	var coll *databases.Collection
-	if !principal.IsSystem() {
+	if !principal.BypassesDocumentACL() {
 		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
 		if err != nil {
 			return 0, err
@@ -1340,7 +1340,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
-	if !principal.IsSystem() {
+	if !principal.BypassesDocumentACL() {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
 			return 0, err
@@ -1408,7 +1408,7 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
-	if !principal.IsSystem() {
+	if !principal.BypassesDocumentACL() {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
 			return 0, err

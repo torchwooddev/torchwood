@@ -21,7 +21,7 @@ func adminActorCtx(ctx context.Context) context.Context {
 	return contexts.WithPrincipal(ctx, &shared.Principal{
 		ActorID:   "admin-1",
 		ActorKind: shared.ActorKindAdmin,
-		UserID:    "admin-1",
+		AdminID:   "admin-1",
 	})
 }
 

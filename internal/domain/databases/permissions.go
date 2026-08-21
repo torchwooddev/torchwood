@@ -213,7 +213,7 @@ func firstPrefixedRole(roles []string, prefix string) string {
 // ValidateGrantablePermissions ensures the grantor may assign the given roles.
 // Privileged callers (API key via keys role with scopes, platform admin) skip checks.
 func ValidateGrantablePermissions(grantor Principal, perms []Permission, privileged bool) error {
-	if privileged || grantor.IsSystem() || grantor.PlatformAdmin {
+	if privileged || grantor.BypassesDocumentACL() {
 		return nil
 	}
 	expanded := ExpandPermissionRoles(grantor.Roles)

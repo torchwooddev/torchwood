@@ -5,14 +5,24 @@ import (
 	"testing"
 
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
+var _ Validator = (*auth.Validator)(nil)
+
 type stubValidator struct {
 	principal *shared.Principal
+}
+
+func (s stubValidator) Authenticate(_ context.Context, req shared.AuthnRequest) (*shared.Principal, error) {
+	if _, _, err := shared.ParseAuthnRequest(req); err != nil {
+		return nil, status.Error(codes.Unauthenticated, err.Error())
+	}
+	return s.principal, nil
 }
 
 func (s stubValidator) ValidateToken(_ context.Context, _ string) (*shared.Principal, error) {

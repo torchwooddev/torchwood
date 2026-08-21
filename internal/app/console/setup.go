@@ -209,7 +209,7 @@ func bootstrapPrincipalCtx(ctx context.Context) context.Context {
 		ActorID:         "setup",
 		ActorKind:       shared.ActorKindAdmin,
 		IsPlatformAdmin: true,
-		UserID:          "setup",
+		AdminID:         "setup",
 	})
 }
 

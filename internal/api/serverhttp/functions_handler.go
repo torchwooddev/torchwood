@@ -184,10 +184,8 @@ func (h *FunctionsHandler) authorize(r *http.Request) (*shared.Principal, error)
 	if err != nil {
 		return nil, err
 	}
-	if principal.CredentialType == shared.CredentialTypeToken || principal.CredentialType == shared.CredentialTypeSession {
-		if principal.ActorKind != shared.ActorKindAdmin {
-			return nil, status.Error(codes.PermissionDenied, "end-user credentials cannot upload deployments")
-		}
+	if principal.ActorKind == shared.ActorKindEndUser {
+		return nil, status.Error(codes.PermissionDenied, "end-user credentials cannot upload deployments")
 	}
 	return principal, nil
 }

@@ -207,7 +207,7 @@ func operatorFrom(ctx context.Context) json.RawMessage {
 		UserID:         p.UserID,
 		APIKeyID:       p.APIKeyID,
 		CredentialType: string(p.CredentialType),
-		IsSystem:       p.ActorKind == shared.ActorKindService && p.APIKeyID == "",
+		IsSystem:       p.IsSystem(),
 	})
 }
 

@@ -14,7 +14,7 @@ func (p *postgresDocumentDB) ensureCollectionAccessible(coll *databases.Collecti
 	if coll == nil {
 		return ErrPermissionDenied
 	}
-	if coll.Disabled && !principal.IsSystem() {
+	if coll.Disabled && !principal.BypassesDocumentACL() {
 		return ErrPermissionDenied
 	}
 	return nil
@@ -63,7 +63,7 @@ func (p *postgresDocumentDB) checkDocumentPermission(
 	principal databases.Principal,
 	coll *databases.Collection,
 ) error {
-	if principal.IsSystem() {
+	if principal.BypassesDocumentACL() {
 		return nil
 	}
 	if coll == nil {
@@ -92,7 +92,7 @@ func (p *postgresDocumentDB) listPermissionFilter(
 	coll *databases.Collection,
 	principal databases.Principal,
 ) (where string, args []any, err error) {
-	if principal.IsSystem() {
+	if principal.BypassesDocumentACL() {
 		return "", nil, nil
 	}
 	if err := p.ensureCollectionAccessible(coll, principal); err != nil {

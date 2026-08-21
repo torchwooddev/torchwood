@@ -306,6 +306,7 @@ func signUpViaHandler(t *testing.T, ctx context.Context, s *AccountService, proj
 
 func principalCtx(ctx context.Context, projectID, userID, sessionID string) context.Context {
 	return contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		SessionID: sessionID,
