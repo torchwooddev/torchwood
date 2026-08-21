@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 编译期：五动词在 Service 上，不在 Holding 上（M-4）。
+// 编译期：五动词在 Service 上，不在 Holding 上。
 var _ interface {
 	Grant(context.Context, Scope, GrantCommand) (*OpResult, error)
 	Consume(context.Context, Scope, ConsumeCommand) (*OpResult, error)
@@ -30,11 +30,18 @@ func TestHoldingHasNoAssetVerbs(t *testing.T) {
 	val := reflect.TypeOf(Holding{})
 	for _, name := range []string{"Grant", "Consume", "Transfer", "Mutate", "Expire", "ExpireDue"} {
 		if _, ok := ptr.MethodByName(name); ok {
-			t.Errorf("Holding must not have method %s (M-4)", name)
+			t.Errorf("Holding 不得有五动词方法 %s", name)
 		}
 		if _, ok := val.MethodByName(name); ok {
-			t.Errorf("Holding must not have method %s (M-4)", name)
+			t.Errorf("Holding 不得有五动词方法 %s", name)
 		}
+	}
+}
+
+func TestServiceDoesNotExportLiveHolding(t *testing.T) {
+	t.Parallel()
+	if _, ok := reflect.TypeOf((*Service)(nil)).MethodByName("LiveHolding"); ok {
+		t.Error("Service 不得导出 LiveHolding；锁读由 app.LiveHoldingForUpdate 封装")
 	}
 }
 

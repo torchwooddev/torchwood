@@ -6,7 +6,7 @@ import (
 )
 
 // ExpireDue 扫描并失效一个项目内到期持有（与 Expire 同一引擎）。
-// 每批在同一短事务内；SKIP LOCKED 由仓储 ListExpiredInProject 保证。
+// 每项目一批短事务；SKIP LOCKED 由仓储 ListExpiredInProject 保证。
 func (s *Service) ExpireDue(ctx context.Context, scope Scope, now time.Time, limit int) (int64, error) {
 	if err := s.requireScope(scope); err != nil {
 		return 0, err

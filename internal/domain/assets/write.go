@@ -280,7 +280,7 @@ func (s *Service) Transfer(ctx context.Context, scope Scope, cmd TransferCommand
 		return nil, err
 	}
 	if cmd.FromOwnerID == "" || cmd.ToOwnerID == "" {
-		return nil, fmt.Errorf("%w: from_owner_id and to_owner_id are required", ErrOwnerRequired)
+		return nil, ErrTransferOwnersRequired
 	}
 	if cmd.FromOwnerID == cmd.ToOwnerID {
 		return nil, ErrSameOwner

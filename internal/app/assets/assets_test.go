@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -443,12 +444,16 @@ func setupAssets(t *testing.T) *testEnv {
 }
 
 func (e *testEnv) createDef(t *testing.T, class domainassets.Class, code string, opts ...func(*CreateDefCommand)) *domainassets.Def {
+	return e.createDefFor(t, "p1", class, code, opts...)
+}
+
+func (e *testEnv) createDefFor(t *testing.T, projectID string, class domainassets.Class, code string, opts ...func(*CreateDefCommand)) *domainassets.Def {
 	t.Helper()
 	cmd := CreateDefCommand{Code: code, Name: code, Class: class, Tradable: class != domainassets.ClassEntitlement}
 	for _, o := range opts {
 		o(&cmd)
 	}
-	def, err := e.assets.CreateDef(adminCtx("p1"), cmd)
+	def, err := e.assets.CreateDef(adminCtx(projectID), cmd)
 	require.NoError(t, err)
 	return def
 }
@@ -637,6 +642,37 @@ func TestWithSystemPrincipal_IsSystemActorNotFakeAPIKey(t *testing.T) {
 	require.NoError(t, requireAssetWrite(ctx))
 }
 
+func TestExpireDue_TwoProjectsIgnoresStickyPrincipal(t *testing.T) {
+	store := newMemStore()
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	a := newAssets(store, store, memHoldings{store}, memLedger{store}, store, nil, &listProjectsStub{list: []projects.Project{
+		{ID: "p1", Status: "active"},
+		{ID: "p2", Status: "active"},
+	}})
+	a.now = func() time.Time { return now }
+	env := &testEnv{assets: a, store: store, now: now}
+
+	env.createDefFor(t, "p1", domainassets.ClassStack, "ticket")
+	env.createDefFor(t, "p2", domainassets.ClassStack, "ticket")
+	past := now.Add(-time.Hour)
+	_, err := env.assets.Grant(adminCtx("p1"), GrantCommand{
+		OwnerID: "u1", DefCode: "ticket", Quantity: 3, ExpiresAt: &past, IdempotencyKey: "g1",
+	})
+	require.NoError(t, err)
+	_, err = env.assets.Grant(adminCtx("p2"), GrantCommand{
+		OwnerID: "u1", DefCode: "ticket", Quantity: 2, ExpiresAt: &past, IdempotencyKey: "g2",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, countHoldingsIn(store, "p1"))
+	require.Equal(t, 1, countHoldingsIn(store, "p2"))
+
+	n, err := env.assets.ExpireDue(adminCtx("p1"), now)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), n)
+	require.Equal(t, 0, countHoldingsIn(store, "p1"))
+	require.Equal(t, 0, countHoldingsIn(store, "p2"))
+}
+
 func TestExpireDue_DeletesAndLedger(t *testing.T) {
 	env := setupAssets(t)
 	env.createDef(t, domainassets.ClassStack, "ticket")
@@ -709,7 +745,73 @@ func TestMutate_InstanceLevel(t *testing.T) {
 	require.Equal(t, int32(3), env.store.holdings[holdingID].Level)
 }
 
+func TestMapWriteError_PreservesInvalidArgumentMessages(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		err  error
+		code codes.Code
+		msg  string
+	}{
+		{domainassets.ErrSameOwner, codes.InvalidArgument, "cannot transfer to the same owner"},
+		{domainassets.ErrTransferOwnersRequired, codes.InvalidArgument, "from_owner_id and to_owner_id are required"},
+		{domainassets.ErrHoldingIDRequired, codes.InvalidArgument, "holding_id is required"},
+		{domainassets.ErrOwnerRequired, codes.InvalidArgument, "owner_id is required"},
+		{domainassets.ErrInvalidCode, codes.InvalidArgument, "def code must match ^[a-z][a-z0-9_]{0,63}$"},
+		{domainassets.ErrIdempotencyTooLong, codes.InvalidArgument, "idempotency_key exceeds 128 characters"},
+		{domainassets.ErrIdempotencyRequired, codes.InvalidArgument, domainassets.ErrIdempotencyRequired.Error()},
+		{domainassets.ErrProjectRequired, codes.Unauthenticated, "missing project context"},
+	}
+	for _, tc := range cases {
+		got := mapWriteError(tc.err)
+		require.Equal(t, tc.code, status.Code(got), tc.msg)
+		require.Equal(t, tc.msg, status.Convert(got).Message())
+	}
+}
+
+func TestGrantTransfer_InvalidArgumentMessages(t *testing.T) {
+	env := setupAssets(t)
+	env.createDef(t, domainassets.ClassCurrency, "gold", func(c *CreateDefCommand) { c.Tradable = true })
+	_, err := env.assets.Grant(adminCtx("p1"), GrantCommand{
+		OwnerID: "u1", DefCode: "1bad", Quantity: 1, IdempotencyKey: "g1",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, "def code must match ^[a-z][a-z0-9_]{0,63}$", status.Convert(err).Message())
+
+	_, err = env.assets.Grant(adminCtx("p1"), GrantCommand{
+		OwnerID: "", DefCode: "gold", Quantity: 1, IdempotencyKey: "g2",
+	})
+	require.Equal(t, "owner_id is required", status.Convert(err).Message())
+
+	_, err = env.assets.Grant(adminCtx("p1"), GrantCommand{
+		OwnerID: "u1", DefCode: "gold", Quantity: 1, IdempotencyKey: strings.Repeat("x", domainassets.MaxIdempotencyKey+1),
+	})
+	require.Equal(t, "idempotency_key exceeds 128 characters", status.Convert(err).Message())
+
+	_, err = env.assets.Transfer(adminCtx("p1"), TransferCommand{
+		FromOwnerID: "u1", ToOwnerID: "u1", DefCode: "gold", Quantity: 1, IdempotencyKey: "t1",
+	})
+	require.Equal(t, "cannot transfer to the same owner", status.Convert(err).Message())
+
+	_, err = env.assets.Transfer(adminCtx("p1"), TransferCommand{
+		FromOwnerID: "", ToOwnerID: "u2", DefCode: "gold", Quantity: 1, IdempotencyKey: "t2",
+	})
+	require.Equal(t, "from_owner_id and to_owner_id are required", status.Convert(err).Message())
+
+	_, err = env.assets.Mutate(adminCtx("p1"), MutateCommand{HoldingID: "", IdempotencyKey: "m1"})
+	require.Equal(t, "holding_id is required", status.Convert(err).Message())
+}
+
 func countHoldings(s *memStore) int { return len(s.holdings) }
+
+func countHoldingsIn(s *memStore, projectID string) int {
+	n := 0
+	for _, h := range s.holdings {
+		if h.ProjectID == projectID {
+			n++
+		}
+	}
+	return n
+}
 
 func anyHolding(s *memStore) *domainassets.Holding {
 	for _, h := range s.holdings {

@@ -3,11 +3,12 @@ package assets
 import (
 	"context"
 	"time"
+
+	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
 )
 
 // ExpireDue 扫描到期持有：产 expire 流水并删行（worker 周期任务）。
-// 每行独立短事务；SKIP LOCKED 保证多副本互不阻塞。全局预算 expireBatch
-// （K22）；项目遍历按轮转游标起始（队尾饥饿防护）。单项目不变式在领域 Service。
+// 每项目一批短事务 + SKIP LOCKED；多项目轮转与全局预算在 app。
 func (a *Assets) ExpireDue(ctx context.Context, now time.Time) (int64, error) {
 	if now.IsZero() {
 		now = a.ts()
@@ -54,9 +55,7 @@ func (a *Assets) expireProject(ctx context.Context, projectID string, now time.T
 	if err := requireAssetWrite(ctx); err != nil {
 		return 0, err
 	}
-	scope, err := a.writeScope(ctx)
-	if err != nil {
-		return 0, err
-	}
+	// 扫描键是循环项目；sticky Service principal 的 ProjectID 不能复用。
+	scope := domainassets.Scope{ProjectID: projectID, Operator: operatorFrom(ctx)}
 	return a.svc.ExpireDue(ctx, scope, now, limit)
 }

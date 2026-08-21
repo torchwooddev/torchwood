@@ -140,15 +140,25 @@ func mapWriteError(err error) error {
 		assetNegativeBlockedTotal.Inc()
 	}
 	switch {
+	case errors.Is(err, domainassets.ErrProjectRequired):
+		return status.Error(codes.Unauthenticated, "missing project context")
+	case errors.Is(err, domainassets.ErrSameOwner):
+		return status.Error(codes.InvalidArgument, "cannot transfer to the same owner")
+	case errors.Is(err, domainassets.ErrTransferOwnersRequired):
+		return status.Error(codes.InvalidArgument, "from_owner_id and to_owner_id are required")
+	case errors.Is(err, domainassets.ErrHoldingIDRequired):
+		return status.Error(codes.InvalidArgument, "holding_id is required")
+	case errors.Is(err, domainassets.ErrOwnerRequired):
+		return status.Error(codes.InvalidArgument, "owner_id is required")
+	case errors.Is(err, domainassets.ErrInvalidCode):
+		return status.Error(codes.InvalidArgument, "def code must match ^[a-z][a-z0-9_]{0,63}$")
+	case errors.Is(err, domainassets.ErrIdempotencyTooLong):
+		return status.Errorf(codes.InvalidArgument, "idempotency_key exceeds %d characters", domainassets.MaxIdempotencyKey)
 	case errors.Is(err, domainassets.ErrMatrix),
 		errors.Is(err, domainassets.ErrInvalidQuantity),
 		errors.Is(err, domainassets.ErrExpiresAtRequired),
-		errors.Is(err, domainassets.ErrInvalidCode),
 		errors.Is(err, domainassets.ErrIdempotencyRequired),
-		errors.Is(err, domainassets.ErrInvalidOwnerType),
-		errors.Is(err, domainassets.ErrOwnerRequired),
-		errors.Is(err, domainassets.ErrHoldingIDRequired),
-		errors.Is(err, domainassets.ErrSameOwner):
+		errors.Is(err, domainassets.ErrInvalidOwnerType):
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, domainassets.ErrInsufficient),
 		errors.Is(err, domainassets.ErrMaxQuantity),

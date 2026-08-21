@@ -29,7 +29,7 @@ func ValidateIdempotencyKey(key string) (string, error) {
 		return "", ErrIdempotencyRequired
 	}
 	if len(k) > MaxIdempotencyKey {
-		return "", fmt.Errorf("%w: exceeds %d characters", ErrIdempotencyRequired, MaxIdempotencyKey)
+		return "", ErrIdempotencyTooLong
 	}
 	return k, nil
 }

@@ -16,7 +16,7 @@ func (a *Assets) LiveHoldingForUpdate(ctx context.Context, ownerID, defCode stri
 	if err != nil {
 		return nil, err
 	}
-	h, err := a.svc.LiveHolding(ctx, scope, ownerID, defCode)
+	h, err := domainassets.LookupLiveHolding(a.svc, ctx, scope, ownerID, defCode)
 	if err != nil {
 		return nil, mapWriteError(err)
 	}

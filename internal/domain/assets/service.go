@@ -10,7 +10,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 )
 
-// TxRunner 在同一 ctx 事务内执行 fn（S-4：落地仍用 ctx 传连接，不升 uow.Run）。
+// TxRunner 在同一 ctx 事务内执行 fn；连接随 ctx 传递。
 type TxRunner interface {
 	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
@@ -186,9 +186,13 @@ func (s *Service) normalizeRef(refType, refID, fallback string) (string, string)
 	return refType, refID
 }
 
-// LiveHolding 返回业主某定义下未过期的第一行（事务内加锁）。
-// 供订阅 entitlement 续期：已有持有则 Mutate，否则 Grant。须在外层事务内调用。
-func (s *Service) LiveHolding(ctx context.Context, scope Scope, ownerID, defCode string) (*Holding, error) {
+// LookupLiveHolding 给 app.LiveHoldingForUpdate 用：未过期第一行，事务内加锁。
+// 不是 Service 方法；支付/订阅应走 app 封装，不直接调 HoldingRepo。
+func LookupLiveHolding(s *Service, ctx context.Context, scope Scope, ownerID, defCode string) (*Holding, error) {
+	return s.liveHolding(ctx, scope, ownerID, defCode)
+}
+
+func (s *Service) liveHolding(ctx context.Context, scope Scope, ownerID, defCode string) (*Holding, error) {
 	if err := s.requireScope(scope); err != nil {
 		return nil, err
 	}
