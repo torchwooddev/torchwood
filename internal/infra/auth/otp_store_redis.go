@@ -50,11 +50,11 @@ end
 if rec.code_hash ~= ARGV[4] then
   rec.attempts = attempts + 1
   local ttl = redis.call('PTTL', KEYS[1])
-  if ttl > 0 then
-    redis.call('SET', KEYS[1], cjson.encode(rec), 'PX', ttl)
-  else
-    redis.call('SET', KEYS[1], cjson.encode(rec))
+  if ttl <= 0 then
+    redis.call('DEL', KEYS[1])
+    return 'notfound'
   end
+  redis.call('SET', KEYS[1], cjson.encode(rec), 'PX', ttl)
   return 'badcode'
 end
 redis.call('DEL', KEYS[1])

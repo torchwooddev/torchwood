@@ -10,7 +10,6 @@ import (
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/uptrace/bun"
 )
 
@@ -23,14 +22,7 @@ func NewFunctionRepository(db *clients.Database) domainfunctions.FunctionRepo {
 }
 
 func (r *functionRepo) scoped(ctx context.Context, projectID, table, alias string) (bun.IDB, bun.Ident, string, error) {
-	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
-		return nil, bun.Ident(""), "", err
-	}
-	sch, expr, err := ProjectTable(projectID, table, alias)
-	if err != nil {
-		return nil, bun.Ident(""), "", err
-	}
-	return r.db.Conn(ctx), sch, expr, nil
+	return Scoped(ctx, r.db, projectID, table, alias)
 }
 
 func (r *functionRepo) CreateFunction(ctx context.Context, fn *domainfunctions.Function) error {
@@ -184,10 +176,7 @@ func (r *functionRepo) DeleteDeployment(ctx context.Context, projectID, function
 }
 
 func (r *functionRepo) SetVariables(ctx context.Context, projectID, functionID string, vars map[string]string) error {
-	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
-		return err
-	}
-	sch, expr, err := ProjectTable(projectID, "function_variables", "fv")
+	_, sch, expr, err := r.scoped(ctx, projectID, "function_variables", "fv")
 	if err != nil {
 		return err
 	}
@@ -304,7 +293,7 @@ func (r *functionRepo) RecoverOrphanExecutionsInProject(ctx context.Context, pro
 	if limit <= 0 {
 		return 0, nil
 	}
-	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+	if _, _, _, err := r.scoped(ctx, projectID, "function_executions", "fe"); err != nil {
 		return 0, err
 	}
 	quoted, err := ProjectQuoted(projectID)
@@ -341,7 +330,7 @@ func (r *functionRepo) PruneOldExecutionsInProject(ctx context.Context, projectI
 	if keepRecent <= 0 {
 		return nil
 	}
-	if err := projectschema.Apply(ctx, r.db, projectID); err != nil {
+	if _, _, _, err := r.scoped(ctx, projectID, "function_executions", "fe"); err != nil {
 		return err
 	}
 	quoted, err := ProjectQuoted(projectID)

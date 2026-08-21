@@ -9,6 +9,8 @@ import (
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func seedFunctionRow(t *testing.T, ctx context.Context, repo domainfunctions.FunctionRepo, projectID string) *domainfunctions.Function {
@@ -305,4 +307,22 @@ func TestFunctionRepository_RecoverOrphanExecutions(t *testing.T) {
 	require.NoError(t, db.DB.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM public.functions WHERE project_id = ?`, projectID).Scan(&publicN))
 	require.Zero(t, publicN, "PR5: functions 不得再写 public")
+}
+
+func TestFunctionRepository_InvalidProjectID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := bunrepo.NewFunctionRepository(nil)
+
+	_, err := repo.GetFunction(ctx, "Bad-ID", "fn")
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	err = repo.SetVariables(ctx, "Bad-ID", "fn", map[string]string{"A": "1"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	_, err = repo.RecoverOrphanExecutionsInProject(ctx, "Bad-ID", time.Now(), 1)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	err = repo.PruneOldExecutionsInProject(ctx, "Bad-ID", "fn", 1)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

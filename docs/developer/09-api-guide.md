@@ -253,7 +253,7 @@ type Repository interface {
 
 - 方法返回 `(*Project, error)` 时，「不存在」返回 `(nil, nil)`，由上层决定映射为 NotFound 还是
   AlreadyExists（`project_repo.go` 中 `sql.ErrNoRows` → nil）；
-- 一个资源一个 interface 文件；跨资源协作按需新增端口（如 `ProjectResolver.InternalID`）。
+- 一个资源一个 interface 文件；跨资源协作按需新增端口（如同文件的 `APIKeyRepository`）。
 
 ---
 

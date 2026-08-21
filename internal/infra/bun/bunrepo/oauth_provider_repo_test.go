@@ -13,6 +13,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/secretbox"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestOAuthProviderRepository_CRUD(t *testing.T) {
@@ -92,4 +94,22 @@ func TestOAuthProviderRepository_CRUD(t *testing.T) {
 
 func stringsHasEncPrefix(s string) bool {
 	return strings.HasPrefix(s, "enc:v1:")
+}
+
+func TestOAuthProviderRepository_InvalidProjectID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := bunrepo.NewOAuthProviderRepository(nil, nil)
+
+	_, err := repo.GetOAuthProvider(ctx, "Bad-ID", domainauth.ProviderGoogle)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	_, err = repo.ListOAuthProviders(ctx, "Bad-ID")
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	err = repo.UpsertOAuthProvider(ctx, &projects.OAuthProvider{ProjectID: "Bad-ID", Provider: domainauth.ProviderGoogle})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	err = repo.DeleteOAuthProvider(ctx, "Bad-ID", domainauth.ProviderGoogle)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

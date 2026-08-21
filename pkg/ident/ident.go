@@ -22,7 +22,6 @@ const (
 const errSchemaResourceID = "id must match ^[a-z][a-z0-9]{0,27}$"
 
 // ErrInvalidSchemaResourceID 表示 project.id / database.id 未通过 charset 校验。
-// 调用方（app/api/documentdb）映射为 gRPC InvalidArgument。
 var ErrInvalidSchemaResourceID = errors.New(errSchemaResourceID)
 
 // 小写字母开头，后接 0–27 个小写字母或数字。合计最长 28。

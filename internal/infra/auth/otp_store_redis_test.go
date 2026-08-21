@@ -140,6 +140,25 @@ func TestRedisOTPChallengeStore_HMACKeyIsolation(t *testing.T) {
 	require.NoError(t, creator.VerifyEmailChallenge(ctx, "proj1", challengeID, "user@example.com", code))
 }
 
+func TestRedisOTPChallengeStore_ExpiredTTLDoesNotPersist(t *testing.T) {
+	t.Parallel()
+
+	store, mr := newOTPTestStore(t, "otp-test-secret")
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	ctx := context.Background()
+
+	challengeID, _, err := store.CreateEmailChallenge(ctx, "proj1", "user@example.com", "123456")
+	require.NoError(t, err)
+	key := "Torchwood:otp:ch:" + challengeID
+	require.NoError(t, rdb.Persist(ctx, key).Err())
+
+	err = store.VerifyEmailChallenge(ctx, "proj1", challengeID, "user@example.com", "000000")
+	requireGRPCCode(t, err, codes.Unauthenticated)
+	n, err := rdb.Exists(ctx, key).Result()
+	require.NoError(t, err)
+	require.Zero(t, n, "PTTL<=0 时不得把 challenge 写成永不过期键")
+}
+
 func TestRedisOTPChallengeStore_SendCooldown(t *testing.T) {
 	t.Parallel()
 
