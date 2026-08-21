@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/torchwooddev/torchwood/internal/app/documents"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
@@ -15,9 +16,6 @@ import (
 )
 
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
-
-// maxBulkOperations 是 Bulk 写入单次条数上限（A4）。
-const maxBulkOperations = 1000
 
 // serverSensitiveCollectionFields 是高敏系统集合（users/sessions/identities）
 // 经 Server Databases API 读取时的脱敏字段清单；专用 API 不公开这些字段。
@@ -30,10 +28,22 @@ var serverSensitiveCollectionFields = map[string][]string{
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
+	docs        *documents.Documents
 }
 
 func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB) *Databases {
-	return &Databases{projectRepo: projectRepo, docDB: docDB}
+	return &Databases{projectRepo: projectRepo, docDB: docDB, docs: documents.New(docDB)}
+}
+
+func (d *Databases) documentsCore() *documents.Documents {
+	if d.docs != nil {
+		return d.docs
+	}
+	return documents.New(d.docDB)
+}
+
+func allowPrivilegedGrant(principal databases.Principal) bool {
+	return principal.PlatformAdmin || principal.HasRole("keys")
 }
 
 func (d *Databases) resolveProject(ctx context.Context, projectID string) (*projects.Project, error) {
@@ -203,7 +213,7 @@ func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID,
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	if patch.Permissions != nil {
-		if err := databases.ValidateGrantablePermissions(principal, *patch.Permissions, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
+		if err := databases.ValidateGrantablePermissions(principal, *patch.Permissions, allowPrivilegedGrant(principal)); err != nil {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
@@ -385,21 +395,9 @@ func (d *Databases) CreateDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
-	if len(data) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data is required")
-	}
-	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
-	if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-	doc := databases.Document{ID: documentID, Data: data}
-	// adapter 已用 SystemPrincipal 读回完整文档（含审计列）；此处不再以调用方
-	// principal 重读，避免权限不含调用方时返回 403（数据已落库的半完成状态）。
-	created, err := d.docDB.CreateDocument(ctx, projectID, databaseID, collectionID, doc, perms, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("create document: %w", err))
-	}
-	return &created, nil
+	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{
+		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
+	})
 }
 
 func (d *Databases) ListDocuments(
@@ -411,18 +409,14 @@ func (d *Databases) ListDocuments(
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, 0, "", err
 	}
-	list, err := d.docDB.ListDocuments(ctx, projectID, databaseID, collectionID, q, principal)
+	docs, total, next, err := d.documentsCore().ListDocuments(ctx, projectID, databaseID, collectionID, q, principal)
 	if err != nil {
-		return nil, 0, "", shared.MapDocumentDBError(err)
+		return nil, 0, "", err
 	}
-	for i := range list.Documents {
-		redactSensitiveCollectionData(projectID, databaseID, collectionID, &list.Documents[i])
-		// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
-		if databases.IsSystemCollection(projectID, databaseID, collectionID) {
-			list.Documents[i].Version = 0
-		}
+	for i := range docs {
+		redactSensitiveCollectionData(projectID, databaseID, collectionID, &docs[i])
 	}
-	return list.Documents, list.TotalCount, list.NextPageToken, nil
+	return docs, total, next, nil
 }
 
 func (d *Databases) GetDocument(
@@ -433,18 +427,11 @@ func (d *Databases) GetDocument(
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
-	doc, err := d.docDB.GetDocument(ctx, projectID, databaseID, collectionID, documentID, principal)
+	doc, err := d.documentsCore().GetDocument(ctx, projectID, databaseID, collectionID, documentID, principal)
 	if err != nil {
-		return nil, shared.MapDocumentDBError(err)
-	}
-	if doc == nil {
-		return nil, status.Error(codes.NotFound, "document not found")
+		return nil, err
 	}
 	redactSensitiveCollectionData(projectID, databaseID, collectionID, doc)
-	// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
-	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
-		doc.Version = 0
-	}
 	return doc, nil
 }
 
@@ -460,31 +447,9 @@ func (d *Databases) UpdateDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
-	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
-		return nil, err
-	}
-	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
-	}
-	if len(perms) > 0 {
-		perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
-		if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-	if len(data) == 0 {
-		data = map[string]any{}
-	}
-	updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
-		Document:        databases.Document{ID: documentID, Data: data},
-		Permissions:     perms,
-		Increment:       increment,
-		ExpectedVersion: *version,
-	}, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("update document: %w", err))
-	}
-	return &updated, nil
+	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, documents.WriteOptions{
+		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
+	})
 }
 
 func (d *Databases) UpsertDocument(
@@ -498,24 +463,9 @@ func (d *Databases) UpsertDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
-	if len(data) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data is required")
-	}
-	if len(conflictColumns) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "conflict_columns is required")
-	}
-	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
-	if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-	upserted, err := d.docDB.UpsertDocument(ctx, projectID, databaseID, collectionID, databases.Document{
-		ID:   documentID,
-		Data: data,
-	}, conflictColumns, perms, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("upsert document: %w", err))
-	}
-	return &upserted, nil
+	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, documents.WriteOptions{
+		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
+	})
 }
 
 func (d *Databases) BulkUpdateDocuments(
@@ -529,20 +479,9 @@ func (d *Databases) BulkUpdateDocuments(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return 0, err
 	}
-	if len(documentIDs) == 0 {
-		return 0, status.Error(codes.InvalidArgument, "document_ids is required")
-	}
-	if len(documentIDs) > maxBulkOperations {
-		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("document_ids exceeds maximum of %d", maxBulkOperations))
-	}
-	if len(perms) > 0 {
-		perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
-		if err := databases.ValidateGrantablePermissions(principal, perms, principal.PlatformAdmin || principal.HasRole("keys")); err != nil {
-			return 0, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-	n, err := d.docDB.BulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, perms, principal)
-	return n, shared.MapDocumentDBError(err)
+	return d.documentsCore().BulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, perms, principal, documents.WriteOptions{
+		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
+	})
 }
 
 func (d *Databases) BulkDeleteDocuments(
@@ -554,14 +493,7 @@ func (d *Databases) BulkDeleteDocuments(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return 0, err
 	}
-	if len(documentIDs) == 0 {
-		return 0, status.Error(codes.InvalidArgument, "document_ids is required")
-	}
-	if len(documentIDs) > maxBulkOperations {
-		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("document_ids exceeds maximum of %d", maxBulkOperations))
-	}
-	n, err := d.docDB.BulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
-	return n, shared.MapDocumentDBError(err)
+	return d.documentsCore().BulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
 }
 
 func (d *Databases) DeleteDocument(
@@ -573,10 +505,7 @@ func (d *Databases) DeleteDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return err
 	}
-	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
-		return err
-	}
-	return shared.MapDocumentDBError(d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, databases.DeleteOptions{ExpectedVersion: *version}, principal))
+	return d.documentsCore().DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal, version)
 }
 
 func (d *Databases) CountDocuments(
@@ -588,8 +517,7 @@ func (d *Databases) CountDocuments(
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return 0, err
 	}
-	count, err := d.docDB.CountDocuments(ctx, projectID, databaseID, collectionID, queries, principal)
-	return count, shared.MapDocumentDBError(err)
+	return d.documentsCore().CountDocuments(ctx, projectID, databaseID, collectionID, queries, principal)
 }
 
 func (d *Databases) MapAttributeType(t string) string {

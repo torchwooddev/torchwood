@@ -1,0 +1,198 @@
+package client
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/app/documents"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+func TestNewDatabases_HoldsSharedDocumentsCore(t *testing.T) {
+	d := NewDatabases(stubProjects{}, &stubDocDB{})
+	require.NotNil(t, d.docs)
+}
+
+func TestCreateDocument_GoesThroughSharedCoreWithOwnerACE(t *testing.T) {
+	catalog := &stubDocDB{coll: &databases.Collection{ID: "notes"}}
+	rec := &stubDocDB{}
+	d := &Databases{
+		projectRepo: stubProjects{},
+		docDB:       catalog,
+		docs:        documents.New(rec),
+	}
+	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ProjectID: "p1",
+		UserID:    "u1",
+		Roles:     []string{"users", "user:u1"},
+	})
+	created, err := d.CreateDocument(ctx, "app", "notes", "d1", map[string]any{"t": 1}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "d1", created.ID)
+	require.Equal(t, 1, rec.creates)
+	require.Zero(t, catalog.creates)
+	require.Equal(t, ownerDocumentPermissions("u1"), rec.lastCreatePerms)
+}
+
+func TestListDocuments_GuestPrincipal(t *testing.T) {
+	catalog := &stubDocDB{coll: &databases.Collection{ID: "posts"}}
+	rec := &stubDocDB{list: &databases.DocumentList{}}
+	d := &Databases{
+		projectRepo: stubProjects{},
+		docDB:       catalog,
+		docs:        documents.New(rec),
+	}
+	_, _, _, err := d.ListDocuments(context.Background(), "p1", "app", "posts", databases.Query{})
+	require.NoError(t, err)
+	require.Equal(t, databases.GuestPrincipal, rec.lastListPrincipal)
+}
+
+func TestUpdateDocument_FiltersProtectedFields(t *testing.T) {
+	catalog := &stubDocDB{coll: &databases.Collection{ID: "notes"}}
+	rec := &stubDocDB{}
+	rec.docs = map[string]databases.Document{"d1": {ID: "d1", Version: 1, Data: map[string]any{"title": "old"}}}
+	d := &Databases{
+		projectRepo: stubProjects{},
+		docDB:       catalog,
+		docs:        documents.New(rec),
+	}
+	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ProjectID: "p1",
+		UserID:    "u1",
+		Roles:     []string{"users", "user:u1"},
+	})
+	version := int64(1)
+	_, err := d.UpdateDocument(ctx, "app", "notes", "d1", map[string]any{
+		"title":          "new",
+		"password_hash":  "evil",
+		"email_verified": true,
+		"labels":         []string{"admin"},
+		"status":         "blocked",
+	}, nil, nil, &version)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"title": "new"}, rec.lastUpdateData)
+
+	_, err = d.UpdateDocument(ctx, "app", "notes", "d1", map[string]any{"password_hash": "evil"}, nil, nil, &version)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+type stubProjects struct{}
+
+func (stubProjects) CreateProject(context.Context, *projects.Project) error { return nil }
+func (stubProjects) GetProject(_ context.Context, id string) (*projects.Project, error) {
+	return &projects.Project{ID: id, InternalID: 1}, nil
+}
+func (stubProjects) GetProjectByName(context.Context, string) (*projects.Project, error) {
+	return nil, nil
+}
+func (stubProjects) ListProjects(context.Context) ([]projects.Project, error) { return nil, nil }
+func (stubProjects) UpdateProject(context.Context, *projects.Project) error   { return nil }
+func (stubProjects) DeleteProject(context.Context, string) error              { return nil }
+
+type stubDocDB struct {
+	coll              *databases.Collection
+	docs              map[string]databases.Document
+	list              *databases.DocumentList
+	creates           int
+	lastCreatePerms   []databases.Permission
+	lastUpdateData    map[string]any
+	lastListPrincipal databases.Principal
+}
+
+func (s *stubDocDB) CreateDocument(_ context.Context, _, _, _ string, doc databases.Document, perms []databases.Permission, _ databases.Principal) (databases.Document, error) {
+	s.creates++
+	s.lastCreatePerms = append([]databases.Permission{}, perms...)
+	if doc.ID == "" {
+		doc.ID = "generated"
+	}
+	doc.Version = 1
+	return doc, nil
+}
+
+func (s *stubDocDB) UpdateDocument(_ context.Context, _, _, _ string, update databases.DocumentUpdate, _ databases.Principal) (databases.Document, error) {
+	s.lastUpdateData = update.Document.Data
+	doc := update.Document
+	doc.Version = update.ExpectedVersion + 1
+	return doc, nil
+}
+
+func (s *stubDocDB) GetDocument(_ context.Context, _, _, _, docID string, _ databases.Principal) (*databases.Document, error) {
+	if s.docs == nil {
+		return nil, nil
+	}
+	doc, ok := s.docs[docID]
+	if !ok {
+		return nil, nil
+	}
+	cp := doc
+	return &cp, nil
+}
+
+func (s *stubDocDB) ListDocuments(_ context.Context, _, _, _ string, _ databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
+	s.lastListPrincipal = principal
+	if s.list != nil {
+		return s.list, nil
+	}
+	return &databases.DocumentList{}, nil
+}
+
+func (s *stubDocDB) GetCollection(context.Context, string, string, string) (*databases.Collection, error) {
+	if s.coll != nil {
+		return s.coll, nil
+	}
+	return &databases.Collection{ID: "notes"}, nil
+}
+
+func (s *stubDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (s *stubDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
+	return databases.Document{}, nil
+}
+func (s *stubDocDB) DeleteDocument(context.Context, string, string, string, string, databases.DeleteOptions, databases.Principal) error {
+	return nil
+}
+func (s *stubDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+	return 0, nil
+}
+func (s *stubDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
+func (s *stubDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+	return nil, nil
+}
+func (s *stubDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+	return nil, nil
+}
+func (s *stubDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
+func (s *stubDocDB) CreateCollection(context.Context, string, string, string, string, []databases.Attribute, []databases.Index, []databases.Permission, bool) error {
+	return nil
+}
+func (s *stubDocDB) ListCollections(context.Context, string, string, databases.ListQuery) ([]databases.Collection, databases.ListMeta, error) {
+	return nil, databases.ListMeta{}, nil
+}
+func (s *stubDocDB) DeleteCollection(context.Context, string, string, string) error { return nil }
+func (s *stubDocDB) UpdateCollection(context.Context, string, string, string, databases.CollectionPatch) error {
+	return nil
+}
+func (s *stubDocDB) CreateAttribute(context.Context, string, string, string, databases.Attribute) error {
+	return nil
+}
+func (s *stubDocDB) DeleteAttribute(context.Context, string, string, string, string) error {
+	return nil
+}
+func (s *stubDocDB) CreateIndex(context.Context, string, string, string, databases.Index) error {
+	return nil
+}
+func (s *stubDocDB) DeleteIndex(context.Context, string, string, string, string) error { return nil }
+func (s *stubDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {
+	return 0, nil
+}
+func (s *stubDocDB) BulkUpdateDocuments(context.Context, string, string, string, []string, map[string]any, []databases.Permission, databases.Principal) (int64, error) {
+	return 0, nil
+}
+func (s *stubDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+	return 0, nil
+}
