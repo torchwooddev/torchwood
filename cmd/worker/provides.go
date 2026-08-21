@@ -33,7 +33,7 @@ import (
 //go:generate wire
 
 // ProviderSet 只装配作业端口与其适配器，避免 app/infra 桶包把
-// Account / gRPC / documentdb 拉进进程依赖图（C-1）。
+// Account / gRPC / documentdb 拉进进程依赖图。
 var ProviderSet = wire.NewSet(
 	boot.New,
 

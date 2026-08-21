@@ -1,5 +1,5 @@
 // Package queryproto 把 shared.v1.Query 编进 AST。独立子包以免 pkg/query
-// 把 genproto 带进 worker 等不碰 RPC 的进程（C-1）。
+// 把 genproto 带进 worker 等不碰 RPC 的进程。
 package queryproto
 
 import (
