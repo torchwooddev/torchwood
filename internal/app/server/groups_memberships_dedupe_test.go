@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/groups"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -26,7 +27,7 @@ func TestGroups_CreateMembership_Idempotent(t *testing.T) {
 		databases.Document{ID: "m-1", Data: map[string]any{"group_id": "group-1", "user_id": "u-1", "email": "a@b.c", "status": groups.StatusAccepted}},
 		databases.Document{ID: "m-2", Data: map[string]any{"group_id": "group-1", "user_id": "", "email": "p@x.com", "status": groups.StatusPending}},
 	)
-	uc := NewGroups(fakeProjectRepo{}, docDB)
+	uc := NewGroups(fakeProjectRepo{}, docDB, infrausers.NewDocumentRepository(docDB))
 	principal := databases.Principal{Roles: []string{"admin"}}
 
 	groupTotal := func() int64 {

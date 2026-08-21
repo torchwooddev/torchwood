@@ -19,7 +19,11 @@ func NewDocumentRepository(docDB databases.DocumentDB) *DocumentRepository {
 	return &DocumentRepository{docDB: docDB}
 }
 
-var _ domainusers.Repository = (*DocumentRepository)(nil)
+var (
+	_ domainusers.Repository = (*DocumentRepository)(nil)
+
+	errNilStore = errors.New("users document repository has no store")
+)
 
 func (r *DocumentRepository) GetByEmail(ctx context.Context, projectID, email string) (*domainusers.User, error) {
 	return r.getByAttr(ctx, projectID, "email", domainusers.NormalizeEmail(email))
@@ -42,17 +46,30 @@ func (r *DocumentRepository) GetByID(ctx context.Context, projectID, id string) 
 
 func (r *DocumentRepository) Insert(ctx context.Context, projectID string, user *domainusers.User) error {
 	if r == nil || r.docDB == nil {
-		return domainusers.ErrUserIDRequired
+		return errNilStore
 	}
 	if user == nil || strings.TrimSpace(user.ID) == "" {
 		return domainusers.ErrUserIDRequired
 	}
 	doc := databases.Document{ID: user.ID, Data: user.DocumentData()}
 	_, err := r.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, domainusers.CollectionID, doc, documentPermissions(user.ID), databases.SystemPrincipal)
-	if errors.Is(err, databases.ErrDuplicateKey) {
+	return mapInsertDuplicate(err)
+}
+
+func mapInsertDuplicate(err error) error {
+	if err == nil || !errors.Is(err, databases.ErrDuplicateKey) {
+		return err
+	}
+	if emailUniqueViolation(err.Error()) {
 		return domainusers.ErrEmailAlreadyRegistered
 	}
 	return err
+}
+
+func emailUniqueViolation(msg string) bool {
+	lower := strings.ToLower(msg)
+	// 唯一索引 idx_users_users_email_unique；DETAIL 常见 Key (email)=(…) already exists。
+	return strings.Contains(lower, "users_email_unique") || strings.Contains(lower, "key (email)=")
 }
 
 func (r *DocumentRepository) getByAttr(ctx context.Context, projectID, attr, value string) (*domainusers.User, error) {

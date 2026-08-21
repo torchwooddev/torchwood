@@ -163,7 +163,7 @@ func TestServerGRPC_ListHandlers_EchoNextPageToken(t *testing.T) {
 	}
 	ctx := paginationCtx()
 	users := NewUsersService(appserver.NewUsers(paginationProjectRepo{}, docDB, nil, nil, nil))
-	groups := NewGroupsService(appserver.NewGroups(paginationProjectRepo{}, docDB))
+	groups := NewGroupsService(appserver.NewGroups(paginationProjectRepo{}, docDB, nil))
 	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil))
 
 	t.Run("ListUsers", func(t *testing.T) {

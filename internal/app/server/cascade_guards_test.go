@@ -223,7 +223,7 @@ func TestGroups_LastOwnerProtection_DeleteMembership(t *testing.T) {
 			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
 			fakeMembership("m-member", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleMember}),
 		)
-		uc := NewGroups(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db, infrausers.NewDocumentRepository(db))
 
 		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-owner", databases.Principal{Roles: []string{"admin"}})
 		require.Error(t, err)
@@ -237,7 +237,7 @@ func TestGroups_LastOwnerProtection_DeleteMembership(t *testing.T) {
 			fakeMembership("m-owner1", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
 			fakeMembership("m-owner2", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleOwner}),
 		)
-		uc := NewGroups(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db, infrausers.NewDocumentRepository(db))
 
 		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-owner1", databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
@@ -249,7 +249,7 @@ func TestGroups_LastOwnerProtection_DeleteMembership(t *testing.T) {
 		db.seed("memberships",
 			fakeMembership("m-pending", "group-1", "user-a", groups.StatusPending, []string{groups.RoleOwner}),
 		)
-		uc := NewGroups(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db, infrausers.NewDocumentRepository(db))
 
 		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-pending", databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
@@ -262,7 +262,7 @@ func TestGroups_LastOwnerProtection_DeleteMembership(t *testing.T) {
 			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
 			fakeMembership("m-member", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleMember}),
 		)
-		uc := NewGroups(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db, infrausers.NewDocumentRepository(db))
 
 		err := uc.DeleteMembership(context.Background(), "proj-1", "group-1", "m-member", databases.Principal{Roles: []string{"admin"}})
 		require.NoError(t, err)
@@ -278,7 +278,7 @@ func TestGroups_LastOwnerProtection_UpdateMembership(t *testing.T) {
 			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
 			fakeMembership("m-member", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleMember}),
 		)
-		uc := NewGroups(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db, infrausers.NewDocumentRepository(db))
 
 		_, err := uc.UpdateMembership(context.Background(), "proj-1", "group-1", "m-owner",
 			UpdateMembershipCommand{Roles: []string{groups.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
@@ -292,7 +292,7 @@ func TestGroups_LastOwnerProtection_UpdateMembership(t *testing.T) {
 			fakeMembership("m-owner1", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
 			fakeMembership("m-owner2", "group-1", "user-b", groups.StatusAccepted, []string{groups.RoleOwner}),
 		)
-		uc := NewGroups(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db, infrausers.NewDocumentRepository(db))
 
 		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "group-1", "m-owner1",
 			UpdateMembershipCommand{Roles: []string{groups.RoleMember}}, databases.Principal{Roles: []string{"admin"}})
@@ -305,7 +305,7 @@ func TestGroups_LastOwnerProtection_UpdateMembership(t *testing.T) {
 		db.seed("memberships",
 			fakeMembership("m-owner", "group-1", "user-a", groups.StatusAccepted, []string{groups.RoleOwner}),
 		)
-		uc := NewGroups(fakeProjectRepo{}, db)
+		uc := NewGroups(fakeProjectRepo{}, db, infrausers.NewDocumentRepository(db))
 
 		updated, err := uc.UpdateMembership(context.Background(), "proj-1", "group-1", "m-owner",
 			UpdateMembershipCommand{Roles: []string{groups.RoleOwner, groups.RoleAdmin}}, databases.Principal{Roles: []string{"admin"}})

@@ -72,6 +72,30 @@ func TestAccount_findOrCreateUserByEmail_UsesUserRepository(t *testing.T) {
 	require.Equal(t, []string{"GetByEmail"}, repo.calls)
 }
 
+func TestAccount_findOrCreateUserByPhone_UsesUserRepository(t *testing.T) {
+	t.Parallel()
+
+	repo := newRecordingUserRepo()
+	account := newAccountWithUserRepo(repo, "proj-1")
+
+	user, err := account.findOrCreateUserByPhone(context.Background(), "proj-1", "+15551234567")
+	require.NoError(t, err)
+	require.Equal(t, "+15551234567", user.Name)
+	require.Equal(t, []string{"GetByPhone", "Insert"}, repo.calls)
+	stored := repo.byID[user.ID]
+	require.NotNil(t, stored)
+	require.Equal(t, "+15551234567", stored.Phone)
+	require.True(t, stored.PhoneVerified)
+	require.Empty(t, stored.PasswordHash)
+	require.Equal(t, phonePlaceholderEmail("+15551234567"), stored.Email)
+
+	repo.calls = nil
+	again, err := account.findOrCreateUserByPhone(context.Background(), "proj-1", "+15551234567")
+	require.NoError(t, err)
+	require.Equal(t, user.ID, again.ID)
+	require.Equal(t, []string{"GetByPhone"}, repo.calls)
+}
+
 func TestAccount_CreateAnonymousSession_UsesUserRepository(t *testing.T) {
 	t.Parallel()
 

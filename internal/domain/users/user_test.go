@@ -94,6 +94,21 @@ func TestUserCanAuthenticate(t *testing.T) {
 	require.False(t, (&User{Status: StatusBlocked}).CanAuthenticate())
 }
 
+func TestLabelsFromAny_KeepsNumericScalars(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, []string{"vip", "1", "2.5", "3", "true"}, LabelsFromAny([]any{
+		"vip",
+		float64(1),
+		float64(2.5),
+		3,
+		true,
+	}))
+	require.Equal(t, []string{"0"}, LabelsFromAny([]any{float64(0)}))
+	require.Nil(t, LabelsFromAny(nil))
+	require.Nil(t, LabelsFromAny([]any{nil}))
+}
+
 func TestDocumentPermissions(t *testing.T) {
 	t.Parallel()
 

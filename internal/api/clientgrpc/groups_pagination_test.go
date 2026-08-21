@@ -144,7 +144,7 @@ func TestClientGRPC_ListGroups_EchoesNextPageToken(t *testing.T) {
 			"groups": {{ID: "group-1", Data: map[string]any{"name": "T", "total": int64(1)}}},
 		},
 	}
-	serverGroups := appserver.NewGroups(clientGroupsProjectRepo{}, docDB)
+	serverGroups := appserver.NewGroups(clientGroupsProjectRepo{}, docDB, nil)
 	svc := NewGroupsService(appclient.NewGroups(serverGroups, docDB))
 
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{

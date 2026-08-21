@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
@@ -18,10 +19,11 @@ import (
 type Groups struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
+	usersRepo   users.Repository
 }
 
-func NewGroups(projectRepo projects.Repository, docDB databases.DocumentDB) *Groups {
-	return &Groups{projectRepo: projectRepo, docDB: docDB}
+func NewGroups(projectRepo projects.Repository, docDB databases.DocumentDB, usersRepo users.Repository) *Groups {
+	return &Groups{projectRepo: projectRepo, docDB: docDB, usersRepo: usersRepo}
 }
 
 type CreateMembershipCommand struct {
@@ -518,17 +520,17 @@ func containsRole(roles []string, want string) bool {
 }
 
 func (t *Groups) resolveUserIDByEmail(ctx context.Context, projectID, email string) (string, error) {
-	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", email)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	if t.usersRepo == nil {
+		return "", status.Error(codes.Internal, "users repository is not configured")
+	}
+	found, err := t.usersRepo.GetByEmail(ctx, projectID, email)
 	if err != nil {
 		return "", err
 	}
-	if len(list.Documents) == 0 {
+	if found == nil {
 		return "", nil
 	}
-	return list.Documents[0].ID, nil
+	return found.ID, nil
 }
 
 // ensureMembershipUnique 是 Round3 H5-4 的应用层幂等查重：同一 group 下

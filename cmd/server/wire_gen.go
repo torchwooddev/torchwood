@@ -100,7 +100,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	transactions := shared.NewTransactions(transactionRepository, documentDB, database)
 	clientTransactions := client.NewTransactions(repository, transactions)
 	databasesService := clientgrpc.NewDatabasesService(databases, clientTransactions)
-	groups := server.NewGroups(repository, documentDB)
+	groups := server.NewGroups(repository, documentDB, documentRepository)
 	clientGroups := client.NewGroups(groups, documentDB)
 	groupsService := clientgrpc.NewGroupsService(clientGroups)
 	orderRepo := bunrepo.NewPaymentOrderRepository(database)

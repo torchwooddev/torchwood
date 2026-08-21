@@ -1,8 +1,10 @@
 package users
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -189,15 +191,47 @@ func (u *User) DocumentData() map[string]any {
 	return data
 }
 
+// LabelsFromAny 把 CreateUser 等入口的 []any labels 收成 []string。
+// 与 gRPC structToStringSlice 一致：字符串原样保留，数字标量 stringify，不静默丢弃。
 func LabelsFromAny(raw []any) []string {
 	if len(raw) == 0 {
 		return nil
 	}
 	out := make([]string, 0, len(raw))
 	for _, item := range raw {
-		if s, ok := item.(string); ok && s != "" {
+		if s, ok := labelToString(item); ok {
 			out = append(out, s)
 		}
 	}
+	if len(out) == 0 {
+		return nil
+	}
 	return out
+}
+
+func labelToString(item any) (string, bool) {
+	switch v := item.(type) {
+	case nil:
+		return "", false
+	case string:
+		return v, true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), true
+	case int:
+		return strconv.Itoa(v), true
+	case int32:
+		return strconv.FormatInt(int64(v), 10), true
+	case int64:
+		return strconv.FormatInt(v, 10), true
+	case json.Number:
+		return v.String(), true
+	default:
+		s := strings.TrimSpace(fmt.Sprint(v))
+		if s == "" || s == "<nil>" {
+			return "", false
+		}
+		return s, true
+	}
 }

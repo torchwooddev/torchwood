@@ -10,6 +10,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
@@ -30,7 +31,7 @@ func TestGroups_Memberships(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	uc := NewGroups(projectRepo, docDB)
+	uc := NewGroups(projectRepo, docDB, infrausers.NewDocumentRepository(docDB))
 	ownerID := "owner-user-id"
 	ownerEmail := "owner@torchwood.local"
 	principal := databases.Principal{Roles: []string{"users", "user:" + ownerID}}

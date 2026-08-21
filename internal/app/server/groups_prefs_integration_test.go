@@ -8,6 +8,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
@@ -36,7 +37,7 @@ func TestGroups_Prefs_CRUD(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
 	group, err := uc.CreateGroup(ctx, projectID, "Design", nil)
 	require.NoError(t, err)
 
@@ -103,7 +104,7 @@ func TestGroups_Prefs_SelfHealReconcile(t *testing.T) {
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
 	keys := databases.Principal{Roles: []string{"keys"}}
 
 	// 首请求即触发 EnsureSystemCollections reconcile：读返回空对象而不是 42703。
@@ -135,7 +136,7 @@ func TestGroups_Prefs_Errors(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
 	keys := databases.Principal{Roles: []string{"keys"}}
 
 	_, err := uc.GetGroupPrefs(ctx, projectID, "no-such-group", keys)
@@ -168,7 +169,7 @@ func TestGroups_Prefs_PermissionMatrix(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
 	group, err := uc.CreateGroup(ctx, projectID, "Perm Group", nil)
 	require.NoError(t, err)
 
