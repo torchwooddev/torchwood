@@ -400,8 +400,8 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 }
 
 // TestVersionColumn_WritePathDoesNotAlter：文档写路径不得 ALTER TABLE ADD COLUMN。
-// 缺列时 fail-closed（version_column_unavailable）；EnsureSystemCollections
-// catalog reconcile 一次补列后 OCC 仍过。
+// 缺列时 Create/Update/Delete/Upsert/Bulk fail-closed；bootstrapCache 命中后
+// Ensure 不再扫 catalog；CreateAttribute 一次补列后 OCC 仍过。
 func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -417,10 +417,13 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
-	}, nil, []databases.Permission{
+	}, []databases.Index{
+		{ID: "uq_title", Type: "unique", Attributes: []string{"title"}},
+	}, []databases.Permission{
 		{Type: "create", Role: "users"},
 		{Type: "read", Role: "any"},
 		{Type: "update", Role: "users"},
+		{Type: "delete", Role: "users"},
 	}, true))
 
 	schema := testSchema(t, projectID, "app")
@@ -464,8 +467,34 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
 	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "CreateDocument 不得 ALTER")
 
-	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
-	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, "docs"), "catalog reconcile 必须补 _version")
+	err = fresh.DeleteDocument(ctx, projectID, "app", "docs", "d1", databases.DeleteOptions{ExpectedVersion: 1}, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "DeleteDocument 不得 ALTER")
+
+	_, err = fresh.UpsertDocument(ctx, projectID, "app", "docs", databases.Document{
+		ID:   "d3",
+		Data: map[string]any{"title": "up"},
+	}, []string{"title"}, nil, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "UpsertDocument 不得 ALTER")
+
+	_, err = fresh.BulkUpdateDocuments(ctx, projectID, "app", "docs", []string{"d1"},
+		map[string]any{"title": "bulk"}, nil, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "BulkUpdate 不得 ALTER")
+
+	_, err = fresh.BulkDeleteDocuments(ctx, projectID, "app", "docs", []string{"d1"}, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "BulkDelete 不得 ALTER")
+
+	// 原实例 bootstrapCache 已命中：Ensure 不得再扫 catalog / ALTER。
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "bootstrapCache 命中后 Ensure 不得 ALTER")
+
+	require.NoError(t, fresh.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
+		ID: "views", Key: "views", Type: "integer",
+	}))
+	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, "docs"), "CreateAttribute 必须给存量表补 _version")
 
 	updated, err := fresh.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{
@@ -483,6 +512,55 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
 	require.Equal(t, "d1", list.Documents[0].ID)
+}
+
+// TestVersionColumn_CreateTableInTxDoesNotPoisonCache：同一外层事务里建表并写
+// 文档后回滚，不得把未提交的 _version 列写入 versionColumns。
+func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+
+	err := db.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := docDB.CreateCollection(txCtx, projectID, "app", "docs", "Docs", []databases.Attribute{
+			{ID: "title", Key: "title", Type: "string", Size: 256},
+		}, nil, nil, true); err != nil {
+			return err
+		}
+		if _, err := docDB.CreateDocument(txCtx, projectID, "app", "docs", databases.Document{
+			ID:   "d1",
+			Data: map[string]any{"title": "t1"},
+		}, nil, databases.SystemPrincipal); err != nil {
+			return err
+		}
+		return fmt.Errorf("rollback")
+	})
+	require.Error(t, err)
+
+	schema := testSchema(t, projectID, "app")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "回滚后不得残留 _version 列")
+
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
+	require.NoError(t, err)
+
+	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
+		Document:        databases.Document{ID: "d1", Data: map[string]any{"title": "t2"}},
+		ExpectedVersion: 1,
+	}, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable, "回滚后 cache 不得把已撤销列当就绪")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"))
 }
 
 // TestQueryVersion_TypeConflictFailClosed (F4)：读路径遇非 bigint _version 列

@@ -77,13 +77,11 @@ type postgresDocumentDB struct {
 	// （安全评审 C1 第 3 层 / M2 存量迁移）；进程重启后重复执行 DELETE/UPDATE 幂等无害。
 	keysPermsCleaned sync.Map // projectID -> struct{}
 	// versionColumns 记录已确认 _version 为 bigint 的 "schema.collection" 键，
-	// 避免每次写/读重复查 information_schema；**只缓存已提交的列**：
-	// 本事务内 ALTER 新建的列不记入（事务回滚会撤销列，cache 必须保持冷）。
+	// 避免每次写/读重复查 information_schema；**只缓存已提交的列**。
 	versionColumns sync.Map // "schema.collection" -> struct{}
-	// versionAlterTx 记录"本事务内已执行 _version 列 ALTER"的键
-	// （txid|schema.collection -> struct{}）。用于区分 catalog 里见到的 int8
-	// 列是本事务新建（未提交，不得缓存）还是事务开始前已存在（可缓存）。
-	// ALTER 只走 DDL / catalog reconcile，不在文档写热路径。
+	// versionAlterTx 记录"本事务内新建 _version 列"的键（txid|schema.collection）。
+	// CREATE TABLE 带列或 ALTER ADD 都会打标，避免 versionColumnReady 把未提交列写入 cache。
+	// DDL / catalog reconcile 才写此标记，不在文档写热路径。
 	versionAlterTx sync.Map // "txid|schema.collection" -> struct{}
 }
 
@@ -1518,8 +1516,12 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		p.keysPermsCleaned.Store(projectID, struct{}{})
 	}
 	// 存量用户集合缺 _version：按 catalog 一次补列。系统集合不加此列。
-	if err := p.reconcileUserCollectionVersionColumns(ctx, projectID); err != nil {
-		return err
+	// bootstrapCache 命中后跳过（每个文档 RPC 的 Ensure 不再扫 catalog）；
+	// CreateCollection / CreateAttribute / CreateIndex 仍会补列。
+	if !schemaBootstrapped {
+		if err := p.reconcileUserCollectionVersionColumns(ctx, projectID); err != nil {
+			return err
+		}
 	}
 	p.bootstrapCache.Store(projectID, struct{}{})
 	return nil
@@ -1715,15 +1717,49 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 		cols = append(cols, colSQL)
 	}
 	cols = append(cols, "PRIMARY KEY (_tenant, _id)")
+	existed := false
+	if !isSystem {
+		var err error
+		existed, err = p.collectionTableExists(ctx, schema, collectionID)
+		if err != nil {
+			return err
+		}
+	}
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n\t\t%s\n\t)", tableName(schema, collectionID), strings.Join(cols, ",\n\t\t"))
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
+	createdHere := !isSystem && !existed
 	if err != nil && isUniqueViolation(err) {
 		// 并发建同名表时 PG 可能在 pg_type 类型注册上撞唯一约束（既有竞态，
 		// EnsureSystemCollections 并发首请求触发）：表已由另一事务建成，
 		// 重试一次即变为幂等 no-op。
 		_, err = p.conn(ctx).ExecContext(ctx, sql)
+		createdHere = false
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// 本事务新建且带 _version：打标，避免同事务写路径把未提交列写入 cache。
+	if createdHere {
+		p.markVersionAlterTx(ctx, schema, collectionID)
+	}
+	return nil
+}
+
+func (p *postgresDocumentDB) collectionTableExists(ctx context.Context, schema, collectionID string) (bool, error) {
+	var exists bool
+	err := p.conn(ctx).QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)`,
+		schema, collectionID,
+	).Scan(&exists)
+	return exists, err
+}
+
+func (p *postgresDocumentDB) markVersionAlterTx(ctx context.Context, schema, collectionID string) {
+	key := schema + "." + collectionID
+	alterKey := p.txid(ctx) + "|" + key
+	if alterKey != "|"+key {
+		p.versionAlterTx.Store(alterKey, struct{}{})
+	}
 }
 
 // requireVersionColumn 供文档写路径使用：只检查 _version 是否为 bigint，**不 ALTER**。
@@ -1780,9 +1816,8 @@ func (p *postgresDocumentDB) reconcileUserCollectionVersionColumns(ctx context.C
 //   - 列已存在但非 bigint（存量用户属性抢占 _version）→ fail-closed：
 //     返回 ErrVersionColumnConflict，禁止对错误类型做 _version = _version + 1。
 //
-// 进程内 sync.Map 记录已确认的 "schema.collection"（含类型合法）。
-// **只缓存已提交的列**：非事务内见到 int8 才写入 cache；本事务刚 ALTER 的列
-// （versionAlterTx 有标记）一律不缓存——事务 ROLLBACK 会撤销列。
+// 缓存：仅非事务内见到已提交的 int8 才写入 versionColumns。事务内 CREATE TABLE /
+// ALTER 新建的列只打 versionAlterTx，不写 versionColumns（回滚会撤销列）。
 // 文档写路径不得调用本函数：ADD COLUMN 是 AccessExclusiveLock。
 func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
 	if isSystem {
@@ -1814,10 +1849,7 @@ func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema,
 		); err != nil {
 			return fmt.Errorf("add version column: %w", err)
 		}
-		// 本事务新建的列：不得写入进程 cache（回滚会撤销列）。
-		if alterKey != "|"+key {
-			p.versionAlterTx.Store(alterKey, struct{}{})
-		}
+		p.markVersionAlterTx(ctx, schema, collectionID)
 		return nil
 	case err != nil:
 		return err
@@ -1852,15 +1884,16 @@ func (p *postgresDocumentDB) versionColumnType(ctx context.Context, schema, coll
 }
 
 // versionColumnReady 供读路径 $version 与写路径 requireVersionColumn 使用：
-// cache miss 时只查 information_schema（不 ALTER）；已是 bigint 则记入 cache。
+// cache miss 时只查 information_schema（不 ALTER）。
 // 返回：
 //   - (true, nil)：列可用（bigint）。
 //   - (false, nil)：列不存在（尚未 reconcile）→ 调用方返回 version_column_unavailable。
 //   - (false, ErrVersionColumnConflict)：列存在但非 bigint（用户属性抢占，
 //     与 DDL reconcile 同语义 fail-closed）。
 //
-// 与 reconcileVersionColumn 共用缓存规则：本事务内 ALTER 新建的列（versionAlterTx
-// 标记）不得写入进程 cache。
+// 缓存与 reconcileVersionColumn 不同：文档写总在事务内，见到事务开始前已存在的
+// int8 必须缓存，否则每次写都查 information_schema。本事务 CREATE TABLE / ALTER
+// 新建的列（versionAlterTx）只放行 SQL、不写 versionColumns。
 func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, collectionID string) (bool, error) {
 	key := schema + "." + collectionID
 	if _, ok := p.versionColumns.Load(key); ok {
