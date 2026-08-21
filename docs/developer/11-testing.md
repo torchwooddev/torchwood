@@ -83,7 +83,6 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	// ... CRUD / 权限 / 分页 / 输入限制断言
 }
 ```

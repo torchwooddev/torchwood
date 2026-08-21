@@ -234,7 +234,7 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
 			return nil, nil, "", nil, mapUserError(err)
 		}
-		return nil, nil, "", nil, fmt.Errorf("create user document: %w", err)
+		return nil, nil, "", nil, fmt.Errorf("insert user: %w", err)
 	}
 
 	return a.finishSignIn(ctx, project.ID, accountUser(registered))

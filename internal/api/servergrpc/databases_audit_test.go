@@ -29,11 +29,10 @@ func TestDatabasesService_AuditResource(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	env, err := testutil.NewInterceptorEnv(db, &config.AppConfig{}, docDB)
 	require.NoError(t, err)
@@ -84,11 +83,10 @@ func TestDatabasesService_UpsertDocumentAuditResource(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	env, err := testutil.NewInterceptorEnv(db, &config.AppConfig{}, docDB)
 	require.NoError(t, err)

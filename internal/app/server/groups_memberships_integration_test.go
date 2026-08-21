@@ -10,7 +10,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
@@ -26,11 +25,8 @@ func TestGroups_Memberships(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	uc := NewGroups(projectRepo, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))

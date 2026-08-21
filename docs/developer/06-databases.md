@@ -7,12 +7,12 @@
 
 ## 1. 架构总览
 
-Torchwood 采用 **三层 PostgreSQL schema** 映射（见 `docs/design/project-data-plane-schema.md`）：
+Torchwood 采用 **三层 PostgreSQL schema** 映射（当前态以本文为准；`docs/design/project-data-plane-schema.md` 已落地但部分被 E-5/D-7 supersede，文首有过期横幅）：
 
 - `public`：平台控制面与事件脊柱；
-- `tw_<project>`（一段式）：项目数据面，容纳系统文档集合（users / sessions / …）；
+- `tw_<project>`（一段式）：项目数据面，**bun 系统静态表**（users / sessions / identities / groups / memberships / buckets / files，无 `_id` / `_perms` / `_version`）+ 文档目录 + 账本 / Functions / OAuth；
 - `tw_<project>_<database>`（两段式）：每个开发者 database 一个业务文档面，只放用户 collection；
-- 每个 collection 对应 schema 内的一张**真实表**（不是 JSONB 堆表）；
+- 每个用户 collection 对应 schema 内的一张**真实表** + `_perms`（不是 JSONB 堆表）；
 - 表名 / schema 名均经过严格标识符白名单校验与引用转义，杜绝 SQL 注入。
 
 ### 1.1 命名规则
@@ -21,9 +21,9 @@ Torchwood 采用 **三层 PostgreSQL schema** 映射（见 `docs/design/project-
 |------|------|------|
 | 项目数据面 schema | `tw_<projectID>` | `tw_shop` |
 | 业务库 schema | `tw_<projectID>_<databaseID>` | `tw_shop_default`、`tw_shop_app` |
-| 系统集合表 | `tw_<project>.<collectionID>` | `tw_shop.users` |
+| 系统静态表 | `tw_<project>.users` 等（bun，无 `_id`/`_perms`/`_version`） | `tw_shop.users` |
 | 业务集合表 | `tw_<project>_<database>.<collectionID>` | `tw_shop_app.posts` |
-| 权限表 | `<schema>._perms`（每 schema 一张） | `tw_shop._perms`、`tw_shop_app._perms` |
+| 权限表 | 用户 collection 所在 schema 的 `_perms`（每业务 schema 一张；**不**服务系统静态表） | `tw_shop_app._perms` |
 
 `projectID` / `databaseID` 须匹配 `^[a-z][a-z0-9]{0,27}$`（`pkg/ident`）。对外 `database_id` 另走 `RejectExternalDatabaseID`（charset + 显式拒绝 sentinel `_`）。`CreateDatabase` 即 `CREATE SCHEMA IF NOT EXISTS` 两段式，`DeleteDatabase` 即 `DROP SCHEMA ... CASCADE`（**永不** DROP 一段式 `tw_<project>`）。行内 `_tenant` 仍取 `projects.internal_id`（`resolveInternalID`，进程内缓存）。
 
@@ -80,32 +80,32 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 | 层 | 技术 | 职责 | 表 |
 |----|------|------|-----|
-| public 控制面 + 事件脊柱 | bun + golang-migrate（`db/migrations/`） | 无项目上下文或 Ensure 之前就要访问的表、跨项目领取的事件 | `projects`、`admins`、`admin_projects`、`api_keys`、`audit_logs`、`provider_resource_index`、`document_events_outbox(+dead)` |
-| 项目数据面 `tw_<project>` | bun + go:embed 项目迁移（`internal/infra/projectschema/migrations/`，CreateProject 同事务 Apply、启动 EnsureAll 自愈） | 项目账本、Functions、OAuth 配置、文档目录 | `payment_*`、`asset_*`、`subscription_*`、`usage_rollups`、`billing_statements`、`functions*`、`project_oauth_providers`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`schema_migrations` |
-| 文档层（一段式 + 两段式） | 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、groups 等）在 `tw_<project>`；用户动态集合在 `tw_<project>_<database>` | `tw_shop.users`、`tw_shop_app.posts`（均含 `_perms`） |
+| public 控制面 + 事件脊柱 | bun + golang-migrate（`db/migrations/`） | 无项目上下文就要访问的表、跨项目领取的事件 | `projects`、`admins`、`admin_projects`、`api_keys`、`audit_logs`、`provider_resource_index`、`document_events_outbox(+dead)` |
+| 项目数据面 `tw_<project>` | bun + go:embed 项目迁移（`internal/infra/projectschema/migrations/`，CreateProject 同事务 Apply、启动 EnsureAll 自愈） | 系统静态表、项目账本、Functions、OAuth 配置、文档目录 | `users`、`sessions`、`identities`、`groups`、`memberships`、`buckets`、`files`、`payment_*`、`asset_*`、`subscription_*`、`usage_rollups`、`billing_statements`、`functions*`、`project_oauth_providers`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`schema_migrations` |
+| 文档层（两段式） | 原生 SQL | 用户动态 collection（含 `_perms`） | `tw_shop_app.posts` |
 
-- `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**（位于 `tw_<project>`）：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。
-- 文档层表结构由目录驱动：`CreateCollection` 先建表 + 索引，再写目录元数据（用户集合重复创建返回 `ErrDuplicateKey` → `AlreadyExists`；系统集合幂等成功）。
+- `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**（位于 `tw_<project>`）：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。catalog **无** `database_id='_'` 行。
+- 文档层表结构由目录驱动：`CreateCollection` 先建表 + 索引，再写目录元数据（用户集合重复创建返回 `ErrDuplicateKey` → `AlreadyExists`）。
 
-### 2.1 系统集合
+### 2.1 系统资源（bun 静态表，不是文档集合）
 
-`internal/domain/databases/system_collections.go` 是系统集合名单的单一事实来源。系统性由**所在 schema** 决定：`IsSystemCollection` 当且仅当 `databaseID == ident.ProjectDataPlaneID`（sentinel `_`）且 id 命中下表。物理表在 `tw_<project>`，**不**寄居 `default` 业务库。`default` 是 CreateProject 自动创建的普通第一库（可删可重建），其中的同名 `users` 是普通用户集合（`is_system=false`，有 `_version`）。
+系统资源由 `internal/infra/projectschema/` 迁移创建：CreateProject 同事务 `CREATE SCHEMA` + `projectschema.Apply`，进程启动 `EnsureAll` 自愈。**不要**再把 `EnsureSystemCollections` 当活路径——该方法已从 `SchemaApplier` 删除。
 
-对外 Databases API 摸不到系统集合：`RejectExternalDatabaseID("_")` → InvalidArgument；ListDatabases 过滤 sentinel。系统用户 / 文件 / 组只经 Account、Server Users、Storage、Groups 专用 RPC。
+`default` 是 CreateProject 自动创建的普通第一库（可删可重建），其中的同名 `users` 是普通用户集合（`is_system=false`，有 `_version`）。
 
-| 集合 | 属性（节选） | 索引 | 独占管理服务 |
-|------|-------------|------|-------------|
-| `users` | email、password_hash、name、status、email_verified、pending_email、phone、labels、prefs、factors | email 唯一、phone | Account / Server Users |
-| `sessions` | user_id、secret_hash、provider、user_agent、ip、expire_at | user_id | Account |
-| `identities` | user_id、provider、provider_uid、provider_email、provider_data | user_id、(provider,provider_uid) 唯一 | OAuth / OTP |
-| `groups` | name、permissions、total、prefs | name | Groups |
-| `memberships` | group_id、user_id、email、roles、status、invited_at、joined_at | group_id、user_id、email | Groups |
-| `buckets` | name、permissions、public | name | Storage |
-| `files` | bucket_id、name、mime_type、size、metadata | bucket_id、name fulltext | Storage |
+对外 Databases API 摸不到系统资源：`RejectExternalDatabaseID("_")` → InvalidArgument；ListDatabases 过滤 sentinel。系统用户 / 文件 / 组只经 Account、Server Users、Storage、Groups 专用 RPC。
 
-- `SensitiveSystemCollectionIDs`（users / sessions / identities）：专用 API 读写；Databases API 因 sentinel 被拒而不可达。
-- `isWriteProtectedSystemCollection`（纵深防御）：项目数据面的 users/sessions/identities 禁止非 System 主体直接写；更新路径对文档 owner（`user:<id>` 匹配）放行，以支持 `UpdateAccount` / `UpdatePrefs` 自助路径。业务库同名集合不受影响。
-- `EnsureSystemCollections` 在项目首次使用时引导创建 `tw_<project>`、catalog sentinel 行 `document_databases(id='_')` 与全部系统集合（幂等，进程内缓存 + `DO NOTHING`），并执行存量 `keys` 角色写权限收窄清理（`cleanupKeysWritePerms`：`WHERE project_id = ? AND database_id = '_'`，移除 users/sessions/identities 的 `update:keys` / `delete:keys`，groups/memberships 保留）；对**已存在**的存量集合按 spec 幂等补齐缺失属性（`reconcileSystemCollectionAttrs`：直接调 `CreateAttribute` 补物理列 + `document_attributes` 元数据，按属性 Key 比对，并发元数据 INSERT 撞唯一约束 23505 忽略）。
+`SystemCollectionIDs`（`internal/domain/databases/system_collections.go`）仍存在：DocumentDB 跳过用户表 `_version`、写保护，以及测试重建旧文档表（`SeedLegacySystemDocumentCollections`）。**不是**「仍是文档集合」。
+
+| 资源 | 专用 RPC |
+|------|----------|
+| `users` | Account / Server Users |
+| `sessions` | Account |
+| `identities` | OAuth / OTP |
+| `groups` | Groups |
+| `memberships` | Groups |
+| `buckets` | Storage |
+| `files` | Storage |
 
 ---
 
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 权限条目格式为 `type:role`，`type` 为 `read` / `create` / `update` / `delete`（`write` 在解析时展开为 create + update + delete）。
 
-### 3.1 角色清单（以 `permissions.go` 与系统集合 spec 为准）
+### 3.1 角色清单（以 `permissions.go` 为准）
 
 | 角色 | 含义 | 授予规则 |
 |------|------|---------|
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 - `documentSecurity = false`：只按**集合级**权限判定；
 - `documentSecurity = true`：
   - 文档无 `_perms` 行 → 集合级权限兜底；
-  - 文档有 `_perms` 行 → 用户集合**文档权限覆盖集合权限**（私有文档）；系统集合保持 **OR** 语义（D1 豁免，匿名读 groups/buckets 依赖此行为）。
+  - 文档有 `_perms` 行 → 用户集合**文档权限覆盖集合权限**（私有文档）；sentinel `_` 上的 `SystemCollectionIDs`（测试重建旧文档表）保持 **OR** 语义。
 
 ### 3.3 各操作的检查点
 
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | `GetDocument` | 文档级 `read`（`checkDocumentPermission`） |
 | `UpdateDocument` | 仅检查文档级 `update`（D3：不再强制 read 预检；独立 update 策略） |
 | `DeleteDocument` | 文档级 `delete` |
-| `ListDocuments` / `CountDocuments` | 集合级 `read` 拒绝（`ListAccessDenied`）→ 逐文档 SQL 过滤（`listPermissionFilter`，见 §4.2）；系统集合 + 集合级 read 可跳过文档级过滤（D1） |
+| `ListDocuments` / `CountDocuments` | 集合级 `read` 拒绝（`ListAccessDenied`）→ 逐文档 SQL 过滤（`listPermissionFilter`，见 §4.2）；sentinel `_` 上的 `SystemCollectionIDs` + 集合级 read 可跳过文档级过滤（D1，测试重建旧表） |
 | `SumDocumentField` | 同 List 的 read 过滤（storage usage 只统计可见文档） |
 
 ### 3.4 授权授予约束
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 ### 3.5 乐观并发（`_version` / OCC）
 
-用户集合表有整型系统列 `_version`（`BIGINT NOT NULL DEFAULT 1`，CREATE TABLE 即带列；存量缺列由 catalog reconcile 一次补齐，文档写路径不 `ALTER`）；系统集合**无**此列。
+用户集合表有整型系统列 `_version`（`BIGINT NOT NULL DEFAULT 1`，CREATE TABLE 即带列；存量缺列由 catalog reconcile 一次补齐，文档写路径不 `ALTER`）。系统静态表无此列；DocumentDB 对 sentinel `_` 上的 `SystemCollectionIDs`（含测试重建的旧文档表）跳过 `_version`。
 
 | 操作 | version 语义 |
 |------|-------------|
@@ -168,9 +168,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | `version_column_conflict` | 已有非 bigint 的 `_version` 列（用户属性抢占，fail-closed） |
 | `version_column_unavailable`（`InvalidArgument`） | 旧表尚未 reconcile 时写文档或用 `$version` 查询 |
 
-查询：`$version` / `_version` 可作过滤/排序/投影字段（映射为 `_version`）；系统集合禁止 `$version` 查询（无此列）；`_version` 与 `_perms` 等系统列为保留属性名，`CreateAttribute` / `CreateCollection` 拒绝。
-
-系统集合文档出站 `version=0`，禁止 `$version` 查询。
+查询：`$version` / `_version` 可作过滤/排序/投影字段（映射为 `_version`）；sentinel `_` 上的 `SystemCollectionIDs` 禁止 `$version` 查询（无此列）；`_version` 与 `_perms` 等系统列为保留属性名，`CreateAttribute` / `CreateCollection` 拒绝。系统资源不经 `Document.Version`。
 
 ---
 
@@ -207,7 +205,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 2. **输入上限**（`postgres.go` `validateQueryInput`，A2）：
    - queries 条数 ≤ 100；单条查询串 ≤ 4096 字符；`equal`/`notEqual` 多值 ≤ 1000 个。
 3. **翻页防护**（A1）：`page_size`/`limit` 上限 100（`maxQueryLimit`），默认 50；`offset` 上限 10000（`maxQueryOffset`），超限返回 `InvalidArgument`。
-4. **字段白名单**（A7，仅非 System 路径）：过滤/排序/投影字段必须是系统列（`_id`/`_created_at`/`_updated_at`）或已声明 attribute；`search` 必须命中 fulltext 索引列；系统集合另有**敏感列黑名单**（`users.password_hash`/`prefs`/`labels`、`sessions.secret_hash`、`identities.provider_data` 禁止作为过滤条件；自定义库同名集合不受影响）。
+4. **字段白名单**（A7，仅非 System 路径）：过滤/排序/投影字段必须是系统列（`_id`/`_created_at`/`_updated_at`）或已声明 attribute；`search` 必须命中 fulltext 索引列；sentinel `_` 上的 `SystemCollectionIDs` 另有**敏感列黑名单**（`users.password_hash`/`prefs`/`labels`、`sessions.secret_hash`、`identities.provider_data` 禁止作为过滤条件；自定义库同名集合不受影响）。
 5. **列表过滤**：非 System 主体先经 `ListAccessDenied` 拒绝，再生成 `EXISTS (SELECT 1 FROM ..._perms p WHERE p._tenant = d._tenant AND ...)` 子查询按 `_type='read'` 过滤；`documentSecurity=true` 且集合级有 read 时，无 `_perms` 行的文档由集合级权限兜底。
 
 ### 4.3 列表分页
@@ -262,7 +260,6 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 - **已删除 staged transaction**（D-6，内测无兼容）：Client/Server 不再提供 Create/Commit/Rollback 事务 RPC。多文档原子性仅内部 `uow.Run` / `clients.Database.RunInTx` 与 Server `BulkUpdate`/`BulkDelete`。
 - **批量操作原子化**：`BulkUpdateDocuments` / `BulkDeleteDocuments` 在未处于外层事务时整体包在 `clients.RunInTx` 中，中途失败整体回滚（行为从“部分成功”收紧为“原子”）；已在外层事务（`clients.InTx` 检测）时直接复用外层事务，不嵌套。
 - 单文档写（Create/Update/Upsert/Delete）同样走 `RunInTx`：未在外层事务时自行开短事务，已在事务内则复用；文档行、`_perms`、outbox 同 COMMIT。
-- 系统集合引导（`EnsureSystemCollections`）依赖幂等设计（`DO NOTHING` + 行数判断）而非事务。
 
 ---
 
@@ -270,13 +267,13 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 - 集成测试：`internal/infra/documentdb/postgres_test.go`（跳过条件 `testing.Short()`）。
 - 数据库由 `internal/testutil.SetupTestDB` 管理：从 `TORCHWOOD_TEST_DATABASE_SOURCE`（基础 DSN，默认库名前缀 `TORCHWOOD_test`）与 `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE`（维护库）读取；每个测试创建独立数据库（`<前缀>_<pid>_<序号>`）、按序执行 `db/migrations/*.up.sql`、结束后 `pg_terminate_backend` + `DROP DATABASE`。两个环境变量缺失时 fail-fast（通过 `task test` 加载 `.env` 运行）。
-- 覆盖：CRUD、权限正反例、多项目隔离、批量回滚、cursor 翻页、输入上限、字段白名单、敏感列黑名单、审计列、系统集合幂等等。
+- 覆盖：CRUD、权限正反例、多项目隔离、批量回滚、cursor 翻页、输入上限、字段白名单、敏感列黑名单、审计列；系统表由 `projectschema` 迁移 / `CreateTestProject` 创建。
 
 ---
 
 ## 8. 参考
 
-- `internal/domain/databases/`：端口（`DocumentDB`）、Principal、权限语义、系统集合名单。
+- `internal/domain/databases/`：端口（`DocumentDB`）、Principal、权限语义、`SystemCollectionIDs`（DocumentDB 跳过 `_version` / 写保护 / 测试重建旧文档表，不是活文档集合）。
 - `internal/infra/documentdb/postgres.go` / `postgres_permissions.go`：PostgreSQL 适配器实现。
 - `pkg/query/`：DSL 解析器与安全构造工具（`BuildFilter` / `BuildEqual` / `BuildLimit`，供程序化拼查询）。
 - `pkg/crud/`：列表分页游标抽象。

@@ -27,11 +27,10 @@ func TestDatabases_AcceptanceChain(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 
@@ -105,11 +104,10 @@ func TestDatabases_CreateCollection_DocumentSecurityFalse(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 
@@ -137,11 +135,10 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	principal := databases.Principal{Roles: []string{"keys"}}
@@ -175,11 +172,10 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	principal := databases.Principal{Roles: []string{"keys"}}
@@ -237,11 +233,10 @@ func TestDatabases_ListCollections_Pagination(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 
@@ -291,11 +286,10 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 
@@ -354,11 +348,10 @@ func TestDatabases_BulkDocuments_MaxOperations(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	principal := databases.Principal{Roles: []string{"keys"}}
@@ -390,11 +383,10 @@ func TestDatabases_CreateDocument_TypeMismatch(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	principal := databases.Principal{Roles: []string{"keys"}}
@@ -433,11 +425,10 @@ func TestDatabases_UpdateCollection(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	principal := databases.Principal{Roles: []string{"keys"}}
@@ -489,11 +480,10 @@ func TestDatabases_DeleteAttribute_DeleteIndex(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	principal := databases.Principal{Roles: []string{"keys"}}
@@ -552,11 +542,10 @@ func TestDatabases_Document_Increment(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	principal := databases.Principal{Roles: []string{"keys"}}

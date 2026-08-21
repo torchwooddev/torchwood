@@ -21,11 +21,10 @@ func TestDatabases_ListFiltersSentinelAndGetRejects(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App"))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)

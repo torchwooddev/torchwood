@@ -35,7 +35,6 @@ func TestDataPlaneSchema_DeleteDatabaseDefaultKeepsUsers(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "default", "default"))
 
 	usersRepo := bunrepo.NewUserRepository(db)
@@ -79,7 +78,6 @@ func TestDataPlaneSchema_DeleteDatabaseSentinelRefused(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	projectSchema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
@@ -110,7 +108,6 @@ func TestDataPlaneSchema_CreateCollectionWhitelist(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	err := docDB.CreateCollection(ctx, projectID, ident.ProjectDataPlaneID, "posts", "Posts", nil, nil, nil, true)
 	require.Error(t, err)
@@ -127,9 +124,6 @@ func TestDataPlaneSchema_SystemCRUDHitsOneSegment(t *testing.T) {
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
-
-	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	projectSchema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)

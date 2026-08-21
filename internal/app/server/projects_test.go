@@ -15,8 +15,10 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -167,7 +169,17 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 		if err := repo.CreateProject(txCtx, p); err != nil {
 			return err
 		}
-		if err := docDB.EnsureSystemCollections(txCtx, p.ID, p.InternalID); err != nil {
+		schema, err := ident.ProjectSchemaName(p.ID)
+		if err != nil {
+			return err
+		}
+		if _, err := db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
+			return err
+		}
+		if err := projectschema.Apply(txCtx, db, p.ID); err != nil {
+			return err
+		}
+		if err := docDB.CreateDatabase(txCtx, p.ID, "default", "default"); err != nil {
 			return err
 		}
 		return fmt.Errorf("simulated failure")

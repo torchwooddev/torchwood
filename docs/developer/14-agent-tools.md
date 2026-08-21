@@ -1,13 +1,13 @@
 # Agent 默认工具箱
 
-> Overlay，不是新的产品 API。完整 API 仍是 **201 个 RPC**（Client 69 + Server 122 + Console 10）；本表是 Agent 用 API Key 打 Server 时的默认 **18** 个动词。
+> Overlay，不是新的产品 API。完整 API 仍是 **185 个 RPC**（Client 61 + Server 114 + Console 10）；本表是 Agent 用 API Key 打 Server 时的默认 **18** 个动词。
 > 权威映射：`sdk/go/server/tools.go`、`sdk/typescript/src/server/tools.ts`。规格：`docs/review/wave3-e7-tool-catalog.md`。catalog 只读。
 
 ---
 
 ## 1. 定位
 
-- **不是**第 202 个 RPC，也**不是**把产品面砍到 20 个动词。
+- **不是**第 186 个 RPC，也**不是**把产品面砍到 20 个动词。
 - Agent / 自动化默认只看见下表；Console、CLI、SDK 仍走完整 Server API。
 - 逃生舱仍是 `InvokeJSON(fullMethod, protojson)`：覆盖全部 `torchwood.server.v1` unary，**继续排除 `APIKeysService`**。
 - 本 catalog **不含** create / list / get / delete API key。密钥只在 Console 或带合适 scope 的管理流程里创建，不交给普通 Agent 工具面。

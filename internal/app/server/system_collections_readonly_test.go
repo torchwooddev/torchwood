@@ -24,11 +24,10 @@ func TestSystemCollections_IsSystemFlag(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 
@@ -78,11 +77,10 @@ func TestSystemCollections_SchemaOpsDenied(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	perms := []databases.Permission{{Type: "read", Role: "keys"}}
@@ -117,11 +115,10 @@ func TestSystemCollections_DocumentAPIRejectsSentinel(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
@@ -145,11 +142,10 @@ func TestSystemCollections_UpdateCollectionPermissionValidation(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "App DB"))

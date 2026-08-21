@@ -21,9 +21,8 @@ import (
 func outboxTestProject(t *testing.T, ctx context.Context) (databases.DocumentDB, *clients.Database, string, func()) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	docDB := NewPostgresDocumentDB(db, events.NewEventOutbox(db))
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -430,10 +429,9 @@ func TestOutbox_NoPublisherIsNop(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},

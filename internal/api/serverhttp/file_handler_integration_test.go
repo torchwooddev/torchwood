@@ -29,7 +29,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -72,11 +71,8 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 
-	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	apiSecret, keyCleanup := testutil.CreateTestAPIKey(ctx, db, projectID, nil)
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
 	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
@@ -274,12 +270,8 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 
-	projectA, internalA, cleanupA := testutil.CreateTestProject(ctx, db)
-	projectB, internalB, cleanupB := testutil.CreateTestProject(ctx, db)
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectA, internalA))
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectB, internalB))
+	projectA, _, cleanupA := testutil.CreateTestProject(ctx, db)
+	projectB, _, cleanupB := testutil.CreateTestProject(ctx, db)
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
@@ -401,11 +393,8 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 
-	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	apiSecret, keyCleanup := testutil.CreateTestAPIKey(ctx, db, projectID, []string{"users"})
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
@@ -457,12 +446,8 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 
-	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
-	otherProjectID, otherInternalID, otherCleanup := testutil.CreateTestProject(ctx, db)
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, otherProjectID, otherInternalID))
+	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
+	otherProjectID, _, otherCleanup := testutil.CreateTestProject(ctx, db)
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()

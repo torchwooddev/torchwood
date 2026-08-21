@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -61,8 +60,6 @@ func TestResolveOAuthUser_RejectsUnverifiedEmail(t *testing.T) {
 
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	account := NewTestAccount(cfg, projectRepo, db)
 
 	// email_verified=false 一律拒绝（安全评审 M8），且不占号。

@@ -15,7 +15,6 @@ import (
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -40,11 +39,9 @@ func newUploadsUC(t *testing.T) (context.Context, *Storage, string, *miniredis.M
 	db := testutil.SetupTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	t.Cleanup(cleanup)
 
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	usersRepo := bunrepo.NewUserRepository(db)
 	for _, u := range []users.User{
 		{ID: "user-1", Email: "user-1@torchwood.local", Status: users.StatusActive},

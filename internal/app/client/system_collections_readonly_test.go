@@ -27,11 +27,10 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	serverUC := appserver.NewDatabases(projectRepo, docDB)

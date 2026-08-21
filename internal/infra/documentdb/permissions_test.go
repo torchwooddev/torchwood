@@ -24,7 +24,6 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	// 集合无 read 授权：强制走逐文档 EXISTS 过滤路径（无 SkipDocumentPermissionFilter）。
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -79,7 +78,6 @@ func TestPermissions_CollectionLevelFallback(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
@@ -117,7 +115,6 @@ func TestPermissions_DocumentLevelOverridesCollection(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -158,7 +155,6 @@ func TestPermissions_CreateCheck(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "locked", "Locked", []databases.Attribute{
@@ -191,7 +187,6 @@ func TestPermissions_KeysNotBypass(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -231,7 +226,6 @@ func TestPermissions_PlatformAdminBypass(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -355,7 +349,6 @@ func TestPermissions_SystemPrincipalBypass(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -439,7 +432,6 @@ func TestPermissions_ListORFallback(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -501,7 +493,6 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
 	// 集合级仅 create 授权（无 read/update/delete）：读写检查完全依赖文档级。

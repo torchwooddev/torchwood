@@ -242,9 +242,6 @@ func (usersCollectionGuardDocDB) CreateDocument(_ context.Context, _, _, collect
 	}
 	return doc, nil
 }
-func (usersCollectionGuardDocDB) EnsureSystemCollections(context.Context, string, int64) error {
-	return nil
-}
 func (usersCollectionGuardDocDB) EnsureCatalog(context.Context, string) error { return nil }
 func (usersCollectionGuardDocDB) CreateDatabase(context.Context, string, string, string) error {
 	return nil

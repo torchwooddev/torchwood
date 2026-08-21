@@ -14,6 +14,6 @@ message Document {
   google.protobuf.Timestamp created_at = 3;
   google.protobuf.Timestamp updated_at = 4;
   repeated string permissions = 5;
-  // 用户集合为当前 _version；系统集合恒为 0。
+  // 用户 collection 的 OCC `_version`；系统资源不经本字段。
   int64 version = 6;
 }

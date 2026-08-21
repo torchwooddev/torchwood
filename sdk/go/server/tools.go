@@ -7,7 +7,7 @@ import (
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 )
 
-// Agent 默认工具名（E-7 overlay）。完整产品 API 仍是 201 个 RPC。
+// Agent 默认工具名（E-7 overlay）。完整产品 API 仍是 185 个 RPC（Client 61 + Server 114 + Console 10）。
 const (
 	ToolListUsers       = "list_users"
 	ToolGetUser         = "get_user"

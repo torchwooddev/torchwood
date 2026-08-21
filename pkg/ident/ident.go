@@ -12,10 +12,9 @@ const (
 	SchemaPrefix = "tw_"
 	// ProjectDataPlaneID 是项目数据面（tw_<project>）的内部 database 标识。
 	// 它不是合法的 SchemaResourceID（ValidateSchemaResourceID 拒绝 "_"），
-	// 仅用于系统集合寻址：documentSchema 在 databaseID==ProjectDataPlaneID 时
+	// 仅用于内部寻址：documentSchema 在 databaseID==ProjectDataPlaneID 时
 	// 映射到 ProjectSchemaName。对外 database_id 走 RejectExternalDatabaseID
 	// 拒绝；Create/DeleteDatabase 的 businessSchema 显式拒绝 sentinel。
-	// 见 docs/design/project-data-plane-schema.md §3.0/§3.1。
 	ProjectDataPlaneID = "_"
 )
 
@@ -35,7 +34,8 @@ var schemaNameRe = regexp.MustCompile(`^tw_[a-z][a-z0-9]{0,27}_[a-z][a-z0-9]{0,2
 var projectSchemaNameRe = regexp.MustCompile(`^tw_[a-z][a-z0-9]{0,27}$`)
 
 // ProjectSchemaName 拼出项目数据面 schema tw_{project.id}（一段式）。
-// 系统文档集合（users/sessions/...）落在该 schema，而非 tw_<p>_default。
+// 系统静态表（users/sessions/... bun）落在该 schema，而非 tw_<p>_default。
+// sentinel 仍用于 documentSchema 映射与对外拒绝。
 // projectID 非法时返回 error，不拼接。
 func ProjectSchemaName(projectID string) (string, error) {
 	if err := ValidateSchemaResourceID(projectID); err != nil {

@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,11 +21,8 @@ func TestGroups_Prefs_CRUD(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewGroups(bunrepo.NewProjectRepository(db), bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	group, err := uc.CreateGroup(ctx, projectID, "Design", nil)
@@ -65,11 +61,8 @@ func TestGroups_Prefs_Errors(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewGroups(bunrepo.NewProjectRepository(db), bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	keys := databases.Principal{Roles: []string{"keys"}}
@@ -88,8 +81,8 @@ func TestGroups_Prefs_Errors(t *testing.T) {
 	require.ErrorContains(t, err, "prefs is required")
 }
 
-// TestGroups_Prefs_PermissionMatrix：keys / admin / 已接受成员（group:{id}，系统集合
-// OR 语义）可写；无用户组角色的 users 主体 → PermissionDenied（HTTP 403 语义）。
+// TestGroups_Prefs_PermissionMatrix：keys / admin / 已接受成员（group:{id}）可写；
+// 无用户组角色的 users 主体 → PermissionDenied（HTTP 403 语义）。
 func TestGroups_Prefs_PermissionMatrix(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -98,11 +91,8 @@ func TestGroups_Prefs_PermissionMatrix(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	uc := NewGroups(bunrepo.NewProjectRepository(db), bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	group, err := uc.CreateGroup(ctx, projectID, "Perm Group", nil)

@@ -314,8 +314,18 @@ err := s.db.RunInTx(ctx, func(txCtx context.Context) error {
 	if err := s.projectRepo.CreateProject(txCtx, p); err != nil {
 		return fmt.Errorf("insert project: %w", err)
 	}
-	if err := s.docDB.EnsureSystemCollections(txCtx, p.ID, p.InternalID); err != nil {
-		return fmt.Errorf("ensure system collections: %w", err)
+	schema, err := ident.ProjectSchemaName(p.ID)
+	if err != nil {
+		return appshared.MapIdentError(err)
+	}
+	if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
+		return fmt.Errorf("create project schema: %w", err)
+	}
+	if err := projectschema.Apply(txCtx, s.db, p.ID); err != nil {
+		return fmt.Errorf("apply project schema: %w", err)
+	}
+	if err := s.docDB.CreateDatabase(txCtx, p.ID, firstDBID, firstDBID); err != nil {
+		return fmt.Errorf("create first database: %w", err)
 	}
 	return nil
 })

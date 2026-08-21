@@ -38,7 +38,7 @@ type Document struct {
 	UpdatedAt   time.Time
 	CreatedBy   string
 	UpdatedBy   string
-	Version     int64 // 顶层；用户集合为当前 _version，系统集合恒为 0；不进 Data
+	Version     int64 // 顶层；用户 collection 的 OCC `_version`；系统资源不经本字段；不进 Data
 }
 
 type Query struct {

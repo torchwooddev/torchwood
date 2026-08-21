@@ -1430,10 +1430,6 @@ func validColumnName(name string) bool {
 	return true
 }
 
-func (p *postgresDocumentDB) EnsureSystemCollections(context.Context, string, int64) error {
-	return nil
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -2181,7 +2177,6 @@ func scanDocumentJSON(scanner interface{ Scan(dest ...any) error }) (*databases.
 	}
 	// _version：用户集合有列时读取；存量表尚未 reconcile（缺列）视为 1，不当硬错
 	// （读路径禁止 DDL；与成功补列后的 DEFAULT 1 回填语义一致）。
-	// 系统集合恒无该列，同样视为 1，由 app 层按 IsSystemCollection 归零。
 	if v, ok := payload["_version"].(float64); ok {
 		doc.Version = int64(v)
 	} else {

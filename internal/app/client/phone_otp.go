@@ -157,7 +157,7 @@ func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone 
 				return accountUser(existing), nil
 			}
 		}
-		return nil, fmt.Errorf("create user document: %w", err)
+		return nil, fmt.Errorf("insert user: %w", err)
 	}
 	return accountUser(registered), nil
 }

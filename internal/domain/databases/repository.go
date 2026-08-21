@@ -12,7 +12,6 @@ type Catalog interface {
 
 // SchemaApplier 变更 catalog / 集合 DDL。EnsureCatalog 是读旁路唯一允许
 // projectschema.Apply 的出口（启动 / 建项）；GetCollection 禁止调用。
-// EnsureSystemCollections 是 no-op，仅保留接口与 fake 签名。
 type SchemaApplier interface {
 	CreateDatabase(ctx context.Context, projectID, id, name string) error
 	DeleteDatabase(ctx context.Context, projectID, id string) error
@@ -23,7 +22,6 @@ type SchemaApplier interface {
 	DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error
 	CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx Index) error
 	DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error
-	EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error
 	EnsureCatalog(ctx context.Context, projectID string) error
 }
 

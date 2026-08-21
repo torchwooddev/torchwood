@@ -156,8 +156,8 @@ UnaryAuthMiddleware(ctx, req)
 - 校验成功后 Principal 的 `Roles = ["keys"]`（`internal/infra/auth/validator.go` 的 `validateAPIKey`）；
 - 动态文档层把 `keys` 视为与 `users`、`user:{id}` 并列的角色参与 `_perms` 判定，**不默认绕过文档权限**：
   - `ExpandPermissionRoles` 只在调用方持 `keys` 角色时注入 `keys`（`postgres_permissions.go` / `internal/domain/databases/`）；
-  - Server API 读写系统/用户文档时，文档 `_perms` 上需显式授予 `read:keys` / `write:keys` 等才可访问；
-  - 安全收窄：`EnsureSystemCollections` 会执行 `cleanupKeysWritePerms`，移除 `users` / `sessions` / `identities` 集合上存量的 `update:keys` / `delete:keys`，`groups` / `memberships` 保留。
+  - API Key `keys` 角色只参与**用户 collection** `_perms`；系统资源不走 `_perms`，只经 Account、Server Users、Storage、Groups 专用 RPC。
+  - Server API 读写用户文档时，文档 `_perms` 上需显式授予 `read:keys` / `write:keys` 等才可访问。
 - 特权主体（`SystemPrincipal`、PlatformAdmin）才走完全绕过（`IsSystem()`）。
 
 API Key 不在首次部署引导中生成。登录 Console 后到 **API Keys** 页面创建；

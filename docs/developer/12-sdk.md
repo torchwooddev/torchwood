@@ -454,7 +454,7 @@ respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser
 - **Agent 默认工具箱**（E-7 overlay，18 个动词 → 现有 Server unary，不含
   API key 管理）：`server.Tools` / `LookupTool` / `InvokeTool`；TS 对等导出
   `agentTools` / `lookupAgentTool` / `TOOL_*`（如 `TOOL_QUERY_DOCUMENTS`）。
-  catalog 只读。完整 API 仍是 201 RPC，见
+  catalog 只读。完整 API 仍是 185 RPC（Client 61 + Server 114 + Console 10），见
   [14-agent-tools.md](14-agent-tools.md)。`query_documents` 的 HTTP AST 入口是
   `POST .../documents:list`（body=`Query`），不是 GET `listDocuments()`。
 

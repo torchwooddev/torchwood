@@ -1,7 +1,7 @@
 # E-7 Tool catalog overlay（开工清单）
 
 > Wave 3。依赖 E-2a（已合）+ E-4（Query AST）。201 RPC **全部保留**。  
-> 日期：2026-08-21。**可施工。**
+> 日期：2026-08-21。**可施工。** 计数以 `docs/developer/14-agent-tools.md` 为准（D-6 后少于 201）。
 
 ## 锁定
 

@@ -81,11 +81,10 @@ func TestP0_Section7_AuditLogs(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	defer projectCleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
 	env, err := testutil.NewInterceptorEnv(db, cfg, docDB)
@@ -141,11 +140,10 @@ func TestP0_Section8_AccessPermission(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	defer projectCleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
 	env, err := testutil.NewInterceptorEnv(db, cfg, docDB)
@@ -207,11 +205,10 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, projectCleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	defer projectCleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	cfg := &config.AppConfig{}
 	projectRepo := bunrepo.NewProjectRepository(db)

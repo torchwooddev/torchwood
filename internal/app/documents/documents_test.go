@@ -195,7 +195,6 @@ func (m *memDocDB) DeleteIndex(context.Context, string, string, string, string) 
 func (m *memDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (m *memDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
-func (m *memDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+func (m *memDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
 var _ databases.DocumentDB = (*memDocDB)(nil)

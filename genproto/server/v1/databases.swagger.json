@@ -1882,7 +1882,7 @@
         "version": {
           "type": "string",
           "format": "int64",
-          "title": "用户集合为当前 _version；系统集合恒为 0。"
+          "title": "用户 collection 的 OCC `_version`；系统资源不经本字段。"
         }
       },
       "title": "Document 是文档 RPC 的共享载荷。"

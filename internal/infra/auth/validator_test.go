@@ -282,8 +282,7 @@ func (d *stubDocDB) SumDocumentField(context.Context, string, string, string, st
 func (d *stubDocDB) BulkUpdateDocuments(context.Context, string, string, string, []string, map[string]any, []databases.Permission, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (d *stubDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
-func (d *stubDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+func (d *stubDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
 var _ databases.DocumentDB = (*stubDocDB)(nil)
 

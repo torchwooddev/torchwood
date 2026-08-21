@@ -31,7 +31,7 @@ type Document struct {
 	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	Permissions []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
-	// 用户集合为当前 _version；系统集合恒为 0。
+	// 用户 collection 的 OCC `_version`；系统资源不经本字段。
 	Version       int64 `protobuf:"varint,6,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

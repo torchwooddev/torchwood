@@ -40,8 +40,8 @@
 - Console admin 会话走 `TORCHWOOD_session_console` HttpOnly cookie（SameSite=Lax，refresh cookie 限 `/v1/console/auth` 路径），前端不再用 localStorage 存 token。
 
 ## 数据库约定
-- 三层物理模型（见 `docs/design/project-data-plane-schema.md`）：`public` 控制面+事件脊柱（projects、admins、admin_projects、api_keys、audit_logs、provider_resource_index、outbox）用 bun + golang-migrate；项目数据面 `tw_<project.id>` 容纳系统文档集合、项目账本 / Functions / OAuth / 文档目录（bun，go:embed 项目迁移 `internal/infra/projectschema/`）；业务文档面 `tw_<project.id>_<database.id>` 只放用户 collection。
-- 系统集合以 sentinel `_`（`ident.ProjectDataPlaneID`）寻址，物理表在 `tw_<project>`；`default` 是普通第一库（可删可重建）。DDL 只走两段式 `businessSchema`，永不解析一段式。`project.id` / `database.id` 规则见 `docs/developer/06-databases.md`。
+- 三层物理模型（当前态以本文与 `docs/developer/06-databases.md` 为准；`docs/design/project-data-plane-schema.md` 已落地但部分被 E-5/D-7 supersede，文首有过期横幅）：`public` 控制面+事件脊柱（projects、admins、admin_projects、api_keys、audit_logs、provider_resource_index、outbox）用 bun + golang-migrate；项目数据面 `tw_<project.id>` 容纳 **系统静态表**（users / sessions / identities / groups / memberships / buckets / files，bun，无 `_id`/`_perms`/`_version`）+ 项目账本 / Functions / OAuth / 文档目录（`internal/infra/projectschema/`）；业务文档面 `tw_<project.id>_<database.id>` 只放用户 collection。
+- sentinel `_`（`ident.ProjectDataPlaneID`）仅内部寻址 / 对外 `RejectExternalDatabaseID` 拒绝；系统资源不再是文档集合。`default` 是普通第一库（可删可重建）。DDL 只走两段式 `businessSchema`，永不解析一段式。`project.id` / `database.id` 规则见 `docs/developer/06-databases.md`。
 - 动态文档查询使用 Appwrite 风格 DSL（`pkg/query`），支持 `equal`、`greaterThan`、`contains`、`orderDesc`、`limit` 等。
 
 ## 编辑时应遵循的模式

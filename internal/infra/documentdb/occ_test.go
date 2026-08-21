@@ -14,13 +14,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// occTestProject 创建带 "app"."docs" 用户集合与默认系统集合的测试环境。
+// occTestProject 创建带 "app"."docs" 用户集合的测试环境。
 func occTestProject(t *testing.T, ctx context.Context) (databases.DocumentDB, string, int64, func()) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
 	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -215,11 +214,10 @@ func TestUpsert_NoVersionCheck(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
 		{ID: "email", Key: "email", Type: "string", Size: 256},
@@ -280,8 +278,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	}, nil), databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Equal(t, "n", updated.Data["name"])
-	// adapter 读路径缺列视为 1（系统集合恒无该列）；app 层按 IsSystemCollection
-	// 归零，wire 契约 Document.version 系统集合为 0。
+	// sentinel `_` 上的 SystemCollectionIDs 无 `_version` 列，读路径视为 1。
 	require.Equal(t, int64(1), updated.Version)
 
 	require.NoError(t, docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc.ID, databases.DeleteOptions{}, databases.SystemPrincipal))
@@ -315,7 +312,6 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	require.NoError(t, err)
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 
 	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
@@ -363,7 +359,7 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	// 模拟存量表：_version 被 TEXT 列抢占。
@@ -382,7 +378,6 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	require.NoError(t, err)
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	err = docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true)
 	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "CreateCollection 遇非 bigint _version 必须 fail-closed")
@@ -400,8 +395,7 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 }
 
 // TestVersionColumn_WritePathDoesNotAlter：文档写路径不得 ALTER TABLE ADD COLUMN。
-// 缺列时 Create/Update/Delete/Upsert/Bulk fail-closed；EnsureSystemCollections
-// 是 no-op，不得 ALTER；CreateAttribute 一次补列后 OCC 仍过。
+// 缺列时 Create/Update/Delete/Upsert/Bulk fail-closed；CreateAttribute 一次补列后 OCC 仍过。
 func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -413,7 +407,6 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -487,9 +480,6 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
 	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "BulkDelete 不得 ALTER")
 
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "EnsureSystemCollections no-op 不得 ALTER")
-
 	require.NoError(t, fresh.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
 		ID: "views", Key: "views", Type: "integer",
 	}))
@@ -526,7 +516,6 @@ func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 
 	err := db.RunInTx(ctx, func(txCtx context.Context) error {
@@ -572,11 +561,10 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, []databases.Permission{
 		{Type: "read", Role: "any"},
@@ -609,11 +597,10 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
 
@@ -639,11 +626,10 @@ func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
 

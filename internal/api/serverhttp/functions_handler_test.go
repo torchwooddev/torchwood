@@ -153,8 +153,7 @@ func (d *functionsDocDB) BulkUpdateDocuments(context.Context, string, string, st
 func (d *functionsDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (d *functionsDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
-func (d *functionsDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+func (d *functionsDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
 var _ databases.DocumentDB = (*functionsDocDB)(nil)
 

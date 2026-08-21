@@ -203,8 +203,7 @@ func (s *stubDocDB) GetCollection(context.Context, string, string, string) (*dat
 	return &databases.Collection{ID: "notes"}, nil
 }
 
-func (s *stubDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
-func (s *stubDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+func (s *stubDocDB) EnsureCatalog(context.Context, string) error { return nil }
 func (s *stubDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
 	return databases.Document{}, nil
 }

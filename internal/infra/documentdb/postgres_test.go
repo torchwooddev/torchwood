@@ -31,7 +31,6 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 
 	// Create a custom database and collection.
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -111,7 +110,6 @@ func TestPostgresDocumentDatabase_UpsertDocument(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
 		{ID: "channel_id", Key: "channel_id", Type: "string", Size: 64},
@@ -175,7 +173,6 @@ func TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected(t *
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "users", "Users", []databases.Attribute{
 		{ID: "email", Key: "email", Type: "string", Size: 256},
@@ -237,7 +234,6 @@ func TestPostgresDocumentDatabase_UpsertDocument_ConcurrentRace(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "users", "Users", []databases.Attribute{
 		{ID: "email", Key: "email", Type: "string", Size: 256},
@@ -339,7 +335,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	require.Equal(t, "perm@torchwood.local", got.Data["email"])
 }
 
-func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {
+func TestCatalog_NoSentinelSystemCollections_MultipleProjects(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -349,13 +345,10 @@ func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {
 
 	docDB := NewPostgresDocumentDB(db, nil)
 
-	projectA, internalA, cleanupA := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectA, _, cleanupA := testutil.CreateTestProject(ctx, db)
 	defer cleanupA()
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectA, internalA))
-
-	projectB, internalB, cleanupB := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectB, _, cleanupB := testutil.CreateTestProject(ctx, db)
 	defer cleanupB()
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectB, internalB))
 
 	collA, err := docDB.GetCollection(ctx, projectA, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
@@ -389,7 +382,6 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 
 	createColl := func() {
@@ -453,7 +445,6 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -530,7 +521,6 @@ func TestListDocuments_AstOr(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -579,7 +569,6 @@ func TestListDocuments_SelectProjection(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "profiles", "Profiles", []databases.Attribute{
 		{ID: "name", Key: "name", Type: "string", Size: 256},
@@ -631,7 +620,6 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "seqdocs", "SeqDocs", []databases.Attribute{
 		{ID: "seq", Key: "seq", Type: "integer"},
@@ -728,7 +716,6 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "n", Key: "n", Type: "integer"},
@@ -824,7 +811,6 @@ func TestListDocuments_InputLimits(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -864,66 +850,6 @@ func TestListDocuments_InputLimits(t *testing.T) {
 	require.Len(t, list.Documents, 0)
 }
 
-// TestEnsureSystemCollections_Idempotent (A3): 重复调用 EnsureSystemCollections
-// （含全新实例、无进程内缓存）必须幂等成功。
-func TestEnsureSystemCollections_Idempotent(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	db := testutil.SetupTestDB(t)
-	defer db.Close()
-
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
-	defer cleanup()
-
-	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	fresh := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
-	coll, err := fresh.GetCollection(ctx, projectID, databases.SystemDatabaseID, "users")
-	require.NoError(t, err)
-	require.Nil(t, coll)
-}
-
-func TestEnsureSystemCollections_SkipWhenStaticTablesReady(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	db := testutil.SetupTestDB(t)
-	defer db.Close()
-
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
-	defer cleanup()
-
-	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-
-	coll, err := docDB.GetCollection(ctx, projectID, databases.SystemDatabaseID, "users")
-	require.NoError(t, err)
-	require.Nil(t, coll)
-
-	schema := testProjectSchema(t, projectID)
-	var perms any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, schema+"._perms").Scan(&perms))
-	require.Nil(t, perms, "cut 后不得重建 tw_<project>._perms")
-	var sys any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, schema+".sys_users").Scan(&sys))
-	require.Nil(t, sys)
-	var hasID, hasDocID, hasVersion int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = 'id'`, schema).Scan(&hasID))
-	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_id'`, schema).Scan(&hasDocID))
-	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_version'`, schema).Scan(&hasVersion))
-	require.Equal(t, 1, hasID)
-	require.Zero(t, hasDocID)
-	require.Zero(t, hasVersion)
-}
-
 // TestCreateCollectionMetadata_IdempotentSystemRow (A3): 系统集合元数据集合行已存在时
 // 重复 createCollectionMetadata 幂等成功（DO NOTHING + 行数判断），子表插入被跳过。
 func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
@@ -960,7 +886,6 @@ func TestCreateCollectionMetadata_DuplicateUserCollection(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "notes", "Notes", nil, nil, nil, true))
 
@@ -984,7 +909,6 @@ func TestBulkUpdateDocuments_RollbackOnFailure(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -1165,7 +1089,6 @@ func TestCreateDocument_AuditColumns(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	perms := []databases.Permission{
 		{Type: "create", Role: "user:abc"}, {Type: "read", Role: "user:abc"}, {Type: "update", Role: "user:abc"},
@@ -1231,7 +1154,6 @@ func TestDeleteIndex_RecreateSameIndex(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -1272,11 +1194,10 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	// 预插同 (project_id, id) 元数据行，令 INSERT 撞复合主键。
 	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
@@ -1314,7 +1235,6 @@ func TestUpdateDocument_PermissionsOnlyRefreshesAuditColumns(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	perms := []databases.Permission{
 		{Type: "create", Role: "user:abc"}, {Type: "read", Role: "user:abc"}, {Type: "update", Role: "user:abc"},
@@ -1393,7 +1313,6 @@ func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "n", Key: "n", Type: "integer"},
@@ -1446,7 +1365,6 @@ func TestListDocuments_PageSizeClamp(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
 

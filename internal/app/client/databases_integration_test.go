@@ -26,11 +26,10 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := NewTestAccount(testConfig(), projectRepo, db)
@@ -105,11 +104,10 @@ func TestClientDatabases_UpsertDocument(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := NewTestAccount(testConfig(), projectRepo, db)
@@ -173,11 +171,10 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
@@ -232,11 +229,10 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := NewTestAccount(testConfig(), projectRepo, db)

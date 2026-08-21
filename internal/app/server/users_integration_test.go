@@ -14,7 +14,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -32,9 +31,7 @@ func (documentRoles) LoadUserRoles(ctx context.Context, projectID, userID string
 func newUsersUC(ctx context.Context, t *testing.T) (*Users, *clients.Database, string, func()) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	cfg := &config.AppConfig{}
 	sessions := auth.NewSessionService(cfg, bunrepo.NewSessionRepository(db), documentRoles{}, nil)
 	uc := NewUsers(bunrepo.NewProjectRepository(db), sessions, db, bunrepo.NewUserRepository(db), bunrepo.NewSessionRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))

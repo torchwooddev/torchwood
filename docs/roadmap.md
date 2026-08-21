@@ -296,7 +296,7 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 | 高压 Realtime | 不自研集群；通道与 payload 归 Torchwood，投递可换 `D:/Codes/qiulin/messageloop` |
 | 事务形态 | **已删除 staged API（D-6，内测无兼容）**；对外 Documents CRUD + Bulk，内部 `uow.Run`；不上 2PC / XA / Saga |
 | 事务范围 | 同一 RPC 内用户自建 collection；禁止跨 database / 跨 project |
-| 系统集合 | `users` / `groups` / `memberships` / `files` 等不进事务，继续走现有 API |
+| 系统资源 | 走 Account / Server Users / Storage / Groups 专用 RPC，不经 Documents 写路径 |
 | 事件与写路径 | transactional outbox 与事务同一 `COMMIT`；不和 Redis / S3 / Function 做分布式事务 |
 | Bulk API | 保持立即执行、非原子；不与事务混为一谈 |
 | Messaging | 现有 OTP / 验证 / 找回够用；完整 Provider + Topic + Push **不做** |

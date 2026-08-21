@@ -2,7 +2,8 @@
 
 > 作者：待定  
 > 日期：2026-08-20  
-> 状态：**Draft**（代码审查修订完成；K14/K15/K17/K12 关键取舍已由 owner 裁决，待终审）  
+> 状态：**已落地（部分被 E-5/D-7 supersede）**  
+> **过期声明**：三层 schema 已落地。E-5 已将系统资源改为 bun 静态表（见 `docs/design/system-tables.md`）。D-7 已 DROP public 四张 catalog 幽灵表。下文 Overview「今天」与 Goals「仍是文档」是搬迁当时的世界，不是当前事实。当前态以 `AGENTS.md` 与 `docs/developer/06-databases.md` 为准。`EnsureSystemCollections` 已从接口删除。  
 > 修订：2026-08-20 按代码审查结论：修正事实引用与文件路径；补齐遗漏（`PruneOldExecutions`、`ListProjectIDsInRange`、go:embed、§8.2 清单等）；钉死排空型 worker 语义（K22）；Stripe metadata 写入升为必做；CreateProject 第一库 id 参数化（K23）；PR8 改为条件执行（系统表化另案既定，见 §「与系统表化的衔接」）。  
 > 修订2：2026-08-20 owner 决策落地——`api_keys` / `audit_logs` 按 K14 规则重裁**留 public**（作废 `api_key_lookup` 方案，改为 `UNIQUE(secret_hash)` 全局索引 + 仓储 projectID 谓词）；PR8 移除（`_tenant` 全保留）；K8 新增项目 DDL 纪律与规模触发点；补 schema≠安全边界、单项目导出/导入收益、跨 schema FK 恢复顺序、平台聚合出路。  
 > 前置：`docs/design/schema-naming.md`（已实施）、`docs/design/v3-payments-economy.md` D1、`docs/developer/06-databases.md`、`docs/design/v2-events-realtime-transactions.md`

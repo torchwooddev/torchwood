@@ -113,7 +113,6 @@ func (d *paginationDocDB) BulkUpdateDocuments(context.Context, string, string, s
 func (d *paginationDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (d *paginationDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
 func (d *paginationDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 func (d *paginationDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
 func (d *paginationDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {

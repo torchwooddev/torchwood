@@ -34,7 +34,7 @@ func (fakeProjectRepo) UpdateProject(context.Context, *projects.Project) error  
 func (fakeProjectRepo) DeleteProject(context.Context, string) error              { return nil }
 
 // fakeDocDB 是内存版 DocumentDB，支持 GetDocument/ListDocuments（equal 过滤 +
-// offset 分页）/UpdateDocument/CreateDocument/DeleteDocument/EnsureSystemCollections，
+// offset 分页）/UpdateDocument/CreateDocument/DeleteDocument，
 // 其余方法不参与测试路径。
 type fakeDocDB struct {
 	docs map[string]map[string]databases.Document
@@ -161,8 +161,7 @@ func (f *fakeDocDB) DeleteDocument(_ context.Context, _, _, collectionID, docID 
 	return nil
 }
 
-func (f *fakeDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
-func (f *fakeDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+func (f *fakeDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
 func (f *fakeDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
 func (f *fakeDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {

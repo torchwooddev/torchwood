@@ -179,9 +179,6 @@ func (f *fakeDocDB) BulkUpdateDocuments(ctx context.Context, projectID, database
 func (f *fakeDocDB) BulkDeleteDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, principal databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (f *fakeDocDB) EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error {
-	return nil
-}
 func (f *fakeDocDB) EnsureCatalog(ctx context.Context, projectID string) error { return nil }
 
 var _ databases.DocumentDB = (*fakeDocDB)(nil)

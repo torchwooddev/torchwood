@@ -34,7 +34,7 @@ func (clientGroupsProjectRepo) ListProjects(context.Context) ([]projects.Project
 func (clientGroupsProjectRepo) UpdateProject(context.Context, *projects.Project) error { return nil }
 func (clientGroupsProjectRepo) DeleteProject(context.Context, string) error            { return nil }
 
-// clientGroupsDocDB 仅实现 ListDocuments/GetDocument/EnsureSystemCollections
+// clientGroupsDocDB 仅实现 ListDocuments/GetDocument
 // 语义（client ListGroups 路径所需），其余方法不参与。
 type clientGroupsDocDB struct {
 	docs  map[string][]databases.Document
@@ -105,7 +105,6 @@ func (d *clientGroupsDocDB) BulkUpdateDocuments(context.Context, string, string,
 func (d *clientGroupsDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (d *clientGroupsDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
 func (d *clientGroupsDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 func (d *clientGroupsDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
 func (d *clientGroupsDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
