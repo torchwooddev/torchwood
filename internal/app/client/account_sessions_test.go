@@ -31,7 +31,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	account := NewTestAccount(cfg, projectRepo, docDB, db)
+	account := NewTestAccount(cfg, projectRepo, db)
 	user, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "sessions@torchwood.local",

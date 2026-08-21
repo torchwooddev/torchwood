@@ -27,8 +27,7 @@ func TestResolveOAuthUser_RejectsExistingEmailWithoutIdentity(t *testing.T) {
 
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccount(cfg, projectRepo, docDB, db)
+	account := NewTestAccount(cfg, projectRepo, db)
 
 	_, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -64,7 +63,7 @@ func TestResolveOAuthUser_RejectsUnverifiedEmail(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
-	account := NewTestAccount(cfg, projectRepo, docDB, db)
+	account := NewTestAccount(cfg, projectRepo, db)
 
 	// email_verified=false 一律拒绝（安全评审 M8），且不占号。
 	_, err := account.resolveOAuthUser(ctx, projectID, domainauth.ProviderGoogle, &domainauth.OAuthUserInfo{

@@ -44,7 +44,7 @@ func TestApply_StagingLeavesDocumentUsers(t *testing.T) {
 	}
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	schema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestApply_CopyFailureDoesNotMarkDirtyOrAdvanceVersion(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "u1",
@@ -151,7 +151,7 @@ func TestApply_CopyThenCutMovesRowsToFinalNames(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID: "u-cut",
@@ -220,7 +220,7 @@ func TestCopySystemDocuments_UsersAndSessions(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	const secret = "11111111-1111-1111-1111-111111111111"
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
@@ -286,7 +286,7 @@ func TestCopySystemDocuments_OrphanSession(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "u1",
@@ -347,7 +347,7 @@ func TestCopySystemDocuments_MissingStaging(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	quoted := testutil.CatalogQuoted(projectID)
 	_, err := db.DB.ExecContext(ctx, `DROP TABLE `+quoted+`.sys_users CASCADE`)
@@ -369,7 +369,7 @@ func TestCopySystemDocuments_InsertFailRollsBackStaging(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "u-old",
@@ -411,7 +411,7 @@ func TestCopySystemDocuments_FileOwnerMissingUserSetNull(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "buckets", databases.Document{
 		ID:   "b1",
@@ -458,7 +458,7 @@ func TestCopySystemDocuments_OrphanFileBucket(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "buckets", databases.Document{
 		ID:   "b1",
@@ -513,7 +513,7 @@ func TestCopySystemDocuments_DuplicateMembership(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	require.NoError(t, documentdb.SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "u1",

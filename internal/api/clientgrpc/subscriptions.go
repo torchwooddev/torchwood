@@ -111,16 +111,16 @@ func mapClientPlan(p *domainsubs.Plan) *clientv1.SubscriptionPlan {
 		return nil
 	}
 	return &clientv1.SubscriptionPlan{
-		Id:            p.ID,
-		Code:          p.Code,
-		Name:          p.Name,
-		Amount:        p.Amount,
-		Currency:      p.Currency,
-		Interval:      string(p.Interval),
-		IntervalDays:  p.IntervalDays,
-		GraceDays:     p.GraceDays,
-		TrialDays:     p.TrialDays,
-		Benefits:      mapClientBenefits(p.Benefits),
+		Id:           p.ID,
+		Code:         p.Code,
+		Name:         p.Name,
+		Amount:       p.Amount,
+		Currency:     p.Currency,
+		Interval:     string(p.Interval),
+		IntervalDays: p.IntervalDays,
+		GraceDays:    p.GraceDays,
+		TrialDays:    p.TrialDays,
+		Benefits:     mapClientBenefits(p.Benefits),
 	}
 }
 
@@ -129,15 +129,15 @@ func mapClientSub(sub *domainsubs.Subscription, plan *domainsubs.Plan) *clientv1
 		return nil
 	}
 	out := &clientv1.Subscription{
-		Id:                  sub.ID,
-		PlanId:              sub.PlanID,
-		Mode:                string(sub.Mode),
-		Status:              string(sub.Status),
-		CurrentPeriodStart:  timestamppb.New(sub.CurrentPeriodStart),
-		CurrentPeriodEnd:    timestamppb.New(sub.CurrentPeriodEnd),
-		CancelAtPeriodEnd:   sub.CancelAtPeriodEnd,
-		Benefits:            mapClientBenefits(sub.Benefits),
-		CreatedAt:           timestamppb.New(sub.CreatedAt),
+		Id:                 sub.ID,
+		PlanId:             sub.PlanID,
+		Mode:               string(sub.Mode),
+		Status:             string(sub.Status),
+		CurrentPeriodStart: timestamppb.New(sub.CurrentPeriodStart),
+		CurrentPeriodEnd:   timestamppb.New(sub.CurrentPeriodEnd),
+		CancelAtPeriodEnd:  sub.CancelAtPeriodEnd,
+		Benefits:           mapClientBenefits(sub.Benefits),
+		CreatedAt:          timestamppb.New(sub.CreatedAt),
 	}
 	if plan != nil {
 		out.PlanCode = plan.Code

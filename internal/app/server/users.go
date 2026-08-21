@@ -23,7 +23,6 @@ import (
 
 type Users struct {
 	projectRepo projects.Repository
-	docDB       databases.DocumentDB
 	sessions    domainauth.SessionService
 	sessionRepo domainauth.SessionRepository
 	db          *clients.Database
@@ -34,7 +33,6 @@ type Users struct {
 
 func NewUsers(
 	projectRepo projects.Repository,
-	docDB databases.DocumentDB,
 	sessions domainauth.SessionService,
 	db *clients.Database,
 	usersRepo users.Repository,
@@ -44,7 +42,6 @@ func NewUsers(
 ) *Users {
 	return &Users{
 		projectRepo: projectRepo,
-		docDB:       docDB,
 		sessions:    sessions,
 		sessionRepo: sessionRepo,
 		db:          db,

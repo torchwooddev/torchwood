@@ -49,7 +49,7 @@ func (a *Account) CreateMagicURLSession(ctx context.Context, cmd CreateMagicURLS
 	if err := a.validateProjectOAuthRedirectURLs(ctx, projectID, cmd.URL, cmd.URL); err != nil {
 		return nil, err
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return nil, err
 	}
 
@@ -102,7 +102,7 @@ func (a *Account) UpdateMagicURLSession(ctx context.Context, cmd UpdateMagicURLS
 	if secret == "" {
 		return nil, nil, "", nil, status.Error(codes.InvalidArgument, "secret is required")
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return nil, nil, "", nil, err
 	}
 	if err := a.tokens.VerifyMagicURLToken(ctx, projectID, userID, secret); err != nil {

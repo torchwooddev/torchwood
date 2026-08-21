@@ -12,7 +12,6 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
 	"github.com/torchwooddev/torchwood/internal/domain/messaging"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
@@ -31,7 +30,6 @@ type Account struct {
 	cfg            *config.AppConfig
 	projectRepo    projects.Repository
 	oauthProviders projects.OAuthProviderRepository
-	docDB          databases.DocumentDB
 	usersRepo      users.Repository
 	identities     domainauth.IdentityRepository
 	sessionRepo    domainauth.SessionRepository
@@ -56,7 +54,6 @@ func NewAccount(
 	cfg *config.AppConfig,
 	projectRepo projects.Repository,
 	oauthProviders projects.OAuthProviderRepository,
-	docDB databases.DocumentDB,
 	sessions domainauth.SessionService,
 	otp domainauth.OTPChallengeStore,
 	oauthState domainauth.OAuthStateStore,
@@ -80,7 +77,6 @@ func NewAccount(
 		cfg:            cfg,
 		projectRepo:    projectRepo,
 		oauthProviders: oauthProviders,
-		docDB:          docDB,
 		usersRepo:      usersRepo,
 		identities:     identities,
 		sessionRepo:    sessionRepo,
@@ -540,7 +536,7 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 	if secret == "" {
 		return nil, status.Error(codes.InvalidArgument, "secret is required")
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return nil, err
 	}
 	newEmail, err := a.tokens.VerifyEmailChangeToken(ctx, projectID, userID, secret)

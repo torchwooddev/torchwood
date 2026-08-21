@@ -146,13 +146,7 @@ func (d *clientGroupsDocDB) DeleteIndex(context.Context, string, string, string,
 var _ databases.DocumentDB = (*clientGroupsDocDB)(nil)
 
 func TestClientGRPC_ListGroups_EchoesNextPageToken(t *testing.T) {
-	docDB := &clientGroupsDocDB{
-		token: "tok-9",
-		docs: map[string][]databases.Document{
-			"groups": {{ID: "group-1", Data: map[string]any{"name": "T", "total": int64(1)}}},
-		},
-	}
-	serverGroups := appserver.NewGroups(clientGroupsProjectRepo{}, docDB, nil, clientGroupsRepo{}, nil)
+	serverGroups := appserver.NewGroups(clientGroupsProjectRepo{}, nil, clientGroupsRepo{}, nil)
 	svc := NewGroupsService(appclient.NewGroups(serverGroups, nil))
 
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{

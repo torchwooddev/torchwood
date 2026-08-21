@@ -202,6 +202,8 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 }
 
 func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
+	// sentinel 只允许系统名单集合（测试重建旧文档表）；生产入口已
+	// RejectExternalDatabaseID，不得对 "_" 建业务集合。
 	if databaseID == ident.ProjectDataPlaneID && !databases.IsSystemCollectionID(collectionID) {
 		return status.Error(codes.InvalidArgument, "only system collections may be created in the project data plane")
 	}
@@ -1451,7 +1453,7 @@ func mapIdentError(err error) error {
 }
 
 // EnsureCatalog 对项目数据面执行 projectschema.Apply。Catalog 读路径不得调用。
-// sys_users 仍在时跳过 Apply，避免 expand 测试 / 未 cut 项目被 CreateCollection 顺带 000009。
+// sys_users 仍在时跳过 Apply，避免把 staging 表提前 rename 成最终名。
 func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string) error {
 	staging, err := p.systemTablesStaging(ctx, projectID)
 	if err != nil {
@@ -1463,7 +1465,8 @@ func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string
 	return mapIdentError(projectschema.Apply(ctx, p.db, projectID))
 }
 
-// systemTablesStaging 探测 000008 尚未 cut：sys_users 仍在。EnsureCatalog 不得 Apply 000009。
+// systemTablesStaging 探测 sys_users 仍在（000008 已应用、000009 未应用）。
+// 此时 EnsureCatalog 不得 Apply 后续迁移。
 func (p *postgresDocumentDB) systemTablesStaging(ctx context.Context, projectID string) (bool, error) {
 	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
@@ -1499,8 +1502,8 @@ func (p *postgresDocumentDB) catalogQuoted(projectID string) (string, error) {
 }
 
 // documentSchema 解析文档读写 / CreateCollection 的目标 schema。
-// 仅此处允许 sentinel → ProjectSchemaName（一段式 tw_<project>）；
-// expand/copy 测试仍用该分叉播种 v8 文档表。
+// 仅此处允许 sentinel → ProjectSchemaName（一段式 tw_<project>），
+// 供测试在项目数据面重建旧文档表；生产入口已拒绝 database_id="_"。
 func (p *postgresDocumentDB) documentSchema(ctx context.Context, projectID, databaseID string) (int64, string, error) {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {

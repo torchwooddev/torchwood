@@ -40,7 +40,7 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 	_, _, _, err := clientUC.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
+	account := NewTestAccount(testConfig(), projectRepo, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "syscoll@torchwood.local",

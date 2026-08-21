@@ -9,7 +9,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
@@ -27,8 +26,8 @@ func TestAccount_ListLogs(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, nil)
+
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, db, nil)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -102,8 +101,8 @@ func TestAccount_ListLogs_Unauthenticated(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, nil)
+
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, db, nil)
 
 	_, err := account.ListLogs(ctx, 10)
 	require.Error(t, err)

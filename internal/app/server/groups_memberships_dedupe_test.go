@@ -21,7 +21,7 @@ func TestGroups_CreateMembership_Idempotent(t *testing.T) {
 	mems.groups = g
 	mems.seed(&groups.Membership{ID: "m-1", GroupID: "group-1", UserID: "u-1", Email: "a@b.c", Status: groups.StatusAccepted})
 	mems.seed(&groups.Membership{ID: "m-2", GroupID: "group-1", Email: "p@x.com", Status: groups.StatusPending})
-	uc := NewGroups(fakeProjectRepo{}, newFakeDocDB(), usersMem, g, mems)
+	uc := NewGroups(fakeProjectRepo{}, usersMem, g, mems)
 	principal := databases.Principal{Roles: []string{"admin"}}
 
 	t.Run("accepted duplicate by user_id", func(t *testing.T) {

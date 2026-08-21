@@ -263,7 +263,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	schema := testProjectSchema(t, projectID)
 	require.Equal(t, 0, versionColumnCount(t, ctx, db, schema, "users"), "系统集合 users 表不得有 _version 列")
@@ -691,7 +691,7 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{
 		Queries: []string{`equal("$version", 1)`},

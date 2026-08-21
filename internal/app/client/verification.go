@@ -51,7 +51,7 @@ func (a *Account) CreateVerification(ctx context.Context, cmd CreateVerification
 	if err := a.validateProjectOAuthRedirectURLs(ctx, projectID, cmd.URL, cmd.URL); err != nil {
 		return nil, err
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return nil, err
 	}
 
@@ -101,7 +101,7 @@ func (a *Account) UpdateVerification(ctx context.Context, cmd UpdateVerification
 	if secret == "" {
 		return nil, status.Error(codes.InvalidArgument, "secret is required")
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return nil, err
 	}
 	if err := a.tokens.VerifyVerificationToken(ctx, projectID, userID, secret); err != nil {

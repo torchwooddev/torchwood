@@ -9,7 +9,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -40,7 +39,6 @@ type Billing struct {
 	rollups    domainbilling.UsageRepo
 	statements domainbilling.StatementRepo
 	projects   projects.Repository
-	docDB      databases.DocumentDB
 	files      domainstorage.FileRepository
 	logger     *slog.Logger
 	now        func() time.Time
@@ -52,7 +50,6 @@ func NewBilling(
 	rollups domainbilling.UsageRepo,
 	statements domainbilling.StatementRepo,
 	projectsRepo projects.Repository,
-	docDB databases.DocumentDB,
 	files domainstorage.FileRepository,
 	logger *slog.Logger,
 ) *Billing {
@@ -64,7 +61,6 @@ func NewBilling(
 		rollups:    rollups,
 		statements: statements,
 		projects:   projectsRepo,
-		docDB:      docDB,
 		files:      files,
 		logger:     logger,
 		now:        time.Now,

@@ -145,7 +145,7 @@ func (a *Account) createOAuth2Session(ctx context.Context, params createOAuth2Se
 	if err := a.validateProjectOAuthRedirectURLs(ctx, params.projectID, params.success, params.failure); err != nil {
 		return "", err
 	}
-	if err := a.ensureProjectReady(ctx, params.projectID); err != nil {
+	if err := a.requireProject(ctx, params.projectID); err != nil {
 		return "", err
 	}
 	oauthCfg, err := a.loadOAuthProvider(ctx, params.projectID, provider)
@@ -474,7 +474,7 @@ func mfaFactorTypes(factors []domainauth.Factor) string {
 	return strings.Join(parts, ",")
 }
 
-func (a *Account) ensureProjectReady(ctx context.Context, projectID string) error {
+func (a *Account) requireProject(ctx context.Context, projectID string) error {
 	project, err := a.projectRepo.GetProject(ctx, projectID)
 	if err != nil {
 		return err

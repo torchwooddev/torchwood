@@ -15,7 +15,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
@@ -54,14 +53,13 @@ func setupMagicURL(t *testing.T, withMailer bool) *magicURLFixture {
 	}))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
 	var account *Account
 	mailer := &CaptureMailer{}
 	if withMailer {
-		account = NewTestAccountWithMailer(mfaTestConfig(), projectRepo, docDB, db, rdb, mailer)
+		account = NewTestAccountWithMailer(mfaTestConfig(), projectRepo, db, rdb, mailer)
 	} else {
-		account = NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, rdb)
+		account = NewTestAccountWithRedis(mfaTestConfig(), projectRepo, db, rdb)
 	}
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{

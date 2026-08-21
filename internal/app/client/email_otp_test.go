@@ -10,7 +10,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
@@ -39,9 +38,9 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 	_ = cfg
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+
 	mailer := &CaptureMailer{}
-	account := NewTestAccountWithMailer(cfgWithDevMailer, projectRepo, docDB, db, rdb, mailer)
+	account := NewTestAccountWithMailer(cfgWithDevMailer, projectRepo, db, rdb, mailer)
 
 	challenge, err := account.CreateEmailOTP(ctx, CreateEmailOTPCommand{
 		ProjectID: projectID,

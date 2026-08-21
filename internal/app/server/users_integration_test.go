@@ -37,7 +37,7 @@ func newUsersUC(ctx context.Context, t *testing.T) (*Users, *clients.Database, s
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	cfg := &config.AppConfig{}
 	sessions := auth.NewSessionService(cfg, bunrepo.NewSessionRepository(db), documentRoles{}, nil)
-	uc := NewUsers(bunrepo.NewProjectRepository(db), docDB, sessions, db, bunrepo.NewUserRepository(db), bunrepo.NewSessionRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
+	uc := NewUsers(bunrepo.NewProjectRepository(db), sessions, db, bunrepo.NewUserRepository(db), bunrepo.NewSessionRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	return uc, db, projectID, cleanup
 }
 

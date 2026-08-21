@@ -33,7 +33,7 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
+	account := NewTestAccount(testConfig(), projectRepo, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "client-docs@torchwood.local",
@@ -112,7 +112,7 @@ func TestClientDatabases_UpsertDocument(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
+	account := NewTestAccount(testConfig(), projectRepo, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "client-upsert@torchwood.local",
@@ -239,7 +239,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
+	account := NewTestAccount(testConfig(), projectRepo, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "private-doc@torchwood.local",

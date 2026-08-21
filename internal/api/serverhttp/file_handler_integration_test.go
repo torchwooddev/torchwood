@@ -81,7 +81,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	cfg := &config.AppConfig{}
 	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
@@ -284,8 +284,8 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	storageUC := appstorage.NewStorage(cfg, projectRepo, docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
-	account := client.NewTestAccount(cfg, projectRepo, docDB, db)
+	storageUC := appstorage.NewStorage(cfg, projectRepo, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	account := client.NewTestAccount(cfg, projectRepo, db)
 
 	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectA,
@@ -409,7 +409,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
@@ -466,7 +466,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	admin, adminCleanup := testutil.CreateTestAdmin(ctx, db, "member")
 	token, err := testutil.SignAdminToken(cfg, admin)
 	require.NoError(t, err)

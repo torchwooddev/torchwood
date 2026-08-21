@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
@@ -29,8 +28,7 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccount(cfg, projectRepo, docDB, db)
+	account := NewTestAccount(cfg, projectRepo, db)
 
 	_, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,

@@ -18,7 +18,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/events"
 	"github.com/torchwooddev/torchwood/internal/infra/functions"
 	"github.com/torchwooddev/torchwood/internal/infra/payments"
@@ -50,8 +49,6 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	redisCounter := billing.NewRedisCounter(client)
 	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter, repository)
 	worker := NewWorker(functionsFunctions, sharedQueue, logger)
-	eventOutbox := events.NewEventOutbox(database)
-	documentDB := documentdb.NewPostgresDocumentDB(database, eventOutbox)
 	objectStore, err := storage.NewMinioObjectStore(appConfig)
 	if err != nil {
 		cleanup()
@@ -60,7 +57,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	uploadSessionStore := storage.NewRedisUploadSessionStore(client)
 	bucketRepository := bunrepo.NewBucketRepository(database)
 	fileRepository := bunrepo.NewFileRepository(database)
-	storageStorage := storage2.NewStorage(appConfig, repository, documentDB, objectStore, uploadSessionStore, bucketRepository, fileRepository)
+	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository)
 	mainChunkCleaner := NewChunkCleaner(storageStorage, logger)
 	realtimeTransport := realtime.NewStreamTransport(client)
 	outboxWorker := events.NewOutboxWorker(database, realtimeTransport, logger)
@@ -71,6 +68,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	defRepo := bunrepo.NewAssetDefRepository(database)
 	holdingRepo := bunrepo.NewAssetHoldingRepository(database)
 	ledgerRepo := bunrepo.NewAssetLedgerRepository(database)
+	eventOutbox := events.NewEventOutbox(database)
 	assetsAssets := assets.NewAssets(database, defRepo, holdingRepo, ledgerRepo, eventOutbox, logger, repository)
 	planRepo := bunrepo.NewSubscriptionPlanRepository(database)
 	subscriptionRepo := bunrepo.NewSubscriptionRepository(database)
@@ -88,7 +86,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	subscriptionBiller := NewSubscriptionBiller(subscriptionsSubscriptions, logger)
 	usageRepo := bunrepo.NewUsageRepository(database)
 	statementRepo := bunrepo.NewBillingStatementRepository(database)
-	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, documentDB, fileRepository, logger)
+	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, fileRepository, logger)
 	usageRollupWorker := NewUsageRollupWorker(billingBilling, logger)
 	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
 	v2 := NewComponentBuilders()

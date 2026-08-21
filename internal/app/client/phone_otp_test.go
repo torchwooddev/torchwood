@@ -9,7 +9,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
@@ -43,9 +42,9 @@ func TestAccount_PhoneOTPLogin(t *testing.T) {
 
 	cfg := &config.AppConfig{Messaging: &config.Messaging{DevLogSms: true}}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+
 	sms := &CaptureSMSSender{}
-	account := NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, db, rdb, nil, sms)
+	account := NewTestAccountWithDeps(cfg, projectRepo, nil, db, rdb, nil, sms)
 
 	challenge, err := account.CreatePhoneOTP(ctx, CreatePhoneOTPCommand{
 		ProjectID: projectID,

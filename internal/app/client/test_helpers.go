@@ -5,7 +5,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/messaging"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -15,23 +14,22 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
-func NewTestAccount(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database) *Account {
-	return NewTestAccountWithRedis(cfg, projectRepo, docDB, db, nil)
+func NewTestAccount(cfg *config.AppConfig, projectRepo projects.Repository, db *clients.Database) *Account {
+	return NewTestAccountWithRedis(cfg, projectRepo, db, nil)
 }
 
-func NewTestAccountWithRedis(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database, rdb *redis.Client) *Account {
-	return NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, db, rdb, nil, nil)
+func NewTestAccountWithRedis(cfg *config.AppConfig, projectRepo projects.Repository, db *clients.Database, rdb *redis.Client) *Account {
+	return NewTestAccountWithDeps(cfg, projectRepo, nil, db, rdb, nil, nil)
 }
 
-func NewTestAccountWithMailer(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database, rdb *redis.Client, mailer messaging.Mailer) *Account {
-	return NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, db, rdb, mailer, nil)
+func NewTestAccountWithMailer(cfg *config.AppConfig, projectRepo projects.Repository, db *clients.Database, rdb *redis.Client, mailer messaging.Mailer) *Account {
+	return NewTestAccountWithDeps(cfg, projectRepo, nil, db, rdb, mailer, nil)
 }
 
 func NewTestAccountWithDeps(
 	cfg *config.AppConfig,
 	projectRepo projects.Repository,
 	oauthProviders projects.OAuthProviderRepository,
-	docDB databases.DocumentDB,
 	db *clients.Database,
 	rdb *redis.Client,
 	mailer messaging.Mailer,
@@ -71,7 +69,7 @@ func NewTestAccountWithDeps(
 	if sms == nil {
 		sms = inframessaging.NewSMSService(cfg)
 	}
-	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil, usersRepo, identities, sessionRepo)
+	return NewAccount(cfg, projectRepo, oauthProviders, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil, usersRepo, identities, sessionRepo)
 }
 
 // CaptureMailer records sent messages for tests.

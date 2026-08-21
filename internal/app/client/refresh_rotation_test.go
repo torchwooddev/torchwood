@@ -9,7 +9,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"google.golang.org/grpc/codes"
@@ -36,8 +35,8 @@ func setupRefreshRotationAccount(t *testing.T) (context.Context, *Account, strin
 	t.Cleanup(cleanup)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(buildTestConfig(), projectRepo, docDB, db, rdb)
+
+	account := NewTestAccountWithRedis(buildTestConfig(), projectRepo, db, rdb)
 	return ctx, account, projectID
 }
 

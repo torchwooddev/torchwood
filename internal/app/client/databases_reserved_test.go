@@ -35,7 +35,7 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
+	account := NewTestAccount(testConfig(), projectRepo, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "reserved-doc@torchwood.local",

@@ -31,7 +31,7 @@ func (a *Account) CreateAnonymousSession(ctx context.Context, cmd CreateAnonymou
 	if err := a.checkAnonymousSessionRateLimit(ctx, clientInfo.IP); err != nil {
 		return nil, nil, "", nil, err
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return nil, nil, "", nil, err
 	}
 

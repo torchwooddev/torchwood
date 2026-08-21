@@ -57,7 +57,7 @@ func newUploadsUC(t *testing.T) (context.Context, *Storage, string, *miniredis.M
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
 	mr, upStore := newTestUploadSessionStore(t)
-	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, upStore, bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), store, upStore, bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	return ctx, uc, projectID, mr, store
 }
 

@@ -159,19 +159,10 @@ func paginationCtx() context.Context {
 }
 
 func TestServerGRPC_ListHandlers_EchoNextPageToken(t *testing.T) {
-	docDB := &paginationDocDB{
-		token: "tok-1",
-		docs: map[string][]databases.Document{
-			"users":   {{ID: "u-1", Data: map[string]any{"email": "a@b.c", "status": "active"}}},
-			"groups":  {{ID: "group-1", Data: map[string]any{"name": "T", "total": int64(1)}}},
-			"buckets": {{ID: "b-1", Data: map[string]any{"name": "B", "permissions": []any{"read"}, "public": false}}},
-			"files":   {{ID: "f-1", Data: map[string]any{"bucket_id": "b-1", "name": "x.png", "mime_type": "image/png", "size": int64(3)}}},
-		},
-	}
 	ctx := paginationCtx()
-	users := NewUsersService(appserver.NewUsers(paginationProjectRepo{}, docDB, nil, nil, paginationUserRepo{}, paginationSessionRepo{}, paginationGroupRepo{}, paginationMembershipRepo{}))
-	groups := NewGroupsService(appserver.NewGroups(paginationProjectRepo{}, docDB, paginationUserRepo{}, paginationGroupRepo{}, paginationMembershipRepo{}))
-	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil, paginationBucketRepo{}, paginationFileRepo{}))
+	users := NewUsersService(appserver.NewUsers(paginationProjectRepo{}, nil, nil, paginationUserRepo{}, paginationSessionRepo{}, paginationGroupRepo{}, paginationMembershipRepo{}))
+	groups := NewGroupsService(appserver.NewGroups(paginationProjectRepo{}, paginationUserRepo{}, paginationGroupRepo{}, paginationMembershipRepo{}))
+	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, nil, nil, paginationBucketRepo{}, paginationFileRepo{}))
 
 	t.Run("ListUsers", func(t *testing.T) {
 		resp, err := users.ListUsers(ctx, &sharedv1.ListRequest{PageSize: 10, PageToken: "tok-0"})
@@ -214,12 +205,7 @@ func TestServerGRPC_ListHandlers_EchoNextPageToken(t *testing.T) {
 // Round3 H6-2：GetBucket 用 BuildEqual 构造 $id 过滤——合法 id 命中返回、
 // 不存在的 id 返回 NotFound、含引号的 id 不得引发解析错误（手拼串会挂）。
 func TestServerGRPC_GetBucket_UsesBuildEqual(t *testing.T) {
-	docDB := &paginationDocDB{
-		docs: map[string][]databases.Document{
-			"buckets": {{ID: "b-1", Data: map[string]any{"name": "B", "permissions": []any{"read"}, "public": true}}},
-		},
-	}
-	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil, paginationBucketRepo{}, paginationFileRepo{}))
+	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, nil, nil, paginationBucketRepo{}, paginationFileRepo{}))
 	ctx := paginationCtx()
 
 	t.Run("found", func(t *testing.T) {

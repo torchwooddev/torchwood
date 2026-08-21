@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -40,9 +39,9 @@ func TestAccount_VerificationFlow(t *testing.T) {
 		},
 	}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+
 	mailer := &CaptureMailer{}
-	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, db, rdb, mailer)
+	account := NewTestAccountWithMailer(cfg, projectRepo, db, rdb, mailer)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -105,9 +104,9 @@ func TestAccount_RecoveryFlow(t *testing.T) {
 		},
 	}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+
 	mailer := &CaptureMailer{}
-	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, db, rdb, mailer)
+	account := NewTestAccountWithMailer(cfg, projectRepo, db, rdb, mailer)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,

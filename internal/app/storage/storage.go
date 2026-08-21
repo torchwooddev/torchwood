@@ -27,7 +27,6 @@ import (
 type Storage struct {
 	cfg         *config.AppConfig
 	projectRepo projects.Repository
-	docDB       databases.DocumentDB
 	store       storage.ObjectStore
 	uploads     storage.UploadSessionStore
 	buckets     storage.BucketRepository
@@ -37,13 +36,12 @@ type Storage struct {
 func NewStorage(
 	cfg *config.AppConfig,
 	projectRepo projects.Repository,
-	docDB databases.DocumentDB,
 	store storage.ObjectStore,
 	uploads storage.UploadSessionStore,
 	buckets storage.BucketRepository,
 	files storage.FileRepository,
 ) *Storage {
-	return &Storage{cfg: cfg, projectRepo: projectRepo, docDB: docDB, store: store, uploads: uploads, buckets: buckets, files: files}
+	return &Storage{cfg: cfg, projectRepo: projectRepo, store: store, uploads: uploads, buckets: buckets, files: files}
 }
 
 type CreateBucketCommand struct {

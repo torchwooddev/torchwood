@@ -225,7 +225,7 @@ func testGroupsUC(rows ...*groups.Membership) (*Groups, *memMembershipRepo, *mem
 	for _, row := range rows {
 		m.seed(row)
 	}
-	uc := NewGroups(fakeProjectRepo{}, newFakeDocDB(), newMemUserRepo(), g, m)
+	uc := NewGroups(fakeProjectRepo{}, newMemUserRepo(), g, m)
 	return uc, m, g
 }
 
@@ -313,7 +313,7 @@ func TestUsers_UpdateUserEmailUniqueness(t *testing.T) {
 	usersMem := newMemUserRepo()
 	usersMem.seed(&domainusers.User{ID: "user-a", Email: "a@torchwood.local"})
 	usersMem.seed(&domainusers.User{ID: "user-b", Email: "b@torchwood.local"})
-	uc := NewUsers(fakeProjectRepo{}, newFakeDocDB(), nil, &clients.Database{}, usersMem, newMemSessionRepo(), newMemGroupRepo(), newMemMembershipRepo())
+	uc := NewUsers(fakeProjectRepo{}, nil, &clients.Database{}, usersMem, newMemSessionRepo(), newMemGroupRepo(), newMemMembershipRepo())
 	// Round3 H1-3：UpdateUser 现在要求 Server 写主体（admin 会话 / API key）。
 	actorCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},

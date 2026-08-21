@@ -12,7 +12,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
@@ -37,8 +36,8 @@ func TestMFAFullFlowIntegration(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, rdb)
+
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, db, rdb)
 
 	// 1. 注册。
 	user, _, _, mfa, err := account.SignUp(ctx, SignUpCommand{

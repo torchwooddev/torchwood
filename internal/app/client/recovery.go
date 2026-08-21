@@ -48,7 +48,7 @@ func (a *Account) CreateRecovery(ctx context.Context, cmd CreateRecoveryCommand)
 	if err := a.validateProjectOAuthRedirectURLs(ctx, projectID, cmd.URL, cmd.URL); err != nil {
 		return err
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return err
 	}
 
@@ -101,7 +101,7 @@ func (a *Account) UpdateRecovery(ctx context.Context, cmd UpdateRecoveryCommand)
 	if err := validatePasswordStrength(passwordRaw); err != nil {
 		return err
 	}
-	if err := a.ensureProjectReady(ctx, projectID); err != nil {
+	if err := a.requireProject(ctx, projectID); err != nil {
 		return err
 	}
 	if err := a.tokens.VerifyRecoveryToken(ctx, projectID, userID, secret); err != nil {

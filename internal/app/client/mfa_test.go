@@ -15,7 +15,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -50,8 +49,8 @@ func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, strin
 	t.Cleanup(cleanup)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, rdb)
+
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, db, rdb)
 
 	user, _, _, mfa, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -123,9 +122,9 @@ func TestAccount_CreateTOTPFactor_RequiresJWTSecret(t *testing.T) {
 	defer rdb.Close()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+
 	// 空 jwt secret 的配置。
-	account := NewTestAccountWithRedis(&config.AppConfig{}, projectRepo, docDB, db, rdb)
+	account := NewTestAccountWithRedis(&config.AppConfig{}, projectRepo, db, rdb)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,

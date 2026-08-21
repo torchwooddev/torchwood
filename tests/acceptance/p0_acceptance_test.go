@@ -152,7 +152,7 @@ func TestP0_Section8_AccessPermission(t *testing.T) {
 	require.NoError(t, err)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := client.NewTestAccount(cfg, projectRepo, docDB, db)
+	account := client.NewTestAccount(cfg, projectRepo, db)
 	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectID,
 		Email:     "access-perm@torchwood.local",
@@ -215,11 +215,11 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := client.NewTestAccount(cfg, projectRepo, docDB, db)
+	account := client.NewTestAccount(cfg, projectRepo, db)
 	usersRepo := bunrepo.NewUserRepository(db)
 	sessionRepo := bunrepo.NewSessionRepository(db)
 	roles := client.NewUserRoles(usersRepo, bunrepo.NewMembershipRepository(db))
-	usersUC := appserver.NewUsers(projectRepo, docDB, infrAuth.NewSessionService(cfg, sessionRepo, roles, nil), db, usersRepo, sessionRepo, bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
+	usersUC := appserver.NewUsers(projectRepo, infrAuth.NewSessionService(cfg, sessionRepo, roles, nil), db, usersRepo, sessionRepo, bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 
 	const email = "dsl-query@torchwood.local"
 	signedUp, _, _, _, err := account.SignUp(ctx, client.SignUpCommand{

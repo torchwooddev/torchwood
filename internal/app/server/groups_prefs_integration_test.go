@@ -28,7 +28,7 @@ func TestGroups_Prefs_CRUD(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
+	uc := NewGroups(bunrepo.NewProjectRepository(db), bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	group, err := uc.CreateGroup(ctx, projectID, "Design", nil)
 	require.NoError(t, err)
 
@@ -71,7 +71,7 @@ func TestGroups_Prefs_Errors(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
+	uc := NewGroups(bunrepo.NewProjectRepository(db), bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	keys := databases.Principal{Roles: []string{"keys"}}
 
 	_, err := uc.GetGroupPrefs(ctx, projectID, "no-such-group", keys)
@@ -104,7 +104,7 @@ func TestGroups_Prefs_PermissionMatrix(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
+	uc := NewGroups(bunrepo.NewProjectRepository(db), bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	group, err := uc.CreateGroup(ctx, projectID, "Perm Group", nil)
 	require.NoError(t, err)
 

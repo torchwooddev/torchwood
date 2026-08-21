@@ -13,7 +13,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -78,7 +77,6 @@ func setupG3Account(t *testing.T) (context.Context, *Account, string, *failableS
 		},
 	}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	usersRepo := bunrepo.NewUserRepository(db)
 	sessionRepo := bunrepo.NewSessionRepository(db)
 	identities := bunrepo.NewIdentityRepository(db)
@@ -91,7 +89,6 @@ func setupG3Account(t *testing.T) (context.Context, *Account, string, *failableS
 		cfg,
 		projectRepo,
 		nil,
-		docDB,
 		sessions,
 		auth.NewRedisOTPChallengeStore(rdb, cfg),
 		auth.NewRedisOAuthStateStore(rdb),

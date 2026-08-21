@@ -34,43 +34,6 @@ func (r *stubProjectRepo) GetProject(_ context.Context, id string) (*projects.Pr
 	return r.p, nil
 }
 
-// mockDocDB 是 databases.DocumentDB 的最小桩：记录 CreateFile 路径上的文档
-// 创建/删除，供 G6-2 断言回滚行为。
-type mockDocDB struct {
-	databases.DocumentDB
-	createErr   error
-	deleteErr   error
-	createdDocs []string
-	deletedDocs []string
-}
-
-func (m *mockDocDB) EnsureSystemCollections(context.Context, string, int64) error {
-	return nil
-}
-
-func (m *mockDocDB) GetDocument(_ context.Context, _, _, _, docID string, _ databases.Principal) (*databases.Document, error) {
-	if docID == "" {
-		return nil, nil
-	}
-	return &databases.Document{ID: docID}, nil
-}
-
-func (m *mockDocDB) CreateDocument(_ context.Context, _, _, _ string, doc databases.Document, _ []databases.Permission, _ databases.Principal) (databases.Document, error) {
-	if m.createErr != nil {
-		return databases.Document{}, m.createErr
-	}
-	m.createdDocs = append(m.createdDocs, doc.ID)
-	return doc, nil
-}
-
-func (m *mockDocDB) DeleteDocument(_ context.Context, _, _, _, docID string, _ databases.DeleteOptions, _ databases.Principal) error {
-	if m.deleteErr != nil {
-		return m.deleteErr
-	}
-	m.deletedDocs = append(m.deletedDocs, docID)
-	return nil
-}
-
 // failingStore 包装内存对象存储，可按需注入 EnsureBucket/Put 失败；
 // 未注入错误时委托给底层实现。
 type failingStore struct {
@@ -146,7 +109,6 @@ func newCreateFileUnitUC(store *failingStore, files *memFileRepo) *Storage {
 		projectRepo: &stubProjectRepo{p: &projects.Project{
 			ID: "p1", Name: "p1", InternalID: 1,
 		}},
-		docDB:   &mockDocDB{},
 		store:   store,
 		buckets: &memBucketRepo{},
 		files:   files,
@@ -213,7 +175,7 @@ func TestCreateFile_Success(t *testing.T) {
 // 匿名 Unauthenticated、端用户 PermissionDenied；console admin / API key 主体放行
 // 进入业务校验（空 name → InvalidArgument 证明守卫已过）。
 func TestCreateBucket_RequiresServerWriteActor(t *testing.T) {
-	uc := NewStorage(&config.AppConfig{}, nil, nil, nil, nil, nil, nil)
+	uc := NewStorage(&config.AppConfig{}, nil, nil, nil, nil, nil)
 
 	_, err := uc.CreateBucket(context.Background(), CreateBucketCommand{ProjectID: "p1", Name: "b"})
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
@@ -262,13 +224,11 @@ func TestUploads_CompleteUpload_RevalidatesSessionAfterLock(t *testing.T) {
 	}
 	require.NoError(t, upStore.Create(ctx, session))
 
-	docDB := &mockDocDB{}
 	files := &memFileRepo{}
 	store := testutil.NewMemObjectStore()
 	uc := &Storage{
 		cfg:         &config.AppConfig{},
 		projectRepo: &stubProjectRepo{p: &projects.Project{ID: "p1", InternalID: 1}},
-		docDB:       docDB,
 		store:       store,
 		buckets:     &memBucketRepo{},
 		files:       files,

@@ -19,7 +19,6 @@ import (
 
 type Groups struct {
 	projectRepo projects.Repository
-	docDB       databases.DocumentDB
 	usersRepo   users.Repository
 	groupsRepo  groups.GroupRepository
 	memberships groups.MembershipRepository
@@ -27,14 +26,12 @@ type Groups struct {
 
 func NewGroups(
 	projectRepo projects.Repository,
-	docDB databases.DocumentDB,
 	usersRepo users.Repository,
 	groupsRepo groups.GroupRepository,
 	memberships groups.MembershipRepository,
 ) *Groups {
 	return &Groups{
 		projectRepo: projectRepo,
-		docDB:       docDB,
 		usersRepo:   usersRepo,
 		groupsRepo:  groupsRepo,
 		memberships: memberships,

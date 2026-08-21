@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -32,7 +31,7 @@ func setupAccountSecurity(t *testing.T, withRedis bool) (context.Context, *Accou
 	t.Cleanup(cleanup)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+
 	var account *Account
 	if withRedis {
 		mr, err := miniredis.Run()
@@ -40,9 +39,9 @@ func setupAccountSecurity(t *testing.T, withRedis bool) (context.Context, *Accou
 		t.Cleanup(mr.Close)
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		t.Cleanup(func() { _ = rdb.Close() })
-		account = NewTestAccountWithRedis(securityTestConfig(), projectRepo, docDB, db, rdb)
+		account = NewTestAccountWithRedis(securityTestConfig(), projectRepo, db, rdb)
 	} else {
-		account = NewTestAccount(securityTestConfig(), projectRepo, docDB, db)
+		account = NewTestAccount(securityTestConfig(), projectRepo, db)
 	}
 	return ctx, account, projectID, ""
 }

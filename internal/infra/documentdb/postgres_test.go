@@ -298,7 +298,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	created, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		Data: map[string]any{
@@ -938,7 +938,7 @@ func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	p := &postgresDocumentDB{db: db}
 	err := p.createCollectionMetadata(ctx, projectID, databases.SystemDatabaseID, "users", "users", nil, nil, nil, true)
@@ -1021,7 +1021,7 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("nonexistent_col","x")`},
@@ -1048,7 +1048,7 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -1110,7 +1110,7 @@ func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
+	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 

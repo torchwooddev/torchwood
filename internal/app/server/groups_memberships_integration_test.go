@@ -33,7 +33,7 @@ func TestGroups_Memberships(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	uc := NewGroups(projectRepo, docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
+	uc := NewGroups(projectRepo, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	ownerID := "owner-user-id"
 	ownerEmail := "owner@torchwood.local"
 	require.NoError(t, bunrepo.NewUserRepository(db).Insert(ctx, projectID, &users.User{

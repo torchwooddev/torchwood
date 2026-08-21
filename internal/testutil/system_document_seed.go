@@ -1,4 +1,4 @@
-package documentdb
+package testutil
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/pkg/ident"
 )
 
@@ -16,44 +17,23 @@ type legacySystemDocumentSpec struct {
 	permissions []databases.Permission
 }
 
-// SeedLegacySystemDocumentCollections 在 sentinel 上建七张旧文档表。
-// 仅 expand/copy 测试使用；生产 EnsureSystemCollections 是 no-op。
-func SeedLegacySystemDocumentCollections(ctx context.Context, db databases.DocumentDB, projectID string) error {
-	if p, ok := db.(*postgresDocumentDB); ok {
-		if err := p.ensureSentinelCatalog(ctx, projectID); err != nil {
-			return err
-		}
+// SeedLegacySystemDocumentCollections 在 sentinel 上建七张旧文档表，仅供测试。
+func SeedLegacySystemDocumentCollections(ctx context.Context, db *clients.Database, docDB databases.DocumentDB, projectID string) error {
+	now := time.Now()
+	m := &model.DocumentDatabase{ID: ident.ProjectDataPlaneID, ProjectID: projectID, Name: "(project)", CreatedAt: now, UpdatedAt: now}
+	if _, err := db.NewInsert().Model(m).
+		ModelTableExpr("?.document_databases AS ddb", CatalogIdent(projectID)).
+		On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx); err != nil {
+		return err
 	}
 	specs := legacySystemDocumentSpecs()
 	for _, id := range databases.SystemCollectionIDs {
 		spec := specs[id]
-		if err := db.CreateCollection(ctx, projectID, databases.SystemDatabaseID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
+		if err := docDB.CreateCollection(ctx, projectID, databases.SystemDatabaseID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func (p *postgresDocumentDB) ensureSentinelCatalog(ctx context.Context, projectID string) error {
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return err
-	}
-	dbID := ident.ProjectDataPlaneID
-	exists, err := p.conn(ctx).NewSelect().Model((*model.DocumentDatabase)(nil)).
-		ModelTableExpr("?.document_databases AS ddb", cat).
-		Where("id = ? AND project_id = ?", dbID, projectID).Exists(ctx)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	m := &model.DocumentDatabase{ID: dbID, ProjectID: projectID, Name: "(project)", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	_, err = p.conn(ctx).NewInsert().Model(m).
-		ModelTableExpr("?.document_databases AS ddb", cat).
-		On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx)
-	return err
 }
 
 func legacySystemDocumentSpecs() map[string]legacySystemDocumentSpec {

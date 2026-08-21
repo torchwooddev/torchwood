@@ -11,7 +11,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -45,8 +44,8 @@ func TestAccount_CreateJWT(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, db, rdb)
+
+	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, db, rdb)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -99,8 +98,8 @@ func TestAccount_CreateJWT_Unauthenticated(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccount(jwtTestConfig(), projectRepo, docDB, db)
+
+	account := NewTestAccount(jwtTestConfig(), projectRepo, db)
 
 	// 无 principal → 401。
 	_, err := account.CreateJWT(ctx)
@@ -148,8 +147,8 @@ func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
 	defer cleanup()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, db, rdb)
+
+	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, db, rdb)
 
 	user, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
