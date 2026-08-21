@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/app/documents"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -343,7 +344,7 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 }
 
 // TestDatabases_BulkDocuments_MaxOperations (A4): app 层 Bulk 条数超上限
-// （maxBulkOperations+1）→ InvalidArgument，不触达 docDB。
+// （documents.MaxBulkOperations+1）→ InvalidArgument，不触达 docDB。
 func TestDatabases_BulkDocuments_MaxOperations(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -365,7 +366,7 @@ func TestDatabases_BulkDocuments_MaxOperations(t *testing.T) {
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
 
-	ids := make([]string, maxBulkOperations+1)
+	ids := make([]string, documents.MaxBulkOperations+1)
 	for i := range ids {
 		ids[i] = fmt.Sprintf("doc-%04d", i)
 	}

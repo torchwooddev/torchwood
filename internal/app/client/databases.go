@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/torchwooddev/torchwood/internal/app/documents"
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
@@ -15,10 +16,18 @@ import (
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
+	docs        *documents.Documents
 }
 
 func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB) *Databases {
-	return &Databases{projectRepo: projectRepo, docDB: docDB}
+	return &Databases{projectRepo: projectRepo, docDB: docDB, docs: documents.New(docDB)}
+}
+
+func (d *Databases) documentsCore() *documents.Documents {
+	if d.docs != nil {
+		return d.docs
+	}
+	return documents.New(d.docDB)
 }
 
 func (d *Databases) loadProject(ctx context.Context, projectID string) (*projects.Project, error) {
@@ -123,27 +132,11 @@ func (d *Databases) CreateDocument(
 	if err != nil {
 		return nil, err
 	}
-	if len(data) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data is required")
-	}
 	p, _ := contexts.Principal(ctx)
 	if len(perms) == 0 {
 		perms = ownerDocumentPermissions(p.UserID)
 	}
-	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
-	if err := databases.ValidateGrantablePermissions(principal, perms, false); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-	created, err := d.docDB.CreateDocument(ctx, projectID, databaseID, collectionID, databases.Document{
-		ID:   documentID,
-		Data: data,
-	}, perms, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("create document: %w", err))
-	}
-	// adapter 已用 SystemPrincipal 读回；不再以调用方 principal 重读，
-	// 避免文档权限不含调用方 read 时返回 403（数据已落库的半完成状态）。
-	return &created, nil
+	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{})
 }
 
 func (d *Databases) ListDocuments(
@@ -155,17 +148,7 @@ func (d *Databases) ListDocuments(
 	if err != nil {
 		return nil, 0, "", err
 	}
-	list, err := d.docDB.ListDocuments(ctx, pid, databaseID, collectionID, q, principal)
-	if err != nil {
-		return nil, 0, "", shared.MapDocumentDBError(err)
-	}
-	// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
-	if databases.IsSystemCollection(pid, databaseID, collectionID) {
-		for i := range list.Documents {
-			list.Documents[i].Version = 0
-		}
-	}
-	return list.Documents, list.TotalCount, list.NextPageToken, nil
+	return d.documentsCore().ListDocuments(ctx, pid, databaseID, collectionID, q, principal)
 }
 
 func (d *Databases) GetDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string) (*databases.Document, error) {
@@ -173,18 +156,7 @@ func (d *Databases) GetDocument(ctx context.Context, projectID, databaseID, coll
 	if err != nil {
 		return nil, err
 	}
-	doc, err := d.docDB.GetDocument(ctx, pid, databaseID, collectionID, documentID, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(err)
-	}
-	if doc == nil {
-		return nil, status.Error(codes.NotFound, "document not found")
-	}
-	// 系统集合恒无 _version：读路径归一为 0（契约：Document.version 系统集合为 0）。
-	if databases.IsSystemCollection(pid, databaseID, collectionID) {
-		doc.Version = 0
-	}
-	return doc, nil
+	return d.documentsCore().GetDocument(ctx, pid, databaseID, collectionID, documentID, principal)
 }
 
 // clientDocumentUpdateProtectedFields 是客户端 UpdateDocument 中禁止修改的敏感字段，
@@ -211,36 +183,11 @@ func (d *Databases) UpdateDocument(
 	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
 		return nil, err
 	}
-	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
-	}
-	if len(perms) > 0 {
-		perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
-		if err := databases.ValidateGrantablePermissions(principal, perms, false); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-	// 过滤敏感字段，客户端无法通过 UpdateDocument 直接修改认证/状态相关数据。
-	filtered := make(map[string]any, len(data))
-	for k, v := range data {
-		if _, ok := clientDocumentUpdateProtectedFields[k]; ok {
-			continue
-		}
-		filtered[k] = v
-	}
-	if len(filtered) == 0 && len(perms) == 0 && len(increment) == 0 {
+	filtered := filterClientProtectedFields(data)
+	if len(data) > 0 && len(filtered) == 0 && len(perms) == 0 && len(increment) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied")
 	}
-	updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
-		Document:        databases.Document{ID: documentID, Data: filtered},
-		Permissions:     perms,
-		Increment:       increment,
-		ExpectedVersion: *version,
-	}, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("update document: %w", err))
-	}
-	return &updated, nil
+	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, filtered, perms, increment, principal, version, documents.WriteOptions{})
 }
 
 func (d *Databases) UpsertDocument(
@@ -254,40 +201,18 @@ func (d *Databases) UpsertDocument(
 	if err != nil {
 		return nil, err
 	}
-	if len(data) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data is required")
-	}
-	if len(conflictColumns) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "conflict_columns is required")
-	}
 	p, _ := contexts.Principal(ctx)
 	if len(perms) == 0 {
 		perms = ownerDocumentPermissions(p.UserID)
 	}
-	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
-	if err := databases.ValidateGrantablePermissions(principal, perms, false); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-	// 与 UpdateDocument 一致：客户端无法通过 UpsertDocument 直接修改
-	// 认证/状态相关敏感字段。
-	filtered := make(map[string]any, len(data))
-	for k, v := range data {
-		if _, ok := clientDocumentUpdateProtectedFields[k]; ok {
-			continue
-		}
-		filtered[k] = v
-	}
+	filtered := filterClientProtectedFields(data)
 	if len(filtered) == 0 {
+		if len(data) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "data is required")
+		}
 		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied")
 	}
-	upserted, err := d.docDB.UpsertDocument(ctx, projectID, databaseID, collectionID, databases.Document{
-		ID:   documentID,
-		Data: filtered,
-	}, conflictColumns, perms, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("upsert document: %w", err))
-	}
-	return &upserted, nil
+	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, filtered, conflictColumns, perms, principal, documents.WriteOptions{})
 }
 
 func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID, documentID string, version *int64) error {
@@ -295,10 +220,7 @@ func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID
 	if err != nil {
 		return err
 	}
-	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
-		return err
-	}
-	return shared.MapDocumentDBError(d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, databases.DeleteOptions{ExpectedVersion: *version}, principal))
+	return d.documentsCore().DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal, version)
 }
 
 func (d *Databases) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string) (int64, error) {
@@ -306,8 +228,7 @@ func (d *Databases) CountDocuments(ctx context.Context, projectID, databaseID, c
 	if err != nil {
 		return 0, err
 	}
-	count, err := d.docDB.CountDocuments(ctx, pid, databaseID, collectionID, queries, principal)
-	return count, shared.MapDocumentDBError(err)
+	return d.documentsCore().CountDocuments(ctx, pid, databaseID, collectionID, queries, principal)
 }
 
 func ownerDocumentPermissions(userID string) []databases.Permission {
