@@ -124,7 +124,7 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	for _, attr := range attrs {
-		if err := d.validateAttributeKey(attr.Key); err != nil {
+		if err := d.validateAttribute(attr); err != nil {
 			return err
 		}
 	}
@@ -134,10 +134,14 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	return d.docDB.CreateCollection(ctx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
 }
 
-// validateAttributeKey 拒绝系统保留列（含 _version）作为用户属性。
-func (d *Databases) validateAttributeKey(key string) error {
-	if _, ok := databases.ReservedAttributeKeys[key]; ok {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", key))
+// validateAttribute 拒绝系统保留列（含 _version）以及 array=true。
+// 物理列是标量，catalog 不得写入 IsArray=true。
+func (d *Databases) validateAttribute(attr databases.Attribute) error {
+	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
+	}
+	if attr.Array {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute %q: array is not supported", attr.Key))
 	}
 	return nil
 }
@@ -222,7 +226,7 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 	if err := d.ValidateAttributeType(attr.Type); err != nil {
 		return err
 	}
-	if err := d.validateAttributeKey(attr.Key); err != nil {
+	if err := d.validateAttribute(attr); err != nil {
 		return err
 	}
 	attr.Type = strings.ToLower(attr.Type)
