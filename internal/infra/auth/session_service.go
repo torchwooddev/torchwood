@@ -65,8 +65,7 @@ func (s *SessionService) CreateSessionAndTokens(ctx context.Context, projectID, 
 
 	expireAt := time.Now().Add(defaultSessionTTL)
 	sessionID := idgen.UUID().String()
-	// secret 用高熵 UUID，secret_hash 存 SHA-256 hex（与 HashOTP 同档）。
-	// cookie/JWT 仍只带 HMAC(projectID:sessionID)，不放入 secret。
+	// UUID 高熵，可用无盐 SHA-256（HashOTP）。
 	sessionSecret := idgen.UUID().String()
 	sessionDoc := databases.Document{
 		ID: sessionID,
@@ -166,11 +165,6 @@ func (s *SessionService) EnsureActiveSession(ctx context.Context, projectID, ses
 		if expireAt.Before(time.Now()) {
 			return status.Error(codes.Unauthenticated, "session expired")
 		}
-	}
-	// 存量双读：64 字符 hex = 已哈希；否则遗留明文。查找仍按 document ID，
-	// 两种形态都不踢会话。EnsureActiveSession 只读，不发明写路径做迁移。
-	if stored, _ := sessionDoc.Data["secret_hash"].(string); stored != "" {
-		_ = canonicalizeSessionSecretHash(stored)
 	}
 	return nil
 }
@@ -279,7 +273,7 @@ func parseSessionTime(v any) (time.Time, error) {
 // sha256HexLen 是 SHA-256 十六进制编码长度。
 const sha256HexLen = 64
 
-// sessionSecretLooksHashed 判定 stored 是否已是 SHA-256 hex（64 字符）。
+// sessionSecretLooksHashed 判定 stored 是否为 64 字符 hex（视为已哈希）。
 func sessionSecretLooksHashed(stored string) bool {
 	if len(stored) != sha256HexLen {
 		return false
@@ -288,8 +282,7 @@ func sessionSecretLooksHashed(stored string) bool {
 	return err == nil
 }
 
-// canonicalizeSessionSecretHash 双读 secret_hash：64 字符 hex 视为已哈希；
-// 否则当遗留明文，仅本进程哈希，不写回。
+// canonicalizeSessionSecretHash 双读 secret_hash：64 字符 hex 原样返回，否则按明文做 HashOTP。
 func canonicalizeSessionSecretHash(stored string) string {
 	if stored == "" || sessionSecretLooksHashed(stored) {
 		return stored

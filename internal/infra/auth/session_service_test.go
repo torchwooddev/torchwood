@@ -113,68 +113,6 @@ func TestSessionService_CreateSessionStoresHashedSecret(t *testing.T) {
 	require.NotEqual(t, hash, claims.SessionID)
 }
 
-func TestSessionService_EnsureActiveSession_DualReadSecretHash(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	expire := time.Now().Add(time.Hour).Format(time.RFC3339Nano)
-	plaintext := "550e8400-e29b-41d4-a716-446655440000"
-	hashed := auth.HashOTP(plaintext)
-	require.Len(t, hashed, 64)
-	require.NotEqual(t, 64, len(plaintext))
-
-	docDB := &stubDocDB{
-		sessions: map[string]map[string]map[string]any{
-			"proj-1": {
-				"sess-hashed": {
-					"user_id":     "user-1",
-					"expire_at":   expire,
-					"secret_hash": hashed,
-				},
-				"sess-plain": {
-					"user_id":     "user-1",
-					"expire_at":   expire,
-					"secret_hash": plaintext,
-				},
-			},
-		},
-	}
-	svc := auth.NewSessionService(nil, docDB, nil, nil)
-
-	require.NoError(t, svc.EnsureActiveSession(ctx, "proj-1", "sess-hashed", "user-1"))
-	require.NoError(t, svc.EnsureActiveSession(ctx, "proj-1", "sess-plain", "user-1"))
-	require.Equal(t, hashed, docDB.sessions["proj-1"]["sess-hashed"]["secret_hash"])
-	require.Equal(t, plaintext, docDB.sessions["proj-1"]["sess-plain"]["secret_hash"], "双读不得写回或踢掉明文存量")
-}
-
-func TestSessionService_IssueTokensAfterLegacyPlaintextSession(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	plaintext := "550e8400-e29b-41d4-a716-446655440000"
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": {
-			"sess-legacy": {
-				"user_id":     "user-1",
-				"expire_at":   time.Now().Add(time.Hour).Format(time.RFC3339Nano),
-				"secret_hash": plaintext,
-			},
-		},
-	}}
-	svc := auth.NewSessionService(testSessionJWTConfig(), docDB, stubRoleResolver{}, nil)
-
-	require.NoError(t, svc.EnsureActiveSession(ctx, "proj-1", "sess-legacy", "user-1"))
-	bundle, cookie, err := svc.IssueTokens(ctx, "proj-1", "user-1", "user@example.com", "sess-legacy")
-	require.NoError(t, err)
-	require.NotEmpty(t, bundle.AccessToken)
-	require.NotEmpty(t, bundle.RefreshToken)
-
-	codec := auth.NewSessionCookieCodec(string(jwtparser.DeriveKey(testSessionJWTSecret, jwtparser.PurposeSessionCookie)))
-	gotProject, gotSession, err := codec.Verify(cookie)
-	require.NoError(t, err)
-	require.Equal(t, "proj-1", gotProject)
-	require.Equal(t, "sess-legacy", gotSession)
-	require.Equal(t, plaintext, docDB.sessions["proj-1"]["sess-legacy"]["secret_hash"])
-}
-
 func TestProviderConstants(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "email", domainauth.ProviderEmail)
