@@ -1,5 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   TOOL_CREATE_DOCUMENT,
@@ -22,7 +25,37 @@ import {
   TOOL_UPSERT_DOCUMENT,
   agentTools,
   lookupAgentTool,
-} from "../server/tools.js";
+} from "../index.js";
+
+const GENPROTO_SERVER_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../genproto/server/v1"
+);
+
+function serverSwaggerOperationIds(): Set<string> {
+  const ids = new Set<string>();
+  assert.ok(existsSync(GENPROTO_SERVER_DIR), "genproto/server/v1 缺失，请先 task generate-proto");
+  for (const f of readdirSync(GENPROTO_SERVER_DIR).filter((n) => n.endsWith(".swagger.json"))) {
+    const doc = JSON.parse(readFileSync(join(GENPROTO_SERVER_DIR, f), "utf8")) as {
+      paths?: Record<string, Record<string, { operationId?: string }>>;
+    };
+    for (const path of Object.values(doc.paths ?? {})) {
+      for (const op of Object.values(path)) {
+        if (op?.operationId) ids.add(op.operationId);
+      }
+    }
+  }
+  return ids;
+}
+
+function swaggerHasRPC(opIds: Set<string>, service: string, rpc: string): boolean {
+  if (opIds.has(`${service}_${rpc}`)) return true;
+  const extra = new RegExp(`^${service}_${rpc}\\d+$`);
+  for (const id of opIds) {
+    if (extra.test(id)) return true;
+  }
+  return false;
+}
 
 describe("agentTools catalog", () => {
   it("maps 18 names to known FullMethod strings and excludes API key methods", () => {
@@ -77,11 +110,20 @@ describe("agentTools catalog", () => {
     assert.equal(want.length, 18);
     assert.equal(agentTools.length, 18);
 
+    const opIds = serverSwaggerOperationIds();
     const seen = new Set<string>();
     for (const [i, tool] of agentTools.entries()) {
       assert.equal(tool.name, want[i].name);
       assert.equal(tool.fullMethod, want[i].fullMethod);
       assert.equal(tool.fullMethod.includes("APIKeys"), false);
+      const m = /^\/torchwood\.server\.v1\.(\w+)\/(\w+)$/.exec(tool.fullMethod);
+      if (m === null) {
+        throw new Error(`bad FullMethod ${tool.fullMethod}`);
+      }
+      assert.ok(
+        swaggerHasRPC(opIds, m[1], m[2]),
+        `${tool.fullMethod} 不在 genproto swagger（${m[1]}_${m[2]}）`
+      );
       assert.deepEqual(lookupAgentTool(tool.name), tool);
       assert.equal(seen.has(tool.name), false);
       seen.add(tool.name);

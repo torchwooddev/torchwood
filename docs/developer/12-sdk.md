@@ -34,7 +34,8 @@ MCP Tool Server 以类型安全的方式调用后端。
 |------|------|
 | `sdk/typescript/` | SDK 包 `@torchwood/sdk` |
 | `sdk/typescript/src/client/` | Client API 服务（Account / Databases / Groups） |
-| `sdk/typescript/src/server/` | Server API 服务（Health / Projects / Users / Groups / Databases / APIKeys / OAuthProviders / Storage） |
+| `sdk/typescript/src/server/` | Server API 服务（Health / Projects / Users / Groups / Databases / APIKeys / OAuthProviders / Storage / Functions / Payments / Assets / Subscriptions / Billing） |
+| `sdk/typescript/src/server/tools.ts` | Agent 默认工具箱 overlay（18 个动词 → Server RPC FullMethod；`TOOL_*` / `agentTools`） |
 | `sdk/typescript/src/graviton.ts` | `Torchwood` 门面类与静态工厂 |
 | `sdk/typescript/src/http.ts` | `HttpTransport` 传输层与 `TorchwoodConfig` 配置类型 |
 | `sdk/typescript/src/types.ts` | 手写 API 数据类型（Account、Document、User 等） |
@@ -452,8 +453,10 @@ respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser
   `server.IsPermissionDenied` 判断 scope 提示）。
 - **Agent 默认工具箱**（E-7 overlay，18 个动词 → 现有 Server unary，不含
   API key 管理）：`server.Tools` / `LookupTool` / `InvokeTool`；TS 对等导出
-  `agentTools` / `lookupAgentTool`。完整 API 仍是 201 RPC，见
-  [14-agent-tools.md](14-agent-tools.md)。
+  `agentTools` / `lookupAgentTool` / `TOOL_*`（如 `TOOL_QUERY_DOCUMENTS`）。
+  catalog 只读。完整 API 仍是 201 RPC，见
+  [14-agent-tools.md](14-agent-tools.md)。`query_documents` 的 HTTP AST 入口是
+  `POST .../documents:list`（body=`Query`），不是 GET `listDocuments()`。
 
 ### 9.4 典型用法
 

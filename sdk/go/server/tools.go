@@ -38,6 +38,7 @@ type Tool struct {
 }
 
 // Tools 是锁定的 18 个默认工具，顺序与 docs/review/wave3-e7-tool-catalog.md 一致。
+// catalog 只读：不要原地改写切片或元素；LookupTool 使用 init 时的值拷贝。
 var Tools = []Tool{
 	{
 		Name:       ToolListUsers,
