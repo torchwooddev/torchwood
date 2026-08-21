@@ -52,7 +52,7 @@ func init() {
 // Payments 是支付子域 use-case 聚合。
 type Payments struct {
 	cfg          *config.AppConfig
-	db           uow.Runner // 仅为 uow.Run 注入（同 app/shared 先例）
+	db           uow.Runner // 仅工作单元
 	orders       domainpayments.OrderRepo
 	callbacks    domainpayments.CallbackEventRepo
 	fulfillments domainpayments.FulfillmentRepo
