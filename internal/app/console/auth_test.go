@@ -2,6 +2,7 @@ package console_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -128,7 +129,7 @@ func TestAuth_RefreshToken_RejectsRevokedAdmin(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	authUC := console.NewAuth(testConfig(), nil, store, nil, nil)
+	authUC := console.NewAuth(testConfig(), newAdminRepo(mkAdmin("admin-1", "admin@torchwood.local", "admin")), store, nil, nil)
 	_, err = authUC.RefreshToken(ctx, console.RefreshTokenCommand{RefreshToken: refreshToken})
 	require.Error(t, err)
 	st, ok := status.FromError(err)
@@ -206,18 +207,30 @@ var _ domainauth.RefreshRotationStore = (*memRotationStore)(nil)
 
 func adminRefreshToken(t *testing.T, adminID, tokenID string) string {
 	t.Helper()
+	return adminRefreshTokenWithRoles(t, adminID, tokenID, "admin")
+}
+
+func adminRefreshTokenWithRoles(t *testing.T, adminID, tokenID string, roles ...string) string {
+	t.Helper()
 	token, err := jwtparser.Generate(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), jwtparser.Claims{
 		TokenID:   tokenID,
 		UserID:    adminID,
 		Username:  "admin@torchwood.local",
 		ActorKind: "admin",
-		Roles:     []string{"admin"},
+		Roles:     roles,
 		TokenType: jwtparser.TokenTypeRefresh,
 		IssuedAt:  time.Now().Unix(),
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
 	})
 	require.NoError(t, err)
 	return token
+}
+
+func parseAdminToken(t *testing.T, raw string) *jwtparser.Claims {
+	t.Helper()
+	claims, ok := jwtparser.Parse(jwtparser.DeriveKey(testConfig().GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeAdminJWT), raw)
+	require.True(t, ok)
+	return claims
 }
 
 func TestAuth_RefreshToken_RotatesToken(t *testing.T) {
@@ -228,7 +241,7 @@ func TestAuth_RefreshToken_RotatesToken(t *testing.T) {
 	key := domainauth.RefreshRotationKey("admin", "admin-1")
 	require.NoError(t, rotation.Register(ctx, key, "tid-old", time.Hour))
 
-	authUC := console.NewAuth(testConfig(), nil, revokeStore, nil, rotation)
+	authUC := console.NewAuth(testConfig(), newAdminRepo(mkAdmin("admin-1", "admin@torchwood.local", "admin")), revokeStore, nil, rotation)
 	pair, err := authUC.RefreshToken(ctx, console.RefreshTokenCommand{
 		RefreshToken: adminRefreshToken(t, "admin-1", "tid-old"),
 	})
@@ -254,7 +267,7 @@ func TestAuth_RefreshToken_ReuseRevokesAllAdminTokens(t *testing.T) {
 	// The store holds the rotated id; the presented token carries the old one.
 	require.NoError(t, rotation.Register(ctx, key, "tid-new", time.Hour))
 
-	authUC := console.NewAuth(testConfig(), nil, revokeStore, nil, rotation)
+	authUC := console.NewAuth(testConfig(), newAdminRepo(mkAdmin("admin-1", "admin@torchwood.local", "admin")), revokeStore, nil, rotation)
 	_, err := authUC.RefreshToken(ctx, console.RefreshTokenCommand{
 		RefreshToken: adminRefreshToken(t, "admin-1", "tid-old"),
 	})
@@ -270,4 +283,80 @@ func TestAuth_RefreshToken_ReuseRevokesAllAdminTokens(t *testing.T) {
 
 	// The stored rotation value was not overwritten by the attacker.
 	require.Equal(t, "tid-new", rotation.current(key))
+}
+
+func TestAuth_RefreshToken_DeletedAdminUnauthenticated(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cases := []struct {
+		name         string
+		withRotation bool
+	}{
+		{name: "without_rotation"},
+		{name: "with_rotation", withRotation: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var rotation domainauth.RefreshRotationStore
+			if tc.withRotation {
+				store := newMemRotationStore()
+				require.NoError(t, store.Register(ctx, domainauth.RefreshRotationKey("admin", "admin-1"), "tid-old", time.Hour))
+				rotation = store
+			}
+			authUC := console.NewAuth(testConfig(), newAdminRepo(), newMemAdminRevokeStore(), nil, rotation)
+			_, err := authUC.RefreshToken(ctx, console.RefreshTokenCommand{
+				RefreshToken: adminRefreshToken(t, "admin-1", "tid-old"),
+			})
+			require.Error(t, err)
+			st, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, codes.Unauthenticated, st.Code())
+			require.NotContains(t, strings.ToLower(st.Message()), "not found")
+		})
+	}
+}
+
+func TestAuth_RefreshToken_UsesDatabaseRoleNotJWTSnapshot(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cases := []struct {
+		name         string
+		withRotation bool
+		jwtRoles     []string
+	}{
+		{name: "without_rotation_owner_to_viewer", jwtRoles: []string{"owner"}},
+		{name: "with_rotation_owner_to_viewer", withRotation: true, jwtRoles: []string{"owner"}},
+		{name: "empty_jwt_roles_do_not_default_admin", withRotation: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var rotation domainauth.RefreshRotationStore
+			if tc.withRotation {
+				store := newMemRotationStore()
+				require.NoError(t, store.Register(ctx, domainauth.RefreshRotationKey("admin", "admin-1"), "tid-old", time.Hour))
+				rotation = store
+			}
+			authUC := console.NewAuth(
+				testConfig(),
+				newAdminRepo(mkAdmin("admin-1", "admin@torchwood.local", "viewer")),
+				newMemAdminRevokeStore(),
+				nil,
+				rotation,
+			)
+			pair, err := authUC.RefreshToken(ctx, console.RefreshTokenCommand{
+				RefreshToken: adminRefreshTokenWithRoles(t, "admin-1", "tid-old", tc.jwtRoles...),
+			})
+			require.NoError(t, err)
+			access := parseAdminToken(t, pair.AccessToken)
+			require.Equal(t, []string{"viewer"}, access.Roles)
+			require.Equal(t, jwtparser.TokenTypeAccess, access.TokenType)
+			refresh := parseAdminToken(t, pair.RefreshToken)
+			require.Equal(t, []string{"viewer"}, refresh.Roles)
+			require.Equal(t, jwtparser.TokenTypeRefresh, refresh.TokenType)
+		})
+	}
 }

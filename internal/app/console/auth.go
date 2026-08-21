@@ -86,8 +86,16 @@ func (a *Auth) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*Toke
 	if err := a.checkAdminTokenRevoked(ctx, claims); err != nil {
 		return nil, err
 	}
+	// 以库内记录为准：已删除账号不得续签，角色变更立即生效（不用 JWT 快照）。
+	admin, err := a.adminRepo.GetAdmin(ctx, claims.UserID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "admin lookup failed")
+	}
+	if admin == nil {
+		return nil, status.Error(codes.Unauthenticated, "invalid refresh token")
+	}
 	if a.rotation == nil {
-		return a.issueAdminTokens(ctx, claims.UserID, claims.Username, firstRole(claims.Roles))
+		return a.issueAdminTokens(ctx, admin.ID, admin.Email, admin.Role)
 	}
 
 	refreshTTL := a.refreshTTL()
@@ -98,7 +106,7 @@ func (a *Auth) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*Toke
 	}
 	switch result {
 	case domainauth.RotateOK:
-		return a.issueAdminTokensWithRefreshID(ctx, claims.UserID, claims.Username, firstRole(claims.Roles), newRefreshTokenID)
+		return a.issueAdminTokensWithRefreshID(ctx, admin.ID, admin.Email, admin.Role, newRefreshTokenID)
 	case domainauth.RotateMismatch:
 		// 旧 refresh token 被再次使用：判定为重用，撤销该 admin 此前签发的全部 token。
 		if a.adminRevokeStore != nil {
@@ -277,11 +285,4 @@ func (a *Auth) issueAdminTokensWithRefreshID(ctx context.Context, adminID, email
 		ExpiresAt:      accessClaims.ExpiresAt,
 		RefreshTokenID: refreshTokenID,
 	}, nil
-}
-
-func firstRole(roles []string) string {
-	if len(roles) == 0 {
-		return "admin"
-	}
-	return roles[0]
 }

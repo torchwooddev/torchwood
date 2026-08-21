@@ -193,7 +193,11 @@ func adminRefreshToken(t *testing.T, cfg *config.AppConfig) string {
 func TestRefreshToken_ReadsCookieWhenBodyEmpty(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig("http://localhost:9099")
-	svc := NewAuthService(console.NewAuth(cfg, nil, nil, nil, nil), newTestSetup())
+	svc := NewAuthService(console.NewAuth(cfg, &stubAdminRepo{admin: &projects.Admin{
+		ID:    "admin-1",
+		Email: "admin@torchwood.local",
+		Role:  "admin",
+	}}, nil, nil, nil), newTestSetup())
 	ctx, stream := testCtx(t)
 	refresh := adminRefreshToken(t, cfg)
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
@@ -211,7 +215,11 @@ func TestRefreshToken_ReadsCookieWhenBodyEmpty(t *testing.T) {
 func TestRefreshToken_BodyTakesPrecedenceOverCookie(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig("http://localhost:9099")
-	svc := NewAuthService(console.NewAuth(cfg, nil, nil, nil, nil), newTestSetup())
+	svc := NewAuthService(console.NewAuth(cfg, &stubAdminRepo{admin: &projects.Admin{
+		ID:    "admin-1",
+		Email: "admin@torchwood.local",
+		Role:  "admin",
+	}}, nil, nil, nil), newTestSetup())
 	ctx, _ := testCtx(t)
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
 		"cookie", "TORCHWOOD_console_refresh=forged-token",
