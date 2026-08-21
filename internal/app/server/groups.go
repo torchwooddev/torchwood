@@ -267,11 +267,6 @@ func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd Cre
 		}
 		return nil, fmt.Errorf("create membership: %w", err)
 	}
-	if statusVal == groups.StatusAccepted {
-		if err := t.groupsRepo.AddTotal(ctx, projectID, cmd.GroupID, 1); err != nil {
-			return nil, err
-		}
-	}
 	got, err := t.memberships.GetByID(ctx, projectID, m.ID)
 	if err != nil {
 		return nil, err
@@ -382,11 +377,6 @@ func (t *Groups) DeleteMembership(ctx context.Context, projectID, groupID, membe
 	}
 	if err := t.guardLastOwner(ctx, projectID, groupID, m); err != nil {
 		return err
-	}
-	if m.Status == groups.StatusAccepted {
-		if err := t.groupsRepo.AddTotal(ctx, projectID, groupID, -1); err != nil {
-			return err
-		}
 	}
 	return t.memberships.Delete(ctx, projectID, membershipID)
 }

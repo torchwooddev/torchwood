@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -387,3 +388,139 @@ func TestAccount_SignInRequiresMFA(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, userID, me.ID)
 }
+
+// GetByID 返回空 factors，UpdateFactors 却拿到并发写入的 current；
+// mutate 必须基于锁定行，不得用锁前快照整袋覆盖。
+func TestParseFactorsRaw_ObjectArray(t *testing.T) {
+	got := parseFactorsRaw(json.RawMessage(`[{"id":"concurrent","type":"totp","secret":"c","status":"pending","created_at":"2026-01-01T00:00:00Z"}]`))
+	require.Len(t, got, 1)
+	require.Equal(t, "concurrent", got[0].ID)
+}
+
+func TestAccount_CreateTOTPFactor_MergesLockedCurrent(t *testing.T) {
+	repo := &mergeFactorsRepo{current: factorsJSON(recentFactor("concurrent", auth.FactorStatusPending))}
+	account := mergeTestAccount(repo)
+	factor, _, _, err := account.CreateTOTPFactor(mergeUserCtx(), "p1", "u1", "")
+	require.NoError(t, err)
+	require.Equal(t, "new-1", factor.ID)
+	require.Contains(t, string(repo.stored), `"concurrent"`)
+	require.Contains(t, string(repo.stored), `"new-1"`)
+}
+
+func TestAccount_VerifyTOTPFactor_MergesLockedCurrent(t *testing.T) {
+	repo := &mergeFactorsRepo{current: factorsJSON(
+		recentFactor("concurrent", auth.FactorStatusVerified),
+		recentFactor("new-1", auth.FactorStatusPending),
+	)}
+	account := mergeTestAccount(repo)
+	verified, err := account.VerifyTOTPFactor(mergeUserCtx(), "p1", "u1", "new-1", "000000")
+	require.NoError(t, err)
+	require.Equal(t, "new-1", verified.ID)
+	require.Equal(t, auth.FactorStatusVerified, verified.Status)
+	require.Contains(t, string(repo.stored), `"concurrent"`)
+	require.Contains(t, string(repo.stored), `"new-1"`)
+	ids := parseFactorsRaw(repo.stored)
+	require.Len(t, ids, 2)
+	byID := map[string]auth.Factor{}
+	for _, f := range ids {
+		byID[f.ID] = f
+	}
+	require.Equal(t, auth.FactorStatusVerified, byID["concurrent"].Status)
+	require.Equal(t, auth.FactorStatusVerified, byID["new-1"].Status)
+}
+
+func TestAccount_DeleteFactor_MergesLockedCurrent(t *testing.T) {
+	repo := &mergeFactorsRepo{current: factorsJSON(
+		recentFactor("concurrent", auth.FactorStatusPending),
+		recentFactor("new-1", auth.FactorStatusPending),
+	)}
+	account := mergeTestAccount(repo)
+	require.NoError(t, account.DeleteFactor(mergeUserCtx(), "p1", "u1", "new-1", ""))
+	require.Contains(t, string(repo.stored), `"concurrent"`)
+	require.NotContains(t, string(repo.stored), `"new-1"`)
+}
+
+func mergeTestAccount(repo *mergeFactorsRepo) *Account {
+	return &Account{
+		usersRepo:   repo,
+		mfa:         stubMergeMFA{},
+		projectRepo: stubProjects{},
+	}
+}
+
+func mergeUserCtx() context.Context {
+	return contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
+		ProjectID: "p1",
+		UserID:    "u1",
+	})
+}
+
+func recentFactor(id, status string) map[string]any {
+	return map[string]any{
+		"id":         id,
+		"type":       auth.FactorTypeTOTP,
+		"secret":     "c",
+		"status":     status,
+		"created_at": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func factorsJSON(items ...map[string]any) json.RawMessage {
+	raw, err := json.Marshal(items)
+	if err != nil {
+		panic(err)
+	}
+	return raw
+}
+
+type mergeFactorsRepo struct {
+	current json.RawMessage
+	stored  json.RawMessage
+}
+
+var _ users.Repository = (*mergeFactorsRepo)(nil)
+
+func (r *mergeFactorsRepo) GetByEmail(context.Context, string, string) (*users.User, error) {
+	return nil, nil
+}
+func (r *mergeFactorsRepo) GetByID(context.Context, string, string) (*users.User, error) {
+	return &users.User{ID: "u1", Email: "a@b.c", Status: users.StatusActive, Factors: json.RawMessage(`[]`)}, nil
+}
+func (r *mergeFactorsRepo) GetByPhone(context.Context, string, string) (*users.User, error) {
+	return nil, nil
+}
+func (r *mergeFactorsRepo) Insert(context.Context, string, *users.User) error { return nil }
+func (r *mergeFactorsRepo) Update(context.Context, string, string, map[string]any) error {
+	return nil
+}
+func (r *mergeFactorsRepo) Delete(context.Context, string, string) error { return nil }
+func (r *mergeFactorsRepo) List(context.Context, string, users.ListFilter) (*users.ListResult, error) {
+	return &users.ListResult{}, nil
+}
+func (r *mergeFactorsRepo) UpdateFactors(_ context.Context, _, _ string, mutate func(json.RawMessage) (json.RawMessage, error)) error {
+	current := r.current
+	if len(current) == 0 {
+		current = json.RawMessage(`[]`)
+	}
+	next, err := mutate(current)
+	if err != nil {
+		return err
+	}
+	r.stored = next
+	return nil
+}
+
+type stubMergeMFA struct{}
+
+func (stubMergeMFA) CreateTOTPFactor(context.Context, string, string, string) (*auth.Factor, string, string, error) {
+	return &auth.Factor{
+		ID:        "new-1",
+		Type:      auth.FactorTypeTOTP,
+		Secret:    "enc:v1:x",
+		Status:    auth.FactorStatusPending,
+		CreatedAt: time.Now(),
+	}, "plain", "otpauth://totp/x", nil
+}
+func (stubMergeMFA) VerifyTOTPFactor(context.Context, *auth.Factor, string) error { return nil }
+func (stubMergeMFA) ValidateTOTP(context.Context, *auth.Factor, string) error     { return nil }

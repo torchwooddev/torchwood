@@ -118,28 +118,23 @@ func (a *Account) CreateTOTPFactor(ctx context.Context, projectID, userID, email
 		issuer = p.ProjectID
 	}
 
-	factors, err := a.loadFactors(ctx, p)
-	if err != nil {
-		return nil, "", "", err
-	}
-	// 清理同类型过期 pending 因子（激活时限外），避免堆积。
-	now := time.Now()
-	kept := factors[:0]
-	for _, f := range factors {
-		if f.Type == domainauth.FactorTypeTOTP && f.Status == domainauth.FactorStatusPending &&
-			!f.CreatedAt.IsZero() && now.Sub(f.CreatedAt) > mfaFactorActivateWindow {
-			continue
-		}
-		kept = append(kept, f)
-	}
-	factors = kept
-
 	factor, plainSecret, otpauthURL, err := a.mfa.CreateTOTPFactor(ctx, issuer, p.UserID, email)
 	if err != nil {
 		return nil, "", "", err
 	}
-	factors = append(factors, *factor)
-	if err := a.saveFactors(ctx, p, factors); err != nil {
+	err = a.mutateFactors(ctx, p, func(factors []domainauth.Factor) ([]domainauth.Factor, error) {
+		now := time.Now()
+		kept := make([]domainauth.Factor, 0, len(factors)+1)
+		for _, f := range factors {
+			if f.Type == domainauth.FactorTypeTOTP && f.Status == domainauth.FactorStatusPending &&
+				!f.CreatedAt.IsZero() && now.Sub(f.CreatedAt) > mfaFactorActivateWindow {
+				continue
+			}
+			kept = append(kept, f)
+		}
+		return append(kept, *factor), nil
+	})
+	if err != nil {
 		return nil, "", "", err
 	}
 	return factor, plainSecret, otpauthURL, nil
@@ -166,43 +161,44 @@ func (a *Account) VerifyTOTPFactor(ctx context.Context, projectID, userID, facto
 		return nil, status.Error(codes.InvalidArgument, "code is required")
 	}
 
-	factors, err := a.loadFactors(ctx, p)
+	expired := false
+	var verified *domainauth.Factor
+	err = a.mutateFactors(ctx, p, func(factors []domainauth.Factor) ([]domainauth.Factor, error) {
+		idx := -1
+		for i := range factors {
+			if factors[i].ID == factorID {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return nil, status.Error(codes.NotFound, "mfa factor not found")
+		}
+		factor := factors[idx]
+		if factor.Status != domainauth.FactorStatusPending {
+			return nil, status.Error(codes.InvalidArgument, "mfa factor is already verified")
+		}
+		if !factor.CreatedAt.IsZero() && time.Since(factor.CreatedAt) > mfaFactorActivateWindow {
+			expired = true
+			return append(factors[:idx], factors[idx+1:]...), nil
+		}
+		if err := a.mfa.VerifyTOTPFactor(ctx, &factor, code); err != nil {
+			return nil, err
+		}
+		factor.Status = domainauth.FactorStatusVerified
+		factors[idx] = factor
+		cp := factor
+		cp.Secret = ""
+		verified = &cp
+		return factors, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	idx := -1
-	for i := range factors {
-		if factors[i].ID == factorID {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return nil, status.Error(codes.NotFound, "mfa factor not found")
-	}
-	factor := &factors[idx]
-	if factor.Status != domainauth.FactorStatusPending {
-		return nil, status.Error(codes.InvalidArgument, "mfa factor is already verified")
-	}
-	if !factor.CreatedAt.IsZero() && time.Since(factor.CreatedAt) > mfaFactorActivateWindow {
-		// 过期 pending 因子：删除并拒绝。
-		factors = append(factors[:idx], factors[idx+1:]...)
-		if err := a.saveFactors(ctx, p, factors); err != nil {
-			return nil, err
-		}
+	if expired {
 		return nil, status.Error(codes.Unauthenticated, "mfa factor activation expired")
 	}
-
-	if err := a.mfa.VerifyTOTPFactor(ctx, factor, code); err != nil {
-		return nil, err
-	}
-	factor.Status = domainauth.FactorStatusVerified
-	factors[idx] = *factor
-	if err := a.saveFactors(ctx, p, factors); err != nil {
-		return nil, err
-	}
-	factor.Secret = ""
-	return factor, nil
+	return verified, nil
 }
 
 // DeleteFactor 删除 MFA 因子：pending 因子直接删除；verified 因子必须提供
@@ -226,30 +222,28 @@ func (a *Account) DeleteFactor(ctx context.Context, projectID, userID, factorID,
 		return status.Error(codes.InvalidArgument, "factor_id is required")
 	}
 
-	factors, err := a.loadFactors(ctx, p)
+	err = a.mutateFactors(ctx, p, func(factors []domainauth.Factor) ([]domainauth.Factor, error) {
+		idx := -1
+		for i := range factors {
+			if factors[i].ID == factorID {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return nil, status.Error(codes.NotFound, "mfa factor not found")
+		}
+		if factors[idx].Status == domainauth.FactorStatusVerified {
+			if code == "" {
+				return nil, status.Error(codes.InvalidArgument, "mfa code is required")
+			}
+			if err := a.mfa.ValidateTOTP(ctx, &factors[idx], code); err != nil {
+				return nil, err
+			}
+		}
+		return append(factors[:idx], factors[idx+1:]...), nil
+	})
 	if err != nil {
-		return err
-	}
-	idx := -1
-	for i := range factors {
-		if factors[i].ID == factorID {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return status.Error(codes.NotFound, "mfa factor not found")
-	}
-	if factors[idx].Status == domainauth.FactorStatusVerified {
-		if code == "" {
-			return status.Error(codes.InvalidArgument, "mfa code is required")
-		}
-		if err := a.mfa.ValidateTOTP(ctx, &factors[idx], code); err != nil {
-			return err
-		}
-	}
-	factors = append(factors[:idx], factors[idx+1:]...)
-	if err := a.saveFactors(ctx, p, factors); err != nil {
 		return err
 	}
 	// 作废该用户未消费的登录挑战，防止删除因子后挑战仍可完成登录。
@@ -320,7 +314,7 @@ func (a *Account) CompleteMFASession(ctx context.Context, projectID, challengeTo
 	return user, tokens, cookie, nil
 }
 
-// loadFactors 读取用户文档中的 factors JSON 数组。
+// loadFactors 读取 users.factors JSON 数组。
 func (a *Account) loadFactors(ctx context.Context, p *shared.Principal) ([]domainauth.Factor, error) {
 	found, err := a.usersRepo.GetByID(ctx, p.ProjectID, p.UserID)
 	if err != nil {
@@ -332,15 +326,23 @@ func (a *Account) loadFactors(ctx context.Context, p *shared.Principal) ([]domai
 	return parseFactorsRaw(found.Factors), nil
 }
 
-func (a *Account) saveFactors(ctx context.Context, p *shared.Principal, factors []domainauth.Factor) error {
-	raw, err := json.Marshal(factorDocs(factors))
-	if err != nil {
-		return fmt.Errorf("update mfa factors: %w", err)
-	}
-	err = a.usersRepo.UpdateFactors(ctx, p.ProjectID, p.UserID, func(json.RawMessage) (json.RawMessage, error) {
+// mutateFactors 在 UpdateFactors 的 FOR UPDATE 快照上改 factors，禁止写回锁前副本。
+func (a *Account) mutateFactors(ctx context.Context, p *shared.Principal, fn func([]domainauth.Factor) ([]domainauth.Factor, error)) error {
+	err := a.usersRepo.UpdateFactors(ctx, p.ProjectID, p.UserID, func(current json.RawMessage) (json.RawMessage, error) {
+		next, err := fn(parseFactorsRaw(current))
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(factorDocs(next))
+		if err != nil {
+			return nil, fmt.Errorf("update mfa factors: %w", err)
+		}
 		return raw, nil
 	})
 	if err != nil {
+		if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+			return err
+		}
 		return fmt.Errorf("update mfa factors: %w", err)
 	}
 	return nil
@@ -350,11 +352,39 @@ func parseFactorsRaw(raw json.RawMessage) []domainauth.Factor {
 	if len(raw) == 0 {
 		return nil
 	}
+	var items []map[string]any
+	if err := json.Unmarshal(raw, &items); err == nil {
+		out := make([]domainauth.Factor, 0, len(items))
+		for _, m := range items {
+			if f, ok := factorFromMap(m); ok {
+				out = append(out, f)
+			}
+		}
+		return out
+	}
 	var decoded any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return nil
 	}
 	return parseFactors(decoded)
+}
+
+func factorFromMap(m map[string]any) (domainauth.Factor, bool) {
+	f := domainauth.Factor{
+		ID:     stringValue(m["id"]),
+		Type:   stringValue(m["type"]),
+		Secret: stringValue(m["secret"]),
+		Status: stringValue(m["status"]),
+	}
+	if createdAt, ok := m["created_at"].(string); ok {
+		if t, err := auth.ParseSessionTime(createdAt); err == nil {
+			f.CreatedAt = t
+		}
+	}
+	if f.ID == "" || f.Type == "" {
+		return domainauth.Factor{}, false
+	}
+	return f, true
 }
 
 func parseFactors(raw any) []domainauth.Factor {
@@ -368,21 +398,9 @@ func parseFactors(raw any) []domainauth.Factor {
 		if !ok {
 			continue
 		}
-		f := domainauth.Factor{
-			ID:     stringValue(m["id"]),
-			Type:   stringValue(m["type"]),
-			Secret: stringValue(m["secret"]),
-			Status: stringValue(m["status"]),
+		if f, ok := factorFromMap(m); ok {
+			out = append(out, f)
 		}
-		if createdAt, ok := m["created_at"].(string); ok {
-			if t, err := auth.ParseSessionTime(createdAt); err == nil {
-				f.CreatedAt = t
-			}
-		}
-		if f.ID == "" || f.Type == "" {
-			continue
-		}
-		out = append(out, f)
 	}
 	return out
 }

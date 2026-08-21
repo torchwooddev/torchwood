@@ -18,6 +18,7 @@ func TestGroups_CreateMembership_Idempotent(t *testing.T) {
 	usersMem := newMemUserRepo()
 	usersMem.seed(&domainusers.User{ID: "u-1", Email: "a@b.c"})
 	mems := newMemMembershipRepo()
+	mems.groups = g
 	mems.seed(&groups.Membership{ID: "m-1", GroupID: "group-1", UserID: "u-1", Email: "a@b.c", Status: groups.StatusAccepted})
 	mems.seed(&groups.Membership{ID: "m-2", GroupID: "group-1", Email: "p@x.com", Status: groups.StatusPending})
 	uc := NewGroups(fakeProjectRepo{}, newFakeDocDB(), usersMem, g, mems)

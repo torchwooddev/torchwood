@@ -18,7 +18,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -508,7 +507,7 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	}
 
 	if err := a.usersRepo.Update(ctx, p.ProjectID, p.UserID, updates); err != nil {
-		if errors.Is(err, users.ErrEmailAlreadyRegistered) || errors.Is(err, documentdb.ErrDuplicateKey) {
+		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
 		return nil, fmt.Errorf("update account: %w", err)
@@ -574,7 +573,7 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 		"pending_email":  "",
 		"email_verified": true,
 	}); err != nil {
-		if errors.Is(err, users.ErrEmailAlreadyRegistered) || errors.Is(err, documentdb.ErrDuplicateKey) {
+		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
 		return nil, fmt.Errorf("confirm email change: %w", err)

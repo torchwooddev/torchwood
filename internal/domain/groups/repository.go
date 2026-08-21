@@ -31,10 +31,12 @@ type GroupRepository interface {
 
 // MembershipRepository 把组成员持久化到项目 schema。
 type MembershipRepository interface {
+	// Insert：accepted 时与 AddTotal(+1) 同一 Tx。
 	Insert(ctx context.Context, projectID string, m *Membership) error
 	GetByID(ctx context.Context, projectID, id string) (*Membership, error)
 	ListByGroup(ctx context.Context, projectID, groupID string) ([]*Membership, error)
 	ListByUser(ctx context.Context, projectID, userID string) ([]*Membership, error)
+	// Delete：accepted 时与 AddTotal(-1) 同一 Tx。
 	Delete(ctx context.Context, projectID, id string) error
 	// Accept 在同一 Tx 内 CAS pending→accepted 再 AddTotal(+1)。
 	Accept(ctx context.Context, projectID, id, userID string, joinedAt time.Time) error

@@ -140,8 +140,7 @@ func (t *Transactions) appendOp(ctx context.Context, projectID, databaseID, txID
 
 // prepareOp 是 Server 侧 op 追加校验/归一化：系统集合拒
 // （system_collection_not_allowed）、权限模板展开与可授予校验——与单条
-// CreateDocument/UpdateDocument 同口径（无 Client 侧敏感字段过滤与 owner
-// 默认权限）。
+// CreateDocument/UpdateDocument 同口径（无 Client 侧 owner 默认权限）。
 func (t *Transactions) prepareOp(projectID, databaseID string, principal databases.Principal) shared.PrepareTransactionOpFunc {
 	allowPrivilegedGrant := principal.PlatformAdmin || principal.HasRole("keys")
 	return func(ctx context.Context, op databases.TransactionOp) (databases.TransactionOp, error) {

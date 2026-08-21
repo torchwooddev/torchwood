@@ -297,3 +297,61 @@ func TestMembershipRepository_AcceptCASAndDuplicates(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, listed, "groups FK CASCADE 应删 memberships")
 }
+
+func TestMembershipRepository_AcceptedInsertDeleteAdjustsTotal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	usersRepo := bunrepo.NewUserRepository(db)
+	user := seedSysUser(t, ctx, usersRepo, projectID, &domainusers.User{
+		ID:           "u-ins",
+		Email:        "ins@torchwood.local",
+		PasswordHash: "h",
+		Name:         "Ins",
+		Status:       domainusers.StatusActive,
+	})
+	groupsRepo := bunrepo.NewGroupRepository(db)
+	memRepo := bunrepo.NewMembershipRepository(db)
+	require.NoError(t, groupsRepo.Insert(ctx, projectID, &domaingroups.Group{ID: "g-ins", Name: "Insert"}))
+
+	require.NoError(t, memRepo.Insert(ctx, projectID, &domaingroups.Membership{
+		ID:      "m-acc",
+		GroupID: "g-ins",
+		UserID:  user.ID,
+		Email:   user.Email,
+		Roles:   []string{domaingroups.RoleMember},
+		Status:  domaingroups.StatusAccepted,
+	}))
+	g, err := groupsRepo.GetByID(ctx, projectID, "g-ins")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), g.Total, "accepted Insert 必须 AddTotal(+1)")
+
+	require.NoError(t, memRepo.Insert(ctx, projectID, &domaingroups.Membership{
+		ID:      "m-pend",
+		GroupID: "g-ins",
+		Email:   "pend@torchwood.local",
+		Status:  domaingroups.StatusPending,
+	}))
+	g, err = groupsRepo.GetByID(ctx, projectID, "g-ins")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), g.Total, "pending Insert 不得 AddTotal")
+
+	require.NoError(t, memRepo.Delete(ctx, projectID, "m-pend"))
+	g, err = groupsRepo.GetByID(ctx, projectID, "g-ins")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), g.Total, "pending Delete 不得 AddTotal")
+
+	require.NoError(t, memRepo.Delete(ctx, projectID, "m-acc"))
+	g, err = groupsRepo.GetByID(ctx, projectID, "g-ins")
+	require.NoError(t, err)
+	require.Equal(t, int64(0), g.Total, "accepted Delete 必须 AddTotal(-1)")
+	got, err := memRepo.GetByID(ctx, projectID, "m-acc")
+	require.NoError(t, err)
+	require.Nil(t, got)
+}

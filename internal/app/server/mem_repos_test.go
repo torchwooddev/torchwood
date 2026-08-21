@@ -141,8 +141,9 @@ func (r *memGroupRepo) AddTotal(_ context.Context, _, groupID string, delta int6
 func (r *memGroupRepo) RecountAccepted(context.Context, string, string) error { return nil }
 
 type memMembershipRepo struct {
-	mu   sync.Mutex
-	rows map[string]*domaingroups.Membership
+	mu     sync.Mutex
+	rows   map[string]*domaingroups.Membership
+	groups *memGroupRepo
 }
 
 func newMemMembershipRepo() *memMembershipRepo {
@@ -172,6 +173,9 @@ func (r *memMembershipRepo) Insert(_ context.Context, _ string, m *domaingroups.
 	}
 	cp := *m
 	r.rows[m.ID] = &cp
+	if m.Status == domaingroups.StatusAccepted && r.groups != nil {
+		_ = r.groups.AddTotal(context.Background(), "", m.GroupID, 1)
+	}
 	return nil
 }
 
@@ -214,24 +218,34 @@ func (r *memMembershipRepo) ListByUser(_ context.Context, _, userID string) ([]*
 
 func (r *memMembershipRepo) Delete(_ context.Context, _, id string) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	m := r.rows[id]
 	delete(r.rows, id)
+	r.mu.Unlock()
+	if m != nil && m.Status == domaingroups.StatusAccepted && r.groups != nil {
+		_ = r.groups.AddTotal(context.Background(), "", m.GroupID, -1)
+	}
 	return nil
 }
 
 func (r *memMembershipRepo) Accept(_ context.Context, _, id, userID string, joinedAt time.Time) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	m := r.rows[id]
 	if m == nil {
+		r.mu.Unlock()
 		return domaingroups.ErrMembershipNotFound
 	}
 	if m.Status != domaingroups.StatusPending {
+		r.mu.Unlock()
 		return domaingroups.ErrMembershipNotPending
 	}
 	m.Status = domaingroups.StatusAccepted
 	m.UserID = userID
 	m.JoinedAt = joinedAt
+	groupID := m.GroupID
+	r.mu.Unlock()
+	if r.groups != nil {
+		_ = r.groups.AddTotal(context.Background(), "", groupID, 1)
+	}
 	return nil
 }
 

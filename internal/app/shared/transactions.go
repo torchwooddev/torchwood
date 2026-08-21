@@ -82,7 +82,7 @@ func hasDatabasesWriteScope(scopes []string) bool {
 }
 
 // PrepareTransactionOpFunc 在追加 op 时（行锁内）校验并归一化 op：
-// Client/Server 各自提供（权限展开、敏感字段过滤、默认值不同）。
+// Client/Server 各自提供（权限展开、默认值不同）。
 // 追加阶段校验失败不改事务 status（设计 §5.2）。
 type PrepareTransactionOpFunc func(ctx context.Context, op databases.TransactionOp) (databases.TransactionOp, error)
 

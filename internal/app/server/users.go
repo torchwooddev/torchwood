@@ -107,7 +107,7 @@ var userUpdateProtectedFields = map[string]struct{}{
 	"password_hash": {},
 }
 
-// CreateUser 服务端创建用户：校验 email 唯一性与密码强度，写入 users 文档。
+// CreateUser 服务端创建用户：校验 email 唯一性与密码强度，写入静态 users 表。
 // 与 Client SignUp 共用同一套权限与存储语义。
 // 纵深防御（G2-2）：业务写主体（console admin 会话 / API key）才允许经
 // SystemPrincipal 写库；viewer 角色细粒度由拦截器 adminRoleMethodRules 把关。
@@ -395,8 +395,6 @@ type CreateUserCommand struct {
 	Prefs    map[string]any
 }
 
-// cascadePageSize 是级联清理的分页大小：ListDocuments 默认页太小（DSL 无显式
-// limit 时为 50 条），大账号的会话/成员数据会被截断，必须显式设大并循环拉取。
 func normalizeEmail(email string) string {
 	return users.NormalizeEmail(email)
 }

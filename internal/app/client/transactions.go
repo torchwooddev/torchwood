@@ -14,7 +14,7 @@ import (
 
 // Transactions 是 Client API 的单库事务用例（v2 设计 §5）：共用逻辑在
 // internal/app/shared.Transactions，本层负责项目/主体解析与 op 追加时的
-// Client 侧归一化（敏感字段过滤、owner 默认权限、权限模板展开）。
+// Client 侧归一化（系统集合拒绝、空权限补 owner 默认、权限模板展开）。
 type Transactions struct {
 	projectRepo projects.Repository
 	core        *shared.Transactions
@@ -137,7 +137,7 @@ func (t *Transactions) RollbackTransaction(ctx context.Context, databaseID, txID
 }
 
 // prepareOp 是 Client 侧 op 追加校验/归一化：系统集合拒
-// （system_collection_not_allowed）、敏感字段过滤、空权限补 owner 默认、
+// （system_collection_not_allowed）、空权限补 owner 默认、
 // 权限模板展开与可授予校验——与单条 CreateDocument/UpdateDocument 同口径。
 func (t *Transactions) prepareOp(projectID, databaseID string, principal databases.Principal, p *domainshared.Principal) shared.PrepareTransactionOpFunc {
 	return func(ctx context.Context, op databases.TransactionOp) (databases.TransactionOp, error) {

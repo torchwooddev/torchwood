@@ -221,6 +221,7 @@ func testGroupsUC(rows ...*groups.Membership) (*Groups, *memMembershipRepo, *mem
 	g := newMemGroupRepo()
 	g.seed(&groups.Group{ID: "group-1", Total: int64(len(rows))})
 	m := newMemMembershipRepo()
+	m.groups = g
 	for _, row := range rows {
 		m.seed(row)
 	}

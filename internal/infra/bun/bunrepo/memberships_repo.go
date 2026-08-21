@@ -46,17 +46,28 @@ func (r *MembershipRepository) Insert(ctx context.Context, projectID string, m *
 	if statusVal == domaingroups.StatusAccepted && strings.TrimSpace(m.UserID) == "" {
 		return status.Error(codes.InvalidArgument, "user_id is required for accepted membership")
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, membershipTable, "m")
-	if err != nil {
-		return err
-	}
 	row, err := mapMembershipToModel(m)
 	if err != nil {
 		return err
 	}
 	row.Status = statusVal
-	_, err = conn.NewInsert().Model(row).ModelTableExpr(expr, sch).Exec(ctx)
-	return mapMembershipUniqueError(err)
+	insert := func(txCtx context.Context) error {
+		conn, sch, expr, err := Scoped(txCtx, r.db, projectID, membershipTable, "m")
+		if err != nil {
+			return err
+		}
+		if _, err := conn.NewInsert().Model(row).ModelTableExpr(expr, sch).Exec(txCtx); err != nil {
+			return mapMembershipUniqueError(err)
+		}
+		if statusVal != domaingroups.StatusAccepted {
+			return nil
+		}
+		return NewGroupRepository(r.db).AddTotal(txCtx, projectID, m.GroupID, 1)
+	}
+	if statusVal == domaingroups.StatusAccepted {
+		return r.db.RunInTx(ctx, insert)
+	}
+	return insert(ctx)
 }
 
 func (r *MembershipRepository) GetByID(ctx context.Context, projectID, id string) (*domaingroups.Membership, error) {
@@ -123,14 +134,24 @@ func (r *MembershipRepository) Delete(ctx context.Context, projectID, id string)
 	if strings.TrimSpace(id) == "" {
 		return domaingroups.ErrMembershipIDRequired
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, membershipTable, "m")
-	if err != nil {
+	return r.db.RunInTx(ctx, func(txCtx context.Context) error {
+		conn, sch, expr, row, err := r.lockByID(txCtx, projectID, id)
+		if err != nil {
+			if errors.Is(err, domaingroups.ErrMembershipNotFound) {
+				return nil
+			}
+			return err
+		}
+		if row.Status == domaingroups.StatusAccepted {
+			if err := NewGroupRepository(r.db).AddTotal(txCtx, projectID, row.GroupID, -1); err != nil {
+				return err
+			}
+		}
+		_, err = conn.NewDelete().Model((*model.Membership)(nil)).ModelTableExpr(expr, sch).
+			Where("m.id = ?", id).
+			Exec(txCtx)
 		return err
-	}
-	_, err = conn.NewDelete().Model((*model.Membership)(nil)).ModelTableExpr(expr, sch).
-		Where("m.id = ?", id).
-		Exec(ctx)
-	return err
+	})
 }
 
 func (r *MembershipRepository) Accept(ctx context.Context, projectID, id, userID string, joinedAt time.Time) error {

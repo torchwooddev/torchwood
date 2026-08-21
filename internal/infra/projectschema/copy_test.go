@@ -83,6 +83,62 @@ func TestApply_CutRenamesToFinalNames(t *testing.T) {
 	require.Nil(t, sys)
 }
 
+func TestApply_CopyFailureDoesNotMarkDirtyOrAdvanceVersion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
+		ID:   "u1",
+		Data: map[string]any{"email": "alice@example.com", "status": "active"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Document{
+		ID: "s-orphan",
+		Data: map[string]any{
+			"user_id":     "missing-user",
+			"secret_hash": "orphan-secret",
+			"expire_at":   time.Now().UTC().Add(time.Hour),
+		},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	err = projectschema.Apply(ctx, db, projectID)
+	require.ErrorContains(t, err, "copy system documents")
+	require.ErrorContains(t, err, "orphan session")
+
+	quoted := testutil.CatalogQuoted(projectID)
+	var version int64
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
+	require.Equal(t, int64(8), version)
+
+	var applied9 bool
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM `+quoted+`.schema_migrations WHERE version = 9)`).Scan(&applied9))
+	require.False(t, applied9)
+
+	requireNotDirty(t, ctx, db, quoted)
+
+	schema, err := ident.ProjectSchemaName(projectID)
+	require.NoError(t, err)
+	require.True(t, columnExists(t, ctx, db, schema, "users", "_id"))
+	require.True(t, columnExists(t, ctx, db, schema, "sys_users", "id"))
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "users"))
+	var docUserID string
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT _id FROM `+quoted+`.users`).Scan(&docUserID))
+	require.Equal(t, "u1", docUserID)
+}
+
 func TestApply_CopyThenCutMovesRowsToFinalNames(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
