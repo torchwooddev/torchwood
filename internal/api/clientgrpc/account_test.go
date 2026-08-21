@@ -34,9 +34,13 @@ type fakeDocDB struct {
 }
 
 func (d *fakeDocDB) listByQuery(col string, projectID string, q databases.Query) []databases.Document {
-	parsed, err := query.ParseMany(q.Queries)
-	if err != nil {
-		return nil
+	parsed := q.AST
+	if parsed == nil {
+		var err error
+		parsed, err = query.ParseMany(q.Queries)
+		if err != nil {
+			return nil
+		}
 	}
 	src := d.users
 	if col == "sessions" {
@@ -45,11 +49,11 @@ func (d *fakeDocDB) listByQuery(col string, projectID string, q databases.Query)
 	var docs []databases.Document
 	for id, data := range src[projectID] {
 		match := true
-		for _, f := range parsed.Filters {
-			if f.Op == "equal" && len(f.Values) > 0 && data[f.Attribute] != f.Values[0] {
+		parsed.WalkLeaves(func(f query.Filter) {
+			if f.Op == query.OpEqual && len(f.Values) > 0 && data[f.Attribute] != f.Values[0] {
 				match = false
 			}
-		}
+		})
 		if match {
 			docs = append(docs, databases.Document{ID: id, Data: data})
 		}

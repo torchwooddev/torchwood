@@ -272,7 +272,7 @@
         "x-torchwood-access": "public"
       },
       "post": {
-        "summary": "自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间；document_id 可自由取任意合法值。",
+        "summary": "自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用\ndocument_id 命名空间；document_id 可自由取任意合法值。",
         "operationId": "DatabasesService_CreateDocument",
         "responses": {
           "200": {
@@ -763,6 +763,156 @@
         ],
         "security": [],
         "x-torchwood-access": "public"
+      },
+      "post": {
+        "operationId": "DatabasesService_CountDocuments2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1CountDocumentsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "query",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1Query"
+            }
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
+      }
+    },
+    "/v1/databases/{databaseId}/collections/{collectionId}/documents:list": {
+      "post": {
+        "operationId": "DatabasesService_ListDocuments2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodclientv1ListDocumentsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "query",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1Query"
+            }
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ],
+        "security": [],
+        "x-torchwood-access": "public"
       }
     },
     "/v1/databases/{databaseId}/transactions": {
@@ -1181,7 +1331,7 @@
       "properties": {
         "documentId": {
           "type": "string",
-          "title": "客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），\r\n不再占用 document_id 命名空间，可自由取任意合法值。"
+          "title": "客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），\n不再占用 document_id 命名空间，可自由取任意合法值。"
         },
         "data": {
           "type": "object"

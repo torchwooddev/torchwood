@@ -36,14 +36,22 @@ func ResolveQuery(q databases.Query) (*query.Query, error) {
 		if err := mergePage(out, q.PageSize, q.PageToken); err != nil {
 			return nil, err
 		}
+		if err := out.Validate(); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
+		}
 		return out, nil
 	}
 	parsed, err := query.ParseMany(q.Queries)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
 	}
-	parsed.PageSize = q.PageSize
+	if parsed.PageSize == 0 {
+		parsed.PageSize = q.PageSize
+	}
 	parsed.PageToken = q.PageToken
+	if err := parsed.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
+	}
 	return parsed, nil
 }
 

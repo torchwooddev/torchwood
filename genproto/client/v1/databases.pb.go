@@ -1637,18 +1637,18 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\x1aRollbackTransactionRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12%\n" +
-	"\x0etransaction_id\x18\x02 \x01(\tR\rtransactionId2\xd2\x17\n" +
+	"\x0etransaction_id\x18\x02 \x01(\tR\rtransactionId2\xf9\x18\n" +
 	"\x10DatabasesService\x12\xa9\x01\n" +
-	"\x0eCreateDocument\x12*.torchwood.client.v1.CreateDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"L\x82\xd3\xe4\x93\x02F:\x01*\"A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xdc\x01\n" +
-	"\rListDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a*.torchwood.client.v1.ListDocumentsResponse\"t\x92A\"b\x00j\x1e\n" +
-	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02C\x12A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xda\x01\n" +
+	"\x0eCreateDocument\x12*.torchwood.client.v1.CreateDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"L\x82\xd3\xe4\x93\x02F:\x01*\"A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xaf\x02\n" +
+	"\rListDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a*.torchwood.client.v1.ListDocumentsResponse\"\xc6\x01\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x94\x01ZO:\x05query\"F/v1/databases/{database_id}/collections/{collection_id}/documents:list\x12A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xda\x01\n" +
 	"\vGetDocument\x12'.torchwood.client.v1.GetDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"\x82\x01\x92A\"b\x00j\x1e\n" +
 	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02Q\x12O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb7\x01\n" +
 	"\x0eUpdateDocument\x12*.torchwood.client.v1.UpdateDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*2O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb7\x01\n" +
 	"\x0eUpsertDocument\x12*.torchwood.client.v1.UpsertDocumentRequest\x1a\x1d.torchwood.client.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*\x1aO/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb1\x01\n" +
-	"\x0eDeleteDocument\x12*.torchwood.client.v1.DeleteDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"W\x82\xd3\xe4\x93\x02Q*O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xe4\x01\n" +
-	"\x0eCountDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a+.torchwood.client.v1.CountDocumentsResponse\"z\x92A\"b\x00j\x1e\n" +
-	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02I\x12G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x12\x99\x01\n" +
+	"\x0eDeleteDocument\x12*.torchwood.client.v1.DeleteDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"W\x82\xd3\xe4\x93\x02Q*O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb8\x02\n" +
+	"\x0eCountDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a+.torchwood.client.v1.CountDocumentsResponse\"\xcd\x01\x92A\"b\x00j\x1e\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x9b\x01ZP:\x05query\"G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x12G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x12\x99\x01\n" +
 	"\x11CreateTransaction\x12-.torchwood.client.v1.CreateTransactionRequest\x1a .torchwood.client.v1.Transaction\"3\x82\xd3\xe4\x93\x02-:\x01*\"(/v1/databases/{database_id}/transactions\x12\xa1\x01\n" +
 	"\x0eGetTransaction\x12*.torchwood.client.v1.GetTransactionRequest\x1a .torchwood.client.v1.Transaction\"A\x82\xd3\xe4\x93\x02;\x129/v1/databases/{database_id}/transactions/{transaction_id}\x12\xc6\x01\n" +
 	"\x19CreateTransactionDocument\x125.torchwood.client.v1.CreateTransactionDocumentRequest\x1a\".torchwood.client.v1.TransactionOp\"N\x82\xd3\xe4\x93\x02H:\x01*\"C/v1/databases/{database_id}/transactions/{transaction_id}/documents\x12\xf0\x01\n" +

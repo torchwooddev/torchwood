@@ -67,7 +67,13 @@ service DatabasesService {
   }
 
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse) {
-    option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents" };
+    option (google.api.http) = {
+      get: "/v1/databases/{database_id}/collections/{collection_id}/documents"
+      additional_bindings {
+        post: "/v1/databases/{database_id}/collections/{collection_id}/documents:list"
+        body: "query"
+      }
+    };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
       security: {}
@@ -103,7 +109,13 @@ service DatabasesService {
   }
 
   rpc CountDocuments(ListDocumentsRequest) returns (CountDocumentsResponse) {
-    option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/documents:count" };
+    option (google.api.http) = {
+      get: "/v1/databases/{database_id}/collections/{collection_id}/documents:count"
+      additional_bindings {
+        post: "/v1/databases/{database_id}/collections/{collection_id}/documents:count"
+        body: "query"
+      }
+    };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_PUBLIC };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
       security: {}

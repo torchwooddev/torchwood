@@ -65,6 +65,9 @@ func TestParse(t *testing.T) {
 			require.Equal(t, tc.expected.Orders, q.Orders)
 			require.Equal(t, tc.expected.Selects, q.Selects)
 			require.Equal(t, tc.expected.Limit, q.Limit)
+			if tc.name == "limit" {
+				require.Equal(t, int32(25), q.PageSize)
+			}
 			if len(tc.expected.Filters) == 1 {
 				require.NotNil(t, q.Filter)
 				require.Equal(t, tc.expected.Filters[0], *q.Filter)
@@ -85,6 +88,7 @@ func TestParseMany(t *testing.T) {
 	require.Len(t, q.Filters, 2)
 	require.Len(t, q.Orders, 1)
 	require.Equal(t, 10, q.Limit)
+	require.Equal(t, int32(10), q.PageSize)
 	require.Equal(t, 20, q.Offset)
 	require.NotNil(t, q.Filter)
 	require.Equal(t, OpAnd, q.Filter.Op)
@@ -170,4 +174,45 @@ func TestFromProto_OrTree(t *testing.T) {
 	require.Len(t, ast.Filter.Children, 2)
 	require.Equal(t, OpEqual, ast.Filter.Children[0].Op)
 	require.Equal(t, "status", ast.Filter.Children[0].Attribute)
+}
+
+func TestFromProto_EmptyComparisonValues(t *testing.T) {
+	_, err := FromProto(&sharedv1.Query{
+		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Gt{Gt: &sharedv1.Comparison{
+			Attribute: "$id",
+		}}},
+	})
+	require.Error(t, err)
+
+	_, err = FromProto(&sharedv1.Query{
+		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{
+			Attribute: "title",
+			Values:    nil,
+		}}},
+	})
+	require.Error(t, err)
+}
+
+func TestFromProto_LeafCountCap(t *testing.T) {
+	filters := make([]*sharedv1.Filter, MaxQueries+1)
+	for i := range filters {
+		filters[i] = &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{
+			Attribute: "a",
+			Values:    []string{"1"},
+		}}}
+	}
+	_, err := FromProto(&sharedv1.Query{
+		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Or{Or: &sharedv1.FilterList{Filters: filters}}},
+	})
+	require.Error(t, err)
+}
+
+func TestParse_EmptyEqualArray(t *testing.T) {
+	_, err := Parse(`equal("title",[])`)
+	require.Error(t, err)
+}
+
+func TestValidate_EmptyGreaterThan(t *testing.T) {
+	q := &Query{Filter: &Filter{Op: OpGreaterThan, Attribute: "n"}}
+	require.Error(t, q.Validate())
 }

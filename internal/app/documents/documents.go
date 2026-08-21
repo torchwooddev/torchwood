@@ -71,7 +71,6 @@ func (d *Documents) ListDocuments(
 		return nil, 0, "", err
 	}
 	list, err := d.docDB.ListDocuments(ctx, projectID, databaseID, collectionID, databases.Query{
-		Queries:   q.Queries,
 		AST:       ast,
 		PageSize:  ast.PageSize,
 		PageToken: ast.PageToken,
@@ -190,7 +189,7 @@ func (d *Documents) CountDocuments(
 	if err != nil {
 		return 0, err
 	}
-	count, err := d.docDB.CountDocuments(ctx, projectID, databaseID, collectionID, databases.Query{Queries: q.Queries, AST: ast}, principal)
+	count, err := d.docDB.CountDocuments(ctx, projectID, databaseID, collectionID, databases.Query{AST: ast}, principal)
 	return count, shared.MapDocumentDBError(err)
 }
 

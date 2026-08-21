@@ -62,9 +62,13 @@ func (f *fakeDocDB) GetDocument(_ context.Context, _, _, collectionID, docID str
 }
 
 func (f *fakeDocDB) ListDocuments(_ context.Context, _, _, collectionID string, q databases.Query, _ databases.Principal) (*databases.DocumentList, error) {
-	parsed, err := query.ParseMany(q.Queries)
-	if err != nil {
-		return nil, err
+	parsed := q.AST
+	if parsed == nil {
+		var err error
+		parsed, err = query.ParseMany(q.Queries)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var matched []databases.Document
 	for _, doc := range f.docs[collectionID] {
@@ -107,21 +111,25 @@ func (f *fakeDocDB) ListDocuments(_ context.Context, _, _, collectionID string, 
 }
 
 func fakeMatches(parsed *query.Query, doc databases.Document) bool {
-	for _, fl := range parsed.Filters {
+	ok := true
+	parsed.WalkLeaves(func(fl query.Filter) {
+		if !ok {
+			return
+		}
 		switch fl.Op {
-		case "equal":
+		case query.OpEqual:
 			v, _ := doc.Data[fl.Attribute].(string)
 			if len(fl.Values) == 0 || v != fl.Values[0] {
-				return false
+				ok = false
 			}
-		case "notEqual":
+		case query.OpNotEqual:
 			v, _ := doc.Data[fl.Attribute].(string)
 			if len(fl.Values) > 0 && v == fl.Values[0] {
-				return false
+				ok = false
 			}
 		}
-	}
-	return true
+	})
+	return ok
 }
 
 func (f *fakeDocDB) UpdateDocument(_ context.Context, _, _, collectionID string, update databases.DocumentUpdate, _ databases.Principal) (databases.Document, error) {

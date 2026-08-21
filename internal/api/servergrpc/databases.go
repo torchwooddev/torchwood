@@ -347,6 +347,10 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	if err != nil {
 		return nil, err
 	}
+	ast, err := documents.ResolveQuery(q)
+	if err != nil {
+		return nil, err
+	}
 	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q, dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
@@ -361,7 +365,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	}
 	return &serverv1.ListDocumentsResponse{
 		Documents: out,
-		Meta:      &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
+		Meta:      &sharedv1.ListResponseMeta{PageSize: ast.PageSize, TotalCount: int32(total), NextPageToken: next},
 	}, nil
 }
 

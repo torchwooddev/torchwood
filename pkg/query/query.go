@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -124,6 +125,43 @@ func walkLeaves(f *Filter, fn func(Filter)) {
 	}
 }
 
+// Validate 检查比较叶必须带值，且叶数不超过 MaxQueries。
+func (q *Query) Validate() error {
+	if q == nil {
+		return nil
+	}
+	n := 0
+	var err error
+	q.WalkLeaves(func(f Filter) {
+		if err != nil {
+			return
+		}
+		n++
+		if n > MaxQueries {
+			err = fmt.Errorf("filter node count exceeds maximum of %d", MaxQueries)
+			return
+		}
+		err = validateLeaf(f)
+	})
+	return err
+}
+
+func validateLeaf(f Filter) error {
+	switch f.Op {
+	case OpIsNull, OpIsNotNull:
+		return nil
+	case OpBetween:
+		if len(f.Values) != 2 {
+			return fmt.Errorf("between requires 2 values")
+		}
+	default:
+		if len(f.Values) < 1 {
+			return fmt.Errorf("%s requires at least 1 value", f.Op)
+		}
+	}
+	return nil
+}
+
 func andFilters(leaves []Filter) *Filter {
 	switch len(leaves) {
 	case 0:
@@ -194,6 +232,9 @@ func Parse(raw string) (*Query, error) {
 			}
 			values = []string{v}
 		}
+		if len(values) < 1 {
+			return nil, fmt.Errorf("%s requires at least 1 value", op)
+		}
 		leaf := Filter{Op: op, Attribute: attr, Values: values}
 		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
 
@@ -248,7 +289,11 @@ func Parse(raw string) (*Query, error) {
 		if n < 0 {
 			return nil, fmt.Errorf("limit must be non-negative")
 		}
-		return &Query{Limit: n}, nil
+		q := &Query{Limit: n}
+		if n > 0 && n <= math.MaxInt32 {
+			q.PageSize = int32(n)
+		}
+		return q, nil
 
 	case "offset":
 		if len(args) != 1 {
@@ -316,6 +361,9 @@ func ParseMany(raw []string) (*Query, error) {
 		merged.Selects = append(merged.Selects, q.Selects...)
 		if q.Limit != 0 {
 			merged.Limit = q.Limit
+		}
+		if q.PageSize != 0 {
+			merged.PageSize = q.PageSize
 		}
 		if q.Offset != 0 {
 			merged.Offset = q.Offset

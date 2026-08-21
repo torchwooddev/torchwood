@@ -2470,16 +2470,24 @@ func validateQueryInput(queries []string) error {
 	return nil
 }
 
-// astFrom 把传输 Query 收成 AST。app 层已解析时走 AST；测试/直连调用仍可
-// 用 Queries 字符串走 codec（编译器本身只吃 AST）。
+// astFrom 是 SQL 编译前的 AST 入口。
+// 生产 List/Count 由 documents.ResolveQuery 填好 AST，adapter 不再解析字符串。
+// AST == nil 时回退 ParseMany(Queries)，供内部直连与既有集成测。
+// AST 与 Queries 同时提供 → InvalidArgument（与 ResolveQuery 双栈一致）。
 func astFrom(q databases.Query) (*query.Query, error) {
 	if q.AST != nil {
+		if len(q.Queries) > 0 {
+			return nil, status.Error(codes.InvalidArgument, "query and queries cannot both be set")
+		}
 		ast := *q.AST
 		if ast.PageSize == 0 {
 			ast.PageSize = q.PageSize
 		}
 		if ast.PageToken == "" {
 			ast.PageToken = q.PageToken
+		}
+		if err := ast.Validate(); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
 		}
 		return &ast, nil
 	}
@@ -2583,6 +2591,9 @@ func compilePredicate(f *query.Filter) (string, []any, error) {
 	col := "d." + quoteIdent(field)
 	switch f.Op {
 	case query.OpEqual, query.OpIn:
+		if len(f.Values) < 1 {
+			return "", nil, status.Errorf(codes.InvalidArgument, "%s requires at least 1 value", f.Op)
+		}
 		if len(f.Values) > maxFilterValues {
 			return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
 		}
@@ -2596,6 +2607,9 @@ func compilePredicate(f *query.Filter) (string, []any, error) {
 		}
 		return fmt.Sprintf("%s IN (%s)", col, phs), args, nil
 	case query.OpNotEqual:
+		if len(f.Values) < 1 {
+			return "", nil, status.Errorf(codes.InvalidArgument, "%s requires at least 1 value", f.Op)
+		}
 		if len(f.Values) > maxFilterValues {
 			return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
 		}
@@ -2608,22 +2622,28 @@ func compilePredicate(f *query.Filter) (string, []any, error) {
 			args[i] = v
 		}
 		return fmt.Sprintf("%s NOT IN (%s)", col, phs), args, nil
-	case query.OpLessThan:
-		return fmt.Sprintf("%s < ?", col), []any{f.Values[0]}, nil
-	case query.OpLessThanEqual:
-		return fmt.Sprintf("%s <= ?", col), []any{f.Values[0]}, nil
-	case query.OpGreaterThan:
-		return fmt.Sprintf("%s > ?", col), []any{f.Values[0]}, nil
-	case query.OpGreaterThanEqual:
-		return fmt.Sprintf("%s >= ?", col), []any{f.Values[0]}, nil
-	case query.OpContains:
-		return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0]) + "%"}, nil
-	case query.OpStartsWith:
-		return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{escapeLikePattern(f.Values[0]) + "%"}, nil
-	case query.OpEndsWith:
-		return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0])}, nil
-	case query.OpSearch:
-		return fmt.Sprintf("to_tsvector('simple', %s::text) @@ plainto_tsquery('simple', ?)", col), []any{f.Values[0]}, nil
+	case query.OpLessThan, query.OpLessThanEqual, query.OpGreaterThan, query.OpGreaterThanEqual, query.OpContains, query.OpStartsWith, query.OpEndsWith, query.OpSearch:
+		if len(f.Values) < 1 {
+			return "", nil, status.Errorf(codes.InvalidArgument, "%s requires at least 1 value", f.Op)
+		}
+		switch f.Op {
+		case query.OpLessThan:
+			return fmt.Sprintf("%s < ?", col), []any{f.Values[0]}, nil
+		case query.OpLessThanEqual:
+			return fmt.Sprintf("%s <= ?", col), []any{f.Values[0]}, nil
+		case query.OpGreaterThan:
+			return fmt.Sprintf("%s > ?", col), []any{f.Values[0]}, nil
+		case query.OpGreaterThanEqual:
+			return fmt.Sprintf("%s >= ?", col), []any{f.Values[0]}, nil
+		case query.OpContains:
+			return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0]) + "%"}, nil
+		case query.OpStartsWith:
+			return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{escapeLikePattern(f.Values[0]) + "%"}, nil
+		case query.OpEndsWith:
+			return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0])}, nil
+		default:
+			return fmt.Sprintf("to_tsvector('simple', %s::text) @@ plainto_tsquery('simple', ?)", col), []any{f.Values[0]}, nil
+		}
 	case query.OpIsNull:
 		return fmt.Sprintf("%s IS NULL", col), nil, nil
 	case query.OpIsNotNull:

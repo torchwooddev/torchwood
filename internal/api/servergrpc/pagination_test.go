@@ -45,16 +45,20 @@ type paginationDocDB struct {
 }
 
 func (d *paginationDocDB) ListDocuments(_ context.Context, _, _, collectionID string, q databases.Query, _ databases.Principal) (*databases.DocumentList, error) {
-	parsed, err := query.ParseMany(q.Queries)
-	if err != nil {
-		return nil, err
+	parsed := q.AST
+	if parsed == nil {
+		var err error
+		parsed, err = query.ParseMany(q.Queries)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var out []databases.Document
 	for _, doc := range d.docs[collectionID] {
 		match := true
-		for _, f := range parsed.Filters {
-			if f.Op != "equal" || len(f.Values) == 0 {
-				continue
+		parsed.WalkLeaves(func(f query.Filter) {
+			if f.Op != query.OpEqual || len(f.Values) == 0 {
+				return
 			}
 			if f.Attribute == "$id" {
 				if doc.ID != f.Values[0] {
@@ -63,7 +67,7 @@ func (d *paginationDocDB) ListDocuments(_ context.Context, _, _, collectionID st
 			} else if v, _ := doc.Data[f.Attribute].(string); v != f.Values[0] {
 				match = false
 			}
-		}
+		})
 		if match {
 			out = append(out, doc)
 		}
