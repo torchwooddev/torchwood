@@ -1,6 +1,7 @@
 package users
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -30,6 +31,20 @@ func TestRegister_PasswordUser(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, []any{}, u.DocumentData()["labels"])
+}
+
+func TestDocumentData_IncludesFactors(t *testing.T) {
+	t.Parallel()
+
+	u := &User{
+		ID:      "u1",
+		Email:   "a@b.c",
+		Factors: json.RawMessage(`{"totp":{"id":"f1"}}`),
+	}
+	got := u.DocumentData()["factors"]
+	require.Equal(t, map[string]any{"totp": map[string]any{"id": "f1"}}, got)
+
+	require.NotContains(t, (&User{Email: "a@b.c"}).DocumentData(), "factors")
 }
 
 func TestRegister_RejectsWeakPasswordAndMissingIdentity(t *testing.T) {

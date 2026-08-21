@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -87,6 +88,26 @@ func (r *recordingUserRepo) Insert(_ context.Context, _ string, user *users.User
 	cloned := *user
 	r.byEmail[user.Email] = &cloned
 	r.byID[user.ID] = &cloned
+	return nil
+}
+
+func (r *recordingUserRepo) Update(context.Context, string, string, map[string]any) error {
+	r.calls = append(r.calls, "Update")
+	return nil
+}
+
+func (r *recordingUserRepo) Delete(context.Context, string, string) error {
+	r.calls = append(r.calls, "Delete")
+	return nil
+}
+
+func (r *recordingUserRepo) List(context.Context, string, users.ListFilter) (*users.ListResult, error) {
+	r.calls = append(r.calls, "List")
+	return &users.ListResult{}, nil
+}
+
+func (r *recordingUserRepo) UpdateFactors(context.Context, string, string, func(json.RawMessage) (json.RawMessage, error)) error {
+	r.calls = append(r.calls, "UpdateFactors")
 	return nil
 }
 

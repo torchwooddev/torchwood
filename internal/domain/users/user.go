@@ -34,6 +34,7 @@ type User struct {
 	PhoneVerified bool
 	Labels        []string
 	Prefs         map[string]any
+	Factors       json.RawMessage
 	PendingEmail  string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
@@ -187,6 +188,12 @@ func (u *User) DocumentData() map[string]any {
 	}
 	if u.PendingEmail != "" {
 		data["pending_email"] = u.PendingEmail
+	}
+	if len(u.Factors) > 0 {
+		var factors any
+		if err := json.Unmarshal(u.Factors, &factors); err == nil {
+			data["factors"] = factors
+		}
 	}
 	return data
 }
