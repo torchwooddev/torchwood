@@ -1,5 +1,5 @@
 -- 系统资源 staging 表（sys_*）。占位符 {{schema}} 由 Apply 替换为 quoteIdent。
--- 无 _tenant / _perms / _version / project_id。最终名由后续 cut 迁移 rename。
+-- 无 _tenant / _perms / _version / project_id。
 
 CREATE TABLE IF NOT EXISTS {{schema}}.sys_users (
     id              TEXT PRIMARY KEY,

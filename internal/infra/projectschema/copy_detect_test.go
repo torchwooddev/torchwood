@@ -19,7 +19,8 @@ func TestDetectCopyAction(t *testing.T) {
 
 	action, err = detectCopyAction(true, false)
 	require.ErrorContains(t, err, "000008 not applied")
-	require.Equal(t, copyNoop, action)
+	require.Zero(t, action)
+	require.NotEqual(t, copyNoop, action)
 
 	action, err = detectCopyAction(true, true)
 	require.NoError(t, err)

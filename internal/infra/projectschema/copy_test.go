@@ -227,6 +227,150 @@ func TestCopySystemDocuments_MissingStaging(t *testing.T) {
 	require.ErrorContains(t, err, "000008 not applied")
 }
 
+func TestCopySystemDocuments_InsertFailRollsBackStaging(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
+		ID:   "u-old",
+		Data: map[string]any{"email": "old@example.com", "status": "active"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.NoError(t, projectschema.CopySystemDocuments(ctx, db, projectID))
+
+	quoted := testutil.CatalogQuoted(projectID)
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_users"))
+
+	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
+		ID:   "u-bad",
+		Data: map[string]any{"email": "bad@example.com", "status": "not-a-status"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	err = projectschema.CopySystemDocuments(ctx, db, projectID)
+	require.ErrorContains(t, err, "insert sys_users")
+
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_users"))
+	var id, status string
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT id, status FROM `+quoted+`.sys_users`).Scan(&id, &status))
+	require.Equal(t, "u-old", id)
+	require.Equal(t, "active", status)
+	requireNotDirty(t, ctx, db, quoted)
+}
+
+func TestCopySystemDocuments_FileOwnerMissingUserSetNull(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "buckets", databases.Document{
+		ID:   "b1",
+		Data: map[string]any{"name": "media", "public": false},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	ownerPrincipal := databases.Principal{Roles: []string{"user:deleted-user", "__system__"}}
+	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "files", databases.Document{
+		ID: "f1",
+		Data: map[string]any{
+			"bucket_id": "b1",
+			"name":      "a.txt",
+			"mime_type": "text/plain",
+			"size":      int64(1),
+		},
+	}, nil, ownerPrincipal)
+	require.NoError(t, err)
+
+	quoted := testutil.CatalogQuoted(projectID)
+	var createdBy string
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT _created_by FROM `+quoted+`.files WHERE _id = 'f1'`).Scan(&createdBy))
+	require.Equal(t, "deleted-user", createdBy)
+
+	require.NoError(t, projectschema.CopySystemDocuments(ctx, db, projectID))
+
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_files"))
+	var ownerNull bool
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT owner_user_id IS NULL FROM `+quoted+`.sys_files WHERE id = 'f1'`).Scan(&ownerNull))
+	require.True(t, ownerNull)
+}
+
+func TestCopySystemDocuments_OrphanFileBucket(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "buckets", databases.Document{
+		ID:   "b1",
+		Data: map[string]any{"name": "media"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "files", databases.Document{
+		ID: "f-ok",
+		Data: map[string]any{
+			"bucket_id": "b1",
+			"name":      "ok.txt",
+			"size":      int64(1),
+		},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	require.NoError(t, projectschema.CopySystemDocuments(ctx, db, projectID))
+	quoted := testutil.CatalogQuoted(projectID)
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_files"))
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_buckets"))
+
+	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "files", databases.Document{
+		ID: "f-orphan",
+		Data: map[string]any{
+			"bucket_id": "missing-bucket",
+			"name":      "orphan.txt",
+			"size":      int64(1),
+		},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	err = projectschema.CopySystemDocuments(ctx, db, projectID)
+	require.ErrorContains(t, err, "orphan file bucket_id")
+
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_files"))
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_buckets"))
+	var fid string
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT id FROM `+quoted+`.sys_files`).Scan(&fid))
+	require.Equal(t, "f-ok", fid)
+}
+
 func TestCopySystemDocuments_DuplicateMembership(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -292,4 +436,12 @@ func columnExists(t *testing.T, ctx context.Context, db *clients.Database, schem
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?`,
 		schema, table, column).Scan(&n))
 	return n > 0
+}
+
+func requireNotDirty(t *testing.T, ctx context.Context, db *clients.Database, quoted string) {
+	t.Helper()
+	var dirty bool
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COALESCE(bool_or(dirty), false) FROM `+quoted+`.schema_migrations`).Scan(&dirty))
+	require.False(t, dirty)
 }

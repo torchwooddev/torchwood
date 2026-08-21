@@ -43,7 +43,7 @@ var copyInsertOrder = []string{
 type copyAction int
 
 const (
-	copyNoop copyAction = iota
+	copyNoop copyAction = iota + 1
 	copyRun
 )
 
@@ -52,7 +52,7 @@ func detectCopyAction(docUsersHasID, stagingHasID bool) (copyAction, error) {
 		return copyNoop, nil
 	}
 	if !stagingHasID {
-		return copyNoop, fmt.Errorf("copy system documents: sys_users missing (000008 not applied)")
+		return 0, fmt.Errorf("copy system documents: sys_users missing (000008 not applied)")
 	}
 	return copyRun, nil
 }
