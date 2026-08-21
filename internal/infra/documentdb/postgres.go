@@ -76,13 +76,14 @@ type postgresDocumentDB struct {
 	// keysPermsCleaned 标记已完成"keys 角色系统集合写权限收窄"清理的项目
 	// （安全评审 C1 第 3 层 / M2 存量迁移）；进程重启后重复执行 DELETE/UPDATE 幂等无害。
 	keysPermsCleaned sync.Map // projectID -> struct{}
-	// versionColumns 记录已确保 _version 列（bigint）的 "schema.collection" 键，
-	// 避免每次写路径重复查 information_schema；**只缓存已提交的列**：
+	// versionColumns 记录已确认 _version 为 bigint 的 "schema.collection" 键，
+	// 避免每次写/读重复查 information_schema；**只缓存已提交的列**：
 	// 本事务内 ALTER 新建的列不记入（事务回滚会撤销列，cache 必须保持冷）。
 	versionColumns sync.Map // "schema.collection" -> struct{}
 	// versionAlterTx 记录"本事务内已执行 _version 列 ALTER"的键
 	// （txid|schema.collection -> struct{}）。用于区分 catalog 里见到的 int8
 	// 列是本事务新建（未提交，不得缓存）还是事务开始前已存在（可缓存）。
+	// ALTER 只走 DDL / catalog reconcile，不在文档写热路径。
 	versionAlterTx sync.Map // "txid|schema.collection" -> struct{}
 }
 
@@ -241,6 +242,10 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		}
 		isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 		if err := p.createCollectionTable(txCtx, schema, collectionID, internalID, attrs, isSystem); err != nil {
+			return err
+		}
+		// CREATE TABLE IF NOT EXISTS 不会给存量表补列；DDL 路径一次 reconcile。
+		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
 			return err
 		}
 		for _, idx := range idxs {
@@ -460,7 +465,11 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if err != nil {
 		return err
 	}
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
+			return err
+		}
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s`, tableName(schema, collectionID), colSQL)); err != nil {
 			return err
 		}
@@ -493,7 +502,11 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 	if err != nil {
 		return err
 	}
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
+			return err
+		}
 		if err := p.createCollectionIndex(txCtx, schema, collectionID, idx); err != nil {
 			return err
 		}
@@ -549,7 +562,7 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 	}
 	tbl := tableName(schema, collectionID)
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
 		return doc, err
 	}
 
@@ -662,7 +675,7 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	}
 	tbl := tableName(schema, collectionID)
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
 		return doc, err
 	}
 
@@ -878,7 +891,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 		return doc, err
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
 		return doc, err
 	}
 	occ := false
@@ -1018,7 +1031,7 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 		return err
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.ensureVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
 		return err
 	}
 	if !principal.IsSystem() && isWriteProtectedSystemCollection(databaseID, collectionID) {
@@ -1504,6 +1517,10 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 		}
 		p.keysPermsCleaned.Store(projectID, struct{}{})
 	}
+	// 存量用户集合缺 _version：按 catalog 一次补列。系统集合不加此列。
+	if err := p.reconcileUserCollectionVersionColumns(ctx, projectID); err != nil {
+		return err
+	}
 	p.bootstrapCache.Store(projectID, struct{}{})
 	return nil
 }
@@ -1709,7 +1726,52 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 	return err
 }
 
-// ensureVersionColumn 是用户集合 _version 列的懒迁移，**仅写路径**调用：
+// requireVersionColumn 供文档写路径使用：只检查 _version 是否为 bigint，**不 ALTER**。
+// 缺列 → ErrVersionColumnUnavailable；类型冲突 → ErrVersionColumnConflict。
+func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
+	if isSystem {
+		return nil
+	}
+	ready, err := p.versionColumnReady(ctx, schema, collectionID)
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return databases.ErrVersionColumnUnavailable
+	}
+	return nil
+}
+
+// reconcileUserCollectionVersionColumns 按 catalog 给存量用户集合补 _version。
+// 系统集合（is_system）跳过。单表失败只记日志，不阻断 ensure（该表写路径 fail-closed）。
+func (p *postgresDocumentDB) reconcileUserCollectionVersionColumns(ctx context.Context, projectID string) error {
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return err
+	}
+	var colls []model.DocumentCollection
+	if err := p.conn(ctx).NewSelect().Model(&colls).
+		ModelTableExpr("?.document_collections AS dc", cat).
+		Where("project_id = ? AND is_system = ?", projectID, false).
+		Scan(ctx); err != nil {
+		return err
+	}
+	for i := range colls {
+		_, schema, err := p.documentSchema(ctx, projectID, colls[i].DatabaseID)
+		if err != nil {
+			slog.Error("reconcile user collection _version: resolve schema failed",
+				"project", projectID, "database", colls[i].DatabaseID, "collection", colls[i].ID, "err", err)
+			continue
+		}
+		if err := p.reconcileVersionColumn(ctx, schema, colls[i].ID, false); err != nil {
+			slog.Error("reconcile user collection _version failed",
+				"project", projectID, "database", colls[i].DatabaseID, "collection", colls[i].ID, "err", err)
+		}
+	}
+	return nil
+}
+
+// reconcileVersionColumn 是用户集合 _version 列的 DDL 对账，仅 ensure / 写 DDL 调用：
 //
 //   - isSystem == true：直接返回（系统集合无 _version）。
 //   - 列不存在 → ALTER TABLE ADD COLUMN IF NOT EXISTS _version BIGINT NOT NULL DEFAULT 1
@@ -1718,14 +1780,11 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 //   - 列已存在但非 bigint（存量用户属性抢占 _version）→ fail-closed：
 //     返回 ErrVersionColumnConflict，禁止对错误类型做 _version = _version + 1。
 //
-// 进程内 sync.Map 记录已确保的 "schema.collection"（含类型合法），避免每次写查目录。
-// **只缓存已提交的列**：catalog 查到 int8 时，若本事务未 ALTER 过该键，说明列在
-// 事务开始前已存在 → 可缓存；本事务刚 ALTER 的列（versionAlterTx 有标记）一律不
-// 缓存——事务 ROLLBACK 会撤销列，缓存必须保持冷，下次写/读再查 catalog（已提交则
-// 看到 int8 再缓存，已回滚则重新 ALTER）。
-// 读路径（Get/List/Count）不得调用本函数：ADD COLUMN 是 AccessExclusiveLock，
-// 滚动发布时读流量会堵住该集合全部会话。
-func (p *postgresDocumentDB) ensureVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
+// 进程内 sync.Map 记录已确认的 "schema.collection"（含类型合法）。
+// **只缓存已提交的列**：非事务内见到 int8 才写入 cache；本事务刚 ALTER 的列
+// （versionAlterTx 有标记）一律不缓存——事务 ROLLBACK 会撤销列。
+// 文档写路径不得调用本函数：ADD COLUMN 是 AccessExclusiveLock。
+func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
 	if isSystem {
 		return nil
 	}
@@ -1743,8 +1802,10 @@ func (p *postgresDocumentDB) ensureVersionColumn(ctx context.Context, schema, co
 	udtName, err := p.versionColumnType(ctx, schema, collectionID)
 	switch {
 	case err == nil && udtName == "int8":
-		// 本事务未 ALTER 过该键（上面已查标记）→ 列在事务开始前已存在，可缓存。
-		p.versionColumns.Store(key, struct{}{})
+		// 事务内可能是本事务 CREATE TABLE 刚加的列，回滚会撤销，不得缓存。
+		if !clients.InTx(ctx) {
+			p.versionColumns.Store(key, struct{}{})
+		}
 		return nil
 	case errors.Is(err, sql.ErrNoRows):
 		tbl := tableName(schema, collectionID)
@@ -1790,16 +1851,16 @@ func (p *postgresDocumentDB) versionColumnType(ctx context.Context, schema, coll
 	return udtName, err
 }
 
-// versionColumnReady 供读路径 $version 查询校验使用：cache miss 时只查
-// information_schema（不 ALTER）；已是 bigint 则记入 cache，允许后续 $version 查询。
+// versionColumnReady 供读路径 $version 与写路径 requireVersionColumn 使用：
+// cache miss 时只查 information_schema（不 ALTER）；已是 bigint 则记入 cache。
 // 返回：
 //   - (true, nil)：列可用（bigint）。
-//   - (false, nil)：列不存在（未 ALTER）→ 调用方返回 version_column_unavailable。
+//   - (false, nil)：列不存在（尚未 reconcile）→ 调用方返回 version_column_unavailable。
 //   - (false, ErrVersionColumnConflict)：列存在但非 bigint（用户属性抢占，
-//     与写路径同语义 fail-closed）。
+//     与 DDL reconcile 同语义 fail-closed）。
 //
-// 与 ensureVersionColumn 共用缓存规则：本事务内 ALTER 新建的列（versionAlterTx
-// 标记）不得写入进程 cache（读路径理论上不在事务内，防御性检查）。
+// 与 reconcileVersionColumn 共用缓存规则：本事务内 ALTER 新建的列（versionAlterTx
+// 标记）不得写入进程 cache。
 func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, collectionID string) (bool, error) {
 	key := schema + "." + collectionID
 	if _, ok := p.versionColumns.Load(key); ok {
@@ -2212,8 +2273,8 @@ func scanDocumentJSON(scanner interface{ Scan(dest ...any) error }) (*databases.
 	if v, ok := payload["_updated_by"].(string); ok {
 		doc.UpdatedBy = v
 	}
-	// _version：用户集合有列时读取；存量表未 ALTER（缺列）视为 1，不当硬错
-	// （读路径禁止 DDL；与成功 ALTER 后的 DEFAULT 1 回填语义一致）。
+	// _version：用户集合有列时读取；存量表尚未 reconcile（缺列）视为 1，不当硬错
+	// （读路径禁止 DDL；与成功补列后的 DEFAULT 1 回填语义一致）。
 	// 系统集合恒无该列，同样视为 1，由 app 层按 IsSystemCollection 归零。
 	if v, ok := payload["_version"].(float64); ok {
 		doc.Version = int64(v)
@@ -2275,7 +2336,7 @@ var sensitiveQueryFields = map[string]map[string]struct{}{
 
 // validateQueryFields 校验非 System 查询路径（A7）：Filters/Orders/Selects 字段
 // 白名单（系统列 + 声明 attrs）、敏感列黑名单、search 的 fulltext 索引约束。
-// _version 特判：系统集合拒绝（无此列）；用户集合列未确保（缺列）时返回
+// _version 特判：系统集合拒绝（无此列）；用户集合列尚未 reconcile（缺列）时返回
 // version_column_unavailable，不得落 PG 未定义列错误（读路径不 ALTER）。
 // SystemPrincipal 路径不调用本函数（信任内部调用，零额外元数据查询）。
 func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema string, parsed *query.Query, coll *databases.Collection, collectionID string, isSystem bool) error {
@@ -2305,8 +2366,8 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema str
 				// 系统表无 _version 列，禁止编进 SQL。
 				return status.Error(codes.InvalidArgument, fmt.Sprintf("invalid query field: %s", name))
 			}
-			// 用户集合：列尚未确保（写路径没 ALTER）→ version_column_unavailable；
-			// 列已存在但非 bigint → version_column_conflict（与写路径同码）。
+			// 用户集合：列尚未 reconcile → version_column_unavailable；
+			// 列已存在但非 bigint → version_column_conflict。
 			// 均不落 PG 42703；不得改写成对常量 1 的比较（equal("$version", 2) 会静默语义错误）。
 			ready, err := p.versionColumnReady(ctx, schema, collectionID)
 			if err != nil {

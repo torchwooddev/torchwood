@@ -28,8 +28,8 @@ var ErrVersionMismatch = errors.New("version_mismatch")
 // 时返回的错误，OCC fail-closed；映射为 FailedPrecondition / version_column_conflict。
 var ErrVersionColumnConflict = errors.New("version_column_conflict")
 
-// ErrVersionColumnUnavailable 是尚未 ALTER（缺 _version 列）的用户表上使用
-// $version 查询时返回的错误；映射为 InvalidArgument / version_column_unavailable。
+// ErrVersionColumnUnavailable 是尚未 reconcile（缺 _version 列）的用户表上
+// 写文档或使用 $version 查询时返回的错误；映射为 InvalidArgument / version_column_unavailable。
 var ErrVersionColumnUnavailable = errors.New("version_column_unavailable")
 
 // SimpleDocumentUpdate builds a DocumentUpdate for data and optional permission changes.

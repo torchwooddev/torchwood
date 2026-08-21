@@ -150,14 +150,14 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 ### 3.5 乐观并发（`_version` / OCC）
 
-用户集合表有整型系统列 `_version`（`BIGINT NOT NULL DEFAULT 1`，仅写路径懒 `ALTER`）；系统集合**无**此列。
+用户集合表有整型系统列 `_version`（`BIGINT NOT NULL DEFAULT 1`，CREATE TABLE 即带列；存量缺列由 catalog reconcile 一次补齐，文档写路径不 `ALTER`）；系统集合**无**此列。
 
 | 操作 | version 语义 |
 |------|-------------|
 | `CreateDocument` / `UpsertDocument` / `Bulk*` | 不读 version（Upsert 更新支盲写、Bulk LWW，但均 `_version + 1`） |
 | `UpdateDocument`（含仅 increment / 仅 permissions） | **必填**：等于当前 `_version`，成功写 `+1` |
 | `DeleteDocument` | **必填**：等于当前 `_version`，行锁下比较 |
-| `GetDocument` / `ListDocuments` | 返回顶层 `version`；存量表未 ALTER 时读路径视为 1 |
+| `GetDocument` / `ListDocuments` | 返回顶层 `version`；存量表尚未 reconcile 时读路径视为 1 |
 
 错误码（`FailedPrecondition`）：
 
@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | `version_required` | 未带 version 或 ≤ 0 |
 | `version_mismatch` | 不等于当前行（行不变） |
 | `version_column_conflict` | 已有非 bigint 的 `_version` 列（用户属性抢占，fail-closed） |
-| `version_column_unavailable`（`InvalidArgument`） | 旧表尚未 ALTER 时用 `$version` 查询 |
+| `version_column_unavailable`（`InvalidArgument`） | 旧表尚未 reconcile 时写文档或用 `$version` 查询 |
 
 查询：`$version` / `_version` 可作过滤/排序/投影字段（映射为 `_version`）；系统集合禁止 `$version` 查询（无此列）；`_version` 与 `_perms` 等系统列为保留属性名，`CreateAttribute` / `CreateCollection` 拒绝。
 

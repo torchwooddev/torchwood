@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -54,6 +55,15 @@ func occCreate(t *testing.T, docDB databases.DocumentDB, projectID, id string) d
 	require.NoError(t, err)
 	require.Equal(t, int64(1), created.Version, "Create 后 version 应为 1")
 	return created
+}
+
+func versionColumnCount(t *testing.T, ctx context.Context, db *clients.Database, schema, table string) int {
+	t.Helper()
+	var count int
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = '_version'`,
+		schema, table).Scan(&count))
+	return count
 }
 
 // TestUpdateDocument_VersionRequired：用户集合 Update（含仅 increment / 仅 permissions）
@@ -256,11 +266,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	schema := testProjectSchema(t, projectID)
-	var count int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_version'`,
-		schema).Scan(&count))
-	require.Zero(t, count, "系统集合 users 表不得有 _version 列")
+	require.Equal(t, 0, versionColumnCount(t, ctx, db, schema, "users"), "系统集合 users 表不得有 _version 列")
 
 	// 系统集合写路径不要求 version（内部 Users 等高频更新）且不 SET _version。
 	userDoc, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
@@ -281,10 +287,10 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	require.NoError(t, docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc.ID, databases.DeleteOptions{}, databases.SystemPrincipal))
 }
 
-// TestVersionColumn_LazyAlterAndReadFallback：存量用户表（无 _version 列）
-// 写路径懒 ALTER（bigint NOT NULL DEFAULT 1）；读路径缺列视为 1、不 ALTER；
-// 未 ALTER 前 $version 查询返回 version_column_unavailable，不落 PG 未定义列。
-func TestVersionColumn_LazyAlterAndReadFallback(t *testing.T) {
+// TestVersionColumn_CreateCollectionReconcilesLegacyTable：存量用户表（无 _version）
+// 读路径缺列视为 1、不 ALTER；$version 在 reconcile 前 unavailable；
+// CreateCollection 一次补列后 OCC 可用。
+func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -294,8 +300,6 @@ func TestVersionColumn_LazyAlterAndReadFallback(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	// 模拟存量表：先手工建旧形状的表（无 _version），再走 CreateCollection
-	// （CREATE TABLE IF NOT EXISTS 幂等保留旧形状，只补元数据）。
 	schema := testSchema(t, projectID, "app")
 	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
 	require.NoError(t, err)
@@ -313,39 +317,24 @@ func TestVersionColumn_LazyAlterAndReadFallback(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+
+	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+		`INSERT INTO %s (_id, _tenant) VALUES ('legacy', ?)`, tableName(schema, "docs")), internalID)
+	require.NoError(t, err)
+
+	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", "legacy", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), got.Version, "存量表读路径缺列视为 1")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "读路径不得 ALTER")
+
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		{Type: "create", Role: "users"},
 		{Type: "read", Role: "any"},
 	}, true))
+	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, "docs"), "CreateCollection 必须给存量表补 _version")
 
-	// 直接插存量行（无 _version 列）。
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s (_id, _tenant) VALUES ('legacy', ?)`, tableName(schema, "docs")), internalID)
-	require.NoError(t, err)
-
-	// 读路径：缺列视为 1；且读路径不得触发 ALTER（列仍不存在）。
-	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", "legacy", databases.SystemPrincipal)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), got.Version, "存量表读路径缺列视为 1")
-	var count int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,
-		schema).Scan(&count))
-	require.Zero(t, count, "读路径不得 ALTER")
-
-	// 未 ALTER 表上的 $version 查询：version_column_unavailable（不落 PG 42703）。
-	// 非 System 主体才会走 validateQueryFields（System 路径信任内部调用）。
-	listPrincipal := databases.Principal{Roles: []string{"users", "user:u1"}}
-	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$version", 2)`},
-	}, listPrincipal)
-	require.Error(t, err)
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, err.Error(), databases.ErrVersionColumnUnavailable.Error())
-
-	// 写路径懒 ALTER + 类型检查：合法 bigint 就绪，存量行 DEFAULT 1 回填。
 	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{
 			ID:   "legacy",
@@ -354,9 +343,9 @@ func TestVersionColumn_LazyAlterAndReadFallback(t *testing.T) {
 		ExpectedVersion: 1,
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
-	require.Equal(t, int64(2), updated.Version, "懒 ALTER 后更新 version 1→2")
+	require.Equal(t, int64(2), updated.Version, "reconcile 后更新 version 1→2")
 
-	// ALTER 后 $version 查询可用（读路径 cache 复用写路径的确保记录）。
+	listPrincipal := databases.Principal{Roles: []string{"users", "user:u1"}}
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		Queries: []string{`equal("$version", 2)`},
 	}, listPrincipal)
@@ -395,14 +384,14 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
+	err = docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true)
+	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "CreateCollection 遇非 bigint _version 必须 fail-closed")
 
 	_, err = docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
 		Data: map[string]any{"title": "x"},
 	}, nil, databases.SystemPrincipal)
-	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "非 bigint _version 列必须 fail-closed")
+	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "写路径遇非 bigint _version 必须 fail-closed")
 
-	// 列保持原样（未被改写类型）。
 	var udtName string
 	require.NoError(t, db.DB.QueryRowContext(ctx,
 		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,
@@ -410,11 +399,10 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	require.Equal(t, "text", udtName)
 }
 
-// TestUpdateDocument_EnsureVersionRollbackDoesNotPoisonCache (F1)：写路径在
-// 事务内 ALTER 新建 _version 列后若事务回滚（如权限失败），进程 cache 不得
-// 记录"已确保"——否则下次 Update 会拼 _version = _version + 1 撞 42703，
-// $version 查询 cache hit 同样 42703（规格禁止读路径落 42703）。
-func TestUpdateDocument_EnsureVersionRollbackDoesNotPoisonCache(t *testing.T) {
+// TestVersionColumn_WritePathDoesNotAlter：文档写路径不得 ALTER TABLE ADD COLUMN。
+// 缺列时 fail-closed（version_column_unavailable）；EnsureSystemCollections
+// catalog reconcile 一次补列后 OCC 仍过。
+func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -432,61 +420,66 @@ func TestUpdateDocument_EnsureVersionRollbackDoesNotPoisonCache(t *testing.T) {
 	}, nil, []databases.Permission{
 		{Type: "create", Role: "users"},
 		{Type: "read", Role: "any"},
-		// 注意：不给集合级 update/delete——文档写权限完全依赖文档级 _perms，
-		// 否则无 perms 行的存量行会走集合级兜底（user:other 也能更新）。
+		{Type: "update", Role: "users"},
 	}, true))
 
-	// 模拟"尚未 ALTER 的存量表"：新建集合自带 _version，这里手动 DROP。
 	schema := testSchema(t, projectID, "app")
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
-	require.NoError(t, err)
-
-	// 存量行用 SQL 直插（CreateDocument 是写路径，会先触发懒 ALTER，不能用来造数）；
-	// 文档级 read/update 仅授予 owner（user:u1）。
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s (_id, _tenant, "title") VALUES ('d1', ?, 't1')`, tableName(schema, "docs")), internalID)
 	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, 'docs', 'd1', 'read', 'user:u1'), (?, 'docs', 'd1', 'update', 'user:u1')`,
-		permsTableName(schema)), internalID, internalID)
+	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
-	owner := databases.Principal{Roles: []string{"users", "user:u1"}}
+	// 新实例：避免旧进程 cache 把已 DROP 的列当成就绪。
+	fresh := NewPostgresDocumentDB(db, nil)
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "DROP 后列必须不存在")
 
-	// 1. 无 update 权限 principal（带合法 ExpectedVersion）→ 权限失败，
-	//    事务回滚撤销本事务内 ALTER 的 _version 列。
-	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
-		Document: databases.Document{
-			ID:   "d1",
-			Data: map[string]any{"title": "hacked"},
-		},
-		ExpectedVersion: 1,
-	}, databases.Principal{Roles: []string{"users", "user:other"}})
-	require.ErrorIs(t, err, ErrPermissionDenied)
+	got, err := fresh.GetDocument(ctx, projectID, "app", "docs", "d1", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), got.Version, "读路径缺列视为 1")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "读路径不得 ALTER")
 
-	// 2. 表上仍然没有 _version 列（ALTER 随 ROLLBACK 撤销）。
-	var count int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,
-		schema).Scan(&count))
-	require.Zero(t, count, "权限失败回滚后 _version 列必须不存在")
+	listPrincipal := databases.Principal{Roles: []string{"users", "user:u1"}}
+	_, err = fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		Queries: []string{`equal("$version", 1)`},
+	}, listPrincipal)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, err.Error(), databases.ErrVersionColumnUnavailable.Error())
 
-	// 3. 有权限 principal 再 Update（ExpectedVersion=1）→ 成功，不得 42703；
-	//    行 _version 变为 2（若 cache 被污染，此处会撞 undefined column）。
-	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
+	_, err = fresh.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{
 			ID:   "d1",
 			Data: map[string]any{"title": "t2"},
 		},
 		ExpectedVersion: 1,
-	}, owner)
-	require.NoError(t, err, "回滚后再次 Update 不得 42703")
+	}, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable, "写路径缺列必须 fail-closed，不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "写路径不得 ALTER")
+
+	_, err = fresh.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+		ID:   "d2",
+		Data: map[string]any{"title": "n"},
+	}, nil, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "CreateDocument 不得 ALTER")
+
+	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
+	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, "docs"), "catalog reconcile 必须补 _version")
+
+	updated, err := fresh.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
+		Document: databases.Document{
+			ID:   "d1",
+			Data: map[string]any{"title": "t2"},
+		},
+		ExpectedVersion: 1,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
 	require.Equal(t, int64(2), updated.Version)
 
-	// 4. 同一集合 $version 查询 → 成功（不得 version_column_unavailable，不得 42703）。
-	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+	list, err := fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		Queries: []string{`equal("$version", 2)`},
-	}, owner)
+	}, listPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
 	require.Equal(t, "d1", list.Documents[0].ID)
@@ -505,21 +498,6 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	// 存量表：_version 被 TEXT 列抢占。
-	schema := testSchema(t, projectID, "app")
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
-	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
-		_id TEXT NOT NULL,
-		_tenant BIGINT NOT NULL,
-		_version TEXT NOT NULL DEFAULT 'v0',
-		_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		_created_by TEXT,
-		_updated_by TEXT,
-		PRIMARY KEY (_tenant, _id))`, tableName(schema, "docs")))
-	require.NoError(t, err)
-
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -527,7 +505,16 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 		{Type: "read", Role: "any"},
 	}, true))
 
-	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+	schema := testSchema(t, projectID, "app")
+	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s ALTER COLUMN _version DROP DEFAULT`, tableName(schema, "docs")))
+	require.NoError(t, err)
+	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s ALTER COLUMN _version TYPE TEXT USING _version::text`, tableName(schema, "docs")))
+	require.NoError(t, err)
+
+	fresh := NewPostgresDocumentDB(db, nil)
+	_, err = fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		Queries: []string{`equal("$version", 1)`},
 	}, databases.Principal{Roles: []string{"users", "user:u1"}})
 	require.ErrorIs(t, err, databases.ErrVersionColumnConflict)
