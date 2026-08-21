@@ -143,6 +143,7 @@ func TestPublish_InsertsOutboxRow(t *testing.T) {
 	require.Equal(t, ev.Event, m["event"])
 	require.Contains(t, m, "acl")
 	require.Contains(t, m, "data")
+	require.NotContains(t, m, "transaction_id")
 	require.NotEmpty(t, rows[0].EventID)
 }
 
@@ -171,33 +172,6 @@ func TestPublish_WithinRunInTx(t *testing.T) {
 		return o.Publish(txCtx, testEnvelope())
 	}))
 	require.Len(t, queryOutbox(t, db, ctx), 1)
-}
-
-// TestPublish_TransactionIDFromContext：ctx 带 events.TransactionID 时写入
-// 信封 transaction_id；普通路径留空（本 PR 不注入该键）。
-func TestPublish_TransactionIDFromContext(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	db := testutil.SetupTestDB(t)
-	defer db.Close()
-	o := NewEventOutbox(db)
-	ctx := context.Background()
-
-	require.NoError(t, o.Publish(ctx, testEnvelope()))
-	rows := queryOutbox(t, db, ctx)
-	var m map[string]any
-	require.NoError(t, json.Unmarshal(rows[0].Payload, &m))
-	require.Equal(t, "", m["transaction_id"])
-
-	ev := testEnvelope()
-	ev.EventID = ""
-	require.NoError(t, o.Publish(domainevents.WithTransactionID(ctx, "tx-1"), ev))
-	rows = queryOutbox(t, db, ctx)
-	require.Len(t, rows, 2)
-	var m2 map[string]any
-	require.NoError(t, json.Unmarshal(rows[1].Payload, &m2))
-	require.Equal(t, "tx-1", m2["transaction_id"])
 }
 
 func queryOutbox(t *testing.T, db *clients.Database, ctx context.Context) []model.DocumentEventsOutbox {

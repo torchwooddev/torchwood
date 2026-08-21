@@ -1,5 +1,7 @@
 # v2 执行计划
 
+> **已过期。** D-6 已删除 staged transaction API（内测无兼容）。
+
 > 对应批准设计：`docs/design/v2-events-realtime-transactions.md`  
 > 派发稿：`docs/prompts/implement-v2.md`  
 > 日期：2026-08-15

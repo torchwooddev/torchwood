@@ -75,18 +75,6 @@ func MapDocumentDBError(err error) error {
 	if errors.Is(err, databases.ErrVersionColumnUnavailable) {
 		return status.Error(codes.InvalidArgument, databases.ErrVersionColumnUnavailable.Error())
 	}
-	// 事务稳定错误消息（v2 设计 §稳定错误消息），均 FailedPrecondition。
-	for _, txErr := range []error{
-		databases.ErrTransactionAlreadyPending,
-		databases.ErrTransactionExpired,
-		databases.ErrTransactionNotPending,
-		databases.ErrSystemCollectionNotAllowed,
-		databases.ErrTransactionOpsLimit,
-	} {
-		if errors.Is(err, txErr) {
-			return status.Error(codes.FailedPrecondition, txErr.Error())
-		}
-	}
 	var fielder pgErrorFielder
 	if errors.As(err, &fielder) {
 		if code, ok := docDBErrorSQLStates[fielder.Field('C')]; ok {

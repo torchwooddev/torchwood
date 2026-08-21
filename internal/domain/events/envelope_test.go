@@ -1,7 +1,6 @@
 package events
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -12,16 +11,15 @@ import (
 
 func testEnvelope() Envelope {
 	return Envelope{
-		EventID:       "01JTESTID",
-		Event:         EventDocumentsUpdate,
-		ProjectID:     "default",
-		DatabaseID:    "app",
-		CollectionID:  "posts",
-		DocumentID:    "p1",
-		Version:       4,
-		TransactionID: "",
-		CreatedAt:     time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC),
-		Truncated:     false,
+		EventID:      "01JTESTID",
+		Event:        EventDocumentsUpdate,
+		ProjectID:    "default",
+		DatabaseID:   "app",
+		CollectionID: "posts",
+		DocumentID:   "p1",
+		Version:      4,
+		CreatedAt:    time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC),
+		Truncated:    false,
 		Data: &databases.Document{
 			ID:        "p1",
 			Data:      map[string]any{"title": "t"},
@@ -63,7 +61,7 @@ func TestClientPayload_NoACL(t *testing.T) {
 	require.Equal(t, "posts", payload["collection_id"])
 	require.Equal(t, "p1", payload["document_id"])
 	require.Equal(t, int64(4), payload["version"])
-	require.Equal(t, "", payload["transaction_id"])
+	require.NotContains(t, payload, "transaction_id")
 	require.Equal(t, "2026-08-15T12:00:00Z", payload["created_at"])
 	require.Equal(t, false, payload["truncated"])
 }
@@ -91,13 +89,6 @@ func TestClientPayload_DeleteOmitsData(t *testing.T) {
 	payload := ev.ClientPayload()
 	_, ok := payload["data"]
 	require.False(t, ok)
-}
-
-// TestClientPayload_TransactionID：注入 transaction_id 后出现在出站帧。
-func TestClientPayload_TransactionID(t *testing.T) {
-	ev := testEnvelope()
-	ev.TransactionID = "tx-1"
-	require.Equal(t, "tx-1", ev.ClientPayload()["transaction_id"])
 }
 
 // TestDocumentPayload_NoSystemColumns：payload 不含 _ 前缀系统列。
@@ -139,11 +130,4 @@ func TestVisibleTo(t *testing.T) {
 	require.False(t, VisibleTo(acl, databases.Principal{Roles: []string{"users", "user:u2"}}))
 	require.True(t, VisibleTo(acl, databases.Principal{PlatformAdmin: true}))
 	require.True(t, VisibleTo(acl, databases.SystemPrincipal))
-}
-
-// TestWithTransactionID：注入与读取往返；无注入时为空串。
-func TestWithTransactionID(t *testing.T) {
-	ctx := WithTransactionID(context.Background(), "tx-1")
-	require.Equal(t, "tx-1", TransactionIDFrom(ctx))
-	require.Equal(t, "", TransactionIDFrom(context.Background()))
 }

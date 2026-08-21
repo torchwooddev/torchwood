@@ -21,7 +21,6 @@ import (
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
 	payments2 "github.com/torchwooddev/torchwood/internal/app/payments"
 	"github.com/torchwooddev/torchwood/internal/app/server"
-	"github.com/torchwooddev/torchwood/internal/app/shared"
 	storage2 "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -98,10 +97,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	eventOutbox := events.NewEventOutbox(database)
 	documentDB := documentdb.NewPostgresDocumentDB(database, eventOutbox)
 	databases := client.NewDatabases(repository, documentDB)
-	transactionRepository := bunrepo.NewTransactionRepository(database)
-	transactions := shared.NewTransactions(transactionRepository, documentDB, database)
-	clientTransactions := client.NewTransactions(repository, transactions)
-	databasesService := clientgrpc.NewDatabasesService(databases, clientTransactions)
+	databasesService := clientgrpc.NewDatabasesService(databases)
 	groupRepository := bunrepo.NewGroupRepository(database)
 	groups := server.NewGroups(repository, userRepository, groupRepository, membershipRepository)
 	clientGroups := client.NewGroups(groups, userRepository)
@@ -144,8 +140,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	oAuthProvidersService := servergrpc.NewOAuthProvidersService(oAuthProviders)
 	servergrpcGroupsService := servergrpc.NewGroupsService(groups)
 	serverDatabases := server.NewDatabases(repository, documentDB)
-	serverTransactions := server.NewTransactions(repository, transactions)
-	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases, serverTransactions)
+	servergrpcDatabasesService := servergrpc.NewDatabasesService(serverDatabases)
 	executor := functions.NewDockerExecutor(appConfig)
 	functionRepo := bunrepo.NewFunctionRepository(database)
 	sharedQueue := queue.NewRedisQueue(redisClient)

@@ -49,7 +49,7 @@ P2 先夯 BaaS 门面（Realtime + 事件 + 事务），Agent 表面后置。P1 
 |------|------|----------|------|
 | **P0 底座** | 可运行的工程骨架：动态文档层、Admin Console、基础认证、Storage/Functions 端口 | 已完成 | 完成 |
 | **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Groups、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **完成** |
-| **P2 / v2** | 轻量 Realtime、事件脊柱（outbox）、单库事务；按内测需要补生产底座 | 中期：3-6 个月 | **实施完成（PR1–PR5 已合入），owner 审查中** |
+| **P2 / v2** | 轻量 Realtime、事件脊柱（outbox）；staged 事务已按 D-6 删除；按内测需要补生产底座 | 中期：3-6 个月 | **实施完成（PR1–PR5 已合入），owner 审查中** |
 | **P2.5 / v3 经济系统** | 支付（Stripe/微信/支付宝/iOS IAP）、订阅、统一资产系统（代币/物品/权益）、平台用量计费 | 中期 | **设计已批准，待实施**（`docs/design/v3-payments-economy.md` + 执行计划 + 派发稿） |
 | **P3 生态** | Agent 表面（MCP / Tool Schema / Key 模板）、完整 Messaging、关系/向量、Sites / Proxy / VCS / GraphQL、多区域 | 长期：6-12 个月 | 规划中 |
 
@@ -283,7 +283,7 @@ Sprint 1 已完成 Server/Client Document CRUD；批量操作与 attribute/index
 
 ## 3. 中期 P2 / v2（Medium-term，未来 3-6 个月）
 
-**目标**：让自用 / 内测应用能在 Torchwood 上长期跑起来——业务会动（轻量 Realtime + 事件脊柱），数据能原子写（单库事务）。
+**目标**：让自用 / 内测应用能在 Torchwood 上长期跑起来——业务会动（轻量 Realtime + 事件脊柱），文档写走单条 CRUD / Bulk + 内部 `uow.Run`。
 
 v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、Tool Schema、Key 模板、Functions as Tools）后置到 P3；先把 BaaS 门面夯实。
 
@@ -294,8 +294,8 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 | 第一用户 | 自用 / 内测应用（不是外部 Agent 框架） |
 | 第一门面 | 轻量 Realtime |
 | 高压 Realtime | 不自研集群；通道与 payload 归 Torchwood，投递可换 `D:/Codes/qiulin/messageloop` |
-| 事务形态 | 单库本地 ACID：staged ops + 一次 `COMMIT`；不上 2PC / XA / Saga |
-| 事务范围 | 同一 `database_id` 下的**用户自建 collection**；禁止跨 database / 跨 project |
+| 事务形态 | **已删除 staged API（D-6，内测无兼容）**；对外 Documents CRUD + Bulk，内部 `uow.Run`；不上 2PC / XA / Saga |
+| 事务范围 | 同一 RPC 内用户自建 collection；禁止跨 database / 跨 project |
 | 系统集合 | `users` / `groups` / `memberships` / `files` 等不进事务，继续走现有 API |
 | 事件与写路径 | transactional outbox 与事务同一 `COMMIT`；不和 Redis / S3 / Function 做分布式事务 |
 | Bulk API | 保持立即执行、非原子；不与事务混为一谈 |
@@ -305,7 +305,7 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 | 关系 / 向量 / Geo | 后置 P3 |
 | 设计稿 | `docs/design/v2-events-realtime-transactions.md`（批准）；执行计划 `docs/design/v2-execution-plan.md` |
 
-依赖顺序：**事件脊柱（最小 outbox）→ 轻量 Realtime → 单库事务（Commit 写 outbox）**。事务必须和 outbox 一起设计，否则 Realtime 只能 fire-and-forget。
+依赖顺序：**事件脊柱（最小 outbox）→ 轻量 Realtime**。文档写与 outbox 同 `COMMIT`（`uow.Run`），否则 Realtime 只能 fire-and-forget。
 
 ### 3.1 事件脊柱（最小）
 
@@ -314,7 +314,7 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 | 任务 | 说明 | 关键组件 |
 |------|------|----------|
 | 事件目录 | 仅用户 collection 文档：`databases.documents.create` / `update` / `delete`。Increment 与 Update 同为 `update`。目录可扩展，P2 不实现 storage / functions 生产者 | `internal/domain/events/` |
-| 生产路径 | 单条 CRUD、Increment、Bulk（每文档一条）、事务 Commit（每条 op 一条，带 `transaction_id`） | use-case 写路径 |
+| 生产路径 | 单条 CRUD、Increment、Bulk（每文档一条） | use-case 写路径 |
 | Payload | create/update 带全文档（含 `version`）；delete 只带 id | 事件信封 |
 | 推送资格 | create 按写后 `_perms`；update/delete 按**写前**能 read 的 principal | 与 documentdb 权限同一套角色 |
 | Outbox | 写库与发事件同 `COMMIT` 落入 PG；at-least-once，信封含 `event_id` | 元数据表 + 现有 `cmd/worker` |
@@ -344,21 +344,9 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 
 ### 3.3 单库事务
 
-以 `docs/design/v2-events-realtime-transactions.md` 为准（旧稿 `docs/prompts/databases-transactions.md` 已过期）。
+**已删除（D-6，内测无兼容）。** 对外只保留 Documents CRUD（含 BulkUpdate/BulkDelete）；每次 RPC 一条内部 `uow.Run`。不保留 staged API、暂存表、信封 `transaction_id`，也不新造跨文档原子 API。
 
-| 任务 | 说明 | 关键组件 |
-|------|------|----------|
-| `_version` | 用户 collection 表加整型列；成功写 +1。顶层字段，不进 `data`。系统集合不加 | `documentdb` CREATE/ALTER |
-| 强制 OCC | 单条 Update / Delete / Increment **以及**事务内 update/delete 必须带 `version`；对不上 abort。Bulk / Upsert / Create 不带 | proto Client + Server |
-| 元数据表 | `document_transactions` + `document_transaction_ops` | `db/migrations/` |
-| API | Client + Server：Create / Get / 追加 create·update·delete·upsert / Commit / Rollback | `proto/client/v1`、`proto/server/v1` |
-| 额度 | TTL 60s；最多 100 条 op；同一 principal+database 同时只 1 个 pending | use-case |
-| 提交 | `BEGIN` → 按 seq 执行（含同文档多 op 的版本接力）+ `_perms` → 写 outbox → `COMMIT` | `internal/infra/documentdb/transaction.go` |
-| 可见性 | 提交前外部不可见；同一事务内后一条看得到前面 staged 结果 | documentdb |
-| 谁能操作 | 仅创建者追加 / Commit / Rollback；Console admin 与 `databases` 写权限 API Key 可干预任意 pending | use-case |
-| Console | 事务调试 UI **非必须**（有「试听」即可） | — |
-
-**明确不做**：跨 database、跨项目、文档+S3 / 文档+Function 原子、系统集合进事务、握着 PG 连接跨多个 HTTP 请求。
+`_version` OCC 仍对用户集合 Update / Delete / Increment 强制；Bulk / Upsert / Create 不带。历史 staged 设计见 `docs/design/v2-events-realtime-transactions.md`（§5 已过期）。
 
 ### 3.4 生产底座（按内测需要，不挡第一门面）
 
@@ -494,9 +482,9 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 
 ### M2：P2 / v2 内测可用（中期结束）
 
-- [ ] 用户 collection 的文档写路径经 outbox 发布事件（与事务同一 `COMMIT`）。
+- [ ] 用户 collection 的文档写路径经 outbox 发布事件（与写同一 `COMMIT`）。
 - [ ] 轻量 Realtime：已鉴权客户端可订阅文档变更并收到提交后的事件。
-- [ ] 单库事务：同一 database 下用户 collection 的 staged create/update/delete/upsert 可原子提交；系统集合不可进入。
+- [x] staged transaction API：**已删除（D-6，内测无兼容）**。
 - [ ] Bulk API 行为不变（立即、非原子）。
 - [ ] Worker 能消费 outbox（Functions 队列仍可用）；重试计数不因进程重启丢失。
 - [ ] 内测前上线按 IP / user / API Key 的速率限制。

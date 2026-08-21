@@ -98,7 +98,7 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 | D-3 | `_perms` 接口过深，系统路径用 SystemPrincipal 绕过 | 高 | §5 |
 | D-4 | 查询是 Appwrite 字符串，不是类型化 AST | 高 | §5 / §7 |
 | D-5 | 三件独立缺口：读路径 migrator、`Array` 不落地、懒 ALTER `_version` | 高（应拆开） | §5 |
-| D-6 | Staged transactions 是兼容层，不是数据面原语 | 中 | §5 |
+| D-6 | Staged transactions：**已删除**（内测无兼容） | 中 | §5 |
 | D-7 | catalog 双份（public 幽灵表 + 项目 schema） | 中 | §5 |
 | D-8 | Client/Server Databases 用例分叉（R-1 的实例） | 中 | §5 / §7 |
 | D-9 | 用户 collection 默认 `read:any` 是产品默认，不是系统表化遗产 | 中 | §5 |
@@ -439,7 +439,7 @@ gRPC handler 与 201 个 RPC 基本 1:1，典型形状是取 Principal → 调 u
 
 | 层 | 实现 | 职责 |
 |---|---|---|
-| `public` | `db/migrations/` + bun | 控制面 + 事件脊柱（projects、api_keys、outbox、document_transactions）。000001 仍建了一套 `document_*` catalog，运行时已不用。 |
+| `public` | `db/migrations/` + bun | 控制面 + 事件脊柱（projects、api_keys、outbox）。000001 仍建了一套 `document_*` catalog，运行时已不用。 |
 | `tw_<project>` | `projectschema.Apply` + DocumentDB | 项目 catalog、账本、Functions、系统文档表、`_perms` |
 | `tw_<project>_<database>` | `CreateDatabase` → `CREATE SCHEMA` | 用户 collection + 该库 `_perms` |
 
@@ -535,15 +535,9 @@ CreateCollection/Attribute/Index 与 catalog 同事务（正向写路径正确�
 
 ### D-6 Staged transactions 是兼容层，不是数据面原语
 
-**事实**
+**已执行**：整面删除 staged API + 表 + 信封 `transaction_id`；热路径 = 单 RPC + `uow.Run`。
 
-`document_transactions` 在 **public**（跨项目 worker）。Commit = 锁行 + 按 seq 调现有 CRUD（`internal/app/shared/transactions.go`）。TTL、ops 上限、每 actor+db 一个 pending。Client/Server 各包一层 `prepareOp`，核心共用。
-
-内部另有 `RunInTx` + outbox 同事务。
-
-**判断**
-
-给客户端的是「时限内攒操作再原子应用」，不是可查询的未提交快照，也不是把 PG 事务暴露给 Agent。与内部 `RunInTx` 叠了两层事务语义。热路径应是一条 PG 事务里多次 Documents.Mutate。Staged API 若保留，只当草稿适配器，不当事真相源。
+对外只保留 Documents CRUD（含 BulkUpdate/BulkDelete）。内部保留 `pkg/uow`、`clients.Database.Run`/`RunInTx`、outbox 与文档写同事务。不新造跨文档原子 API。
 
 ### D-7 catalog 双份
 
@@ -559,7 +553,7 @@ CreateCollection/Attribute/Index 与 catalog 同事务（正向写路径正确�
 
 **事实**
 
-Database/Collection DDL 用例仅在 Server（`app/server/databases.go`）。分叉的是**文档**用例：`internal/app/client/databases.go` 与 `internal/app/server/databases.go` 各自实现文档 Create/List/Get/Update，系统集合守卫、OCC version、grant 校验两边各写。Client 额外：guest 读、owner 默认 ACE、敏感字段过滤。Transactions 已抽 `app/shared.Transactions`，Documents 没有同样的核心。
+Database/Collection DDL 用例仅在 Server（`app/server/databases.go`）。分叉的是**文档**用例：`internal/app/client/databases.go` 与 `internal/app/server/databases.go` 各自实现文档 Create/List/Get/Update，系统集合守卫、OCC version、grant 校验两边各写。Client 额外：guest 读、owner 默认 ACE、敏感字段过滤。Documents 没有抽成共用核心。
 
 proto `message Document` 在 client 与 server 各一份。
 
@@ -1093,7 +1087,7 @@ E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成
 | 2 | `type:role` 字符串 ACE / `documentSecurity` | 用户 collection 产品，K-3 要留。E-5 只退役**系统集合**上的 ACE |
 | 3 | Appwrite 查询字符串当唯一查询面 | E-4，与表形态无关 |
 | 4 | 默认 `read:any` + `keys`/`admin` 全开 | D-9，用户 collection 产品默认 |
-| 5 | Staged transactions | 已发布 API；可降为草稿适配器，不可当 E-5 验收砍掉（D-6） |
+| 5 | Staged transactions | 已删除（D-6，内测无兼容）；不是 E-5 范围 |
 | 6 | Upsert replace-permissions | 产品语义，不是系统表化 |
 
 相对地，**列存 collection、schema-per-project、catalog 驱动 DDL、outbox 同事务** 不是 Appwrite 遗产，该留（K-4、K-5、K-6）。
@@ -1209,7 +1203,7 @@ E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成
 | D-3 | 接受 | |
 | D-4 | 接受 | ListProjects 已是 E-4 先例 |
 | D-5 | **修正已入正文** | 拆成 Array / `_version` / 读路径 migrator 三件 |
-| D-6 | 接受 | 不可当 E-5 验收砍 Staged API |
+| D-6 | **已执行** | 整面删除 staged API + 表 + 信封 `transaction_id` |
 | D-7 | 接受 | public `document_*` 删除安全 |
 | D-8 | 接受 | |
 | D-9 | **新增** | 用户 collection `read:any` 是产品默认 |

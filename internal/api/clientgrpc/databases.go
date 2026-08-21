@@ -18,12 +18,11 @@ import (
 
 type DatabasesService struct {
 	clientv1.UnimplementedDatabasesServiceServer
-	databases    *client.Databases
-	transactions *client.Transactions
+	databases *client.Databases
 }
 
-func NewDatabasesService(databases *client.Databases, transactions *client.Transactions) *DatabasesService {
-	return &DatabasesService{databases: databases, transactions: transactions}
+func NewDatabasesService(databases *client.Databases) *DatabasesService {
+	return &DatabasesService{databases: databases}
 }
 
 func (s *DatabasesService) CreateDocument(ctx context.Context, req *clientv1.CreateDocumentRequest) (*sharedv1.Document, error) {

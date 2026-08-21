@@ -526,7 +526,7 @@ func TestProjects_DeleteProject_RequiresPlatformAdmin(t *testing.T) {
 
 // TestProjects_DeleteProject_CleansPublicRows 锁死设计 §4.3 第 3 步：
 // 级联删除必须清理 public 控制面里该项目的全部行（outbox / outbox_dead /
-// transactions / api_keys / audit_logs / admin_projects / provider_resource_index）。
+// api_keys / audit_logs / admin_projects / provider_resource_index）。
 func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -551,8 +551,6 @@ func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 		 VALUES ('evt-1', 'delrows', 'databases.app.collections.posts', '{}')`,
 		`INSERT INTO document_events_outbox_dead (event_id, project_id, topic, payload, attempts, created_at)
 		 VALUES ('evt-2', 'delrows', 'databases.app.collections.posts', '{}', 3, NOW())`,
-		`INSERT INTO document_transactions (id, project_id, database_id, status, created_by, expire_at)
-		 VALUES ('tx-1', 'delrows', 'app', 'pending', 'user-1', NOW() + INTERVAL '10 minutes')`,
 		`INSERT INTO api_keys (id, project_id, name, secret_hash)
 		 VALUES ('key-1', 'delrows', 'seed', 'hash-1')`,
 		`INSERT INTO audit_logs (id, project_id, actor_id, actor_kind, action, status)
@@ -577,7 +575,6 @@ func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 	for _, table := range []string{
 		"document_events_outbox",
 		"document_events_outbox_dead",
-		"document_transactions",
 		"api_keys",
 		"audit_logs",
 		"admin_projects",

@@ -1,5 +1,7 @@
 # v2 事件脊柱、轻量 Realtime 与单库事务
 
+> **D-6（内测无兼容）**：§5 staged transaction API 已删除。本文其余事件 / Realtime 仍有效。
+
 | 字段 | 值 |
 |------|-----|
 | 作者 | Torchwood Engineering（实现稿） |

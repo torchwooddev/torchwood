@@ -27,7 +27,7 @@ Torchwood 今天把**产品身份（project）**和**物理容器**绑错了：s
 public                          平台元数据 + 项目账本 + 事件脊柱（混居）
   projects, admins, api_keys, admin_projects, audit_logs
   document_databases / collections / attributes / indexes
-  document_events_outbox (+ dead), document_transactions (+ ops)
+  document_events_outbox (+ dead)
   payment_*, asset_*, subscription_*, usage_rollups, billing_statements
   functions, function_deployments, function_variables, function_executions
 
@@ -95,7 +95,7 @@ tw_shop_app                     真正的业务库
 - 不为 Appwrite 兼容保留任何「假 database」寄居系统集合。
 - 不引入跨实例 / 跨 PG database 的分库（仍是同一 PostgreSQL database 内的 schema）。
 - 不改 collection / attribute / index 的 charset，不改 Realtime 用户集合频道格式。
-- 不把 outbox / document_transactions 迁出 `public`（事件脊柱、跨项目 worker 领取）。
+- 不把 outbox 迁出 `public`（事件脊柱、跨项目 worker 领取）。
 - 不做在线零停机的精细回滚演练之外的双写长期共存（开发期可重建；生产给迁移草图）。
 - 不把 `admins` / `projects` 迁出 `public`。
 - 不清理 MinIO 对象与 Redis 残留（functions 队列待执行消息、OTP 码、限流键）——DeleteProject 的已知缺口，另案处理。
@@ -146,7 +146,6 @@ flowchart TB
     apiKeys[api_keys]
     idx[provider_resource_index]
     outbox[document_events_outbox / dead]
-    txns[document_transactions / ops]
     platAudit[audit_logs 全量]
   end
 
@@ -188,7 +187,6 @@ flowchart TB
 | `api_keys` | API Key 凭据；认证热路径只有 secret_hash、无项目头——按 K14 规则**留 public**（PR4 补 `UNIQUE(secret_hash)`，今日无索引） |
 | `provider_resource_index` | `(provider, kind, provider_ref)` PK → `project_id`；支付 / 托管订阅 / iOS 无项目头 |
 | `document_events_outbox` / `document_events_outbox_dead` | OutboxWorker 跨项目领取（v2） |
-| `document_transactions` / `document_transaction_ops` | 事务元数据按 `(created_by, project_id, database_id)` 约束；Worker/过期扫描跨项目；**database_id 不得为 `_`**（系统集合不进事务，v2 已定；Create 入口必须拒 sentinel） |
 | `audit_logs` | **全量**（项目行 + 平台行，`project_id` 区分）；写点是全局拦截器、best-effort——按 K14 规则**留 public**，无需按项目路由 |
 
 `projects.internal_id` 仍存在，继续服务业务库 `_tenant`（本期不删）。
@@ -351,7 +349,6 @@ Catalog 的 `is_system=true` 只出现在 `database_id='_'` 的行。migration `
 
 - 无 `_version` 列（`createCollectionTable(..., isSystem=true)`）
 - 不写 `document_events_outbox`（v2）
-- 不进 `document_transactions`（`ErrSystemCollectionNotAllowed`；Create 还要拒 `database_id="_"`）
 - Server / Client Databases **API** 摸不到它们（§8.1）
 
 #### 3.1 Catalog sentinel `_` 不是假 database
@@ -438,7 +435,6 @@ DeleteProjectInternal(shop)   -- app 层；setup 回滚必须走这里，禁止�
   2. 对每个 db：DROP SCHEMA SchemaName(shop, db) CASCADE   -- businessSchema / 两段式
   3. DELETE public.document_events_outbox      WHERE project_id='shop'
      DELETE public.document_events_outbox_dead WHERE project_id='shop'
-     DELETE public.document_transactions       WHERE project_id='shop'
      DELETE public.api_keys                   WHERE project_id='shop'
      DELETE public.provider_resource_index     WHERE project_id='shop'
      DELETE public.audit_logs                  WHERE project_id='shop'
@@ -677,13 +673,12 @@ func RejectExternalDatabaseID(id string) error {
 }
 ```
 
-挂到 **所有** 对外 database_id：Server/Client `Create/Delete/Get/List` 库、集合、文档、事务。`ValidateIdentifier` 继续用于 collection id（允许下划线）。
+挂到 **所有** 对外 database_id：Server/Client `Create/Delete/Get/List` 库、集合、文档。`ValidateIdentifier` 继续用于 collection id（允许下划线）。
 
 效果：
 
 - `CreateCollection(shop, "_", "posts")` → InvalidArgument（进不了 adapter）。即使误入 adapter，白名单也会拒非系统 id。
 - `ListCollections` / `GetDocument` 带 `_` → InvalidArgument，系统集合不经 Databases API 暴露。
-- `Transactions.Create(database_id="_")` → InvalidArgument，不会写 `document_transactions.database_id='_'`。
 - `DeleteDatabase("_")` → InvalidArgument；infra `businessSchema` 再拒。
 
 PR2 验收：`ListDatabases` 不含 `_`；`GetDatabase("_")` InvalidArgument。

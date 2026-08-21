@@ -104,7 +104,7 @@ func TestOutbox_CreatePublishesCreateEvent(t *testing.T) {
 	require.Equal(t, "d1", m["document_id"])
 	outboxVersion(t, m, 1)
 	require.Equal(t, false, m["truncated"])
-	require.Equal(t, "", m["transaction_id"])
+	require.NotContains(t, m, "transaction_id")
 
 	data, ok := m["data"].(map[string]any)
 	require.True(t, ok)

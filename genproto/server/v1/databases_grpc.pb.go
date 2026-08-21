@@ -20,36 +20,28 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DatabasesService_CreateDatabase_FullMethodName            = "/torchwood.server.v1.DatabasesService/CreateDatabase"
-	DatabasesService_ListDatabases_FullMethodName             = "/torchwood.server.v1.DatabasesService/ListDatabases"
-	DatabasesService_GetDatabase_FullMethodName               = "/torchwood.server.v1.DatabasesService/GetDatabase"
-	DatabasesService_DeleteDatabase_FullMethodName            = "/torchwood.server.v1.DatabasesService/DeleteDatabase"
-	DatabasesService_CreateCollection_FullMethodName          = "/torchwood.server.v1.DatabasesService/CreateCollection"
-	DatabasesService_ListCollections_FullMethodName           = "/torchwood.server.v1.DatabasesService/ListCollections"
-	DatabasesService_GetCollection_FullMethodName             = "/torchwood.server.v1.DatabasesService/GetCollection"
-	DatabasesService_DeleteCollection_FullMethodName          = "/torchwood.server.v1.DatabasesService/DeleteCollection"
-	DatabasesService_UpdateCollection_FullMethodName          = "/torchwood.server.v1.DatabasesService/UpdateCollection"
-	DatabasesService_CreateAttribute_FullMethodName           = "/torchwood.server.v1.DatabasesService/CreateAttribute"
-	DatabasesService_DeleteAttribute_FullMethodName           = "/torchwood.server.v1.DatabasesService/DeleteAttribute"
-	DatabasesService_CreateIndex_FullMethodName               = "/torchwood.server.v1.DatabasesService/CreateIndex"
-	DatabasesService_DeleteIndex_FullMethodName               = "/torchwood.server.v1.DatabasesService/DeleteIndex"
-	DatabasesService_CreateDocument_FullMethodName            = "/torchwood.server.v1.DatabasesService/CreateDocument"
-	DatabasesService_ListDocuments_FullMethodName             = "/torchwood.server.v1.DatabasesService/ListDocuments"
-	DatabasesService_GetDocument_FullMethodName               = "/torchwood.server.v1.DatabasesService/GetDocument"
-	DatabasesService_UpdateDocument_FullMethodName            = "/torchwood.server.v1.DatabasesService/UpdateDocument"
-	DatabasesService_UpsertDocument_FullMethodName            = "/torchwood.server.v1.DatabasesService/UpsertDocument"
-	DatabasesService_DeleteDocument_FullMethodName            = "/torchwood.server.v1.DatabasesService/DeleteDocument"
-	DatabasesService_CountDocuments_FullMethodName            = "/torchwood.server.v1.DatabasesService/CountDocuments"
-	DatabasesService_BulkUpdateDocuments_FullMethodName       = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
-	DatabasesService_BulkDeleteDocuments_FullMethodName       = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
-	DatabasesService_CreateTransaction_FullMethodName         = "/torchwood.server.v1.DatabasesService/CreateTransaction"
-	DatabasesService_GetTransaction_FullMethodName            = "/torchwood.server.v1.DatabasesService/GetTransaction"
-	DatabasesService_CreateTransactionDocument_FullMethodName = "/torchwood.server.v1.DatabasesService/CreateTransactionDocument"
-	DatabasesService_UpdateTransactionDocument_FullMethodName = "/torchwood.server.v1.DatabasesService/UpdateTransactionDocument"
-	DatabasesService_DeleteTransactionDocument_FullMethodName = "/torchwood.server.v1.DatabasesService/DeleteTransactionDocument"
-	DatabasesService_UpsertTransactionDocument_FullMethodName = "/torchwood.server.v1.DatabasesService/UpsertTransactionDocument"
-	DatabasesService_CommitTransaction_FullMethodName         = "/torchwood.server.v1.DatabasesService/CommitTransaction"
-	DatabasesService_RollbackTransaction_FullMethodName       = "/torchwood.server.v1.DatabasesService/RollbackTransaction"
+	DatabasesService_CreateDatabase_FullMethodName      = "/torchwood.server.v1.DatabasesService/CreateDatabase"
+	DatabasesService_ListDatabases_FullMethodName       = "/torchwood.server.v1.DatabasesService/ListDatabases"
+	DatabasesService_GetDatabase_FullMethodName         = "/torchwood.server.v1.DatabasesService/GetDatabase"
+	DatabasesService_DeleteDatabase_FullMethodName      = "/torchwood.server.v1.DatabasesService/DeleteDatabase"
+	DatabasesService_CreateCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/CreateCollection"
+	DatabasesService_ListCollections_FullMethodName     = "/torchwood.server.v1.DatabasesService/ListCollections"
+	DatabasesService_GetCollection_FullMethodName       = "/torchwood.server.v1.DatabasesService/GetCollection"
+	DatabasesService_DeleteCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/DeleteCollection"
+	DatabasesService_UpdateCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/UpdateCollection"
+	DatabasesService_CreateAttribute_FullMethodName     = "/torchwood.server.v1.DatabasesService/CreateAttribute"
+	DatabasesService_DeleteAttribute_FullMethodName     = "/torchwood.server.v1.DatabasesService/DeleteAttribute"
+	DatabasesService_CreateIndex_FullMethodName         = "/torchwood.server.v1.DatabasesService/CreateIndex"
+	DatabasesService_DeleteIndex_FullMethodName         = "/torchwood.server.v1.DatabasesService/DeleteIndex"
+	DatabasesService_CreateDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/CreateDocument"
+	DatabasesService_ListDocuments_FullMethodName       = "/torchwood.server.v1.DatabasesService/ListDocuments"
+	DatabasesService_GetDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/GetDocument"
+	DatabasesService_UpdateDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/UpdateDocument"
+	DatabasesService_UpsertDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/UpsertDocument"
+	DatabasesService_DeleteDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/DeleteDocument"
+	DatabasesService_CountDocuments_FullMethodName      = "/torchwood.server.v1.DatabasesService/CountDocuments"
+	DatabasesService_BulkUpdateDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
+	DatabasesService_BulkDeleteDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
 )
 
 // DatabasesServiceClient is the client API for DatabasesService service.
@@ -78,15 +70,6 @@ type DatabasesServiceClient interface {
 	CountDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
 	BulkUpdateDocuments(ctx context.Context, in *BulkUpdateDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error)
 	BulkDeleteDocuments(ctx context.Context, in *BulkDeleteDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error)
-	// 单库事务（v2 设计 §5）：暂存文档写操作，Commit 单段事务应用并写 outbox。
-	CreateTransaction(ctx context.Context, in *CreateTransactionRequest, opts ...grpc.CallOption) (*Transaction, error)
-	GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*Transaction, error)
-	CreateTransactionDocument(ctx context.Context, in *CreateTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error)
-	UpdateTransactionDocument(ctx context.Context, in *UpdateTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error)
-	DeleteTransactionDocument(ctx context.Context, in *DeleteTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error)
-	UpsertTransactionDocument(ctx context.Context, in *UpsertTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error)
-	CommitTransaction(ctx context.Context, in *CommitTransactionRequest, opts ...grpc.CallOption) (*Transaction, error)
-	RollbackTransaction(ctx context.Context, in *RollbackTransactionRequest, opts ...grpc.CallOption) (*Transaction, error)
 }
 
 type databasesServiceClient struct {
@@ -317,86 +300,6 @@ func (c *databasesServiceClient) BulkDeleteDocuments(ctx context.Context, in *Bu
 	return out, nil
 }
 
-func (c *databasesServiceClient) CreateTransaction(ctx context.Context, in *CreateTransactionRequest, opts ...grpc.CallOption) (*Transaction, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
-	err := c.cc.Invoke(ctx, DatabasesService_CreateTransaction_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *databasesServiceClient) GetTransaction(ctx context.Context, in *GetTransactionRequest, opts ...grpc.CallOption) (*Transaction, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
-	err := c.cc.Invoke(ctx, DatabasesService_GetTransaction_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *databasesServiceClient) CreateTransactionDocument(ctx context.Context, in *CreateTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TransactionOp)
-	err := c.cc.Invoke(ctx, DatabasesService_CreateTransactionDocument_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *databasesServiceClient) UpdateTransactionDocument(ctx context.Context, in *UpdateTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TransactionOp)
-	err := c.cc.Invoke(ctx, DatabasesService_UpdateTransactionDocument_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *databasesServiceClient) DeleteTransactionDocument(ctx context.Context, in *DeleteTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TransactionOp)
-	err := c.cc.Invoke(ctx, DatabasesService_DeleteTransactionDocument_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *databasesServiceClient) UpsertTransactionDocument(ctx context.Context, in *UpsertTransactionDocumentRequest, opts ...grpc.CallOption) (*TransactionOp, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TransactionOp)
-	err := c.cc.Invoke(ctx, DatabasesService_UpsertTransactionDocument_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *databasesServiceClient) CommitTransaction(ctx context.Context, in *CommitTransactionRequest, opts ...grpc.CallOption) (*Transaction, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
-	err := c.cc.Invoke(ctx, DatabasesService_CommitTransaction_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *databasesServiceClient) RollbackTransaction(ctx context.Context, in *RollbackTransactionRequest, opts ...grpc.CallOption) (*Transaction, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Transaction)
-	err := c.cc.Invoke(ctx, DatabasesService_RollbackTransaction_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // DatabasesServiceServer is the server API for DatabasesService service.
 // All implementations must embed UnimplementedDatabasesServiceServer
 // for forward compatibility.
@@ -423,15 +326,6 @@ type DatabasesServiceServer interface {
 	CountDocuments(context.Context, *ListDocumentsRequest) (*CountDocumentsResponse, error)
 	BulkUpdateDocuments(context.Context, *BulkUpdateDocumentsRequest) (*BulkDocumentsResponse, error)
 	BulkDeleteDocuments(context.Context, *BulkDeleteDocumentsRequest) (*BulkDocumentsResponse, error)
-	// 单库事务（v2 设计 §5）：暂存文档写操作，Commit 单段事务应用并写 outbox。
-	CreateTransaction(context.Context, *CreateTransactionRequest) (*Transaction, error)
-	GetTransaction(context.Context, *GetTransactionRequest) (*Transaction, error)
-	CreateTransactionDocument(context.Context, *CreateTransactionDocumentRequest) (*TransactionOp, error)
-	UpdateTransactionDocument(context.Context, *UpdateTransactionDocumentRequest) (*TransactionOp, error)
-	DeleteTransactionDocument(context.Context, *DeleteTransactionDocumentRequest) (*TransactionOp, error)
-	UpsertTransactionDocument(context.Context, *UpsertTransactionDocumentRequest) (*TransactionOp, error)
-	CommitTransaction(context.Context, *CommitTransactionRequest) (*Transaction, error)
-	RollbackTransaction(context.Context, *RollbackTransactionRequest) (*Transaction, error)
 	mustEmbedUnimplementedDatabasesServiceServer()
 }
 
@@ -507,30 +401,6 @@ func (UnimplementedDatabasesServiceServer) BulkUpdateDocuments(context.Context, 
 }
 func (UnimplementedDatabasesServiceServer) BulkDeleteDocuments(context.Context, *BulkDeleteDocumentsRequest) (*BulkDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BulkDeleteDocuments not implemented")
-}
-func (UnimplementedDatabasesServiceServer) CreateTransaction(context.Context, *CreateTransactionRequest) (*Transaction, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateTransaction not implemented")
-}
-func (UnimplementedDatabasesServiceServer) GetTransaction(context.Context, *GetTransactionRequest) (*Transaction, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetTransaction not implemented")
-}
-func (UnimplementedDatabasesServiceServer) CreateTransactionDocument(context.Context, *CreateTransactionDocumentRequest) (*TransactionOp, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateTransactionDocument not implemented")
-}
-func (UnimplementedDatabasesServiceServer) UpdateTransactionDocument(context.Context, *UpdateTransactionDocumentRequest) (*TransactionOp, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateTransactionDocument not implemented")
-}
-func (UnimplementedDatabasesServiceServer) DeleteTransactionDocument(context.Context, *DeleteTransactionDocumentRequest) (*TransactionOp, error) {
-	return nil, status.Error(codes.Unimplemented, "method DeleteTransactionDocument not implemented")
-}
-func (UnimplementedDatabasesServiceServer) UpsertTransactionDocument(context.Context, *UpsertTransactionDocumentRequest) (*TransactionOp, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpsertTransactionDocument not implemented")
-}
-func (UnimplementedDatabasesServiceServer) CommitTransaction(context.Context, *CommitTransactionRequest) (*Transaction, error) {
-	return nil, status.Error(codes.Unimplemented, "method CommitTransaction not implemented")
-}
-func (UnimplementedDatabasesServiceServer) RollbackTransaction(context.Context, *RollbackTransactionRequest) (*Transaction, error) {
-	return nil, status.Error(codes.Unimplemented, "method RollbackTransaction not implemented")
 }
 func (UnimplementedDatabasesServiceServer) mustEmbedUnimplementedDatabasesServiceServer() {}
 func (UnimplementedDatabasesServiceServer) testEmbeddedByValue()                          {}
@@ -949,150 +819,6 @@ func _DatabasesService_BulkDeleteDocuments_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DatabasesService_CreateTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateTransactionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).CreateTransaction(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_CreateTransaction_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).CreateTransaction(ctx, req.(*CreateTransactionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DatabasesService_GetTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetTransactionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).GetTransaction(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_GetTransaction_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).GetTransaction(ctx, req.(*GetTransactionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DatabasesService_CreateTransactionDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateTransactionDocumentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).CreateTransactionDocument(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_CreateTransactionDocument_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).CreateTransactionDocument(ctx, req.(*CreateTransactionDocumentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DatabasesService_UpdateTransactionDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateTransactionDocumentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).UpdateTransactionDocument(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_UpdateTransactionDocument_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).UpdateTransactionDocument(ctx, req.(*UpdateTransactionDocumentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DatabasesService_DeleteTransactionDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteTransactionDocumentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).DeleteTransactionDocument(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_DeleteTransactionDocument_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).DeleteTransactionDocument(ctx, req.(*DeleteTransactionDocumentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DatabasesService_UpsertTransactionDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpsertTransactionDocumentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).UpsertTransactionDocument(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_UpsertTransactionDocument_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).UpsertTransactionDocument(ctx, req.(*UpsertTransactionDocumentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DatabasesService_CommitTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CommitTransactionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).CommitTransaction(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_CommitTransaction_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).CommitTransaction(ctx, req.(*CommitTransactionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DatabasesService_RollbackTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RollbackTransactionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatabasesServiceServer).RollbackTransaction(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatabasesService_RollbackTransaction_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).RollbackTransaction(ctx, req.(*RollbackTransactionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // DatabasesService_ServiceDesc is the grpc.ServiceDesc for DatabasesService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1187,38 +913,6 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BulkDeleteDocuments",
 			Handler:    _DatabasesService_BulkDeleteDocuments_Handler,
-		},
-		{
-			MethodName: "CreateTransaction",
-			Handler:    _DatabasesService_CreateTransaction_Handler,
-		},
-		{
-			MethodName: "GetTransaction",
-			Handler:    _DatabasesService_GetTransaction_Handler,
-		},
-		{
-			MethodName: "CreateTransactionDocument",
-			Handler:    _DatabasesService_CreateTransactionDocument_Handler,
-		},
-		{
-			MethodName: "UpdateTransactionDocument",
-			Handler:    _DatabasesService_UpdateTransactionDocument_Handler,
-		},
-		{
-			MethodName: "DeleteTransactionDocument",
-			Handler:    _DatabasesService_DeleteTransactionDocument_Handler,
-		},
-		{
-			MethodName: "UpsertTransactionDocument",
-			Handler:    _DatabasesService_UpsertTransactionDocument_Handler,
-		},
-		{
-			MethodName: "CommitTransaction",
-			Handler:    _DatabasesService_CommitTransaction_Handler,
-		},
-		{
-			MethodName: "RollbackTransaction",
-			Handler:    _DatabasesService_RollbackTransaction_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

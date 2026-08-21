@@ -176,9 +176,6 @@ func (s *Projects) deletePublicProjectRows(ctx context.Context, projectID string
 	if _, err := conn.ExecContext(ctx, `DELETE FROM document_events_outbox_dead WHERE project_id = ?`, projectID); err != nil {
 		return fmt.Errorf("delete outbox dead: %w", err)
 	}
-	if _, err := conn.NewDelete().Model((*model.DocumentTransaction)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete transactions: %w", err)
-	}
 	if _, err := conn.NewDelete().Model((*model.APIKey)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
 		return fmt.Errorf("delete api_keys: %w", err)
 	}

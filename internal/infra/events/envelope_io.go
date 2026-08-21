@@ -23,36 +23,34 @@ func MarshalEnvelope(ev domainevents.Envelope) (json.RawMessage, error) {
 // Envelope → JSON → Envelope 无损往返。
 func UnmarshalEnvelope(data []byte) (domainevents.Envelope, error) {
 	var raw struct {
-		EventID       string          `json:"event_id"`
-		Event         string          `json:"event"`
-		ProjectID     string          `json:"project_id"`
-		DatabaseID    string          `json:"database_id"`
-		CollectionID  string          `json:"collection_id"`
-		DocumentID    string          `json:"document_id"`
-		Version       int64           `json:"version"`
-		TransactionID string          `json:"transaction_id"`
-		CreatedAt     string          `json:"created_at"`
-		Truncated     bool            `json:"truncated"`
-		Data          json.RawMessage `json:"data"`
-		ACL           json.RawMessage `json:"acl"`
-		Domain        string          `json:"domain"`
-		Channel       string          `json:"channel"`
+		EventID      string          `json:"event_id"`
+		Event        string          `json:"event"`
+		ProjectID    string          `json:"project_id"`
+		DatabaseID   string          `json:"database_id"`
+		CollectionID string          `json:"collection_id"`
+		DocumentID   string          `json:"document_id"`
+		Version      int64           `json:"version"`
+		CreatedAt    string          `json:"created_at"`
+		Truncated    bool            `json:"truncated"`
+		Data         json.RawMessage `json:"data"`
+		ACL          json.RawMessage `json:"acl"`
+		Domain       string          `json:"domain"`
+		Channel      string          `json:"channel"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return domainevents.Envelope{}, fmt.Errorf("decode envelope: %w", err)
 	}
 	ev := domainevents.Envelope{
-		EventID:       raw.EventID,
-		Event:         raw.Event,
-		ProjectID:     raw.ProjectID,
-		DatabaseID:    raw.DatabaseID,
-		CollectionID:  raw.CollectionID,
-		DocumentID:    raw.DocumentID,
-		Version:       raw.Version,
-		TransactionID: raw.TransactionID,
-		Truncated:     raw.Truncated,
-		Domain:        raw.Domain,
-		Channel:       raw.Channel,
+		EventID:      raw.EventID,
+		Event:        raw.Event,
+		ProjectID:    raw.ProjectID,
+		DatabaseID:   raw.DatabaseID,
+		CollectionID: raw.CollectionID,
+		DocumentID:   raw.DocumentID,
+		Version:      raw.Version,
+		Truncated:    raw.Truncated,
+		Domain:       raw.Domain,
+		Channel:      raw.Channel,
 	}
 	if raw.CreatedAt != "" {
 		createdAt, err := time.Parse(time.RFC3339, raw.CreatedAt)

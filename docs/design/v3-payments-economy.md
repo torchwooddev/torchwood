@@ -61,7 +61,7 @@
 
 ### 为什么不走动态文档层（关键决策 D1）
 
-资产/订单/订阅**不放**租户 schema 的动态文档表，放**元数据库 `public` schema 静态表**（bun + golang-migrate，同 outbox / document_transactions 的先例）：
+资产/订单/订阅**不放**租户 schema 的动态文档表，放**元数据库 `public` schema 静态表**（bun + golang-migrate，同 outbox 的先例）：
 
 1. 资产永远不允许用户直写——动态文档层的 `_perms` 读写模型在这里不是便利而是攻击面。
 2. 高频 `UPDATE quantity` + 追加式流水需要 `SELECT FOR UPDATE`、唯一约束、部分索引，静态表直接可用；动态文档的 JSONB `data` + 懒 ALTER 语义不适用。

@@ -1,5 +1,5 @@
-// Package events 定义用户集合文档写事件的信封、服务端 ACL 快照与
-// transaction_id 上下文传递（v2 设计 §2 / §3.2）。
+// Package events 定义用户集合文档写事件的信封与服务端 ACL 快照
+// （v2 设计 §2）。
 package events
 
 import (
@@ -33,18 +33,17 @@ type ACLSnapshot struct {
 // Envelope 是文档写事件的信封（outbox 内存完整；WS 出站必须走
 // ClientPayload 剥掉 acl）。
 type Envelope struct {
-	EventID       string
-	Event         string
-	ProjectID     string
-	DatabaseID    string
-	CollectionID  string
-	DocumentID    string
-	Version       int64
-	TransactionID string
-	CreatedAt     time.Time
-	Truncated     bool
-	Data          *databases.Document // delete 时 nil
-	ACL           ACLSnapshot
+	EventID      string
+	Event        string
+	ProjectID    string
+	DatabaseID   string
+	CollectionID string
+	DocumentID   string
+	Version      int64
+	CreatedAt    time.Time
+	Truncated    bool
+	Data         *databases.Document // delete 时 nil
+	ACL          ACLSnapshot
 
 	// v3 经济事件扩展（设计 §5.1）：Domain 非空表示非文档事件
 	// （payments / economy / subscriptions），Channel 显式给出扇出频道
@@ -86,8 +85,8 @@ func DocumentPayload(d *databases.Document) map[string]any {
 }
 
 // ClientPayload 返回出站 JSON（WS 帧 / 客户端可见）：**不含 acl**。
-// 保留 event_id / event / 资源 id / version / transaction_id / created_at /
-// truncated / data；delete 事件无 data 键。
+// 保留 event_id / event / 资源 id / version / created_at / truncated / data；
+// delete 事件无 data 键。
 // 经济事件（Domain 非空）：文档专属字段不出现，改为 domain + channel
 // + Attrs（channel 必须进 payload——worker → Stream → Hub 链路只认 payload）。
 func (e Envelope) ClientPayload() map[string]any {
@@ -106,16 +105,15 @@ func (e Envelope) ClientPayload() map[string]any {
 		return m
 	}
 	m := map[string]any{
-		"event_id":       e.EventID,
-		"event":          e.Event,
-		"project_id":     e.ProjectID,
-		"database_id":    e.DatabaseID,
-		"collection_id":  e.CollectionID,
-		"document_id":    e.DocumentID,
-		"version":        e.Version,
-		"transaction_id": e.TransactionID,
-		"created_at":     e.CreatedAt.UTC().Format(time.RFC3339),
-		"truncated":      e.Truncated,
+		"event_id":      e.EventID,
+		"event":         e.Event,
+		"project_id":    e.ProjectID,
+		"database_id":   e.DatabaseID,
+		"collection_id": e.CollectionID,
+		"document_id":   e.DocumentID,
+		"version":       e.Version,
+		"created_at":    e.CreatedAt.UTC().Format(time.RFC3339),
+		"truncated":     e.Truncated,
 	}
 	if e.Data != nil {
 		m["data"] = DocumentPayload(e.Data)

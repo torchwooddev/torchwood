@@ -1,5 +1,7 @@
 # v2 实施派发稿（给第三方 agent / opencode）
 
+> **已过期。** D-6 已删除 staged transaction API（内测无兼容）。
+
 把下面 **「总则」+ 当前要做的那一张 PR** 整段复制到新 session。一次只做一张 PR，合入（或至少自测绿）后再派下一张。
 
 顺序：**PR1 → PR2 →（PR3 与 PR4 可并行）→ PR5**。

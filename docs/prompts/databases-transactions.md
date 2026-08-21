@@ -1,6 +1,6 @@
 # Torchwood Databases Transactions 实现 Prompt
 
-> **已过期（2026-08-15）**。v2 以 `docs/design/v2-events-realtime-transactions.md` 为准。  
+> **已过期。** D-6 已删除 staged transaction API（内测无兼容）。v2 事件 / Realtime 以 `docs/design/v2-events-realtime-transactions.md` 为准（§5 已过期）。  
 > 本文缺少：`_version` OCC、Client API、额度（60s / 100 ops / 单 pending）、操作者规则、与 outbox 同 `COMMIT`。不要按本文直接开工。
 >
 > 将本文件整体复制到新 Cursor session 作为实现任务说明。  

@@ -46,15 +46,6 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.DatabasesService/CountDocuments":      {"databases", "read"},
 	"/torchwood.server.v1.DatabasesService/BulkUpdateDocuments": {"databases", "write"},
 	"/torchwood.server.v1.DatabasesService/BulkDeleteDocuments": {"databases", "write"},
-	// 单库事务（v2 设计 §5）：写方法=write，GetTransaction=read。
-	"/torchwood.server.v1.DatabasesService/CreateTransaction":         {"databases", "write"},
-	"/torchwood.server.v1.DatabasesService/GetTransaction":            {"databases", "read"},
-	"/torchwood.server.v1.DatabasesService/CreateTransactionDocument": {"databases", "write"},
-	"/torchwood.server.v1.DatabasesService/UpdateTransactionDocument": {"databases", "write"},
-	"/torchwood.server.v1.DatabasesService/DeleteTransactionDocument": {"databases", "write"},
-	"/torchwood.server.v1.DatabasesService/UpsertTransactionDocument": {"databases", "write"},
-	"/torchwood.server.v1.DatabasesService/CommitTransaction":         {"databases", "write"},
-	"/torchwood.server.v1.DatabasesService/RollbackTransaction":       {"databases", "write"},
 	// UsersService
 	"/torchwood.server.v1.UsersService/CreateUser":         {"users", "write"},
 	"/torchwood.server.v1.UsersService/ListUsers":          {"users", "read"},

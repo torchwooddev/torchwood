@@ -40,9 +40,6 @@ func (o *eventOutbox) Publish(ctx context.Context, ev domainevents.Envelope) err
 	if ev.CreatedAt.IsZero() {
 		ev.CreatedAt = time.Now()
 	}
-	if txID := domainevents.TransactionIDFrom(ctx); txID != "" {
-		ev.TransactionID = txID
-	}
 	payload, err := marshalEnvelope(ev)
 	if err != nil {
 		return err

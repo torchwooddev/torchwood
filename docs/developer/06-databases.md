@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 | 层 | 技术 | 职责 | 表 |
 |----|------|------|-----|
-| public 控制面 + 事件脊柱 | bun + golang-migrate（`db/migrations/`） | 无项目上下文或 Ensure 之前就要访问的表、跨项目领取的事件 | `projects`、`admins`、`admin_projects`、`api_keys`、`audit_logs`、`provider_resource_index`、`document_events_outbox(+dead)`、`document_transactions(+ops)` |
+| public 控制面 + 事件脊柱 | bun + golang-migrate（`db/migrations/`） | 无项目上下文或 Ensure 之前就要访问的表、跨项目领取的事件 | `projects`、`admins`、`admin_projects`、`api_keys`、`audit_logs`、`provider_resource_index`、`document_events_outbox(+dead)` |
 | 项目数据面 `tw_<project>` | bun + go:embed 项目迁移（`internal/infra/projectschema/migrations/`，CreateProject 同事务 Apply、启动 EnsureAll 自愈） | 项目账本、Functions、OAuth 配置、文档目录 | `payment_*`、`asset_*`、`subscription_*`、`usage_rollups`、`billing_statements`、`functions*`、`project_oauth_providers`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`schema_migrations` |
 | 文档层（一段式 + 两段式） | 原生 SQL/JSONB | 系统资源（users、sessions、files、buckets、groups 等）在 `tw_<project>`；用户动态集合在 `tw_<project>_<database>` | `tw_shop.users`、`tw_shop_app.posts`（均含 `_perms`） |
 
@@ -259,7 +259,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 
 ## 6. 事务处理注意点
 
-- **无 Appwrite 风格 staging 事务**：`docs/prompts/databases-transactions.md` 规划的 Transactions（staged ops + commit/rollback + TTL）**尚未实现**，`document_transactions` 相关代码不存在。
+- **已删除 staged transaction**（D-6，内测无兼容）：Client/Server 不再提供 Create/Commit/Rollback 事务 RPC。多文档原子性仅内部 `uow.Run` / `clients.Database.RunInTx` 与 Server `BulkUpdate`/`BulkDelete`。
 - **批量操作原子化**：`BulkUpdateDocuments` / `BulkDeleteDocuments` 在未处于外层事务时整体包在 `clients.RunInTx` 中，中途失败整体回滚（行为从“部分成功”收紧为“原子”）；已在外层事务（`clients.InTx` 检测）时直接复用外层事务，不嵌套。
 - 每个单文档写操作本身不强制事务：`CreateDocument` = INSERT + `setPermissions`；`UpdateDocument` 的字段更新与 `_perms` 替换（clear + set）顺序执行。
 - 系统集合引导（`EnsureSystemCollections`）依赖幂等设计（`DO NOTHING` + 行数判断）而非事务。
@@ -281,4 +281,3 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 - `pkg/query/`：DSL 解析器与安全构造工具（`BuildFilter` / `BuildEqual` / `BuildLimit`，供程序化拼查询）。
 - `pkg/crud/`：列表分页游标抽象。
 - `db/migrations/`：静态元数据表迁移（含安全修复迁移 000007/000008/000009）。
-- `docs/prompts/databases-transactions.md`：Transactions 功能规划（未实现）。

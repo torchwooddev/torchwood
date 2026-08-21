@@ -290,53 +290,6 @@ export interface TOTPFactor {
   otpauth_url?: string;
 }
 
-// 单库事务（v2 设计 §5）。status: pending|committed|rolled_back|expired。
-export interface Transaction {
-  id: string;
-  database_id: string;
-  status: string;
-  created_by: string;
-  expire_at: string;
-  created_at: string;
-  updated_at: string;
-  operations?: TransactionOp[];
-}
-
-export interface TransactionOp {
-  id: string;
-  seq: number;
-  op_type: string; // create|update|delete|upsert
-  collection_id: string;
-  document_id: string;
-  data?: Record<string, unknown>;
-  permissions?: string[];
-  increment?: Record<string, number>;
-  // int64：网关可能序列化为字符串，消费时 Number()。
-  version?: number | string;
-  conflict_columns?: string[];
-}
-
-export interface CreateTransactionDocumentInput {
-  collection_id: string;
-  document_id?: string;
-  data: Record<string, unknown>;
-  permissions?: string[];
-}
-
-export interface UpdateTransactionDocumentInput {
-  data?: Record<string, unknown>;
-  permissions?: string[];
-  increment?: Record<string, number>;
-  // 用户集合 OCC 必填（presence）。
-  version: number;
-}
-
-export interface UpsertTransactionDocumentInput {
-  data: Record<string, unknown>;
-  permissions?: string[];
-  conflict_columns: string[];
-}
-
 /** int64 最小单位；网关 protojson 序列化为字符串。禁止按 number 做算术。 */
 export type Int64String = string;
 
