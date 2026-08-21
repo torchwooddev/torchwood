@@ -9,6 +9,7 @@ import (
 var (
 	ErrGroupIDRequired         = errors.New("group id is required")
 	ErrMembershipIDRequired    = errors.New("membership id is required")
+	ErrMembershipNotFound      = errors.New("membership not found")
 	ErrMembershipNotPending    = errors.New("membership status is not pending")
 	ErrMembershipAlreadyExists = errors.New("membership already exists")
 	ErrInvalidUpdate           = errors.New("invalid group update")
@@ -37,6 +38,8 @@ type MembershipRepository interface {
 	Delete(ctx context.Context, projectID, id string) error
 	// Accept 在同一 Tx 内 CAS pending→accepted 再 AddTotal(+1)。
 	Accept(ctx context.Context, projectID, id, userID string, joinedAt time.Time) error
-	// UpdateRoles 只 SET roles；对行 FOR UPDATE。last-owner 检查留在 use-case。
-	UpdateRoles(ctx context.Context, projectID, id string, roles []string) error
+	// Reject CAS pending→rejected，不加 total；禁止写回 pending。
+	Reject(ctx context.Context, projectID, id string) error
+	// UpdateRoles 同一 Tx：FOR UPDATE 当前行后回调；回调内 ListByGroup 走同一 ctx 才能做 last-owner 预检。
+	UpdateRoles(ctx context.Context, projectID, id string, mutate func(ctx context.Context, current *Membership) ([]string, error)) error
 }

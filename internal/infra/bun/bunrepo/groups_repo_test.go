@@ -213,6 +213,34 @@ func TestMembershipRepository_AcceptCASAndDuplicates(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), g.Total, "非 pending Accept 不得再 +1")
 
+	err = memRepo.Accept(ctx, projectID, "m-missing", user.ID, time.Now())
+	require.ErrorIs(t, err, domaingroups.ErrMembershipNotFound)
+
+	require.NoError(t, memRepo.Insert(ctx, projectID, &domaingroups.Membership{
+		ID:      "m-rej",
+		GroupID: "g-acc",
+		Email:   "reject@torchwood.local",
+		Status:  domaingroups.StatusPending,
+	}))
+	require.NoError(t, memRepo.Reject(ctx, projectID, "m-rej"))
+	got, err = memRepo.GetByID(ctx, projectID, "m-rej")
+	require.NoError(t, err)
+	require.Equal(t, domaingroups.StatusRejected, got.Status)
+	g, err = groupsRepo.GetByID(ctx, projectID, "g-acc")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), g.Total, "Reject 不得 AddTotal")
+	err = memRepo.Reject(ctx, projectID, "m-rej")
+	require.ErrorIs(t, err, domaingroups.ErrMembershipNotPending)
+	err = memRepo.Accept(ctx, projectID, "m-rej", user.ID, time.Now())
+	require.ErrorIs(t, err, domaingroups.ErrMembershipNotPending, "rejected 不得再 Accept")
+	err = memRepo.Reject(ctx, projectID, "m-pend")
+	require.ErrorIs(t, err, domaingroups.ErrMembershipNotPending, "accepted 不得 Reject")
+	g, err = groupsRepo.GetByID(ctx, projectID, "g-acc")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), g.Total)
+	err = memRepo.Reject(ctx, projectID, "m-missing")
+	require.ErrorIs(t, err, domaingroups.ErrMembershipNotFound)
+
 	require.NoError(t, memRepo.Insert(ctx, projectID, &domaingroups.Membership{
 		ID:      "m-other",
 		GroupID: "g-acc",
@@ -231,21 +259,38 @@ func TestMembershipRepository_AcceptCASAndDuplicates(t *testing.T) {
 	require.NoError(t, memRepo.Insert(ctx, projectID, &domaingroups.Membership{
 		ID:      "m-email",
 		GroupID: "g-acc",
-		Email:   "dup-email@torchwood.local",
+		Email:   "  Dup-Email@Torchwood.local ",
 		Status:  domaingroups.StatusPending,
 	}))
+	got, err = memRepo.GetByID(ctx, projectID, "m-email")
+	require.NoError(t, err)
+	require.Equal(t, "dup-email@torchwood.local", got.Email)
 	err = memRepo.Insert(ctx, projectID, &domaingroups.Membership{
 		ID:      "m-email-2",
 		GroupID: "g-acc",
-		Email:   "dup-email@torchwood.local",
+		Email:   "DUP-EMAIL@torchwood.local",
 		Status:  domaingroups.StatusPending,
 	})
 	require.ErrorIs(t, err, domaingroups.ErrMembershipAlreadyExists)
 
-	require.NoError(t, memRepo.UpdateRoles(ctx, projectID, "m-other", []string{domaingroups.RoleAdmin}))
+	require.NoError(t, memRepo.UpdateRoles(ctx, projectID, "m-other", func(txCtx context.Context, current *domaingroups.Membership) ([]string, error) {
+		listed, listErr := memRepo.ListByGroup(txCtx, projectID, current.GroupID)
+		if listErr != nil {
+			return nil, listErr
+		}
+		require.GreaterOrEqual(t, len(listed), 1)
+		return []string{domaingroups.RoleAdmin}, nil
+	}))
 	got, err = memRepo.GetByID(ctx, projectID, "m-other")
 	require.NoError(t, err)
 	require.Equal(t, []string{domaingroups.RoleAdmin}, got.Roles)
+	err = memRepo.UpdateRoles(ctx, projectID, "m-other", func(context.Context, *domaingroups.Membership) ([]string, error) {
+		return nil, status.Error(codes.FailedPrecondition, "group must keep at least one owner")
+	})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	got, err = memRepo.GetByID(ctx, projectID, "m-other")
+	require.NoError(t, err)
+	require.Equal(t, []string{domaingroups.RoleAdmin}, got.Roles, "回调失败不得改 roles")
 
 	require.NoError(t, groupsRepo.Delete(ctx, projectID, "g-acc"))
 	listed, err := memRepo.ListByGroup(ctx, projectID, "g-acc")

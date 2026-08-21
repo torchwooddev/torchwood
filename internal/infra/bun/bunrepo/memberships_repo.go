@@ -8,8 +8,10 @@ import (
 	"time"
 
 	domaingroups "github.com/torchwooddev/torchwood/internal/domain/groups"
+	domainusers "github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/uptrace/bun"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -31,7 +33,7 @@ func (r *MembershipRepository) Insert(ctx context.Context, projectID string, m *
 	if strings.TrimSpace(m.GroupID) == "" {
 		return status.Error(codes.InvalidArgument, "group_id is required")
 	}
-	if strings.TrimSpace(m.UserID) == "" && strings.TrimSpace(m.Email) == "" {
+	if strings.TrimSpace(m.UserID) == "" && domainusers.NormalizeEmail(m.Email) == "" {
 		return status.Error(codes.InvalidArgument, "user_id or email is required")
 	}
 	statusVal := m.Status
@@ -143,19 +145,8 @@ func (r *MembershipRepository) Accept(ctx context.Context, projectID, id, userID
 	}
 	groupsRepo := NewGroupRepository(r.db)
 	return r.db.RunInTx(ctx, func(txCtx context.Context) error {
-		conn, sch, expr, err := Scoped(txCtx, r.db, projectID, membershipTable, "m")
+		conn, sch, expr, row, err := r.lockByID(txCtx, projectID, id)
 		if err != nil {
-			return err
-		}
-		row := new(model.Membership)
-		err = conn.NewSelect().Model(row).ModelTableExpr(expr, sch).
-			Where("m.id = ?", id).
-			For("UPDATE").
-			Scan(txCtx)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return domaingroups.ErrMembershipNotPending
-			}
 			return err
 		}
 		res, err := conn.NewUpdate().Model((*model.Membership)(nil)).ModelTableExpr(expr, sch).
@@ -177,30 +168,51 @@ func (r *MembershipRepository) Accept(ctx context.Context, projectID, id, userID
 	})
 }
 
-func (r *MembershipRepository) UpdateRoles(ctx context.Context, projectID, id string, roles []string) error {
+func (r *MembershipRepository) Reject(ctx context.Context, projectID, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return domaingroups.ErrMembershipIDRequired
 	}
-	encoded, err := marshalJSONCol(roles, jsonEmptyArray)
-	if err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
 	return r.db.RunInTx(ctx, func(txCtx context.Context) error {
-		conn, sch, expr, err := Scoped(txCtx, r.db, projectID, membershipTable, "m")
+		conn, sch, expr, _, err := r.lockByID(txCtx, projectID, id)
 		if err != nil {
 			return err
 		}
-		row := new(model.Membership)
-		err = conn.NewSelect().Model(row).ModelTableExpr(expr, sch).
-			Column("m.id").
+		res, err := conn.NewUpdate().Model((*model.Membership)(nil)).ModelTableExpr(expr, sch).
+			Set("status = ?", domaingroups.StatusRejected).
+			Set("updated_at = ?", time.Now()).
 			Where("m.id = ?", id).
-			For("UPDATE").
-			Scan(txCtx)
+			Where("m.status = ?", domaingroups.StatusPending).
+			Exec(txCtx)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return status.Error(codes.NotFound, "membership not found")
-			}
 			return err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return domaingroups.ErrMembershipNotPending
+		}
+		return nil
+	})
+}
+
+func (r *MembershipRepository) UpdateRoles(ctx context.Context, projectID, id string, mutate func(ctx context.Context, current *domaingroups.Membership) ([]string, error)) error {
+	if strings.TrimSpace(id) == "" {
+		return domaingroups.ErrMembershipIDRequired
+	}
+	if mutate == nil {
+		return status.Error(codes.InvalidArgument, "roles mutate is required")
+	}
+	return r.db.RunInTx(ctx, func(txCtx context.Context) error {
+		conn, sch, expr, row, err := r.lockByID(txCtx, projectID, id)
+		if err != nil {
+			return err
+		}
+		roles, err := mutate(txCtx, mapMembershipToDomain(row))
+		if err != nil {
+			return err
+		}
+		encoded, err := marshalJSONCol(roles, jsonEmptyArray)
+		if err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
 		}
 		_, err = conn.NewUpdate().Model((*model.Membership)(nil)).ModelTableExpr(expr, sch).
 			Set("roles = ?", encoded).
@@ -209,6 +221,25 @@ func (r *MembershipRepository) UpdateRoles(ctx context.Context, projectID, id st
 			Exec(txCtx)
 		return err
 	})
+}
+
+func (r *MembershipRepository) lockByID(ctx context.Context, projectID, id string) (bun.IDB, bun.Ident, string, *model.Membership, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, membershipTable, "m")
+	if err != nil {
+		return nil, bun.Ident(""), "", nil, err
+	}
+	row := new(model.Membership)
+	err = conn.NewSelect().Model(row).ModelTableExpr(expr, sch).
+		Where("m.id = ?", id).
+		For("UPDATE").
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, bun.Ident(""), "", nil, domaingroups.ErrMembershipNotFound
+		}
+		return nil, bun.Ident(""), "", nil, err
+	}
+	return conn, sch, expr, row, nil
 }
 
 func mapMembershipUniqueError(err error) error {
@@ -255,7 +286,7 @@ func mapMembershipToModel(m *domaingroups.Membership) (*model.Membership, error)
 		ID:        m.ID,
 		GroupID:   m.GroupID,
 		UserID:    nullIfEmpty(strings.TrimSpace(m.UserID)),
-		Email:     strings.TrimSpace(m.Email),
+		Email:     domainusers.NormalizeEmail(m.Email),
 		Name:      m.Name,
 		Roles:     roles,
 		Status:    statusVal,
