@@ -66,10 +66,16 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, sentinel, "cut 后 catalog 无 database_id='_'")
 
-	var publicCatalog int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM public.document_collections WHERE project_id = ?`, p.ID).Scan(&publicCatalog))
-	require.Zero(t, publicCatalog, "PR4: catalog 不得再写 public")
+	for _, rel := range []string{
+		"public.document_indexes",
+		"public.document_attributes",
+		"public.document_collections",
+		"public.document_databases",
+	} {
+		var reg any
+		require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, rel).Scan(&reg), rel)
+		require.Nil(t, reg, "D-7: %s 已删除", rel)
+	}
 
 	cat := testutil.CatalogIdent(p.ID)
 	projectCatalog, err := db.NewSelect().Model((*model.DocumentCollection)(nil)).
