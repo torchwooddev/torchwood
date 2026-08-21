@@ -153,7 +153,8 @@ message UpdateProjectRequest {
 > `torchwood.server.v1.Document` 迁到 `torchwood.shared.v1.Document`
 >（`proto/shared/v1/document.proto`）。REST JSON 字段名与编号不变
 > （`id`/`data`/`created_at`/`updated_at`/`permissions`/`version`，字段号 1–6）。
-> OpenAPI `$ref` 与 Go SDK 返回类型变为 `*sharedv1.Document`（不 bump v2）。
+> OpenAPI `$ref` 变为 `#/definitions/v1Document`（原 `#/definitions/torchwoodclientv1Document`
+> / `torchwoodserverv1Document`）；Go SDK 返回类型变为 `*sharedv1.Document`（不 bump v2）。
 > 请求消息（`ListDocumentsRequest` 等）仍分包，未合并。详见
 > `docs/review/wave3-e2b-document-proto.md`。
 

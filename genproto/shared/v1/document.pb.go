@@ -23,7 +23,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Document 是 Client/Server 文档 RPC 的共享载荷；字段号 1–6 冻结，禁止复用或重排。
+// Document 是文档 RPC 的共享载荷。
 type Document struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`

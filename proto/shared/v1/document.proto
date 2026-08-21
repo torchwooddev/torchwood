@@ -7,7 +7,7 @@ option go_package = "github.com/torchwooddev/torchwood/genproto/shared/v1;shared
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
-// Document 是 Client/Server 文档 RPC 的共享载荷；字段号 1–6 冻结，禁止复用或重排。
+// Document 是文档 RPC 的共享载荷。
 message Document {
   string id = 1;
   google.protobuf.Struct data = 2;

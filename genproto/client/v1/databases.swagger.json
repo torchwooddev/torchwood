@@ -1605,7 +1605,7 @@
           "title": "用户集合为当前 _version；系统集合恒为 0。"
         }
       },
-      "title": "Document 是 Client/Server 文档 RPC 的共享载荷；字段号 1–6 冻结，禁止复用或重排。"
+      "title": "Document 是文档 RPC 的共享载荷。"
     },
     "v1Empty": {
       "type": "object"

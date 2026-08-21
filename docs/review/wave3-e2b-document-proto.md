@@ -10,7 +10,8 @@
 3. **继续 v1**：不 bump package 到 v2。Client/Server 仍是 `torchwood.client.v1` / `torchwood.server.v1`。
 4. JSON **载荷**兼容：HTTP JSON 字段名与编号不变。
 5. **Breaking**（有意 FILE breaking）：
-   - OpenAPI / swagger `$ref`：`torchwood.client.v1.Document` / `torchwood.server.v1.Document` → `torchwood.shared.v1.Document`
+   - gRPC / protobuf 全名：`torchwood.client.v1.Document` / `torchwood.server.v1.Document` → `torchwood.shared.v1.Document`
+   - OpenAPI `$ref`：`#/definitions/torchwoodclientv1Document` / `#/definitions/torchwoodserverv1Document` → `#/definitions/v1Document`（grpc-gateway 插件把 shared 消息编成 `v1Document`）
    - Go 生成类型：RPC 返回 `*sharedv1.Document`（SDK Go 源码 breaking）
    - gRPC 方法描述符 output type 全名变化（unary payload 字段仍兼容）
 6. 删除 client/server 本地 `message Document` 时 **不** reserved 整个消息名、**不**留空壳包装（会改变 JSON）。直接删消息、RPC 改返回 `shared.v1.Document`。CI 未跑 `buf breaking --against`。
@@ -38,9 +39,9 @@
 |---|---|
 | proto package | 仍 v1，不 bump v2 |
 | REST JSON body | 字段名/编号兼容 |
-| OpenAPI `$ref` | breaking |
+| OpenAPI `$ref` | breaking（`#/definitions/v1Document`） |
 | Go SDK / genproto 类型 | breaking（`*sharedv1.Document`） |
-| gRPC wire payload 字段 | 兼容；descriptor 全名 breaking |
+| gRPC wire payload 字段 | 兼容；descriptor 全名 `torchwood.shared.v1.Document` breaking |
 | TypeScript SDK JSON 接口 | 字段名不变则兼容 |
 
 ## 验收
