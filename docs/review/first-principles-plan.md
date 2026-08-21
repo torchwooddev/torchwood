@@ -281,9 +281,9 @@ E-3  Authenticate + Actor ADT（弱依赖 E-1；建议 E-2a 冻结 Principal 投
 
 ### E-5  系统表化（闸门：先独立设计）
 
-**未出** `docs/design/` 下独立设计 + 执行计划之前，**禁止**任何系统表化施工。
+**未出** `docs/design/` 下独立设计 + 执行计划之前，**禁止**任何系统表化施工。闸门：`docs/design/system-tables.md`。
 
-设计必须包含：FK（`sessions.user_id` → `users`）、退役 sentinel 与 Databases 系统集合守卫、Client 认证字段黑名单、系统集合 version=0 两套契约。验收 **只**含评审 §11 表「E-5 验收只含…」的 1/7/8；**不含** `read:any`（D-9）、staged tx（D-6）、查询 DSL（E-4）。
+设计必须包含：FK（`sessions.user_id` → `users`）、退役 sentinel 与 Databases 系统集合守卫、Client 认证字段黑名单、系统集合 version=0 两套契约。**不要**把文档 `_version` / If-Match 搬进系统表（S5 / S15）；行级并发按写形状收口（分列 UPDATE、`groups.total` SQL 增量、状态 CAS、JSON RMW 的 `FOR UPDATE`），不加通用 `version` 列、不改 User/Session proto。验收 **只**含评审 §11 表「E-5 验收只含…」的 1/7/8；**不含** `read:any`（D-9）、staged tx（D-6）、查询 DSL（E-4）。
 
 载体继续 `projectschema`（K-14）。完成前禁止拆 K-13/K-15。
 

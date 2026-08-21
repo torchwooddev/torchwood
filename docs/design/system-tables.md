@@ -1,6 +1,6 @@
 # E-5 系统表化（users / sessions / files 静态表）
 
-> 日期：2026-08-21  
+> 日期：2026-08-21（同日修订：补 S15 系统表并发，不把文档 `_version` 搬进静态表）  
 > 状态：**可施工设计**（本文件是闸门；未批准前禁止任何系统表化 DDL / 适配器切换 / 拆 sentinel）  
 > 对应：`docs/review/first-principles-design.md` §11 E-5（验收只含旧号 **1 / 7 / 8**）；`docs/review/first-principles-plan.md` §4 E-5；`docs/design/project-data-plane-schema.md` K2 临时文档形态 + 「与系统表化的衔接」  
 > 载体：`internal/infra/projectschema`（go:embed SQL，每 `tw_<project>` 一份 `schema_migrations`）  
@@ -71,7 +71,7 @@ tw_<project>_<database>        只装用户 collection（含 _perms / _version�
 
 ### Goals
 
-1. 七张物理表落在 `tw_<project>`，静态 DDL，PK = `id`，**无** `_tenant` / `_perms` / `_version`。
+1. 七张物理表落在 `tw_<project>`，静态 DDL，PK = `id`，**无** `_tenant` / `_perms` / 文档引擎列 `_version`。行级并发见 S15，不是再加一列通用 version。
 2. `sessions.user_id` 等 FK 成为数据库不变式；`DeleteUser` 不再手写 List+逐条删会话。
 3. `users.Repository` 从 DocumentDB 换 bun（样板）；Session / Identity / Group / Membership / Bucket / File 同期换，避免半套双写。
 4. 新建项目：Apply 一次出最终表名，**从不**再 `CreateCollection` 这七张。
@@ -103,7 +103,8 @@ tw_<project>_<database>        只装用户 collection（含 _perms / _version�
 | S2 | 最终表名 | `users` `sessions` `identities` `groups` `memberships` `buckets` `files` | owner 锁定；API id 不改 |
 | S3 | `_tenant` | **去掉** | 系统表化整表重写时自然消失（数据面 K12 / 退役清单） |
 | S4 | `_perms`（系统路径） | **去掉**。授权改服务级：会话属主、组成员、bucket policy | D-3：系统路径本就 `SystemPrincipal` 绕过 |
-| S5 | `_version` | 系统表不加。Documents OCC 只留用户 collection | 验收旧号 8 |
+| S5 | 文档 `_version` | 系统表**不加** `_version` 列；Documents OCC 只留用户 collection | 旧号 8 退役的是「系统集合恒 version=0」双契约，不是「身份行永不冲突」 |
+| S15 | 系统行并发 | **不**给七张表加通用 `version` BIGINT，**不**给 User/Session/File/Group proto 加 If-Match。按写形状选工具（§5.10） | 今日系统集合本就无 OCC（`SimpleDocumentUpdate`）；复制文档 OCC 会重开产品 API。真正的丢更新用列级 UPDATE / SQL 增量 / 状态 CAS / `FOR UPDATE` |
 | S6 | `project_id` 列 | **不加** | schema 已是租户容器；文档表也没有；拷贝 SQL / Go 不必填。仓储靠 `ProjectTable` 限定 schema |
 | S7 | 拷贝 | Go 作业（`projectschema.CopySystemDocuments`），不是 SQL 文件里的 `INSERT…SELECT` | 需要 `projectID`、孤儿行、类型规整、`secret_hash` 原样；Apply 只有 `{{schema}}` |
 | S8 | 双写 | **不做**长期双写。expand 只拷贝；cut 停写窗口 | 与数据面方案一致；半套双写比停写窗口更险 |
@@ -112,7 +113,7 @@ tw_<project>_<database>        只装用户 collection（含 _perms / _version�
 | S11 | 新项目 | CreateProject 同 Tx Apply 000008+000009 → 直接最终名；`EnsureSystemCollections` 不再建这七集合 | 空库无拷贝 |
 | S12 | cut 启动 | cut 版本 **同步** `EnsureAll` 成功后再 listen；禁止只靠后台 `KickoffEnsureAll` | 否则 rename 与旧文档路径竞态 |
 | S13 | 系统表 ACE | 不把 collection ACE 搬进静态表。`buckets.permissions` / `groups.permissions` **产品字段**保留为 JSONB | 那是 bucket/group 策略，不是文档 `_perms` |
-| S14 | `groups.total` | 保留 BIGINT，成员写路径维护；`DeleteUser` 后对受影响组重数 | 行为不变；不靠触发器当第一版 |
+| S14 | `groups.total` | 保留 BIGINT；cut 后写路径改为 SQL `total = total + $delta`（下限 0）；`DeleteUser` 后对受影响组 `COUNT(*)` 重数 | 今日 `adjustGroupTotal` 是读-改-写，并发会丢计数；静态表必须收口。不靠触发器当第一版 |
 
 ---
 
@@ -223,7 +224,7 @@ CREATE INDEX IF NOT EXISTS sys_groups_name
     ON {{schema}}.sys_groups (name);
 ```
 
-`permissions` 是 **产品字段**（组级授权列表），不是 `_perms` 行。`total` = accepted 成员数，写路径维护（S14）。
+`permissions` 是 **产品字段**（组级授权列表），不是 `_perms` 行。`total` = accepted 成员数；cut 后用 SQL `UPDATE … SET total = GREATEST(total + $delta, 0)`，禁止再读出后回写（S14）。
 
 ### 5.5 `memberships`
 
@@ -319,10 +320,10 @@ CREATE INDEX IF NOT EXISTS sys_files_name_fts
 
 | 不要 | 原因 |
 |---|---|
-| `_id` `_tenant` `_created_by` `_updated_by` `_version` | 文档引擎列 |
+| `_id` `_tenant` `_created_by` `_updated_by` `_version` | 文档引擎列（S5）。系统行并发走 §5.10，不加同名列 |
 | `tw_<project>._perms` 里这七个 collection 的行 | ACL 改服务级 |
 | catalog `document_collections is_system=true` | 它们不再是 collection |
-| 出站 `databases.documents.*` / `_version` OCC | 维持 v2：系统资源不进文档 outbox |
+| 出站 `databases.documents.*` / 文档 `_version` OCC | 维持 v2：系统资源不进文档 outbox |
 
 业务库 `tw_<project>_<database>._perms` **不动**。
 
@@ -337,6 +338,46 @@ CREATE INDEX IF NOT EXISTS sys_files_name_fts
 | buckets / files | collection `read:any` + 文档 ACE + bucket JSON | Server/Client Storage 拦截器 + `buckets.permissions` + `files.owner_user_id` + `public` |
 
 GetStorageUsage：不再 `CountDocuments`/`SumDocumentField` 走 `_perms` 可见性；改为 SQL 计全部（Server）或 use-case 按 bucket policy 过滤（若 Client 有用量 API）。行为与「collection read:any」对齐的路径保持全量可计。
+
+### 5.10 系统行并发（S15）
+
+#### 事实（今日，不是目标）
+
+系统集合**没有** `_version` 列（`createCollectionTable(..., isSystem=true)`）。出站 `Document.Version` 被 `zeroSystemDocumentVersion` 置 0。Account / Users / Groups / Storage / Session 写路径一律 `SimpleDocumentUpdate`（`ExpectedVersion=0`），`updateDocument` 对 `isSystem` 走 `UPDATE … WHERE _id AND _tenant`，**不做 OCC**。
+
+旧号 8 要退役的是这套「假装是文档、version 恒 0」的双契约，不是给身份行补一套 If-Match。
+
+用户 collection 的 `_version` 仍是产品功能（Client/Server Documents 强制 OCC）。经济持有 `asset_holdings.version` 是账本聚合自己的锁，与系统表无关，不当样板。
+
+User / Session / File / Group proto **没有** `version` 字段。给七张表加 `version BIGINT` 却不暴露 If-Match，只保护「仓储把整行 Get 后再全列 Update」这一种写法；正确做法是禁止那种写法。
+
+#### 丢更新真正发生在哪
+
+标量列的**分列** `UPDATE` 本来就不会互相覆盖：`UpdateUserPassword` 只 SET `password_hash`，`UpdateAccount` 只 SET `name`/`email`，`UpdatePrefs` 只 SET `prefs`。危险的是同一 JSON/计数/状态的读-改-写：
+
+| 路径 | 今日 | cut 后锁定 |
+|---|---|---|
+| `users.email` / `phone` | 唯一索引兜底 | 保持；冲突 → AlreadyExists |
+| `users.password_hash` / `name` / `status` / 验证位 | 分列 SET | 仓储 **必须** `UPDATE` 点名列，禁止 bun `Model(user)` 无 `Column` 列表的整行写 |
+| `users.factors`（`saveFactors` 读-改-写整段 JSON） | 无锁，并发 enroll 会丢因子 | 同一 Tx：`SELECT … FOR UPDATE` 该用户行，再 SET `factors`。失败原样返回，调用方不得继续用内存副本 |
+| `users.prefs` / `groups.prefs` | 客户端 PUT 整对象 | **保持 last-write-wins**（产品就是替换整份 prefs）。不要因此给 User/Group 加 version |
+| `users.labels` | 管理端整段替换 | 同 prefs |
+| `groups.total` | `adjustGroupTotal` 读出 +1 再写 | SQL `total = GREATEST(total + $delta, 0)`；`DeleteUser` 后 `COUNT(*) FILTER (status='accepted')` 重数（S14） |
+| `memberships.status` | 内存看 pending 再写 | `UPDATE … SET status=$new WHERE id=$id AND status='pending'`，0 行 → FailedPrecondition（与今日「不是 pending」同码） |
+| `memberships.roles` | 整段替换 + last-owner 预检 | 预检与写在同一 Tx，对 membership 行 `FOR UPDATE`；last-owner 扫描同一组其它行 |
+| `sessions` | 几乎只有 Insert / Delete | 不需要 version。遗留 `secret_hash` 明文重哈希若仍要写，CAS：`UPDATE … SET secret_hash=$new WHERE id=$id AND secret_hash=$old` |
+| `identities` | Insert + unique `(provider, provider_uid)` | 冲突 fail-closed；无行内 OCC |
+| `buckets` 标量 / `files` 标量 | 分列 SET | 同 users 标量 |
+| `buckets.permissions` / `files.metadata` | 整段 JSON 替换 | 与 prefs 相同：产品 PUT，last-write-wins。若日后 Storage 要 If-Match，另开产品单，**不进 E-5** |
+
+#### 明确不选
+
+- **七张表都加 `version` + proto If-Match**：把 Documents OCC 搬到 Account/Users，breaking，且今日调用方没有 version 可传。
+- **只在表上加内部 `version`、API 不暴露**：治不好 JSON RMW（调用方仍整段覆盖）；只会让仓储每次 UPDATE 多带一个调用方不知道的谓词。`FOR UPDATE` / 分列 SET / 状态 CAS 更贴写形状。
+- **用 `updated_at` 当 OCC 令牌**：时钟回拨与同毫秒碰撞；仍要 API 表面。否决。
+- **给系统表加文档 `_version` 或文档 outbox**：旧号 8 + 数据面「系统资源不进 documents.*」。
+
+cut 适配器的单测至少覆盖：并发两次 `saveFactors` 不丢因子（或第二次事务失败可重试）；并发两次 accept membership 只有一次 `total+1`；`UpdateUserPassword` 与 `UpdatePrefs` 交错不互相覆盖。
 
 ---
 
@@ -637,7 +678,9 @@ CreateDocument|GetDocument|ListDocuments|UpdateDocument|DeleteDocument|SumDocume
 |---|---|---|
 | 1 | 新项目无 `document_databases(_)`；`GetUser` 不碰 DocumentDB；业务库 `CreateCollection("users")` 仍成功且有 `_version`；`DeleteDatabase("default")` 不影响 `tw_<p>.users` | 用户 collection ACE 语法、read:any |
 | 7 | Client `UpdateDocument` / `UpsertDocument` / staged op 可写名为 `password_hash` 的**用户集合**字段；Account 改密仍走专用 RPC | 系统集合再经 Documents 写（应 NotFound/InvalidArgument） |
-| 8 | `GetDocument` 用户集合仍 OCC；代码无「isSystem → version=0」；系统表 `information_schema` 无 `_version` | 给系统表补 OCC |
+| 8 | `GetDocument` 用户集合仍 OCC；代码无「isSystem → version=0」；系统表 `information_schema` 无 `_version` | 给系统表 / User proto 补 Documents 式 If-Match（S15 明确不选） |
+
+S15 回归（随 E5-2/E5-3 适配器，不是旧号 8 的验收定义）：并发 `saveFactors` 不丢因子；并发 accept membership 的 `groups.total` 不丢加；分列 UPDATE 交错不整行覆盖。
 
 回归（必须绿，但不是 E-5 完工定义）：SignUp / CreateUser（V-1）、会话登录与上限驱逐、OAuth identity 唯一、Groups 邀请查重、Storage 上传下载、billing storage sample、DeleteUser 后会话/身份/成员不残留、DeleteGroup 成员干净。
 
@@ -650,8 +693,8 @@ CreateDocument|GetDocument|ListDocuments|UpdateDocument|DeleteDocument|SumDocume
 | PR | 内容 | 不做什么 |
 |---|---|---|
 | **E5-1 expand** | `000008_system_tables.up.sql`；`CopySystemDocuments`；单测探测/孤儿/顺序；文档注释 | 不切 Wire；不删 sentinel；不改 Ensure 行为 |
-| **E5-2 适配器** | bun model/repo：User + Session（含 HashOTP 双读）；扩展端口；集成测。**仍不 bind 生产 Wire**（或仅测试） | 不 000009 |
-| **E5-3 其余表** | Identity / Group / Membership / Bucket / File repo；billing SUM；Groups/Storage use-case 改端口。仍写文档 **或** 仅测 bun | 生产仍可用文档直到 E5-4 |
+| **E5-2 适配器** | bun model/repo：User + Session（含 HashOTP 双读）；扩展端口；**分列 UPDATE**；`factors` 的 `FOR UPDATE`；集成测。**仍不 bind 生产 Wire**（或仅测试） | 不 000009；不加 `users.version` 列 |
+| **E5-3 其余表** | Identity / Group / Membership / Bucket / File repo；`groups.total` SQL 增量；membership 状态 CAS；billing SUM；Groups/Storage use-case 改端口。仍写文档 **或** 仅测 bun | 生产仍可用文档直到 E5-4；File/Group proto 不加 version |
 | **E5-4 cut** | Wire 切 bun；`000009`；同步 EnsureAll；Ensure skip；删黑名单与 version=0 分支；删 `document_repo.go`；§8 grep 清单 | 不拆 `businessSchema` / `RejectExternalDatabaseID` |
 | **E5-5 contract**（可同 cut 若 grep 已零） | 删 `EnsureSystemCollections` 调用点与 spec；删 `documentSchema` sentinel 分叉；`DROP _perms` 已在 000009 则本 PR 只删 Go | 不碰用户 collection 引擎 |
 
@@ -689,6 +732,14 @@ CreateDocument|GetDocument|ListDocuments|UpdateDocument|DeleteDocument|SumDocume
 
 否决。owner：表存在之后再退役寻址。先拆会使 Account 无物理容器。
 
+### H. 七张系统表加 `version BIGINT` + proto If-Match
+
+否决（S15）。今日系统集合无 OCC，调用方也没有 version 可传。Documents 式 If-Match 会变成 Account/Users/Storage 的新产品字段，超出「换表形态」。经济 `asset_holdings.version` 是账本聚合，不当样板。
+
+### I. 只加内部 `version`、API 不暴露
+
+否决。治不好 `factors` / `prefs` 整段 JSON 覆盖；仓储若整行 Update 才用得上，而整行 Update 本身禁止。JSON RMW 用 `FOR UPDATE`，计数用 SQL 增量，状态机用 CAS。
+
 ---
 
 ## 13. 与相邻方案
@@ -708,6 +759,7 @@ CreateDocument|GetDocument|ListDocuments|UpdateDocument|DeleteDocument|SumDocume
 - 在 E5-4 前删除 `ident` / `businessSchema` / sentinel 守卫 / `RejectExternalDatabaseID`。
 - `SET search_path`。
 - `CREATE INDEX CONCURRENTLY` 进 projectschema 文件。
-- 给系统表加 `_version` 或文档 outbox。
+- 给系统表加文档 `_version`、通用 `version` 列、或文档 outbox；给 User/Session/File/Group proto 加 If-Match（S15）。
+- bun 仓储对系统行做无 `Column` 列表的整行 `Update`（会把 Get 到的陈旧列写回去）。
 - 用旧 8 条 Appwrite 清单当完工（2–6 不属于 E-5）。
 - 把 `Functions.Execute`、经济锁接口、`uow.Run` 顺手塞进本波。
