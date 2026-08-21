@@ -566,6 +566,53 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	require.Equal(t, "int8", udtName)
 }
 
+// TestCreateAttribute_AdapterRejectsArray (D-5)：直调 adapter 也不得把
+// array=true 写入 catalog（物理列是标量）。CreateCollection attrs 同样拒绝。
+func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
+
+	err := docDB.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
+		ID: "tags", Key: "tags", Type: "string", Array: true,
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, err.Error(), `attribute "tags": array is not supported`)
+
+	coll, err := docDB.GetCollection(ctx, projectID, "app", "docs")
+	require.NoError(t, err)
+	require.NotNil(t, coll)
+	for _, a := range coll.Attributes {
+		require.NotEqual(t, "tags", a.Key)
+		require.False(t, a.Array)
+	}
+	schema := testSchema(t, projectID, "app")
+	var n int
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = 'tags'`,
+		schema).Scan(&n))
+	require.Equal(t, 0, n)
+
+	err = docDB.CreateCollection(ctx, projectID, "app", "arr_coll", "Arr", []databases.Attribute{
+		{ID: "tags", Key: "tags", Type: "string", Array: true},
+	}, nil, nil, true)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, err.Error(), `attribute "tags": array is not supported`)
+	coll, err = docDB.GetCollection(ctx, projectID, "app", "arr_coll")
+	require.NoError(t, err)
+	require.Nil(t, coll)
+}
+
 // TestQueryVersion_SystemCollectionRejected：系统集合 $version 查询 → InvalidArgument
 // （系统表无此列），不落 PG。groups 对 keys 角色可读（非敏感系统集合），
 // 走 validateQueryFields 的 isSystem 分支。

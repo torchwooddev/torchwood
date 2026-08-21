@@ -223,6 +223,11 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	if databaseID == ident.ProjectDataPlaneID && !databases.IsSystemCollectionID(collectionID) {
 		return status.Error(codes.InvalidArgument, "only system collections may be created in the project data plane")
 	}
+	for _, attr := range attrs {
+		if err := rejectArrayAttribute(attr); err != nil {
+			return err
+		}
+	}
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
@@ -442,6 +447,10 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	// 当作用户属性 ADD COLUMN——否则会与 OCC 列类型/语义冲突。
 	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
+	}
+	// 物理列是标量：不得把 IsArray=true 写入 catalog。
+	if err := rejectArrayAttribute(attr); err != nil {
+		return err
 	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
@@ -1842,6 +1851,15 @@ func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, 
 	}
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
 	return err
+}
+
+// rejectArrayAttribute 是 catalog 写入前的第二道防线：物理列是标量，
+// 不得把 IsArray=true 写入 document_attributes。
+func rejectArrayAttribute(attr databases.Attribute) error {
+	if attr.Array {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute %q: array is not supported", attr.Key))
+	}
+	return nil
 }
 
 func attributeColumnSQL(attr databases.Attribute) (string, error) {
