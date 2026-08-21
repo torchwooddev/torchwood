@@ -504,13 +504,16 @@ func (x *DeleteDocumentRequest) GetVersion() int64 {
 }
 
 type ListDocumentsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Queries       []string               `protobuf:"bytes,3,rep,name=queries,proto3" json:"queries,omitempty"`
-	PageSize      int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	Queries      []string               `protobuf:"bytes,3,rep,name=queries,proto3" json:"queries,omitempty"`
+	PageSize     int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken    string                 `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	ProjectId    string                 `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Typed AST. Dual-stack with queries/page_size/page_token; both set and
+	// conflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.
+	Query         *v1.Query `protobuf:"bytes,7,opt,name=query,proto3,oneof" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -585,6 +588,13 @@ func (x *ListDocumentsRequest) GetProjectId() string {
 		return x.ProjectId
 	}
 	return ""
+}
+
+func (x *ListDocumentsRequest) GetQuery() *v1.Query {
+	if x != nil {
+		return x.Query
+	}
+	return nil
 }
 
 type ListDocumentsResponse struct {
@@ -1459,7 +1469,7 @@ var File_client_v1_databases_proto protoreflect.FileDescriptor
 
 const file_client_v1_databases_proto_rawDesc = "" +
 	"\n" +
-	"\x19client/v1/databases.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\xf9\x01\n" +
+	"\x19client/v1/databases.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\x1a\x15shared/v1/query.proto\"\xf9\x01\n" +
 	"\bDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12+\n" +
 	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data\x129\n" +
@@ -1517,7 +1527,7 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"documentId\x12\x1d\n" +
 	"\aversion\x18\x04 \x01(\x03H\x00R\aversion\x88\x01\x01B\n" +
 	"\n" +
-	"\b_version\"\xd1\x01\n" +
+	"\b_version\"\x92\x02\n" +
 	"\x14ListDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -1527,7 +1537,9 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x05 \x01(\tR\tpageToken\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x06 \x01(\tR\tprojectId\"\x8f\x01\n" +
+	"project_id\x18\x06 \x01(\tR\tprojectId\x125\n" +
+	"\x05query\x18\a \x01(\v2\x1a.torchwood.shared.v1.QueryH\x00R\x05query\x88\x01\x01B\b\n" +
+	"\x06_query\"\x8f\x01\n" +
 	"\x15ListDocumentsResponse\x12;\n" +
 	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.client.v1.DocumentR\tdocuments\x129\n" +
 	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\".\n" +
@@ -1694,8 +1706,9 @@ var file_client_v1_databases_proto_goTypes = []any{
 	nil,                                      // 21: torchwood.client.v1.UpdateTransactionDocumentRequest.IncrementEntry
 	(*structpb.Struct)(nil),                  // 22: google.protobuf.Struct
 	(*timestamppb.Timestamp)(nil),            // 23: google.protobuf.Timestamp
-	(*v1.ListResponseMeta)(nil),              // 24: torchwood.shared.v1.ListResponseMeta
-	(*v1.Empty)(nil),                         // 25: torchwood.shared.v1.Empty
+	(*v1.Query)(nil),                         // 24: torchwood.shared.v1.Query
+	(*v1.ListResponseMeta)(nil),              // 25: torchwood.shared.v1.ListResponseMeta
+	(*v1.Empty)(nil),                         // 26: torchwood.shared.v1.Empty
 }
 var file_client_v1_databases_proto_depIdxs = []int32{
 	22, // 0: torchwood.client.v1.Document.data:type_name -> google.protobuf.Struct
@@ -1705,53 +1718,54 @@ var file_client_v1_databases_proto_depIdxs = []int32{
 	22, // 4: torchwood.client.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
 	19, // 5: torchwood.client.v1.UpdateDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateDocumentRequest.IncrementEntry
 	22, // 6: torchwood.client.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
-	0,  // 7: torchwood.client.v1.ListDocumentsResponse.documents:type_name -> torchwood.client.v1.Document
-	24, // 8: torchwood.client.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	23, // 9: torchwood.client.v1.Transaction.expire_at:type_name -> google.protobuf.Timestamp
-	23, // 10: torchwood.client.v1.Transaction.created_at:type_name -> google.protobuf.Timestamp
-	23, // 11: torchwood.client.v1.Transaction.updated_at:type_name -> google.protobuf.Timestamp
-	10, // 12: torchwood.client.v1.Transaction.operations:type_name -> torchwood.client.v1.TransactionOp
-	22, // 13: torchwood.client.v1.TransactionOp.data:type_name -> google.protobuf.Struct
-	20, // 14: torchwood.client.v1.TransactionOp.increment:type_name -> torchwood.client.v1.TransactionOp.IncrementEntry
-	22, // 15: torchwood.client.v1.CreateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
-	22, // 16: torchwood.client.v1.UpdateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
-	21, // 17: torchwood.client.v1.UpdateTransactionDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateTransactionDocumentRequest.IncrementEntry
-	22, // 18: torchwood.client.v1.UpsertTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
-	1,  // 19: torchwood.client.v1.DatabasesService.CreateDocument:input_type -> torchwood.client.v1.CreateDocumentRequest
-	6,  // 20: torchwood.client.v1.DatabasesService.ListDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
-	4,  // 21: torchwood.client.v1.DatabasesService.GetDocument:input_type -> torchwood.client.v1.GetDocumentRequest
-	2,  // 22: torchwood.client.v1.DatabasesService.UpdateDocument:input_type -> torchwood.client.v1.UpdateDocumentRequest
-	3,  // 23: torchwood.client.v1.DatabasesService.UpsertDocument:input_type -> torchwood.client.v1.UpsertDocumentRequest
-	5,  // 24: torchwood.client.v1.DatabasesService.DeleteDocument:input_type -> torchwood.client.v1.DeleteDocumentRequest
-	6,  // 25: torchwood.client.v1.DatabasesService.CountDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
-	11, // 26: torchwood.client.v1.DatabasesService.CreateTransaction:input_type -> torchwood.client.v1.CreateTransactionRequest
-	12, // 27: torchwood.client.v1.DatabasesService.GetTransaction:input_type -> torchwood.client.v1.GetTransactionRequest
-	13, // 28: torchwood.client.v1.DatabasesService.CreateTransactionDocument:input_type -> torchwood.client.v1.CreateTransactionDocumentRequest
-	14, // 29: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:input_type -> torchwood.client.v1.UpdateTransactionDocumentRequest
-	15, // 30: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:input_type -> torchwood.client.v1.DeleteTransactionDocumentRequest
-	16, // 31: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:input_type -> torchwood.client.v1.UpsertTransactionDocumentRequest
-	17, // 32: torchwood.client.v1.DatabasesService.CommitTransaction:input_type -> torchwood.client.v1.CommitTransactionRequest
-	18, // 33: torchwood.client.v1.DatabasesService.RollbackTransaction:input_type -> torchwood.client.v1.RollbackTransactionRequest
-	0,  // 34: torchwood.client.v1.DatabasesService.CreateDocument:output_type -> torchwood.client.v1.Document
-	7,  // 35: torchwood.client.v1.DatabasesService.ListDocuments:output_type -> torchwood.client.v1.ListDocumentsResponse
-	0,  // 36: torchwood.client.v1.DatabasesService.GetDocument:output_type -> torchwood.client.v1.Document
-	0,  // 37: torchwood.client.v1.DatabasesService.UpdateDocument:output_type -> torchwood.client.v1.Document
-	0,  // 38: torchwood.client.v1.DatabasesService.UpsertDocument:output_type -> torchwood.client.v1.Document
-	25, // 39: torchwood.client.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
-	8,  // 40: torchwood.client.v1.DatabasesService.CountDocuments:output_type -> torchwood.client.v1.CountDocumentsResponse
-	9,  // 41: torchwood.client.v1.DatabasesService.CreateTransaction:output_type -> torchwood.client.v1.Transaction
-	9,  // 42: torchwood.client.v1.DatabasesService.GetTransaction:output_type -> torchwood.client.v1.Transaction
-	10, // 43: torchwood.client.v1.DatabasesService.CreateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	10, // 44: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	10, // 45: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	10, // 46: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
-	9,  // 47: torchwood.client.v1.DatabasesService.CommitTransaction:output_type -> torchwood.client.v1.Transaction
-	9,  // 48: torchwood.client.v1.DatabasesService.RollbackTransaction:output_type -> torchwood.client.v1.Transaction
-	34, // [34:49] is the sub-list for method output_type
-	19, // [19:34] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	24, // 7: torchwood.client.v1.ListDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
+	0,  // 8: torchwood.client.v1.ListDocumentsResponse.documents:type_name -> torchwood.client.v1.Document
+	25, // 9: torchwood.client.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	23, // 10: torchwood.client.v1.Transaction.expire_at:type_name -> google.protobuf.Timestamp
+	23, // 11: torchwood.client.v1.Transaction.created_at:type_name -> google.protobuf.Timestamp
+	23, // 12: torchwood.client.v1.Transaction.updated_at:type_name -> google.protobuf.Timestamp
+	10, // 13: torchwood.client.v1.Transaction.operations:type_name -> torchwood.client.v1.TransactionOp
+	22, // 14: torchwood.client.v1.TransactionOp.data:type_name -> google.protobuf.Struct
+	20, // 15: torchwood.client.v1.TransactionOp.increment:type_name -> torchwood.client.v1.TransactionOp.IncrementEntry
+	22, // 16: torchwood.client.v1.CreateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
+	22, // 17: torchwood.client.v1.UpdateTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
+	21, // 18: torchwood.client.v1.UpdateTransactionDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateTransactionDocumentRequest.IncrementEntry
+	22, // 19: torchwood.client.v1.UpsertTransactionDocumentRequest.data:type_name -> google.protobuf.Struct
+	1,  // 20: torchwood.client.v1.DatabasesService.CreateDocument:input_type -> torchwood.client.v1.CreateDocumentRequest
+	6,  // 21: torchwood.client.v1.DatabasesService.ListDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
+	4,  // 22: torchwood.client.v1.DatabasesService.GetDocument:input_type -> torchwood.client.v1.GetDocumentRequest
+	2,  // 23: torchwood.client.v1.DatabasesService.UpdateDocument:input_type -> torchwood.client.v1.UpdateDocumentRequest
+	3,  // 24: torchwood.client.v1.DatabasesService.UpsertDocument:input_type -> torchwood.client.v1.UpsertDocumentRequest
+	5,  // 25: torchwood.client.v1.DatabasesService.DeleteDocument:input_type -> torchwood.client.v1.DeleteDocumentRequest
+	6,  // 26: torchwood.client.v1.DatabasesService.CountDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
+	11, // 27: torchwood.client.v1.DatabasesService.CreateTransaction:input_type -> torchwood.client.v1.CreateTransactionRequest
+	12, // 28: torchwood.client.v1.DatabasesService.GetTransaction:input_type -> torchwood.client.v1.GetTransactionRequest
+	13, // 29: torchwood.client.v1.DatabasesService.CreateTransactionDocument:input_type -> torchwood.client.v1.CreateTransactionDocumentRequest
+	14, // 30: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:input_type -> torchwood.client.v1.UpdateTransactionDocumentRequest
+	15, // 31: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:input_type -> torchwood.client.v1.DeleteTransactionDocumentRequest
+	16, // 32: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:input_type -> torchwood.client.v1.UpsertTransactionDocumentRequest
+	17, // 33: torchwood.client.v1.DatabasesService.CommitTransaction:input_type -> torchwood.client.v1.CommitTransactionRequest
+	18, // 34: torchwood.client.v1.DatabasesService.RollbackTransaction:input_type -> torchwood.client.v1.RollbackTransactionRequest
+	0,  // 35: torchwood.client.v1.DatabasesService.CreateDocument:output_type -> torchwood.client.v1.Document
+	7,  // 36: torchwood.client.v1.DatabasesService.ListDocuments:output_type -> torchwood.client.v1.ListDocumentsResponse
+	0,  // 37: torchwood.client.v1.DatabasesService.GetDocument:output_type -> torchwood.client.v1.Document
+	0,  // 38: torchwood.client.v1.DatabasesService.UpdateDocument:output_type -> torchwood.client.v1.Document
+	0,  // 39: torchwood.client.v1.DatabasesService.UpsertDocument:output_type -> torchwood.client.v1.Document
+	26, // 40: torchwood.client.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
+	8,  // 41: torchwood.client.v1.DatabasesService.CountDocuments:output_type -> torchwood.client.v1.CountDocumentsResponse
+	9,  // 42: torchwood.client.v1.DatabasesService.CreateTransaction:output_type -> torchwood.client.v1.Transaction
+	9,  // 43: torchwood.client.v1.DatabasesService.GetTransaction:output_type -> torchwood.client.v1.Transaction
+	10, // 44: torchwood.client.v1.DatabasesService.CreateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	10, // 45: torchwood.client.v1.DatabasesService.UpdateTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	10, // 46: torchwood.client.v1.DatabasesService.DeleteTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	10, // 47: torchwood.client.v1.DatabasesService.UpsertTransactionDocument:output_type -> torchwood.client.v1.TransactionOp
+	9,  // 48: torchwood.client.v1.DatabasesService.CommitTransaction:output_type -> torchwood.client.v1.Transaction
+	9,  // 49: torchwood.client.v1.DatabasesService.RollbackTransaction:output_type -> torchwood.client.v1.Transaction
+	35, // [35:50] is the sub-list for method output_type
+	20, // [20:35] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_client_v1_databases_proto_init() }
@@ -1761,6 +1775,7 @@ func file_client_v1_databases_proto_init() {
 	}
 	file_client_v1_databases_proto_msgTypes[2].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[5].OneofWrappers = []any{}
+	file_client_v1_databases_proto_msgTypes[6].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[10].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[14].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[15].OneofWrappers = []any{}

@@ -1,6 +1,10 @@
 package databases
 
-import "time"
+import (
+	"time"
+
+	"github.com/torchwooddev/torchwood/pkg/query"
+)
 
 type Attribute struct {
 	ID       string
@@ -41,6 +45,8 @@ type Query struct {
 	Queries   []string
 	PageSize  int32
 	PageToken string
+	// AST is the typed query (proto codec). Dual-stack with Queries.
+	AST *query.Query
 }
 
 // ListQuery carries pagination parameters for collection listing.

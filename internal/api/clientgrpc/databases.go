@@ -6,6 +6,7 @@ import (
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/torchwooddev/torchwood/internal/app/client"
+	"github.com/torchwooddev/torchwood/internal/app/documents"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
@@ -51,11 +52,11 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *clientv1.List
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
-	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), databases.Query{
-		Queries:   req.GetQueries(),
-		PageSize:  req.GetPageSize(),
-		PageToken: req.GetPageToken(),
-	})
+	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +158,11 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *clientv1.Lis
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
-	count, err := s.databases.CountDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetQueries())
+	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+	count, err := s.databases.CountDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q)
 	if err != nil {
 		return nil, err
 	}

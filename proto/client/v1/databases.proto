@@ -10,6 +10,7 @@ import "google/protobuf/timestamp.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
+import "shared/v1/query.proto";
 
 // 服务默认 access=authenticated：swagger 顶层声明 Bearer security；
 // ACCESS_PUBLIC 方法逐方法声明 security: [] + x-torchwood-access: "public"
@@ -209,6 +210,9 @@ message ListDocumentsRequest {
   int32 page_size = 4;
   string page_token = 5;
   string project_id = 6;
+  // Typed AST. Dual-stack with queries/page_size/page_token; both set and
+  // conflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.
+  optional torchwood.shared.v1.Query query = 7;
 }
 
 message ListDocumentsResponse {

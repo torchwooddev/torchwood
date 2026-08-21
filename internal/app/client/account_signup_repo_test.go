@@ -272,7 +272,7 @@ func (usersCollectionGuardDocDB) UpdateDocument(context.Context, string, string,
 func (usersCollectionGuardDocDB) DeleteDocument(context.Context, string, string, string, string, databases.DeleteOptions, databases.Principal) error {
 	return nil
 }
-func (usersCollectionGuardDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+func (usersCollectionGuardDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
 func (usersCollectionGuardDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {

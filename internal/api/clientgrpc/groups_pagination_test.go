@@ -88,7 +88,7 @@ func (d *clientGroupsDocDB) UpsertDocument(context.Context, string, string, stri
 func (d *clientGroupsDocDB) DeleteDocument(context.Context, string, string, string, string, databases.DeleteOptions, databases.Principal) error {
 	return nil
 }
-func (d *clientGroupsDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+func (d *clientGroupsDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
 func (d *clientGroupsDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {

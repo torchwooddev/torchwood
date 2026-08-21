@@ -7,11 +7,40 @@ import (
 	"strings"
 )
 
-// Filter represents a single Appwrite-style query filter.
+// Canonical AST operators. Appwrite codec names are the comparison ops;
+// proto eq/ne/lt/... map onto these (see FromProto).
+const (
+	OpEqual            = "equal"
+	OpNotEqual         = "notEqual"
+	OpLessThan         = "lessThan"
+	OpLessThanEqual    = "lessThanEqual"
+	OpGreaterThan      = "greaterThan"
+	OpGreaterThanEqual = "greaterThanEqual"
+	OpContains         = "contains"
+	OpStartsWith       = "startsWith"
+	OpEndsWith         = "endsWith"
+	OpSearch           = "search"
+	OpIsNull           = "isNull"
+	OpIsNotNull        = "isNotNull"
+	OpBetween          = "between"
+	OpIn               = "in"
+	OpAnd              = "and"
+	OpOr               = "or"
+)
+
+// Codec input limits (A2). documentdb still clamps SQL-side IN arity.
+const (
+	MaxQueries  = 100
+	MaxQueryLen = 4096
+	MaxDepth    = 16
+)
+
+// Filter is a boolean expression node: a comparison leaf or and/or.
 type Filter struct {
 	Op        string
 	Attribute string
 	Values    []string
+	Children  []*Filter // and / or
 }
 
 // Order represents an ordering clause.
@@ -20,8 +49,12 @@ type Order struct {
 	Desc      bool
 }
 
-// Query is the parsed representation of a list of Appwrite-style query strings.
+// Query is the parsed AST: Filter tree + Orders + page.
+// Parse / ParseMany are Appwrite-string codecs into this model.
+// Filters is the implicit-AND leaf list produced by the codec (same as
+// today's ParseMany); compilers should prefer Filter when set.
 type Query struct {
+	Filter       *Filter
 	Filters      []Filter
 	Orders       []Order
 	Selects      []string
@@ -29,11 +62,88 @@ type Query struct {
 	Offset       int
 	CursorAfter  string
 	CursorBefore string
+	PageSize     int32
+	PageToken    string
+}
+
+// IsActive reports whether the AST carries filter, orders, or page data.
+func (q *Query) IsActive() bool {
+	if q == nil {
+		return false
+	}
+	return q.Filter != nil || len(q.Filters) > 0 || len(q.Orders) > 0 ||
+		len(q.Selects) > 0 || q.Limit != 0 || q.Offset != 0 ||
+		q.CursorAfter != "" || q.CursorBefore != "" ||
+		q.PageSize != 0 || q.PageToken != ""
+}
+
+// HasPredicate is true when a filter tree or codec leaf list is present.
+func (q *Query) HasPredicate() bool {
+	return q != nil && (q.Filter != nil || len(q.Filters) > 0)
+}
+
+// HasOrders is true when at least one order clause is present.
+func (q *Query) HasOrders() bool {
+	return q != nil && len(q.Orders) > 0
+}
+
+// HasPage is true when any page bound / token / cursor / limit / offset is set.
+func (q *Query) HasPage() bool {
+	if q == nil {
+		return false
+	}
+	return q.PageSize != 0 || q.PageToken != "" || q.Limit != 0 || q.Offset != 0 ||
+		q.CursorAfter != "" || q.CursorBefore != ""
+}
+
+// WalkLeaves visits comparison predicates in preorder (skips and/or).
+func (q *Query) WalkLeaves(fn func(Filter)) {
+	if q == nil || fn == nil {
+		return
+	}
+	if q.Filter != nil {
+		walkLeaves(q.Filter, fn)
+		return
+	}
+	for _, f := range q.Filters {
+		fn(f)
+	}
+}
+
+func walkLeaves(f *Filter, fn func(Filter)) {
+	if f == nil {
+		return
+	}
+	switch f.Op {
+	case OpAnd, OpOr:
+		for _, c := range f.Children {
+			walkLeaves(c, fn)
+		}
+	default:
+		fn(*f)
+	}
+}
+
+func andFilters(leaves []Filter) *Filter {
+	switch len(leaves) {
+	case 0:
+		return nil
+	case 1:
+		f := leaves[0]
+		return &f
+	default:
+		children := make([]*Filter, len(leaves))
+		for i := range leaves {
+			f := leaves[i]
+			children[i] = &f
+		}
+		return &Filter{Op: OpAnd, Children: children}
+	}
 }
 
 var queryRe = regexp.MustCompile(`^(\w+)\((.*)\)$`)
 
-// Parse parses a single Appwrite-style query string.
+// Parse parses a single Appwrite-style query string into an AST Query.
 // Examples:
 //
 //	equal("email","a@b.com")
@@ -45,6 +155,9 @@ func Parse(raw string) (*Query, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return &Query{}, nil
+	}
+	if len(raw) > MaxQueryLen {
+		return nil, fmt.Errorf("query string exceeds maximum length of %d", MaxQueryLen)
 	}
 
 	m := queryRe.FindStringSubmatch(raw)
@@ -60,7 +173,7 @@ func Parse(raw string) (*Query, error) {
 	}
 
 	switch op {
-	case "equal", "notEqual", "lessThan", "lessThanEqual", "greaterThan", "greaterThanEqual", "contains", "startsWith", "endsWith", "search":
+	case OpEqual, OpNotEqual, OpLessThan, OpLessThanEqual, OpGreaterThan, OpGreaterThanEqual, OpContains, OpStartsWith, OpEndsWith, OpSearch:
 		if len(args) < 2 {
 			return nil, fmt.Errorf("%s requires at least 2 args", op)
 		}
@@ -81,9 +194,10 @@ func Parse(raw string) (*Query, error) {
 			}
 			values = []string{v}
 		}
-		return &Query{Filters: []Filter{{Op: op, Attribute: attr, Values: values}}}, nil
+		leaf := Filter{Op: op, Attribute: attr, Values: values}
+		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
 
-	case "between":
+	case OpBetween:
 		if len(args) != 3 {
 			return nil, fmt.Errorf("between requires 3 args")
 		}
@@ -99,9 +213,10 @@ func Parse(raw string) (*Query, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Query{Filters: []Filter{{Op: op, Attribute: attr, Values: []string{min, max}}}}, nil
+		leaf := Filter{Op: op, Attribute: attr, Values: []string{min, max}}
+		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
 
-	case "isNull", "isNotNull":
+	case OpIsNull, OpIsNotNull:
 		if len(args) != 1 {
 			return nil, fmt.Errorf("%s requires 1 arg", op)
 		}
@@ -109,7 +224,8 @@ func Parse(raw string) (*Query, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Query{Filters: []Filter{{Op: op, Attribute: attr}}}, nil
+		leaf := Filter{Op: op, Attribute: attr}
+		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
 
 	case "orderAsc", "orderDesc":
 		if len(args) != 1 {
@@ -179,11 +295,18 @@ func Parse(raw string) (*Query, error) {
 }
 
 // ParseMany parses multiple Appwrite-style query strings and merges them into one Query.
+// Filter predicates are combined with implicit AND (same as today's codec).
 // 未显式指定 limit 时 Limit 保持 0，默认页大小由 adapter 决定（ListDocuments 用
 // PageSize 回退），避免 DSL 层注入默认值掩盖调用方的分页参数。
 func ParseMany(raw []string) (*Query, error) {
+	if len(raw) > MaxQueries {
+		return nil, fmt.Errorf("queries count exceeds maximum of %d", MaxQueries)
+	}
 	merged := &Query{}
 	for _, r := range raw {
+		if len(r) > MaxQueryLen {
+			return nil, fmt.Errorf("query string exceeds maximum length of %d", MaxQueryLen)
+		}
 		q, err := Parse(r)
 		if err != nil {
 			return nil, err
@@ -204,6 +327,7 @@ func ParseMany(raw []string) (*Query, error) {
 			merged.CursorBefore = q.CursorBefore
 		}
 	}
+	merged.Filter = andFilters(merged.Filters)
 	return merged, nil
 }
 

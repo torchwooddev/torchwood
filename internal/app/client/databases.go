@@ -236,12 +236,12 @@ func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID
 	return d.documentsCore().DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal, version)
 }
 
-func (d *Databases) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string) (int64, error) {
+func (d *Databases) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query) (int64, error) {
 	pid, principal, err := d.ensureCollectionForRead(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return 0, err
 	}
-	return d.documentsCore().CountDocuments(ctx, pid, databaseID, collectionID, queries, principal)
+	return d.documentsCore().CountDocuments(ctx, pid, databaseID, collectionID, q, principal)
 }
 
 func ownerDocumentPermissions(userID string) []databases.Permission {

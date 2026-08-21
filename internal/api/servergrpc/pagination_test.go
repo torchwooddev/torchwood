@@ -97,7 +97,7 @@ func (d *paginationDocDB) UpsertDocument(context.Context, string, string, string
 func (d *paginationDocDB) DeleteDocument(context.Context, string, string, string, string, databases.DeleteOptions, databases.Principal) error {
 	return nil
 }
-func (d *paginationDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+func (d *paginationDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
 func (d *paginationDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {

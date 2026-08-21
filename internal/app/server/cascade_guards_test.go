@@ -189,7 +189,7 @@ func (f *fakeDocDB) DeleteIndex(context.Context, string, string, string, string)
 func (f *fakeDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
 	return databases.Document{}, nil
 }
-func (f *fakeDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+func (f *fakeDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
 func (f *fakeDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {

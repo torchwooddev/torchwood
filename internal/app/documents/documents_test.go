@@ -148,7 +148,7 @@ func (m *memDocDB) DeleteDocument(_ context.Context, _, _, collectionID, docID s
 	return nil
 }
 
-func (m *memDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+func (m *memDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return int64(len(m.docs)), nil
 }
 

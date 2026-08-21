@@ -167,7 +167,7 @@ func (f *fakeDocDB) DeleteDocument(ctx context.Context, projectID, databaseID, c
 func (f *fakeDocDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
 	return &databases.DocumentList{}, nil
 }
-func (f *fakeDocDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string, principal databases.Principal) (int64, error) {
+func (f *fakeDocDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
 	return 0, nil
 }
 func (f *fakeDocDB) SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal databases.Principal) (int64, error) {

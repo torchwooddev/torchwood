@@ -66,7 +66,16 @@ func (d *Documents) ListDocuments(
 	q databases.Query,
 	principal databases.Principal,
 ) ([]databases.Document, int64, string, error) {
-	list, err := d.docDB.ListDocuments(ctx, projectID, databaseID, collectionID, q, principal)
+	ast, err := ResolveQuery(q)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	list, err := d.docDB.ListDocuments(ctx, projectID, databaseID, collectionID, databases.Query{
+		Queries:   q.Queries,
+		AST:       ast,
+		PageSize:  ast.PageSize,
+		PageToken: ast.PageToken,
+	}, principal)
 	if err != nil {
 		return nil, 0, "", shared.MapDocumentDBError(err)
 	}
@@ -174,10 +183,14 @@ func (d *Documents) DeleteDocument(
 func (d *Documents) CountDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
-	queries []string,
+	q databases.Query,
 	principal databases.Principal,
 ) (int64, error) {
-	count, err := d.docDB.CountDocuments(ctx, projectID, databaseID, collectionID, queries, principal)
+	ast, err := ResolveQuery(q)
+	if err != nil {
+		return 0, err
+	}
+	count, err := d.docDB.CountDocuments(ctx, projectID, databaseID, collectionID, databases.Query{Queries: q.Queries, AST: ast}, principal)
 	return count, shared.MapDocumentDBError(err)
 }
 

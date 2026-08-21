@@ -1,9 +1,11 @@
 package query
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 )
 
 func TestParse(t *testing.T) {
@@ -59,7 +61,14 @@ func TestParse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			q, err := Parse(tc.raw)
 			require.NoError(t, err)
-			require.Equal(t, &tc.expected, q)
+			require.Equal(t, tc.expected.Filters, q.Filters)
+			require.Equal(t, tc.expected.Orders, q.Orders)
+			require.Equal(t, tc.expected.Selects, q.Selects)
+			require.Equal(t, tc.expected.Limit, q.Limit)
+			if len(tc.expected.Filters) == 1 {
+				require.NotNil(t, q.Filter)
+				require.Equal(t, tc.expected.Filters[0], *q.Filter)
+			}
 		})
 	}
 }
@@ -77,6 +86,9 @@ func TestParseMany(t *testing.T) {
 	require.Len(t, q.Orders, 1)
 	require.Equal(t, 10, q.Limit)
 	require.Equal(t, 20, q.Offset)
+	require.NotNil(t, q.Filter)
+	require.Equal(t, OpAnd, q.Filter.Op)
+	require.Len(t, q.Filter.Children, 2)
 }
 
 // TestParseMany_NoDefaultLimit (F3-2)：未显式指定 limit 时 Limit 保持 0，
@@ -111,4 +123,51 @@ func TestParse_NegativeLimitOffset(t *testing.T) {
 	q, err = Parse(`offset(0)`)
 	require.NoError(t, err)
 	require.Equal(t, 0, q.Offset)
+}
+
+func TestParseMany_InputLimits(t *testing.T) {
+	tooMany := make([]string, MaxQueries+1)
+	for i := range tooMany {
+		tooMany[i] = `limit(1)`
+	}
+	_, err := ParseMany(tooMany)
+	require.Error(t, err)
+
+	long := `equal("title","` + strings.Repeat("a", MaxQueryLen) + `")`
+	_, err = ParseMany([]string{long})
+	require.Error(t, err)
+}
+
+func TestFromProto_EqMatchesParseEqual(t *testing.T) {
+	parsed, err := Parse(`equal("a","b")`)
+	require.NoError(t, err)
+
+	ast, err := FromProto(&sharedv1.Query{
+		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{
+			Attribute: "a",
+			Values:    []string{"b"},
+		}}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ast.Filter)
+	require.Equal(t, parsed.Filter.Op, ast.Filter.Op)
+	require.Equal(t, parsed.Filter.Attribute, ast.Filter.Attribute)
+	require.Equal(t, parsed.Filter.Values, ast.Filter.Values)
+}
+
+func TestFromProto_OrTree(t *testing.T) {
+	ast, err := FromProto(&sharedv1.Query{
+		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Or{Or: &sharedv1.FilterList{
+			Filters: []*sharedv1.Filter{
+				{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{Attribute: "status", Values: []string{"a"}}}},
+				{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{Attribute: "status", Values: []string{"b"}}}},
+			},
+		}}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ast.Filter)
+	require.Equal(t, OpOr, ast.Filter.Op)
+	require.Len(t, ast.Filter.Children, 2)
+	require.Equal(t, OpEqual, ast.Filter.Children[0].Op)
+	require.Equal(t, "status", ast.Filter.Children[0].Attribute)
 }

@@ -74,6 +74,195 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "query.filter.eq.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.eq.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.ne.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.ne.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.lt.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.lt.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.lte.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.lte.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.gt.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.gt.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.gte.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.gte.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.in.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.in.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.contains.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.contains.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.startsWith.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.startsWith.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.endsWith.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.endsWith.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.search.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.search.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "query.pageToken",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -375,6 +564,195 @@
           },
           {
             "name": "projectId",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.eq.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.eq.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.ne.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.ne.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.lt.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.lt.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.lte.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.lte.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.gt.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.gt.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.gte.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.gte.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.in.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.in.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.contains.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.contains.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.startsWith.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.startsWith.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.endsWith.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.endsWith.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.search.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.search.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.pageSize",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "query.pageToken",
             "in": "query",
             "required": false,
             "type": "string"
@@ -1063,8 +1441,81 @@
         }
       }
     },
+    "v1Comparison": {
+      "type": "object",
+      "properties": {
+        "attribute": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Comparison is a leaf predicate: attribute plus one or more values."
+    },
     "v1Empty": {
       "type": "object"
+    },
+    "v1Filter": {
+      "type": "object",
+      "properties": {
+        "eq": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "ne": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "lt": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "lte": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "gt": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "gte": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "in": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "contains": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "startsWith": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "endsWith": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "search": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "and": {
+          "$ref": "#/definitions/v1FilterList"
+        },
+        "or": {
+          "$ref": "#/definitions/v1FilterList"
+        }
+      },
+      "description": "Filter is a boolean expression tree. Comparison ops use Appwrite-equivalent\nsemantics; and/or are recursive. The Appwrite string codec remains implicit AND."
+    },
+    "v1FilterList": {
+      "type": "object",
+      "properties": {
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Filter"
+          }
+        }
+      },
+      "description": "FilterList is a boolean combination of Filter nodes (and / or)."
     },
     "v1ListResponseMeta": {
       "type": "object",
@@ -1084,6 +1535,41 @@
           "format": "int32"
         }
       }
+    },
+    "v1Order": {
+      "type": "object",
+      "properties": {
+        "attribute": {
+          "type": "string"
+        },
+        "desc": {
+          "type": "boolean"
+        }
+      },
+      "description": "Order is a single sort key. desc=false is ascending."
+    },
+    "v1Query": {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "$ref": "#/definitions/v1Filter"
+        },
+        "orders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Order"
+          }
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "pageToken": {
+          "type": "string"
+        }
+      },
+      "description": "Query is the typed document list/count model (filter tree + orders + page).\npage_token is the authoritative pager (K-20); page_size is the page bound."
     }
   },
   "securityDefinitions": {

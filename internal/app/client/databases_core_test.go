@@ -209,7 +209,7 @@ func (s *stubDocDB) UpsertDocument(context.Context, string, string, string, data
 func (s *stubDocDB) DeleteDocument(context.Context, string, string, string, string, databases.DeleteOptions, databases.Principal) error {
 	return nil
 }
-func (s *stubDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+func (s *stubDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
 func (s *stubDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }

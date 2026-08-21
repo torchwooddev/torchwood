@@ -68,7 +68,7 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 
-	count, err := uc.CountDocuments(ctx, projectID, dbID, collID, []string{`equal("title","Hello Torchwood")`}, principal)
+	count, err := uc.CountDocuments(ctx, projectID, dbID, collID, databases.Query{Queries: []string{`equal("title","Hello Torchwood")`}}, principal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 

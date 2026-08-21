@@ -13,6 +13,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"github.com/uptrace/bun/driver/pgdriver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -83,7 +84,7 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	require.Equal(t, int64(1), list.TotalCount)
 
 	// Count.
-	count, err := docDB.CountDocuments(ctx, projectID, "app", "posts", []string{`equal("title","Hello World")`}, databases.Principal{Roles: []string{"any"}})
+	count, err := docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: []string{`equal("title","Hello World")`}}, databases.Principal{Roles: []string{"any"}})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
@@ -529,6 +530,53 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 	require.Len(t, list.Documents, 4)
 }
 
+// TestListDocuments_AstOr compiles proto/AST or into SQL OR (two matching rows).
+func TestListDocuments_AstOr(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	for _, title := range []string{"alpha", "beta", "gamma"} {
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "posts", databases.Document{
+			Data: map[string]any{"title": title},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+
+	ast := &query.Query{
+		Filter: &query.Filter{Op: query.OpOr, Children: []*query.Filter{
+			{Op: query.OpEqual, Attribute: "title", Values: []string{"alpha"}},
+			{Op: query.OpEqual, Attribute: "title", Values: []string{"gamma"}},
+		}},
+	}
+	list, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{AST: ast}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), list.TotalCount)
+	got := map[string]bool{}
+	for _, d := range list.Documents {
+		got[d.Data["title"].(string)] = true
+	}
+	require.True(t, got["alpha"] && got["gamma"])
+	require.False(t, got["beta"])
+
+	count, err := docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{AST: ast}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), count)
+}
+
 // TestListDocuments_SelectProjection (#6a): select() must filter Data to the
 // chosen keys while system fields always remain on the Document struct, with
 // $id/$createdAt/$updatedAt aliases honored.
@@ -763,7 +811,7 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", []string{`offset(10001)`}, databases.SystemPrincipal)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", databases.Query{Queries: []string{`offset(10001)`}}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
@@ -803,7 +851,7 @@ func TestListDocuments_InputLimits(t *testing.T) {
 	_, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: queries}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", queries, databases.SystemPrincipal)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: queries}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
@@ -992,7 +1040,7 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 非 System 查询未声明列（Count）→ InvalidArgument。
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", []string{`equal("nonexistent","x")`}, bob)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: []string{`equal("nonexistent","x")`}}, bob)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 

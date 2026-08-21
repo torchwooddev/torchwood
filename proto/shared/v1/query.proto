@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package torchwood.shared.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1";
+
+// Comparison is a leaf predicate: attribute plus one or more values.
+message Comparison {
+  string attribute = 1;
+  repeated string values = 2;
+}
+
+// FilterList is a boolean combination of Filter nodes (and / or).
+message FilterList {
+  repeated Filter filters = 1;
+}
+
+// Filter is a boolean expression tree. Comparison ops use Appwrite-equivalent
+// semantics; and/or are recursive. The Appwrite string codec remains implicit AND.
+message Filter {
+  oneof expr {
+    Comparison eq = 1;
+    Comparison ne = 2;
+    Comparison lt = 3;
+    Comparison lte = 4;
+    Comparison gt = 5;
+    Comparison gte = 6;
+    Comparison in = 7;
+    Comparison contains = 8;
+    Comparison starts_with = 9;
+    Comparison ends_with = 10;
+    Comparison search = 11;
+    FilterList and = 12;
+    FilterList or = 13;
+  }
+}
+
+// Order is a single sort key. desc=false is ascending.
+message Order {
+  string attribute = 1;
+  bool desc = 2;
+}
+
+// Query is the typed document list/count model (filter tree + orders + page).
+// page_token is the authoritative pager (K-20); page_size is the page bound.
+message Query {
+  Filter filter = 1;
+  repeated Order orders = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}

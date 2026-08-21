@@ -139,7 +139,7 @@ func (d *functionsDocDB) DeleteDocument(context.Context, string, string, string,
 func (d *functionsDocDB) ListDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (*databases.DocumentList, error) {
 	return nil, nil
 }
-func (d *functionsDocDB) CountDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
+func (d *functionsDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
 func (d *functionsDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {

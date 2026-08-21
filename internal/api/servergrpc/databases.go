@@ -5,6 +5,7 @@ import (
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+	"github.com/torchwooddev/torchwood/internal/app/documents"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -342,11 +343,11 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), databases.Query{
-		Queries:   req.GetQueries(),
-		PageSize:  req.GetPageSize(),
-		PageToken: req.GetPageToken(),
-	}, dbPrincipal(ctx))
+	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q, dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +511,11 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.Lis
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	count, err := s.databases.CountDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetQueries(), dbPrincipal(ctx))
+	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+	count, err := s.databases.CountDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q, dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}

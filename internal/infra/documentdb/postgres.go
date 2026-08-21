@@ -1133,12 +1133,9 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if err != nil {
 		return nil, err
 	}
-	if err := validateQueryInput(q.Queries); err != nil {
-		return nil, err
-	}
-	parsed, err := query.ParseMany(q.Queries)
+	parsed, err := astFrom(q)
 	if err != nil {
-		return nil, fmt.Errorf("invalid query: %w", err)
+		return nil, err
 	}
 	tbl := tableName(schema, collectionID)
 
@@ -1309,17 +1306,14 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}, nil
 }
 
-func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, queries []string, principal databases.Principal) (int64, error) {
+func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return 0, err
 	}
-	if err := validateQueryInput(queries); err != nil {
-		return 0, err
-	}
-	parsed, err := query.ParseMany(queries)
+	parsed, err := astFrom(q)
 	if err != nil {
-		return 0, fmt.Errorf("invalid query: %w", err)
+		return 0, err
 	}
 	if parsed.Offset > maxQueryOffset {
 		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
@@ -2430,16 +2424,24 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema str
 		return nil
 	}
 
-	for _, f := range parsed.Filters {
-		if err := checkField(f.Attribute); err != nil {
-			return err
+	var fieldErr error
+	parsed.WalkLeaves(func(f query.Filter) {
+		if fieldErr != nil {
+			return
 		}
-		if f.Op == "search" {
+		if err := checkField(f.Attribute); err != nil {
+			fieldErr = err
+			return
+		}
+		if f.Op == query.OpSearch {
 			field := mapQueryField(f.Attribute)
 			if _, ok := fulltextAttrs[field]; !ok {
-				return status.Error(codes.InvalidArgument, fmt.Sprintf("search requires a fulltext index on: %s", f.Attribute))
+				fieldErr = status.Error(codes.InvalidArgument, fmt.Sprintf("search requires a fulltext index on: %s", f.Attribute))
 			}
 		}
+	})
+	if fieldErr != nil {
+		return fieldErr
 	}
 	for _, o := range parsed.Orders {
 		if err := checkField(o.Attribute); err != nil {
@@ -2468,81 +2470,47 @@ func validateQueryInput(queries []string) error {
 	return nil
 }
 
+// astFrom 把传输 Query 收成 AST。app 层已解析时走 AST；测试/直连调用仍可
+// 用 Queries 字符串走 codec（编译器本身只吃 AST）。
+func astFrom(q databases.Query) (*query.Query, error) {
+	if q.AST != nil {
+		ast := *q.AST
+		if ast.PageSize == 0 {
+			ast.PageSize = q.PageSize
+		}
+		if ast.PageToken == "" {
+			ast.PageToken = q.PageToken
+		}
+		return &ast, nil
+	}
+	if err := validateQueryInput(q.Queries); err != nil {
+		return nil, err
+	}
+	parsed, err := query.ParseMany(q.Queries)
+	if err != nil {
+		return nil, fmt.Errorf("invalid query: %w", err)
+	}
+	parsed.PageSize = q.PageSize
+	parsed.PageToken = q.PageToken
+	return parsed, nil
+}
+
 func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
-	var conds []string
+	var where string
 	var args []any
-	for _, f := range parsed.Filters {
-		field := mapQueryField(f.Attribute)
-		if !safeNameRe.MatchString(field) {
-			return "", nil, "", fmt.Errorf("invalid query field: %s", f.Attribute)
+	var err error
+	if parsed.Filter != nil {
+		where, args, err = compileFilter(parsed.Filter)
+	} else if len(parsed.Filters) > 0 {
+		children := make([]*query.Filter, len(parsed.Filters))
+		for i := range parsed.Filters {
+			f := parsed.Filters[i]
+			children[i] = &f
 		}
-		col := "d." + quoteIdent(field)
-		switch f.Op {
-		case "equal":
-			if len(f.Values) > maxFilterValues {
-				return "", nil, "", status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
-			}
-			if len(f.Values) == 1 {
-				conds = append(conds, fmt.Sprintf("%s = ?", col))
-				args = append(args, f.Values[0])
-			} else {
-				phs := strings.TrimSuffix(strings.Repeat("?, ", len(f.Values)), ", ")
-				conds = append(conds, fmt.Sprintf("%s IN (%s)", col, phs))
-				for _, v := range f.Values {
-					args = append(args, v)
-				}
-			}
-		case "notEqual":
-			if len(f.Values) > maxFilterValues {
-				return "", nil, "", status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
-			}
-			if len(f.Values) == 1 {
-				conds = append(conds, fmt.Sprintf("%s != ?", col))
-				args = append(args, f.Values[0])
-			} else {
-				phs := strings.TrimSuffix(strings.Repeat("?, ", len(f.Values)), ", ")
-				conds = append(conds, fmt.Sprintf("%s NOT IN (%s)", col, phs))
-				for _, v := range f.Values {
-					args = append(args, v)
-				}
-			}
-		case "lessThan":
-			conds = append(conds, fmt.Sprintf("%s < ?", col))
-			args = append(args, f.Values[0])
-		case "lessThanEqual":
-			conds = append(conds, fmt.Sprintf("%s <= ?", col))
-			args = append(args, f.Values[0])
-		case "greaterThan":
-			conds = append(conds, fmt.Sprintf("%s > ?", col))
-			args = append(args, f.Values[0])
-		case "greaterThanEqual":
-			conds = append(conds, fmt.Sprintf("%s >= ?", col))
-			args = append(args, f.Values[0])
-		case "contains":
-			conds = append(conds, fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col))
-			args = append(args, "%"+escapeLikePattern(f.Values[0])+"%")
-		case "startsWith":
-			conds = append(conds, fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col))
-			args = append(args, escapeLikePattern(f.Values[0])+"%")
-		case "endsWith":
-			conds = append(conds, fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col))
-			args = append(args, "%"+escapeLikePattern(f.Values[0]))
-		case "search":
-			conds = append(conds, fmt.Sprintf("to_tsvector('simple', %s::text) @@ plainto_tsquery('simple', ?)", col))
-			args = append(args, f.Values[0])
-		case "isNull":
-			conds = append(conds, fmt.Sprintf("%s IS NULL", col))
-		case "isNotNull":
-			conds = append(conds, fmt.Sprintf("%s IS NOT NULL", col))
-		case "between":
-			if len(f.Values) != 2 {
-				return "", nil, "", fmt.Errorf("between requires 2 values")
-			}
-			conds = append(conds, fmt.Sprintf("%s BETWEEN ? AND ?", col))
-			args = append(args, f.Values[0], f.Values[1])
-		default:
-			return "", nil, "", fmt.Errorf("unsupported filter operator: %s", f.Op)
-		}
+		where, args, err = compileBool(children, "AND")
+	}
+	if err != nil {
+		return "", nil, "", err
 	}
 
 	// R08-P2-4：默认排序带 _id tiebreaker，同 _created_at 的多行分页保持稳定。
@@ -2564,10 +2532,108 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 			orderSQL = "ORDER BY " + strings.Join(parts, ", ") + ", d._created_at DESC"
 		}
 	}
-
-	where := ""
-	if len(conds) > 0 {
-		where = "(" + strings.Join(conds, " AND ") + ")"
-	}
 	return where, args, orderSQL, nil
+}
+
+func compileFilter(f *query.Filter) (string, []any, error) {
+	if f == nil {
+		return "", nil, nil
+	}
+	switch f.Op {
+	case query.OpAnd:
+		return compileBool(f.Children, "AND")
+	case query.OpOr:
+		return compileBool(f.Children, "OR")
+	default:
+		return compilePredicate(f)
+	}
+}
+
+func compileBool(children []*query.Filter, join string) (string, []any, error) {
+	var parts []string
+	var args []any
+	for _, c := range children {
+		if c == nil {
+			continue
+		}
+		w, a, err := compileFilter(c)
+		if err != nil {
+			return "", nil, err
+		}
+		if w == "" {
+			continue
+		}
+		parts = append(parts, w)
+		args = append(args, a...)
+	}
+	if len(parts) == 0 {
+		return "", nil, nil
+	}
+	if len(parts) == 1 {
+		return parts[0], args, nil
+	}
+	return "(" + strings.Join(parts, " "+join+" ") + ")", args, nil
+}
+
+func compilePredicate(f *query.Filter) (string, []any, error) {
+	field := mapQueryField(f.Attribute)
+	if !safeNameRe.MatchString(field) {
+		return "", nil, fmt.Errorf("invalid query field: %s", f.Attribute)
+	}
+	col := "d." + quoteIdent(field)
+	switch f.Op {
+	case query.OpEqual, query.OpIn:
+		if len(f.Values) > maxFilterValues {
+			return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
+		}
+		if len(f.Values) == 1 {
+			return fmt.Sprintf("%s = ?", col), []any{f.Values[0]}, nil
+		}
+		phs := strings.TrimSuffix(strings.Repeat("?, ", len(f.Values)), ", ")
+		args := make([]any, len(f.Values))
+		for i, v := range f.Values {
+			args[i] = v
+		}
+		return fmt.Sprintf("%s IN (%s)", col, phs), args, nil
+	case query.OpNotEqual:
+		if len(f.Values) > maxFilterValues {
+			return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
+		}
+		if len(f.Values) == 1 {
+			return fmt.Sprintf("%s != ?", col), []any{f.Values[0]}, nil
+		}
+		phs := strings.TrimSuffix(strings.Repeat("?, ", len(f.Values)), ", ")
+		args := make([]any, len(f.Values))
+		for i, v := range f.Values {
+			args[i] = v
+		}
+		return fmt.Sprintf("%s NOT IN (%s)", col, phs), args, nil
+	case query.OpLessThan:
+		return fmt.Sprintf("%s < ?", col), []any{f.Values[0]}, nil
+	case query.OpLessThanEqual:
+		return fmt.Sprintf("%s <= ?", col), []any{f.Values[0]}, nil
+	case query.OpGreaterThan:
+		return fmt.Sprintf("%s > ?", col), []any{f.Values[0]}, nil
+	case query.OpGreaterThanEqual:
+		return fmt.Sprintf("%s >= ?", col), []any{f.Values[0]}, nil
+	case query.OpContains:
+		return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0]) + "%"}, nil
+	case query.OpStartsWith:
+		return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{escapeLikePattern(f.Values[0]) + "%"}, nil
+	case query.OpEndsWith:
+		return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0])}, nil
+	case query.OpSearch:
+		return fmt.Sprintf("to_tsvector('simple', %s::text) @@ plainto_tsquery('simple', ?)", col), []any{f.Values[0]}, nil
+	case query.OpIsNull:
+		return fmt.Sprintf("%s IS NULL", col), nil, nil
+	case query.OpIsNotNull:
+		return fmt.Sprintf("%s IS NOT NULL", col), nil, nil
+	case query.OpBetween:
+		if len(f.Values) != 2 {
+			return "", nil, fmt.Errorf("between requires 2 values")
+		}
+		return fmt.Sprintf("%s BETWEEN ? AND ?", col), []any{f.Values[0], f.Values[1]}, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported filter operator: %s", f.Op)
+	}
 }

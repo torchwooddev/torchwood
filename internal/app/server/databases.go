@@ -511,13 +511,13 @@ func (d *Databases) DeleteDocument(
 func (d *Databases) CountDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
-	queries []string,
+	q databases.Query,
 	principal databases.Principal,
 ) (int64, error) {
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return 0, err
 	}
-	return d.documentsCore().CountDocuments(ctx, projectID, databaseID, collectionID, queries, principal)
+	return d.documentsCore().CountDocuments(ctx, projectID, databaseID, collectionID, q, principal)
 }
 
 func (d *Databases) MapAttributeType(t string) string {

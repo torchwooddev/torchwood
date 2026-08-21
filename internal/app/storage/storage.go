@@ -380,11 +380,11 @@ func (s *Storage) GetStorageUsage(ctx context.Context, projectID string, princip
 	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
 		return nil, err
 	}
-	buckets, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "buckets", nil, principal)
+	buckets, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "buckets", databases.Query{}, principal)
 	if err != nil {
 		return nil, err
 	}
-	files, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "files", nil, principal)
+	files, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "files", databases.Query{}, principal)
 	if err != nil {
 		return nil, err
 	}
