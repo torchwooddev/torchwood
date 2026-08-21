@@ -24,7 +24,7 @@ Torchwood 是一个 **Appwrite-inspired、AI/Agent-Native 的 Backend-as-a-Servi
 
 - **项目管理**：多项目隔离；每个 `(project.id, database.id)` 对应一个 PostgreSQL schema（`tw_<projectID>_<databaseID>`）；
 - **用户认证**：邮箱注册/登录、JWT access/refresh、会话 cookie、API Key 认证、Email/Phone OTP、OAuth2、匿名会话、Magic URL、一次性 JWT、TOTP MFA；
-- **动态文档数据库**：schema-per-database，集合即真实表，`_tenant` 隔离项目，`_perms` 实现文档级权限；
+- **动态文档数据库**：用户 collection 在两段式 schema（`tw_<project>_<database>`）；系统静态表（users/sessions/…）在一段式 `tw_<project>`；用户表 `_tenant` 隔离、`_perms` 文档级权限；
 - **文件存储**：S3/MinIO 兼容对象存储，multipart 上传/下载、分片上传/断点续传、预览缩略图、公开 bucket、HMAC File Token；
 - **函数执行**：Docker 真实执行器（构建/运行）与异步 worker（`cmd/worker`），含执行历史与保留策略；
 - **Admin Console**：React SPA，嵌入 Go 二进制，通过 `/console/` 提供管理界面；
@@ -42,7 +42,7 @@ Torchwood 是一个 **Appwrite-inspired、AI/Agent-Native 的 Backend-as-a-Servi
 | [Lynx](https://github.com/lynx-go/lynx) | 服务框架：Runner、生命周期、配置绑定、HTTP/gRPC server 基元 |
 | gRPC + grpc-gateway | RPC 与 JSON REST 双表面 |
 | [Wire](https://github.com/google/wire) | 编译期依赖注入，`cmd/server/provides.go` 声明 provider |
-| [bun](https://github.com/uptrace/bun) | 元数据静态表 ORM（projects、api_keys、document_*、admins） |
+| [bun](https://github.com/uptrace/bun) | 静态表 ORM：public 控制面（projects、admins、api_keys、…）与 `tw_<project>` 系统表 / 文档目录 / 账本（**无** public `document_*` catalog） |
 | [cobra](https://github.com/spf13/cobra) | CLI 框架（`cmd/client`） |
 | PostgreSQL 18 | 元数据 + 动态文档层（本地 docker-compose 镜像） |
 | Redis 7 | 队列/上传会话/ID 生成等 |
@@ -198,8 +198,8 @@ internal/app/server.Users 用例                         【用例层】
 internal/domain/users.UserRepo（端口接口）              【领域层】
    │  只定义接口，不关心实现
    ▼
-internal/infra/bun/bunrepo（或 documentdb 适配器）      【适配器层】
-   │  bun ORM / SQL 访问元数据表
+internal/infra/bun/bunrepo                             【适配器层】
+   │  bun ORM / SQL 访问 tw_<project>.users 等系统静态表
    ▼
 PostgreSQL
 ```
@@ -228,7 +228,7 @@ PostgreSQL
 6. **列表查询复用 `pkg/crud` 或 `pkg/query`**：不手拼 SQL filter/order；动态文档查询优先使用 Appwrite 风格 DSL。
 7. **JWT claims 与 `pkg/jwtparser` 映射保持一致**；Principal 由 `pkg/grpc/interceptor` 统一注入。
 8. **配置单一入口**：`internal/pkg/config/config.proto` 定义 schema，`bind.go` 负责环境变量绑定（`TORCHWOOD_` 前缀、点号路径映射）。
-9. **元数据与动态文档分层存储**：静态表（projects、api_keys、document_*、admins）用 bun + migrate；用户资源与动态集合走 PostgreSQL 动态文档 adapter。
+9. **三层物理存储**：`public` 控制面（projects / admins / api_keys / …）用 bun + golang-migrate（**无** public `document_*` catalog，D-7 已 DROP）；项目数据面 `tw_<project>` 容纳系统静态表（users / sessions / identities / groups / memberships / buckets / files）+ 文档目录 + 账本（bun / projectschema）；用户 collection 才走两段式 schema 的 documentdb（`_tenant` + `_perms`）。
 
 ---
 
