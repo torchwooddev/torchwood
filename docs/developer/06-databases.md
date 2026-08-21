@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
 | `UpdateDocument` | 仅检查文档级 `update`（D3：不再强制 read 预检；独立 update 策略） |
 | `DeleteDocument` | 文档级 `delete` |
 | `ListDocuments` / `CountDocuments` | 集合级 `read` 拒绝（`ListAccessDenied`）→ 逐文档 SQL 过滤（`listPermissionFilter`，见 §4.2）；sentinel `_` 上的 `SystemCollectionIDs` + 集合级 read 可跳过文档级过滤（D1，测试重建旧表） |
-| `SumDocumentField` | 同 List 的 read 过滤（storage usage 只统计可见文档） |
+| `SumDocumentField` | 同 List 的 read 过滤（对用户 collection 数值列求和；存储用量走 bun `files.SumSize`，不经本方法） |
 
 ### 3.4 授权授予约束
 

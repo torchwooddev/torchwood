@@ -82,7 +82,7 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	docDB := NewPostgresDocumentDB(db)
+	docDB := NewPostgresDocumentDB(db, nil)
 	// ... CRUD / 权限 / 分页 / 输入限制断言
 }
 ```

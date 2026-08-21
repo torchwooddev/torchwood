@@ -373,10 +373,11 @@ func (r *projectRepo) GetProject(ctx context.Context, id string) (*projects.Proj
 
 ### 5.2 动态文档：documentdb adapter
 
-用户资源（users/sessions/files/buckets/groups）与用户动态集合走 PostgreSQL 动态文档 adapter：
-`schema-per-database + _tenant + _perms`。端口定义在 `internal/domain/databases/document.go`
-（`DocumentDB` interface，含 `CreateDatabase`/`CreateCollection`/`ListDocuments`/`CountDocuments` 等），
-实现为 `internal/infra/documentdb/postgres.go` 的 `NewPostgresDocumentDB(db)`。
+**只有用户 collection** 走 PostgreSQL 动态文档 adapter：`schema-per-database + _tenant + _perms` + `pkg/query`。
+系统资源（users / sessions / identities / groups / memberships / buckets / files）是 `tw_<project>` 上的 bun 静态表，经 Account、Server Users、Storage、Groups 专用 RPC，不经 DocumentDB。
+
+端口在 `internal/domain/databases`（`DocumentDB`：`CreateDatabase` / `CreateCollection` / `ListDocuments` / `CountDocuments` 等）。
+实现为 `internal/infra/documentdb/postgres.go` 的 `NewPostgresDocumentDB(db, pub)`（`*clients.Database` + `shared.EventPublisher`；测试可传 `nil` publisher）。
 
 - 动态文档查询**优先使用 `pkg/query`**（Appwrite 风格 DSL）：`equal`、`notEqual`、`greaterThan`、
   `contains`、`orderDesc`、`orderAsc`、`limit`、`offset`、`select`、`cursorAfter`/`cursorBefore` 等；

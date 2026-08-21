@@ -9,12 +9,12 @@
 
 ```
 HTTP multipart (serverhttp.FileHandler) ──→ app/storage.Storage
-                                              ├─ 元数据：动态文档库 default 库的 buckets / files 系统集合（文档级 _perms 权限）
+                                              ├─ 元数据：bun 表 tw_<project>.buckets / tw_<project>.files（projectschema）
                                               └─ 对象数据：storage.ObjectStore（S3/MinIO，minio-go）
 gRPC StorageService (proto/server/v1/storage.proto) ──→ app/storage.Storage
 ```
 
-- **元数据与对象分离**：bucket / file 的元数据存放在动态文档库 `default` 库的 `buckets`、`files` 系统集合中（`TORCHWOOD_<internalID>_default.buckets/files`），天然复用文档级权限与 Appwrite 查询 DSL；文件二进制存入对象存储。
+- **元数据与对象分离**：bucket / file 元数据是项目数据面 bun 静态表 `tw_<project>.buckets` / `tw_<project>.files`（`internal/infra/projectschema/`，仓储 `BucketRepository` / `FileRepository`），**不是** default 库文档集合，也**没有**文档 `_perms`。文件二进制存入对象存储。
 - **对象键**：`<projectID>/<bucketID>/<fileID>`（`objectKey`），全部文件落在同一个 S3 bucket（`storage.s3.bucket`，未配置时回退 `torchwood-files`）。
 
 ### 1.1 端口与适配器
@@ -27,7 +27,7 @@ gRPC StorageService (proto/server/v1/storage.proto) ──→ app/storage.Storag
 | `Put` | 上传对象（缺省 `application/octet-stream`） |
 | `Get` | 下载对象（Stat 校验存在，NoSuchKey → not found 错误） |
 | `Delete` | 删除对象 |
-| `Compose` | 按序服务端合并 srcKeys 为 dstKey（映射 minio-go `ComposeObject`；除末片外每片 ≥5MiB、源数 ≤10000；目标对象 Content-Type 无法设置，mime 以文档为准） |
+| `Compose` | 按序服务端合并 srcKeys 为 dstKey（映射 minio-go `ComposeObject`；除末片外每片 ≥5MiB、源数 ≤10000；目标对象 Content-Type 无法设置，mime 以文件元数据为准） |
 | `Ping` | 健康探测 |
 
 `internal/infra/storage/minio.go` 是唯一实现：`NewMinioObjectStore` 从配置 `storage.s3.*` 构造 `minio.Client`（静态 V4 凭据；endpoint 带 scheme 时自动解析 https 与主机名；`use_ssl` 可被 https scheme 覆盖）。
@@ -51,16 +51,14 @@ gRPC StorageService (proto/server/v1/storage.proto) ──→ app/storage.Storag
 
 ---
 
-## 3. Bucket 与 File 元数据（动态文档）
+## 3. Bucket 与 File 元数据（bun 静态表）
 
-`buckets` 系统集合属性：`name`、`permissions`（JSON）、`public`（布尔）。
-`files` 系统集合属性：`bucket_id`、`name`、`mime_type`、`size`（integer）、`metadata`（JSON）。
+表在 `tw_<project>`（`internal/infra/bun/model/{buckets,files}.go`），无 `_id` / `_perms` / `_version`。
 
-默认权限（`internal/app/storage/storage.go` 的 `bucketPermissions` / `filePermissions`）：
+`buckets` 列：`id`（PK）、`name`、`permissions`（JSONB，调用方传入的字符串数组，**不是**文档 `_perms`）、`public`、`created_at`、`updated_at`。
+`files` 列：`id`（PK）、`bucket_id`、`name`、`mime_type`、`size`、`metadata`（JSONB）、`owner_user_id`、`created_at`、`updated_at`。文件没有文档级 ACE；归属用 `owner_user_id`。
 
-- bucket 缺省：`read:any`、`create/update/delete:users`；
-- file 缺省：`read:any`、`read/update/delete:keys`、`read/update/delete:admin` + 上传者 `update/delete:user:<id>`；
-- 显式传入 `permissions`（`"type:role"` 字符串数组）时以显式为准。
+CreateBucket / CreateFile **不**再合成默认 `read:any` 等文档权限；`permissions` 仅 bucket 列按请求原样写入。鉴权在 Server API scope / HTTP `authorize`（凭证、File Token、公开 bucket 的 `public` 标志）。
 
 MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、`application/xhtml+xml`、`application/javascript`、`text/javascript`、`application/xml`、`text/xml`，取分号前 base 判断）一律改判 `application/octet-stream`，防止存储型 XSS 经 `/view` 端点内联执行。
 
@@ -103,7 +101,7 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 | `POST` | `/v1/storage/buckets/{bucketId}/uploads` | 创建会话，JSON body `{name, mime_type, size, metadata?, permissions?}`（1MiB 上限）；201 返回 `{upload_id, file_id, chunk_size, part_count, expires_at}` |
 | `GET` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}` | 查询会话（断点续传）：`{upload_id, part_count, received: [1,3,...], chunk_size}`；**GET 分支要求 `storage.read` scope** |
 | `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/chunks/{partNumber}` | 上传分片，multipart 字段名 `chunk`（16MiB 整片 + 1MiB 缓冲上限）；同号覆盖 = 幂等；成功不记 logOp |
-| `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/complete` | 合并分片并创建文件文档（mime 已归一化）；缺片 400 |
+| `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/complete` | 合并分片并写入 files 元数据（mime 已归一化）；缺片 400 |
 | `DELETE` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}` | 取消上传：删会话 + 清理暂存分片对象；204 |
 
 **约定**：
@@ -111,7 +109,7 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 - 常量（`internal/domain/storage/upload_session.go`）：`DefaultChunkSize = MaxChunkSize = 16MiB`、`UploadSessionTTL = 24h`、`MinComposePartSize = 5MiB`、`MaxComposePartCount = 10000`、`MaxUploadSize ≈ 156.25GB`；
 - 分片大小严格校验：非末片 **== chunkSize**（保证 sum(parts)==size），末片 `1..chunkSize`（可 < 5MiB，5MiB 约束仅对非末片，由 ComposeObject 兜底）；
 - 会话存 Redis：`torchwood:upload:{id}` Hash（metadata/permissions JSON）+ `:parts` Set，Create/MarkChunk 刷新 24h TTL（MarkChunk 前 EXISTS 检查防孤儿 key）；
-- complete 互斥：`SETNX torchwood:upload:{id}:lock EX 300`，重复 complete → FailedPrecondition（HTTP 400）；时序 Lock → 缺片校验 → Compose → 建文档 → 删分片 → 删会话 → Unlock；
+- complete 互斥：`SETNX torchwood:upload:{id}:lock EX 300`，重复 complete → FailedPrecondition（HTTP 400）；时序 Lock → 缺片校验 → Compose → 写 files 行 → 删分片 → 删会话 → Unlock；
 - 分片对象 key：`{projectID}/{bucketID}/{fileID}/chunks/{part:03d}`；
 - 鉴权：create/uploadChunk/complete/abort 复用 `authorize`（POST 分支要求 `storage.write`）；项目归属在 use-case 二次校验（`databases.Principal` 无 ProjectID，由 handler 传入）；
 - Console：`ChunkedUploader`（`console/src/routes/storage/chunked-uploader.tsx`）对 >16MiB 文件自动分片：`File.slice` 顺序上传、进度条（`components/ui/progress.tsx`）、uploadId 存 localStorage（键含 bucketId+fileName+size）实现失败/刷新后续传（getUploadSession 跳过已收分片）、complete/abort 后清除。
@@ -120,9 +118,9 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 
 认证（`authorize`）：`X-Api-Key` / `Authorization`（Bearer/Session/ApiKey scheme，与 gRPC 拦截器同一解析）/ `TORCHWOOD_session_*` cookie；API Key 按方法检查 scope（上传 → `StorageServiceCreateFile`，下载/预览 → `StorageServiceGetFile`，避免只读 key 越权上传）；admin 会话带 `X-Torchwood-Project` header 并校验项目访问权。上传/下载输出结构化访问日志（含解析后的客户端 IP，与 gRPC 同一 trusted-proxy 规则）。
 
-1. **常规凭证**：API key / admin / end-user JWT / session cookie → 文档层 principal 按其角色过滤；
-2. **File Token**：URL 携带 `?token=` 且解析后与路径 bucket/file 匹配 → `SystemPrincipal`（绕过文档权限，匿名下载）；
-3. **公开 bucket**：无凭证但 bucket 为 `public`，URL 携带 `?project=` 定位项目 → `GuestPrincipal`（文档级 `read:any` 兜底）。
+1. **常规凭证**：API key / admin / end-user JWT / session cookie；
+2. **File Token**：URL 携带 `?token=` 且解析后与路径 bucket/file 匹配 → 匿名下载；
+3. **公开 bucket**：无凭证但 bucket 为 `public`，URL 携带 `?project=` 定位项目 → `GuestPrincipal`（看 `buckets.public`，不是文档 `_perms`）。
 
 ---
 
@@ -150,9 +148,11 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 
 `GET /v1/server/storage/usage`（`GetStorageUsage`）返回 `{buckets, files, total_size}`：
 
-- bucket / file 数量：`CountDocuments`（default 库系统集合）；
-- 总容量：`SumDocumentField("size")` 对 `files.size` 列求和（`SELECT COALESCE(SUM(d.size),0) ...`）；
-- 三项均按调用方 **read 权限过滤**（非 System 主体只统计可见文档；`size` 字段白名单校验防注入）。
+- bucket 数量：`buckets.Count(ctx, projectID)`；
+- file 数量：`files.Count(ctx, projectID)`；
+- 总容量：`files.SumSize(ctx, projectID)`（项目 schema 内 `SUM(size)`）。
+
+三项都不传入 principal，**不**按文档 `_perms` 过滤，也**不**走 `CountDocuments` / `SumDocumentField`。
 
 ---
 
