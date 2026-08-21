@@ -73,7 +73,7 @@ func (d *Databases) CreateDatabase(ctx context.Context, projectID, id, name stri
 	return d.docDB.CreateDatabase(ctx, projectID, id, name)
 }
 
-func (d *Databases) ListDatabases(ctx context.Context, projectID string) ([]databases.Collection, error) {
+func (d *Databases) ListDatabases(ctx context.Context, projectID string) ([]databases.Database, error) {
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (d *Databases) ListDatabases(ctx context.Context, projectID string) ([]data
 	if err != nil {
 		return nil, err
 	}
-	out := make([]databases.Collection, 0, len(list))
+	out := make([]databases.Database, 0, len(list))
 	for _, db := range list {
 		if db.ID == ident.ProjectDataPlaneID {
 			continue
@@ -91,7 +91,7 @@ func (d *Databases) ListDatabases(ctx context.Context, projectID string) ([]data
 	return out, nil
 }
 
-func (d *Databases) GetDatabase(ctx context.Context, projectID, databaseID string) (*databases.Collection, error) {
+func (d *Databases) GetDatabase(ctx context.Context, projectID, databaseID string) (*databases.Database, error) {
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return nil, err
 	}

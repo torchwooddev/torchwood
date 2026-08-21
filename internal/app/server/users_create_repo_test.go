@@ -109,13 +109,14 @@ func (usersCollectionGuardDocDB) CreateDocument(_ context.Context, _, _, collect
 func (usersCollectionGuardDocDB) EnsureSystemCollections(context.Context, string, int64) error {
 	return nil
 }
+func (usersCollectionGuardDocDB) EnsureCatalog(context.Context, string) error { return nil }
 func (usersCollectionGuardDocDB) CreateDatabase(context.Context, string, string, string) error {
 	return nil
 }
-func (usersCollectionGuardDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (usersCollectionGuardDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (usersCollectionGuardDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (usersCollectionGuardDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (usersCollectionGuardDocDB) DeleteDatabase(context.Context, string, string) error { return nil }

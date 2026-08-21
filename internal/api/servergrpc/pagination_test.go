@@ -114,11 +114,12 @@ func (d *paginationDocDB) BulkDeleteDocuments(context.Context, string, string, s
 	return 0, nil
 }
 func (d *paginationDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (d *paginationDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 func (d *paginationDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (d *paginationDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (d *paginationDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (d *paginationDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (d *paginationDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (d *paginationDocDB) DeleteDatabase(context.Context, string, string) error { return nil }

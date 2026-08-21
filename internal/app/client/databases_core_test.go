@@ -203,6 +203,7 @@ func (s *stubDocDB) GetCollection(context.Context, string, string, string) (*dat
 }
 
 func (s *stubDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (s *stubDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 func (s *stubDocDB) UpsertDocument(context.Context, string, string, string, databases.Document, []string, []databases.Permission, databases.Principal) (databases.Document, error) {
 	return databases.Document{}, nil
 }
@@ -213,10 +214,10 @@ func (s *stubDocDB) CountDocuments(context.Context, string, string, string, data
 	return 0, nil
 }
 func (s *stubDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (s *stubDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (s *stubDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (s *stubDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (s *stubDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (s *stubDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
@@ -249,3 +250,5 @@ func (s *stubDocDB) BulkUpdateDocuments(context.Context, string, string, string,
 func (s *stubDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
 	return 0, nil
 }
+
+var _ databases.DocumentDB = (*stubDocDB)(nil)

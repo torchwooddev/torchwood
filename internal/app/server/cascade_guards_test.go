@@ -162,12 +162,13 @@ func (f *fakeDocDB) DeleteDocument(_ context.Context, _, _, collectionID, docID 
 }
 
 func (f *fakeDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (f *fakeDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 
 func (f *fakeDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (f *fakeDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (f *fakeDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (f *fakeDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (f *fakeDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (f *fakeDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
@@ -209,6 +210,8 @@ func (f *fakeDocDB) BulkUpdateDocuments(context.Context, string, string, string,
 func (f *fakeDocDB) BulkDeleteDocuments(context.Context, string, string, string, []string, databases.Principal) (int64, error) {
 	return 0, nil
 }
+
+var _ databases.DocumentDB = (*fakeDocDB)(nil)
 
 func fakeMembership(id, groupID, userID, statusVal string, roles []string) databases.Document {
 	return databases.Document{

@@ -234,10 +234,10 @@ func (d *stubDocDB) BulkDeleteDocuments(_ context.Context, projectID, _, collect
 }
 
 func (d *stubDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (d *stubDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (d *stubDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (d *stubDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (d *stubDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (d *stubDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
@@ -283,6 +283,10 @@ func (d *stubDocDB) BulkUpdateDocuments(context.Context, string, string, string,
 	return 0, nil
 }
 func (d *stubDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (d *stubDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+
+var _ databases.DocumentDB = (*stubDocDB)(nil)
+
 func hashSecret(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])

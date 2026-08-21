@@ -148,10 +148,10 @@ func (d *fakeDocDB) UpdateDocument(_ context.Context, projectID, _, collectionID
 }
 
 func (d *fakeDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (d *fakeDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (d *fakeDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (d *fakeDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (d *fakeDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (d *fakeDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
@@ -191,6 +191,9 @@ func (d *fakeDocDB) BulkUpdateDocuments(context.Context, string, string, string,
 	return 0, nil
 }
 func (d *fakeDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (d *fakeDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+
+var _ databases.DocumentDB = (*fakeDocDB)(nil)
 
 // fakeProjectRepo 返回单个固定 project。
 type fakeProjectRepo struct {

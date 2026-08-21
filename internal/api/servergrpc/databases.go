@@ -526,7 +526,7 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.Lis
 	return &serverv1.CountDocumentsResponse{Count: count}, nil
 }
 
-func mapDatabase(c *databases.Collection) *serverv1.Database {
+func mapDatabase(c *databases.Database) *serverv1.Database {
 	if c == nil {
 		return nil
 	}

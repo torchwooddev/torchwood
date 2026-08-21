@@ -105,11 +105,12 @@ func (d *clientGroupsDocDB) BulkDeleteDocuments(context.Context, string, string,
 	return 0, nil
 }
 func (d *clientGroupsDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (d *clientGroupsDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 func (d *clientGroupsDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (d *clientGroupsDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (d *clientGroupsDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (d *clientGroupsDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (d *clientGroupsDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (d *clientGroupsDocDB) DeleteDatabase(context.Context, string, string) error { return nil }

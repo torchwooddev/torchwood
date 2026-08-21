@@ -162,10 +162,10 @@ func (m *memDocDB) BulkDeleteDocuments(context.Context, string, string, string, 
 }
 
 func (m *memDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (m *memDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (m *memDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (m *memDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (m *memDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (m *memDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
@@ -196,3 +196,6 @@ func (m *memDocDB) SumDocumentField(context.Context, string, string, string, str
 	return 0, nil
 }
 func (m *memDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (m *memDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
+
+var _ databases.DocumentDB = (*memDocDB)(nil)

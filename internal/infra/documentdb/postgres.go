@@ -89,6 +89,8 @@ func NewPostgresDocumentDB(db *clients.Database, pub shared.EventPublisher) data
 	return &postgresDocumentDB{db: db, pub: pub}
 }
 
+var _ databases.DocumentDB = (*postgresDocumentDB)(nil)
+
 func (p *postgresDocumentDB) conn(ctx context.Context) bun.IDB {
 	return p.db.Conn(ctx)
 }
@@ -98,7 +100,7 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 	if err != nil {
 		return err
 	}
-	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+	if err := p.EnsureCatalog(ctx, projectID); err != nil {
 		return err
 	}
 	cat, err := p.catalogIdent(projectID)
@@ -127,10 +129,7 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 	})
 }
 
-func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Collection, error) {
-	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
-		return nil, err
-	}
+func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Database, error) {
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
 		return nil, err
@@ -140,24 +139,15 @@ func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id stri
 		ModelTableExpr("?.document_databases AS ddb", cat).
 		Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) || isMissingCatalog(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &databases.Collection{
-		ID:        m.ID,
-		ProjectID: m.ProjectID,
-		Name:      m.Name,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-	}, nil
+	return mapDatabase(m), nil
 }
 
-func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Collection, error) {
-	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
-		return nil, err
-	}
+func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Database, error) {
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
 		return nil, err
@@ -167,17 +157,14 @@ func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string
 		ModelTableExpr("?.document_databases AS ddb", cat).
 		Where("project_id = ?", projectID).Order("created_at DESC").Scan(ctx)
 	if err != nil {
+		if isMissingCatalog(err) {
+			return []databases.Database{}, nil
+		}
 		return nil, err
 	}
-	out := make([]databases.Collection, len(ms))
+	out := make([]databases.Database, len(ms))
 	for i := range ms {
-		out[i] = databases.Collection{
-			ID:        ms[i].ID,
-			ProjectID: ms[i].ProjectID,
-			Name:      ms[i].Name,
-			CreatedAt: ms[i].CreatedAt,
-			UpdatedAt: ms[i].UpdatedAt,
-		}
+		out[i] = *mapDatabase(&ms[i])
 	}
 	return out, nil
 }
@@ -227,6 +214,9 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 			return err
 		}
 	}
+	if err := p.EnsureCatalog(ctx, projectID); err != nil {
+		return err
+	}
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
@@ -256,9 +246,6 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 }
 
 func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
-	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
-		return nil, err
-	}
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
 		return nil, err
@@ -268,7 +255,7 @@ func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, datab
 		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Scan(ctx)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) || isMissingCatalog(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -293,9 +280,6 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		offset = off
 	}
 
-	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
-		return nil, databases.ListMeta{}, err
-	}
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
 		return nil, databases.ListMeta{}, err
@@ -306,6 +290,9 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).Count(ctx)
 	if err != nil {
+		if isMissingCatalog(err) {
+			return []databases.Collection{}, databases.ListMeta{}, nil
+		}
 		return nil, databases.ListMeta{}, err
 	}
 	total = int64(count)
@@ -317,6 +304,9 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		Order("created_at DESC").
 		Limit(pageSize).Offset(offset).Scan(ctx)
 	if err != nil {
+		if isMissingCatalog(err) {
+			return []databases.Collection{}, databases.ListMeta{}, nil
+		}
 		return nil, databases.ListMeta{}, err
 	}
 	if len(ms) == 0 {
@@ -1444,7 +1434,7 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 			return err
 		}
 	}
-	if err := p.ensureProjectCatalog(ctx, projectID); err != nil {
+	if err := p.EnsureCatalog(ctx, projectID); err != nil {
 		return err
 	}
 	dbID := ident.ProjectDataPlaneID
@@ -1584,7 +1574,8 @@ func mapIdentError(err error) error {
 	return err
 }
 
-func (p *postgresDocumentDB) ensureProjectCatalog(ctx context.Context, projectID string) error {
+// EnsureCatalog 对项目数据面执行 projectschema.Apply。Catalog 读路径不得调用。
+func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string) error {
 	return mapIdentError(projectschema.Apply(ctx, p.db, projectID))
 }
 
@@ -2333,6 +2324,33 @@ func isUniqueViolation(err error) bool {
 		return pgErr.Field('C') == "23505"
 	}
 	return strings.Contains(err.Error(), "SQLSTATE 23505") || strings.Contains(err.Error(), "unique constraint")
+}
+
+func isMissingCatalog(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr pgdriver.Error
+	if errors.As(err, &pgErr) {
+		switch pgErr.Field('C') {
+		case "42P01", "3F000": // undefined_table, invalid_schema_name
+			return true
+		}
+	}
+	return false
+}
+
+func mapDatabase(m *model.DocumentDatabase) *databases.Database {
+	if m == nil {
+		return nil
+	}
+	return &databases.Database{
+		ID:        m.ID,
+		ProjectID: m.ProjectID,
+		Name:      m.Name,
+		CreatedAt: m.CreatedAt,
+		UpdatedAt: m.UpdatedAt,
+	}
 }
 
 func validateDocID(docID string) error {

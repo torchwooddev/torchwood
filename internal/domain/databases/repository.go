@@ -2,27 +2,33 @@ package databases
 
 import "context"
 
-type DocumentDB interface {
-	// Database / schema
-	CreateDatabase(ctx context.Context, projectID, id, name string) error
-	GetDatabase(ctx context.Context, projectID, id string) (*Collection, error)
-	ListDatabases(ctx context.Context, projectID string) ([]Collection, error)
-	DeleteDatabase(ctx context.Context, projectID, id string) error
-
-	// Collection
-	CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []Attribute, idxs []Index, perms []Permission, documentSecurity bool) error
+// Catalog 是只读 catalog：不跑 DDL、不 Apply 项目迁移。
+type Catalog interface {
+	GetDatabase(ctx context.Context, projectID, id string) (*Database, error)
+	ListDatabases(ctx context.Context, projectID string) ([]Database, error)
 	GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*Collection, error)
 	ListCollections(ctx context.Context, projectID, databaseID string, q ListQuery) ([]Collection, ListMeta, error)
-	DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error
-	UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch CollectionPatch) error
+}
 
-	// Attribute / Index
+// SchemaApplier 变更 catalog / 集合 DDL。EnsureCatalog 是读旁路唯一允许
+// projectschema.Apply 的出口（启动 / 建项 / EnsureSystem）；GetCollection 禁止调用。
+type SchemaApplier interface {
+	CreateDatabase(ctx context.Context, projectID, id, name string) error
+	DeleteDatabase(ctx context.Context, projectID, id string) error
+	CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []Attribute, idxs []Index, perms []Permission, documentSecurity bool) error
+	UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch CollectionPatch) error
+	DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error
 	CreateAttribute(ctx context.Context, projectID, databaseID, collectionID string, attr Attribute) error
 	DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error
 	CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx Index) error
 	DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error
+	EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error
+	EnsureCatalog(ctx context.Context, projectID string) error
+}
 
-	// Document
+// Documents 是文档 CRUD。Principal 是 ACL 主体（本波不去掉）。
+// List 必须 SQL 下推 _perms，不得改成 fetch-then-Check。
+type Documents interface {
 	CreateDocument(ctx context.Context, projectID, databaseID, collectionID string, doc Document, perms []Permission, principal Principal) (Document, error)
 	// UpsertDocument inserts doc, or when a row already matches the conflict
 	// columns, updates its data, _updated_at, _updated_by and replaces its
@@ -39,7 +45,17 @@ type DocumentDB interface {
 	SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal Principal) (int64, error)
 	BulkUpdateDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, data map[string]any, perms []Permission, principal Principal) (int64, error)
 	BulkDeleteDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, principal Principal) (int64, error)
-
-	// System bootstrap
-	EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error
 }
+
+// DocumentDB 嵌入三端口，现有注入点多数不用改签名。
+type DocumentDB interface {
+	Catalog
+	SchemaApplier
+	Documents
+}
+
+var (
+	_ Catalog       = (DocumentDB)(nil)
+	_ SchemaApplier = (DocumentDB)(nil)
+	_ Documents     = (DocumentDB)(nil)
+)

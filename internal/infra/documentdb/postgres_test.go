@@ -1441,3 +1441,61 @@ func TestListDocuments_PageSizeClamp(t *testing.T) {
 	require.Equal(t, int64(maxQueryLimit+1), list.TotalCount)
 	require.NotEmpty(t, list.NextPageToken)
 }
+
+// TestCatalogReads_DoNotApplyProjectSchema：未 Ensure 的项目读 catalog 不得
+// projectschema.Apply / CREATE SCHEMA；Ensure 之后 GetCollection 成功。
+func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	project := &model.Project{
+		ID:        fmt.Sprintf("e6%x", time.Now().UnixNano()),
+		Name:      "e6-no-ensure",
+		Status:    "active",
+		Settings:  map[string]any{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_, err := db.NewInsert().Model(project).Exec(ctx)
+	require.NoError(t, err)
+	var internalID int64
+	require.NoError(t, db.NewSelect().Model((*model.Project)(nil)).Column("internal_id").Where("id = ?", project.ID).Scan(ctx, &internalID))
+	t.Cleanup(func() {
+		schema := testProjectSchema(t, project.ID)
+		_, _ = db.DB.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema)))
+		_, _ = db.NewDelete().Model((*model.Project)(nil)).Where("id = ?", project.ID).Exec(ctx)
+	})
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	schema := testProjectSchema(t, project.ID)
+
+	coll, err := docDB.GetCollection(ctx, project.ID, databases.SystemDatabaseID, "users")
+	require.NoError(t, err)
+	require.Nil(t, coll)
+
+	gotDB, err := docDB.GetDatabase(ctx, project.ID, "default")
+	require.NoError(t, err)
+	require.Nil(t, gotDB)
+
+	listDB, err := docDB.ListDatabases(ctx, project.ID)
+	require.NoError(t, err)
+	require.Empty(t, listDB)
+
+	listColl, _, err := docDB.ListCollections(ctx, project.ID, "default", databases.ListQuery{})
+	require.NoError(t, err)
+	require.Empty(t, listColl)
+
+	var reg any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&reg))
+	require.Nil(t, reg, "catalog 读路径不得 Apply/CREATE SCHEMA")
+
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, project.ID, internalID))
+	coll, err = docDB.GetCollection(ctx, project.ID, databases.SystemDatabaseID, "users")
+	require.NoError(t, err)
+	require.NotNil(t, coll)
+	require.Equal(t, "users", coll.ID)
+}

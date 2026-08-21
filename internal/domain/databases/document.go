@@ -111,3 +111,12 @@ type Collection struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
+
+// Database 是 catalog 中的库行，不再复用 Collection。
+type Database struct {
+	ID        string
+	Name      string
+	ProjectID string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}

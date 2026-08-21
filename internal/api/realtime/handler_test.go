@@ -121,10 +121,10 @@ func (f *fakeDocDB) GetCollection(ctx context.Context, projectID, databaseID, co
 // ---- 以下方法不参与订阅校验路径，保持桩实现 ----
 
 func (f *fakeDocDB) CreateDatabase(ctx context.Context, projectID, id, name string) error { return nil }
-func (f *fakeDocDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Collection, error) {
+func (f *fakeDocDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Database, error) {
 	return nil, nil
 }
-func (f *fakeDocDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Collection, error) {
+func (f *fakeDocDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (f *fakeDocDB) DeleteDatabase(ctx context.Context, projectID, id string) error { return nil }
@@ -182,6 +182,9 @@ func (f *fakeDocDB) BulkDeleteDocuments(ctx context.Context, projectID, database
 func (f *fakeDocDB) EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error {
 	return nil
 }
+func (f *fakeDocDB) EnsureCatalog(ctx context.Context, projectID string) error { return nil }
+
+var _ databases.DocumentDB = (*fakeDocDB)(nil)
 
 // ---- helpers ----
 

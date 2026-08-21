@@ -92,10 +92,10 @@ func (d *functionsDocDB) GetDocument(_ context.Context, projectID, _, collection
 	return nil, nil
 }
 func (d *functionsDocDB) CreateDatabase(context.Context, string, string, string) error { return nil }
-func (d *functionsDocDB) GetDatabase(context.Context, string, string) (*databases.Collection, error) {
+func (d *functionsDocDB) GetDatabase(context.Context, string, string) (*databases.Database, error) {
 	return nil, nil
 }
-func (d *functionsDocDB) ListDatabases(context.Context, string) ([]databases.Collection, error) {
+func (d *functionsDocDB) ListDatabases(context.Context, string) ([]databases.Database, error) {
 	return nil, nil
 }
 func (d *functionsDocDB) DeleteDatabase(context.Context, string, string) error { return nil }
@@ -152,6 +152,7 @@ func (d *functionsDocDB) BulkDeleteDocuments(context.Context, string, string, st
 	return 0, nil
 }
 func (d *functionsDocDB) EnsureSystemCollections(context.Context, string, int64) error { return nil }
+func (d *functionsDocDB) EnsureCatalog(context.Context, string) error                  { return nil }
 
 func functionsHashSecret(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
