@@ -90,7 +90,7 @@ func (p *Payments) VerifyReceipt(ctx context.Context, orderID string, receipt []
 		ReceivedAt:        now,
 	}
 
-	err = p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = p.db.Run(ctx, func(txCtx context.Context) error {
 		inserted, err := p.callbacks.InsertIfAbsent(txCtx, event, order.ProjectID, order.ID)
 		if err != nil {
 			return err

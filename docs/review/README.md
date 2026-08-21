@@ -11,6 +11,7 @@
 | **Wave 3 E-7 清单** | [wave3-e7-tool-catalog.md](wave3-e7-tool-catalog.md) | Agent 工具 overlay（不含 key 管理）。 |
 | **Wave 4 C-1 规格** | [wave4-c1-worker-boundary.md](wave4-c1-worker-boundary.md) | worker 只装配作业端口，不再引用 app/infra 桶包。 |
 | **Wave 4 M-4 规格** | [wave4-m4-assets-service.md](wave4-m4-assets-service.md) | 五动词收进领域 Assets 服务，不放 Holding。 |
+| **Wave 4 S-4 规格** | [wave4-s4-uow.md](wave4-s4-uow.md) | 对外 `uow.Run`；实现可暂用 ctx。本波只改端口注释 + 经济/outbox 热路径，不重写全仓。 |
 | **Round 1 分模块代码审查** | 下文 prompt + [fix-plan.md](fix-plan.md) | 对照源码找缺陷并修复（F1–F11）。 |
 | **Round 2** | [round2/](round2/) | 第二轮审计与修复（G 批次）。 |
 | **Round 3** | [round3/](round3/) | 第三轮全量审核与验收。 |

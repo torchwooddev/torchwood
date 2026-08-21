@@ -24,6 +24,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -50,7 +51,7 @@ func init() {
 }
 
 type txRunner interface {
-	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
+	uow.Runner
 	// RunInNewTx 强制新事务（不并入 ctx 已有事务），供订单两段式使用。
 	RunInNewTx(ctx context.Context, fn func(ctx context.Context) error) error
 }

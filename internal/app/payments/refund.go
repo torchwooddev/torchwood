@@ -68,7 +68,7 @@ func (p *Payments) Refund(ctx context.Context, orderID string, amount int64) (*d
 		to = domainpayments.OrderStatusRefunding // 异步退款：等渠道回调确认。
 	}
 	eventName := domainpayments.EventOrderRefunded
-	err = p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = p.db.Run(ctx, func(txCtx context.Context) error {
 		locked, err := p.orders.GetByIDForUpdate(txCtx, projectID, orderID)
 		if err != nil {
 			return err
@@ -122,7 +122,7 @@ func (p *Payments) ManualFulfill(ctx context.Context, orderID, reason string) (*
 
 	now := time.Now()
 	var fulfillment *domainpayments.Fulfillment
-	err = p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = p.db.Run(ctx, func(txCtx context.Context) error {
 		existing, err := p.fulfillments.GetByOrder(txCtx, projectID, orderID)
 		if err != nil {
 			return err

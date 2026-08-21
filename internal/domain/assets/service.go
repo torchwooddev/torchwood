@@ -8,17 +8,13 @@ import (
 
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 )
 
-// TxRunner 在同一 ctx 事务内执行 fn；连接随 ctx 传递。
-type TxRunner interface {
-	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
-}
-
 // Service 是资产五动词的领域服务：跨 Def + Holding + Ledger 的不变式引擎。
-// 锁策略留在本类型内部；仓储只持久化。
+// 锁策略留在本类型内部；仓储只持久化。写路径走 uow.Run；实现可从 ctx 读取连接。
 type Service struct {
-	db       TxRunner
+	db       uow.Runner
 	defs     DefRepo
 	holdings HoldingRepo
 	ledger   LedgerRepo
@@ -29,7 +25,7 @@ type Service struct {
 
 // NewService 构造领域服务。now / newID 由 app 注入（测试可冻结时钟与 ID）。
 func NewService(
-	db TxRunner,
+	db uow.Runner,
 	defs DefRepo,
 	holdings HoldingRepo,
 	ledger LedgerRepo,

@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// OrderRepo 持久化 payment_orders（bun 静态表适配）。所有方法感知
-// ctx 中的事务（clients.Conn(ctx)）：回调处理路径在 RunInTx 内调用，
-// 与履约行 / outbox 事件同一段事务（设计 §1.3、总则 10）。
+// OrderRepo 持久化 payment_orders。写路径加入调用方的 uow.Run
+// （回调处理与履约 / outbox 同一工作单元，设计 §1.3、总则 10）；
+// 实现可从 ctx 读取连接。
 type OrderRepo interface {
 	// Insert 落库新订单；(project_id, idempotency_key) 冲突时返回已存在的
 	// 原单与 false（幂等锚点一：建单幂等键重复返回原单，不新建）。

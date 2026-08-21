@@ -4,7 +4,6 @@
 package payments
 
 import (
-	"context"
 	"log/slog"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 )
 
 const (
@@ -49,16 +49,10 @@ func init() {
 	prometheus.MustRegister(paymentOrdersTotal, paymentCallbackVerifyFailTotal)
 }
 
-// txRunner 是 RunInTx 端口：生产走 *clients.Database，-short 单测注入
-// 内存实现以验证「订单翻转 + fulfillments + outbox 同一事务 / 失败回滚」。
-type txRunner interface {
-	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
-}
-
 // Payments 是支付子域 use-case 聚合。
 type Payments struct {
 	cfg          *config.AppConfig
-	db           txRunner // 仅为 RunInTx 注入（同 app/shared 先例）
+	db           uow.Runner // 仅为 uow.Run 注入（同 app/shared 先例）
 	orders       domainpayments.OrderRepo
 	callbacks    domainpayments.CallbackEventRepo
 	fulfillments domainpayments.FulfillmentRepo
@@ -72,7 +66,7 @@ type Payments struct {
 	scanCursor   appshared.ProjectRotation // CloseExpiredOrders 轮转游标（tick 串行）
 }
 
-// NewPayments 构造 use-case 聚合（Wire：*clients.Database 满足 txRunner）。
+// NewPayments 构造 use-case 聚合（Wire：*clients.Database 满足 uow.Runner）。
 func NewPayments(
 	cfg *config.AppConfig,
 	db *clients.Database,
@@ -90,10 +84,10 @@ func NewPayments(
 	return newPayments(cfg, db, orders, callbacks, fulfillments, fulfiller, providers, events, logger, subs, projectRepo, index)
 }
 
-// newPayments 允许单测注入内存 txRunner。
+// newPayments 允许单测注入内存 uow.Runner。
 func newPayments(
 	cfg *config.AppConfig,
-	db txRunner,
+	db uow.Runner,
 	orders domainpayments.OrderRepo,
 	callbacks domainpayments.CallbackEventRepo,
 	fulfillments domainpayments.FulfillmentRepo,

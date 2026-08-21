@@ -96,7 +96,7 @@ func (s *Subscriptions) Subscribe(ctx context.Context, cmd SubscribeCommand) (*S
 
 	var result SubscribeResult
 	result.Plan = plan
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		existing, inserted, err := s.subs.Insert(txCtx, sub)
 		if err != nil {
 			return err

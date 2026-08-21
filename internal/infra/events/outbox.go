@@ -25,9 +25,10 @@ type eventOutbox struct {
 	db *clients.Database
 }
 
-// NewEventOutbox 构造 EventPublisher 的 outbox 实现。Publish 必须走
-// 同一个 *clients.Database 的 Conn(ctx)：写路径在 RunInTx 内调用时
-// 复用外层事务（与文档行同 COMMIT），未在事务中则自行短事务插入。
+// NewEventOutbox 构造 EventPublisher 的 outbox 实现。调用方应在 uow.Run
+// 内 Publish，与业务写同一工作单元；实现仍从 ctx 读取连接（Conn(ctx)）：
+// 已在工作单元内则复用外层事务（与文档行同 COMMIT），未在工作单元内则
+// 自行短事务插入。
 func NewEventOutbox(db *clients.Database) *eventOutbox {
 	return &eventOutbox{db: db}
 }

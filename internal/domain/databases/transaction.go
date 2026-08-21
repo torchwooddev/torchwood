@@ -70,10 +70,8 @@ type TransactionOp struct {
 	CreatedAt       time.Time
 }
 
-// TransactionRepository 是事务元数据仓储端口（实现：
-// internal/infra/bun/bunrepo/transaction_repo.go）。所有方法经
-// clients.Conn(ctx) 执行：在 RunInTx 内复用外层事务（锁行、追加、置状态
-// 与文档写同 COMMIT）。
+// TransactionRepository 是事务元数据仓储端口。方法加入调用方的 uow.Run；
+// 实现可从 ctx 读取连接（锁行、追加、置状态与文档写同 COMMIT）。
 type TransactionRepository interface {
 	Create(ctx context.Context, tx Transaction) error
 	// Get 未命中返回 (nil, nil)。

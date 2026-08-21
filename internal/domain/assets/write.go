@@ -23,7 +23,7 @@ func (s *Service) Grant(ctx context.Context, scope Scope, cmd GrantCommand) (*Op
 	}
 	projectID := scope.ProjectID
 	var result OpResult
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		if replay, ok, err := s.loadReplay(txCtx, projectID, key); err != nil {
 			return err
 		} else if ok {
@@ -174,7 +174,7 @@ func (s *Service) Consume(ctx context.Context, scope Scope, cmd ConsumeCommand) 
 	}
 	projectID := scope.ProjectID
 	var result OpResult
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		if replay, ok, err := s.loadReplay(txCtx, projectID, key); err != nil {
 			return err
 		} else if ok {
@@ -291,7 +291,7 @@ func (s *Service) Transfer(ctx context.Context, scope Scope, cmd TransferCommand
 	}
 	projectID := scope.ProjectID
 	var result OpResult
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		if replay, ok, err := s.loadReplay(txCtx, projectID, key); err != nil {
 			return err
 		} else if ok {
@@ -519,7 +519,7 @@ func (s *Service) Mutate(ctx context.Context, scope Scope, cmd MutateCommand) (*
 	}
 	projectID := scope.ProjectID
 	var result OpResult
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		if replay, ok, err := s.loadReplay(txCtx, projectID, key); err != nil {
 			return err
 		} else if ok {
@@ -612,7 +612,7 @@ func (s *Service) Expire(ctx context.Context, scope Scope, cmd ExpireCommand) (*
 		return nil, ErrHoldingIDRequired
 	}
 	var result OpResult
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		res, err := s.expireHolding(txCtx, scope, scope.ProjectID, cmd.HoldingID, key)
 		if err != nil {
 			return err

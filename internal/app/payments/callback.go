@@ -87,7 +87,7 @@ func (p *Payments) HandleCallback(ctx context.Context, providerName string, head
 		if event.MetadataProjectID == "" {
 			event.MetadataProjectID = projectID
 		}
-		return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		return p.db.Run(ctx, func(txCtx context.Context) error {
 			inserted, err := p.callbacks.InsertIfAbsent(txCtx, event, projectID, event.LocalSubscriptionID)
 			if err != nil {
 				return err
@@ -116,7 +116,7 @@ func (p *Payments) HandleCallback(ctx context.Context, providerName string, head
 	}
 
 	now := time.Now()
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.db.Run(ctx, func(txCtx context.Context) error {
 		inserted, err := p.callbacks.InsertIfAbsent(txCtx, event, order.ProjectID, order.ID)
 		if err != nil {
 			return err

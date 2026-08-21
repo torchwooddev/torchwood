@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// DefRepo 持久化 asset_defs。方法感知 ctx 中的事务（clients.Conn）。
+// DefRepo 持久化 asset_defs。方法加入调用方的 uow.Run；实现可从 ctx 读取连接。
 type DefRepo interface {
 	Insert(ctx context.Context, def *Def) error
 	GetByID(ctx context.Context, projectID, defID string) (*Def, error)
@@ -18,8 +18,8 @@ type DefRepo interface {
 	Update(ctx context.Context, def *Def) error
 }
 
-// HoldingRepo 持久化 asset_holdings。写路径必须在外层事务内调用
-// （与 ledger / outbox 同一 sql.Tx，总则 10）。
+// HoldingRepo 持久化 asset_holdings。写路径必须在调用方 uow.Run 内
+// （与 ledger / outbox 同一工作单元，总则 10）；实现可从 ctx 读取连接。
 type HoldingRepo interface {
 	Insert(ctx context.Context, h *Holding) error
 	GetByID(ctx context.Context, projectID, holdingID string) (*Holding, error)

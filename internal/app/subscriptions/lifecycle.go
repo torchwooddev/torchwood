@@ -55,7 +55,7 @@ func (s *Subscriptions) CancelAtPeriodEnd(ctx context.Context, subscriptionID st
 	}
 	now := s.ts()
 	var out *domainsubs.Subscription
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		sub, err := s.subs.GetByIDForUpdate(txCtx, projectID, subscriptionID)
 		if err != nil {
 			return err
@@ -147,7 +147,7 @@ func (s *Subscriptions) forceTerminal(ctx context.Context, subscriptionID string
 	}
 	now := s.ts()
 	var out *domainsubs.Subscription
-	err = s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err = s.db.Run(ctx, func(txCtx context.Context) error {
 		sub, err := s.subs.GetByIDForUpdate(txCtx, projectID, subscriptionID)
 		if err != nil {
 			return err

@@ -38,13 +38,17 @@ func newMemStore() *memStore {
 	}
 }
 
-func (s *memStore) RunInTx(_ context.Context, fn func(context.Context) error) error {
+func (s *memStore) Run(_ context.Context, fn func(context.Context) error) error {
 	snap := s.snapshot()
 	if err := fn(context.Background()); err != nil {
 		s.restore(snap)
 		return err
 	}
 	return nil
+}
+
+func (s *memStore) RunInTx(ctx context.Context, fn func(context.Context) error) error {
+	return s.Run(ctx, fn)
 }
 
 func (s *memStore) snapshot() memStore {

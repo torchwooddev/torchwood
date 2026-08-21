@@ -68,7 +68,7 @@ func (s *Subscriptions) RunBillingCycle(ctx context.Context, now time.Time) (int
 }
 
 func (s *Subscriptions) processDue(ctx context.Context, seed *domainsubs.Subscription, now time.Time) error {
-	return s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return s.db.Run(ctx, func(txCtx context.Context) error {
 		txCtx = withSystemPrincipal(txCtx, seed.ProjectID)
 		sub, err := s.subs.GetByIDForUpdate(txCtx, seed.ProjectID, seed.ID)
 		if err != nil {

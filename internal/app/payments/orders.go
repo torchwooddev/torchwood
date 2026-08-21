@@ -121,7 +121,7 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 		// 订单保持 created，等渠道重试或到期由 worker 关单。
 		return nil, mapProviderError(err)
 	}
-	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	if err := p.db.Run(ctx, func(txCtx context.Context) error {
 		locked, err := p.orders.GetByIDForUpdate(txCtx, order.ProjectID, order.ID)
 		if err != nil {
 			return err
@@ -264,7 +264,7 @@ func (p *Payments) CloseExpiredOrders(ctx context.Context, now time.Time) (int64
 func (p *Payments) insertOrderWithIndex(ctx context.Context, order *domainpayments.Order) (*domainpayments.Order, bool, error) {
 	var existing *domainpayments.Order
 	var inserted bool
-	err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := p.db.Run(ctx, func(txCtx context.Context) error {
 		var err error
 		existing, inserted, err = InsertCreatedOrder(txCtx, p.orders, p.index, order)
 		return err

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// PlanRepo 持久化 subscription_plans。方法感知 ctx 中的事务（clients.Conn）。
+// PlanRepo 持久化 subscription_plans。方法加入调用方的 uow.Run；实现可从 ctx 读取连接。
 type PlanRepo interface {
 	Insert(ctx context.Context, plan *Plan) error
 	GetByID(ctx context.Context, projectID, planID string) (*Plan, error)
@@ -17,8 +17,8 @@ type PlanRepo interface {
 	Update(ctx context.Context, plan *Plan) error
 }
 
-// SubscriptionRepo 持久化 subscriptions。写路径必须在外层事务内调用
-// （与资产 Grant/Mutate / outbox 同一 sql.Tx，总则 10）。
+// SubscriptionRepo 持久化 subscriptions。写路径必须在调用方 uow.Run 内
+// （与资产 Grant/Mutate / outbox 同一工作单元，总则 10）；实现可从 ctx 读取连接。
 type SubscriptionRepo interface {
 	// Insert 落库；(project_id, idempotency_key) 冲突时返回已存在行与 false。
 	Insert(ctx context.Context, sub *Subscription) (existing *Subscription, inserted bool, err error)

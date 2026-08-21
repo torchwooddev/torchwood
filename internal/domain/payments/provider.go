@@ -149,7 +149,8 @@ type CallbackEvent struct {
 }
 
 // SubscriptionCallbackHandler 处理 hosted 订阅 webhook（PR3）：
-// 与 payment_callback_events 插入同一 sql.Tx。nil 时订阅事件仅登记不驱动。
+// 与 payment_callback_events 插入同一工作单元（调用方 uow.Run）。
+// nil 时订阅事件仅登记不驱动。
 type SubscriptionCallbackHandler interface {
 	HandleHostedCallback(ctx context.Context, event *CallbackEvent) error
 }

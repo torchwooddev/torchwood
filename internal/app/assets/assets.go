@@ -17,6 +17,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -46,10 +47,6 @@ func init() {
 	prometheus.MustRegister(assetOpsTotal, assetNegativeBlockedTotal, assetLedgerDriftTotal)
 }
 
-type txRunner interface {
-	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
-}
-
 // Assets 是资产子域 use-case 聚合。
 type Assets struct {
 	svc        *domainassets.Service
@@ -62,7 +59,7 @@ type Assets struct {
 	scanCursor appshared.ProjectRotation // ExpireDue 轮转游标（tick 串行）
 }
 
-// NewAssets 构造 use-case 聚合（Wire：*clients.Database 满足 txRunner）。
+// NewAssets 构造 use-case 聚合（Wire：*clients.Database 满足 uow.Runner）。
 func NewAssets(
 	db *clients.Database,
 	defs domainassets.DefRepo,
@@ -76,7 +73,7 @@ func NewAssets(
 }
 
 func newAssets(
-	db txRunner,
+	db uow.Runner,
 	defs domainassets.DefRepo,
 	holdings domainassets.HoldingRepo,
 	ledger domainassets.LedgerRepo,

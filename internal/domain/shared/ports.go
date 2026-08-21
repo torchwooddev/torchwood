@@ -19,9 +19,9 @@ type Queue interface {
 }
 
 // EventPublisher 是用户集合文档写事件的 transactional outbox 端口
-// （v2 设计 §3.2）。Publish 必须感知 ctx 中的 bun.Tx（clients.Conn）：
-// 写路径在同一事务内调用，事件与文档行同 COMMIT；未在事务中则自行
-// 短事务插入。若 ctx 带 events.TransactionID，写入信封 transaction_id。
+// （v2 设计 §3.2）。调用方应在 uow.Run 内 Publish，与业务写同一工作单元；
+// 实现可从 ctx 读取连接。未在工作单元内则自行短事务插入。
+// 若 ctx 带 events.TransactionID，写入信封 transaction_id。
 type EventPublisher interface {
 	Publish(ctx context.Context, ev events.Envelope) error
 }

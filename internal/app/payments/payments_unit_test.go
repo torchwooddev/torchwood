@@ -30,7 +30,7 @@ import (
 
 const unitWebhookSecret = "whsec_unit_test"
 
-// memStore 是订单 / 回调 / 履约 / outbox 的内存库，RunInTx 失败整体回滚。
+// memStore 是订单 / 回调 / 履约 / outbox 的内存库，uow.Run 失败整体回滚。
 type memStore struct {
 	orders       map[string]*domainpayments.Order
 	byIdem       map[string]string
@@ -69,7 +69,7 @@ func (r memIndex) Upsert(_ context.Context, provider, kind, ref, projectID strin
 	return nil
 }
 
-func (s *memStore) RunInTx(_ context.Context, fn func(context.Context) error) error {
+func (s *memStore) Run(_ context.Context, fn func(context.Context) error) error {
 	snap := s.snapshot()
 	if err := fn(context.Background()); err != nil {
 		s.restore(snap)
@@ -589,7 +589,7 @@ func TestHandleCallback_UnknownProviderWritesNothing(t *testing.T) {
 	require.Empty(t, env.store.outbox)
 }
 
-func TestNewPayments_WiresDatabaseAsTxRunner(t *testing.T) {
+func TestNewPayments_WiresDatabaseAsUoWRunner(t *testing.T) {
 	// 生产构造器签名不变：nil *clients.Database 仍可装配（handler 验签失败路径）。
 	adapter := stripe.New(stripe.Config{SecretKey: "sk", WebhookSecret: unitWebhookSecret})
 	uc := NewPayments(nil, nil, nil, nil, nil, NewRecordOnlyFulfiller(), infrapayments.NewRegistry(adapter), nil, nil, nil, nil, nil)

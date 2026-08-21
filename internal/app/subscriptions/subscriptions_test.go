@@ -42,7 +42,7 @@ func newMemStore(now time.Time) *memStore {
 	}
 }
 
-func (s *memStore) RunInTx(_ context.Context, fn func(context.Context) error) error {
+func (s *memStore) Run(_ context.Context, fn func(context.Context) error) error {
 	snap := s.snapshot()
 	if err := fn(context.Background()); err != nil {
 		s.restore(snap)
@@ -51,9 +51,9 @@ func (s *memStore) RunInTx(_ context.Context, fn func(context.Context) error) er
 	return nil
 }
 
-// RunInNewTx 模拟独立事务：与 RunInTx 一样快照回滚（内存 fake 无连接概念）。
+// RunInNewTx 模拟独立事务：与 Run 一样快照回滚（内存 fake 无连接概念）。
 func (s *memStore) RunInNewTx(ctx context.Context, fn func(context.Context) error) error {
-	return s.RunInTx(ctx, fn)
+	return s.Run(ctx, fn)
 }
 
 func (s *memStore) snapshot() memStore {
@@ -493,7 +493,7 @@ func TestHostedWebhookReplayIdempotent(t *testing.T) {
 		PeriodEnd:           now.Add(30 * 24 * time.Hour),
 		ReceivedAt:          now,
 	}
-	require.NoError(t, store.RunInTx(context.Background(), func(ctx context.Context) error {
+	require.NoError(t, store.Run(context.Background(), func(ctx context.Context) error {
 		return uc.HandleHostedCallback(ctx, ev)
 	}))
 	require.Equal(t, domainsubs.StatusActive, store.subs["sub_h"].Status)
@@ -502,7 +502,7 @@ func TestHostedWebhookReplayIdempotent(t *testing.T) {
 	events := len(store.outbox)
 
 	// 同一事件再处理（payments 层锚点二会短路；此处验证再入状态不回退）。
-	require.NoError(t, store.RunInTx(context.Background(), func(ctx context.Context) error {
+	require.NoError(t, store.Run(context.Background(), func(ctx context.Context) error {
 		return uc.HandleHostedCallback(ctx, ev)
 	}))
 	require.Equal(t, domainsubs.StatusActive, store.subs["sub_h"].Status)

@@ -3,8 +3,11 @@ package clients
 import (
 	"context"
 
+	"github.com/torchwooddev/torchwood/pkg/uow"
 	"github.com/uptrace/bun"
 )
+
+var _ uow.Runner = (*Database)(nil)
 
 type txContextKey struct{}
 
@@ -25,6 +28,12 @@ func (d *Database) Conn(ctx context.Context) bun.IDB {
 func InTx(ctx context.Context) bool {
 	_, ok := ctx.Value(txContextKey{}).(bun.Tx)
 	return ok
+}
+
+// Run 实现 uow.Runner：已在工作单元内则加入，否则开启新事务。
+// 委托 RunInTx，嵌套行为不变。
+func (d *Database) Run(ctx context.Context, fn func(ctx context.Context) error) error {
+	return d.RunInTx(ctx, fn)
 }
 
 // RunInTx runs fn inside a database transaction. When ctx already carries an

@@ -1,10 +1,12 @@
 package assets
 
 import (
+	"bytes"
 	"context"
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -43,6 +45,27 @@ func TestServiceDoesNotExportLiveHolding(t *testing.T) {
 	if _, ok := reflect.TypeOf((*Service)(nil)).MethodByName("LiveHolding"); ok {
 		t.Error("Service 不得导出 LiveHolding；锁读由 app.LiveHoldingForUpdate 封装")
 	}
+}
+
+func TestDomainHasNoBunTx(t *testing.T) {
+	t.Parallel()
+	err := filepath.WalkDir("..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		b, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if bytes.Contains(b, []byte("bun."+"Tx")) {
+			t.Errorf("%s contains forbidden driver type in domain", path)
+		}
+		return nil
+	})
+	require.NoError(t, err)
 }
 
 func TestDomainDoesNotImportGRPC(t *testing.T) {

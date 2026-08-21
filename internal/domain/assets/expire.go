@@ -15,7 +15,7 @@ func (s *Service) ExpireDue(ctx context.Context, scope Scope, now time.Time, lim
 		now = s.ts()
 	}
 	var n int64
-	err := s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := s.db.Run(ctx, func(txCtx context.Context) error {
 		batch, err := s.holdings.ListExpiredInProject(txCtx, scope.ProjectID, now, limit)
 		if err != nil {
 			return err
