@@ -6,6 +6,7 @@ import (
 	"time"
 
 	appassets "github.com/torchwooddev/torchwood/internal/app/assets"
+	apppayments "github.com/torchwooddev/torchwood/internal/app/payments"
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
 	domainsubs "github.com/torchwooddev/torchwood/internal/domain/subscriptions"
@@ -215,10 +216,10 @@ func (s *Subscriptions) checkoutURLs() (success, cancel string) {
 
 // createBillingOrder 生成订阅扣款订单（Stripe，两段式，对齐 payments.CreateOrder）：
 //
-//  1. 订单 INSERT + payment_session index 在**独立事务**提交——本函数可能被
-//     Subscribe / processDue 的外层订阅事务调用，渠道下单（外部 HTTP）不得
-//     拖长外层事务；index 行必须在回调可到达之前持久可见（设计 §9.2：
-//     在调 CreatePayment 之前 COMMIT）。
+//  1. 经 payments.InsertCreatedOrder 落单 + payment_session index，在**独立事务**
+//     提交——本函数可能被 Subscribe / processDue 的外层订阅事务调用，渠道下单
+//     （外部 HTTP）不得拖长外层事务；index 行必须在回调可到达之前持久可见
+//     （设计 §9.2：在调 CreatePayment 之前 COMMIT）。
 //  2. CreatePayment 在事务之外。
 //  3. 回填渠道引用并翻 paying + cs_/pi_ index upsert，第二个独立事务。
 //
@@ -235,34 +236,26 @@ func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.
 		return nil, "", status.Errorf(codes.FailedPrecondition, "unsupported provider %q", providerName)
 	}
 	now := s.ts()
-	purpose := purposeJSON(sub.ID, plan.Code, cycle)
-	order := &domainpayments.Order{
-		ID:             newID(),
+	order, err := apppayments.NewCreatedOrder(apppayments.CreatedOrderSpec{
 		ProjectID:      sub.ProjectID,
 		UserID:         sub.UserID,
 		Provider:       provider.Name(),
-		IdempotencyKey: "sub:" + sub.ID + ":" + cycle,
 		Amount:         plan.Amount,
 		Currency:       plan.Currency,
 		PurposeKind:    domainpayments.PurposeSubscription,
-		Purpose:        purpose,
-		Status:         domainpayments.OrderStatusCreated,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-		ExpiresAt:      now.Add(24 * time.Hour),
+		Purpose:        purposeJSON(sub.ID, plan.Code, cycle),
+		IdempotencyKey: "sub:" + sub.ID + ":" + cycle,
+		Now:            now,
+	})
+	if err != nil {
+		return nil, "", err
 	}
 	var existing *domainpayments.Order
 	var inserted bool
 	if err := s.db.RunInNewTx(ctx, func(txCtx context.Context) error {
 		var err error
-		existing, inserted, err = s.orders.Insert(txCtx, order)
-		if err != nil {
-			return err
-		}
-		if !inserted {
-			return nil
-		}
-		return s.upsertIndex(txCtx, order.Provider, domainpayments.IndexKindPaymentSession, order.ID, order.ProjectID)
+		existing, inserted, err = apppayments.InsertCreatedOrder(txCtx, s.orders, s.index, order)
+		return err
 	}); err != nil {
 		return nil, "", err
 	}

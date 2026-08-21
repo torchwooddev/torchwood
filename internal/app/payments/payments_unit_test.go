@@ -9,6 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -701,4 +705,96 @@ func TestVerifyReceipt_CrossUserRejected(t *testing.T) {
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 	require.Equal(t, domainpayments.OrderStatusCreated, env.store.orders["ord-b"].Status)
 	require.Empty(t, env.store.fulfillments)
+}
+
+func TestCreateOrder_RejectsPurposeSubscription(t *testing.T) {
+	env := setupUnit(t, &fakeProvider{}, NewRecordOnlyFulfiller())
+	_, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
+		Provider:       domainpayments.ProviderStripe,
+		Amount:         1000,
+		Currency:       "USD",
+		PurposeKind:    domainpayments.PurposeSubscription,
+		Purpose:        map[string]any{"subscription_id": "sub_1"},
+		IdempotencyKey: "sub:sub_1:activate",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Empty(t, env.store.orders)
+	require.Equal(t, 0, env.provider.createCalls)
+}
+
+func TestInsertCreatedOrder_AllowsPurposeSubscriptionAndIdempotency(t *testing.T) {
+	store := newMemStore()
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	order, err := NewCreatedOrder(CreatedOrderSpec{
+		ProjectID:      "proj-1",
+		UserID:         "u1",
+		Provider:       domainpayments.ProviderStripe,
+		Amount:         1000,
+		Currency:       "usd",
+		PurposeKind:    domainpayments.PurposeSubscription,
+		Purpose:        json.RawMessage(`{"subscription_id":"sub_1","cycle":"activate"}`),
+		IdempotencyKey: "sub:sub_1:activate",
+		Now:            now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, domainpayments.OrderStatusCreated, order.Status)
+	require.Equal(t, "USD", order.Currency)
+	require.Equal(t, now.Add(defaultOrderTTL), order.ExpiresAt)
+	require.Equal(t, domainpayments.PurposeSubscription, order.PurposeKind)
+
+	existing, inserted, err := InsertCreatedOrder(context.Background(), memOrders{store}, memIndex{store}, order)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.Nil(t, existing)
+	require.Equal(t, order.ProjectID, store.index[indexKey(order.Provider, domainpayments.IndexKindPaymentSession, order.ID)])
+
+	replay := *order
+	replay.ID = "other-id"
+	existing, inserted, err = InsertCreatedOrder(context.Background(), memOrders{store}, memIndex{store}, &replay)
+	require.NoError(t, err)
+	require.False(t, inserted)
+	require.Equal(t, order.ID, existing.ID)
+	require.Equal(t, 1, len(store.orders))
+}
+
+func TestInsertCreatedOrder_IsSoleOrdersInsertCallSite(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	root := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
+	re := regexp.MustCompile(`\borders\.Insert\(`)
+	var hits []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			switch info.Name() {
+			case ".git", "genproto", "node_modules", "console", "docs", "bin":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !re.Match(body) {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			rel = path
+		}
+		hits = append(hits, filepath.ToSlash(rel))
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"internal/app/payments/orders.go"}, hits, "全仓 orders.Insert 只能出现在 InsertCreatedOrder")
+	src, err := os.ReadFile(filepath.Join(root, "internal", "app", "payments", "orders.go"))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(re.FindAll(src, -1)))
+	require.Contains(t, string(src), "func InsertCreatedOrder(")
 }

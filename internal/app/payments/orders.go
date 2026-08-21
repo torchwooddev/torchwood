@@ -31,6 +31,21 @@ type CreateOrderCommand struct {
 	ExpiresIn time.Duration
 }
 
+// CreatedOrderSpec 是内部建单规格（公开 CreateOrder 与订阅共用校验）。
+// 允许 PurposeSubscription；公开 CreateOrder 在调用前拦截该用途。
+type CreatedOrderSpec struct {
+	ProjectID      string
+	UserID         string
+	Provider       string
+	Amount         int64
+	Currency       string
+	PurposeKind    domainpayments.PurposeKind
+	Purpose        json.RawMessage
+	IdempotencyKey string
+	ExpiresIn      time.Duration
+	Now            time.Time
+}
+
 // CreateOrderResult 是建单结果：订单 + 客户端完成支付所需载荷。
 // IdempotentReplay=true 表示命中幂等键返回原单（未向渠道重复下单）。
 type CreateOrderResult struct {
@@ -46,60 +61,33 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 	if err != nil {
 		return nil, err
 	}
-	if cmd.Amount <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "amount must be a positive integer in the smallest currency unit")
-	}
-	if !currencyPattern.MatchString(cmd.Currency) {
-		return nil, status.Error(codes.InvalidArgument, "currency must be a 3-letter ISO-4217 code")
-	}
-	if !cmd.PurposeKind.IsValid() {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid purpose_kind %q", cmd.PurposeKind)
-	}
 	if cmd.PurposeKind == domainpayments.PurposeSubscription {
-		// 订阅在 PR3 接入（设计 §3）；本期不允许建订阅订单。
+		// 订阅用途只允许 Subscribe 走内部入口，避免 Client 乱建订阅单。
 		return nil, status.Error(codes.InvalidArgument, "subscription orders are not supported yet")
 	}
-	if strings.TrimSpace(cmd.IdempotencyKey) == "" {
-		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+	purpose, err := json.Marshal(cmd.Purpose)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid purpose payload")
 	}
-	if len(cmd.IdempotencyKey) > maxIdempotencyKeyLen {
-		return nil, status.Errorf(codes.InvalidArgument, "idempotency_key exceeds %d characters", maxIdempotencyKeyLen)
+	order, err := NewCreatedOrder(CreatedOrderSpec{
+		ProjectID:      projectID,
+		UserID:         userID,
+		Provider:       cmd.Provider,
+		Amount:         cmd.Amount,
+		Currency:       cmd.Currency,
+		PurposeKind:    cmd.PurposeKind,
+		Purpose:        purpose,
+		IdempotencyKey: cmd.IdempotencyKey,
+		ExpiresIn:      cmd.ExpiresIn,
+	})
+	if err != nil {
+		return nil, err
 	}
 	provider, err := p.providers.Get(cmd.Provider)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported provider %q", cmd.Provider)
 	}
-
-	purpose, err := json.Marshal(cmd.Purpose)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid purpose payload")
-	}
-
-	ttl := cmd.ExpiresIn
-	if ttl == 0 {
-		ttl = defaultOrderTTL
-	}
-	if ttl < minOrderTTL || ttl > maxOrderTTL {
-		return nil, status.Errorf(codes.InvalidArgument, "expires_in out of range (%s ~ %s)", minOrderTTL, maxOrderTTL)
-	}
-	now := time.Now()
-
-	// 幂等锚点一：同 (project_id, idempotency_key) 返回原单，不新建。
-	order := &domainpayments.Order{
-		ID:             newOrderID(),
-		ProjectID:      projectID,
-		UserID:         userID,
-		Provider:       provider.Name(),
-		IdempotencyKey: cmd.IdempotencyKey,
-		Amount:         cmd.Amount,
-		Currency:       strings.ToUpper(cmd.Currency),
-		PurposeKind:    cmd.PurposeKind,
-		Purpose:        purpose,
-		Status:         domainpayments.OrderStatusCreated,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-		ExpiresAt:      now.Add(ttl),
-	}
+	order.Provider = provider.Name()
 	existing, inserted, err := p.insertOrderWithIndex(ctx, order)
 	if err != nil {
 		return nil, err
@@ -278,23 +266,89 @@ func (p *Payments) insertOrderWithIndex(ctx context.Context, order *domainpaymen
 	var inserted bool
 	err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		var err error
-		existing, inserted, err = p.orders.Insert(txCtx, order)
-		if err != nil {
-			return err
-		}
-		if !inserted {
-			return nil
-		}
-		return p.upsertIndex(txCtx, order.Provider, domainpayments.IndexKindPaymentSession, order.ID, order.ProjectID)
+		existing, inserted, err = InsertCreatedOrder(txCtx, p.orders, p.index, order)
+		return err
 	})
 	return existing, inserted, err
 }
 
+// NewCreatedOrder 校验幂等键、金额、币种、TTL 并构造 created 订单。
+// 允许 PurposeSubscription；公开 CreateOrder 必须自行拦截该用途。
+func NewCreatedOrder(spec CreatedOrderSpec) (*domainpayments.Order, error) {
+	if spec.Amount <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "amount must be a positive integer in the smallest currency unit")
+	}
+	if !currencyPattern.MatchString(spec.Currency) {
+		return nil, status.Error(codes.InvalidArgument, "currency must be a 3-letter ISO-4217 code")
+	}
+	if !spec.PurposeKind.IsValid() {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid purpose_kind %q", spec.PurposeKind)
+	}
+	if strings.TrimSpace(spec.IdempotencyKey) == "" {
+		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+	}
+	if len(spec.IdempotencyKey) > maxIdempotencyKeyLen {
+		return nil, status.Errorf(codes.InvalidArgument, "idempotency_key exceeds %d characters", maxIdempotencyKeyLen)
+	}
+	if strings.TrimSpace(spec.Provider) == "" {
+		return nil, status.Error(codes.InvalidArgument, "provider is required")
+	}
+	ttl := spec.ExpiresIn
+	if ttl == 0 {
+		ttl = defaultOrderTTL
+	}
+	if ttl < minOrderTTL || ttl > maxOrderTTL {
+		return nil, status.Errorf(codes.InvalidArgument, "expires_in out of range (%s ~ %s)", minOrderTTL, maxOrderTTL)
+	}
+	now := spec.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	return &domainpayments.Order{
+		ID:             newOrderID(),
+		ProjectID:      spec.ProjectID,
+		UserID:         spec.UserID,
+		Provider:       spec.Provider,
+		IdempotencyKey: spec.IdempotencyKey,
+		Amount:         spec.Amount,
+		Currency:       strings.ToUpper(spec.Currency),
+		PurposeKind:    spec.PurposeKind,
+		Purpose:        spec.Purpose,
+		Status:         domainpayments.OrderStatusCreated,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		ExpiresAt:      now.Add(ttl),
+	}, nil
+}
+
+// InsertCreatedOrder 是全仓唯一的 orders.Insert 入口：幂等落 created 单并写
+// payment_session index。不含渠道 HTTP，可在订阅外层事务内调用。
+func InsertCreatedOrder(ctx context.Context, orders domainpayments.OrderRepo, index domainpayments.ProviderIndexRepo, order *domainpayments.Order) (*domainpayments.Order, bool, error) {
+	if orders == nil || order == nil {
+		return nil, false, status.Error(codes.Internal, "order insert requires repository")
+	}
+	existing, inserted, err := orders.Insert(ctx, order)
+	if err != nil {
+		return nil, false, err
+	}
+	if !inserted {
+		return existing, false, nil
+	}
+	if err := upsertProviderIndex(ctx, index, order.Provider, domainpayments.IndexKindPaymentSession, order.ID, order.ProjectID); err != nil {
+		return nil, false, err
+	}
+	return nil, true, nil
+}
+
 func (p *Payments) upsertIndex(ctx context.Context, provider, kind, ref, projectID string) error {
-	if p.index == nil || ref == "" {
+	return upsertProviderIndex(ctx, p.index, provider, kind, ref, projectID)
+}
+
+func upsertProviderIndex(ctx context.Context, index domainpayments.ProviderIndexRepo, provider, kind, ref, projectID string) error {
+	if index == nil || ref == "" {
 		return nil
 	}
-	return p.index.Upsert(ctx, provider, kind, ref, projectID)
+	return index.Upsert(ctx, provider, kind, ref, projectID)
 }
 
 // endUser 解析 Client 面调用者：必须为登录终端用户（session JWT）。

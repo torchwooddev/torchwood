@@ -2,8 +2,11 @@ package subscriptions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -609,4 +612,182 @@ func TestBillingInsufficientUsesFailedPreconditionMessage(t *testing.T) {
 	err := status.Error(codes.FailedPrecondition, "assets: insufficient quantity: have 0, want 10")
 	require.True(t, isInsufficient(err))
 	require.False(t, isInsufficient(fmt.Errorf("boom")))
+}
+
+type memPayStore struct {
+	orders map[string]*domainpayments.Order
+	byIdem map[string]string
+	index  map[string]string
+}
+
+func newMemPayStore() *memPayStore {
+	return &memPayStore{
+		orders: map[string]*domainpayments.Order{},
+		byIdem: map[string]string{},
+		index:  map[string]string{},
+	}
+}
+
+func payIdemKey(projectID, key string) string { return projectID + "\x00" + key }
+func payIndexKey(provider, kind, ref string) string {
+	return provider + "|" + kind + "|" + ref
+}
+
+func clonePayOrder(o *domainpayments.Order) *domainpayments.Order {
+	if o == nil {
+		return nil
+	}
+	cp := *o
+	if o.Purpose != nil {
+		cp.Purpose = append(json.RawMessage(nil), o.Purpose...)
+	}
+	return &cp
+}
+
+func (s *memPayStore) Insert(_ context.Context, order *domainpayments.Order) (*domainpayments.Order, bool, error) {
+	k := payIdemKey(order.ProjectID, order.IdempotencyKey)
+	if id, ok := s.byIdem[k]; ok {
+		return clonePayOrder(s.orders[id]), false, nil
+	}
+	s.orders[order.ID] = clonePayOrder(order)
+	s.byIdem[k] = order.ID
+	return nil, true, nil
+}
+
+func (s *memPayStore) GetByID(_ context.Context, projectID, orderID string) (*domainpayments.Order, error) {
+	return s.getPay(projectID, orderID)
+}
+func (s *memPayStore) GetByIDForUpdate(ctx context.Context, projectID, orderID string) (*domainpayments.Order, error) {
+	return s.GetByID(ctx, projectID, orderID)
+}
+func (s *memPayStore) getPay(projectID, orderID string) (*domainpayments.Order, error) {
+	o := s.orders[orderID]
+	if o == nil || (projectID != "" && o.ProjectID != projectID) {
+		return nil, nil
+	}
+	return clonePayOrder(o), nil
+}
+func (s *memPayStore) GetByProviderRef(context.Context, string, string, string, string) (*domainpayments.Order, error) {
+	return nil, nil
+}
+func (s *memPayStore) Update(_ context.Context, order *domainpayments.Order, expect domainpayments.OrderStatus) error {
+	cur := s.orders[order.ID]
+	if cur == nil || cur.Status != expect {
+		return status.Error(codes.Aborted, "payment order concurrently modified")
+	}
+	s.orders[order.ID] = clonePayOrder(order)
+	return nil
+}
+func (s *memPayStore) ListByUser(context.Context, string, string, int, time.Time) ([]domainpayments.Order, error) {
+	return nil, nil
+}
+func (s *memPayStore) ListByProject(context.Context, string, int, time.Time) ([]domainpayments.Order, error) {
+	return nil, nil
+}
+func (s *memPayStore) CloseExpiredInProject(context.Context, string, time.Time, int) (int64, error) {
+	return 0, nil
+}
+func (s *memPayStore) Lookup(_ context.Context, provider, kind, ref string) (string, error) {
+	return s.index[payIndexKey(provider, kind, ref)], nil
+}
+func (s *memPayStore) Upsert(_ context.Context, provider, kind, ref, projectID string) error {
+	s.index[payIndexKey(provider, kind, ref)] = projectID
+	return nil
+}
+
+type subFakeProvider struct {
+	createCalls int
+	session     *domainpayments.PaymentSession
+}
+
+func (f *subFakeProvider) Name() string { return domainpayments.ProviderStripe }
+func (f *subFakeProvider) CreatePayment(_ context.Context, _ domainpayments.CreatePaymentInput) (*domainpayments.PaymentSession, error) {
+	f.createCalls++
+	if f.session != nil {
+		return f.session, nil
+	}
+	return &domainpayments.PaymentSession{SessionID: "cs_sub", PaymentURL: "https://pay.example/cs_sub"}, nil
+}
+func (f *subFakeProvider) VerifyCallback(context.Context, http.Header, []byte) (*domainpayments.CallbackEvent, error) {
+	return nil, domainpayments.ErrSignatureInvalid
+}
+func (f *subFakeProvider) Refund(context.Context, domainpayments.RefundInput) (*domainpayments.RefundResult, error) {
+	return nil, domainpayments.ErrUnsupported
+}
+
+type subFakeRegistry struct {
+	p domainpayments.PaymentProvider
+}
+
+func (r subFakeRegistry) Get(name string) (domainpayments.PaymentProvider, error) {
+	if r.p == nil || r.p.Name() != name {
+		return nil, fmt.Errorf("unknown provider %q", name)
+	}
+	return r.p, nil
+}
+
+func setupSubPay(t *testing.T, now time.Time, assets assetOps) (*Subscriptions, *memStore, *memPayStore, *subFakeProvider) {
+	t.Helper()
+	store := newMemStore(now)
+	st, _ := assets.(*stubAssets)
+	if st == nil {
+		st = &stubAssets{}
+		assets = st
+	}
+	pay := newMemPayStore()
+	fp := &subFakeProvider{}
+	uc := newSubscriptions(nil, store, store, memSubs{store}, assets, pay, subFakeRegistry{fp}, nil, memPublisher{store}, nil, &listProjectsStub{list: []projects.Project{{ID: "proj", Status: "active"}}}, pay)
+	uc.now = func() time.Time { return store.now }
+	return uc, store, pay, fp
+}
+
+func TestSubscribe_PlatformCreatesSubscriptionOrder(t *testing.T) {
+	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	uc, store, pay, fp := setupSubPay(t, now, &stubAssets{})
+	seedPlan(t, store, now)
+
+	got, err := uc.Subscribe(userCtx("proj", "user_1"), SubscribeCommand{
+		PlanCode: "pro", Mode: domainsubs.ModePlatform, IdempotencyKey: "k-pay",
+	})
+	require.NoError(t, err)
+	require.Equal(t, domainsubs.StatusTrialing, got.Subscription.Status)
+	require.NotEmpty(t, got.OrderID)
+	require.Equal(t, "https://pay.example/cs_sub", got.PaymentURL)
+	require.Equal(t, 1, fp.createCalls)
+	require.Equal(t, 1, len(pay.orders))
+
+	order := pay.orders[got.OrderID]
+	require.NotNil(t, order)
+	require.Equal(t, domainpayments.PurposeSubscription, order.PurposeKind)
+	require.Equal(t, "sub:"+got.Subscription.ID+":activate", order.IdempotencyKey)
+	require.Equal(t, domainpayments.OrderStatusPaying, order.Status)
+	require.Equal(t, "proj", pay.index[payIndexKey(order.Provider, domainpayments.IndexKindPaymentSession, order.ID)])
+	require.Equal(t, "proj", pay.index[payIndexKey(order.Provider, domainpayments.IndexKindPaymentSession, "cs_sub")])
+}
+
+func TestProcessDue_SubscriptionOrderIdempotentByCycle(t *testing.T) {
+	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	uc, store, pay, fp := setupSubPay(t, now, &stubAssets{})
+	plan := seedPlan(t, store, now)
+	sub := seedPlatformSub(t, store, plan, now, domainsubs.StatusActive)
+	sub.BillingAssetCode = ""
+	store.subs[sub.ID] = cloneSub(sub)
+
+	require.NoError(t, uc.processDue(context.Background(), store.subs[sub.ID], now))
+	require.Equal(t, domainsubs.StatusPastDue, store.subs[sub.ID].Status)
+	require.Equal(t, 1, fp.createCalls)
+	require.Equal(t, 1, len(pay.orders))
+
+	cycle := strconv.FormatInt(sub.CurrentPeriodEnd.UTC().Unix(), 10)
+	var order *domainpayments.Order
+	for _, o := range pay.orders {
+		order = o
+	}
+	require.NotNil(t, order)
+	require.Equal(t, domainpayments.PurposeSubscription, order.PurposeKind)
+	require.Equal(t, "sub:"+sub.ID+":"+cycle, order.IdempotencyKey)
+
+	require.NoError(t, uc.processDue(context.Background(), store.subs[sub.ID], now))
+	require.Equal(t, 1, fp.createCalls, "同 cycle 幂等不得二次 CreatePayment")
+	require.Equal(t, 1, len(pay.orders))
 }
