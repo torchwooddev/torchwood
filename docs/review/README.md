@@ -9,6 +9,7 @@
 | **Wave 2 规格** | [wave2-e4-query-ast.md](wave2-e4-query-ast.md)、[wave2-e6-documentdb-split.md](wave2-e6-documentdb-split.md) | E-4 / E-6 施工规格。 |
 | **Wave 3 E-2b 规格** | [wave3-e2b-document-proto.md](wave3-e2b-document-proto.md) | 合并 client/server `message Document` 到 `shared.v1`（proto breaking，单独版本策略）。 |
 | **Wave 3 E-7 清单** | [wave3-e7-tool-catalog.md](wave3-e7-tool-catalog.md) | Agent 工具 overlay（不含 key 管理）。 |
+| **Wave 4 C-1 规格** | [wave4-c1-worker-boundary.md](wave4-c1-worker-boundary.md) | worker 只装配作业端口，不再引用 app/infra 桶包。 |
 | **Round 1 分模块代码审查** | 下文 prompt + [fix-plan.md](fix-plan.md) | 对照源码找缺陷并修复（F1–F11）。 |
 | **Round 2** | [round2/](round2/) | 第二轮审计与修复（G 批次）。 |
 | **Round 3** | [round3/](round3/) | 第三轮全量审核与验收。 |

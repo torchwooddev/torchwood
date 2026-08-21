@@ -8,23 +8,43 @@ import (
 	"github.com/google/wire"
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"
-	"github.com/torchwooddev/torchwood/internal/app"
+	"github.com/torchwooddev/torchwood/internal/app/assets"
+	appbilling "github.com/torchwooddev/torchwood/internal/app/billing"
+	appfunctions "github.com/torchwooddev/torchwood/internal/app/functions"
+	apppayments "github.com/torchwooddev/torchwood/internal/app/payments"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
-	"github.com/torchwooddev/torchwood/internal/domain"
+	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
+	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
-	"github.com/torchwooddev/torchwood/internal/infra"
+	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
+	infrabilling "github.com/torchwooddev/torchwood/internal/infra/billing"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	infraevents "github.com/torchwooddev/torchwood/internal/infra/events"
+	infrafunctions "github.com/torchwooddev/torchwood/internal/infra/functions"
+	infrapayments "github.com/torchwooddev/torchwood/internal/infra/payments"
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
+	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
+	"github.com/torchwooddev/torchwood/internal/infra/realtime"
+	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
 //go:generate wire
 
+// ProviderSet 只装配作业端口与其适配器，避免 app/infra 桶包把
+// Account / gRPC / documentdb 拉进进程依赖图（C-1）。
 var ProviderSet = wire.NewSet(
 	boot.New,
-	app.ProviderSet,
-	infra.ProviderSet,
-	domain.ProviderSet,
+
+	appfunctions.NewFunctionsWithUsage,
+	apppayments.NewPayments,
+	assets.NewAssets,
+	subscriptions.NewSubscriptions,
+	subscriptions.NewOrderFulfiller,
+	wire.Bind(new(domainpayments.SubscriptionCallbackHandler), new(*subscriptions.Subscriptions)),
+	appbilling.NewBilling,
+	appstorage.NewStorage,
 
 	NewLogger,
 	NewComponents,
@@ -40,6 +60,34 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionBiller,
 	NewUsageRollupWorker,
 	wire.Bind(new(chunkCleaner), new(*appstorage.Storage)),
+
+	clients.NewDataClients,
+	clients.NewDatabase,
+	clients.NewRedis,
+	bunrepo.NewProjectRepository,
+	bunrepo.NewFunctionRepository,
+	bunrepo.NewBucketRepository,
+	bunrepo.NewFileRepository,
+	bunrepo.NewPaymentOrderRepository,
+	bunrepo.NewPaymentCallbackEventRepository,
+	bunrepo.NewPaymentFulfillmentRepository,
+	bunrepo.NewAssetDefRepository,
+	bunrepo.NewAssetHoldingRepository,
+	bunrepo.NewAssetLedgerRepository,
+	bunrepo.NewSubscriptionPlanRepository,
+	bunrepo.NewSubscriptionRepository,
+	bunrepo.NewProviderIndexRepository,
+	bunrepo.NewUsageRepository,
+	bunrepo.NewBillingStatementRepository,
+	wire.Bind(new(domainstorage.BucketRepository), new(*bunrepo.BucketRepository)),
+	wire.Bind(new(domainstorage.FileRepository), new(*bunrepo.FileRepository)),
+	infraevents.ProviderSet,
+	infrafunctions.NewDockerExecutor,
+	infrapayments.ProviderSet,
+	infrabilling.ProviderSet,
+	infraqueue.ProviderSet,
+	infrastorage.ProviderSet,
+	realtime.NewStreamTransport,
 )
 
 // NewLogger 暴露 app 装配的 *slog.Logger（zap 后端），供各层构造器注入。

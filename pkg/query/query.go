@@ -9,7 +9,7 @@ import (
 )
 
 // Canonical AST operators. Appwrite codec names are the comparison ops;
-// proto eq/ne/lt/... map onto these (see FromProto).
+// proto eq/ne/lt/... map onto these（codec 在 pkg/query/proto）。
 const (
 	OpEqual            = "equal"
 	OpNotEqual         = "notEqual"

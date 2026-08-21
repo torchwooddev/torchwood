@@ -7,6 +7,7 @@ import (
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/query"
+	queryproto "github.com/torchwooddev/torchwood/pkg/query/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -17,7 +18,7 @@ func TestBuildAppwriteQuery_EqualMatchesProtoEq(t *testing.T) {
 	fromDSL, argsDSL, _, err := buildAppwriteQuery(parsed)
 	require.NoError(t, err)
 
-	ast, err := query.FromProto(&sharedv1.Query{
+	ast, err := queryproto.FromProto(&sharedv1.Query{
 		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{
 			Attribute: "a",
 			Values:    []string{"b"},
@@ -33,7 +34,7 @@ func TestBuildAppwriteQuery_EqualMatchesProtoEq(t *testing.T) {
 }
 
 func TestBuildAppwriteQuery_OrCompilesToSQLOr(t *testing.T) {
-	ast, err := query.FromProto(&sharedv1.Query{
+	ast, err := queryproto.FromProto(&sharedv1.Query{
 		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Or{Or: &sharedv1.FilterList{
 			Filters: []*sharedv1.Filter{
 				{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{Attribute: "status", Values: []string{"a"}}}},

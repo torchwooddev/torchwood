@@ -4,6 +4,7 @@ import (
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/query"
+	queryproto "github.com/torchwooddev/torchwood/pkg/query/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -11,7 +12,7 @@ import (
 // BindListQuery 把 ListDocuments 传输字段编进 domain Query（proto codec 在此完成，
 // handler 不手写 Parse）。
 func BindListQuery(queries []string, pageSize int32, pageToken string, protoQ *sharedv1.Query) (databases.Query, error) {
-	ast, err := query.FromProto(protoQ)
+	ast, err := queryproto.FromProto(protoQ)
 	if err != nil {
 		return databases.Query{}, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
 	}
