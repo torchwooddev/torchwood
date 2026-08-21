@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -34,41 +33,6 @@ func NewFunctionsWithUsage(cfg *config.AppConfig, executor functions.Executor, r
 	f.usage = usage
 	f.projects = projectRepo
 	return f
-}
-
-type ExecuteCommand struct {
-	FunctionID string
-	Runtime    string
-	SourcePath string
-	Entrypoint string
-	Timeout    int64
-	Env        map[string]string
-	Data       string
-}
-
-func (f *Functions) Execute(ctx context.Context, cmd ExecuteCommand) (*functions.ExecutionResult, error) {
-	if cmd.Timeout <= 0 {
-		cmd.Timeout = 15
-	}
-	runtime := cmd.Runtime
-	if runtime == "" {
-		runtime = "node-18.0"
-	}
-	entrypoint := cmd.Entrypoint
-	if entrypoint == "" {
-		entrypoint = "index.main"
-	}
-
-	exec := functions.Execution{
-		FunctionID: cmd.FunctionID,
-		Runtime:    runtime,
-		SourcePath: cmd.SourcePath,
-		Entrypoint: entrypoint,
-		Timeout:    cmd.Timeout,
-		Env:        sanitizeEnv(cmd.Env),
-		Data:       cmd.Data,
-	}
-	return f.executor.Execute(ctx, exec)
 }
 
 func sanitizeEnv(env map[string]string) map[string]string {
