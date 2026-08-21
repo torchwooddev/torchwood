@@ -10,3 +10,8 @@ export type {
   RealtimeWebSocket,
 } from "./graviton.js";
 export * from "./types.js";
+export {
+  agentTools,
+  lookupAgentTool,
+} from "./server/tools.js";
+export type { AgentTool } from "./server/tools.js";

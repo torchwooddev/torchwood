@@ -18,6 +18,7 @@ MCP Tool Server 以类型安全的方式调用后端。
 | 管理面自动化（建用户、管文档、Storage） | **Server API** + API Key | 在 Console 或通过 `POST /v1/server/api-keys` 创建带 scope 的 Key |
 | 终端用户身份流（注册/登录/会话） | **Client API** + JWT | SDK 自动持久化 access token（内存态，`setAccessToken` 可覆盖） |
 | Agent 工具 schema 来源 | **OpenAPI** | `task generate-proto` 后在 `genproto/**/*.swagger.json` 获取 |
+| Agent 默认工具箱 | **E-7 overlay** | 18 个动词 → 现有 Server RPC；见 [14-agent-tools.md](14-agent-tools.md) |
 | 快速验证 | **Web 演示** | `task sdk-demo`，设置页填入 Console API Keys 页面创建的 API Key |
 
 典型 Agent 工作流：用 scoped API Key 实例化 `Torchwood.withApiKey()` → 读取 OpenAPI
@@ -449,6 +450,10 @@ respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser
 - 错误形态：未知方法 `torchwood: unknown method "<method>"`；非法 JSON 为
   protojson 原始错误；RPC 错误为 gRPC status 错误（CLI 侧用
   `server.IsPermissionDenied` 判断 scope 提示）。
+- **Agent 默认工具箱**（E-7 overlay，18 个动词 → 现有 Server unary，不含
+  API key 管理）：`server.Tools` / `LookupTool` / `InvokeTool`；TS 对等导出
+  `agentTools` / `lookupAgentTool`。完整 API 仍是 201 RPC，见
+  [14-agent-tools.md](14-agent-tools.md)。
 
 ### 9.4 典型用法
 

@@ -11,3 +11,5 @@ export { ServerPaymentsService } from "./payments.js";
 export { ServerAssetsService } from "./assets.js";
 export { ServerSubscriptionsService } from "./subscriptions.js";
 export { BillingService } from "./billing.js";
+export { agentTools, lookupAgentTool } from "./tools.js";
+export type { AgentTool } from "./tools.js";
