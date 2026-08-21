@@ -62,9 +62,6 @@ func (u *Users) resolveProject(ctx context.Context, projectID string) (*projects
 	if p == nil {
 		return nil, status.Error(codes.NotFound, "project not found")
 	}
-	if err := u.docDB.EnsureSystemCollections(ctx, p.ID, p.InternalID); err != nil {
-		return nil, err
-	}
 	return p, nil
 }
 

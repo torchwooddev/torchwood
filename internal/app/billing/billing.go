@@ -101,13 +101,6 @@ func (b *Billing) sampleStorage(ctx context.Context, hour time.Time) error {
 	}
 	for i := range list {
 		p := list[i]
-		if b.docDB != nil {
-			if err := b.docDB.EnsureSystemCollections(ctx, p.ID, p.InternalID); err != nil {
-				b.logger.Warn("ensure system collections for storage sample failed",
-					"project_id", p.ID, "error", err)
-				continue
-			}
-		}
 		total, err := b.files.SumSize(ctx, p.ID)
 		if err != nil {
 			b.logger.Warn("sum storage bytes failed", "project_id", p.ID, "error", err)

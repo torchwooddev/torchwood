@@ -298,7 +298,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 
 	created, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		Data: map[string]any{
@@ -359,11 +359,11 @@ func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {
 
 	collA, err := docDB.GetCollection(ctx, projectA, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
-	require.NotNil(t, collA)
+	require.Nil(t, collA)
 
 	collB, err := docDB.GetCollection(ctx, projectB, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
-	require.NotNil(t, collB)
+	require.Nil(t, collB)
 }
 
 // TestErrDuplicateKey_DomainAlias (#8): infra alias must be the same instance
@@ -883,7 +883,7 @@ func TestEnsureSystemCollections_Idempotent(t *testing.T) {
 	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
 	coll, err := fresh.GetCollection(ctx, projectID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
-	require.NotNil(t, coll)
+	require.Nil(t, coll)
 }
 
 func TestEnsureSystemCollections_SkipWhenStaticTablesReady(t *testing.T) {
@@ -938,11 +938,10 @@ func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 
-	spec := systemCollectionSpecs(projectID)["users"]
 	p := &postgresDocumentDB{db: db}
-	err := p.createCollectionMetadata(ctx, projectID, databases.SystemDatabaseID, "users", spec.name, spec.attrs, spec.indexes, spec.permissions, true)
+	err := p.createCollectionMetadata(ctx, projectID, databases.SystemDatabaseID, "users", "users", nil, nil, nil, true)
 	require.NoError(t, err)
 }
 
@@ -1022,7 +1021,7 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 
 	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
 		Queries: []string{`equal("nonexistent_col","x")`},
@@ -1049,7 +1048,7 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -1111,7 +1110,7 @@ func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 
@@ -1467,8 +1466,8 @@ func TestListDocuments_PageSizeClamp(t *testing.T) {
 	require.NotEmpty(t, list.NextPageToken)
 }
 
-// TestCatalogReads_DoNotApplyProjectSchema：未 Ensure 的项目读 catalog 不得
-// projectschema.Apply / CREATE SCHEMA；Ensure 之后 GetCollection 成功。
+// TestCatalogReads_DoNotApplyProjectSchema：未 Apply 的项目读 catalog 不得
+// projectschema.Apply / CREATE SCHEMA；EnsureCatalog 之后静态表存在。
 func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -1487,8 +1486,6 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	}
 	_, err := db.NewInsert().Model(project).Exec(ctx)
 	require.NoError(t, err)
-	var internalID int64
-	require.NoError(t, db.NewSelect().Model((*model.Project)(nil)).Column("internal_id").Where("id = ?", project.ID).Scan(ctx, &internalID))
 	t.Cleanup(func() {
 		schema := testProjectSchema(t, project.ID)
 		_, _ = db.DB.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema)))
@@ -1518,7 +1515,7 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&reg))
 	require.Nil(t, reg, "catalog 读路径不得 Apply/CREATE SCHEMA")
 
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, project.ID, internalID))
+	require.NoError(t, docDB.EnsureCatalog(ctx, project.ID))
 	coll, err = docDB.GetCollection(ctx, project.ID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.Nil(t, coll, "cut 后 catalog 无 sentinel users")

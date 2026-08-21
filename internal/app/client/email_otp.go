@@ -59,9 +59,6 @@ func (a *Account) CreateEmailOTP(ctx context.Context, cmd CreateEmailOTPCommand)
 	if project == nil {
 		return nil, status.Error(codes.NotFound, "project not found")
 	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, err
-	}
 
 	clientInfo := contexts.ClientInfoFrom(ctx)
 	if err := a.otp.CheckSendRateLimit(ctx, projectID, email, clientInfo.IP); err != nil {
@@ -113,9 +110,6 @@ func (a *Account) CreateEmailOTPSession(ctx context.Context, cmd CreateEmailOTPS
 	}
 	if project == nil {
 		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
-	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", nil, err
 	}
 
 	if err := a.otp.VerifyEmailChallenge(ctx, projectID, challengeID, email, otp); err != nil {

@@ -282,9 +282,6 @@ func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2Code
 	if project == nil {
 		return nil, status.Error(codes.NotFound, "project not found")
 	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, err
-	}
 
 	oauthCfg, err := a.loadOAuthProvider(ctx, projectID, provider)
 	if err != nil {
@@ -485,7 +482,7 @@ func (a *Account) ensureProjectReady(ctx context.Context, projectID string) erro
 	if project == nil {
 		return status.Error(codes.NotFound, "project not found")
 	}
-	return a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID)
+	return nil
 }
 
 func (a *Account) validateProjectOAuthRedirectURLs(ctx context.Context, projectID, successURL, failureURL string) error {

@@ -1,7 +1,7 @@
 # E-5 系统表化（users / sessions / files 静态表）
 
 > 日期：2026-08-21（同日修订：补 S15 系统表并发，不把文档 `_version` 搬进静态表）  
-> 状态：**施工中**（owner 已批准 2026-08-21，含 S15）。E5-1 expand。  
+> 状态：**已落地（owner 批准后施工完毕）**  
 > 对应：`docs/review/first-principles-design.md` §11 E-5（验收只含旧号 **1 / 7 / 8**）；`docs/review/first-principles-plan.md` §4 E-5；`docs/design/project-data-plane-schema.md` K2 临时文档形态 + 「与系统表化的衔接」  
 > 载体：`internal/infra/projectschema`（go:embed SQL，每 `tw_<project>` 一份 `schema_migrations`）  
 > 读者：实施 PR 与 owner。产品 RPC 面不重开。

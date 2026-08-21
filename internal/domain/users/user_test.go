@@ -123,18 +123,3 @@ func TestLabelsFromAny_KeepsNumericScalars(t *testing.T) {
 	require.Nil(t, LabelsFromAny(nil))
 	require.Nil(t, LabelsFromAny([]any{nil}))
 }
-
-func TestDocumentPermissions(t *testing.T) {
-	t.Parallel()
-
-	got := DocumentPermissions("abc")
-	require.Equal(t, []Permission{
-		{Type: "read", Role: "user:abc"},
-		{Type: "read", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: "user:abc"},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: "user:abc"},
-		{Type: "delete", Role: "admin"},
-	}, got)
-}

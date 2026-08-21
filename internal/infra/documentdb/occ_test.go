@@ -259,11 +259,11 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 
 	schema := testProjectSchema(t, projectID)
 	require.Equal(t, 0, versionColumnCount(t, ctx, db, schema, "users"), "系统集合 users 表不得有 _version 列")
@@ -400,8 +400,8 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 }
 
 // TestVersionColumn_WritePathDoesNotAlter：文档写路径不得 ALTER TABLE ADD COLUMN。
-// 缺列时 Create/Update/Delete/Upsert/Bulk fail-closed；bootstrapCache 命中后
-// Ensure 不再扫 catalog；CreateAttribute 一次补列后 OCC 仍过。
+// 缺列时 Create/Update/Delete/Upsert/Bulk fail-closed；EnsureSystemCollections
+// 是 no-op，不得 ALTER；CreateAttribute 一次补列后 OCC 仍过。
 func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -487,9 +487,8 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
 	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "BulkDelete 不得 ALTER")
 
-	// 原实例 bootstrapCache 已命中：Ensure 不得再扫 catalog / ALTER。
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "bootstrapCache 命中后 Ensure 不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "EnsureSystemCollections no-op 不得 ALTER")
 
 	require.NoError(t, fresh.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
 		ID: "views", Key: "views", Type: "integer",
@@ -688,11 +687,11 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 
 	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{
 		Queries: []string{`equal("$version", 1)`},

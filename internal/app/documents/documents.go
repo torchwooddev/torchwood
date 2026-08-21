@@ -31,7 +31,7 @@ func New(docDB databases.DocumentDB) *Documents {
 	return &Documents{docDB: docDB}
 }
 
-// DocumentDB 返回注入的端口（包装层 catalog / EnsureSystemCollections 复用）。
+// DocumentDB 返回注入的端口（包装层 catalog / EnsureCatalog 复用）。
 func (d *Documents) DocumentDB() databases.DocumentDB { return d.docDB }
 
 func (d *Documents) CreateDocument(

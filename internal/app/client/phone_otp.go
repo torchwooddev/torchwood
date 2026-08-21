@@ -52,9 +52,6 @@ func (a *Account) CreatePhoneOTP(ctx context.Context, cmd CreatePhoneOTPCommand)
 	if project == nil {
 		return nil, status.Error(codes.NotFound, "project not found")
 	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, err
-	}
 
 	clientInfo := contexts.ClientInfoFrom(ctx)
 	if err := a.otp.CheckSendRateLimit(ctx, projectID, phone, clientInfo.IP); err != nil {
@@ -105,9 +102,6 @@ func (a *Account) CreatePhoneOTPSession(ctx context.Context, cmd CreatePhoneOTPS
 	}
 	if project == nil {
 		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
-	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", nil, err
 	}
 
 	if err := a.otp.VerifyPhoneChallenge(ctx, projectID, challengeID, phone, otp); err != nil {

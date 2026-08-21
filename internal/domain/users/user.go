@@ -160,7 +160,7 @@ func containsLabel(labels []string, want string) bool {
 	return false
 }
 
-// DocumentData 是写入系统集合 users 的字段快照（含密码哈希，不进 API 投影）。
+// DocumentData 是 Users API 投影到 databases.Document.Data 的字段快照（含密码哈希）。
 func (u *User) DocumentData() map[string]any {
 	if u == nil {
 		return map[string]any{}

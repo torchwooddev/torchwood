@@ -55,7 +55,7 @@ func (s *Projects) CreateProject(ctx context.Context, cmd CreateProjectCommand) 
 }
 
 // CreateProjectInternal 创建项目（校验 id/name/description、事务内插入
-// project 并 EnsureSystemCollections）。不做 principal 检查，仅供 bootstrap 等
+// project、Apply 静态表并建第一业务库）。不做 principal 检查，仅供 bootstrap 等
 // 系统路径调用，调用方负责授权；外部入口 CreateProject 保留平台 admin 校验后
 // 委托本方法。
 func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectCommand) (*projects.Project, error) {
@@ -97,9 +97,6 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 		}
 		if err := projectschema.Apply(txCtx, s.db, p.ID); err != nil {
 			return fmt.Errorf("apply project schema: %w", err)
-		}
-		if err := s.docDB.EnsureSystemCollections(txCtx, p.ID, p.InternalID); err != nil {
-			return fmt.Errorf("ensure system collections: %w", err)
 		}
 		if err := s.docDB.CreateDatabase(txCtx, p.ID, firstDBID, firstDBID); err != nil {
 			return fmt.Errorf("create first database: %w", err)

@@ -9,17 +9,9 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-// oldGroupsAttrsV2 模拟旧版本 spec 的 groups 集合属性（无 prefs）。
-var oldGroupsAttrsV2 = []databases.Attribute{
-	{ID: "groups_name", Key: "name", Type: "string", Size: 256},
-	{ID: "groups_permissions", Key: "permissions", Type: "json"},
-	{ID: "groups_total", Key: "total", Type: "integer", Default: 0},
-}
 
 // TestGroups_Prefs_CRUD：空 prefs → 写入 → 整体替换（旧键消失）。
 func TestGroups_Prefs_CRUD(t *testing.T) {
@@ -62,61 +54,6 @@ func TestGroups_Prefs_CRUD(t *testing.T) {
 	got, err = uc.GetGroupPrefs(ctx, projectID, group.ID, keys)
 	require.NoError(t, err)
 	require.Equal(t, map[string]any{"locale": "zh-CN"}, got)
-}
-
-// TestGroups_Prefs_SelfHealReconcile：存量项目（旧 spec groups 集合、不调
-// EnsureSystemCollections）→ 直接 GetGroupPrefs/UpdateGroupPrefs 首请求触发 reconcile
-// 并成功读写（覆盖验收标准 4）。
-func TestGroups_Prefs_SelfHealReconcile(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	db := testutil.SetupTestDB(t)
-	defer db.Close()
-
-	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
-	defer cleanup()
-
-	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-
-	// expand 形态：文档 groups 仍在；绝不调 Ensure（否则 reconcile 提前发生）。
-	testutil.InsertCatalogDatabase(ctx, db, projectID, ident.ProjectDataPlaneID, "(project)")
-	require.NoError(t, docDB.CreateCollection(ctx, projectID, ident.ProjectDataPlaneID, "groups", "groups", oldGroupsAttrsV2, nil, []databases.Permission{
-		{Type: "create", Role: "keys"},
-		{Type: "read", Role: "any"},
-		{Type: "read", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: "group:{id}"},
-		{Type: "update", Role: "keys"},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: "group:{id}"},
-		{Type: "delete", Role: "keys"},
-		{Type: "delete", Role: "admin"},
-	}, true))
-
-	groupID := "legacy-group-id"
-	_, err := docDB.CreateDocument(ctx, projectID, ident.ProjectDataPlaneID, "groups", databases.Document{
-		ID:   groupID,
-		Data: map[string]any{"name": "Legacy Group", "total": 0},
-	}, nil, databases.SystemPrincipal)
-	require.NoError(t, err)
-
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
-	keys := databases.Principal{Roles: []string{"keys"}}
-
-	// 首请求即触发 EnsureSystemCollections reconcile：读返回空对象而不是 42703。
-	prefs, err := uc.GetGroupPrefs(ctx, projectID, groupID, keys)
-	require.NoError(t, err)
-	require.Empty(t, prefs)
-
-	updated, err := uc.UpdateGroupPrefs(ctx, projectID, groupID, map[string]any{"theme": "dark"}, keys)
-	require.NoError(t, err)
-	require.Equal(t, map[string]any{"theme": "dark"}, updated)
-
-	got, err := uc.GetGroupPrefs(ctx, projectID, groupID, keys)
-	require.NoError(t, err)
-	require.Equal(t, map[string]any{"theme": "dark"}, got)
 }
 
 // TestGroups_Prefs_Errors：NotFound / InvalidArgument。

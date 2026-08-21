@@ -35,9 +35,6 @@ func (a *Account) CreateWeChatMiniProgramSession(ctx context.Context, cmd Create
 	if project == nil {
 		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
 	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", nil, err
-	}
 
 	oauthCfg, err := a.loadOAuthProvider(ctx, projectID, provider)
 	if err != nil {

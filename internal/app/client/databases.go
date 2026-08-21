@@ -42,9 +42,6 @@ func (d *Databases) loadProject(ctx context.Context, projectID string) (*project
 	if project == nil {
 		return nil, status.Error(codes.NotFound, "project not found")
 	}
-	if err := d.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, fmt.Errorf("ensure system collections: %w", err)
-	}
 	return project, nil
 }
 

@@ -78,9 +78,6 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 	if err != nil {
 		return nil, err
 	}
-	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, err
-	}
 
 	bucketID := idgen.UUID().String()
 	now := time.Now()
@@ -104,9 +101,6 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 func (s *Storage) ListBuckets(ctx context.Context, projectID string, q databases.Query, principal databases.Principal) ([]storage.Bucket, int64, string, error) {
 	project, err := s.resolveProject(ctx, projectID)
 	if err != nil {
-		return nil, 0, "", err
-	}
-	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
 		return nil, 0, "", err
 	}
 
@@ -229,9 +223,6 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 	if err != nil {
 		return nil, err
 	}
-	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, err
-	}
 
 	bucket, err := s.buckets.GetByID(ctx, project.ID, cmd.BucketID)
 	if err != nil {
@@ -303,9 +294,6 @@ func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q d
 	if err != nil {
 		return nil, 0, "", err
 	}
-	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, 0, "", err
-	}
 
 	list, err := s.files.ListByBucket(ctx, project.ID, bucketID)
 	if err != nil {
@@ -371,9 +359,6 @@ func (s *Storage) UpdateFile(ctx context.Context, cmd UpdateFileCommand) (*stora
 func (s *Storage) GetStorageUsage(ctx context.Context, projectID string, principal databases.Principal) (*storage.Usage, error) {
 	project, err := s.resolveProject(ctx, projectID)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
 		return nil, err
 	}
 	buckets, err := s.buckets.Count(ctx, project.ID)

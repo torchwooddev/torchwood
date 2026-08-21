@@ -1,18 +1,63 @@
 package documentdb
 
-import "github.com/torchwooddev/torchwood/internal/domain/databases"
+import (
+	"context"
+	"time"
 
-type systemCollectionSpec struct {
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/pkg/ident"
+)
+
+type legacySystemDocumentSpec struct {
 	name        string
 	attrs       []databases.Attribute
 	indexes     []databases.Index
 	permissions []databases.Permission
 }
 
-// systemCollectionSpecs 返回按系统集合 ID 索引的 spec 映射；
-// 名单以 domain 常量为单一事实来源（本文件仅定义 attrs/indexes/权限）。
-func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
-	specs := map[string]systemCollectionSpec{
+// SeedLegacySystemDocumentCollections 在 sentinel 上建七张旧文档表。
+// 仅 expand/copy 测试使用；生产 EnsureSystemCollections 是 no-op。
+func SeedLegacySystemDocumentCollections(ctx context.Context, db databases.DocumentDB, projectID string) error {
+	if p, ok := db.(*postgresDocumentDB); ok {
+		if err := p.ensureSentinelCatalog(ctx, projectID); err != nil {
+			return err
+		}
+	}
+	specs := legacySystemDocumentSpecs()
+	for _, id := range databases.SystemCollectionIDs {
+		spec := specs[id]
+		if err := db.CreateCollection(ctx, projectID, databases.SystemDatabaseID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *postgresDocumentDB) ensureSentinelCatalog(ctx context.Context, projectID string) error {
+	cat, err := p.catalogIdent(projectID)
+	if err != nil {
+		return err
+	}
+	dbID := ident.ProjectDataPlaneID
+	exists, err := p.conn(ctx).NewSelect().Model((*model.DocumentDatabase)(nil)).
+		ModelTableExpr("?.document_databases AS ddb", cat).
+		Where("id = ? AND project_id = ?", dbID, projectID).Exists(ctx)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	m := &model.DocumentDatabase{ID: dbID, ProjectID: projectID, Name: "(project)", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	_, err = p.conn(ctx).NewInsert().Model(m).
+		ModelTableExpr("?.document_databases AS ddb", cat).
+		On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx)
+	return err
+}
+
+func legacySystemDocumentSpecs() map[string]legacySystemDocumentSpec {
+	return map[string]legacySystemDocumentSpec{
 		"users": {
 			name: "users",
 			attrs: []databases.Attribute{
@@ -21,8 +66,6 @@ func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
 				{ID: "users_name", Key: "name", Type: "string", Size: 256},
 				{ID: "users_status", Key: "status", Type: "string", Size: 64, Default: "active"},
 				{ID: "users_email_verified", Key: "email_verified", Type: "boolean", Default: false},
-				// 邮箱变更 staging（B1/R05-P1-2）：新邮箱验证通过前暂存于此，
-				// 不暴露给 API 响应（mapUserDoc 不读取）。
 				{ID: "users_pending_email", Key: "pending_email", Type: "email", Size: 320},
 				{ID: "users_phone", Key: "phone", Type: "string", Size: 64},
 				{ID: "users_phone_verified", Key: "phone_verified", Type: "boolean", Default: false},
@@ -210,5 +253,4 @@ func systemCollectionSpecs(projectID string) map[string]systemCollectionSpec {
 			},
 		},
 	}
-	return specs
 }

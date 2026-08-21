@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestSystemCollections_IsSystemFlag 覆盖回填断言：EnsureSystemCollections 之后
-// 系统集合 is_system=true，用户集合与自定义库同名集合 is_system=false。
+// TestSystemCollections_IsSystemFlag：cut 后 catalog 无系统集合；
+// 用户集合与自定义库同名集合 is_system=false。
 func TestSystemCollections_IsSystemFlag(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

@@ -212,9 +212,6 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 	if err := a.checkSignUpRateLimit(ctx, project.ID, clientInfo.IP); err != nil {
 		return nil, nil, "", nil, err
 	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", nil, fmt.Errorf("ensure system collections: %w", err)
-	}
 
 	existing, err := a.usersRepo.GetByEmail(ctx, project.ID, email)
 	if err != nil {
@@ -282,9 +279,6 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 	}
 	if project == nil {
 		return nil, nil, "", nil, status.Error(codes.NotFound, "project not found")
-	}
-	if err := a.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, nil, "", nil, err
 	}
 
 	found, err := a.usersRepo.GetByEmail(ctx, project.ID, email)

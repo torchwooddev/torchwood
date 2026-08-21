@@ -72,10 +72,6 @@ type postgresDocumentDB struct {
 
 	// in-process caches keyed by projectID; safe for concurrent use.
 	internalIDCache sync.Map // projectID -> int64
-	bootstrapCache  sync.Map // projectID -> struct{} (system collections ensured)
-	// keysPermsCleaned 标记已完成"keys 角色系统集合写权限收窄"清理的项目
-	// （安全评审 C1 第 3 层 / M2 存量迁移）；进程重启后重复执行 DELETE/UPDATE 幂等无害。
-	keysPermsCleaned sync.Map // projectID -> struct{}
 	// versionColumns 记录已确认 _version 为 bigint 的 "schema.collection" 键，
 	// 避免每次写/读重复查 information_schema；**只缓存已提交的列**。
 	versionColumns sync.Map // "schema.collection" -> struct{}
@@ -1432,146 +1428,7 @@ func validColumnName(name string) bool {
 	return true
 }
 
-func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error {
-	ready, err := p.systemTablesReady(ctx, projectID)
-	if err != nil {
-		return err
-	}
-	if ready {
-		return nil
-	}
-	if internalID == 0 {
-		internalID, err = p.resolveInternalID(ctx, projectID)
-		if err != nil {
-			return err
-		}
-	}
-	if err := p.EnsureCatalog(ctx, projectID); err != nil {
-		return err
-	}
-	ready, err = p.systemTablesReady(ctx, projectID)
-	if err != nil {
-		return err
-	}
-	if ready {
-		return nil
-	}
-	dbID := ident.ProjectDataPlaneID
-	schema, err := ident.ProjectSchemaName(projectID)
-	if err != nil {
-		return mapIdentError(err)
-	}
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return err
-	}
-
-	schemaBootstrapped := false
-	if _, ok := p.bootstrapCache.Load(projectID); ok {
-		schemaBootstrapped = true
-	}
-
-	if !schemaBootstrapped {
-		if err := p.ensureSchemaAndPerms(ctx, schema); err != nil {
-			return err
-		}
-		// Catalog-only sentinel 行（无 tw_<p>_ schema）；复合 PK (project_id, id)。
-		exists, err := p.conn(ctx).NewSelect().Model((*model.DocumentDatabase)(nil)).
-			ModelTableExpr("?.document_databases AS ddb", cat).
-			Where("id = ? AND project_id = ?", dbID, projectID).Exists(ctx)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			m := &model.DocumentDatabase{ID: dbID, ProjectID: projectID, Name: "(project)", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-			if _, err := p.conn(ctx).NewInsert().Model(m).
-				ModelTableExpr("?.document_databases AS ddb", cat).
-				On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx); err != nil {
-				return err
-			}
-		}
-	}
-
-	for _, id := range databases.SystemCollectionIDs {
-		spec := systemCollectionSpecs(projectID)[id]
-		coll, err := p.GetCollection(ctx, projectID, dbID, id)
-		if err != nil {
-			return err
-		}
-		if coll == nil {
-			if err := p.CreateCollection(ctx, projectID, dbID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
-				return fmt.Errorf("create system collection %s: %w", id, err)
-			}
-			continue
-		}
-		// 集合已存在 → 幂等补齐缺失属性（存量项目迁移：物理列 + 目录元数据）。
-		if err := p.reconcileSystemCollectionAttrs(ctx, projectID, dbID, id, coll, spec); err != nil {
-			return err
-		}
-	}
-	// 存量项目 keys 写权限收窄（安全评审 C1 第 3 层 / M2 存量迁移）：幂等清理
-	// users/sessions/identities 的 update:keys/delete:keys（文档级 _perms +
-	// 集合级 document_collections.permissions 元数据），进程内仅执行一次。
-	if _, ok := p.keysPermsCleaned.Load(projectID); !ok {
-		if err := p.cleanupKeysWritePerms(ctx, projectID, schema); err != nil {
-			return err
-		}
-		p.keysPermsCleaned.Store(projectID, struct{}{})
-	}
-	// 存量用户集合缺 _version：按 catalog 一次补列。系统集合不加此列。
-	// bootstrapCache 命中后跳过（每个文档 RPC 的 Ensure 不再扫 catalog）；
-	// CreateCollection / CreateAttribute / CreateIndex 仍会补列。
-	if !schemaBootstrapped {
-		if err := p.reconcileUserCollectionVersionColumns(ctx, projectID); err != nil {
-			return err
-		}
-	}
-	p.bootstrapCache.Store(projectID, struct{}{})
-	return nil
-}
-
-// reconcileSystemCollectionAttrs 幂等补齐存量系统集合中 spec 有而集合缺的属性：
-// 直接调 CreateAttribute（infra 层无系统集合守卫，ADD COLUMN IF NOT EXISTS 幂等，
-// 一步完成物理列 + document_attributes 元数据）。按属性 Key 比对（存量行 ID 可能
-// 不符 {collection}_{key} 约定）；只修"任一缺失"方向，不做反向校验。并发时元数据
-// INSERT 撞唯一约束（23505）属正常竞态，忽略。
-func (p *postgresDocumentDB) reconcileSystemCollectionAttrs(ctx context.Context, projectID, databaseID, collectionID string, coll *databases.Collection, spec systemCollectionSpec) error {
-	existing := make(map[string]struct{}, len(coll.Attributes))
-	for _, a := range coll.Attributes {
-		existing[a.Key] = struct{}{}
-	}
-	for _, attr := range spec.attrs {
-		if _, ok := existing[attr.Key]; ok {
-			continue
-		}
-		if err := p.CreateAttribute(ctx, projectID, databaseID, collectionID, attr); err != nil {
-			if isUniqueViolation(err) {
-				continue
-			}
-			return fmt.Errorf("reconcile attribute %s on system collection %s: %w", attr.Key, collectionID, err)
-		}
-	}
-	return nil
-}
-
-// cleanupKeysWritePerms 移除 keys 角色对系统敏感集合（users/sessions/identities）的
-// update/delete 权限，只作用于这三个集合；groups/memberships 的 keys 管理权限是
-// 合法语义，保留不动。幂等：无匹配行时均为空操作。
-func (p *postgresDocumentDB) cleanupKeysWritePerms(ctx context.Context, projectID, schema string) error {
-	del := fmt.Sprintf(`DELETE FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection IN ('users','sessions','identities')`, permsTableName(schema))
-	if _, err := p.conn(ctx).ExecContext(ctx, del); err != nil {
-		return fmt.Errorf("cleanup keys perms: %w", err)
-	}
-	catSQL, err := p.catalogQuoted(projectID)
-	if err != nil {
-		return err
-	}
-	upd := fmt.Sprintf(`UPDATE %s.document_collections
-		SET permissions = ARRAY(SELECT x FROM unnest(permissions) AS x WHERE x NOT IN ('update:keys','delete:keys'))
-		WHERE project_id = ? AND database_id = ? AND id IN ('users','sessions','identities') AND permissions IS NOT NULL`, catSQL)
-	if _, err := p.conn(ctx).ExecContext(ctx, upd, projectID, ident.ProjectDataPlaneID); err != nil {
-		return fmt.Errorf("cleanup keys collection perms: %w", err)
-	}
+func (p *postgresDocumentDB) EnsureSystemCollections(context.Context, string, int64) error {
 	return nil
 }
 
@@ -1606,31 +1463,7 @@ func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string
 	return mapIdentError(projectschema.Apply(ctx, p.db, projectID))
 }
 
-// systemTablesReady 探测最终静态 users（有 id、无 _id）。必须在 ensureSchemaAndPerms / CreateCollection 之前调用。
-func (p *postgresDocumentDB) systemTablesReady(ctx context.Context, projectID string) (bool, error) {
-	schema, err := ident.ProjectSchemaName(projectID)
-	if err != nil {
-		return false, mapIdentError(err)
-	}
-	var hasID, hasDocID bool
-	err = p.conn(ctx).QueryRowContext(ctx, `
-SELECT
-  EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = ? AND table_name = 'users' AND column_name = 'id'
-  ),
-  EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = ? AND table_name = 'users' AND column_name = '_id'
-  )
-`, schema, schema).Scan(&hasID, &hasDocID)
-	if err != nil {
-		return false, err
-	}
-	return hasID && !hasDocID, nil
-}
-
-// systemTablesStaging 探测 000008 尚未 cut：sys_users 仍在。Ensure 不得 Apply 000009。
+// systemTablesStaging 探测 000008 尚未 cut：sys_users 仍在。EnsureCatalog 不得 Apply 000009。
 func (p *postgresDocumentDB) systemTablesStaging(ctx context.Context, projectID string) (bool, error) {
 	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
@@ -1665,8 +1498,9 @@ func (p *postgresDocumentDB) catalogQuoted(projectID string) (string, error) {
 	return quoteIdent(s), nil
 }
 
-// documentSchema 解析文档读写 / EnsureSystemCollections / CreateCollection 的
-// 目标 schema。仅此处允许 sentinel → ProjectSchemaName（一段式 tw_<project>）。
+// documentSchema 解析文档读写 / CreateCollection 的目标 schema。
+// 仅此处允许 sentinel → ProjectSchemaName（一段式 tw_<project>）；
+// expand/copy 测试仍用该分叉播种 v8 文档表。
 func (p *postgresDocumentDB) documentSchema(ctx context.Context, projectID, databaseID string) (int64, string, error) {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
@@ -1795,7 +1629,7 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 	createdHere := !isSystem && !existed
 	if err != nil && isUniqueViolation(err) {
 		// 并发建同名表时 PG 可能在 pg_type 类型注册上撞唯一约束（既有竞态，
-		// EnsureSystemCollections 并发首请求触发）：表已由另一事务建成，
+		// CreateCollection 并发首请求触发）：表已由另一事务建成，
 		// 重试一次即变为幂等 no-op。
 		_, err = p.conn(ctx).ExecContext(ctx, sql)
 		createdHere = false
@@ -1843,36 +1677,7 @@ func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, c
 	return nil
 }
 
-// reconcileUserCollectionVersionColumns 按 catalog 给存量用户集合补 _version。
-// 系统集合（is_system）跳过。单表失败只记日志，不阻断 ensure（该表写路径 fail-closed）。
-func (p *postgresDocumentDB) reconcileUserCollectionVersionColumns(ctx context.Context, projectID string) error {
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return err
-	}
-	var colls []model.DocumentCollection
-	if err := p.conn(ctx).NewSelect().Model(&colls).
-		ModelTableExpr("?.document_collections AS dc", cat).
-		Where("project_id = ? AND is_system = ?", projectID, false).
-		Scan(ctx); err != nil {
-		return err
-	}
-	for i := range colls {
-		_, schema, err := p.documentSchema(ctx, projectID, colls[i].DatabaseID)
-		if err != nil {
-			slog.Error("reconcile user collection _version: resolve schema failed",
-				"project", projectID, "database", colls[i].DatabaseID, "collection", colls[i].ID, "err", err)
-			continue
-		}
-		if err := p.reconcileVersionColumn(ctx, schema, colls[i].ID, false); err != nil {
-			slog.Error("reconcile user collection _version failed",
-				"project", projectID, "database", colls[i].DatabaseID, "collection", colls[i].ID, "err", err)
-		}
-	}
-	return nil
-}
-
-// reconcileVersionColumn 是用户集合 _version 列的 DDL 对账，仅 ensure / 写 DDL 调用：
+// reconcileVersionColumn 是用户集合 _version 列的 DDL 对账，仅写 DDL 调用：
 //
 //   - isSystem == true：直接返回（系统集合无 _version）。
 //   - 列不存在 → ALTER TABLE ADD COLUMN IF NOT EXISTS _version BIGINT NOT NULL DEFAULT 1

@@ -386,7 +386,7 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
+	require.NoError(t, SeedLegacySystemDocumentCollections(ctx, docDB, projectID))
 
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 
@@ -421,87 +421,6 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 		Data: map[string]any{"name": "Group A"},
 	}, nil, keysPrincipal)
 	require.NoError(t, err)
-}
-
-// TestCleanup_KeysWritePermsLegacyProject 验证启动期存量清理：对模拟的遗留项目
-// （文档级 _perms 与集合级元数据仍含 keys 的 update/delete），EnsureSystemCollections
-// 幂等清除 users/sessions/identities 的写权限且不影响 groups/memberships。
-func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	db := testutil.SetupTestDB(t)
-	defer db.Close()
-
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
-	defer cleanup()
-
-	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-
-	schema := quoteIdent(testProjectSchema(t, projectID))
-
-	// 模拟升级前遗留状态：文档级 _perms 存在 keys 的 update/delete 行
-	// （users/sessions/identities 各若干 + groups 一行作为对照）。
-	seedSQL := fmt.Sprintf(
-		`INSERT INTO %s._perms (_tenant, _collection, _document, _type, _permission) VALUES
-		 (?, 'users', 'u1', 'update', 'keys'),
-		 (?, 'users', 'u1', 'delete', 'keys'),
-		 (?, 'sessions', 's1', 'update', 'keys'),
-		 (?, 'identities', 'i1', 'delete', 'keys'),
-		 (?, 'groups', 't1', 'update', 'keys')`,
-		schema)
-	_, err := db.DB.ExecContext(ctx, seedSQL, internalID, internalID, internalID, internalID, internalID)
-	require.NoError(t, err)
-	// 集合级元数据：系统集合与 groups 都补上 keys 写权限（groups 作为对照）。
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
-		`UPDATE %s.document_collections SET permissions = permissions || ARRAY['update:keys','delete:keys']
-		 WHERE project_id = ? AND database_id = '_' AND id IN ('users','sessions','identities','groups')`, schema),
-		projectID)
-	require.NoError(t, err)
-
-	// 新实例触发清理（进程内"已清理"标记不跨实例）。
-	fresh := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, fresh.EnsureSystemCollections(ctx, projectID, internalID))
-
-	permsTable := fmt.Sprintf("%s._perms", schema)
-	// 文档级：三个系统集合的 keys 写权限全部清除。
-	var keysWriteRows int64
-	row := db.DB.QueryRowContext(ctx, fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection IN ('users','sessions','identities')`, permsTable))
-	require.NoError(t, row.Scan(&keysWriteRows))
-	require.Zero(t, keysWriteRows)
-
-	// groups 的 keys 写权限行保留。
-	var groupKeysWrite int64
-	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection = 'groups'`, permsTable))
-	require.NoError(t, row.Scan(&groupKeysWrite))
-	require.Equal(t, int64(1), groupKeysWrite)
-
-	// 集合级元数据：系统集合不再含 keys 写权限；groups 保留。
-	var metaKeysWrite int64
-	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s.document_collections WHERE project_id = ? AND database_id = '_'
-		 AND id IN ('users','sessions','identities') AND permissions @> ARRAY['update:keys','delete:keys']`, schema), projectID)
-	require.NoError(t, row.Scan(&metaKeysWrite))
-	require.Zero(t, metaKeysWrite)
-
-	var groupMeta int64
-	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s.document_collections WHERE project_id = ? AND database_id = '_'
-		 AND id = 'groups' AND permissions @> ARRAY['update:keys','delete:keys']`, schema), projectID)
-	require.NoError(t, row.Scan(&groupMeta))
-	require.Equal(t, int64(1), groupMeta)
-
-	// 幂等：再次清理无错误、无新副作用。
-	third := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, third.EnsureSystemCollections(ctx, projectID, internalID))
-	row = db.DB.QueryRowContext(ctx, fmt.Sprintf(
-		`SELECT COUNT(*) FROM %s WHERE _permission = 'keys' AND _type IN ('update','delete') AND _collection IN ('users','sessions','identities')`, permsTable))
-	require.NoError(t, row.Scan(&keysWriteRows))
-	require.Zero(t, keysWriteRows)
 }
 
 // TestPermissions_ListORFallback (B1): 用户集合 documentSecurity=true 且集合级有

@@ -46,9 +46,6 @@ func (s *Storage) CreateUploadSession(ctx context.Context, cmd CreateUploadComma
 	if err != nil {
 		return nil, err
 	}
-	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
-		return nil, err
-	}
 	bucket, err := s.buckets.GetByID(ctx, project.ID, cmd.BucketID)
 	if err != nil {
 		return nil, err

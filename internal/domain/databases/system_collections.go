@@ -7,8 +7,9 @@ import "github.com/torchwooddev/torchwood/pkg/ident"
 // 物理表落在 tw_<project>，不建 tw_<project>_ 两段式 schema。
 const SystemDatabaseID = ident.ProjectDataPlaneID
 
-// SystemCollectionIDs 是项目数据面中由专用服务（Users/Groups/Storage/Auth）
-// 独占管理的系统集合名单；Databases API 对其实行只读策略（读分级放行、写全拒）。
+// SystemCollectionIDs 是 cut 前项目数据面七张系统资源的历史名单。
+// Databases API 已用 RejectExternalDatabaseID 拒绝 sentinel；本名单只给
+// DocumentDB 皮带（isSystem 跳过 _version、写保护）与 expand/copy 播种。
 var SystemCollectionIDs = []string{
 	"users",
 	"sessions",
