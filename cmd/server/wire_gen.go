@@ -39,6 +39,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
+	"github.com/torchwooddev/torchwood/internal/infra/users"
 )
 
 // Injectors from wire.go:
@@ -91,7 +92,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	smsService := messaging.NewSMSService(appConfig)
 	mfaService := auth.NewTOTPService(appConfig, redisClient)
 	mfaChallengeStore := auth.NewRedisMFAChallengeStore(redisClient)
-	account := client.NewAccount(appConfig, repository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter, userRoles, mfaService, mfaChallengeStore, redisOneTimeTokenStore, auditRepository)
+	documentRepository := users.NewDocumentRepository(documentDB)
+	account := client.NewAccount(appConfig, repository, oAuthProviderRepository, documentDB, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter, userRoles, mfaService, mfaChallengeStore, redisOneTimeTokenStore, auditRepository, documentRepository)
 	accountService := clientgrpc.NewAccountService(account)
 	databases := client.NewDatabases(repository, documentDB)
 	transactionRepository := bunrepo.NewTransactionRepository(database)
@@ -129,8 +131,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	uploadSessionStore := storage.NewRedisUploadSessionStore(redisClient)
 	storageStorage := storage2.NewStorage(appConfig, repository, documentDB, objectStore, uploadSessionStore)
 	storageService := servergrpc.NewStorageService(storageStorage)
-	users := server.NewUsers(repository, documentDB, sessionService, database)
-	usersService := servergrpc.NewUsersService(users)
+	serverUsers := server.NewUsers(repository, documentDB, sessionService, database, documentRepository)
+	usersService := servergrpc.NewUsersService(serverUsers)
 	apiKeys := server.NewAPIKeys(apiKeyRepository)
 	apiKeysService := servergrpc.NewAPIKeysService(apiKeys)
 	oAuthProviders := server.NewOAuthProviders(oAuthProviderRepository)

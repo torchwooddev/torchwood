@@ -2,12 +2,10 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
@@ -41,24 +39,19 @@ func (a *Account) CreateAnonymousSession(ctx context.Context, cmd CreateAnonymou
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
-	email := anonymousEmail(userID)
-	userDoc := databases.Document{
-		ID: userID,
-		Data: map[string]any{
-			"email":          email,
-			"password_hash":  "",
-			"name":           "Anonymous",
-			"status":         users.StatusActive,
-			"email_verified": false,
-			"labels":         []any{"anonymous"},
-			"prefs":          map[string]any{},
-		},
+	registered, err := users.Register(users.RegisterInput{
+		ID:        userID,
+		Email:     users.AnonymousEmail(userID),
+		Name:      "Anonymous",
+		Anonymous: true,
+	})
+	if err != nil {
+		return nil, nil, "", nil, mapUserError(err)
 	}
-	if _, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userDocumentPermissions(userID), databases.SystemPrincipal); err != nil {
+	if err := a.usersRepo.Insert(ctx, projectID, registered); err != nil {
 		return nil, nil, "", nil, err
 	}
-	user := mapUserDoc(&userDoc)
-	return a.finishSignInWithProvider(ctx, projectID, user, domainauth.ProviderAnonymous)
+	return a.finishSignInWithProvider(ctx, projectID, accountUser(registered), domainauth.ProviderAnonymous)
 }
 
 func (a *Account) checkAnonymousSessionRateLimit(ctx context.Context, ip string) error {
@@ -67,12 +60,4 @@ func (a *Account) checkAnonymousSessionRateLimit(ctx context.Context, ip string)
 		return nil
 	}
 	return a.rateLimiter.Allow(ctx, "anonymous:ip:"+ip, anonymousSessionIPLimit, anonymousSessionIPWindow)
-}
-
-func anonymousEmail(userID string) string {
-	shortID := userID
-	if len(shortID) > 8 {
-		shortID = shortID[:8]
-	}
-	return fmt.Sprintf("anon_%s@torchwood.local", shortID)
 }

@@ -6,10 +6,7 @@ import (
 	"strings"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
-	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -61,28 +58,24 @@ func (a *Account) CreateMagicURLSession(ctx context.Context, cmd CreateMagicURLS
 		return nil, err
 	}
 
-	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", email)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	found, err := a.usersRepo.GetByEmail(ctx, projectID, email)
 	if err != nil {
 		return nil, err
 	}
-	if len(list.Documents) == 0 {
+	if found == nil {
 		return &Challenge{}, nil
 	}
-	userDoc := list.Documents[0]
 	// 匿名/phone/wechat 占位邮箱不允许 magic url 登录。
 	if strings.HasSuffix(email, "@torchwood.local") {
 		return &Challenge{}, nil
 	}
 
-	challengeID, secret, expireAt, err := a.tokens.CreateMagicURLToken(ctx, projectID, userDoc.ID, email)
+	challengeID, secret, expireAt, err := a.tokens.CreateMagicURLToken(ctx, projectID, found.ID, email)
 	if err != nil {
 		return nil, err
 	}
 	// secret 仅存在于邮件链接中；API 响应只回传不透明 challengeID。
-	link := buildAccountActionURL(cmd.URL, userDoc.ID, secret)
+	link := buildAccountActionURL(cmd.URL, found.ID, secret)
 	subject := "Sign in to Torchwood"
 	body := fmt.Sprintf("Click the link below to sign in:\n\n%s\n\nThis link expires at %s.", link, expireAt.Format("2006-01-02 15:04 MST"))
 	if err := a.mailer.Send(ctx, email, subject, body); err != nil {
@@ -116,16 +109,15 @@ func (a *Account) UpdateMagicURLSession(ctx context.Context, cmd UpdateMagicURLS
 		return nil, nil, "", nil, err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	found, err := a.usersRepo.GetByID(ctx, projectID, userID)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "user not found")
 	}
-	user := mapUserDoc(doc)
-	if !users.CanAuthenticate(user.Status) {
+	if !found.CanAuthenticate() {
 		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "user account is not active")
 	}
-	return a.finishSignInWithProvider(ctx, projectID, user, domainauth.ProviderMagicURL)
+	return a.finishSignInWithProvider(ctx, projectID, accountUser(found), domainauth.ProviderMagicURL)
 }

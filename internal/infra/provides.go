@@ -4,6 +4,7 @@ import (
 	"github.com/google/wire"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
+	domainusers "github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	infrabilling "github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/bun"
@@ -19,6 +20,7 @@ import (
 	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 )
 
 var ProviderSet = wire.NewSet(
@@ -56,6 +58,8 @@ var ProviderSet = wire.NewSet(
 
 	bun.ProviderSet,
 	documentdb.ProviderSet,
+	infrausers.NewDocumentRepository,
+	wire.Bind(new(domainusers.Repository), new(*infrausers.DocumentRepository)),
 	infraevents.ProviderSet,
 	infrarealtime.ProviderSet,
 	infrastorage.ProviderSet,

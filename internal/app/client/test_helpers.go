@@ -10,6 +10,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
@@ -64,7 +65,7 @@ func NewTestAccountWithDeps(
 	if sms == nil {
 		sms = inframessaging.NewSMSService(cfg)
 	}
-	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil)
+	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil, infrausers.NewDocumentRepository(docDB))
 }
 
 // CaptureMailer records sent messages for tests.

@@ -15,6 +15,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -104,6 +105,7 @@ func setupG3Account(t *testing.T) (context.Context, *Account, string, *failableS
 		auth.NewRedisMFAChallengeStore(rdb),
 		auth.NewRedisOneTimeTokenStore(rdb),
 		nil,
+		infrausers.NewDocumentRepository(docDB),
 	)
 	return ctx, account, projectID, sessions, mr, mailer
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/query"
@@ -321,7 +322,7 @@ func TestUsers_UpdateUserEmailUniqueness(t *testing.T) {
 		databases.Document{ID: "user-a", Data: map[string]any{"email": "a@torchwood.local"}},
 		databases.Document{ID: "user-b", Data: map[string]any{"email": "b@torchwood.local"}},
 	)
-	uc := NewUsers(fakeProjectRepo{}, docDB, nil, &clients.Database{})
+	uc := NewUsers(fakeProjectRepo{}, docDB, nil, &clients.Database{}, infrausers.NewDocumentRepository(docDB))
 	// Round3 H1-3：UpdateUser 现在要求 Server 写主体（admin 会话 / API key）。
 	actorCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},

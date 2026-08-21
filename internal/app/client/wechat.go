@@ -69,14 +69,14 @@ func (a *Account) resolveWeChatUser(ctx context.Context, projectID, provider str
 		return nil, err
 	}
 	if identity != nil {
-		doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", identity.UserID, databases.SystemPrincipal)
+		found, err := a.usersRepo.GetByID(ctx, projectID, identity.UserID)
 		if err != nil {
 			return nil, err
 		}
-		if doc == nil {
+		if found == nil {
 			return nil, fmt.Errorf("identity references missing user")
 		}
-		user := mapUserDoc(doc)
+		user := accountUser(found)
 		if identity.Provider != provider {
 			if err := a.createIdentity(ctx, projectID, user.ID, info, provider); err != nil {
 				return nil, err

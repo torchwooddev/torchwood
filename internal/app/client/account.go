@@ -35,6 +35,7 @@ type Account struct {
 	projectRepo    projects.Repository
 	oauthProviders projects.OAuthProviderRepository
 	docDB          databases.DocumentDB
+	usersRepo      users.Repository
 	sessions       domainauth.SessionService
 	otp            domainauth.OTPChallengeStore
 	oauthState     domainauth.OAuthStateStore
@@ -72,12 +73,14 @@ func NewAccount(
 	mfaChallenges domainauth.MFAChallengeStore,
 	oneTimeTokens domainauth.OneTimeTokenStore,
 	auditRepo audit.Repository,
+	usersRepo users.Repository,
 ) *Account {
 	return &Account{
 		cfg:            cfg,
 		projectRepo:    projectRepo,
 		oauthProviders: oauthProviders,
 		docDB:          docDB,
+		usersRepo:      usersRepo,
 		sessions:       sessions,
 		otp:            otp,
 		oauthState:     oauthState,
@@ -210,57 +213,35 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 		return nil, nil, "", nil, fmt.Errorf("ensure system collections: %w", err)
 	}
 
-	// Check email unique.
-	list, err := a.docDB.ListDocuments(ctx, project.ID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", email)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	existing, err := a.usersRepo.GetByEmail(ctx, project.ID, email)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
-	if len(list.Documents) > 0 {
-		return nil, nil, "", nil, status.Error(codes.AlreadyExists, "email already registered")
-	}
-
-	hash, err := password.Hash(cmd.Password)
-	if err != nil {
-		return nil, nil, "", nil, err
+	if err := users.RequireUniqueEmail(existing); err != nil {
+		return nil, nil, "", nil, mapUserError(err)
 	}
 
 	userID, err := a.generateUserID(ctx, project.ID)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
-	userDoc := databases.Document{
-		ID: userID,
-		Data: map[string]any{
-			"email":          email,
-			"password_hash":  hash,
-			"name":           cmd.Name,
-			"status":         users.StatusActive,
-			"email_verified": false,
-			"labels":         []any{},
-			"prefs":          map[string]any{},
-		},
+	registered, err := users.Register(users.RegisterInput{
+		ID:       userID,
+		Email:    email,
+		Password: cmd.Password,
+		Name:     cmd.Name,
+	})
+	if err != nil {
+		return nil, nil, "", nil, mapUserError(err)
 	}
-	userPerms := []databases.Permission{
-		{Type: "read", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "read", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "admin"},
-	}
-	if _, err := a.docDB.CreateDocument(ctx, project.ID, databases.SystemDatabaseID, "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
-		if errors.Is(err, documentdb.ErrDuplicateKey) {
-			return nil, nil, "", nil, status.Error(codes.AlreadyExists, "email already registered")
+	if err := a.usersRepo.Insert(ctx, project.ID, registered); err != nil {
+		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
+			return nil, nil, "", nil, mapUserError(err)
 		}
 		return nil, nil, "", nil, fmt.Errorf("create user document: %w", err)
 	}
 
-	user := mapUserDoc(&userDoc)
-	return a.finishSignIn(ctx, project.ID, user)
+	return a.finishSignIn(ctx, project.ID, accountUser(registered))
 }
 
 func (a *Account) generateUserID(ctx context.Context, projectID string) (string, error) {
@@ -303,14 +284,11 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 		return nil, nil, "", nil, err
 	}
 
-	list, err := a.docDB.ListDocuments(ctx, project.ID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", email)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	found, err := a.usersRepo.GetByEmail(ctx, project.ID, email)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
-	if len(list.Documents) == 0 {
+	if found == nil {
 		// 用户不存在时对固定哑哈希执行一次 Verify，抹平"不存在"与"密码错误"
 		// 两条路径的响应时序差异（防枚举）。
 		_, _ = password.Verify(cmd.Password, dummyPasswordHash())
@@ -318,19 +296,16 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 		// （R05-P1-5：未注册邮箱连续失败不得触发锁定）。
 		return invalidCredentials()
 	}
-	userDoc := list.Documents[0]
-	hash, _ := userDoc.Data["password_hash"].(string)
-	if ok, _ := password.Verify(cmd.Password, hash); !ok {
+	if ok, _ := password.Verify(cmd.Password, found.PasswordHash); !ok {
 		a.recordLoginFailure(ctx, email, clientInfo.IP)
 		return invalidCredentials()
 	}
 
-	user := mapUserDoc(&userDoc)
-	if !users.CanAuthenticate(user.Status) {
+	if !found.CanAuthenticate() {
 		return nil, nil, "", nil, status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	a.resetLoginThrottle(ctx, email, clientInfo.IP)
-	return a.finishSignIn(ctx, project.ID, user)
+	return a.finishSignIn(ctx, project.ID, accountUser(found))
 }
 
 func (a *Account) checkLoginThrottle(ctx context.Context, email, ip string) error {
@@ -463,14 +438,11 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		if err := a.validateProjectOAuthRedirectURLs(ctx, p.ProjectID, cmd.URL, cmd.URL); err != nil {
 			return nil, err
 		}
-		list, err := a.docDB.ListDocuments(ctx, p.ProjectID, databases.SystemDatabaseID, "users", databases.Query{
-			Queries:  []string{query.BuildEqual("email", email)},
-			PageSize: 1,
-		}, databases.SystemPrincipal)
+		taken, err := a.usersRepo.GetByEmail(ctx, p.ProjectID, email)
 		if err != nil {
 			return nil, err
 		}
-		if len(list.Documents) > 0 && list.Documents[0].ID != p.UserID {
+		if taken != nil && taken.ID != p.UserID {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
 		updates["pending_email"] = email
@@ -581,16 +553,13 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 	if err != nil {
 		return nil, err
 	}
-	// 新邮箱在 token 有效期内可能已被他人注册（并发创建）：复用 ListDocuments
+	// 新邮箱在 token 有效期内可能已被他人注册（并发创建）：GetByEmail
 	// 查重，被占用则 AlreadyExists（token 已被原子消费，不可重试）。
-	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", newEmail)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	taken, err := a.usersRepo.GetByEmail(ctx, projectID, newEmail)
 	if err != nil {
 		return nil, err
 	}
-	if len(list.Documents) > 0 && list.Documents[0].ID != userID {
+	if taken != nil && taken.ID != userID {
 		return nil, status.Error(codes.AlreadyExists, "email already registered")
 	}
 	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
@@ -791,17 +760,49 @@ func (a *Account) requireUser(ctx context.Context) (*shared.Principal, error) {
 }
 
 func (a *Account) ensureUserCanAuthenticate(ctx context.Context, projectID, userID string) error {
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	found, err := a.usersRepo.GetByID(ctx, projectID, userID)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "user lookup failed")
 	}
-	if doc == nil {
+	if found == nil {
 		return status.Error(codes.Unauthenticated, "user not found")
 	}
-	if !users.CanAuthenticate(stringValue(doc.Data["status"])) {
+	if !found.CanAuthenticate() {
 		return status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	return nil
+}
+
+func mapUserError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, users.ErrEmailAlreadyRegistered) {
+		return status.Error(codes.AlreadyExists, err.Error())
+	}
+	if errors.Is(err, users.ErrEmailRequired) ||
+		errors.Is(err, users.ErrUserIDRequired) ||
+		errors.Is(err, users.ErrPasswordTooShort) ||
+		errors.Is(err, users.ErrPasswordTooLong) ||
+		errors.Is(err, users.ErrPasswordWeak) {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	return err
+}
+
+func accountUser(u *users.User) *User {
+	if u == nil {
+		return nil
+	}
+	return &User{
+		ID:            u.ID,
+		Email:         u.Email,
+		Name:          u.Name,
+		Status:        u.Status,
+		EmailVerified: u.EmailVerified,
+		CreatedAt:     u.CreatedAt,
+		UpdatedAt:     u.UpdatedAt,
+	}
 }
 
 func mapSessionDoc(doc *databases.Document) Session {

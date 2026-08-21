@@ -102,25 +102,22 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 		return nil, err
 	}
 	if identity != nil {
-		doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", identity.UserID, databases.SystemPrincipal)
+		found, err := a.usersRepo.GetByID(ctx, projectID, identity.UserID)
 		if err != nil {
 			return nil, err
 		}
-		if doc == nil {
+		if found == nil {
 			return nil, fmt.Errorf("identity references missing user")
 		}
-		return mapUserDoc(doc), nil
+		return accountUser(found), nil
 	}
 
 	if info.Email != "" {
-		list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-			Queries:  []string{query.BuildEqual("email", info.Email)},
-			PageSize: 1,
-		}, databases.SystemPrincipal)
+		taken, err := a.usersRepo.GetByEmail(ctx, projectID, info.Email)
 		if err != nil {
 			return nil, err
 		}
-		if len(list.Documents) > 0 {
+		if taken != nil {
 			return nil, status.Error(codes.FailedPrecondition, "an account with this email already exists; sign in and link the oauth provider")
 		}
 	}
@@ -164,14 +161,11 @@ func (a *Account) linkOAuthIdentity(ctx context.Context, projectID, userID, prov
 		return nil
 	}
 	if strings.TrimSpace(info.Email) != "" {
-		list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-			Queries:  []string{query.BuildEqual("email", info.Email)},
-			PageSize: 1,
-		}, databases.SystemPrincipal)
+		taken, err := a.usersRepo.GetByEmail(ctx, projectID, info.Email)
 		if err != nil {
 			return err
 		}
-		if len(list.Documents) > 0 && list.Documents[0].ID != userID {
+		if taken != nil && taken.ID != userID {
 			return status.Error(codes.AlreadyExists, "oauth email belongs to another account")
 		}
 	}

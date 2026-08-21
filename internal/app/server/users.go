@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -26,10 +27,11 @@ type Users struct {
 	docDB       databases.DocumentDB
 	sessions    domainauth.SessionService
 	db          *clients.Database
+	usersRepo   users.Repository
 }
 
-func NewUsers(projectRepo projects.Repository, docDB databases.DocumentDB, sessions domainauth.SessionService, db *clients.Database) *Users {
-	return &Users{projectRepo: projectRepo, docDB: docDB, sessions: sessions, db: db}
+func NewUsers(projectRepo projects.Repository, docDB databases.DocumentDB, sessions domainauth.SessionService, db *clients.Database, usersRepo users.Repository) *Users {
+	return &Users{projectRepo: projectRepo, docDB: docDB, sessions: sessions, db: db, usersRepo: usersRepo}
 }
 
 func (u *Users) resolveProject(ctx context.Context, projectID string) (*projects.Project, error) {
@@ -94,45 +96,33 @@ func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUser
 		cmd.Status = users.StatusActive
 	}
 
-	list, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", email)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	existing, err := u.usersRepo.GetByEmail(ctx, projectID, email)
 	if err != nil {
 		return nil, err
 	}
-	if len(list.Documents) > 0 {
-		return nil, status.Error(codes.AlreadyExists, "email already registered")
+	if err := users.RequireUniqueEmail(existing); err != nil {
+		return nil, mapUserError(err)
 	}
 
-	hash, err := password.Hash(cmd.Password)
+	registered, err := users.Register(users.RegisterInput{
+		ID:       idgen.UUID().String(),
+		Email:    email,
+		Password: cmd.Password,
+		Name:     cmd.Name,
+		Status:   cmd.Status,
+		Labels:   users.LabelsFromAny(cmd.Labels),
+		Prefs:    cmd.Prefs,
+	})
 	if err != nil {
-		return nil, err
+		return nil, mapUserError(err)
 	}
-
-	userID := idgen.UUID().String()
-	userDoc := databases.Document{
-		ID: userID,
-		Data: map[string]any{
-			"email":          email,
-			"password_hash":  hash,
-			"name":           cmd.Name,
-			"status":         cmd.Status,
-			"email_verified": false,
-			"labels":         []any{},
-			"prefs":          map[string]any{},
-		},
-	}
-	if cmd.Labels != nil {
-		userDoc.Data["labels"] = cmd.Labels
-	}
-	if cmd.Prefs != nil {
-		userDoc.Data["prefs"] = cmd.Prefs
-	}
-	if _, err := u.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userDocumentPermissions(userID), databases.SystemPrincipal); err != nil {
+	if err := u.usersRepo.Insert(ctx, projectID, registered); err != nil {
+		if mapped := mapUserError(err); mapped != err {
+			return nil, mapped
+		}
 		return nil, fmt.Errorf("create user: %w", err)
 	}
-	return &userDoc, nil
+	return userAsDocument(registered), nil
 }
 
 func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, updates map[string]any, principal databases.Principal) (*databases.Document, error) {
@@ -165,17 +155,12 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 			return nil, status.Error(codes.InvalidArgument, "email must not be empty")
 		}
 		// 改邮箱查重（排除自身 userID）：users_email_unique 唯一索引兜底并发冲突。
-		existing, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-			Queries:  []string{query.BuildEqual("email", email), "limit(1)"},
-			PageSize: 1,
-		}, databases.SystemPrincipal)
+		taken, err := u.usersRepo.GetByEmail(ctx, projectID, email)
 		if err != nil {
 			return nil, err
 		}
-		for _, dup := range existing.Documents {
-			if dup.ID != userID {
-				return nil, status.Error(codes.AlreadyExists, "email already registered")
-			}
+		if taken != nil && taken.ID != userID {
+			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
 		updates["email"] = email
 		// 与 UpdateAccount 一致：改邮箱必须重新验证。
@@ -295,18 +280,17 @@ func (u *Users) CreateUserToken(ctx context.Context, projectID, userID string) (
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	found, err := u.usersRepo.GetByID(ctx, projectID, userID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
-	if !users.CanAuthenticate(stringValue(doc.Data["status"])) {
+	if !found.CanAuthenticate() {
 		return nil, status.Error(codes.FailedPrecondition, "user account is not active")
 	}
-	email, _ := doc.Data["email"].(string)
-	bundle, _, err := u.sessions.CreateSessionAndTokens(ctx, projectID, userID, email, "server_token")
+	bundle, _, err := u.sessions.CreateSessionAndTokens(ctx, projectID, userID, found.Email, "server_token")
 	if err != nil {
 		return nil, err
 	}
@@ -453,24 +437,29 @@ func cascadeListAll(ctx context.Context, docDB databases.DocumentDB, projectID, 
 }
 
 func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	return users.NormalizeEmail(email)
 }
 
-func stringValue(v any) string {
-	s, _ := v.(string)
-	return s
-}
-
-func userDocumentPermissions(userID string) []databases.Permission {
-	// users 文档的 keys 只读：UsersService 已改 SystemPrincipal 调 docDB，
-	// end-user 自助路径走 user:<id> owner 权限（安全评审 C1 第 3 层）。
-	return []databases.Permission{
-		{Type: "read", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "read", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "admin"},
+func userAsDocument(u *users.User) *databases.Document {
+	if u == nil {
+		return nil
 	}
+	return &databases.Document{ID: u.ID, Data: u.DocumentData()}
+}
+
+func mapUserError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, users.ErrEmailAlreadyRegistered) {
+		return status.Error(codes.AlreadyExists, err.Error())
+	}
+	if errors.Is(err, users.ErrEmailRequired) ||
+		errors.Is(err, users.ErrUserIDRequired) ||
+		errors.Is(err, users.ErrPasswordTooShort) ||
+		errors.Is(err, users.ErrPasswordTooLong) ||
+		errors.Is(err, users.ErrPasswordWeak) {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	return err
 }

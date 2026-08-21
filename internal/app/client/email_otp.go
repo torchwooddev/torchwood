@@ -9,12 +9,9 @@ import (
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -136,50 +133,40 @@ func (a *Account) CreateEmailOTPSession(ctx context.Context, cmd CreateEmailOTPS
 }
 
 func (a *Account) findOrCreateUserByEmail(ctx context.Context, projectID, email string, markVerified bool) (*User, error) {
-	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", email)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	existing, err := a.usersRepo.GetByEmail(ctx, projectID, email)
 	if err != nil {
 		return nil, err
 	}
-	if len(list.Documents) > 0 {
-		return mapUserDoc(&list.Documents[0]), nil
+	if existing != nil {
+		return accountUser(existing), nil
 	}
 
 	userID, err := a.generateUserID(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
-	userDoc := databases.Document{
-		ID: userID,
-		Data: map[string]any{
-			"email":          email,
-			"password_hash":  "",
-			"name":           emailLocalPart(email),
-			"status":         users.StatusActive,
-			"email_verified": markVerified,
-			"labels":         []any{},
-			"prefs":          map[string]any{},
-		},
+	registered, err := users.Register(users.RegisterInput{
+		ID:            userID,
+		Email:         email,
+		Name:          emailLocalPart(email),
+		EmailVerified: markVerified,
+	})
+	if err != nil {
+		return nil, mapUserError(err)
 	}
-	userPerms := userDocumentPermissions(userID)
-	if _, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
-		if errors.Is(err, documentdb.ErrDuplicateKey) {
-			list, listErr := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-				Queries:  []string{query.BuildEqual("email", email)},
-				PageSize: 1,
-			}, databases.SystemPrincipal)
+	if err := a.usersRepo.Insert(ctx, projectID, registered); err != nil {
+		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
+			existing, listErr := a.usersRepo.GetByEmail(ctx, projectID, email)
 			if listErr != nil {
 				return nil, listErr
 			}
-			if len(list.Documents) > 0 {
-				return mapUserDoc(&list.Documents[0]), nil
+			if existing != nil {
+				return accountUser(existing), nil
 			}
 		}
 		return nil, fmt.Errorf("create user document: %w", err)
 	}
-	return mapUserDoc(&userDoc), nil
+	return accountUser(registered), nil
 }
 
 func (a *Account) finishSignInWithProvider(ctx context.Context, projectID string, user *User, provider string) (*User, *TokenBundle, string, *MFASignInChallenge, error) {
@@ -199,7 +186,7 @@ func (a *Account) finishSignInWithProvider(ctx context.Context, projectID string
 }
 
 func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	return users.NormalizeEmail(email)
 }
 
 // validateEmail 校验邮箱格式与长度（net/mail.ParseAddress + ≤254）。
@@ -219,18 +206,4 @@ func emailLocalPart(email string) string {
 		return local
 	}
 	return email
-}
-
-func userDocumentPermissions(userID string) []databases.Permission {
-	// users 文档的 keys 收窄为只读：UsersService 已改 SystemPrincipal 调 docDB，
-	// end-user 自助路径走 user:<id> owner 权限（安全评审 C1 第 3 层）。
-	return []databases.Permission{
-		{Type: "read", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "read", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "admin"},
-	}
 }

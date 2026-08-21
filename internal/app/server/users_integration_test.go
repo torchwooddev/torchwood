@@ -12,6 +12,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -35,7 +36,7 @@ func newUsersUC(ctx context.Context, t *testing.T) (*Users, databases.DocumentDB
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	cfg := &config.AppConfig{}
 	sessions := auth.NewSessionService(cfg, docDB, documentRoles{}, nil)
-	uc := NewUsers(bunrepo.NewProjectRepository(db), docDB, sessions, db)
+	uc := NewUsers(bunrepo.NewProjectRepository(db), docDB, sessions, db, infrausers.NewDocumentRepository(docDB))
 	return uc, docDB, projectID, cleanup
 }
 

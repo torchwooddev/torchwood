@@ -11,9 +11,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -128,16 +126,13 @@ func (a *Account) CreatePhoneOTPSession(ctx context.Context, cmd CreatePhoneOTPS
 }
 
 func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone string) (*User, error) {
-	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("phone", phone)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	existing, err := a.usersRepo.GetByPhone(ctx, projectID, phone)
 	if err != nil {
 		return nil, err
 	}
-	if len(list.Documents) > 0 {
-		user := mapUserDoc(&list.Documents[0])
-		if verified, _ := list.Documents[0].Data["phone_verified"].(bool); !verified {
+	if existing != nil {
+		user := accountUser(existing)
+		if !existing.PhoneVerified {
 			updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
 				ID:   user.ID,
 				Data: map[string]any{"phone_verified": true},
@@ -153,38 +148,29 @@ func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone 
 	if err != nil {
 		return nil, err
 	}
-	placeholderEmail := phonePlaceholderEmail(phone)
-	userDoc := databases.Document{
-		ID: userID,
-		Data: map[string]any{
-			"email":          placeholderEmail,
-			"password_hash":  "",
-			"phone":          phone,
-			"phone_verified": true,
-			"name":           phone,
-			"status":         users.StatusActive,
-			"email_verified": false,
-			"labels":         []any{},
-			"prefs":          map[string]any{},
-		},
+	registered, err := users.Register(users.RegisterInput{
+		ID:            userID,
+		Email:         phonePlaceholderEmail(phone),
+		Name:          phone,
+		Phone:         phone,
+		PhoneVerified: true,
+	})
+	if err != nil {
+		return nil, mapUserError(err)
 	}
-	userPerms := userDocumentPermissions(userID)
-	if _, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc, userPerms, databases.SystemPrincipal); err != nil {
-		if errors.Is(err, documentdb.ErrDuplicateKey) {
-			list, listErr := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-				Queries:  []string{query.BuildEqual("phone", phone)},
-				PageSize: 1,
-			}, databases.SystemPrincipal)
+	if err := a.usersRepo.Insert(ctx, projectID, registered); err != nil {
+		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
+			existing, listErr := a.usersRepo.GetByPhone(ctx, projectID, phone)
 			if listErr != nil {
 				return nil, listErr
 			}
-			if len(list.Documents) > 0 {
-				return mapUserDoc(&list.Documents[0]), nil
+			if existing != nil {
+				return accountUser(existing), nil
 			}
 		}
 		return nil, fmt.Errorf("create user document: %w", err)
 	}
-	return mapUserDoc(&userDoc), nil
+	return accountUser(registered), nil
 }
 
 func normalizePhone(raw string) (string, error) {

@@ -17,6 +17,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
+	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/query"
@@ -286,6 +287,7 @@ func setupClientGRPC(t *testing.T) (context.Context, *AccountService, *fakeDocDB
 		auth.NewRedisMFAChallengeStore(rdb),
 		auth.NewRedisOneTimeTokenStore(rdb),
 		nil, // auditRepo
+		infrausers.NewDocumentRepository(docDB),
 	)
 	return ctx, NewAccountService(account), docDB, mailer, projectID
 }

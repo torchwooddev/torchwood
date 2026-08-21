@@ -8,7 +8,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/password"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -59,27 +58,22 @@ func (a *Account) CreateRecovery(ctx context.Context, cmd CreateRecoveryCommand)
 		return err
 	}
 
-	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries:  []string{query.BuildEqual("email", email)},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	found, err := a.usersRepo.GetByEmail(ctx, projectID, email)
 	if err != nil {
 		return err
 	}
-	if len(list.Documents) == 0 {
+	if found == nil {
 		return nil
 	}
-	userDoc := list.Documents[0]
-	hash, _ := userDoc.Data["password_hash"].(string)
-	if hash == "" {
+	if found.PasswordHash == "" {
 		return nil
 	}
 
-	secret, expireAt, err := a.tokens.CreateRecoveryToken(ctx, projectID, userDoc.ID, email)
+	secret, expireAt, err := a.tokens.CreateRecoveryToken(ctx, projectID, found.ID, email)
 	if err != nil {
 		return err
 	}
-	link := buildAccountActionURL(cmd.URL, userDoc.ID, secret)
+	link := buildAccountActionURL(cmd.URL, found.ID, secret)
 	subject := "Reset your Torchwood password"
 	body := fmt.Sprintf("Click the link below to reset your password:\n\n%s\n\nThis link expires at %s.", link, expireAt.Format("2006-01-02 15:04 MST"))
 	if err := a.mailer.Send(ctx, email, subject, body); err != nil {
