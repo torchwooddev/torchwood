@@ -1,6 +1,9 @@
 package groups
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 const (
 	StatusPending  = "pending"
@@ -11,6 +14,21 @@ const (
 	RoleAdmin  = "admin"
 	RoleMember = "member"
 )
+
+// Membership 是用户与组的关系。UserID 为空表示待接受的邮箱邀请（库内存 NULL）。
+type Membership struct {
+	ID        string
+	GroupID   string
+	UserID    string
+	Email     string
+	Name      string
+	Roles     []string
+	Status    string
+	InvitedAt time.Time
+	JoinedAt  time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
 
 func ValidateStatus(s string) error {
 	switch s {

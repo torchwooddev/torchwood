@@ -1,5 +1,7 @@
 package auth
 
+import "time"
+
 // OAuth and third-party identity provider identifiers.
 const (
 	ProviderGoogle            = "google"
@@ -19,4 +21,7 @@ type Identity struct {
 	ProviderUID   string
 	ProviderEmail string
 	ProviderData  map[string]any
+	ExpireAt      *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }

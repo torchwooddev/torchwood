@@ -19,15 +19,16 @@ type Bucket struct {
 
 // File represents a stored file (metadata lives in the dynamic document DB).
 type File struct {
-	ID        string
-	ProjectID string
-	BucketID  string
-	Name      string
-	MimeType  string
-	Size      int64
-	Metadata  map[string]string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          string
+	ProjectID   string
+	BucketID    string
+	Name        string
+	MimeType    string
+	Size        int64
+	Metadata    map[string]string
+	OwnerUserID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Usage aggregates storage statistics for a project.
