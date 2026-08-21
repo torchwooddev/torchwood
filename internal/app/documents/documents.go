@@ -21,8 +21,7 @@ type WriteOptions struct {
 }
 
 // Documents 是 Client/Server 共用的文档 CRUD 核：OCC、grant 展开/校验、
-// MapDocumentDBError、系统集合 version 归零。集合守卫、guest 读、owner
-// 默认 ACE、敏感字段过滤、脱敏留在包装层。
+// MapDocumentDBError。集合守卫、guest 读、owner 默认 ACE 留在包装层。
 type Documents struct {
 	docDB databases.DocumentDB
 }
@@ -78,9 +77,6 @@ func (d *Documents) ListDocuments(
 	if err != nil {
 		return nil, 0, "", shared.MapDocumentDBError(err)
 	}
-	for i := range list.Documents {
-		zeroSystemDocumentVersion(projectID, databaseID, collectionID, &list.Documents[i])
-	}
 	return list.Documents, list.TotalCount, list.NextPageToken, nil
 }
 
@@ -96,7 +92,6 @@ func (d *Documents) GetDocument(
 	if doc == nil {
 		return nil, status.Error(codes.NotFound, "document not found")
 	}
-	zeroSystemDocumentVersion(projectID, databaseID, collectionID, doc)
 	return doc, nil
 }
 
@@ -245,13 +240,4 @@ func applyGrant(principal databases.Principal, perms []databases.Permission, all
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return perms, nil
-}
-
-func zeroSystemDocumentVersion(projectID, databaseID, collectionID string, doc *databases.Document) {
-	if doc == nil {
-		return
-	}
-	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
-		doc.Version = 0
-	}
 }

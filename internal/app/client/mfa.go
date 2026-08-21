@@ -2,13 +2,12 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
-	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
@@ -38,14 +37,14 @@ func (a *Account) mfaSignInChallenge(ctx context.Context, projectID string, user
 	if a.mfaChallenges == nil || a.mfa == nil || user == nil {
 		return nil, nil
 	}
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", user.ID, databases.SystemPrincipal)
+	found, err := a.usersRepo.GetByID(ctx, projectID, user.ID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, status.Error(codes.Unauthenticated, "user not found")
 	}
-	factors := parseFactors(doc.Data["factors"])
+	factors := parseFactorsRaw(found.Factors)
 	verified := make([]domainauth.Factor, 0, 1)
 	for _, f := range factors {
 		if f.Status == domainauth.FactorStatusVerified && f.Type == domainauth.FactorTypeTOTP {
@@ -93,15 +92,15 @@ func (a *Account) CreateTOTPFactor(ctx context.Context, projectID, userID, email
 		return nil, "", "", status.Error(codes.PermissionDenied, "cannot create mfa factor for another user")
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
+	found, err := a.usersRepo.GetByID(ctx, p.ProjectID, p.UserID)
 	if err != nil {
 		return nil, "", "", err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, "", "", status.Error(codes.NotFound, "user not found")
 	}
 	if email == "" {
-		email = normalizeEmail(stringValue(doc.Data["email"]))
+		email = normalizeEmail(found.Email)
 	}
 	if email == "" {
 		return nil, "", "", status.Error(codes.FailedPrecondition, "user email cannot be used for mfa")
@@ -140,7 +139,7 @@ func (a *Account) CreateTOTPFactor(ctx context.Context, projectID, userID, email
 		return nil, "", "", err
 	}
 	factors = append(factors, *factor)
-	if _, err := a.saveFactors(ctx, p, factors); err != nil {
+	if err := a.saveFactors(ctx, p, factors); err != nil {
 		return nil, "", "", err
 	}
 	return factor, plainSecret, otpauthURL, nil
@@ -188,7 +187,7 @@ func (a *Account) VerifyTOTPFactor(ctx context.Context, projectID, userID, facto
 	if !factor.CreatedAt.IsZero() && time.Since(factor.CreatedAt) > mfaFactorActivateWindow {
 		// 过期 pending 因子：删除并拒绝。
 		factors = append(factors[:idx], factors[idx+1:]...)
-		if _, err := a.saveFactors(ctx, p, factors); err != nil {
+		if err := a.saveFactors(ctx, p, factors); err != nil {
 			return nil, err
 		}
 		return nil, status.Error(codes.Unauthenticated, "mfa factor activation expired")
@@ -199,7 +198,7 @@ func (a *Account) VerifyTOTPFactor(ctx context.Context, projectID, userID, facto
 	}
 	factor.Status = domainauth.FactorStatusVerified
 	factors[idx] = *factor
-	if _, err := a.saveFactors(ctx, p, factors); err != nil {
+	if err := a.saveFactors(ctx, p, factors); err != nil {
 		return nil, err
 	}
 	factor.Secret = ""
@@ -250,7 +249,7 @@ func (a *Account) DeleteFactor(ctx context.Context, projectID, userID, factorID,
 		}
 	}
 	factors = append(factors[:idx], factors[idx+1:]...)
-	if _, err := a.saveFactors(ctx, p, factors); err != nil {
+	if err := a.saveFactors(ctx, p, factors); err != nil {
 		return err
 	}
 	// 作废该用户未消费的登录挑战，防止删除因子后挑战仍可完成登录。
@@ -288,14 +287,14 @@ func (a *Account) CompleteMFASession(ctx context.Context, projectID, challengeTo
 		return nil, nil, "", status.Error(codes.InvalidArgument, "code is required")
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	found, err := a.usersRepo.GetByID(ctx, projectID, userID)
 	if err != nil {
 		return nil, nil, "", err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, nil, "", status.Error(codes.Unauthenticated, "user not found")
 	}
-	factors := parseFactors(doc.Data["factors"])
+	factors := parseFactorsRaw(found.Factors)
 	var factor *domainauth.Factor
 	for i := range factors {
 		if factors[i].ID == factorID && factors[i].Status == domainauth.FactorStatusVerified {
@@ -310,8 +309,8 @@ func (a *Account) CompleteMFASession(ctx context.Context, projectID, challengeTo
 		return nil, nil, "", err
 	}
 
-	user := mapUserDoc(doc)
-	if !users.CanAuthenticate(stringValue(doc.Data["status"])) {
+	user := accountUser(found)
+	if !found.CanAuthenticate() {
 		return nil, nil, "", status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	tokens, cookie, err := a.sessions.CreateSessionAndTokens(ctx, projectID, userID, user.Email, domainauth.ProviderMFA)
@@ -323,27 +322,39 @@ func (a *Account) CompleteMFASession(ctx context.Context, projectID, challengeTo
 
 // loadFactors 读取用户文档中的 factors JSON 数组。
 func (a *Account) loadFactors(ctx context.Context, p *shared.Principal) ([]domainauth.Factor, error) {
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
+	found, err := a.usersRepo.GetByID(ctx, p.ProjectID, p.UserID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
-	return parseFactors(doc.Data["factors"]), nil
+	return parseFactorsRaw(found.Factors), nil
 }
 
-// saveFactors 把因子列表写回用户文档（读-改-写；UpdateDocument 失败时调用方
-// 必须放弃内存状态，由本函数原样返回错误）。
-func (a *Account) saveFactors(ctx context.Context, p *shared.Principal, factors []domainauth.Factor) (*databases.Document, error) {
-	updated, err := a.docDB.UpdateDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   p.UserID,
-		Data: map[string]any{"factors": factorDocs(factors)},
-	}, nil), databases.Principal{Roles: p.Roles})
+func (a *Account) saveFactors(ctx context.Context, p *shared.Principal, factors []domainauth.Factor) error {
+	raw, err := json.Marshal(factorDocs(factors))
 	if err != nil {
-		return nil, fmt.Errorf("update mfa factors: %w", err)
+		return fmt.Errorf("update mfa factors: %w", err)
 	}
-	return &updated, nil
+	err = a.usersRepo.UpdateFactors(ctx, p.ProjectID, p.UserID, func(json.RawMessage) (json.RawMessage, error) {
+		return raw, nil
+	})
+	if err != nil {
+		return fmt.Errorf("update mfa factors: %w", err)
+	}
+	return nil
+}
+
+func parseFactorsRaw(raw json.RawMessage) []domainauth.Factor {
+	if len(raw) == 0 {
+		return nil
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil
+	}
+	return parseFactors(decoded)
 }
 
 func parseFactors(raw any) []domainauth.Factor {

@@ -31,7 +31,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	account := NewTestAccount(cfg, projectRepo, docDB)
+	account := NewTestAccount(cfg, projectRepo, docDB, db)
 	user, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "sessions@torchwood.local",
@@ -49,6 +49,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	_ = tokens2
 
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,
@@ -83,6 +84,7 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	require.NotEmpty(t, otherSessionID)
 
 	deleteCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		SessionID: otherSessionID,

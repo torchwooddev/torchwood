@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
@@ -44,11 +45,19 @@ func newUploadsUC(t *testing.T) (context.Context, *Storage, string, *miniredis.M
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	usersRepo := bunrepo.NewUserRepository(db)
+	for _, u := range []users.User{
+		{ID: "user-1", Email: "user-1@torchwood.local", Status: users.StatusActive},
+		{ID: "user-2", Email: "user-2@torchwood.local", Status: users.StatusActive},
+	} {
+		uu := u
+		require.NoError(t, usersRepo.Insert(ctx, projectID, &uu))
+	}
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
 	mr, upStore := newTestUploadSessionStore(t)
-	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, upStore)
+	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, upStore, bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	return ctx, uc, projectID, mr, store
 }
 

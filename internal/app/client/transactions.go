@@ -155,7 +155,6 @@ func (t *Transactions) prepareOp(projectID, databaseID string, principal databas
 			if len(op.Permissions) == 0 {
 				op.Permissions = ownerDocumentPermissions(p.UserID)
 			}
-			op.Data = filterClientProtectedFields(op.Data)
 			if len(op.Data) == 0 {
 				return op, status.Error(codes.InvalidArgument, "no updatable fields supplied")
 			}
@@ -170,7 +169,6 @@ func (t *Transactions) prepareOp(projectID, databaseID string, principal databas
 			if len(op.Data) == 0 && len(op.Permissions) == 0 && len(op.Increment) == 0 {
 				return op, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
 			}
-			op.Data = filterClientProtectedFields(op.Data)
 			if len(op.Data) == 0 && len(op.Permissions) == 0 && len(op.Increment) == 0 {
 				return op, status.Error(codes.InvalidArgument, "no updatable fields supplied")
 			}
@@ -189,17 +187,4 @@ func (t *Transactions) prepareOp(projectID, databaseID string, principal databas
 		}
 		return op, nil
 	}
-}
-
-// filterClientProtectedFields 剔除客户端不可直写的敏感字段
-// （与 client.Databases.UpdateDocument 的过滤清单一致）。
-func filterClientProtectedFields(data map[string]any) map[string]any {
-	filtered := make(map[string]any, len(data))
-	for k, v := range data {
-		if _, ok := clientDocumentUpdateProtectedFields[k]; ok {
-			continue
-		}
-		filtered[k] = v
-	}
-	return filtered
 }

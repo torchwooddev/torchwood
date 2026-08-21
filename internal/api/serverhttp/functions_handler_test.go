@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	domainusers "github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -180,7 +182,48 @@ func newFunctionsHandler(t *testing.T, validator *auth.Validator) *FunctionsHand
 }
 
 func newFunctionsValidator(docDB *functionsDocDB) *auth.Validator {
-	return auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, docDB, nil)
+	users := &functionsUserRepo{users: map[string]*domainusers.User{}}
+	if docDB != nil {
+		for _, byUser := range docDB.users {
+			for id := range byUser {
+				users.users[id] = &domainusers.User{ID: id, Status: domainusers.StatusActive}
+			}
+		}
+	}
+	return auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, users, nil)
+}
+
+type functionsUserRepo struct {
+	users map[string]*domainusers.User
+}
+
+func (r *functionsUserRepo) GetByEmail(context.Context, string, string) (*domainusers.User, error) {
+	return nil, nil
+}
+func (r *functionsUserRepo) GetByID(_ context.Context, _, id string) (*domainusers.User, error) {
+	if r.users == nil {
+		return nil, nil
+	}
+	u := r.users[id]
+	if u == nil {
+		return nil, nil
+	}
+	cp := *u
+	return &cp, nil
+}
+func (r *functionsUserRepo) GetByPhone(context.Context, string, string) (*domainusers.User, error) {
+	return nil, nil
+}
+func (r *functionsUserRepo) Insert(context.Context, string, *domainusers.User) error { return nil }
+func (r *functionsUserRepo) Update(context.Context, string, string, map[string]any) error {
+	return nil
+}
+func (r *functionsUserRepo) Delete(context.Context, string, string) error { return nil }
+func (r *functionsUserRepo) List(context.Context, string, domainusers.ListFilter) (*domainusers.ListResult, error) {
+	return &domainusers.ListResult{}, nil
+}
+func (r *functionsUserRepo) UpdateFactors(context.Context, string, string, func(json.RawMessage) (json.RawMessage, error)) error {
+	return nil
 }
 
 // TestFunctionsHandler_RejectsEndUserDeploymentUpload（F2-3）：端用户 Bearer JWT
@@ -253,7 +296,7 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 	admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
 	validatorWithAdmin := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
 		admins: map[string]*projects.Admin{admin.ID: admin},
-	}, &functionsAdminProjectRepo{}, nil, &functionsDocDB{}, nil)
+	}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 	hAdmin := newFunctionsHandler(t, validatorWithAdmin)
 
 	adminToken := functionsSignToken(t, jwtparser.Claims{
@@ -282,7 +325,7 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 				Enabled:   true,
 			},
 		}}
-		v := auth.NewValidator(functionsTestConfig(), repo, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, &functionsDocDB{}, nil)
+		v := auth.NewValidator(functionsTestConfig(), repo, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h := newFunctionsHandler(t, v)
 		r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
 		r.Header.Set("X-Api-Key", "fn-key-ok")
@@ -300,7 +343,7 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 				Enabled:   true,
 			},
 		}}
-		v := auth.NewValidator(functionsTestConfig(), repo, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, &functionsDocDB{}, nil)
+		v := auth.NewValidator(functionsTestConfig(), repo, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h := newFunctionsHandler(t, v)
 		r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
 		r.Header.Set("X-Api-Key", "fn-key-bad")
@@ -430,7 +473,7 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 		uc := appfunctions.NewFunctions(functionsTestConfig(), executor, repo, nil)
 		validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
 			admins: map[string]*projects.Admin{admin.ID: admin},
-		}, &functionsAdminProjectRepo{}, nil, &functionsDocDB{}, nil)
+		}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil)
 		require.NoError(t, err)
 
@@ -467,7 +510,7 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 					ID: "key-1", ProjectID: projectID, Scopes: []string{"functions.write"}, Enabled: true,
 				},
 			},
-		}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, &functionsDocDB{}, nil)
+		}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil)
 		require.NoError(t, err)
 

@@ -28,7 +28,7 @@ func TestAccount_ResolveWeChatUser_CrossProviderLink(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
-	account := NewTestAccount(cfg, projectRepo, docDB)
+	account := NewTestAccount(cfg, projectRepo, docDB, db)
 
 	unionID := "union-cross-link"
 	webInfo := &domainauth.OAuthUserInfo{
@@ -78,7 +78,7 @@ func TestAccount_CreateWeChatMiniProgramSession(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	oauthRepo := bunrepo.NewOAuthProviderRepository(db, cfg)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithDeps(cfg, projectRepo, oauthRepo, docDB, nil, nil, nil)
+	account := NewTestAccountWithDeps(cfg, projectRepo, oauthRepo, docDB, db, nil, nil, nil)
 
 	_, _, _, _, err = account.CreateWeChatMiniProgramSession(ctx, CreateWeChatMiniProgramSessionCommand{
 		ProjectID: projectID,

@@ -45,14 +45,14 @@ func TestGetDocument_NotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
-func TestListDocuments_ZerosSystemCollectionVersion(t *testing.T) {
+func TestListDocuments_KeepsDocumentVersion(t *testing.T) {
 	rec := newMemDocDB()
 	rec.docs["users/u1"] = databases.Document{ID: "u1", Version: 7, Data: map[string]any{"email": "a@b.c"}}
 	core := New(rec)
-	list, total, _, err := core.ListDocuments(context.Background(), "p", databases.SystemDatabaseID, "users", databases.Query{}, databases.SystemPrincipal)
+	list, total, _, err := core.ListDocuments(context.Background(), "p", "app", "users", databases.Query{}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
-	require.Equal(t, int64(0), list[0].Version)
+	require.Equal(t, int64(7), list[0].Version)
 }
 
 func TestUpsertDocument_ConflictColumnsRequired(t *testing.T) {

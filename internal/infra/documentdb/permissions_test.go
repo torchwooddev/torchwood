@@ -20,7 +20,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -75,7 +75,7 @@ func TestPermissions_CollectionLevelFallback(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -113,7 +113,7 @@ func TestPermissions_DocumentLevelOverridesCollection(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -154,7 +154,7 @@ func TestPermissions_CreateCheck(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -187,7 +187,7 @@ func TestPermissions_KeysNotBypass(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -227,7 +227,7 @@ func TestPermissions_PlatformAdminBypass(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -351,7 +351,7 @@ func TestPermissions_SystemPrincipalBypass(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -382,7 +382,7 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -434,7 +434,7 @@ func TestCleanup_KeysWritePermsLegacyProject(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -516,7 +516,7 @@ func TestPermissions_ListORFallback(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -578,7 +578,7 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)

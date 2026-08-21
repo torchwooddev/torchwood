@@ -3,11 +3,14 @@ package infra
 import (
 	"github.com/google/wire"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	domaingroups "github.com/torchwooddev/torchwood/internal/domain/groups"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
+	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	domainusers "github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	infrabilling "github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/bun"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	infraevents "github.com/torchwooddev/torchwood/internal/infra/events"
@@ -20,7 +23,6 @@ import (
 	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 )
 
 var ProviderSet = wire.NewSet(
@@ -58,8 +60,13 @@ var ProviderSet = wire.NewSet(
 
 	bun.ProviderSet,
 	documentdb.ProviderSet,
-	infrausers.NewDocumentRepository,
-	wire.Bind(new(domainusers.Repository), new(*infrausers.DocumentRepository)),
+	wire.Bind(new(domainusers.Repository), new(*bunrepo.UserRepository)),
+	wire.Bind(new(domainauth.SessionRepository), new(*bunrepo.SessionRepository)),
+	wire.Bind(new(domainauth.IdentityRepository), new(*bunrepo.IdentityRepository)),
+	wire.Bind(new(domaingroups.GroupRepository), new(*bunrepo.GroupRepository)),
+	wire.Bind(new(domaingroups.MembershipRepository), new(*bunrepo.MembershipRepository)),
+	wire.Bind(new(domainstorage.BucketRepository), new(*bunrepo.BucketRepository)),
+	wire.Bind(new(domainstorage.FileRepository), new(*bunrepo.FileRepository)),
 	infraevents.ProviderSet,
 	infrarealtime.ProviderSet,
 	infrastorage.ProviderSet,

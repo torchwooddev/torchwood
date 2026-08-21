@@ -18,14 +18,12 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
-	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"github.com/torchwooddev/torchwood/pkg/password"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -36,6 +34,8 @@ type Account struct {
 	oauthProviders projects.OAuthProviderRepository
 	docDB          databases.DocumentDB
 	usersRepo      users.Repository
+	identities     domainauth.IdentityRepository
+	sessionRepo    domainauth.SessionRepository
 	sessions       domainauth.SessionService
 	otp            domainauth.OTPChallengeStore
 	oauthState     domainauth.OAuthStateStore
@@ -74,6 +74,8 @@ func NewAccount(
 	oneTimeTokens domainauth.OneTimeTokenStore,
 	auditRepo audit.Repository,
 	usersRepo users.Repository,
+	identities domainauth.IdentityRepository,
+	sessionRepo domainauth.SessionRepository,
 ) *Account {
 	return &Account{
 		cfg:            cfg,
@@ -81,6 +83,8 @@ func NewAccount(
 		oauthProviders: oauthProviders,
 		docDB:          docDB,
 		usersRepo:      usersRepo,
+		identities:     identities,
+		sessionRepo:    sessionRepo,
 		sessions:       sessions,
 		otp:            otp,
 		oauthState:     oauthState,
@@ -334,14 +338,7 @@ func (a *Account) Me(ctx context.Context) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
-	if err != nil {
-		return nil, err
-	}
-	if doc == nil {
-		return nil, status.Error(codes.NotFound, "user not found")
-	}
-	return mapUserDoc(doc), nil
+	return a.requireAccountUser(ctx, p.ProjectID, p.UserID)
 }
 
 func (a *Account) SignOut(ctx context.Context) error {
@@ -349,7 +346,10 @@ func (a *Account) SignOut(ctx context.Context) error {
 	if !ok || p.SessionID == "" {
 		return nil
 	}
-	return a.docDB.DeleteDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "sessions", p.SessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
+	if a.sessionRepo == nil {
+		return nil
+	}
+	return a.sessionRepo.Delete(ctx, p.ProjectID, p.SessionID)
 }
 
 func (a *Account) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*TokenBundle, string, error) {
@@ -394,8 +394,9 @@ func (a *Account) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*T
 	case domainauth.RotateOK:
 		return a.sessions.IssueTokensWithRefreshID(ctx, projectID, claims.UserID, claims.Username, claims.SessionID, newRefreshTokenID)
 	case domainauth.RotateMismatch:
-		// 旧 refresh token 被再次使用：判定为重用，删除会话使该会话全部 token 立即失效。
-		_ = a.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", claims.SessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
+		if a.sessionRepo != nil {
+			_ = a.sessionRepo.Delete(ctx, projectID, claims.SessionID)
+		}
 		return nil, "", status.Error(codes.Unauthenticated, "refresh token reuse detected")
 	default: // RotateMissing
 		return nil, "", status.Error(codes.Unauthenticated, "session expired")
@@ -407,11 +408,11 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	if err != nil {
 		return nil, err
 	}
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
+	found, err := a.usersRepo.GetByID(ctx, p.ProjectID, p.UserID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
 
@@ -419,8 +420,8 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	if cmd.Name != "" {
 		updates["name"] = cmd.Name
 	}
-	hash, _ := doc.Data["password_hash"].(string)
-	oldEmail := normalizeEmail(stringValue(doc.Data["email"]))
+	hash := found.PasswordHash
+	oldEmail := normalizeEmail(found.Email)
 	emailChanging := false
 	if email := normalizeEmail(cmd.Email); email != "" && email != oldEmail {
 		if err := validateEmail(email); err != nil {
@@ -469,7 +470,7 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		}
 	}
 	if len(updates) == 0 {
-		return mapUserDoc(doc), nil
+		return accountUser(found), nil
 	}
 
 	// 先撤会话、后提交：撤会话失败即返回，无"密码已改但旧会话仍存活"窗口。
@@ -506,15 +507,15 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		}
 	}
 
-	updated, err := a.docDB.UpdateDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   p.UserID,
-		Data: updates,
-	}, nil), databases.Principal{Roles: p.Roles})
-	if err != nil {
-		if errors.Is(err, documentdb.ErrDuplicateKey) {
+	if err := a.usersRepo.Update(ctx, p.ProjectID, p.UserID, updates); err != nil {
+		if errors.Is(err, users.ErrEmailAlreadyRegistered) || errors.Is(err, documentdb.ErrDuplicateKey) {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
 		return nil, fmt.Errorf("update account: %w", err)
+	}
+	updated, err := a.requireAccountUser(ctx, p.ProjectID, p.UserID)
+	if err != nil {
+		return nil, err
 	}
 	if emailChanging && oldEmail != "" && a.mailer != nil {
 		subject := "Your Torchwood email address is being changed"
@@ -523,7 +524,7 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 			slog.Warn("email change notification failed", "user_id", p.UserID, "error", err)
 		}
 	}
-	return mapUserDoc(&updated), nil
+	return updated, nil
 }
 
 // ConfirmEmailChange 消费 email_change 一次性 token（GETDEL 原子）并校验新
@@ -562,33 +563,23 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 	if taken != nil && taken.ID != userID {
 		return nil, status.Error(codes.AlreadyExists, "email already registered")
 	}
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
-	if err != nil {
+	if _, err := a.requireAccountUser(ctx, projectID, userID); err != nil {
 		return nil, err
 	}
-	if doc == nil {
-		return nil, status.Error(codes.NotFound, "user not found")
-	}
-	// 先撤会话、后提交：撤会话失败即返回，无"邮箱已改但旧会话仍存活"窗口。
 	if err := a.sessions.DeleteSessionsByUser(ctx, projectID, userID); err != nil {
 		return nil, fmt.Errorf("delete sessions after email change: %w", err)
 	}
-	updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID: userID,
-		Data: map[string]any{
-			"email":          newEmail,
-			"pending_email":  nil,
-			"email_verified": true,
-		},
-	}, nil), databases.SystemPrincipal)
-	if err != nil {
-		// 查重与写入之间存在竞态窗口（email 唯一索引兜底）。
-		if errors.Is(err, documentdb.ErrDuplicateKey) {
+	if err := a.usersRepo.Update(ctx, projectID, userID, map[string]any{
+		"email":          newEmail,
+		"pending_email":  "",
+		"email_verified": true,
+	}); err != nil {
+		if errors.Is(err, users.ErrEmailAlreadyRegistered) || errors.Is(err, documentdb.ErrDuplicateKey) {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
 		return nil, fmt.Errorf("confirm email change: %w", err)
 	}
-	return mapUserDoc(&updated), nil
+	return a.requireAccountUser(ctx, projectID, userID)
 }
 
 // ListSessions 循环分页拉取全部会话（PageSize=1000，直至 NextPageToken 空），
@@ -598,27 +589,17 @@ func (a *Account) ListSessions(ctx context.Context) ([]Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Session, 0, 16)
-	pageToken := ""
-	for {
-		list, err := a.docDB.ListDocuments(ctx, p.ProjectID, databases.SystemDatabaseID, "sessions", databases.Query{
-			Queries:   []string{query.BuildEqual("user_id", p.UserID)},
-			PageSize:  1000,
-			PageToken: pageToken,
-		}, databases.Principal{Roles: p.Roles})
-		if err != nil {
-			return nil, err
-		}
-		for i := range list.Documents {
-			s := mapSessionDoc(&list.Documents[i])
-			s.Current = s.ID == p.SessionID
-			out = append(out, s)
-		}
-		if list.NextPageToken == "" {
-			return out, nil
-		}
-		pageToken = list.NextPageToken
+	list, err := a.sessionRepo.ListByUser(ctx, p.ProjectID, p.UserID)
+	if err != nil {
+		return nil, err
 	}
+	out := make([]Session, 0, len(list))
+	for i := range list {
+		s := mapDomainSession(&list[i])
+		s.Current = s.ID == p.SessionID
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 func (a *Account) DeleteSession(ctx context.Context, sessionID string) error {
@@ -660,17 +641,17 @@ func (a *Account) GetPrefs(ctx context.Context) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
+	found, err := a.usersRepo.GetByID(ctx, p.ProjectID, p.UserID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
-	if prefs, ok := doc.Data["prefs"].(map[string]any); ok {
-		return prefs, nil
+	if found.Prefs == nil {
+		return map[string]any{}, nil
 	}
-	return map[string]any{}, nil
+	return found.Prefs, nil
 }
 
 func (a *Account) UpdatePrefs(ctx context.Context, prefs map[string]any) (map[string]any, error) {
@@ -684,17 +665,17 @@ func (a *Account) UpdatePrefs(ctx context.Context, prefs map[string]any) (map[st
 	if err := validatePrefs(prefs); err != nil {
 		return nil, err
 	}
-	updated, err := a.docDB.UpdateDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   p.UserID,
-		Data: map[string]any{"prefs": prefs},
-	}, nil), databases.Principal{Roles: p.Roles})
-	if err != nil {
+	if err := a.usersRepo.Update(ctx, p.ProjectID, p.UserID, map[string]any{"prefs": prefs}); err != nil {
 		return nil, fmt.Errorf("update prefs: %w", err)
 	}
-	if out, ok := updated.Data["prefs"].(map[string]any); ok {
-		return out, nil
+	found, err := a.usersRepo.GetByID(ctx, p.ProjectID, p.UserID)
+	if err != nil {
+		return nil, err
 	}
-	return map[string]any{}, nil
+	if found == nil || found.Prefs == nil {
+		return map[string]any{}, nil
+	}
+	return found.Prefs, nil
 }
 
 // prefs 大小与嵌套深度上限。
@@ -738,17 +719,28 @@ func prefsDepth(v any, depth int) int {
 }
 
 func (a *Account) deleteUserSession(ctx context.Context, p *shared.Principal, sessionID string) error {
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "sessions", sessionID, databases.Principal{Roles: p.Roles})
+	sess, err := a.sessionRepo.GetByID(ctx, p.ProjectID, sessionID)
 	if err != nil {
 		return err
 	}
-	if doc == nil {
+	if sess == nil {
 		return status.Error(codes.NotFound, "session not found")
 	}
-	if uid, _ := doc.Data["user_id"].(string); uid != p.UserID {
+	if sess.UserID != p.UserID {
 		return status.Error(codes.PermissionDenied, "cannot delete another user's session")
 	}
-	return a.docDB.DeleteDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "sessions", sessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
+	return a.sessionRepo.Delete(ctx, p.ProjectID, sessionID)
+}
+
+func (a *Account) requireAccountUser(ctx context.Context, projectID, userID string) (*User, error) {
+	found, err := a.usersRepo.GetByID(ctx, projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if found == nil {
+		return nil, status.Error(codes.NotFound, "user not found")
+	}
+	return accountUser(found), nil
 }
 
 func (a *Account) requireUser(ctx context.Context) (*shared.Principal, error) {
@@ -805,38 +797,18 @@ func accountUser(u *users.User) *User {
 	}
 }
 
-func mapSessionDoc(doc *databases.Document) Session {
-	if doc == nil {
+func mapDomainSession(s *domainauth.Session) Session {
+	if s == nil {
 		return Session{}
 	}
-	s := Session{
-		ID:        doc.ID,
-		UserID:    stringValue(doc.Data["user_id"]),
-		Provider:  stringValue(doc.Data["provider"]),
-		UserAgent: stringValue(doc.Data["user_agent"]),
-		IP:        stringValue(doc.Data["ip"]),
-		CreatedAt: doc.CreatedAt,
-	}
-	if expireAtRaw, ok := doc.Data["expire_at"]; ok {
-		if expireAt, err := auth.ParseSessionTime(expireAtRaw); err == nil {
-			s.ExpireAt = expireAt
-		}
-	}
-	return s
-}
-
-func mapUserDoc(doc *databases.Document) *User {
-	if doc == nil {
-		return nil
-	}
-	return &User{
-		ID:            doc.ID,
-		Email:         stringValue(doc.Data["email"]),
-		Name:          stringValue(doc.Data["name"]),
-		Status:        stringValue(doc.Data["status"]),
-		EmailVerified: boolValue(doc.Data["email_verified"]),
-		CreatedAt:     doc.CreatedAt,
-		UpdatedAt:     doc.UpdatedAt,
+	return Session{
+		ID:        s.ID,
+		UserID:    s.UserID,
+		Provider:  s.Provider,
+		UserAgent: s.UserAgent,
+		IP:        s.IP,
+		ExpireAt:  s.ExpireAt,
+		CreatedAt: s.CreatedAt,
 	}
 }
 

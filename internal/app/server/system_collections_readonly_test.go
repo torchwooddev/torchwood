@@ -35,8 +35,7 @@ func TestSystemCollections_IsSystemFlag(t *testing.T) {
 	for _, id := range []string{"users", "sessions", "identities", "groups", "memberships", "buckets", "files"} {
 		coll, err := docDB.GetCollection(ctx, projectID, databases.SystemDatabaseID, id)
 		require.NoError(t, err)
-		require.NotNil(t, coll)
-		require.True(t, coll.IsSystem, "collection %s should be marked is_system", id)
+		require.Nil(t, coll, "cut 后 catalog 无系统集合 %s", id)
 
 		_, err = uc.GetCollection(ctx, projectID, databases.SystemDatabaseID, id)
 		require.Equal(t, codes.InvalidArgument, status.Code(err), "Databases API 不得暴露 sentinel")
@@ -127,16 +126,7 @@ func TestSystemCollections_DocumentAPIRejectsSentinel(t *testing.T) {
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 
-	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Document{
-		ID:   "groups-1",
-		Data: map[string]any{"name": "groups one"},
-	}, nil, databases.SystemPrincipal)
-	require.NoError(t, err)
-	got, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", "groups-1", databases.SystemPrincipal)
-	require.NoError(t, err)
-	require.Equal(t, "groups one", got.Data["name"])
-
-	_, _, _, err = uc.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{}, keysPrincipal)
+	_, _, _, err := uc.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{}, keysPrincipal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = uc.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", "user-1", keysPrincipal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))

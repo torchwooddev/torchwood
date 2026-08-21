@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/password"
 	"google.golang.org/grpc/codes"
@@ -109,26 +108,17 @@ func (a *Account) UpdateRecovery(ctx context.Context, cmd UpdateRecoveryCommand)
 		return err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
-	if err != nil {
+	if _, err := a.requireAccountUser(ctx, projectID, userID); err != nil {
 		return err
-	}
-	if doc == nil {
-		return status.Error(codes.NotFound, "user not found")
 	}
 	hash, err := password.Hash(passwordRaw)
 	if err != nil {
 		return err
 	}
-	// R05-P1-3：先撤会话再提交新密码；撤会话失败时密码保持原样，避免
-	// "密码已改但旧会话仍存活"（重放/劫持窗口）。
 	if err := a.sessions.DeleteSessionsByUser(ctx, projectID, userID); err != nil {
 		return fmt.Errorf("delete sessions after password reset: %w", err)
 	}
-	if _, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   userID,
-		Data: map[string]any{"password_hash": hash},
-	}, nil), databases.SystemPrincipal); err != nil {
+	if err := a.usersRepo.Update(ctx, projectID, userID, map[string]any{"password_hash": hash}); err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
 	return nil

@@ -17,7 +17,7 @@ func TestUsers_CreateUser_UsesUserRepository(t *testing.T) {
 	t.Parallel()
 
 	repo := newRecordingUserRepo()
-	uc := NewUsers(fakeProjectRepo{}, usersCollectionGuardDocDB{}, nil, nil, repo)
+	uc := NewUsers(fakeProjectRepo{}, usersCollectionGuardDocDB{}, nil, nil, repo, nil, nil, nil)
 	ctx := platformAdminCtx(context.Background())
 
 	doc, err := uc.CreateUser(ctx, "proj-1", CreateUserCommand{

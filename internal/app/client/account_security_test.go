@@ -40,9 +40,9 @@ func setupAccountSecurity(t *testing.T, withRedis bool) (context.Context, *Accou
 		t.Cleanup(mr.Close)
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		t.Cleanup(func() { _ = rdb.Close() })
-		account = NewTestAccountWithRedis(securityTestConfig(), projectRepo, docDB, rdb)
+		account = NewTestAccountWithRedis(securityTestConfig(), projectRepo, docDB, db, rdb)
 	} else {
-		account = NewTestAccount(securityTestConfig(), projectRepo, docDB)
+		account = NewTestAccount(securityTestConfig(), projectRepo, docDB, db)
 	}
 	return ctx, account, projectID, ""
 }
@@ -63,6 +63,7 @@ func TestAccount_UpdateEmailRequiresOldPasswordAndStages(t *testing.T) {
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "email-change@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -130,6 +131,7 @@ func TestAccount_AnonymousUpgradeSetsPasswordWithoutOldPassword(t *testing.T) {
 	require.NoError(t, err)
 
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    anon.ID,
 		Email:     anon.Email,
@@ -172,6 +174,7 @@ func TestAccount_UpdatePrefsLimits(t *testing.T) {
 	})
 	require.NoError(t, err)
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,

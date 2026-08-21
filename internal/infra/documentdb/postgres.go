@@ -1433,8 +1433,14 @@ func validColumnName(name string) bool {
 }
 
 func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projectID string, internalID int64) error {
+	ready, err := p.systemTablesReady(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if ready {
+		return nil
+	}
 	if internalID == 0 {
-		var err error
 		internalID, err = p.resolveInternalID(ctx, projectID)
 		if err != nil {
 			return err
@@ -1442,6 +1448,13 @@ func (p *postgresDocumentDB) EnsureSystemCollections(ctx context.Context, projec
 	}
 	if err := p.EnsureCatalog(ctx, projectID); err != nil {
 		return err
+	}
+	ready, err = p.systemTablesReady(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if ready {
+		return nil
 	}
 	dbID := ident.ProjectDataPlaneID
 	schema, err := ident.ProjectSchemaName(projectID)
@@ -1581,8 +1594,59 @@ func mapIdentError(err error) error {
 }
 
 // EnsureCatalog 对项目数据面执行 projectschema.Apply。Catalog 读路径不得调用。
+// sys_users 仍在时跳过 Apply，避免 expand 测试 / 未 cut 项目被 CreateCollection 顺带 000009。
 func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string) error {
+	staging, err := p.systemTablesStaging(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if staging {
+		return nil
+	}
 	return mapIdentError(projectschema.Apply(ctx, p.db, projectID))
+}
+
+// systemTablesReady 探测最终静态 users（有 id、无 _id）。必须在 ensureSchemaAndPerms / CreateCollection 之前调用。
+func (p *postgresDocumentDB) systemTablesReady(ctx context.Context, projectID string) (bool, error) {
+	schema, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		return false, mapIdentError(err)
+	}
+	var hasID, hasDocID bool
+	err = p.conn(ctx).QueryRowContext(ctx, `
+SELECT
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = ? AND table_name = 'users' AND column_name = 'id'
+  ),
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = ? AND table_name = 'users' AND column_name = '_id'
+  )
+`, schema, schema).Scan(&hasID, &hasDocID)
+	if err != nil {
+		return false, err
+	}
+	return hasID && !hasDocID, nil
+}
+
+// systemTablesStaging 探测 000008 尚未 cut：sys_users 仍在。Ensure 不得 Apply 000009。
+func (p *postgresDocumentDB) systemTablesStaging(ctx context.Context, projectID string) (bool, error) {
+	schema, err := ident.ProjectSchemaName(projectID)
+	if err != nil {
+		return false, mapIdentError(err)
+	}
+	var has bool
+	err = p.conn(ctx).QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM information_schema.tables
+  WHERE table_schema = ? AND table_name = 'sys_users'
+)
+`, schema).Scan(&has)
+	if err != nil {
+		return false, err
+	}
+	return has, nil
 }
 
 func (p *postgresDocumentDB) catalogIdent(projectID string) (bun.Ident, error) {

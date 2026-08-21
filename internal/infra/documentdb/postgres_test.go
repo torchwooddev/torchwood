@@ -27,7 +27,7 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -107,7 +107,7 @@ func TestPostgresDocumentDatabase_UpsertDocument(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -171,7 +171,7 @@ func TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected(t *
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -233,7 +233,7 @@ func TestPostgresDocumentDatabase_UpsertDocument_ConcurrentRace(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -294,7 +294,7 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -349,32 +349,19 @@ func TestEnsureSystemCollections_MultipleProjects(t *testing.T) {
 
 	docDB := NewPostgresDocumentDB(db, nil)
 
-	projectA, internalA, cleanupA := testutil.CreateTestProject(ctx, db)
+	projectA, internalA, cleanupA := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanupA()
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectA, internalA))
 
-	// Second project must use a unique name (projects.name is unique).
-	projectB := &model.Project{
-		ID:        "testprojectb",
-		Name:      "Test Project B",
-		Status:    "active",
-		Settings:  map[string]any{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	_, err := db.NewInsert().Model(projectB).Exec(ctx)
-	require.NoError(t, err)
-	defer func() { _, _ = db.NewDelete().Model((*model.Project)(nil)).Where("id = ?", projectB.ID).Exec(ctx) }()
-	var internalB int64
-	require.NoError(t, db.NewSelect().Model((*model.Project)(nil)).Column("internal_id").Where("id = ?", projectB.ID).Scan(ctx, &internalB))
-
-	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectB.ID, internalB))
+	projectB, internalB, cleanupB := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanupB()
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectB, internalB))
 
 	collA, err := docDB.GetCollection(ctx, projectA, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.NotNil(t, collA)
 
-	collB, err := docDB.GetCollection(ctx, projectB.ID, databases.SystemDatabaseID, "users")
+	collB, err := docDB.GetCollection(ctx, projectB, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.NotNil(t, collB)
 }
@@ -398,7 +385,7 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -462,7 +449,7 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -539,7 +526,7 @@ func TestListDocuments_AstOr(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -588,7 +575,7 @@ func TestListDocuments_SelectProjection(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -640,7 +627,7 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -737,7 +724,7 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -833,7 +820,7 @@ func TestListDocuments_InputLimits(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -887,7 +874,7 @@ func TestEnsureSystemCollections_Idempotent(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -897,6 +884,44 @@ func TestEnsureSystemCollections_Idempotent(t *testing.T) {
 	coll, err := fresh.GetCollection(ctx, projectID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
 	require.NotNil(t, coll)
+}
+
+func TestEnsureSystemCollections_SkipWhenStaticTablesReady(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	coll, err := docDB.GetCollection(ctx, projectID, databases.SystemDatabaseID, "users")
+	require.NoError(t, err)
+	require.Nil(t, coll)
+
+	schema := testProjectSchema(t, projectID)
+	var perms any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, schema+"._perms").Scan(&perms))
+	require.Nil(t, perms, "cut 后不得重建 tw_<project>._perms")
+	var sys any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, schema+".sys_users").Scan(&sys))
+	require.Nil(t, sys)
+	var hasID, hasDocID, hasVersion int
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = 'id'`, schema).Scan(&hasID))
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_id'`, schema).Scan(&hasDocID))
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_version'`, schema).Scan(&hasVersion))
+	require.Equal(t, 1, hasID)
+	require.Zero(t, hasDocID)
+	require.Zero(t, hasVersion)
 }
 
 // TestCreateCollectionMetadata_IdempotentSystemRow (A3): 系统集合元数据集合行已存在时
@@ -909,7 +934,7 @@ func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -932,7 +957,7 @@ func TestCreateCollectionMetadata_DuplicateUserCollection(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -956,7 +981,7 @@ func TestBulkUpdateDocuments_RollbackOnFailure(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -993,7 +1018,7 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1020,7 +1045,7 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1082,7 +1107,7 @@ func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1137,7 +1162,7 @@ func TestCreateDocument_AuditColumns(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1203,7 +1228,7 @@ func TestDeleteIndex_RecreateSameIndex(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1248,7 +1273,7 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1286,7 +1311,7 @@ func TestUpdateDocument_PermissionsOnlyRefreshesAuditColumns(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1365,7 +1390,7 @@ func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1418,7 +1443,7 @@ func TestListDocuments_PageSizeClamp(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1496,21 +1521,22 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, project.ID, internalID))
 	coll, err = docDB.GetCollection(ctx, project.ID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
-	require.NotNil(t, coll)
-	require.Equal(t, "users", coll.ID)
+	require.Nil(t, coll, "cut 后 catalog 无 sentinel users")
 
 	sentinel, err := docDB.GetDatabase(ctx, project.ID, databases.SystemDatabaseID)
 	require.NoError(t, err)
-	require.NotNil(t, sentinel)
-	require.Equal(t, databases.SystemDatabaseID, sentinel.ID)
+	require.Nil(t, sentinel, "cut 后 catalog 无 database_id='_'")
 
-	listColl, _, err = docDB.ListCollections(ctx, project.ID, databases.SystemDatabaseID, databases.ListQuery{})
-	require.NoError(t, err)
-	ids := make([]string, 0, len(listColl))
-	for i := range listColl {
-		ids = append(ids, listColl[i].ID)
-	}
-	require.Contains(t, ids, "users")
+	var staticUsers any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, schema+".users").Scan(&staticUsers))
+	require.NotNil(t, staticUsers)
+	var hasID, hasDocID int
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = 'id'`, schema).Scan(&hasID))
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_id'`, schema).Scan(&hasDocID))
+	require.Equal(t, 1, hasID)
+	require.Zero(t, hasDocID)
 }
 
 func TestIsMissingCatalog_SQLStateFallback(t *testing.T) {

@@ -5,12 +5,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
 func TestAccount_SignInRecordsClientInfo(t *testing.T) {
@@ -32,7 +30,7 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 	cfg := buildTestConfig()
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccount(cfg, projectRepo, docDB)
+	account := NewTestAccount(cfg, projectRepo, docDB, db)
 
 	_, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -49,15 +47,16 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	list, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
-		Queries:  []string{query.BuildEqual("ip", "198.51.100.42")},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
+	usersRepo := bunrepo.NewUserRepository(db)
+	user, err := usersRepo.GetByEmail(ctx, projectID, "client-info@torchwood.local")
 	require.NoError(t, err)
-	require.NotEmpty(t, list.Documents)
+	require.NotNil(t, user)
+	list, err := bunrepo.NewSessionRepository(db).ListByUser(ctx, projectID, user.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, list)
 	found := false
-	for _, doc := range list.Documents {
-		if doc.Data["user_agent"] == "Mozilla/5.0 Torchwood" {
+	for _, sess := range list {
+		if sess.IP == "198.51.100.42" && sess.UserAgent == "Mozilla/5.0 Torchwood" {
 			found = true
 			break
 		}

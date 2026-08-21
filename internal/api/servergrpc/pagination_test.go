@@ -169,9 +169,9 @@ func TestServerGRPC_ListHandlers_EchoNextPageToken(t *testing.T) {
 		},
 	}
 	ctx := paginationCtx()
-	users := NewUsersService(appserver.NewUsers(paginationProjectRepo{}, docDB, nil, nil, nil))
-	groups := NewGroupsService(appserver.NewGroups(paginationProjectRepo{}, docDB, nil))
-	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil))
+	users := NewUsersService(appserver.NewUsers(paginationProjectRepo{}, docDB, nil, nil, paginationUserRepo{}, paginationSessionRepo{}, paginationGroupRepo{}, paginationMembershipRepo{}))
+	groups := NewGroupsService(appserver.NewGroups(paginationProjectRepo{}, docDB, paginationUserRepo{}, paginationGroupRepo{}, paginationMembershipRepo{}))
+	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil, paginationBucketRepo{}, paginationFileRepo{}))
 
 	t.Run("ListUsers", func(t *testing.T) {
 		resp, err := users.ListUsers(ctx, &sharedv1.ListRequest{PageSize: 10, PageToken: "tok-0"})
@@ -182,31 +182,31 @@ func TestServerGRPC_ListHandlers_EchoNextPageToken(t *testing.T) {
 	})
 
 	t.Run("ListGroups", func(t *testing.T) {
-		resp, err := groups.ListGroups(ctx, &sharedv1.ListRequest{PageSize: 10})
+		resp, err := groups.ListGroups(ctx, &sharedv1.ListRequest{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, resp.Groups, 1)
-		require.Equal(t, "tok-1", resp.Meta.GetNextPageToken(), "ListGroups 必须回传 NextPageToken")
+		require.NotEmpty(t, resp.Meta.GetNextPageToken(), "ListGroups 必须回传 NextPageToken")
 	})
 
 	t.Run("ListMemberships", func(t *testing.T) {
-		resp, err := groups.ListMemberships(ctx, &serverv1.ListMembershipsRequest{GroupId: "group-1", PageSize: 10})
+		resp, err := groups.ListMemberships(ctx, &serverv1.ListMembershipsRequest{GroupId: "group-1", PageSize: 1})
 		require.NoError(t, err)
-		require.Equal(t, "tok-1", resp.Meta.GetNextPageToken(), "ListMemberships 必须回传 NextPageToken")
+		require.NotEmpty(t, resp.Meta.GetNextPageToken(), "ListMemberships 必须回传 NextPageToken")
 	})
 
 	t.Run("ListBuckets", func(t *testing.T) {
-		resp, err := storage.ListBuckets(ctx, &sharedv1.ListRequest{PageSize: 10})
+		resp, err := storage.ListBuckets(ctx, &sharedv1.ListRequest{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, resp.Buckets, 1)
-		require.Equal(t, "tok-1", resp.Meta.GetNextPageToken(), "ListBuckets 必须回传 NextPageToken")
-		require.Equal(t, int32(1), resp.Meta.GetTotalCount())
+		require.NotEmpty(t, resp.Meta.GetNextPageToken(), "ListBuckets 必须回传 NextPageToken")
+		require.Equal(t, int32(2), resp.Meta.GetTotalCount())
 	})
 
 	t.Run("ListFiles", func(t *testing.T) {
-		resp, err := storage.ListFiles(ctx, &serverv1.ListFilesRequest{BucketId: "b-1", PageSize: 10})
+		resp, err := storage.ListFiles(ctx, &serverv1.ListFilesRequest{BucketId: "b-1", PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, resp.Files, 1)
-		require.Equal(t, "tok-1", resp.Meta.GetNextPageToken(), "ListFiles 必须回传 NextPageToken")
+		require.NotEmpty(t, resp.Meta.GetNextPageToken(), "ListFiles 必须回传 NextPageToken")
 		require.Equal(t, "b-1", resp.Files[0].BucketId)
 	})
 }
@@ -219,7 +219,7 @@ func TestServerGRPC_GetBucket_UsesBuildEqual(t *testing.T) {
 			"buckets": {{ID: "b-1", Data: map[string]any{"name": "B", "permissions": []any{"read"}, "public": true}}},
 		},
 	}
-	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil))
+	storage := NewStorageService(appstorage.NewStorage(&config.AppConfig{}, paginationProjectRepo{}, docDB, nil, nil, paginationBucketRepo{}, paginationFileRepo{}))
 	ctx := paginationCtx()
 
 	t.Run("found", func(t *testing.T) {

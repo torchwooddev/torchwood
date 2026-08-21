@@ -78,19 +78,11 @@ func (s *StorageService) GetBucket(ctx context.Context, req *serverv1.GetBucketR
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	// Round3 H6-2：与 ListFiles / 公开 bucket HTTP 路径一致用 BuildEqual，
-	// 避免手拼 equal 串在非法 id（含引号等）下产生解析错误。
-	buckets, _, _, err := s.storage.ListBuckets(ctx, projectID, databases.Query{
-		Queries:  []string{query.BuildEqual("$id", req.GetId())},
-		PageSize: 1,
-	}, dbPrincipal(ctx))
+	got, err := s.storage.GetBucket(ctx, projectID, req.GetId(), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
-	if len(buckets) == 0 {
-		return nil, status.Error(codes.NotFound, "bucket not found")
-	}
-	return mapBucket(&buckets[0]), nil
+	return mapBucket(got), nil
 }
 
 func (s *StorageService) DeleteBucket(ctx context.Context, req *serverv1.GetBucketRequest) (*sharedv1.Empty, error) {

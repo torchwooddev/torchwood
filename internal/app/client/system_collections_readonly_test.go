@@ -37,16 +37,10 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 	serverUC := appserver.NewDatabases(projectRepo, docDB)
 	clientUC := NewDatabases(projectRepo, docDB)
 
-	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Document{
-		ID:   "groups-1",
-		Data: map[string]any{"name": "groups one"},
-	}, nil, databases.SystemPrincipal)
-	require.NoError(t, err)
-
-	_, _, _, err = clientUC.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{})
+	_, _, _, err := clientUC.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	account := NewTestAccount(testConfig(), projectRepo, docDB)
+	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "syscoll@torchwood.local",
@@ -56,6 +50,7 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 	require.NoError(t, err)
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},

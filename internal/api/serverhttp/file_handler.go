@@ -25,7 +25,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
@@ -551,11 +550,8 @@ func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, b
 		if !isValidBucketID(bucketID) {
 			return "", databases.Principal{}, nil, false, status.Error(codes.InvalidArgument, "invalid bucket id")
 		}
-		buckets, _, _, berr := h.storage.ListBuckets(ctx, projectID, databases.Query{
-			Queries:  []string{query.BuildEqual("$id", bucketID)},
-			PageSize: 1,
-		}, databases.GuestPrincipal)
-		if berr == nil && len(buckets) > 0 && buckets[0].Public {
+		b, berr := h.storage.GetBucket(ctx, projectID, bucketID, databases.GuestPrincipal)
+		if berr == nil && b != nil && b.Public {
 			return projectID, databases.GuestPrincipal, nil, true, nil
 		}
 	}

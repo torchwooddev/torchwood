@@ -2,8 +2,10 @@ package clientgrpc
 
 import (
 	"context"
+	"encoding/json"
 	"regexp"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -11,13 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
 	"github.com/torchwooddev/torchwood/internal/app/client"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/messaging"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	domainusers "github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/query"
@@ -29,8 +32,10 @@ import (
 // fakeDocDB 是内存版 DocumentDB（仅实现 account 测试路径所需语义：
 // users/sessions 集合的 List/Get/Create/Delete/BulkDelete）。
 type fakeDocDB struct {
-	users    map[string]map[string]map[string]any // projectID -> userID -> data
-	sessions map[string]map[string]map[string]any // projectID -> sessionID -> data
+	users       map[string]map[string]map[string]any // projectID -> userID -> data
+	sessions    map[string]map[string]map[string]any // projectID -> sessionID -> data
+	usersRepo   *grpcMemUserRepo
+	sessionRepo *grpcMemSessionRepo
 }
 
 func (d *fakeDocDB) listByQuery(col string, projectID string, q databases.Query) []databases.Document {
@@ -272,7 +277,11 @@ func setupClientGRPC(t *testing.T) (context.Context, *AccountService, *fakeDocDB
 
 	roles := stubRoleResolver{}
 	rotation := auth.NewRedisRefreshRotationStore(rdb)
-	sessions := auth.NewSessionService(cfg, docDB, roles, rotation)
+	sessionRepo := &grpcMemSessionRepo{byID: map[string]*domainauth.Session{}}
+	usersRepo := &grpcMemUserRepo{byID: map[string]*domainusers.User{}, byEmail: map[string]*domainusers.User{}}
+	docDB.usersRepo = usersRepo
+	docDB.sessionRepo = sessionRepo
+	sessions := auth.NewSessionService(cfg, sessionRepo, roles, rotation)
 	mailer := &clientgrpcCaptureMailer{}
 	account := client.NewAccount(
 		cfg,
@@ -294,7 +303,9 @@ func setupClientGRPC(t *testing.T) (context.Context, *AccountService, *fakeDocDB
 		auth.NewRedisMFAChallengeStore(rdb),
 		auth.NewRedisOneTimeTokenStore(rdb),
 		nil, // auditRepo
-		infrausers.NewDocumentRepository(docDB),
+		usersRepo,
+		nil,
+		sessionRepo,
 	)
 	return ctx, NewAccountService(account), docDB, mailer, projectID
 }
@@ -355,31 +366,31 @@ func TestAccountService_DeleteSessions_KeepCurrentPassthrough(t *testing.T) {
 	ctx, s, docDB, _, projectID := setupClientGRPC(t)
 	userID := signUpViaHandler(t, ctx, s, projectID, "sessions@example.com")
 
-	// SignUp 产生一个真实会话文档，取其 ID 作为"当前会话"。
-	currentSessionID := ""
-	for id := range docDB.sessions[projectID] {
-		currentSessionID = id
-	}
-	require.NotEmpty(t, currentSessionID)
+	list, err := docDB.sessionRepo.ListByUser(ctx, projectID, userID)
+	require.NoError(t, err)
+	require.NotEmpty(t, list)
+	currentSessionID := list[0].ID
 	authCtx := principalCtx(ctx, projectID, userID, currentSessionID)
 
-	// 额外插入一个"其他会话"。
-	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Document{
-		ID:   "session-2",
-		Data: map[string]any{"user_id": userID, "expire_at": "2099-01-01T00:00:00Z"},
-	}, nil, databases.SystemPrincipal)
-	require.NoError(t, err)
+	require.NoError(t, docDB.sessionRepo.Insert(ctx, projectID, &domainauth.Session{
+		ID:     "session-2",
+		UserID: userID,
+	}))
 
-	// keep_current=true：当前会话保留，其他会话删除。
 	_, err = s.DeleteSessions(authCtx, &clientv1.DeleteSessionsRequest{KeepCurrent: true})
 	require.NoError(t, err)
-	require.NotNil(t, docDB.sessions[projectID][currentSessionID])
-	require.Nil(t, docDB.sessions[projectID]["session-2"])
+	cur, err := docDB.sessionRepo.GetByID(ctx, projectID, currentSessionID)
+	require.NoError(t, err)
+	require.NotNil(t, cur)
+	other, err := docDB.sessionRepo.GetByID(ctx, projectID, "session-2")
+	require.NoError(t, err)
+	require.Nil(t, other)
 
-	// keep_current=false：全部删除。
 	_, err = s.DeleteSessions(authCtx, &clientv1.DeleteSessionsRequest{KeepCurrent: false})
 	require.NoError(t, err)
-	require.Nil(t, docDB.sessions[projectID][currentSessionID])
+	cur, err = docDB.sessionRepo.GetByID(ctx, projectID, currentSessionID)
+	require.NoError(t, err)
+	require.Nil(t, cur)
 }
 
 // TestAccountService_ConfirmEmailChange_Passthrough（R05-P1-2 A 档）：
@@ -414,8 +425,10 @@ func TestAccountService_ConfirmEmailChange_Passthrough(t *testing.T) {
 	})
 	require.NoError(t, err)
 	// staging：email 保持旧值，仅写入 pending_email。
-	require.Equal(t, "grpc-stage@torchwood.local", docDB.users[projectID][userID]["email"])
-	require.Equal(t, newEmail, docDB.users[projectID][userID]["pending_email"])
+	staged, err := docDB.usersRepo.GetByID(ctx, projectID, userID)
+	require.NoError(t, err)
+	require.Equal(t, "grpc-stage@torchwood.local", staged.Email)
+	require.Equal(t, newEmail, staged.PendingEmail)
 
 	// 从新邮箱收到的验证邮件提取一次性 secret。
 	re := regexp.MustCompile(`secret=([a-f0-9]+)`)
@@ -430,8 +443,9 @@ func TestAccountService_ConfirmEmailChange_Passthrough(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, newEmail, resp.GetEmail())
 	require.True(t, resp.GetEmailVerified())
-	// 确认后 pending_email 清空（写 NULL，key 保留但值 nil）。
-	require.Nil(t, docDB.users[projectID][userID]["pending_email"])
+	confirmed, err := docDB.usersRepo.GetByID(ctx, projectID, userID)
+	require.NoError(t, err)
+	require.Empty(t, confirmed.PendingEmail)
 
 	// token 一次性：二次使用 → Unauthenticated。
 	_, err = s.ConfirmEmailChange(authCtx, &clientv1.ConfirmEmailChangeRequest{
@@ -493,4 +507,131 @@ func TestAccountService_SignOut_WithoutPrincipalIsIdempotent(t *testing.T) {
 	ctx, s, _, _, _ := setupClientGRPC(t)
 	_, err := s.SignOut(ctx, &clientv1.SignOutRequest{})
 	require.NoError(t, err)
+}
+
+type grpcMemUserRepo struct {
+	mu      sync.Mutex
+	byID    map[string]*domainusers.User
+	byEmail map[string]*domainusers.User
+}
+
+func (r *grpcMemUserRepo) GetByEmail(_ context.Context, _, email string) (*domainusers.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u := r.byEmail[domainusers.NormalizeEmail(email)]
+	if u == nil {
+		return nil, nil
+	}
+	cp := *u
+	return &cp, nil
+}
+func (r *grpcMemUserRepo) GetByID(_ context.Context, _, id string) (*domainusers.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u := r.byID[id]
+	if u == nil {
+		return nil, nil
+	}
+	cp := *u
+	return &cp, nil
+}
+func (r *grpcMemUserRepo) GetByPhone(context.Context, string, string) (*domainusers.User, error) {
+	return nil, nil
+}
+func (r *grpcMemUserRepo) Insert(_ context.Context, _ string, user *domainusers.User) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.byEmail[user.Email] != nil {
+		return domainusers.ErrEmailAlreadyRegistered
+	}
+	cp := *user
+	r.byID[user.ID] = &cp
+	r.byEmail[user.Email] = &cp
+	return nil
+}
+func (r *grpcMemUserRepo) Update(_ context.Context, _, id string, cols map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u := r.byID[id]
+	if u == nil {
+		return status.Error(codes.NotFound, "user not found")
+	}
+	if v, ok := cols["email"].(string); ok {
+		delete(r.byEmail, u.Email)
+		u.Email = domainusers.NormalizeEmail(v)
+		r.byEmail[u.Email] = u
+	}
+	if v, ok := cols["name"].(string); ok {
+		u.Name = v
+	}
+	if v, ok := cols["prefs"].(map[string]any); ok {
+		u.Prefs = v
+	}
+	if v, ok := cols["pending_email"].(string); ok {
+		u.PendingEmail = v
+	}
+	if v, ok := cols["email_verified"].(bool); ok {
+		u.EmailVerified = v
+	}
+	return nil
+}
+func (r *grpcMemUserRepo) Delete(context.Context, string, string) error { return nil }
+func (r *grpcMemUserRepo) List(context.Context, string, domainusers.ListFilter) (*domainusers.ListResult, error) {
+	return &domainusers.ListResult{}, nil
+}
+func (r *grpcMemUserRepo) UpdateFactors(context.Context, string, string, func(json.RawMessage) (json.RawMessage, error)) error {
+	return nil
+}
+
+type grpcMemSessionRepo struct {
+	mu   sync.Mutex
+	byID map[string]*domainauth.Session
+}
+
+func (r *grpcMemSessionRepo) Insert(_ context.Context, _ string, s *domainauth.Session) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := *s
+	r.byID[s.ID] = &cp
+	return nil
+}
+func (r *grpcMemSessionRepo) GetByID(_ context.Context, _, id string) (*domainauth.Session, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := r.byID[id]
+	if s == nil {
+		return nil, nil
+	}
+	cp := *s
+	return &cp, nil
+}
+func (r *grpcMemSessionRepo) ListByUser(_ context.Context, _, userID string) ([]domainauth.Session, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []domainauth.Session
+	for _, s := range r.byID {
+		if s.UserID == userID {
+			out = append(out, *s)
+		}
+	}
+	return out, nil
+}
+func (r *grpcMemSessionRepo) Delete(_ context.Context, _, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.byID, id)
+	return nil
+}
+func (r *grpcMemSessionRepo) DeleteByUser(_ context.Context, _, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, s := range r.byID {
+		if s.UserID == userID {
+			delete(r.byID, id)
+		}
+	}
+	return nil
+}
+func (r *grpcMemSessionRepo) DeleteOldestByUser(context.Context, string, string, int) error {
+	return nil
 }

@@ -8,11 +8,13 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestGroups_Memberships(t *testing.T) {
@@ -31,9 +33,15 @@ func TestGroups_Memberships(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	uc := NewGroups(projectRepo, docDB, infrausers.NewDocumentRepository(docDB))
+	uc := NewGroups(projectRepo, docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	ownerID := "owner-user-id"
 	ownerEmail := "owner@torchwood.local"
+	require.NoError(t, bunrepo.NewUserRepository(db).Insert(ctx, projectID, &users.User{
+		ID:     ownerID,
+		Email:  ownerEmail,
+		Name:   "Owner",
+		Status: users.StatusActive,
+	}))
 	principal := databases.Principal{Roles: []string{"users", "user:" + ownerID}}
 	group, ownerMembership, err := uc.CreateGroupWithOwner(ctx, projectID, "Engineering", ownerID, ownerEmail, principal)
 	require.NoError(t, err)
@@ -44,16 +52,13 @@ func TestGroups_Memberships(t *testing.T) {
 	ownerRoles := databases.Principal{Roles: []string{"users", "user:" + ownerID, "group:" + group.ID}}
 
 	memberUserID := "member-user-id"
-	_, err = docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
-		ID: memberUserID,
-		Data: map[string]any{
-			"email":         "member@torchwood.local",
-			"password_hash": "hash",
-			"name":          "Member User",
-			"status":        "active",
-		},
-	}, nil, databases.SystemPrincipal)
-	require.NoError(t, err)
+	require.NoError(t, bunrepo.NewUserRepository(db).Insert(ctx, projectID, &users.User{
+		ID:           memberUserID,
+		Email:        "member@torchwood.local",
+		PasswordHash: "hash",
+		Name:         "Member User",
+		Status:       users.StatusActive,
+	}))
 
 	invite, err := uc.CreateMembership(ctx, projectID, CreateMembershipCommand{
 		GroupID: group.ID,
@@ -104,9 +109,8 @@ func TestGroups_Memberships(t *testing.T) {
 	require.Equal(t, int64(1), groupTotal(t, groupAfterLeave))
 
 	require.NoError(t, uc.DeleteGroup(ctx, projectID, group.ID, ownerRoles))
-	left, err := uc.GetGroup(ctx, projectID, group.ID, ownerRoles)
-	require.NoError(t, err)
-	require.Nil(t, left)
+	_, err = uc.GetGroup(ctx, projectID, group.ID, ownerRoles)
+	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
 func groupTotal(t *testing.T, doc *databases.Document) int64 {

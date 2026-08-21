@@ -94,6 +94,18 @@ func (r *FileRepository) ListByBucket(ctx context.Context, projectID, bucketID s
 	return out, nil
 }
 
+func (r *FileRepository) Count(ctx context.Context, projectID string) (int64, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, fileTable, "f")
+	if err != nil {
+		return 0, err
+	}
+	n, err := conn.NewSelect().Model((*model.File)(nil)).ModelTableExpr(expr, sch).Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
+}
+
 func (r *FileRepository) Update(ctx context.Context, projectID, id string, cols map[string]any) error {
 	if strings.TrimSpace(id) == "" {
 		return domainstorage.ErrFileIDRequired

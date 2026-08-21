@@ -95,14 +95,61 @@ func (s *failingStore) Put(ctx context.Context, bucket, key string, data io.Read
 
 // newCreateFileUnitUC 组装纯内存 Storage（无 Postgres/MinIO），CreateFile
 // 路径所需依赖全部为桩。
-func newCreateFileUnitUC(store *failingStore, docDB *mockDocDB) *Storage {
+type memBucketRepo struct {
+	byID map[string]*domainstorage.Bucket
+}
+
+func (r *memBucketRepo) Insert(context.Context, string, *domainstorage.Bucket) error { return nil }
+func (r *memBucketRepo) GetByID(_ context.Context, _, id string) (*domainstorage.Bucket, error) {
+	if r.byID == nil {
+		return &domainstorage.Bucket{ID: id}, nil
+	}
+	return r.byID[id], nil
+}
+func (r *memBucketRepo) List(context.Context, string) ([]*domainstorage.Bucket, error) {
+	return nil, nil
+}
+func (r *memBucketRepo) Count(context.Context, string) (int64, error) { return 0, nil }
+func (r *memBucketRepo) Update(context.Context, string, string, map[string]any) error {
+	return nil
+}
+func (r *memBucketRepo) Delete(context.Context, string, string) error { return nil }
+
+type memFileRepo struct {
+	created []string
+	deleted []string
+}
+
+func (r *memFileRepo) Insert(_ context.Context, _ string, file *domainstorage.File) error {
+	r.created = append(r.created, file.ID)
+	return nil
+}
+func (r *memFileRepo) GetByID(context.Context, string, string) (*domainstorage.File, error) {
+	return nil, nil
+}
+func (r *memFileRepo) ListByBucket(context.Context, string, string) ([]*domainstorage.File, error) {
+	return nil, nil
+}
+func (r *memFileRepo) Count(context.Context, string) (int64, error) { return 0, nil }
+func (r *memFileRepo) Update(context.Context, string, string, map[string]any) error {
+	return nil
+}
+func (r *memFileRepo) Delete(_ context.Context, _, id string) error {
+	r.deleted = append(r.deleted, id)
+	return nil
+}
+func (r *memFileRepo) SumSize(context.Context, string) (int64, error) { return 0, nil }
+
+func newCreateFileUnitUC(store *failingStore, files *memFileRepo) *Storage {
 	return &Storage{
 		cfg: &config.AppConfig{},
 		projectRepo: &stubProjectRepo{p: &projects.Project{
 			ID: "p1", Name: "p1", InternalID: 1,
 		}},
-		docDB: docDB,
-		store: store,
+		docDB:   &mockDocDB{},
+		store:   store,
+		buckets: &memBucketRepo{},
+		files:   files,
 	}
 }
 
@@ -110,51 +157,49 @@ func keysPrincipal() databases.Principal { return databases.Principal{Roles: []s
 
 // G6-2/R07-P1-2：EnsureBucket 失败发生在创建文档之前 → 不得产生孤儿文档。
 func TestCreateFile_EnsureBucketFailure_NoOrphanDocument(t *testing.T) {
-	docDB := &mockDocDB{}
+	files := &memFileRepo{}
 	uc := newCreateFileUnitUC(&failingStore{
 		MemObjectStore: testutil.NewMemObjectStore(),
 		ensureErr:      errors.New("s3 down"),
-	}, docDB)
+	}, files)
 
 	_, err := uc.CreateFile(context.Background(), CreateFileCommand{
 		ProjectID: "p1", BucketID: "b1", Name: "a.txt", MimeType: "text/plain",
 	}, bytes.NewReader([]byte("x")), 1, keysPrincipal())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "ensure storage bucket")
-	require.Empty(t, docDB.createdDocs, "EnsureBucket 失败时不得创建文件文档")
-	require.Empty(t, docDB.deletedDocs)
+	require.Empty(t, files.created, "EnsureBucket 失败时不得创建文件元数据")
+	require.Empty(t, files.deleted)
 }
 
-// G6-2/R07-P1-2：Put 失败 → 已创建的文档必须回滚删除。
 func TestCreateFile_PutFailure_RollsBackDocument(t *testing.T) {
-	docDB := &mockDocDB{}
+	files := &memFileRepo{}
 	uc := newCreateFileUnitUC(&failingStore{
 		MemObjectStore: testutil.NewMemObjectStore(),
 		putErr:         errors.New("upload failed"),
-	}, docDB)
+	}, files)
 
 	_, err := uc.CreateFile(context.Background(), CreateFileCommand{
 		ProjectID: "p1", BucketID: "b1", Name: "a.txt", MimeType: "text/plain",
 	}, bytes.NewReader([]byte("x")), 1, keysPrincipal())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "upload file")
-	require.Len(t, docDB.createdDocs, 1, "Put 前文档已创建")
-	require.Equal(t, docDB.createdDocs, docDB.deletedDocs, "Put 失败后文档必须回滚删除（删除的正是创建的文档）")
+	require.Len(t, files.created, 1, "Put 前元数据已创建")
+	require.Equal(t, files.created, files.deleted, "Put 失败后元数据必须回滚删除")
 }
 
-// G6-2 顺序修复后正常路径仍工作：文档创建 + 对象写入各一次。
 func TestCreateFile_Success(t *testing.T) {
-	docDB := &mockDocDB{}
+	files := &memFileRepo{}
 	memStore := testutil.NewMemObjectStore()
-	uc := newCreateFileUnitUC(&failingStore{MemObjectStore: memStore}, docDB)
+	uc := newCreateFileUnitUC(&failingStore{MemObjectStore: memStore}, files)
 
 	file, err := uc.CreateFile(context.Background(), CreateFileCommand{
 		ProjectID: "p1", BucketID: "b1", Name: "a.txt", MimeType: "text/plain",
 	}, bytes.NewReader([]byte("hello")), 5, keysPrincipal())
 	require.NoError(t, err)
 	require.NotEmpty(t, file.ID)
-	require.Len(t, docDB.createdDocs, 1)
-	require.Empty(t, docDB.deletedDocs)
+	require.Len(t, files.created, 1)
+	require.Empty(t, files.deleted)
 	reader, err := memStore.Get(context.Background(), domainstorage.DefaultBucketName, objectKey("p1", "b1", file.ID))
 	require.NoError(t, err)
 	defer reader.Close()
@@ -168,7 +213,7 @@ func TestCreateFile_Success(t *testing.T) {
 // 匿名 Unauthenticated、端用户 PermissionDenied；console admin / API key 主体放行
 // 进入业务校验（空 name → InvalidArgument 证明守卫已过）。
 func TestCreateBucket_RequiresServerWriteActor(t *testing.T) {
-	uc := NewStorage(&config.AppConfig{}, nil, nil, nil, nil)
+	uc := NewStorage(&config.AppConfig{}, nil, nil, nil, nil, nil, nil)
 
 	_, err := uc.CreateBucket(context.Background(), CreateBucketCommand{ProjectID: "p1", Name: "b"})
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
@@ -218,12 +263,15 @@ func TestUploads_CompleteUpload_RevalidatesSessionAfterLock(t *testing.T) {
 	require.NoError(t, upStore.Create(ctx, session))
 
 	docDB := &mockDocDB{}
+	files := &memFileRepo{}
 	store := testutil.NewMemObjectStore()
 	uc := &Storage{
 		cfg:         &config.AppConfig{},
 		projectRepo: &stubProjectRepo{p: &projects.Project{ID: "p1", InternalID: 1}},
 		docDB:       docDB,
 		store:       store,
+		buckets:     &memBucketRepo{},
+		files:       files,
 		uploads: &markBeforeLockStore{
 			UploadSessionStore: upStore,
 			// 模拟并发 UploadChunk：加锁前一刻既标记 Redis 会话又上传分片对象。
@@ -238,7 +286,7 @@ func TestUploads_CompleteUpload_RevalidatesSessionAfterLock(t *testing.T) {
 	file, err := uc.CompleteUpload(ctx, "p1", "up1", "", keysPrincipal())
 	require.NoError(t, err)
 	require.Equal(t, "f1", file.ID)
-	require.Len(t, docDB.createdDocs, 1, "锁内重新读会话后不再误报缺片，文件文档创建成功")
+	require.Len(t, files.created, 1, "锁内重新读会话后不再误报缺片，文件行创建成功")
 }
 
 // G6-6/R07-P2-5：AbortUpload 在 complete 锁被占用时返回 FailedPrecondition 且

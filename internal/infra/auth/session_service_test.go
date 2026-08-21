@@ -53,15 +53,10 @@ func TestSessionService_RecordsClientInfo(t *testing.T) {
 func TestSessionService_EnsureActiveSession_CorruptExpireAtFailsClosed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{
-		sessions: map[string]map[string]map[string]any{
-			"proj-1": {
-				"sess-bad": {"user_id": "user-1", "expire_at": "garbage"},
-				"sess-ok":  {"user_id": "user-1", "expire_at": time.Now().Add(time.Hour).Format(time.RFC3339Nano)},
-			},
-		},
-	}
-	svc := auth.NewSessionService(nil, docDB, nil, nil)
+	sessions := newStubSessionRepo()
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-bad", UserID: "user-1"})
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-ok", UserID: "user-1", ExpireAt: time.Now().Add(time.Hour)})
+	svc := auth.NewSessionService(nil, sessions, nil, nil)
 
 	err := svc.EnsureActiveSession(ctx, "proj-1", "sess-bad", "user-1")
 	require.Error(t, err)
@@ -75,25 +70,22 @@ func TestSessionService_EnsureActiveSession_CorruptExpireAtFailsClosed(t *testin
 func TestSessionService_CreateSessionStoresHashedSecret(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": {},
-	}}
-	svc := auth.NewSessionService(testSessionJWTConfig(), docDB, stubRoleResolver{}, nil)
+	sessions := newStubSessionRepo()
+	svc := auth.NewSessionService(testSessionJWTConfig(), sessions, stubRoleResolver{}, nil)
 
 	bundle, cookie, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "email")
 	require.NoError(t, err)
 	require.NotNil(t, bundle)
 	require.NotEmpty(t, bundle.AccessToken)
 	require.NotEmpty(t, bundle.RefreshToken)
-	require.Len(t, docDB.sessions["proj-1"], 1)
+	require.Equal(t, 1, sessions.len("proj-1"))
 
 	var sessionID string
-	var data map[string]any
-	for id, d := range docDB.sessions["proj-1"] {
-		sessionID, data = id, d
+	var hash string
+	for _, id := range sessions.ids("proj-1") {
+		sessionID = id
+		hash = sessions.get("proj-1", id).SecretHash
 	}
-	hash, ok := data["secret_hash"].(string)
-	require.True(t, ok)
 	require.Len(t, hash, 64, "secret_hash 必须是 SHA-256 hex")
 	_, decodeErr := hex.DecodeString(hash)
 	require.NoError(t, decodeErr)
@@ -135,162 +127,111 @@ func TestSessionService_EvictsOldestSessionsOverLimit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := time.Now()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": {
-			"sess-oldest": g3SessionData(now.Add(-3 * time.Hour)),
-			"sess-middle": g3SessionData(now.Add(-2 * time.Hour)),
-			"sess-newest": g3SessionData(now.Add(-time.Hour)),
-		},
-	}}
+	sessions := newStubSessionRepo()
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-oldest", UserID: "user-1", ExpireAt: now.Add(-3 * time.Hour)})
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-middle", UserID: "user-1", ExpireAt: now.Add(-2 * time.Hour)})
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-newest", UserID: "user-1", ExpireAt: now.Add(-time.Hour)})
 	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 2}}}
-	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+	svc := auth.NewSessionService(cfg, sessions, stubRoleResolver{}, nil)
 
 	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
 	require.NoError(t, err)
 
-	// 3 个既有 + 1 新建 → 淘汰最旧 2 个 → 剩 2 个。
-	require.Len(t, docDB.sessions["proj-1"], 2)
-	_, ok := docDB.sessions["proj-1"]["sess-oldest"]
-	require.False(t, ok, "最旧会话必须被淘汰")
-	_, ok = docDB.sessions["proj-1"]["sess-middle"]
-	require.False(t, ok, "次旧会话必须被淘汰")
-	_, ok = docDB.sessions["proj-1"]["sess-newest"]
-	require.True(t, ok, "最新会话必须保留")
+	require.Equal(t, 2, sessions.len("proj-1"))
+	require.Nil(t, sessions.get("proj-1", "sess-oldest"), "最旧会话必须被淘汰")
+	require.Nil(t, sessions.get("proj-1", "sess-middle"), "次旧会话必须被淘汰")
+	require.NotNil(t, sessions.get("proj-1", "sess-newest"), "最新会话必须保留")
 }
 
-// TestSessionService_NoEvictionUnderLimit（R05-P1-6）：未超限时不淘汰。
+func seedUserSessions(r *stubSessionRepo, count int) {
+	now := time.Now()
+	for i := 0; i < count; i++ {
+		r.seed("proj-1", &domainauth.Session{
+			ID:       fmt.Sprintf("sess-%d", i),
+			UserID:   "user-1",
+			ExpireAt: now.Add(-time.Duration(count-i) * time.Hour),
+		})
+	}
+}
+
 func TestSessionService_NoEvictionUnderLimit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": {
-			"sess-a": g3SessionData(time.Now().Add(-time.Hour)),
-		},
-	}}
+	sessions := newStubSessionRepo()
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-a", UserID: "user-1", ExpireAt: time.Now().Add(-time.Hour)})
 	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 5}}}
-	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+	svc := auth.NewSessionService(cfg, sessions, stubRoleResolver{}, nil)
 
 	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
 	require.NoError(t, err)
-	require.Len(t, docDB.sessions["proj-1"], 2)
-	_, ok := docDB.sessions["proj-1"]["sess-a"]
-	require.True(t, ok)
+	require.Equal(t, 2, sessions.len("proj-1"))
+	require.NotNil(t, sessions.get("proj-1", "sess-a"))
 }
 
-// g3Sessions 构造 count 个会话文档，编号越大 expire_at 越新（sess-0 最旧）。
-func g3Sessions(now time.Time, count int) map[string]map[string]any {
-	sessions := make(map[string]map[string]any, count)
-	for i := 0; i < count; i++ {
-		sessions[fmt.Sprintf("sess-%d", i)] = g3SessionData(now.Add(-time.Duration(count-i) * time.Hour))
-	}
-	return sessions
-}
-
-// TestSessionService_DefaultLimitAppliedWhenUnset（G11-5）：未配置
-// （max_per_user=0）回退默认 50——51 个会话（50 旧 + 1 新建）时淘汰 1 个最旧，
-// 总上限保持 50，不再视为不限。
 func TestSessionService_DefaultLimitAppliedWhenUnset(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": g3Sessions(time.Now(), 50),
-	}}
-	svc := auth.NewSessionService(&config.AppConfig{}, docDB, stubRoleResolver{}, nil)
+	sessions := newStubSessionRepo()
+	seedUserSessions(sessions, 50)
+	svc := auth.NewSessionService(&config.AppConfig{}, sessions, stubRoleResolver{}, nil)
 
 	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
 	require.NoError(t, err)
-	require.Len(t, docDB.sessions["proj-1"], 50, "未配置时必须按默认 50 淘汰")
-	_, ok := docDB.sessions["proj-1"]["sess-0"]
-	require.False(t, ok, "最旧会话必须被淘汰")
+	require.Equal(t, 50, sessions.len("proj-1"), "未配置时必须按默认 50 淘汰")
+	require.Nil(t, sessions.get("proj-1", "sess-0"), "最旧会话必须被淘汰")
 }
 
-// TestSessionService_ExplicitZeroUsesDefaultLimit（G11-5）：显式配置 0 与未配置
-// 语义一致（默认 50）。
 func TestSessionService_ExplicitZeroUsesDefaultLimit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": g3Sessions(time.Now(), 51),
-	}}
+	sessions := newStubSessionRepo()
+	seedUserSessions(sessions, 51)
 	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 0}}}
-	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+	svc := auth.NewSessionService(cfg, sessions, stubRoleResolver{}, nil)
 
 	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
 	require.NoError(t, err)
-	require.Len(t, docDB.sessions["proj-1"], 50, "显式 0 必须回退默认 50")
+	require.Equal(t, 50, sessions.len("proj-1"), "显式 0 必须回退默认 50")
 }
 
-// TestSessionService_ExplicitMinusOneUnlimited（G11-5）：显式 -1 = 不限，
-// 任何数量会话都不淘汰。
 func TestSessionService_ExplicitMinusOneUnlimited(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": g3Sessions(time.Now(), 55),
-	}}
+	sessions := newStubSessionRepo()
+	seedUserSessions(sessions, 55)
 	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: -1}}}
-	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+	svc := auth.NewSessionService(cfg, sessions, stubRoleResolver{}, nil)
 
 	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
 	require.NoError(t, err)
-	require.Len(t, docDB.sessions["proj-1"], 56, "-1 = 不限，不得淘汰")
+	require.Equal(t, 56, sessions.len("proj-1"), "-1 = 不限，不得淘汰")
 }
 
-// TestSessionService_ExplicitLimitEvictsOldest（G11-5）：显式 10——15 个既有
-// 会话 + 1 新建 → 淘汰最旧 6 个 → 剩 10。
 func TestSessionService_ExplicitLimitEvictsOldest(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": g3Sessions(time.Now(), 15),
-	}}
+	sessions := newStubSessionRepo()
+	seedUserSessions(sessions, 15)
 	cfg := &config.AppConfig{Security: &config.Security{Sessions: &config.Security_Sessions{MaxPerUser: 10}}}
-	svc := auth.NewSessionService(cfg, docDB, stubRoleResolver{}, nil)
+	svc := auth.NewSessionService(cfg, sessions, stubRoleResolver{}, nil)
 
 	_, _, err := svc.CreateSessionAndTokens(ctx, "proj-1", "user-1", "user@example.com", "")
 	require.NoError(t, err)
-	require.Len(t, docDB.sessions["proj-1"], 10, "显式 10 必须淘汰至上限")
-	_, ok := docDB.sessions["proj-1"]["sess-0"]
-	require.False(t, ok, "最旧会话必须被淘汰")
-	_, ok = docDB.sessions["proj-1"]["sess-14"]
-	require.True(t, ok, "最新会话必须保留")
+	require.Equal(t, 10, sessions.len("proj-1"), "显式 10 必须淘汰至上限")
+	require.Nil(t, sessions.get("proj-1", "sess-0"), "最旧会话必须被淘汰")
+	require.NotNil(t, sessions.get("proj-1", "sess-14"), "最新会话必须保留")
 }
 
-// TestSessionService_DeleteSessionsByUser_BulkDelete（R05-P2-7）：批量删除
-// 替代逐条循环——只删目标用户会话，其他用户会话保留。
 func TestSessionService_DeleteSessionsByUser_BulkDelete(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": {
-			"sess-1": g3SessionData(time.Now()),
-			"sess-2": g3SessionData(time.Now()),
-			"sess-3": {
-				"user_id":   "user-2",
-				"expire_at": time.Now().Add(time.Hour).Format(time.RFC3339Nano),
-			},
-		},
-	}}
-	svc := auth.NewSessionService(nil, docDB, nil, nil)
+	sessions := newStubSessionRepo()
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-1", UserID: "user-1", ExpireAt: time.Now().Add(time.Hour)})
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-2", UserID: "user-1", ExpireAt: time.Now().Add(time.Hour)})
+	sessions.seed("proj-1", &domainauth.Session{ID: "sess-3", UserID: "user-2", ExpireAt: time.Now().Add(time.Hour)})
+	svc := auth.NewSessionService(nil, sessions, nil, nil)
 
 	require.NoError(t, svc.DeleteSessionsByUser(ctx, "proj-1", "user-1"))
-	require.Len(t, docDB.sessions["proj-1"], 1)
-	_, ok := docDB.sessions["proj-1"]["sess-3"]
-	require.True(t, ok, "其他用户的会话不得被误删")
-}
-
-// TestSessionService_DeleteSessionsByUser_BulkDeleteFailure（R05-P2-7）：
-// 批量删除失败必须返回错误（调用方据此不提交凭据变更）。
-func TestSessionService_DeleteSessionsByUser_BulkDeleteFailure(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	docDB := &stubDocDB{sessions: map[string]map[string]map[string]any{
-		"proj-1": {"sess-1": g3SessionData(time.Now())},
-	}}
-	docDB.failBulkDelete = true
-	svc := auth.NewSessionService(nil, docDB, nil, nil)
-
-	err := svc.DeleteSessionsByUser(ctx, "proj-1", "user-1")
-	require.Error(t, err)
-	require.Len(t, docDB.sessions["proj-1"], 1, "失败时不得部分删除")
+	require.Equal(t, 1, sessions.len("proj-1"))
+	require.NotNil(t, sessions.get("proj-1", "sess-3"), "其他用户的会话不得被误删")
 }

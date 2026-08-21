@@ -15,7 +15,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -80,9 +79,12 @@ func setupG3Account(t *testing.T) (context.Context, *Account, string, *failableS
 	}
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	roles := NewUserRoles(docDB)
+	usersRepo := bunrepo.NewUserRepository(db)
+	sessionRepo := bunrepo.NewSessionRepository(db)
+	identities := bunrepo.NewIdentityRepository(db)
+	roles := NewUserRoles(usersRepo, bunrepo.NewMembershipRepository(db))
 	rotation := auth.NewRedisRefreshRotationStore(rdb)
-	realSessions := auth.NewSessionService(cfg, docDB, roles, rotation)
+	realSessions := auth.NewSessionService(cfg, sessionRepo, roles, rotation)
 	sessions := &failableSessionService{real: realSessions}
 	mailer := &CaptureMailer{}
 	account := NewAccount(
@@ -105,7 +107,9 @@ func setupG3Account(t *testing.T) (context.Context, *Account, string, *failableS
 		auth.NewRedisMFAChallengeStore(rdb),
 		auth.NewRedisOneTimeTokenStore(rdb),
 		nil,
-		infrausers.NewDocumentRepository(docDB),
+		usersRepo,
+		identities,
+		sessionRepo,
 	)
 	return ctx, account, projectID, sessions, mr, mailer
 }
@@ -130,6 +134,7 @@ func TestAccount_EmailChangeNotifiesOldEmail(t *testing.T) {
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "old-mail@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -161,6 +166,7 @@ func TestAccount_UpdateAccount_SessionRevocationFailureLeavesCredentials(t *test
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "revoke-fail@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -289,6 +295,7 @@ func TestAccount_EmailChangeStaging_OldEmailWorksUntilConfirm(t *testing.T) {
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "stage-old@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -350,6 +357,7 @@ func TestAccount_ConfirmEmailChange_TokenOneTime(t *testing.T) {
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "onetime@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -387,6 +395,7 @@ func TestAccount_ConfirmEmailChange_NewEmailTaken(t *testing.T) {
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "changer@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -420,6 +429,7 @@ func TestAccount_ConfirmEmailChange_SessionRevocationFailureLeavesOldEmail(t *te
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "revoke-confirm@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -461,6 +471,7 @@ func TestAccount_ConfirmEmailChange_PublicAccess(t *testing.T) {
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "own-check@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,
@@ -505,6 +516,7 @@ func TestAccount_UpdateAccount_EmailChangeRequiresURL(t *testing.T) {
 
 	user, userID := signUpG3User(t, ctx, account, projectID, "need-url@torchwood.local")
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    userID,
 		Email:     user.Email,

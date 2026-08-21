@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"google.golang.org/grpc/codes"
@@ -99,20 +98,12 @@ func (a *Account) resolveWeChatUser(ctx context.Context, projectID, provider str
 		return nil, err
 	}
 	if info.Name != "" && user.Name != info.Name {
-		updated, updateErr := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-			ID:   user.ID,
-			Data: map[string]any{"name": info.Name},
-		}, nil), databases.SystemPrincipal)
-		if updateErr == nil {
-			user = mapUserDoc(&updated)
+		if err := a.usersRepo.Update(ctx, projectID, user.ID, map[string]any{"name": info.Name}); err == nil {
+			user.Name = info.Name
 		}
 	} else if user.Name == "" || user.Name == emailLocalPart(email) {
-		updated, updateErr := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-			ID:   user.ID,
-			Data: map[string]any{"name": name},
-		}, nil), databases.SystemPrincipal)
-		if updateErr == nil {
-			user = mapUserDoc(&updated)
+		if err := a.usersRepo.Update(ctx, projectID, user.ID, map[string]any{"name": name}); err == nil {
+			user.Name = name
 		}
 	}
 	if err := a.createIdentity(ctx, projectID, user.ID, info, provider); err != nil {

@@ -42,8 +42,7 @@ func TestDatabases_ListFiltersSentinelAndGetRejects(t *testing.T) {
 
 	infra, err := docDB.GetDatabase(ctx, projectID, ident.ProjectDataPlaneID)
 	require.NoError(t, err)
-	require.NotNil(t, infra, "infra 可见 sentinel 供 Ensure reconcile")
-	require.Equal(t, ident.ProjectDataPlaneID, infra.ID)
+	require.Nil(t, infra, "cut 后 catalog 无 sentinel")
 }
 
 func TestDatabases_CreateDeleteSentinelRejected(t *testing.T) {

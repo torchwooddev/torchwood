@@ -157,8 +157,13 @@ func repoRoot() (string, error) {
 	return filepath.Abs(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
-// CreateTestProject inserts a test project and returns its public id, internal id, and cleanup func.
+// CreateTestProject inserts a test project, applies all project schema migrations, and returns its public id, internal id, and cleanup func.
 func CreateTestProject(ctx context.Context, db *clients.Database) (string, int64, func()) {
+	return CreateTestProjectThrough(ctx, db, 0)
+}
+
+// CreateTestProjectThrough 插入项目并 Apply 不超过 maxVersion 的迁移（maxVersion<=0 表示全部）。
+func CreateTestProjectThrough(ctx context.Context, db *clients.Database, maxVersion int64) (string, int64, func()) {
 	project := &model.Project{
 		ID:        fmt.Sprintf("t%x", time.Now().UnixNano()),
 		Name:      fmt.Sprintf("Test Project %d", time.Now().UnixNano()),
@@ -174,7 +179,13 @@ func CreateTestProject(ctx context.Context, db *clients.Database) (string, int64
 	if err := db.NewSelect().Model((*model.Project)(nil)).Column("internal_id").Where("id = ?", project.ID).Scan(ctx, &internalID); err != nil {
 		panic(err)
 	}
-	if err := projectschema.Apply(ctx, db, project.ID); err != nil {
+	var err error
+	if maxVersion > 0 {
+		err = projectschema.ApplyUpTo(ctx, db, project.ID, maxVersion)
+	} else {
+		err = projectschema.Apply(ctx, db, project.ID)
+	}
+	if err != nil {
 		panic(err)
 	}
 	cleanup := func() {

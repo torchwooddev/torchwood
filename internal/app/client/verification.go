@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,18 +55,15 @@ func (a *Account) CreateVerification(ctx context.Context, cmd CreateVerification
 		return nil, err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", p.UserID, databases.Principal{Roles: p.Roles})
+	user, err := a.requireAccountUser(ctx, projectID, p.UserID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
-		return nil, status.Error(codes.NotFound, "user not found")
-	}
-	email := normalizeEmail(stringValue(doc.Data["email"]))
+	email := normalizeEmail(user.Email)
 	if email == "" || strings.HasSuffix(email, "@torchwood.local") {
 		return nil, status.Error(codes.FailedPrecondition, "user email cannot be verified")
 	}
-	if boolValue(doc.Data["email_verified"]) {
+	if user.EmailVerified {
 		return nil, status.Error(codes.AlreadyExists, "email is already verified")
 	}
 
@@ -112,21 +108,13 @@ func (a *Account) UpdateVerification(ctx context.Context, cmd UpdateVerification
 		return nil, err
 	}
 
-	doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
-	if err != nil {
+	if _, err := a.requireAccountUser(ctx, projectID, userID); err != nil {
 		return nil, err
 	}
-	if doc == nil {
-		return nil, status.Error(codes.NotFound, "user not found")
-	}
-	updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   userID,
-		Data: map[string]any{"email_verified": true},
-	}, nil), databases.SystemPrincipal)
-	if err != nil {
+	if err := a.usersRepo.Update(ctx, projectID, userID, map[string]any{"email_verified": true}); err != nil {
 		return nil, fmt.Errorf("verify email: %w", err)
 	}
-	return mapUserDoc(&updated), nil
+	return a.requireAccountUser(ctx, projectID, userID)
 }
 
 func buildAccountActionURL(rawURL, userID, secret string) string {

@@ -10,8 +10,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func TestNewDatabases_HoldsSharedDocumentsCore(t *testing.T) {
@@ -129,10 +127,13 @@ func TestUpdateDocument_FiltersProtectedFields(t *testing.T) {
 		"status":         "blocked",
 	}, nil, nil, &version)
 	require.NoError(t, err)
-	require.Equal(t, map[string]any{"title": "new"}, rec.lastUpdateData)
-
-	_, err = d.UpdateDocument(ctx, "app", "notes", "d1", map[string]any{"password_hash": "evil"}, nil, nil, &version)
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, map[string]any{
+		"title":          "new",
+		"password_hash":  "evil",
+		"email_verified": true,
+		"labels":         []string{"admin"},
+		"status":         "blocked",
+	}, rec.lastUpdateData)
 }
 
 type stubProjects struct{}

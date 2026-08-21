@@ -28,7 +28,7 @@ func TestAccount_ListLogs(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, nil)
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, nil)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -41,6 +41,7 @@ func TestAccount_ListLogs(t *testing.T) {
 	account.auditRepo = auditRepo
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,
@@ -102,7 +103,7 @@ func TestAccount_ListLogs_Unauthenticated(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, nil)
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, nil)
 
 	_, err := account.ListLogs(ctx, 10)
 	require.Error(t, err)

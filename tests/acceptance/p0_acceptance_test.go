@@ -12,7 +12,6 @@ import (
 	infrAuth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
@@ -153,7 +152,7 @@ func TestP0_Section8_AccessPermission(t *testing.T) {
 	require.NoError(t, err)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := client.NewTestAccount(cfg, projectRepo, docDB)
+	account := client.NewTestAccount(cfg, projectRepo, docDB, db)
 	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectID,
 		Email:     "access-perm@torchwood.local",
@@ -216,8 +215,11 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := client.NewTestAccount(cfg, projectRepo, docDB)
-	usersUC := appserver.NewUsers(projectRepo, docDB, infrAuth.NewSessionService(cfg, docDB, client.NewUserRoles(docDB), nil), db, infrausers.NewDocumentRepository(docDB))
+	account := client.NewTestAccount(cfg, projectRepo, docDB, db)
+	usersRepo := bunrepo.NewUserRepository(db)
+	sessionRepo := bunrepo.NewSessionRepository(db)
+	roles := client.NewUserRoles(usersRepo, bunrepo.NewMembershipRepository(db))
+	usersUC := appserver.NewUsers(projectRepo, docDB, infrAuth.NewSessionService(cfg, sessionRepo, roles, nil), db, usersRepo, sessionRepo, bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 
 	const email = "dsl-query@torchwood.local"
 	signedUp, _, _, _, err := account.SignUp(ctx, client.SignUpCommand{
@@ -250,25 +252,26 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 	require.Len(t, filtered, 1)
 	require.Equal(t, email, filtered[0].Data["email"])
 
-	// §9.4 non-admin list returns only documents with matching _perms.
-	privateUser, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
-		Data: map[string]any{
-			"email": "private@torchwood.local",
-			"name":  "Private",
-		},
+	// §9.4 业务集合仍按 _perms 过滤（系统 users 已不是 collection）。
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "app"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "notes", "Notes", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+	privateNote, err := docDB.CreateDocument(ctx, projectID, "app", "notes", databases.Document{
+		Data: map[string]any{"title": "Private"},
 	}, []databases.Permission{
 		{Type: "read", Role: "user:alice"},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	aliceList, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries: []string{`equal("$id","` + privateUser.ID + `")`},
+	aliceList, err := docDB.ListDocuments(ctx, projectID, "app", "notes", databases.Query{
+		Queries: []string{`equal("$id","` + privateNote.ID + `")`},
 	}, databases.Principal{Roles: []string{"user:alice"}})
 	require.NoError(t, err)
 	require.Len(t, aliceList.Documents, 1)
 
-	bobList, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries: []string{`equal("$id","` + privateUser.ID + `")`},
+	bobList, err := docDB.ListDocuments(ctx, projectID, "app", "notes", databases.Query{
+		Queries: []string{`equal("$id","` + privateNote.ID + `")`},
 	}, databases.Principal{Roles: []string{"user:bob"}})
 	require.NoError(t, err)
 	require.Len(t, bobList.Documents, 0)

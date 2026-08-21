@@ -65,6 +65,37 @@ func (r *BucketRepository) GetByID(ctx context.Context, projectID, id string) (*
 	return mapBucketToDomain(projectID, m), nil
 }
 
+func (r *BucketRepository) List(ctx context.Context, projectID string) ([]*domainstorage.Bucket, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, bucketTable, "b")
+	if err != nil {
+		return nil, err
+	}
+	var ms []model.Bucket
+	err = conn.NewSelect().Model(&ms).ModelTableExpr(expr, sch).
+		OrderExpr("b.created_at DESC, b.id DESC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*domainstorage.Bucket, len(ms))
+	for i := range ms {
+		out[i] = mapBucketToDomain(projectID, &ms[i])
+	}
+	return out, nil
+}
+
+func (r *BucketRepository) Count(ctx context.Context, projectID string) (int64, error) {
+	conn, sch, expr, err := Scoped(ctx, r.db, projectID, bucketTable, "b")
+	if err != nil {
+		return 0, err
+	}
+	n, err := conn.NewSelect().Model((*model.Bucket)(nil)).ModelTableExpr(expr, sch).Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
+}
+
 func (r *BucketRepository) Update(ctx context.Context, projectID, id string, cols map[string]any) error {
 	if strings.TrimSpace(id) == "" {
 		return domainstorage.ErrBucketIDRequired

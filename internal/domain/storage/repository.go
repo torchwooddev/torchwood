@@ -15,6 +15,8 @@ var (
 type BucketRepository interface {
 	Insert(ctx context.Context, projectID string, bucket *Bucket) error
 	GetByID(ctx context.Context, projectID, id string) (*Bucket, error)
+	List(ctx context.Context, projectID string) ([]*Bucket, error)
+	Count(ctx context.Context, projectID string) (int64, error)
 	// Update 只 SET 点名列（name/public/permissions）；permissions JSON 为 PUT last-write-wins。
 	Update(ctx context.Context, projectID, id string, cols map[string]any) error
 	Delete(ctx context.Context, projectID, id string) error
@@ -25,6 +27,7 @@ type FileRepository interface {
 	Insert(ctx context.Context, projectID string, file *File) error
 	GetByID(ctx context.Context, projectID, id string) (*File, error)
 	ListByBucket(ctx context.Context, projectID, bucketID string) ([]*File, error)
+	Count(ctx context.Context, projectID string) (int64, error)
 	// Update 只 SET 点名列（name/mime_type/metadata）；metadata 为 PUT last-write-wins。
 	Update(ctx context.Context, projectID, id string, cols map[string]any) error
 	Delete(ctx context.Context, projectID, id string) error

@@ -59,9 +59,9 @@ func setupMagicURL(t *testing.T, withMailer bool) *magicURLFixture {
 	var account *Account
 	mailer := &CaptureMailer{}
 	if withMailer {
-		account = NewTestAccountWithMailer(mfaTestConfig(), projectRepo, docDB, rdb, mailer)
+		account = NewTestAccountWithMailer(mfaTestConfig(), projectRepo, docDB, db, rdb, mailer)
 	} else {
-		account = NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, rdb)
+		account = NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, rdb)
 	}
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
@@ -85,6 +85,7 @@ func setupMagicURL(t *testing.T, withMailer bool) *magicURLFixture {
 
 func (f *magicURLFixture) userContext() context.Context {
 	return contexts.WithPrincipal(f.ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: f.projectID,
 		UserID:    f.userID,
 		Email:     "magic-user@example.com",

@@ -52,19 +52,3 @@ func TestCreateDocument_KeysAllowPrivilegedGrant(t *testing.T) {
 	}, user)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
-
-func TestRedactSensitiveCollectionData(t *testing.T) {
-	doc := &databases.Document{Data: map[string]any{
-		"email":         "a@b.c",
-		"password_hash": "secret",
-		"phone":         "1",
-	}}
-	redactSensitiveCollectionData("p", databases.SystemDatabaseID, "users", doc)
-	require.Equal(t, "a@b.c", doc.Data["email"])
-	require.NotContains(t, doc.Data, "password_hash")
-	require.NotContains(t, doc.Data, "phone")
-
-	custom := &databases.Document{Data: map[string]any{"password_hash": "keep"}}
-	redactSensitiveCollectionData("p", "app", "users", custom)
-	require.Equal(t, "keep", custom.Data["password_hash"])
-}

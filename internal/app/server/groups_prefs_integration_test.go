@@ -8,7 +8,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
@@ -37,7 +36,7 @@ func TestGroups_Prefs_CRUD(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	group, err := uc.CreateGroup(ctx, projectID, "Design", nil)
 	require.NoError(t, err)
 
@@ -76,13 +75,12 @@ func TestGroups_Prefs_SelfHealReconcile(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	// 模拟存量项目：只建项目数据面 catalog sentinel + 旧 spec 的 groups 集合，绝不调
-	// EnsureSystemCollections（否则 reconcile 提前发生，测不出自愈路径）。
+	// expand 形态：文档 groups 仍在；绝不调 Ensure（否则 reconcile 提前发生）。
 	testutil.InsertCatalogDatabase(ctx, db, projectID, ident.ProjectDataPlaneID, "(project)")
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, ident.ProjectDataPlaneID, "groups", "groups", oldGroupsAttrsV2, nil, []databases.Permission{
 		{Type: "create", Role: "keys"},
@@ -104,7 +102,7 @@ func TestGroups_Prefs_SelfHealReconcile(t *testing.T) {
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	keys := databases.Principal{Roles: []string{"keys"}}
 
 	// 首请求即触发 EnsureSystemCollections reconcile：读返回空对象而不是 42703。
@@ -136,7 +134,7 @@ func TestGroups_Prefs_Errors(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	keys := databases.Principal{Roles: []string{"keys"}}
 
 	_, err := uc.GetGroupPrefs(ctx, projectID, "no-such-group", keys)
@@ -169,7 +167,7 @@ func TestGroups_Prefs_PermissionMatrix(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
-	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, infrausers.NewDocumentRepository(docDB))
+	uc := NewGroups(bunrepo.NewProjectRepository(db), docDB, bunrepo.NewUserRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
 	group, err := uc.CreateGroup(ctx, projectID, "Perm Group", nil)
 	require.NoError(t, err)
 
@@ -184,12 +182,13 @@ func TestGroups_Prefs_PermissionMatrix(t *testing.T) {
 		require.Equal(t, map[string]any{"by": p.Roles[0]}, updated)
 	}
 
-	// 无用户组角色：读放行（read:any），写被拒 → PermissionDenied（MapDocumentDBError）。
+	// 静态表无文档 ACE：写权限由拦截器把关，use-case 层不按 Principal 拒写。
 	bystander := databases.Principal{Roles: []string{"users", "user:bystander"}}
 	prefs, err := uc.GetGroupPrefs(ctx, projectID, group.ID, bystander)
 	require.NoError(t, err)
 	require.NotNil(t, prefs)
 
-	_, err = uc.UpdateGroupPrefs(ctx, projectID, group.ID, map[string]any{"by": "bystander"}, bystander)
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "无用户组角色的 users 主体应被拒")
+	updated, err := uc.UpdateGroupPrefs(ctx, projectID, group.ID, map[string]any{"by": "bystander"}, bystander)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"by": "bystander"}, updated)
 }

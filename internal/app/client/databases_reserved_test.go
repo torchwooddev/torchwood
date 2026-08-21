@@ -35,7 +35,7 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB)
+	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "reserved-doc@torchwood.local",
@@ -53,6 +53,7 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	}, true))
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},

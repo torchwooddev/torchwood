@@ -27,11 +27,8 @@ func TestApply_StagingLeavesDocumentUsers(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
-
-	require.NoError(t, projectschema.Apply(ctx, db, projectID))
-	require.NoError(t, projectschema.Apply(ctx, db, projectID))
 
 	quoted := testutil.CatalogQuoted(projectID)
 	var version int64
@@ -59,7 +56,7 @@ func TestApply_StagingLeavesDocumentUsers(t *testing.T) {
 	require.False(t, columnExists(t, ctx, db, schema, "sys_users", "project_id"))
 }
 
-func TestCopySystemDocuments_NoDocumentTable(t *testing.T) {
+func TestApply_CutRenamesToFinalNames(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -68,6 +65,83 @@ func TestCopySystemDocuments_NoDocumentTable(t *testing.T) {
 	defer db.Close()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	quoted := testutil.CatalogQuoted(projectID)
+	var version int64
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
+	require.Equal(t, int64(9), version)
+
+	schema, err := ident.ProjectSchemaName(projectID)
+	require.NoError(t, err)
+	require.True(t, columnExists(t, ctx, db, schema, "users", "id"))
+	require.False(t, columnExists(t, ctx, db, schema, "users", "_id"))
+	require.False(t, columnExists(t, ctx, db, schema, "users", "_version"))
+	var sys any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, quoted+".sys_users").Scan(&sys))
+	require.Nil(t, sys)
+}
+
+func TestApply_CopyThenCutMovesRowsToFinalNames(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
+
+	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
+		ID: "u-cut",
+		Data: map[string]any{
+			"email":         "cut@example.com",
+			"password_hash": "hash",
+			"name":          "Cut",
+			"status":        "active",
+		},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	require.NoError(t, projectschema.Apply(ctx, db, projectID))
+
+	quoted := testutil.CatalogQuoted(projectID)
+	var version int64
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
+	require.Equal(t, int64(9), version)
+
+	schema, err := ident.ProjectSchemaName(projectID)
+	require.NoError(t, err)
+	require.True(t, columnExists(t, ctx, db, schema, "users", "id"))
+	require.False(t, columnExists(t, ctx, db, schema, "users", "_id"))
+	require.False(t, columnExists(t, ctx, db, schema, "users", "_version"))
+	var sys any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, quoted+".sys_users").Scan(&sys))
+	require.Nil(t, sys)
+
+	var id, email string
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT id, email FROM `+quoted+`.users`).Scan(&id, &email))
+	require.Equal(t, "u-cut", id)
+	require.Equal(t, "cut@example.com", email)
+	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "users"))
+}
+
+func TestCopySystemDocuments_NoDocumentTable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	require.NoError(t, projectschema.CopySystemDocuments(ctx, db, projectID))
@@ -86,7 +160,7 @@ func TestCopySystemDocuments_UsersAndSessions(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -152,7 +226,7 @@ func TestCopySystemDocuments_OrphanSession(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -213,7 +287,7 @@ func TestCopySystemDocuments_MissingStaging(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -235,7 +309,7 @@ func TestCopySystemDocuments_InsertFailRollsBackStaging(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -277,7 +351,7 @@ func TestCopySystemDocuments_FileOwnerMissingUserSetNull(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -324,7 +398,7 @@ func TestCopySystemDocuments_OrphanFileBucket(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -379,7 +453,7 @@ func TestCopySystemDocuments_DuplicateMembership(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)

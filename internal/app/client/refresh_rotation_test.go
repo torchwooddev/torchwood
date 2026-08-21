@@ -8,7 +8,6 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -17,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func setupRefreshRotationAccount(t *testing.T) (context.Context, *Account, databases.DocumentDB, string) {
+func setupRefreshRotationAccount(t *testing.T) (context.Context, *Account, string) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -38,8 +37,8 @@ func setupRefreshRotationAccount(t *testing.T) (context.Context, *Account, datab
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(buildTestConfig(), projectRepo, docDB, rdb)
-	return ctx, account, docDB, projectID
+	account := NewTestAccountWithRedis(buildTestConfig(), projectRepo, docDB, db, rdb)
+	return ctx, account, projectID
 }
 
 func signUpForRefresh(t *testing.T, ctx context.Context, account *Account, projectID, email string) *TokenBundle {
@@ -64,7 +63,7 @@ func parseRefreshClaims(t *testing.T, cfgSecret, token string) *jwtparser.Claims
 }
 
 func TestAccount_RefreshToken_RotationAndReuseDetection(t *testing.T) {
-	ctx, account, docDB, projectID := setupRefreshRotationAccount(t)
+	ctx, account, projectID := setupRefreshRotationAccount(t)
 	tokens := signUpForRefresh(t, ctx, account, projectID, "rotation@torchwood.local")
 
 	// First refresh rotates the token.
@@ -87,9 +86,9 @@ func TestAccount_RefreshToken_RotationAndReuseDetection(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, st.Code())
 
 	claims := parseRefreshClaims(t, buildTestConfig().GetSecurity().GetJwt().GetSecret(), tokens.RefreshToken)
-	sessionDoc, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", claims.SessionID, databases.SystemPrincipal)
+	sess, err := account.sessionRepo.GetByID(ctx, projectID, claims.SessionID)
 	require.NoError(t, err)
-	require.Nil(t, sessionDoc)
+	require.Nil(t, sess)
 
 	// The rotated token is dead too, because its session was deleted.
 	_, _, err = account.RefreshToken(ctx, RefreshTokenCommand{
@@ -100,7 +99,7 @@ func TestAccount_RefreshToken_RotationAndReuseDetection(t *testing.T) {
 }
 
 func TestAccount_RefreshToken_ConcurrentRefreshSingleWinner(t *testing.T) {
-	ctx, account, _, projectID := setupRefreshRotationAccount(t)
+	ctx, account, projectID := setupRefreshRotationAccount(t)
 	tokens := signUpForRefresh(t, ctx, account, projectID, "concurrent@torchwood.local")
 
 	var wg sync.WaitGroup

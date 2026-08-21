@@ -192,7 +192,7 @@ func newTestBilling(t *testing.T) (*infrabilling.RedisCounter, *memRollups, *mem
 	counter := infrabilling.NewRedisCounter(rdb)
 	rollups := newMemRollups()
 	statements := newMemStatements()
-	b := NewBilling(counter, rollups, statements, &listProjectsStub{list: []domainprojects.Project{{ID: "proj-1", Status: "active"}}}, nil, nil)
+	b := NewBilling(counter, rollups, statements, &listProjectsStub{list: []domainprojects.Project{{ID: "proj-1", Status: "active"}}}, nil, nil, nil)
 	b.now = func() time.Time { return time.Date(2026, 8, 20, 16, 5, 0, 0, time.UTC) }
 	return counter, rollups, statements, b
 }

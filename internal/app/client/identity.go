@@ -6,31 +6,22 @@ import (
 	"strings"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 func (a *Account) findIdentity(ctx context.Context, projectID, provider, providerUID string) (*domainauth.Identity, error) {
-	list, err := a.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "identities", databases.Query{
-		Queries: []string{
-			query.BuildEqual("provider", provider),
-			query.BuildEqual("provider_uid", providerUID),
-		},
-		PageSize: 1,
-	}, databases.SystemPrincipal)
-	if err != nil {
-		return nil, err
+	if a.identities == nil {
+		return nil, status.Error(codes.Internal, "identity repository is not configured")
 	}
-	if len(list.Documents) == 0 {
-		return nil, nil
-	}
-	return mapIdentityDoc(&list.Documents[0]), nil
+	return a.identities.GetByProviderUID(ctx, projectID, provider, providerUID)
 }
 
 func (a *Account) createIdentity(ctx context.Context, projectID, userID string, info *domainauth.OAuthUserInfo, provider string) error {
+	if a.identities == nil {
+		return status.Error(codes.Internal, "identity repository is not configured")
+	}
 	identityID := idgen.UUID().String()
 	providerData := map[string]any{
 		"name":       info.Name,
@@ -43,42 +34,14 @@ func (a *Account) createIdentity(ctx context.Context, projectID, userID string, 
 	if info.UnionID != "" {
 		providerData["unionid"] = info.UnionID
 	}
-	doc := databases.Document{
-		ID: identityID,
-		Data: map[string]any{
-			"user_id":        userID,
-			"provider":       provider,
-			"provider_uid":   info.ProviderUID,
-			"provider_email": info.Email,
-			"provider_data":  providerData,
-		},
-	}
-	perms := []databases.Permission{
-		{Type: "read", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "read", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		{Type: "delete", Role: "admin"},
-	}
-	_, err := a.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "identities", doc, perms, databases.SystemPrincipal)
-	return err
-}
-
-func mapIdentityDoc(doc *databases.Document) *domainauth.Identity {
-	if doc == nil {
-		return nil
-	}
-	identity := &domainauth.Identity{
-		ID:            doc.ID,
-		UserID:        stringValue(doc.Data["user_id"]),
-		Provider:      stringValue(doc.Data["provider"]),
-		ProviderUID:   stringValue(doc.Data["provider_uid"]),
-		ProviderEmail: stringValue(doc.Data["provider_email"]),
-	}
-	if raw, ok := doc.Data["provider_data"].(map[string]any); ok {
-		identity.ProviderData = raw
-	}
-	return identity
+	return a.identities.Insert(ctx, projectID, &domainauth.Identity{
+		ID:            identityID,
+		UserID:        userID,
+		Provider:      provider,
+		ProviderUID:   info.ProviderUID,
+		ProviderEmail: info.Email,
+		ProviderData:  providerData,
+	})
 }
 
 func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider string, info *domainauth.OAuthUserInfo) (*User, error) {
@@ -91,8 +54,6 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 	if strings.TrimSpace(info.Email) == "" {
 		return nil, fmt.Errorf("oauth provider did not return an email address")
 	}
-	// 邮箱未经验证一律拒绝（微信系在 resolveWeChatUser 分流，不受影响）；
-	// 未验证邮箱可能被他人注册同名账号，必须走邮箱验证/链接流程（安全评审 M8）。
 	if !info.EmailVerified {
 		return nil, status.Error(codes.FailedPrecondition, "oauth email is not verified")
 	}
@@ -131,12 +92,8 @@ func (a *Account) resolveOAuthUser(ctx context.Context, projectID, provider stri
 		return nil, err
 	}
 	if name != "" && user.Name == emailLocalPart(info.Email) {
-		updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-			ID:   user.ID,
-			Data: map[string]any{"name": name},
-		}, nil), databases.SystemPrincipal)
-		if err == nil {
-			user = mapUserDoc(&updated)
+		if err := a.usersRepo.Update(ctx, projectID, user.ID, map[string]any{"name": name}); err == nil {
+			user.Name = name
 		}
 	}
 	if err := a.createIdentity(ctx, projectID, user.ID, info, provider); err != nil {

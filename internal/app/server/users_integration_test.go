@@ -2,22 +2,23 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/password"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -28,16 +29,16 @@ func (documentRoles) LoadUserRoles(ctx context.Context, projectID, userID string
 	return []string{"users", "user:" + userID}, nil
 }
 
-func newUsersUC(ctx context.Context, t *testing.T) (*Users, databases.DocumentDB, string, func()) {
+func newUsersUC(ctx context.Context, t *testing.T) (*Users, *clients.Database, string, func()) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
 	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	cfg := &config.AppConfig{}
-	sessions := auth.NewSessionService(cfg, docDB, documentRoles{}, nil)
-	uc := NewUsers(bunrepo.NewProjectRepository(db), docDB, sessions, db, infrausers.NewDocumentRepository(docDB))
-	return uc, docDB, projectID, cleanup
+	sessions := auth.NewSessionService(cfg, bunrepo.NewSessionRepository(db), documentRoles{}, nil)
+	uc := NewUsers(bunrepo.NewProjectRepository(db), docDB, sessions, db, bunrepo.NewUserRepository(db), bunrepo.NewSessionRepository(db), bunrepo.NewGroupRepository(db), bunrepo.NewMembershipRepository(db))
+	return uc, db, projectID, cleanup
 }
 
 func TestServerUsers_CreateAndUpdate(t *testing.T) {
@@ -46,9 +47,8 @@ func TestServerUsers_CreateAndUpdate(t *testing.T) {
 	}
 
 	ctx := platformAdminCtx(context.Background())
-	uc, docDB, projectID, cleanup := newUsersUC(ctx, t)
+	uc, _, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
-	_ = docDB
 
 	// 创建用户。
 	doc, err := uc.CreateUser(ctx, projectID, CreateUserCommand{
@@ -198,7 +198,7 @@ func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
 	// 需要本地 Postgres（CI 兜底）：级联删除必须循环分页，
 	// 超过默认 50 条页上限的会话/成员不得残留（F4-1）。
 	ctx := platformAdminCtx(context.Background())
-	uc, docDB, projectID, cleanup := newUsersUC(ctx, t)
+	uc, db, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
 
 	doc, err := uc.CreateUser(ctx, projectID, CreateUserCommand{
@@ -208,50 +208,40 @@ func TestServerUsers_DeleteUser_CascadeBeyondDefaultPage(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// 直插 61 条 sessions（> 默认 50 条页上限）。
+	sessionsRepo := bunrepo.NewSessionRepository(db)
+	groupsRepo := bunrepo.NewGroupRepository(db)
+	membershipsRepo := bunrepo.NewMembershipRepository(db)
 	for i := 0; i < 61; i++ {
-		_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Document{
-			ID: idgen.UUID().String(),
-			Data: map[string]any{
-				"user_id":    doc.ID,
-				"provider":   "email",
-				"expire_at":  time.Now().Add(time.Hour).Format(time.RFC3339Nano),
-				"user_agent": "cascade-test",
-			},
-		}, nil, databases.SystemPrincipal)
-		require.NoError(t, err)
+		require.NoError(t, sessionsRepo.Insert(ctx, projectID, &domainauth.Session{
+			ID:       idgen.UUID().String(),
+			UserID:   doc.ID,
+			Provider: "email",
+			ExpireAt: time.Now().Add(time.Hour),
+		}))
 	}
-	// 直插 61 条 memberships。
-	for i := 0; i < 61; i++ {
-		_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Document{
-			ID: idgen.UUID().String(),
-			Data: map[string]any{
-				"group_id":  idgen.UUID().String(),
-				"user_id":   doc.ID,
-				"status":    groups.StatusAccepted,
-				"roles":     []string{groups.RoleMember},
-				"joined_at": time.Now().Format(time.RFC3339Nano),
-			},
-		}, nil, databases.SystemPrincipal)
-		require.NoError(t, err)
+	for i := 0; i < 3; i++ {
+		g := &groups.Group{ID: idgen.UUID().String(), Name: fmt.Sprintf("g-%d", i)}
+		require.NoError(t, groupsRepo.Insert(ctx, projectID, g))
+		require.NoError(t, membershipsRepo.Insert(ctx, projectID, &groups.Membership{
+			ID:      idgen.UUID().String(),
+			GroupID: g.ID,
+			UserID:  doc.ID,
+			Status:  groups.StatusAccepted,
+			Roles:   []string{groups.RoleMember},
+		}))
 	}
 
 	require.NoError(t, uc.DeleteUser(ctx, projectID, doc.ID, databases.Principal{Roles: []string{"keys"}}))
 
-	// 用户文档与全部级联文档均已清理。
-	me, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", doc.ID, databases.SystemPrincipal)
+	gone, err := bunrepo.NewUserRepository(db).GetByID(ctx, projectID, doc.ID)
 	require.NoError(t, err)
-	require.Nil(t, me)
-	sessions, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
-		Queries: []string{query.BuildEqual("user_id", doc.ID)},
-	}, databases.SystemPrincipal)
+	require.Nil(t, gone)
+	left, err := sessionsRepo.ListByUser(ctx, projectID, doc.ID)
 	require.NoError(t, err)
-	require.Zero(t, sessions.TotalCount)
-	memberships, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
-		Queries: []string{query.BuildEqual("user_id", doc.ID)},
-	}, databases.SystemPrincipal)
+	require.Empty(t, left)
+	mems, err := membershipsRepo.ListByUser(ctx, projectID, doc.ID)
 	require.NoError(t, err)
-	require.Zero(t, memberships.TotalCount)
+	require.Empty(t, mems)
 }
 
 func TestServerUsers_CreateUserToken(t *testing.T) {
@@ -260,7 +250,7 @@ func TestServerUsers_CreateUserToken(t *testing.T) {
 	}
 
 	ctx := platformAdminCtx(context.Background())
-	uc, docDB, projectID, cleanup := newUsersUC(ctx, t)
+	uc, db, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
 
 	doc, err := uc.CreateUser(ctx, projectID, CreateUserCommand{
@@ -281,9 +271,7 @@ func TestServerUsers_CreateUserToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, sessionsList, 1)
 
-	// 以用户身份可读取自己的文档。
-	tokenPrincipal := databases.Principal{Roles: []string{"users", "user:" + doc.ID}}
-	me, err := docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", doc.ID, tokenPrincipal)
+	me, err := bunrepo.NewUserRepository(db).GetByID(ctx, projectID, doc.ID)
 	require.NoError(t, err)
 	require.NotNil(t, me)
 

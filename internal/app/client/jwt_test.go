@@ -46,7 +46,7 @@ func TestAccount_CreateJWT(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, rdb)
+	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, db, rdb)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -56,6 +56,7 @@ func TestAccount_CreateJWT(t *testing.T) {
 	require.NoError(t, err)
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,
@@ -99,7 +100,7 @@ func TestAccount_CreateJWT_Unauthenticated(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccount(jwtTestConfig(), projectRepo, docDB)
+	account := NewTestAccount(jwtTestConfig(), projectRepo, docDB, db)
 
 	// 无 principal → 401。
 	_, err := account.CreateJWT(ctx)
@@ -115,6 +116,7 @@ func TestAccount_CreateJWT_Unauthenticated(t *testing.T) {
 	})
 	require.NoError(t, err)
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    "no-such-user",
 		Roles:     []string{"users"},
@@ -147,7 +149,7 @@ func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, rdb)
+	account := NewTestAccountWithRedis(jwtTestConfig(), projectRepo, docDB, db, rdb)
 
 	user, tokens, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -158,6 +160,7 @@ func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
 	require.NotNil(t, tokens)
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,
@@ -173,7 +176,8 @@ func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
-		docDB,
+		bunrepo.NewSessionRepository(db),
+		bunrepo.NewUserRepository(db),
 		nil,
 		auth.NewRedisOneTimeTokenStore(rdb),
 	)

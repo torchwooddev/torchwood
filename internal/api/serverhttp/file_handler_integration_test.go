@@ -81,14 +81,15 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	cfg := &config.AppConfig{}
 	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t))
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
-		docDB,
+		bunrepo.NewSessionRepository(db),
+		bunrepo.NewUserRepository(db),
 		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
@@ -283,8 +284,8 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
 	projectRepo := bunrepo.NewProjectRepository(db)
-	storageUC := appstorage.NewStorage(cfg, projectRepo, docDB, store, newUploadSessionStoreForTest(t))
-	account := client.NewTestAccount(cfg, projectRepo, docDB)
+	storageUC := appstorage.NewStorage(cfg, projectRepo, docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	account := client.NewTestAccount(cfg, projectRepo, docDB, db)
 
 	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectA,
@@ -311,7 +312,8 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
-		docDB,
+		bunrepo.NewSessionRepository(db),
+		bunrepo.NewUserRepository(db),
 		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
@@ -407,14 +409,15 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t))
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
-		docDB,
+		bunrepo.NewSessionRepository(db),
+		bunrepo.NewUserRepository(db),
 		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
@@ -463,7 +466,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t))
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), docDB, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
 	admin, adminCleanup := testutil.CreateTestAdmin(ctx, db, "member")
 	token, err := testutil.SignAdminToken(cfg, admin)
 	require.NoError(t, err)
@@ -475,7 +478,8 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
-		docDB,
+		bunrepo.NewSessionRepository(db),
+		bunrepo.NewUserRepository(db),
 		nil,
 	)
 	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
@@ -551,8 +555,10 @@ func TestFileHandler_PublicBucketAnonymousRead(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, code)
 
 	// 非 public bucket 匿名读 → 401。
+	privateID, _, status := f.uploadTo(f.bucketID, []byte("private content"), map[string]string{"X-Api-Key": f.apiSecret}, "")
+	require.Equal(t, http.StatusCreated, status)
 	code, _, _ = f.download(
-		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/view?project="+f.projectID,
+		"/v1/storage/buckets/"+f.bucketID+"/files/"+privateID+"/view?project="+f.projectID,
 		nil,
 	)
 	require.Equal(t, http.StatusUnauthorized, code)

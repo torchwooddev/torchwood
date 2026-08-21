@@ -115,11 +115,7 @@ func (d *Databases) ensureCollectionForProject(ctx context.Context, projectID, d
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return "", databases.Principal{}, err
 	}
-	// 系统集合仅限项目数据面判定；写路径拒绝全部系统集合，
-	// 读路径仅拒绝高敏系统集合（users/sessions/identities，有 Account 专用 API）。
-	// 对外 database_id 已拒 `_`，本守卫是纵深防御。
-	if databases.IsSystemCollection(projectID, databaseID, collectionID) &&
-		(!readOnly || databases.IsSensitiveSystemCollectionID(collectionID)) {
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) && !readOnly {
 		return "", databases.Principal{}, shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)
@@ -172,15 +168,6 @@ func (d *Databases) GetDocument(ctx context.Context, projectID, databaseID, coll
 	return d.documentsCore().GetDocument(ctx, pid, databaseID, collectionID, documentID, principal)
 }
 
-// clientDocumentUpdateProtectedFields 是客户端 UpdateDocument 中禁止修改的敏感字段，
-// 用户只能通过认证用例（ChangePassword/VerifyEmail 等）间接修改这些字段。
-var clientDocumentUpdateProtectedFields = map[string]struct{}{
-	"password_hash":  {},
-	"email_verified": {},
-	"labels":         {},
-	"status":         {},
-}
-
 func (d *Databases) UpdateDocument(
 	ctx context.Context,
 	databaseID, collectionID, documentID string,
@@ -196,11 +183,7 @@ func (d *Databases) UpdateDocument(
 	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
 		return nil, err
 	}
-	filtered := filterClientProtectedFields(data)
-	if len(data) > 0 && len(filtered) == 0 && len(perms) == 0 && len(increment) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied")
-	}
-	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, filtered, perms, increment, principal, version, documents.WriteOptions{})
+	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, documents.WriteOptions{})
 }
 
 func (d *Databases) UpsertDocument(
@@ -218,14 +201,10 @@ func (d *Databases) UpsertDocument(
 	if len(perms) == 0 {
 		perms = ownerDocumentPermissions(p.OwnerID())
 	}
-	filtered := filterClientProtectedFields(data)
-	if len(filtered) == 0 {
-		if len(data) == 0 {
-			return nil, status.Error(codes.InvalidArgument, "data is required")
-		}
-		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied")
+	if len(data) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "data is required")
 	}
-	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, filtered, conflictColumns, perms, principal, documents.WriteOptions{})
+	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, documents.WriteOptions{})
 }
 
 func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID, documentID string, version *int64) error {

@@ -49,12 +49,11 @@ func (s *Storage) CreateUploadSession(ctx context.Context, cmd CreateUploadComma
 	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
 		return nil, err
 	}
-	// Verify bucket exists.
-	bucketDoc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", cmd.BucketID, principal)
+	bucket, err := s.buckets.GetByID(ctx, project.ID, cmd.BucketID)
 	if err != nil {
 		return nil, err
 	}
-	if bucketDoc == nil {
+	if bucket == nil {
 		return nil, status.Error(codes.NotFound, "bucket not found")
 	}
 
@@ -220,18 +219,19 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 	}
 
 	now := time.Now()
-	fileDoc := databases.Document{
-		ID: session.FileID,
-		Data: map[string]any{
-			"bucket_id": session.BucketID,
-			"name":      session.Name,
-			"mime_type": session.MimeType,
-			"size":      session.Size,
-			"metadata":  session.Metadata,
-		},
+	file := &storage.File{
+		ID:          session.FileID,
+		ProjectID:   project.ID,
+		BucketID:    session.BucketID,
+		Name:        session.Name,
+		MimeType:    session.MimeType,
+		Size:        session.Size,
+		Metadata:    session.Metadata,
+		OwnerUserID: ownerUserID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
-	perms := filePermissions(session.FileID, ownerUserID, session.Permissions)
-	if _, err := s.docDB.CreateDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileDoc, perms, principal); err != nil {
+	if err := s.files.Insert(ctx, project.ID, file); err != nil {
 		// 回滚：确认「自己仍是锁持有者 + 会话仍存在」双重条件后才删最终对象。
 		// 锁 TTL（1h）若已过期，第二个 complete 可能已重新加锁并成功建文档，
 		// 此时无条件删对象会误删其成果 → 数据损坏。

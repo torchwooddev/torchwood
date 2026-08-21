@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -133,12 +132,8 @@ func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone 
 	if existing != nil {
 		user := accountUser(existing)
 		if !existing.PhoneVerified {
-			updated, err := a.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-				ID:   user.ID,
-				Data: map[string]any{"phone_verified": true},
-			}, nil), databases.SystemPrincipal)
-			if err == nil {
-				user = mapUserDoc(&updated)
+			if err := a.usersRepo.Update(ctx, projectID, user.ID, map[string]any{"phone_verified": true}); err == nil {
+				user.EmailVerified = existing.EmailVerified
 			}
 		}
 		return user, nil

@@ -17,7 +17,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/password"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -26,12 +25,33 @@ type Users struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
 	sessions    domainauth.SessionService
+	sessionRepo domainauth.SessionRepository
 	db          *clients.Database
 	usersRepo   users.Repository
+	groupsRepo  groups.GroupRepository
+	memberships groups.MembershipRepository
 }
 
-func NewUsers(projectRepo projects.Repository, docDB databases.DocumentDB, sessions domainauth.SessionService, db *clients.Database, usersRepo users.Repository) *Users {
-	return &Users{projectRepo: projectRepo, docDB: docDB, sessions: sessions, db: db, usersRepo: usersRepo}
+func NewUsers(
+	projectRepo projects.Repository,
+	docDB databases.DocumentDB,
+	sessions domainauth.SessionService,
+	db *clients.Database,
+	usersRepo users.Repository,
+	sessionRepo domainauth.SessionRepository,
+	groupsRepo groups.GroupRepository,
+	memberships groups.MembershipRepository,
+) *Users {
+	return &Users{
+		projectRepo: projectRepo,
+		docDB:       docDB,
+		sessions:    sessions,
+		sessionRepo: sessionRepo,
+		db:          db,
+		usersRepo:   usersRepo,
+		groupsRepo:  groupsRepo,
+		memberships: memberships,
+	}
 }
 
 func (u *Users) resolveProject(ctx context.Context, projectID string) (*projects.Project, error) {
@@ -48,22 +68,39 @@ func (u *Users) resolveProject(ctx context.Context, projectID string) (*projects
 	return p, nil
 }
 
-func (u *Users) ListUsers(ctx context.Context, projectID string, q databases.Query, principal databases.Principal) ([]databases.Document, int64, string, error) {
+func (u *Users) ListUsers(ctx context.Context, projectID string, q databases.Query, _ databases.Principal) ([]databases.Document, int64, string, error) {
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, 0, "", err
 	}
-	list, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", q, principal)
+	list, err := u.usersRepo.List(ctx, projectID, users.ListFilter{
+		Queries:   q.Queries,
+		PageSize:  q.PageSize,
+		PageToken: q.PageToken,
+	})
 	if err != nil {
 		return nil, 0, "", err
 	}
-	return list.Documents, list.TotalCount, list.NextPageToken, nil
+	docs := make([]databases.Document, 0, len(list.Users))
+	for _, usr := range list.Users {
+		if d := userAsDocument(usr); d != nil {
+			docs = append(docs, *d)
+		}
+	}
+	return docs, list.TotalCount, list.NextPageToken, nil
 }
 
-func (u *Users) GetUser(ctx context.Context, projectID, userID string, principal databases.Principal) (*databases.Document, error) {
+func (u *Users) GetUser(ctx context.Context, projectID, userID string, _ databases.Principal) (*databases.Document, error) {
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	return u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, principal)
+	found, err := u.usersRepo.GetByID(ctx, projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if found == nil {
+		return nil, nil
+	}
+	return userAsDocument(found), nil
 }
 
 var userUpdateProtectedFields = map[string]struct{}{
@@ -179,15 +216,20 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 	if len(filtered) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied (password_hash is managed via the dedicated password endpoint)")
 	}
-	// 用例层即权限层：keys 角色已由拦截器 scope 把关，docDB 调用统一走 SystemPrincipal，
-	// 避免非 System 主体触发系统集合写保护（安全评审 C1 方案 (a)）。
-	doc := databases.Document{ID: userID, Data: filtered}
-	updated, err := u.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(doc, nil), databases.SystemPrincipal)
-	if err != nil {
-		// 并发下唯一索引冲突（ErrDuplicateKey/23505）映射为 AlreadyExists。
+	if err := u.usersRepo.Update(ctx, projectID, userID, filtered); err != nil {
+		if mapped := mapUserError(err); mapped != err {
+			return nil, mapped
+		}
 		return nil, fmt.Errorf("update user: %w", appshared.MapDocumentDBError(err))
 	}
-	return &updated, nil
+	found, err := u.usersRepo.GetByID(ctx, projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if found == nil {
+		return nil, status.Error(codes.NotFound, "user not found")
+	}
+	return userAsDocument(found), nil
 }
 
 // UpdateUserPassword 服务端直接重置密码，并撤销该用户全部会话（与客户端
@@ -202,28 +244,28 @@ func (u *Users) UpdateUserPassword(ctx context.Context, projectID, userID, newPa
 	if err := users.ValidatePasswordStrength(newPassword); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	found, err := u.usersRepo.GetByID(ctx, projectID, userID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
 	hash, err := password.Hash(newPassword)
 	if err != nil {
 		return nil, err
 	}
-	updated, err := u.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   userID,
-		Data: map[string]any{"password_hash": hash},
-	}, nil), databases.SystemPrincipal)
-	if err != nil {
+	if err := u.usersRepo.Update(ctx, projectID, userID, map[string]any{"password_hash": hash}); err != nil {
 		return nil, fmt.Errorf("update user password: %w", err)
 	}
 	if err := u.sessions.DeleteSessionsByUser(ctx, projectID, userID); err != nil {
 		return nil, fmt.Errorf("revoke sessions after password reset: %w", err)
 	}
-	return &updated, nil
+	found, err = u.usersRepo.GetByID(ctx, projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	return userAsDocument(found), nil
 }
 
 // ListUserSessions 列出指定用户的全部会话。
@@ -231,43 +273,39 @@ func (u *Users) ListUserSessions(ctx context.Context, projectID, userID string) 
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	found, err := u.usersRepo.GetByID(ctx, projectID, userID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if found == nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
-	list, err := u.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
-		Queries:  []string{query.BuildEqual("user_id", userID)},
-		PageSize: 100,
-	}, databases.SystemPrincipal)
+	list, err := u.sessionRepo.ListByUser(ctx, projectID, userID)
 	if err != nil {
 		return nil, err
 	}
-	return list.Documents, nil
+	docs := make([]databases.Document, 0, len(list))
+	for i := range list {
+		docs = append(docs, sessionAsDocument(&list[i]))
+	}
+	return docs, nil
 }
 
 func (u *Users) DeleteUserSession(ctx context.Context, projectID, userID, sessionID string) error {
-	// 纵深防御（G2-2）：管理员会话 / API key 主体才允许以 SystemPrincipal
-	// 删除会话文档；owner/admin 角色细粒度由拦截器 adminRoleMethodRules 把关。
 	if err := appshared.RequireServerWriteActor(ctx); err != nil {
 		return err
 	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
-	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.SystemPrincipal)
+	sess, err := u.sessionRepo.GetByID(ctx, projectID, sessionID)
 	if err != nil {
 		return err
 	}
-	if doc == nil {
+	if sess == nil || sess.UserID != userID {
 		return status.Error(codes.NotFound, "session not found")
 	}
-	if uid, _ := doc.Data["user_id"].(string); uid != userID {
-		return status.Error(codes.NotFound, "session not found")
-	}
-	return u.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.DeleteOptions{}, databases.SystemPrincipal)
+	return u.sessionRepo.Delete(ctx, projectID, sessionID)
 }
 
 // CreateUserToken 模拟登录：以指定用户身份创建会话并签发 token（调试/客服场景）。
@@ -307,97 +345,44 @@ func (u *Users) CreateUserToken(ctx context.Context, projectID, userID string) (
 	return bundle, nil
 }
 
-func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, principal databases.Principal) error {
+func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, _ databases.Principal) error {
 	if err := appshared.RequirePlatformAdmin(ctx); err != nil {
 		return err
 	}
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
-	// M10：删除 users 文档前级联清理 sessions/identities/memberships，
-	// 避免 identity 残留阻塞同 provider 重新注册、memberships 残留遗留孤儿用户组角色。
-	// 级联与主文档删除包在同一事务：中途失败整体回滚，不残留半删除状态
-	// （docDB 文档操作经 conn(ctx) 感知外层事务）。
-	err := u.db.RunInTx(ctx, func(txCtx context.Context) error {
-		if err := u.deleteUserCascade(txCtx, projectID, userID); err != nil {
-			return err
-		}
-		return u.docDB.DeleteDocument(txCtx, projectID, databases.SystemDatabaseID, "users", userID, databases.DeleteOptions{}, databases.SystemPrincipal)
-	})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// deleteUserCascade 以 SystemPrincipal 清理用户的 sessions/identities/memberships，
-// 并按 group_id 聚合递减 groups 文档 total（与 Groups.adjustGroupTotal 语义一致，
-// 内联实现避免跨用例结构体耦合）。
-func (u *Users) deleteUserCascade(ctx context.Context, projectID, userID string) error {
-	for _, coll := range []string{"sessions", "identities"} {
-		docs, err := cascadeListAll(ctx, u.docDB, projectID, coll, []string{query.BuildEqual("user_id", userID)})
-		if err != nil {
-			return fmt.Errorf("list %s for user: %w", coll, err)
-		}
-		for _, doc := range docs {
-			if err := u.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, coll, doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
-				return fmt.Errorf("delete %s: %w", coll, err)
+	return u.db.RunInTx(ctx, func(txCtx context.Context) error {
+		var groupIDs []string
+		if u.memberships != nil {
+			mems, err := u.memberships.ListByUser(txCtx, projectID, userID)
+			if err != nil {
+				return err
+			}
+			seen := map[string]struct{}{}
+			for _, m := range mems {
+				if m.Status == groups.StatusAccepted && m.GroupID != "" {
+					if _, ok := seen[m.GroupID]; ok {
+						continue
+					}
+					seen[m.GroupID] = struct{}{}
+					groupIDs = append(groupIDs, m.GroupID)
+				}
 			}
 		}
-	}
-
-	// memberships：仅 accepted 状态计入用户组 total（与 CreateMembership/DeleteMembership 一致）。
-	groupsToAdjust := map[string]struct{}{}
-	docs, err := cascadeListAll(ctx, u.docDB, projectID, "memberships", []string{query.BuildEqual("user_id", userID)})
-	if err != nil {
-		return fmt.Errorf("list memberships for user: %w", err)
-	}
-	for _, doc := range docs {
-		if statusVal, _ := doc.Data["status"].(string); statusVal == groups.StatusAccepted {
-			if groupID, _ := doc.Data["group_id"].(string); groupID != "" {
-				groupsToAdjust[groupID] = struct{}{}
-			}
-		}
-		if err := u.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", doc.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
-			return fmt.Errorf("delete membership: %w", err)
-		}
-	}
-	for groupID := range groupsToAdjust {
-		if err := u.adjustGroupTotal(ctx, projectID, groupID, -1); err != nil {
+		if err := u.usersRepo.Delete(txCtx, projectID, userID); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-// adjustGroupTotal 递增/递减用户组 total（与 Groups.adjustGroupTotal 逻辑一致，
-// 此处针对 Users 内联实现，避免跨用例结构体依赖）。
-func (u *Users) adjustGroupTotal(ctx context.Context, projectID, groupID string, delta int) error {
-	doc, err := u.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, databases.SystemPrincipal)
-	if err != nil {
-		return err
-	}
-	if doc == nil {
+		if u.groupsRepo == nil {
+			return nil
+		}
+		for _, groupID := range groupIDs {
+			if err := u.groupsRepo.RecountAccepted(txCtx, projectID, groupID); err != nil {
+				return err
+			}
+		}
 		return nil
-	}
-	total := int64(0)
-	switch v := doc.Data["total"].(type) {
-	case float64:
-		total = int64(v)
-	case int64:
-		total = v
-	case int:
-		total = int64(v)
-	}
-	total += int64(delta)
-	if total < 0 {
-		total = 0
-	}
-	_, err = u.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   groupID,
-		Data: map[string]any{"total": total},
-	}, nil), databases.SystemPrincipal)
-	return err
+	})
 }
 
 // CreateUserCommand 是 CreateUser 的输入。
@@ -412,30 +397,6 @@ type CreateUserCommand struct {
 
 // cascadePageSize 是级联清理的分页大小：ListDocuments 默认页太小（DSL 无显式
 // limit 时为 50 条），大账号的会话/成员数据会被截断，必须显式设大并循环拉取。
-const cascadePageSize = 1000
-
-// cascadeListAll 以固定页大小循环拉取集合内全部匹配文档（级联删除用），
-// 直至 NextPageToken 为空；DSL 附加 limit(1000) 覆盖 ParseMany 的默认 50 注入。
-func cascadeListAll(ctx context.Context, docDB databases.DocumentDB, projectID, collectionID string, queries []string) ([]databases.Document, error) {
-	var out []databases.Document
-	token := ""
-	for {
-		list, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, collectionID, databases.Query{
-			Queries:   append(append([]string{}, queries...), "limit(1000)"),
-			PageSize:  cascadePageSize,
-			PageToken: token,
-		}, databases.SystemPrincipal)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, list.Documents...)
-		if list.NextPageToken == "" {
-			return out, nil
-		}
-		token = list.NextPageToken
-	}
-}
-
 func normalizeEmail(email string) string {
 	return users.NormalizeEmail(email)
 }
@@ -444,7 +405,28 @@ func userAsDocument(u *users.User) *databases.Document {
 	if u == nil {
 		return nil
 	}
-	return &databases.Document{ID: u.ID, Data: u.DocumentData()}
+	doc := &databases.Document{ID: u.ID, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt, Data: u.DocumentData()}
+	return doc
+}
+
+func sessionAsDocument(s *domainauth.Session) databases.Document {
+	if s == nil {
+		return databases.Document{}
+	}
+	return databases.Document{
+		ID:        s.ID,
+		CreatedAt: s.CreatedAt,
+		UpdatedAt: s.UpdatedAt,
+		Data: map[string]any{
+			"user_id":     s.UserID,
+			"secret_hash": s.SecretHash,
+			"provider":    s.Provider,
+			"user_agent":  s.UserAgent,
+			"ip":          s.IP,
+			"country":     s.Country,
+			"expire_at":   s.ExpireAt,
+		},
+	}
 }
 
 func mapUserError(err error) error {

@@ -7,18 +7,19 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/groups"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type Groups struct {
-	groups *server.Groups
-	docDB  databases.DocumentDB
+	groups    *server.Groups
+	usersRepo users.Repository
 }
 
-func NewGroups(groups *server.Groups, docDB databases.DocumentDB) *Groups {
-	return &Groups{groups: groups, docDB: docDB}
+func NewGroups(groups *server.Groups, usersRepo users.Repository) *Groups {
+	return &Groups{groups: groups, usersRepo: usersRepo}
 }
 
 func (t *Groups) dbPrincipal(ctx context.Context) (projectID, userID, email string, principal databases.Principal, err error) {
@@ -122,14 +123,11 @@ func (t *Groups) UpdateMembershipStatus(ctx context.Context, groupID, membership
 		// 接受邀请一律要求调用者邮箱已验证：SignUp 不强制验证邮箱，
 		// 若邀请创建时目标邮箱已被未验证账号抢注（user_id 绑定为该账号），
 		// 仅按 memUserID 判断会绕过验证，因此这里无条件校验 email_verified。
-		userDoc, err := t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+		found, err := t.usersRepo.GetByID(ctx, projectID, userID)
 		if err != nil {
 			return nil, err
 		}
-		verified := false
-		if userDoc != nil {
-			verified, _ = userDoc.Data["email_verified"].(bool)
-		}
+		verified := found != nil && found.EmailVerified
 		if !verified {
 			return nil, status.Error(codes.FailedPrecondition, "email verification required to accept group invitation")
 		}

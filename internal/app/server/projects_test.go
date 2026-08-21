@@ -11,6 +11,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -55,7 +56,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 
 	coll, err := docDB.GetCollection(ctx, p.ID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
-	require.NotNil(t, coll)
+	require.Nil(t, coll, "cut 后 catalog 无 sentinel users")
 
 	def, err := docDB.GetDatabase(ctx, p.ID, "default")
 	require.NoError(t, err)
@@ -63,7 +64,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 
 	sentinel, err := docDB.GetDatabase(ctx, p.ID, databases.SystemDatabaseID)
 	require.NoError(t, err)
-	require.NotNil(t, sentinel)
+	require.Nil(t, sentinel, "cut 后 catalog 无 database_id='_'")
 
 	var publicCatalog int
 	require.NoError(t, db.DB.QueryRowContext(ctx,
@@ -76,7 +77,11 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 		Where("project_id = ? AND is_system = TRUE", p.ID).
 		Count(ctx)
 	require.NoError(t, err)
-	require.Equal(t, len(databases.SystemCollectionIDs), projectCatalog)
+	require.Zero(t, projectCatalog, "cut 后 catalog 无 is_system 行")
+
+	var staticUsers any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, "tw_"+p.ID+".users").Scan(&staticUsers))
+	require.NotNil(t, staticUsers)
 }
 
 func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
@@ -442,10 +447,12 @@ func TestProjects_DeleteProject_DropsSchemas(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = docDB.CreateDocument(ctx, p.ID, databases.SystemDatabaseID, "users", databases.Document{
-		Data: map[string]any{"email": "gone@torchwood.local", "name": "Gone"},
-	}, nil, databases.SystemPrincipal)
-	require.NoError(t, err)
+	require.NoError(t, bunrepo.NewUserRepository(db).Insert(ctx, p.ID, &users.User{
+		ID:     "gone-user",
+		Email:  "gone@torchwood.local",
+		Name:   "Gone",
+		Status: users.StatusActive,
+	}))
 
 	require.NoError(t, projectsUC.DeleteProject(platformAdminCtx(ctx), p.ID))
 

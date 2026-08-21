@@ -8,7 +8,6 @@ import (
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
@@ -25,7 +24,8 @@ type Validator struct {
 	adminRepo        projects.AdminRepository
 	adminProjectRepo projects.AdminProjectRepository
 	adminRevokeStore domainauth.AdminTokenRevokeStore
-	docDB            databases.DocumentDB
+	sessions         domainauth.SessionRepository
+	users            users.Repository
 	roleResolver     domainauth.UserRoleResolver
 	sessionCodec     *SessionCookieCodec
 	oneTimeTokens    domainauth.OneTimeTokenStore
@@ -37,10 +37,11 @@ func NewValidator(
 	adminRepo projects.AdminRepository,
 	adminProjectRepo projects.AdminProjectRepository,
 	adminRevokeStore domainauth.AdminTokenRevokeStore,
-	docDB databases.DocumentDB,
+	sessions domainauth.SessionRepository,
+	usersRepo users.Repository,
 	roleResolver domainauth.UserRoleResolver,
 ) *Validator {
-	return NewValidatorWithOneTimeTokens(cfg, apiKeyRepo, adminRepo, adminProjectRepo, adminRevokeStore, docDB, roleResolver, nil)
+	return NewValidatorWithOneTimeTokens(cfg, apiKeyRepo, adminRepo, adminProjectRepo, adminRevokeStore, sessions, usersRepo, roleResolver, nil)
 }
 
 // NewValidatorWithOneTimeTokens 额外装配一次性 token 消费存储（CreateJWT
@@ -51,7 +52,8 @@ func NewValidatorWithOneTimeTokens(
 	adminRepo projects.AdminRepository,
 	adminProjectRepo projects.AdminProjectRepository,
 	adminRevokeStore domainauth.AdminTokenRevokeStore,
-	docDB databases.DocumentDB,
+	sessions domainauth.SessionRepository,
+	usersRepo users.Repository,
 	roleResolver domainauth.UserRoleResolver,
 	oneTimeTokens domainauth.OneTimeTokenStore,
 ) *Validator {
@@ -61,7 +63,8 @@ func NewValidatorWithOneTimeTokens(
 		adminRepo:        adminRepo,
 		adminProjectRepo: adminProjectRepo,
 		adminRevokeStore: adminRevokeStore,
-		docDB:            docDB,
+		sessions:         sessions,
+		users:            usersRepo,
 		roleResolver:     roleResolver,
 		sessionCodec:     NewSessionCookieCodec(string(jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeSessionCookie))),
 		oneTimeTokens:    oneTimeTokens,
@@ -203,25 +206,20 @@ func (v *Validator) principalFromJWT(ctx context.Context, claims *jwtparser.Clai
 }
 
 func (v *Validator) principalFromSession(ctx context.Context, projectID, sessionID string) (*shared.Principal, error) {
-	sessionDoc, err := v.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.SystemPrincipal)
+	if v.sessions == nil {
+		return nil, status.Error(codes.Internal, "session lookup failed")
+	}
+	sess, err := v.sessions.GetByID(ctx, projectID, sessionID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "session lookup failed")
 	}
-	if sessionDoc == nil {
+	if sess == nil {
 		return nil, status.Error(codes.Unauthenticated, "session not found")
 	}
-	expireAtRaw, ok := sessionDoc.Data["expire_at"]
-	if ok {
-		expireAt, err := parseTime(expireAtRaw)
-		if err != nil {
-			// Fail closed: unparsable expiry is treated as expired.
-			return nil, status.Error(codes.Unauthenticated, "session expired")
-		}
-		if expireAt.Before(time.Now()) {
-			return nil, status.Error(codes.Unauthenticated, "session expired")
-		}
+	if sess.ExpireAt.IsZero() || sess.ExpireAt.Before(time.Now()) {
+		return nil, status.Error(codes.Unauthenticated, "session expired")
 	}
-	userID, _ := sessionDoc.Data["user_id"].(string)
+	userID := sess.UserID
 	if userID == "" {
 		return nil, status.Error(codes.Unauthenticated, "invalid session")
 	}
@@ -244,25 +242,21 @@ func (v *Validator) principalFromSession(ctx context.Context, projectID, session
 }
 
 func (v *Validator) validateEndUserSession(ctx context.Context, projectID, sessionID, userID string) error {
-	sessionDoc, err := v.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "sessions", sessionID, databases.SystemPrincipal)
+	if v.sessions == nil {
+		return status.Error(codes.Unauthenticated, "session lookup failed")
+	}
+	sess, err := v.sessions.GetByID(ctx, projectID, sessionID)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "session lookup failed")
 	}
-	if sessionDoc == nil {
+	if sess == nil {
 		return status.Error(codes.Unauthenticated, "session not found or revoked")
 	}
-	if uid, _ := sessionDoc.Data["user_id"].(string); uid != userID {
+	if sess.UserID != userID {
 		return status.Error(codes.Unauthenticated, "invalid session")
 	}
-	if expireAtRaw, ok := sessionDoc.Data["expire_at"]; ok {
-		expireAt, err := parseTime(expireAtRaw)
-		if err != nil {
-			// Fail closed: unparsable expiry is treated as expired.
-			return status.Error(codes.Unauthenticated, "session expired")
-		}
-		if expireAt.Before(time.Now()) {
-			return status.Error(codes.Unauthenticated, "session expired")
-		}
+	if sess.ExpireAt.IsZero() || sess.ExpireAt.Before(time.Now()) {
+		return status.Error(codes.Unauthenticated, "session expired")
 	}
 	return nil
 }
@@ -284,15 +278,17 @@ func (v *Validator) ensureUserCanAuthenticate(ctx context.Context, projectID, us
 	if projectID == "" || userID == "" {
 		return nil
 	}
-	doc, err := v.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	if v.users == nil {
+		return status.Error(codes.Unauthenticated, "user lookup failed")
+	}
+	found, err := v.users.GetByID(ctx, projectID, userID)
 	if err != nil {
 		return status.Error(codes.Unauthenticated, "user lookup failed")
 	}
-	if doc == nil {
+	if found == nil {
 		return status.Error(codes.Unauthenticated, "user not found")
 	}
-	statusVal, _ := doc.Data["status"].(string)
-	if !users.CanAuthenticate(statusVal) {
+	if !found.CanAuthenticate() {
 		return status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	return nil

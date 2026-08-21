@@ -33,7 +33,7 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB)
+	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "client-docs@torchwood.local",
@@ -53,6 +53,7 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	}, true))
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
@@ -70,6 +71,7 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, "Client note", got.Data["title"])
 
 	otherCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    "other-user",
 		Roles:     []string{"users", "user:other-user"},
@@ -110,7 +112,7 @@ func TestClientDatabases_UpsertDocument(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB)
+	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "client-upsert@torchwood.local",
@@ -133,6 +135,7 @@ func TestClientDatabases_UpsertDocument(t *testing.T) {
 	}, true))
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
@@ -236,7 +239,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := NewTestAccount(testConfig(), projectRepo, docDB)
+	account := NewTestAccount(testConfig(), projectRepo, docDB, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
 		Email:     "private-doc@torchwood.local",
@@ -256,6 +259,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	}, true))
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
@@ -280,6 +284,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 
 	// 他用户：读/改/删均拒绝。
 	otherCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    "other-user",
 		Roles:     []string{"users", "user:other-user"},

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,8 +11,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -20,10 +21,24 @@ type Groups struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
 	usersRepo   users.Repository
+	groupsRepo  groups.GroupRepository
+	memberships groups.MembershipRepository
 }
 
-func NewGroups(projectRepo projects.Repository, docDB databases.DocumentDB, usersRepo users.Repository) *Groups {
-	return &Groups{projectRepo: projectRepo, docDB: docDB, usersRepo: usersRepo}
+func NewGroups(
+	projectRepo projects.Repository,
+	docDB databases.DocumentDB,
+	usersRepo users.Repository,
+	groupsRepo groups.GroupRepository,
+	memberships groups.MembershipRepository,
+) *Groups {
+	return &Groups{
+		projectRepo: projectRepo,
+		docDB:       docDB,
+		usersRepo:   usersRepo,
+		groupsRepo:  groupsRepo,
+		memberships: memberships,
+	}
 }
 
 type CreateMembershipCommand struct {
@@ -53,15 +68,15 @@ func (t *Groups) resolveProject(ctx context.Context, projectID string) (*project
 	return p, nil
 }
 
-func (t *Groups) getGroupDoc(ctx context.Context, projectID, groupID string, principal databases.Principal) (*databases.Document, error) {
-	doc, err := t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, principal)
+func (t *Groups) getGroup(ctx context.Context, projectID, groupID string) (*groups.Group, error) {
+	g, err := t.groupsRepo.GetByID(ctx, projectID, groupID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if g == nil {
 		return nil, status.Error(codes.NotFound, "group not found")
 	}
-	return doc, nil
+	return g, nil
 }
 
 func (t *Groups) CreateGroup(ctx context.Context, projectID, name string, perms []string) (*databases.Document, error) {
@@ -72,18 +87,20 @@ func (t *Groups) CreateGroup(ctx context.Context, projectID, name string, perms 
 		return nil, err
 	}
 	groupID := idgen.UUID().String()
-	doc := databases.Document{
-		ID: groupID,
-		Data: map[string]any{
-			"name":        name,
-			"permissions": perms,
-			"total":       0,
-		},
+	now := time.Now()
+	g := &groups.Group{
+		ID:          groupID,
+		Name:        name,
+		Permissions: perms,
+		Total:       0,
+		Prefs:       map[string]any{},
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
-	if _, err := t.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", doc, defaultGroupPermissions(groupID, perms), databases.SystemPrincipal); err != nil {
+	if err := t.groupsRepo.Insert(ctx, projectID, g); err != nil {
 		return nil, fmt.Errorf("create group: %w", err)
 	}
-	return t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, databases.SystemPrincipal)
+	return groupAsDocument(g), nil
 }
 
 func (t *Groups) CreateGroupWithOwner(ctx context.Context, projectID, name, ownerUserID, ownerEmail string, principal databases.Principal) (*databases.Document, *databases.Document, error) {
@@ -99,7 +116,7 @@ func (t *Groups) CreateGroupWithOwner(ctx context.Context, projectID, name, owne
 		Status:  groups.StatusAccepted,
 	}, principal)
 	if err != nil {
-		_ = t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "groups", group.ID, databases.DeleteOptions{}, databases.SystemPrincipal)
+		_ = t.groupsRepo.Delete(ctx, projectID, group.ID)
 		return nil, nil, err
 	}
 	group, err = t.GetGroup(ctx, projectID, group.ID, databases.SystemPrincipal)
@@ -109,94 +126,93 @@ func (t *Groups) CreateGroupWithOwner(ctx context.Context, projectID, name, owne
 	return group, membership, nil
 }
 
-func (t *Groups) ListGroups(ctx context.Context, projectID string, q databases.Query, principal databases.Principal) ([]databases.Document, int64, string, error) {
+func (t *Groups) ListGroups(ctx context.Context, projectID string, q databases.Query, _ databases.Principal) ([]databases.Document, int64, string, error) {
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, 0, "", err
 	}
-	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", q, principal)
+	list, err := t.groupsRepo.List(ctx, projectID)
 	if err != nil {
 		return nil, 0, "", err
 	}
-	return list.Documents, list.TotalCount, list.NextPageToken, nil
+	docs := make([]databases.Document, 0, len(list))
+	for _, g := range list {
+		if d := groupAsDocument(g); d != nil {
+			docs = append(docs, *d)
+		}
+	}
+	return paginateDocuments(docs, q.PageSize, q.PageToken)
 }
 
-func (t *Groups) GetGroup(ctx context.Context, projectID, groupID string, principal databases.Principal) (*databases.Document, error) {
+func (t *Groups) GetGroup(ctx context.Context, projectID, groupID string, _ databases.Principal) (*databases.Document, error) {
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	return t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, principal)
-}
-
-func (t *Groups) GetGroupPrefs(ctx context.Context, projectID, groupID string, principal databases.Principal) (map[string]any, error) {
-	if _, err := t.resolveProject(ctx, projectID); err != nil {
-		return nil, err
-	}
-	doc, err := t.getGroupDoc(ctx, projectID, groupID, principal)
+	g, err := t.getGroup(ctx, projectID, groupID)
 	if err != nil {
 		return nil, err
 	}
-	if prefs, ok := doc.Data["prefs"].(map[string]any); ok {
-		return prefs, nil
-	}
-	return map[string]any{}, nil
+	return groupAsDocument(g), nil
 }
 
-func (t *Groups) UpdateGroupPrefs(ctx context.Context, projectID, groupID string, prefs map[string]any, principal databases.Principal) (map[string]any, error) {
+func (t *Groups) GetGroupPrefs(ctx context.Context, projectID, groupID string, _ databases.Principal) (map[string]any, error) {
+	if _, err := t.resolveProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	g, err := t.getGroup(ctx, projectID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if g.Prefs == nil {
+		return map[string]any{}, nil
+	}
+	return g.Prefs, nil
+}
+
+func (t *Groups) UpdateGroupPrefs(ctx context.Context, projectID, groupID string, prefs map[string]any, _ databases.Principal) (map[string]any, error) {
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
 	if prefs == nil {
 		return nil, status.Error(codes.InvalidArgument, "prefs is required")
 	}
-	if _, err := t.getGroupDoc(ctx, projectID, groupID, principal); err != nil {
+	if _, err := t.getGroup(ctx, projectID, groupID); err != nil {
 		return nil, err
 	}
-	updated, err := t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   groupID,
-		Data: map[string]any{"prefs": prefs},
-	}, nil), principal)
-	if err != nil {
+	if err := t.groupsRepo.Update(ctx, projectID, groupID, map[string]any{"prefs": prefs}); err != nil {
 		return nil, appshared.MapDocumentDBError(err)
 	}
-	if out, ok := updated.Data["prefs"].(map[string]any); ok {
-		return out, nil
+	g, err := t.getGroup(ctx, projectID, groupID)
+	if err != nil {
+		return nil, err
 	}
-	return map[string]any{}, nil
+	if g.Prefs == nil {
+		return map[string]any{}, nil
+	}
+	return g.Prefs, nil
 }
 
-func (t *Groups) DeleteGroup(ctx context.Context, projectID, groupID string, principal databases.Principal) error {
+func (t *Groups) DeleteGroup(ctx context.Context, projectID, groupID string, _ databases.Principal) error {
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
-	if _, err := t.getGroupDoc(ctx, projectID, groupID, principal); err != nil {
+	if _, err := t.getGroup(ctx, projectID, groupID); err != nil {
 		return err
 	}
-	memberships, err := t.listMembershipDocs(ctx, projectID, groupID, databases.SystemPrincipal)
-	if err != nil {
-		return err
-	}
-	for _, m := range memberships {
-		if err := t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", m.ID, databases.DeleteOptions{}, databases.SystemPrincipal); err != nil {
-			return err
-		}
-	}
-	return t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "groups", groupID, databases.DeleteOptions{}, principal)
+	return t.groupsRepo.Delete(ctx, projectID, groupID)
 }
 
-func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd CreateMembershipCommand, principal databases.Principal) (*databases.Document, error) {
+func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd CreateMembershipCommand, _ databases.Principal) (*databases.Document, error) {
 	if cmd.GroupID == "" {
 		return nil, status.Error(codes.InvalidArgument, "group_id is required")
 	}
 	if cmd.UserID == "" && cmd.Email == "" {
 		return nil, status.Error(codes.InvalidArgument, "user_id or email is required")
 	}
-	// Round3 H5-4：邮箱与 Users 同一 normalize（ToLower + TrimSpace），
-	// 保证查重与落库口径一致（大小写/空白不同不视为不同邀请）。
 	cmd.Email = normalizeEmail(cmd.Email)
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	if _, err := t.getGroupDoc(ctx, projectID, cmd.GroupID, principalOrSystem(principal)); err != nil {
+	if _, err := t.getGroup(ctx, projectID, cmd.GroupID); err != nil {
 		return nil, err
 	}
 
@@ -229,66 +245,69 @@ func (t *Groups) CreateMembership(ctx context.Context, projectID string, cmd Cre
 		userID = resolved
 	}
 
-	// Round3 H5-4 幂等：在 CreateDocument 之前按 group+user / 规范化 email 查重，
-	// 已存在（含 pending 重复邀请）→ AlreadyExists，不重复写行、不再 +1 total。
-	if err := t.ensureMembershipUnique(ctx, projectID, cmd.GroupID, userID, cmd.Email); err != nil {
-		return nil, err
-	}
-
 	now := time.Now()
-	data := map[string]any{
-		"group_id":   cmd.GroupID,
-		"user_id":    userID,
-		"email":      cmd.Email,
-		"name":       cmd.Name,
-		"roles":      membershipRoles,
-		"status":     statusVal,
-		"invited_at": now.Format(time.RFC3339Nano),
+	m := &groups.Membership{
+		ID:        idgen.UUID().String(),
+		GroupID:   cmd.GroupID,
+		UserID:    userID,
+		Email:     cmd.Email,
+		Name:      cmd.Name,
+		Roles:     membershipRoles,
+		Status:    statusVal,
+		InvitedAt: now,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	if statusVal == groups.StatusAccepted {
-		data["joined_at"] = now.Format(time.RFC3339Nano)
+		m.JoinedAt = now
 	}
-
-	membershipID := idgen.UUID().String()
-	created, err := t.docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Document{
-		ID:   membershipID,
-		Data: data,
-	}, membershipPermissions(cmd.GroupID, userID), principal)
-	if err != nil {
+	if err := t.memberships.Insert(ctx, projectID, m); err != nil {
+		if errors.Is(err, groups.ErrMembershipAlreadyExists) {
+			return nil, status.Error(codes.AlreadyExists, "membership already exists")
+		}
 		return nil, fmt.Errorf("create membership: %w", err)
 	}
 	if statusVal == groups.StatusAccepted {
-		if err := t.adjustGroupTotal(ctx, projectID, cmd.GroupID, 1, principalOrSystem(principal)); err != nil {
+		if err := t.groupsRepo.AddTotal(ctx, projectID, cmd.GroupID, 1); err != nil {
 			return nil, err
 		}
 	}
-	return t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", created.ID, databases.SystemPrincipal)
+	got, err := t.memberships.GetByID(ctx, projectID, m.ID)
+	if err != nil {
+		return nil, err
+	}
+	return membershipAsDocument(got), nil
 }
 
-func (t *Groups) ListMemberships(ctx context.Context, projectID, groupID string, q databases.Query, principal databases.Principal) ([]databases.Document, int64, string, error) {
+func (t *Groups) ListMemberships(ctx context.Context, projectID, groupID string, q databases.Query, _ databases.Principal) ([]databases.Document, int64, string, error) {
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, 0, "", err
 	}
-	if _, err := t.getGroupDoc(ctx, projectID, groupID, principalOrSystem(principal)); err != nil {
+	if _, err := t.getGroup(ctx, projectID, groupID); err != nil {
 		return nil, 0, "", err
 	}
-	queries := append([]string{query.BuildEqual("group_id", groupID)}, q.Queries...)
-	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
-		Queries:   queries,
-		PageSize:  q.PageSize,
-		PageToken: q.PageToken,
-	}, principal)
+	list, err := t.memberships.ListByGroup(ctx, projectID, groupID)
 	if err != nil {
 		return nil, 0, "", err
 	}
-	return list.Documents, list.TotalCount, list.NextPageToken, nil
+	docs := make([]databases.Document, 0, len(list))
+	for _, m := range list {
+		if d := membershipAsDocument(m); d != nil {
+			docs = append(docs, *d)
+		}
+	}
+	return paginateDocuments(docs, q.PageSize, q.PageToken)
 }
 
-func (t *Groups) GetMembership(ctx context.Context, projectID, groupID, membershipID string, principal databases.Principal) (*databases.Document, error) {
-	return t.getMembershipDoc(ctx, projectID, groupID, membershipID, principal)
+func (t *Groups) GetMembership(ctx context.Context, projectID, groupID, membershipID string, _ databases.Principal) (*databases.Document, error) {
+	m, err := t.getMembership(ctx, projectID, groupID, membershipID)
+	if err != nil {
+		return nil, err
+	}
+	return membershipAsDocument(m), nil
 }
 
-func (t *Groups) UpdateMembership(ctx context.Context, projectID, groupID, membershipID string, cmd UpdateMembershipCommand, principal databases.Principal) (*databases.Document, error) {
+func (t *Groups) UpdateMembership(ctx context.Context, projectID, groupID, membershipID string, cmd UpdateMembershipCommand, _ databases.Principal) (*databases.Document, error) {
 	if len(cmd.Roles) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "roles is required")
 	}
@@ -297,210 +316,160 @@ func (t *Groups) UpdateMembership(ctx context.Context, projectID, groupID, membe
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
-	doc, err := t.getMembershipDoc(ctx, projectID, groupID, membershipID, principal)
-	if err != nil {
+	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	// last-owner 保护：降级 owner 角色前校验用户组仍有其他 owner。
-	if !containsRole(cmd.Roles, groups.RoleOwner) {
-		if err := t.guardLastOwner(ctx, projectID, groupID, doc); err != nil {
-			return nil, err
+	err := t.memberships.UpdateRoles(ctx, projectID, membershipID, func(txCtx context.Context, current *groups.Membership) ([]string, error) {
+		if current.GroupID != groupID {
+			return nil, status.Error(codes.NotFound, "membership not found")
 		}
-	}
-	updated, err := t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   membershipID,
-		Data: map[string]any{"roles": cmd.Roles},
-	}, nil), principal)
+		if !containsRole(cmd.Roles, groups.RoleOwner) {
+			if err := t.guardLastOwnerLocked(txCtx, projectID, groupID, current); err != nil {
+				return nil, err
+			}
+		}
+		return cmd.Roles, nil
+	})
 	if err != nil {
+		if errors.Is(err, groups.ErrMembershipNotFound) {
+			return nil, status.Error(codes.NotFound, "membership not found")
+		}
 		return nil, fmt.Errorf("update membership: %w", err)
 	}
-	return &updated, nil
+	return t.GetMembership(ctx, projectID, groupID, membershipID, databases.SystemPrincipal)
 }
 
-func (t *Groups) UpdateMembershipStatus(ctx context.Context, projectID, groupID, membershipID, statusVal string, principal databases.Principal) (*databases.Document, error) {
+func (t *Groups) UpdateMembershipStatus(ctx context.Context, projectID, groupID, membershipID, statusVal string, _ databases.Principal) (*databases.Document, error) {
 	if err := groups.ValidateStatus(statusVal); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if statusVal == groups.StatusPending {
 		return nil, status.Error(codes.InvalidArgument, "cannot set status back to pending")
 	}
-	doc, err := t.getMembershipDoc(ctx, projectID, groupID, membershipID, principal)
+	m, err := t.getMembership(ctx, projectID, groupID, membershipID)
 	if err != nil {
 		return nil, err
 	}
-	current, _ := doc.Data["status"].(string)
-	if current != groups.StatusPending {
-		return nil, status.Error(codes.FailedPrecondition, "membership status is not pending")
-	}
-
-	updates := map[string]any{"status": statusVal}
-	userID, _ := doc.Data["user_id"].(string)
+	userID := m.UserID
 	if statusVal == groups.StatusAccepted {
 		if userID == "" {
-			email, _ := doc.Data["email"].(string)
-			if email == "" {
+			if m.Email == "" {
 				return nil, status.Error(codes.FailedPrecondition, "membership has no user to accept")
 			}
-			userID, err = t.resolveUserIDByEmail(ctx, projectID, email)
+			userID, err = t.resolveUserIDByEmail(ctx, projectID, m.Email)
 			if err != nil {
 				return nil, err
 			}
 			if userID == "" {
 				return nil, status.Error(codes.NotFound, "user not found for membership email")
 			}
-			updates["user_id"] = userID
 		}
-		updates["joined_at"] = time.Now().Format(time.RFC3339Nano)
-	}
-
-	var perms []databases.Permission
-	if _, ok := updates["user_id"]; ok {
-		perms = membershipPermissions(groupID, userID)
-	}
-	updated, err := t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   membershipID,
-		Data: updates,
-	}, perms), principal)
-	if err != nil {
-		return nil, fmt.Errorf("update membership status: %w", err)
-	}
-	if statusVal == groups.StatusAccepted {
-		if err := t.adjustGroupTotal(ctx, projectID, groupID, 1, principalOrSystem(principal)); err != nil {
-			return nil, err
+		if err := t.memberships.Accept(ctx, projectID, membershipID, userID, time.Now()); err != nil {
+			return nil, mapMembershipStatusError(err)
+		}
+	} else if statusVal == groups.StatusRejected {
+		if err := t.memberships.Reject(ctx, projectID, membershipID); err != nil {
+			return nil, mapMembershipStatusError(err)
 		}
 	}
-	return &updated, nil
+	return t.GetMembership(ctx, projectID, groupID, membershipID, databases.SystemPrincipal)
 }
 
-func (t *Groups) DeleteMembership(ctx context.Context, projectID, groupID, membershipID string, principal databases.Principal) error {
-	doc, err := t.getMembershipDoc(ctx, projectID, groupID, membershipID, principal)
+func (t *Groups) DeleteMembership(ctx context.Context, projectID, groupID, membershipID string, _ databases.Principal) error {
+	m, err := t.getMembership(ctx, projectID, groupID, membershipID)
 	if err != nil {
 		return err
 	}
-	// last-owner 保护：删除 owner membership 前校验用户组仍有其他 owner
-	// （client 自退路径经本用例同样受保护）。
-	if err := t.guardLastOwner(ctx, projectID, groupID, doc); err != nil {
+	if err := t.guardLastOwner(ctx, projectID, groupID, m); err != nil {
 		return err
 	}
-	if statusVal, _ := doc.Data["status"].(string); statusVal == groups.StatusAccepted {
-		if err := t.adjustGroupTotal(ctx, projectID, groupID, -1, principalOrSystem(principal)); err != nil {
+	if m.Status == groups.StatusAccepted {
+		if err := t.groupsRepo.AddTotal(ctx, projectID, groupID, -1); err != nil {
 			return err
 		}
 	}
-	return t.docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", membershipID, databases.DeleteOptions{}, principal)
+	return t.memberships.Delete(ctx, projectID, membershipID)
 }
 
 func (t *Groups) ListAcceptedGroupRoles(ctx context.Context, projectID, userID string) ([]string, error) {
 	if userID == "" {
 		return nil, nil
 	}
-	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
-		Queries: []string{
-			query.BuildEqual("user_id", userID),
-			query.BuildEqual("status", groups.StatusAccepted),
-		},
-	}, databases.SystemPrincipal)
+	list, err := t.memberships.ListByUser(ctx, projectID, userID)
 	if err != nil {
 		return nil, err
 	}
 	var out []string
-	for _, doc := range list.Documents {
-		groupID, _ := doc.Data["group_id"].(string)
-		if groupID == "" {
+	for _, m := range list {
+		if m.Status != groups.StatusAccepted || m.GroupID == "" {
 			continue
 		}
-		out = append(out, fmt.Sprintf("group:%s", groupID), fmt.Sprintf("member:%s", doc.ID))
+		out = append(out, fmt.Sprintf("group:%s", m.GroupID), fmt.Sprintf("member:%s", m.ID))
 	}
 	return out, nil
 }
 
-// AcceptedGroupRoleLabels 返回用户在各用户组中已接受 membership 的原始角色标签（如 owner/member），
-// key 为 group_id。
 func (t *Groups) AcceptedGroupRoleLabels(ctx context.Context, projectID, userID string) (map[string][]string, error) {
 	if userID == "" {
 		return nil, nil
 	}
-	list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
-		Queries: []string{
-			query.BuildEqual("user_id", userID),
-			query.BuildEqual("status", groups.StatusAccepted),
-		},
-	}, databases.SystemPrincipal)
+	list, err := t.memberships.ListByUser(ctx, projectID, userID)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string][]string, len(list.Documents))
-	for _, doc := range list.Documents {
-		groupID, _ := doc.Data["group_id"].(string)
-		if groupID == "" {
+	out := make(map[string][]string)
+	for _, m := range list {
+		if m.Status != groups.StatusAccepted || m.GroupID == "" {
 			continue
 		}
-		out[groupID] = membershipRoleLabels(doc.Data["roles"])
+		out[m.GroupID] = append([]string(nil), m.Roles...)
 	}
 	return out, nil
 }
 
-// membershipRoleLabels 将 membership 的 roles 字段（JSONB 反序列化后可能是 []any 或 []string）转换为 []string。
-func membershipRoleLabels(raw any) []string {
-	switch v := raw.(type) {
-	case []any:
-		out := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []string:
-		return v
-	default:
-		return nil
-	}
-}
-
-func (t *Groups) getMembershipDoc(ctx context.Context, projectID, groupID, membershipID string, principal databases.Principal) (*databases.Document, error) {
+func (t *Groups) getMembership(ctx context.Context, projectID, groupID, membershipID string) (*groups.Membership, error) {
 	if _, err := t.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	doc, err := t.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "memberships", membershipID, principal)
+	m, err := t.memberships.GetByID(ctx, projectID, membershipID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if m == nil || m.GroupID != groupID {
 		return nil, status.Error(codes.NotFound, "membership not found")
 	}
-	if gotGroupID, _ := doc.Data["group_id"].(string); gotGroupID != groupID {
-		return nil, status.Error(codes.NotFound, "membership not found")
-	}
-	return doc, nil
+	return m, nil
 }
 
-func (t *Groups) listMembershipDocs(ctx context.Context, projectID, groupID string, _ databases.Principal) ([]databases.Document, error) {
-	return cascadeListAll(ctx, t.docDB, projectID, "memberships", []string{query.BuildEqual("group_id", groupID)})
-}
-
-// guardLastOwner 在删除/降级 owner membership 前校验：目标为 accepted 且含
-// owner 角色时，用户组其余 accepted+owner 数量必须 ≥1，防止用户组失去最后 owner。
-func (t *Groups) guardLastOwner(ctx context.Context, projectID, groupID string, target *databases.Document) error {
-	if statusVal, _ := target.Data["status"].(string); statusVal != groups.StatusAccepted {
-		return nil
-	}
-	if !containsRole(membershipRoleLabels(target.Data["roles"]), groups.RoleOwner) {
-		return nil
-	}
-	memberships, err := t.listMembershipDocs(ctx, projectID, groupID, databases.SystemPrincipal)
+func (t *Groups) guardLastOwner(ctx context.Context, projectID, groupID string, target *groups.Membership) error {
+	list, err := t.memberships.ListByGroup(ctx, projectID, groupID)
 	if err != nil {
 		return err
 	}
+	return guardLastOwnerFromList(list, target)
+}
+
+func (t *Groups) guardLastOwnerLocked(ctx context.Context, projectID, groupID string, target *groups.Membership) error {
+	list, err := t.memberships.ListByGroup(ctx, projectID, groupID)
+	if err != nil {
+		return err
+	}
+	return guardLastOwnerFromList(list, target)
+}
+
+func guardLastOwnerFromList(list []*groups.Membership, target *groups.Membership) error {
+	if target.Status != groups.StatusAccepted || !containsRole(target.Roles, groups.RoleOwner) {
+		return nil
+	}
 	otherOwners := 0
-	for _, m := range memberships {
+	for _, m := range list {
 		if m.ID == target.ID {
 			continue
 		}
-		if statusVal, _ := m.Data["status"].(string); statusVal != groups.StatusAccepted {
+		if m.Status != groups.StatusAccepted {
 			continue
 		}
-		if containsRole(membershipRoleLabels(m.Data["roles"]), groups.RoleOwner) {
+		if containsRole(m.Roles, groups.RoleOwner) {
 			otherOwners++
 		}
 	}
@@ -533,124 +502,98 @@ func (t *Groups) resolveUserIDByEmail(ctx context.Context, projectID, email stri
 	return found.ID, nil
 }
 
-// ensureMembershipUnique 是 Round3 H5-4 的应用层幂等查重：同一 group 下
-// 已存在相同 user_id 或相同（规范化）email 的 membership（含 pending 重复
-// 邀请）→ AlreadyExists。适配器把空串存为 ” 而非 SQL NULL，普通
-// unique(group_id,user_id)/unique(group_id,email) 会让多个空 user_id 的 pending
-// 邀请撞车，故不做唯一索引，只做应用层查重（并发窗口由调用方重试兜底）。
-func (t *Groups) ensureMembershipUnique(ctx context.Context, projectID, groupID, userID, email string) error {
-	base := []string{query.BuildEqual("group_id", groupID)}
-	if userID != "" {
-		list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
-			Queries:  append(append([]string{}, base...), query.BuildEqual("user_id", userID)),
-			PageSize: 1,
-		}, databases.SystemPrincipal)
-		if err != nil {
-			return err
-		}
-		if len(list.Documents) > 0 {
-			return status.Error(codes.AlreadyExists, "membership already exists for this user")
-		}
+func mapMembershipStatusError(err error) error {
+	if err == nil {
+		return nil
 	}
-	if email != "" {
-		list, err := t.docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "memberships", databases.Query{
-			Queries:  append(append([]string{}, base...), query.BuildEqual("email", email)),
-			PageSize: 1,
-		}, databases.SystemPrincipal)
-		if err != nil {
-			return err
-		}
-		if len(list.Documents) > 0 {
-			return status.Error(codes.AlreadyExists, "membership already exists for this email")
-		}
+	if errors.Is(err, groups.ErrMembershipNotPending) {
+		return status.Error(codes.FailedPrecondition, "membership status is not pending")
 	}
-	return nil
-}
-
-func (t *Groups) adjustGroupTotal(ctx context.Context, projectID, groupID string, delta int, _ databases.Principal) error {
-	doc, err := t.getGroupDoc(ctx, projectID, groupID, databases.SystemPrincipal)
-	if err != nil {
-		return err
+	if errors.Is(err, groups.ErrMembershipNotFound) {
+		return status.Error(codes.NotFound, "membership not found")
 	}
-	total := int64(0)
-	switch v := doc.Data["total"].(type) {
-	case float64:
-		total = int64(v)
-	case int64:
-		total = v
-	case int:
-		total = int64(v)
+	if errors.Is(err, groups.ErrMembershipAlreadyExists) {
+		return status.Error(codes.AlreadyExists, "membership already exists")
 	}
-	total += int64(delta)
-	if total < 0 {
-		total = 0
-	}
-	_, err = t.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "groups", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   groupID,
-		Data: map[string]any{"total": total},
-	}, nil), databases.SystemPrincipal)
 	return err
 }
 
-func membershipPermissions(groupID, userID string) []databases.Permission {
-	perms := []databases.Permission{
-		{Type: "read", Role: fmt.Sprintf("group:%s", groupID)},
-		{Type: "update", Role: fmt.Sprintf("group:%s", groupID)},
-		{Type: "delete", Role: fmt.Sprintf("group:%s", groupID)},
-		{Type: "read", Role: "keys"},
-		{Type: "update", Role: "keys"},
-		{Type: "delete", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: "admin"},
+func groupAsDocument(g *groups.Group) *databases.Document {
+	if g == nil {
+		return nil
 	}
-	if userID != "" {
-		perms = append(perms,
-			databases.Permission{Type: "read", Role: fmt.Sprintf("user:%s", userID)},
-			databases.Permission{Type: "update", Role: fmt.Sprintf("user:%s", userID)},
-			databases.Permission{Type: "delete", Role: fmt.Sprintf("user:%s", userID)},
-		)
+	prefs := g.Prefs
+	if prefs == nil {
+		prefs = map[string]any{}
 	}
-	return perms
+	perms := g.Permissions
+	if perms == nil {
+		perms = []string{}
+	}
+	return &databases.Document{
+		ID:        g.ID,
+		CreatedAt: g.CreatedAt,
+		UpdatedAt: g.UpdatedAt,
+		Data: map[string]any{
+			"name":        g.Name,
+			"permissions": perms,
+			"total":       g.Total,
+			"prefs":       prefs,
+		},
+	}
 }
 
-func defaultGroupPermissions(groupID string, explicit []string) []databases.Permission {
-	if len(explicit) > 0 {
-		var perms []databases.Permission
-		for _, r := range explicit {
-			parts := splitPermission(r)
-			if len(parts) == 2 {
-				perms = append(perms, databases.Permission{Type: parts[0], Role: parts[1]})
-			}
+func membershipAsDocument(m *groups.Membership) *databases.Document {
+	if m == nil {
+		return nil
+	}
+	data := map[string]any{
+		"group_id": m.GroupID,
+		"user_id":  m.UserID,
+		"email":    m.Email,
+		"name":     m.Name,
+		"roles":    m.Roles,
+		"status":   m.Status,
+	}
+	if !m.InvitedAt.IsZero() {
+		data["invited_at"] = m.InvitedAt
+	}
+	if !m.JoinedAt.IsZero() {
+		data["joined_at"] = m.JoinedAt
+	}
+	return &databases.Document{
+		ID:        m.ID,
+		CreatedAt: m.CreatedAt,
+		UpdatedAt: m.UpdatedAt,
+		Data:      data,
+	}
+}
+
+func paginateDocuments(docs []databases.Document, pageSize int32, pageToken string) ([]databases.Document, int64, string, error) {
+	total := int64(len(docs))
+	offset := 0
+	if pageToken != "" {
+		var err error
+		offset, err = crud.DecodePageToken(pageToken)
+		if err != nil {
+			return nil, 0, "", status.Error(codes.InvalidArgument, "invalid page_token")
 		}
-		return perms
 	}
-	return []databases.Permission{
-		{Type: "read", Role: "any"},
-		{Type: "read", Role: fmt.Sprintf("group:%s", groupID)},
-		{Type: "update", Role: fmt.Sprintf("group:%s", groupID)},
-		{Type: "delete", Role: fmt.Sprintf("group:%s", groupID)},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: "admin"},
-		{Type: "read", Role: "keys"},
-		{Type: "update", Role: "keys"},
-		{Type: "delete", Role: "keys"},
+	limit := int(pageSize)
+	if limit <= 0 {
+		limit = 25
 	}
-}
-
-func splitPermission(s string) []string {
-	for i := 0; i < len(s); i++ {
-		if s[i] == ':' {
-			return []string{s[:i], s[i+1:]}
-		}
+	if offset > len(docs) {
+		offset = len(docs)
 	}
-	return nil
-}
-
-func principalOrSystem(principal databases.Principal) databases.Principal {
-	if len(principal.Roles) == 0 {
-		return databases.SystemPrincipal
+	end := offset + limit
+	if end > len(docs) {
+		end = len(docs)
 	}
-	return principal
+	page := docs[offset:end]
+	next := ""
+	if end < len(docs) {
+		next = crud.EncodePageToken(end)
+	}
+	return page, total, next, nil
 }

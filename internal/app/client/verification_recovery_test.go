@@ -42,7 +42,7 @@ func TestAccount_VerificationFlow(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	mailer := &CaptureMailer{}
-	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, rdb, mailer)
+	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, db, rdb, mailer)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -54,6 +54,7 @@ func TestAccount_VerificationFlow(t *testing.T) {
 	require.False(t, user.EmailVerified)
 
 	authCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,
@@ -106,7 +107,7 @@ func TestAccount_RecoveryFlow(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	mailer := &CaptureMailer{}
-	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, rdb, mailer)
+	account := NewTestAccountWithMailer(cfg, projectRepo, docDB, db, rdb, mailer)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,

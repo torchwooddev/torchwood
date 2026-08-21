@@ -48,7 +48,7 @@ func TestEnsureSystemCollections_ReconcileExistingCollectionAttrs(t *testing.T) 
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -94,7 +94,7 @@ func TestEnsureSystemCollections_ReconcileConcurrent(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	ddb := NewPostgresDocumentDB(db, nil)

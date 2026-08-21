@@ -58,7 +58,9 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		return nil, nil, err
 	}
 	uploadSessionStore := storage.NewRedisUploadSessionStore(client)
-	storageStorage := storage2.NewStorage(appConfig, repository, documentDB, objectStore, uploadSessionStore)
+	bucketRepository := bunrepo.NewBucketRepository(database)
+	fileRepository := bunrepo.NewFileRepository(database)
+	storageStorage := storage2.NewStorage(appConfig, repository, documentDB, objectStore, uploadSessionStore, bucketRepository, fileRepository)
 	mainChunkCleaner := NewChunkCleaner(storageStorage, logger)
 	realtimeTransport := realtime.NewStreamTransport(client)
 	outboxWorker := events.NewOutboxWorker(database, realtimeTransport, logger)
@@ -86,7 +88,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	subscriptionBiller := NewSubscriptionBiller(subscriptionsSubscriptions, logger)
 	usageRepo := bunrepo.NewUsageRepository(database)
 	statementRepo := bunrepo.NewBillingStatementRepository(database)
-	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, documentDB, logger)
+	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, documentDB, fileRepository, logger)
 	usageRollupWorker := NewUsageRollupWorker(billingBilling, logger)
 	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
 	v2 := NewComponentBuilders()

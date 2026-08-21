@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/users"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/ident"
@@ -37,11 +38,13 @@ func TestDataPlaneSchema_DeleteDatabaseDefaultKeepsUsers(t *testing.T) {
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, 0))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "default", "default"))
 
-	created, err := docDB.CreateDocument(ctx, projectID, ident.ProjectDataPlaneID, "users", databases.Document{
-		ID:   "u-keep",
-		Data: map[string]any{"email": "keep@torchwood.local", "name": "Keep"},
-	}, nil, databases.SystemPrincipal)
-	require.NoError(t, err)
+	usersRepo := bunrepo.NewUserRepository(db)
+	require.NoError(t, usersRepo.Insert(ctx, projectID, &users.User{
+		ID:     "u-keep",
+		Email:  "keep@torchwood.local",
+		Name:   "Keep",
+		Status: users.StatusActive,
+	}))
 
 	projectSchema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
@@ -53,10 +56,10 @@ func TestDataPlaneSchema_DeleteDatabaseDefaultKeepsUsers(t *testing.T) {
 
 	require.NoError(t, docDB.DeleteDatabase(ctx, projectID, "default"))
 
-	got, err := docDB.GetDocument(ctx, projectID, ident.ProjectDataPlaneID, "users", created.ID, databases.SystemPrincipal)
+	got, err := usersRepo.GetByID(ctx, projectID, "u-keep")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, "keep@torchwood.local", got.Data["email"])
+	require.Equal(t, "keep@torchwood.local", got.Email)
 
 	require.True(t, namespaceExists(t, ctx, db, projectSchema), "一段式 tw_<pid> 必须仍在")
 	require.False(t, namespaceExists(t, ctx, db, defaultSchema), "tw_<pid>_default 应被 DROP")
@@ -89,7 +92,10 @@ func TestDataPlaneSchema_DeleteDatabaseSentinelRefused(t *testing.T) {
 	require.True(t, namespaceExists(t, ctx, db, projectSchema), "一段式 tw_<pid> 必须仍在")
 	coll, err := docDB.GetCollection(ctx, projectID, ident.ProjectDataPlaneID, "users")
 	require.NoError(t, err)
-	require.NotNil(t, coll)
+	require.Nil(t, coll, "cut 后 catalog 无 sentinel users")
+	var rel any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, projectSchema+".users").Scan(&rel))
+	require.NotNil(t, rel, "静态 users 必须仍在")
 }
 
 func TestDataPlaneSchema_CreateCollectionWhitelist(t *testing.T) {
@@ -127,15 +133,18 @@ func TestDataPlaneSchema_SystemCRUDHitsOneSegment(t *testing.T) {
 
 	projectSchema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
-	var rel *string
+	var rel any
 	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, projectSchema+".users").Scan(&rel))
 	require.NotNil(t, rel)
 
-	created, err := docDB.CreateDocument(ctx, projectID, ident.ProjectDataPlaneID, "users", databases.Document{
-		Data: map[string]any{"email": "seg@torchwood.local", "name": "Seg"},
-	}, nil, databases.SystemPrincipal)
+	usersRepo := bunrepo.NewUserRepository(db)
+	require.NoError(t, usersRepo.Insert(ctx, projectID, &users.User{
+		ID:     "u-seg",
+		Email:  "seg@torchwood.local",
+		Name:   "Seg",
+		Status: users.StatusActive,
+	}))
+	got, err := usersRepo.GetByID(ctx, projectID, "u-seg")
 	require.NoError(t, err)
-	got, err := docDB.GetDocument(ctx, projectID, ident.ProjectDataPlaneID, "users", created.ID, databases.SystemPrincipal)
-	require.NoError(t, err)
-	require.Equal(t, "seg@torchwood.local", got.Data["email"])
+	require.Equal(t, "seg@torchwood.local", got.Email)
 }

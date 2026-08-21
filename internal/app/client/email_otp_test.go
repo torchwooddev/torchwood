@@ -41,7 +41,7 @@ func TestAccount_EmailOTPLogin(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	mailer := &CaptureMailer{}
-	account := NewTestAccountWithMailer(cfgWithDevMailer, projectRepo, docDB, rdb, mailer)
+	account := NewTestAccountWithMailer(cfgWithDevMailer, projectRepo, docDB, db, rdb, mailer)
 
 	challenge, err := account.CreateEmailOTP(ctx, CreateEmailOTPCommand{
 		ProjectID: projectID,

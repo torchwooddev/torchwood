@@ -12,11 +12,9 @@ import (
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
 
-// TestDefaultDatabase_NoSystemCollections 覆盖 PR3 + PR7：系统集合不寄居
-// default。catalog 系统行只在 database_id='_'；ListCollections("default") 不含
-// 7 个系统集合；业务库（含 default）可建普通 users（is_system=false）。
-// use-case 允许 Delete/Create default；重建后业务 users is_system=false，
-// 系统 users 仍在 sentinel。
+// TestDefaultDatabase_NoSystemCollections：系统资源不寄居 default。
+// cut 后 catalog 无 database_id='_'；ListCollections("default") 不含 7 个
+// 系统集合；业务库可建普通 users。DeleteDatabase("default") 不得碰到静态 users。
 func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -50,7 +48,7 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 		Where("project_id = ? AND database_id = ? AND is_system = TRUE", p.ID, databases.SystemDatabaseID).
 		Count(ctx)
 	require.NoError(t, err)
-	require.Equal(t, len(databases.SystemCollectionIDs), sentinelSystem)
+	require.Zero(t, sentinelSystem, "cut 后 catalog 无 database_id='_' 系统集合")
 
 	cols, _, _, err := uc.ListCollections(ctx, p.ID, "default", databases.ListQuery{})
 	require.NoError(t, err)
@@ -77,8 +75,11 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 
 	sysUsers, err := docDB.GetCollection(ctx, p.ID, databases.SystemDatabaseID, "users")
 	require.NoError(t, err)
-	require.NotNil(t, sysUsers)
-	require.True(t, sysUsers.IsSystem)
+	require.Nil(t, sysUsers, "cut 后 catalog 无 sentinel users")
+
+	var staticUsers any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, "tw_"+p.ID+".users").Scan(&staticUsers))
+	require.NotNil(t, staticUsers, "静态 users 必须在 tw_<project>")
 
 	require.NoError(t, uc.DeleteDatabase(ctx, p.ID, "default"))
 	gone, err := uc.GetDatabase(ctx, p.ID, "default")
@@ -91,10 +92,8 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_"+p.ID).Scan(&projectNS))
 	require.NotNil(t, projectNS)
 
-	sysUsers, err = docDB.GetCollection(ctx, p.ID, databases.SystemDatabaseID, "users")
-	require.NoError(t, err)
-	require.NotNil(t, sysUsers, "DeleteDatabase(default) 不得碰到系统集合")
-	require.True(t, sysUsers.IsSystem)
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, "tw_"+p.ID+".users").Scan(&staticUsers))
+	require.NotNil(t, staticUsers, "DeleteDatabase(default) 不得碰到静态 users")
 
 	require.NoError(t, uc.CreateDatabase(ctx, p.ID, "default", "default"))
 	require.NoError(t, uc.CreateCollection(ctx, p.ID, "default", "users", "Users", []databases.Attribute{

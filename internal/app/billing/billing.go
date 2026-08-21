@@ -11,6 +11,7 @@ import (
 	domainbilling "github.com/torchwooddev/torchwood/internal/domain/billing"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"google.golang.org/grpc/codes"
@@ -40,6 +41,7 @@ type Billing struct {
 	statements domainbilling.StatementRepo
 	projects   projects.Repository
 	docDB      databases.DocumentDB
+	files      domainstorage.FileRepository
 	logger     *slog.Logger
 	now        func() time.Time
 }
@@ -51,6 +53,7 @@ func NewBilling(
 	statements domainbilling.StatementRepo,
 	projectsRepo projects.Repository,
 	docDB databases.DocumentDB,
+	files domainstorage.FileRepository,
 	logger *slog.Logger,
 ) *Billing {
 	if logger == nil {
@@ -62,6 +65,7 @@ func NewBilling(
 		statements: statements,
 		projects:   projectsRepo,
 		docDB:      docDB,
+		files:      files,
 		logger:     logger,
 		now:        time.Now,
 	}
@@ -88,7 +92,7 @@ func (b *Billing) RunWorkerOnce(ctx context.Context, now time.Time) error {
 }
 
 func (b *Billing) sampleStorage(ctx context.Context, hour time.Time) error {
-	if b.projects == nil || b.docDB == nil || b.counter == nil {
+	if b.projects == nil || b.files == nil || b.counter == nil {
 		return nil
 	}
 	list, err := b.projects.ListProjects(ctx)
@@ -97,12 +101,14 @@ func (b *Billing) sampleStorage(ctx context.Context, hour time.Time) error {
 	}
 	for i := range list {
 		p := list[i]
-		if err := b.docDB.EnsureSystemCollections(ctx, p.ID, p.InternalID); err != nil {
-			b.logger.Warn("ensure system collections for storage sample failed",
-				"project_id", p.ID, "error", err)
-			continue
+		if b.docDB != nil {
+			if err := b.docDB.EnsureSystemCollections(ctx, p.ID, p.InternalID); err != nil {
+				b.logger.Warn("ensure system collections for storage sample failed",
+					"project_id", p.ID, "error", err)
+				continue
+			}
 		}
-		total, err := b.docDB.SumDocumentField(ctx, p.ID, databases.SystemDatabaseID, "files", "size", databases.SystemPrincipal)
+		total, err := b.files.SumSize(ctx, p.ID)
 		if err != nil {
 			b.logger.Warn("sum storage bytes failed", "project_id", p.ID, "error", err)
 			continue

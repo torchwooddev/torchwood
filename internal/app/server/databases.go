@@ -17,14 +17,6 @@ import (
 
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// serverSensitiveCollectionFields 是高敏系统集合（users/sessions/identities）
-// 经 Server Databases API 读取时的脱敏字段清单；专用 API 不公开这些字段。
-var serverSensitiveCollectionFields = map[string][]string{
-	"users":      {"password_hash", "pending_email", "phone", "phone_verified", "labels", "prefs"},
-	"sessions":   {"secret_hash", "factors", "user_agent", "ip", "country"},
-	"identities": {"provider_data", "provider_uid"},
-}
-
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
@@ -338,9 +330,6 @@ func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID,
 	return nil
 }
 
-// ensureReadableCollection 是文档读路径（List/Get/Count）的集合校验：
-// groups/memberships/buckets/files 放行（docDB 权限过滤兜底）；
-// users/sessions/identities 仅 PlatformAdmin 可读，其余主体直接拒绝。
 func (d *Databases) ensureReadableCollection(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) error {
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
@@ -350,12 +339,6 @@ func (d *Databases) ensureReadableCollection(ctx context.Context, projectID, dat
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return err
-	}
-	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
-		if databases.IsSensitiveSystemCollectionID(collectionID) && !principal.PlatformAdmin {
-			return shared.MapDocumentDBError(databases.ErrPermissionDenied)
-		}
-		return nil
 	}
 	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)
 	if err != nil {
@@ -368,21 +351,6 @@ func (d *Databases) ensureReadableCollection(ctx context.Context, projectID, dat
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
 	}
 	return nil
-}
-
-// redactSensitiveCollectionData 剔除项目数据面高敏系统集合文档中的敏感字段
-// （专用 API 不公开的字段），空 data 允许；业务库同名集合不受影响。
-func redactSensitiveCollectionData(projectID, databaseID, collectionID string, doc *databases.Document) {
-	if !databases.IsSystemCollection(projectID, databaseID, collectionID) || !databases.IsSensitiveSystemCollectionID(collectionID) {
-		return
-	}
-	fields, ok := serverSensitiveCollectionFields[collectionID]
-	if !ok || doc == nil || len(doc.Data) == 0 {
-		return
-	}
-	for _, f := range fields {
-		delete(doc.Data, f)
-	}
 }
 
 func (d *Databases) CreateDocument(
@@ -409,14 +377,7 @@ func (d *Databases) ListDocuments(
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, 0, "", err
 	}
-	docs, total, next, err := d.documentsCore().ListDocuments(ctx, projectID, databaseID, collectionID, q, principal)
-	if err != nil {
-		return nil, 0, "", err
-	}
-	for i := range docs {
-		redactSensitiveCollectionData(projectID, databaseID, collectionID, &docs[i])
-	}
-	return docs, total, next, nil
+	return d.documentsCore().ListDocuments(ctx, projectID, databaseID, collectionID, q, principal)
 }
 
 func (d *Databases) GetDocument(
@@ -427,12 +388,7 @@ func (d *Databases) GetDocument(
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
-	doc, err := d.documentsCore().GetDocument(ctx, projectID, databaseID, collectionID, documentID, principal)
-	if err != nil {
-		return nil, err
-	}
-	redactSensitiveCollectionData(projectID, databaseID, collectionID, doc)
-	return doc, nil
+	return d.documentsCore().GetDocument(ctx, projectID, databaseID, collectionID, documentID, principal)
 }
 
 func (d *Databases) UpdateDocument(

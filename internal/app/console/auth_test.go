@@ -161,6 +161,7 @@ func TestAuth_ValidateCredential_ChecksRevokeStore(t *testing.T) {
 		store,
 		nil,
 		nil,
+		nil,
 	)
 	_, err = v.ValidateToken(ctx, token)
 	require.Error(t, err)

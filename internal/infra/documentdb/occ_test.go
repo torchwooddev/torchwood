@@ -18,7 +18,7 @@ import (
 func occTestProject(t *testing.T, ctx context.Context) (databases.DocumentDB, string, int64, func()) {
 	t.Helper()
 	db := testutil.SetupTestDB(t)
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.EnsureSystemCollections(ctx, projectID, internalID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -215,7 +215,7 @@ func TestUpsert_NoVersionCheck(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -259,7 +259,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -297,7 +297,7 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	schema := testSchema(t, projectID, "app")
@@ -363,7 +363,7 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	// 模拟存量表：_version 被 TEXT 列抢占。
@@ -409,7 +409,7 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -523,7 +523,7 @@ func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -573,7 +573,7 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -610,7 +610,7 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -640,7 +640,7 @@ func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -688,7 +688,7 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 	defer db.Close()
-	projectID, internalID, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)

@@ -17,9 +17,9 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
-	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -30,6 +30,8 @@ type Storage struct {
 	docDB       databases.DocumentDB
 	store       storage.ObjectStore
 	uploads     storage.UploadSessionStore
+	buckets     storage.BucketRepository
+	files       storage.FileRepository
 }
 
 func NewStorage(
@@ -38,8 +40,10 @@ func NewStorage(
 	docDB databases.DocumentDB,
 	store storage.ObjectStore,
 	uploads storage.UploadSessionStore,
+	buckets storage.BucketRepository,
+	files storage.FileRepository,
 ) *Storage {
-	return &Storage{cfg: cfg, projectRepo: projectRepo, docDB: docDB, store: store, uploads: uploads}
+	return &Storage{cfg: cfg, projectRepo: projectRepo, docDB: docDB, store: store, uploads: uploads, buckets: buckets, files: files}
 }
 
 type CreateBucketCommand struct {
@@ -80,20 +84,7 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 
 	bucketID := idgen.UUID().String()
 	now := time.Now()
-	bucketDoc := databases.Document{
-		ID: bucketID,
-		Data: map[string]any{
-			"name":        cmd.Name,
-			"permissions": cmd.Permissions,
-			"public":      cmd.Public,
-		},
-	}
-	perms := bucketPermissions(bucketID, cmd.Permissions)
-	if _, err := s.docDB.CreateDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", bucketDoc, perms, databases.SystemPrincipal); err != nil {
-		return nil, fmt.Errorf("create bucket document: %w", err)
-	}
-
-	return &storage.Bucket{
+	bucket := &storage.Bucket{
 		ID:          bucketID,
 		ProjectID:   project.ID,
 		Name:        cmd.Name,
@@ -101,7 +92,11 @@ func (s *Storage) CreateBucket(ctx context.Context, cmd CreateBucketCommand) (*s
 		Public:      cmd.Public,
 		CreatedAt:   now,
 		UpdatedAt:   now,
-	}, nil
+	}
+	if err := s.buckets.Insert(ctx, project.ID, bucket); err != nil {
+		return nil, fmt.Errorf("create bucket: %w", err)
+	}
+	return bucket, nil
 }
 
 // ListBuckets 返回 (buckets, total, nextPageToken, error)；nextPageToken 供
@@ -115,15 +110,32 @@ func (s *Storage) ListBuckets(ctx context.Context, projectID string, q databases
 		return nil, 0, "", err
 	}
 
-	list, err := s.docDB.ListDocuments(ctx, project.ID, databases.SystemDatabaseID, "buckets", q, principal)
+	list, err := s.buckets.List(ctx, project.ID)
 	if err != nil {
 		return nil, 0, "", err
 	}
-	buckets := make([]storage.Bucket, 0, len(list.Documents))
-	for _, d := range list.Documents {
-		buckets = append(buckets, *mapBucketDoc(&d))
+	docs := make([]storage.Bucket, 0, len(list))
+	for _, b := range list {
+		if b != nil {
+			docs = append(docs, *b)
+		}
 	}
-	return buckets, list.TotalCount, list.NextPageToken, nil
+	return paginateBuckets(docs, q.PageSize, q.PageToken)
+}
+
+func (s *Storage) GetBucket(ctx context.Context, projectID, bucketID string, _ databases.Principal) (*storage.Bucket, error) {
+	project, err := s.resolveProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	got, err := s.buckets.GetByID(ctx, project.ID, bucketID)
+	if err != nil {
+		return nil, err
+	}
+	if got == nil {
+		return nil, status.Error(codes.NotFound, "bucket not found")
+	}
+	return got, nil
 }
 
 // UpdateBucketCommand 更新 bucket 元数据；空字段表示不修改。
@@ -150,13 +162,17 @@ func (s *Storage) UpdateBucket(ctx context.Context, cmd UpdateBucketCommand) (*s
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "nothing to update")
 	}
-	updated, err := s.docDB.UpdateDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", databases.DocumentUpdate{
-		Document: databases.Document{ID: cmd.ID, Data: data},
-	}, cmd.Principal)
+	if err := s.buckets.Update(ctx, project.ID, cmd.ID, data); err != nil {
+		return nil, err
+	}
+	got, err := s.buckets.GetByID(ctx, project.ID, cmd.ID)
 	if err != nil {
 		return nil, err
 	}
-	return mapBucketDoc(&updated), nil
+	if got == nil {
+		return nil, status.Error(codes.NotFound, "bucket not found")
+	}
+	return got, nil
 }
 
 func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, principal databases.Principal) error {
@@ -169,7 +185,6 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 	var pageToken string
 	for {
 		q := databases.Query{PageSize: 1000, PageToken: pageToken}
-		q.Queries = []string{query.BuildEqual("bucket_id", bucketID)}
 		files, _, next, err := s.ListFiles(ctx, projectID, bucketID, q, databases.SystemPrincipal)
 		if err != nil {
 			return err
@@ -178,8 +193,8 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 			if derr := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, f.ID)); derr != nil {
 				slog.Warn("delete file object failed", "bucket", bucketID, "file", f.ID, "error", derr)
 			}
-			if derr := s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "files", f.ID, databases.DeleteOptions{}, databases.SystemPrincipal); derr != nil {
-				slog.Warn("delete file document failed", "bucket", bucketID, "file", f.ID, "error", derr)
+			if derr := s.files.Delete(ctx, project.ID, f.ID); derr != nil {
+				slog.Warn("delete file metadata failed", "bucket", bucketID, "file", f.ID, "error", derr)
 			}
 		}
 		if next == "" || len(files) == 0 {
@@ -199,7 +214,7 @@ func (s *Storage) DeleteBucket(ctx context.Context, projectID, bucketID string, 
 			}
 		}
 	}
-	return s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", bucketID, databases.DeleteOptions{}, principal)
+	return s.buckets.Delete(ctx, project.ID, bucketID)
 }
 
 func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content io.Reader, size int64, principal databases.Principal) (*storage.File, error) {
@@ -218,53 +233,39 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 		return nil, err
 	}
 
-	// Verify bucket exists.
-	bucketDoc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "buckets", cmd.BucketID, principal)
+	bucket, err := s.buckets.GetByID(ctx, project.ID, cmd.BucketID)
 	if err != nil {
 		return nil, err
 	}
-	if bucketDoc == nil {
+	if bucket == nil {
 		return nil, status.Error(codes.NotFound, "bucket not found")
 	}
 
 	fileID := idgen.UUID().String()
 	now := time.Now()
-	fileDoc := databases.Document{
-		ID: fileID,
-		Data: map[string]any{
-			"bucket_id": cmd.BucketID,
-			"name":      cmd.Name,
-			"mime_type": cmd.MimeType,
-			"size":      size,
-			"metadata":  cmd.Metadata,
-		},
+	file := &storage.File{
+		ID:          fileID,
+		ProjectID:   project.ID,
+		BucketID:    cmd.BucketID,
+		Name:        cmd.Name,
+		MimeType:    cmd.MimeType,
+		Size:        size,
+		Metadata:    cmd.Metadata,
+		OwnerUserID: cmd.OwnerUserID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
-	// 顺序修复（G6-2/R07-P1-2）：EnsureBucket 必须在创建文档之前——否则
-	// EnsureBucket 失败会在文档库留下无对象的孤儿元数据。
 	if err := s.store.EnsureBucket(ctx, defaultBucketName(s.cfg)); err != nil {
 		return nil, fmt.Errorf("ensure storage bucket: %w", err)
 	}
-	perms := filePermissions(fileID, cmd.OwnerUserID, cmd.Permissions)
-	if _, err := s.docDB.CreateDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileDoc, perms, principal); err != nil {
-		return nil, fmt.Errorf("create file document: %w", err)
+	if err := s.files.Insert(ctx, project.ID, file); err != nil {
+		return nil, fmt.Errorf("create file: %w", err)
 	}
 	if err := s.store.Put(ctx, defaultBucketName(s.cfg), objectKey(project.ID, cmd.BucketID, fileID), content, size, cmd.MimeType); err != nil {
-		// Attempt rollback metadata.
-		_ = s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, databases.DeleteOptions{}, databases.SystemPrincipal)
+		_ = s.files.Delete(ctx, project.ID, fileID)
 		return nil, fmt.Errorf("upload file: %w", err)
 	}
-
-	return &storage.File{
-		ID:        fileID,
-		ProjectID: project.ID,
-		BucketID:  cmd.BucketID,
-		Name:      cmd.Name,
-		MimeType:  cmd.MimeType,
-		Size:      size,
-		Metadata:  cmd.Metadata,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}, nil
+	return file, nil
 }
 
 func (s *Storage) GetFile(ctx context.Context, projectID, bucketID, fileID string, principal databases.Principal) (*storage.File, io.ReadCloser, error) {
@@ -272,16 +273,12 @@ func (s *Storage) GetFile(ctx context.Context, projectID, bucketID, fileID strin
 	if err != nil {
 		return nil, nil, err
 	}
-	doc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, principal)
+	file, err := s.files.GetByID(ctx, project.ID, fileID)
 	if err != nil {
 		return nil, nil, err
 	}
-	if doc == nil {
+	if file == nil || file.BucketID != bucketID {
 		return nil, nil, status.Error(codes.NotFound, "file not found")
-	}
-	file := mapFileDoc(doc)
-	if file.BucketID != bucketID {
-		return nil, nil, status.Error(codes.NotFound, "file not found in bucket")
 	}
 	reader, err := s.store.Get(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID))
 	if err != nil {
@@ -298,7 +295,7 @@ func (s *Storage) DeleteFile(ctx context.Context, projectID, bucketID, fileID st
 	if err := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID)); err != nil {
 		// Continue to delete metadata even if object missing.
 	}
-	return s.docDB.DeleteDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, databases.DeleteOptions{}, principal)
+	return s.files.Delete(ctx, project.ID, fileID)
 }
 
 func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q databases.Query, principal databases.Principal) ([]storage.File, int64, string, error) {
@@ -310,15 +307,17 @@ func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q d
 		return nil, 0, "", err
 	}
 
-	list, err := s.docDB.ListDocuments(ctx, project.ID, databases.SystemDatabaseID, "files", q, principal)
+	list, err := s.files.ListByBucket(ctx, project.ID, bucketID)
 	if err != nil {
 		return nil, 0, "", err
 	}
-	files := make([]storage.File, 0, len(list.Documents))
-	for _, d := range list.Documents {
-		files = append(files, *mapFileDoc(&d))
+	out := make([]storage.File, 0, len(list))
+	for _, f := range list {
+		if f != nil {
+			out = append(out, *f)
+		}
 	}
-	return files, list.TotalCount, list.NextPageToken, nil
+	return paginateFiles(out, q.PageSize, q.PageToken)
 }
 
 // UpdateFileCommand 携带可更新的文件元数据字段；空值表示不修改。
@@ -337,16 +336,12 @@ func (s *Storage) UpdateFile(ctx context.Context, cmd UpdateFileCommand) (*stora
 	if err != nil {
 		return nil, err
 	}
-	doc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "files", cmd.FileID, cmd.Principal)
+	file, err := s.files.GetByID(ctx, project.ID, cmd.FileID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if file == nil || file.BucketID != cmd.BucketID {
 		return nil, status.Error(codes.NotFound, "file not found")
-	}
-	file := mapFileDoc(doc)
-	if file.BucketID != cmd.BucketID {
-		return nil, status.Error(codes.NotFound, "file not found in bucket")
 	}
 
 	data := map[string]any{}
@@ -362,13 +357,14 @@ func (s *Storage) UpdateFile(ctx context.Context, cmd UpdateFileCommand) (*stora
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "nothing to update")
 	}
-	updated, err := s.docDB.UpdateDocument(ctx, project.ID, databases.SystemDatabaseID, "files", databases.DocumentUpdate{
-		Document: databases.Document{ID: cmd.FileID, Data: data},
-	}, cmd.Principal)
+	if err := s.files.Update(ctx, project.ID, cmd.FileID, data); err != nil {
+		return nil, err
+	}
+	got, err := s.files.GetByID(ctx, project.ID, cmd.FileID)
 	if err != nil {
 		return nil, err
 	}
-	return mapFileDoc(&updated), nil
+	return got, nil
 }
 
 // GetStorageUsage 统计项目级 bucket/文件数量与总容量（按调用方读权限过滤）。
@@ -380,15 +376,15 @@ func (s *Storage) GetStorageUsage(ctx context.Context, projectID string, princip
 	if err := s.docDB.EnsureSystemCollections(ctx, project.ID, project.InternalID); err != nil {
 		return nil, err
 	}
-	buckets, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "buckets", databases.Query{}, principal)
+	buckets, err := s.buckets.Count(ctx, project.ID)
 	if err != nil {
 		return nil, err
 	}
-	files, err := s.docDB.CountDocuments(ctx, project.ID, databases.SystemDatabaseID, "files", databases.Query{}, principal)
+	files, err := s.files.Count(ctx, project.ID)
 	if err != nil {
 		return nil, err
 	}
-	totalSize, err := s.docDB.SumDocumentField(ctx, project.ID, databases.SystemDatabaseID, "files", "size", principal)
+	totalSize, err := s.files.SumSize(ctx, project.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -413,16 +409,12 @@ func (s *Storage) CreateFileToken(ctx context.Context, projectID, bucketID, file
 	if err != nil {
 		return nil, err
 	}
-	doc, err := s.docDB.GetDocument(ctx, project.ID, databases.SystemDatabaseID, "files", fileID, principal)
+	file, err := s.files.GetByID(ctx, project.ID, fileID)
 	if err != nil {
 		return nil, err
 	}
-	if doc == nil {
+	if file == nil || file.BucketID != bucketID {
 		return nil, status.Error(codes.NotFound, "file not found")
-	}
-	file := mapFileDoc(doc)
-	if file.BucketID != bucketID {
-		return nil, status.Error(codes.NotFound, "file not found in bucket")
 	}
 
 	if expiresIn <= 0 {
@@ -563,57 +555,58 @@ func parseRawPermissions(raw []string) []databases.Permission {
 	return perms
 }
 
-func mapBucketDoc(doc *databases.Document) *storage.Bucket {
-	b := &storage.Bucket{
-		ID:        doc.ID,
-		ProjectID: "",
-		CreatedAt: doc.CreatedAt,
-		UpdatedAt: doc.UpdatedAt,
-	}
-	if v, ok := doc.Data["name"].(string); ok {
-		b.Name = v
-	}
-	if arr, ok := doc.Data["permissions"].([]any); ok {
-		for _, v := range arr {
-			if s, ok := v.(string); ok {
-				b.Permissions = append(b.Permissions, s)
-			}
+func paginateBuckets(items []storage.Bucket, pageSize int32, pageToken string) ([]storage.Bucket, int64, string, error) {
+	total := int64(len(items))
+	offset := 0
+	if pageToken != "" {
+		var err error
+		offset, err = crud.DecodePageToken(pageToken)
+		if err != nil {
+			return nil, 0, "", status.Error(codes.InvalidArgument, "invalid page_token")
 		}
 	}
-	if v, ok := doc.Data["public"].(bool); ok {
-		b.Public = v
+	limit := int(pageSize)
+	if limit <= 0 {
+		limit = 25
 	}
-	return b
+	if offset > len(items) {
+		offset = len(items)
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	next := ""
+	if end < len(items) {
+		next = crud.EncodePageToken(end)
+	}
+	return items[offset:end], total, next, nil
 }
 
-func mapFileDoc(doc *databases.Document) *storage.File {
-	f := &storage.File{
-		ID:        doc.ID,
-		CreatedAt: doc.CreatedAt,
-		UpdatedAt: doc.UpdatedAt,
-		Metadata:  map[string]string{},
-	}
-	if v, ok := doc.Data["bucket_id"].(string); ok {
-		f.BucketID = v
-	}
-	if v, ok := doc.Data["name"].(string); ok {
-		f.Name = v
-	}
-	if v, ok := doc.Data["mime_type"].(string); ok {
-		f.MimeType = v
-	}
-	if v, ok := doc.Data["size"].(float64); ok {
-		f.Size = int64(v)
-	}
-	if v, ok := doc.Data["size"].(int64); ok {
-		f.Size = v
-	}
-	if m, ok := doc.Data["metadata"].(map[string]any); ok {
-		for k, v := range m {
-			if s, ok := v.(string); ok {
-				f.Metadata[k] = s
-			}
+func paginateFiles(items []storage.File, pageSize int32, pageToken string) ([]storage.File, int64, string, error) {
+	total := int64(len(items))
+	offset := 0
+	if pageToken != "" {
+		var err error
+		offset, err = crud.DecodePageToken(pageToken)
+		if err != nil {
+			return nil, 0, "", status.Error(codes.InvalidArgument, "invalid page_token")
 		}
 	}
-	return f
+	limit := int(pageSize)
+	if limit <= 0 {
+		limit = 25
+	}
+	if offset > len(items) {
+		offset = len(items)
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	next := ""
+	if end < len(items) {
+		next = crud.EncodePageToken(end)
+	}
+	return items[offset:end], total, next, nil
 }

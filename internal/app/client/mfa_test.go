@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
@@ -50,7 +50,7 @@ func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, strin
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, rdb)
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, rdb)
 
 	user, _, _, mfa, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -62,6 +62,7 @@ func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, strin
 	require.Nil(t, mfa)
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,
@@ -87,12 +88,12 @@ func TestAccount_CreateTOTPFactor_SecretEncrypted(t *testing.T) {
 	require.Contains(t, otpauthURL, "otpauth://totp/")
 
 	// 落库密文：非明文、带 enc:v1: 前缀。
-	doc, err := account.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
+	found, err := account.usersRepo.GetByID(ctx, projectID, userID)
 	require.NoError(t, err)
-	require.NotNil(t, doc)
-	rawFactors := doc.Data["factors"]
-	require.NotNil(t, rawFactors)
-	storedJSON := factorDocs(parseFactors(rawFactors))[0].(map[string]any)
+	require.NotNil(t, found)
+	rawFactors := parseFactorsRaw(found.Factors)
+	require.NotEmpty(t, rawFactors)
+	storedJSON := factorDocs(rawFactors)[0].(map[string]any)
 	require.Contains(t, storedJSON["secret"], "enc:v1:")
 	require.NotContains(t, storedJSON["secret"], plainSecret)
 
@@ -123,7 +124,7 @@ func TestAccount_CreateTOTPFactor_RequiresJWTSecret(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	// 空 jwt secret 的配置。
-	account := NewTestAccountWithRedis(&config.AppConfig{}, projectRepo, docDB, rdb)
+	account := NewTestAccountWithRedis(&config.AppConfig{}, projectRepo, docDB, db, rdb)
 
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
@@ -132,6 +133,7 @@ func TestAccount_CreateTOTPFactor_RequiresJWTSecret(t *testing.T) {
 	})
 	require.NoError(t, err)
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
@@ -281,18 +283,15 @@ func TestAccount_VerifyTOTPFactor_ExpiredPending(t *testing.T) {
 
 	// 把因子 created_at 改成 11 分钟前，模拟激活超时。
 	old := factor.CreatedAt.Add(-11 * time.Minute)
-	doc, err := account.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", userID, databases.SystemPrincipal)
-	require.NoError(t, err)
-	factors := parseFactors(doc.Data["factors"])
-	for i := range factors {
-		if factors[i].ID == factor.ID {
-			factors[i].CreatedAt = old
+	err = account.usersRepo.UpdateFactors(ctx, projectID, userID, func(current json.RawMessage) (json.RawMessage, error) {
+		factors := parseFactorsRaw(current)
+		for i := range factors {
+			if factors[i].ID == factor.ID {
+				factors[i].CreatedAt = old
+			}
 		}
-	}
-	_, err = account.docDB.UpdateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.SimpleDocumentUpdate(databases.Document{
-		ID:   userID,
-		Data: map[string]any{"factors": factorDocs(factors)},
-	}, nil), databases.SystemPrincipal)
+		return json.Marshal(factorDocs(factors))
+	})
 	require.NoError(t, err)
 
 	code, err := totp.GenerateCode("whatever", time.Now())
@@ -378,6 +377,7 @@ func TestAccount_SignInRequiresMFA(t *testing.T) {
 
 	// 会话可用。
 	meCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user2.ID,
 		Email:     user2.Email,

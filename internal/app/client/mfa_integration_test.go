@@ -38,7 +38,7 @@ func TestMFAFullFlowIntegration(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, rdb)
+	account := NewTestAccountWithRedis(mfaTestConfig(), projectRepo, docDB, db, rdb)
 
 	// 1. 注册。
 	user, _, _, mfa, err := account.SignUp(ctx, SignUpCommand{
@@ -51,6 +51,7 @@ func TestMFAFullFlowIntegration(t *testing.T) {
 	require.Nil(t, mfa)
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,

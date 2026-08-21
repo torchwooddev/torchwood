@@ -45,7 +45,7 @@ func TestAccount_PhoneOTPLogin(t *testing.T) {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	sms := &CaptureSMSSender{}
-	account := NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, rdb, nil, sms)
+	account := NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, db, rdb, nil, sms)
 
 	challenge, err := account.CreatePhoneOTP(ctx, CreatePhoneOTPCommand{
 		ProjectID: projectID,

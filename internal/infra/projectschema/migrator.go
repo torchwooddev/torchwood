@@ -17,12 +17,24 @@ import (
 //go:embed migrations/*.up.sql
 var migrationFS embed.FS
 
+// systemTablesCutVersion 是 000009：Exec 前必须在同一事务 CopySystemDocuments。
+const systemTablesCutVersion int64 = 9
+
 // Apply 在调用方已打开的 tx（或自行 RunInTx）上执行待应用的项目 DDL。
 // SQL 文件替换 {{schema}} 后零查询参数，走 simple protocol 多语句 Exec。
 // 中途失败：事务内标记随 ROLLBACK 撤销，随后经独立连接补写 dirty=true
 // 持久化（EnsureAll 路径靠它跳过脏项目；CreateProject 路径整体回滚后
 // schema 不存在，补写失败属预期，best-effort 忽略）。
 func Apply(ctx context.Context, db *clients.Database, projectID string) error {
+	return applyUpTo(ctx, db, projectID, 0)
+}
+
+// ApplyUpTo 应用不超过 maxVersion 的迁移（maxVersion<=0 表示全部）。拷贝测试停在 000008。
+func ApplyUpTo(ctx context.Context, db *clients.Database, projectID string, maxVersion int64) error {
+	return applyUpTo(ctx, db, projectID, maxVersion)
+}
+
+func applyUpTo(ctx context.Context, db *clients.Database, projectID string, maxVersion int64) error {
 	if err := ident.ValidateSchemaResourceID(projectID); err != nil {
 		return fmt.Errorf("invalid project id: %w", err)
 	}
@@ -75,6 +87,14 @@ CREATE TABLE IF NOT EXISTS %s.schema_migrations (
 		for _, f := range files {
 			if f.version <= applied {
 				continue
+			}
+			if maxVersion > 0 && f.version > maxVersion {
+				continue
+			}
+			if f.version == systemTablesCutVersion {
+				if err := CopySystemDocuments(txCtx, db, projectID); err != nil {
+					return fmt.Errorf("copy system documents before %s: %w", f.name, err)
+				}
 			}
 			body := strings.ReplaceAll(f.sql, "{{schema}}", quoted)
 			if _, err := db.Conn(txCtx).ExecContext(txCtx, body); err != nil {

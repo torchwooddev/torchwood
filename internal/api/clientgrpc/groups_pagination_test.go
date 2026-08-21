@@ -9,6 +9,7 @@ import (
 	appclient "github.com/torchwooddev/torchwood/internal/app/client"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domaingroups "github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -151,16 +152,35 @@ func TestClientGRPC_ListGroups_EchoesNextPageToken(t *testing.T) {
 			"groups": {{ID: "group-1", Data: map[string]any{"name": "T", "total": int64(1)}}},
 		},
 	}
-	serverGroups := appserver.NewGroups(clientGroupsProjectRepo{}, docDB, nil)
-	svc := NewGroupsService(appclient.NewGroups(serverGroups, docDB))
+	serverGroups := appserver.NewGroups(clientGroupsProjectRepo{}, docDB, nil, clientGroupsRepo{}, nil)
+	svc := NewGroupsService(appclient.NewGroups(serverGroups, nil))
 
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "user-1", ActorKind: shared.ActorKindEndUser, UserID: "user-1",
 		ProjectID: "proj-1", Roles: []string{"users", "user:user-1"},
 	})
-	resp, err := svc.ListGroups(ctx, &sharedv1.ListRequest{PageSize: 10})
+	resp, err := svc.ListGroups(ctx, &sharedv1.ListRequest{PageSize: 1})
 	require.NoError(t, err)
 	require.Len(t, resp.Groups, 1)
-	require.Equal(t, "tok-9", resp.Meta.GetNextPageToken(), "Client ListGroups 必须回传 NextPageToken")
-	require.Equal(t, int32(1), resp.Meta.GetTotalCount())
+	require.NotEmpty(t, resp.Meta.GetNextPageToken(), "Client ListGroups 必须回传 NextPageToken")
+	require.Equal(t, int32(2), resp.Meta.GetTotalCount())
 }
+
+type clientGroupsRepo struct{}
+
+func (clientGroupsRepo) Insert(context.Context, string, *domaingroups.Group) error { return nil }
+func (clientGroupsRepo) GetByID(context.Context, string, string) (*domaingroups.Group, error) {
+	return nil, nil
+}
+func (clientGroupsRepo) Update(context.Context, string, string, map[string]any) error {
+	return nil
+}
+func (clientGroupsRepo) Delete(context.Context, string, string) error { return nil }
+func (clientGroupsRepo) List(context.Context, string) ([]*domaingroups.Group, error) {
+	return []*domaingroups.Group{
+		{ID: "group-1", Name: "T", Total: 1},
+		{ID: "group-2", Name: "U", Total: 0},
+	}, nil
+}
+func (clientGroupsRepo) AddTotal(context.Context, string, string, int64) error { return nil }
+func (clientGroupsRepo) RecountAccepted(context.Context, string, string) error { return nil }

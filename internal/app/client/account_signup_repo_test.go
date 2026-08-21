@@ -122,6 +122,8 @@ func newAccountWithUserRepo(repo users.Repository, projectID string) *Account {
 		stubSessionService{},
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		repo,
+		nil,
+		nil,
 	)
 }
 

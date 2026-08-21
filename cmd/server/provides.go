@@ -147,14 +147,13 @@ func projectSchemaEnsureHook(repo projects.Repository, db *clients.Database, log
 			if logger != nil {
 				logger.Error("list projects for schema ensure", "error", err)
 			}
-			return nil
+			return err
 		}
 		ids := make([]string, len(list))
 		for i := range list {
 			ids[i] = list[i].ID
 		}
-		projectschema.KickoffEnsureAll(db, ids, logger)
-		return nil
+		return projectschema.EnsureAll(ctx, db, ids)
 	}
 }
 

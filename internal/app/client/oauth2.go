@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -305,18 +304,15 @@ func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2Code
 		if err := a.linkOAuthIdentity(ctx, projectID, oauthState.LinkUserID, provider, profile); err != nil {
 			return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, err
 		}
-		doc, err := a.docDB.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", oauthState.LinkUserID, databases.SystemPrincipal)
+		linked, err := a.requireAccountUser(ctx, projectID, oauthState.LinkUserID)
 		if err != nil {
 			return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, err
-		}
-		if doc == nil {
-			return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, status.Error(codes.NotFound, "user not found")
 		}
 		return &completeOAuth2CodeResult{
 			ProjectID:  projectID,
 			SuccessURL: oauthState.SuccessURL,
 			FailureURL: oauthState.FailureURL,
-			User:       mapUserDoc(doc),
+			User:       linked,
 		}, nil
 	}
 

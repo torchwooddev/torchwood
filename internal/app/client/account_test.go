@@ -35,7 +35,7 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	account := NewTestAccount(cfg, projectRepo, docDB)
+	account := NewTestAccount(cfg, projectRepo, docDB, db)
 
 	// Sign up.
 	user, tokens, cookie, _, err := account.SignUp(ctx, SignUpCommand{
@@ -72,6 +72,7 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 
 	// Me with authenticated context.
 	meCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
 		UserID:    user.ID,
 		Email:     user.Email,

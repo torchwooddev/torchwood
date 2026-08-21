@@ -9,21 +9,22 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/messaging"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
+	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
-	infrausers "github.com/torchwooddev/torchwood/internal/infra/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 )
 
-func NewTestAccount(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB) *Account {
-	return NewTestAccountWithRedis(cfg, projectRepo, docDB, nil)
+func NewTestAccount(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database) *Account {
+	return NewTestAccountWithRedis(cfg, projectRepo, docDB, db, nil)
 }
 
-func NewTestAccountWithRedis(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, rdb *redis.Client) *Account {
-	return NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, rdb, nil, nil)
+func NewTestAccountWithRedis(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database, rdb *redis.Client) *Account {
+	return NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, db, rdb, nil, nil)
 }
 
-func NewTestAccountWithMailer(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, rdb *redis.Client, mailer messaging.Mailer) *Account {
-	return NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, rdb, mailer, nil)
+func NewTestAccountWithMailer(cfg *config.AppConfig, projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database, rdb *redis.Client, mailer messaging.Mailer) *Account {
+	return NewTestAccountWithDeps(cfg, projectRepo, nil, docDB, db, rdb, mailer, nil)
 }
 
 func NewTestAccountWithDeps(
@@ -31,16 +32,21 @@ func NewTestAccountWithDeps(
 	projectRepo projects.Repository,
 	oauthProviders projects.OAuthProviderRepository,
 	docDB databases.DocumentDB,
+	db *clients.Database,
 	rdb *redis.Client,
 	mailer messaging.Mailer,
 	sms messaging.SMSSender,
 ) *Account {
-	roles := NewUserRoles(docDB)
+	var usersRepo = bunrepo.NewUserRepository(db)
+	var sessionRepo = bunrepo.NewSessionRepository(db)
+	var identities = bunrepo.NewIdentityRepository(db)
+	var memberships = bunrepo.NewMembershipRepository(db)
+	roles := NewUserRoles(usersRepo, memberships)
 	var rotation domainauth.RefreshRotationStore
 	if rdb != nil {
 		rotation = infraauth.NewRedisRefreshRotationStore(rdb)
 	}
-	sessions := infraauth.NewSessionService(cfg, docDB, roles, rotation)
+	sessions := infraauth.NewSessionService(cfg, sessionRepo, roles, rotation)
 	var otp domainauth.OTPChallengeStore
 	var oauthState domainauth.OAuthStateStore
 	var tokens domainauth.AccountTokenStore
@@ -65,7 +71,7 @@ func NewTestAccountWithDeps(
 	if sms == nil {
 		sms = inframessaging.NewSMSService(cfg)
 	}
-	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil, infrausers.NewDocumentRepository(docDB))
+	return NewAccount(cfg, projectRepo, oauthProviders, docDB, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil, usersRepo, identities, sessionRepo)
 }
 
 // CaptureMailer records sent messages for tests.

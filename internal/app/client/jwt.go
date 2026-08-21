@@ -5,7 +5,6 @@ import (
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"google.golang.org/grpc/codes"
@@ -22,14 +21,11 @@ func (a *Account) CreateJWT(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	doc, err := a.docDB.GetDocument(ctx, p.ProjectID, databases.SystemDatabaseID, "users", p.UserID, databases.SystemPrincipal)
+	user, err := a.requireAccountUser(ctx, p.ProjectID, p.UserID)
 	if err != nil {
 		return "", err
 	}
-	if doc == nil {
-		return "", status.Error(codes.NotFound, "user not found")
-	}
-	email := stringValue(doc.Data["email"])
+	email := user.Email
 
 	var roles []string
 	if a.roles != nil {
