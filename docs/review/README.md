@@ -4,7 +4,8 @@
 
 | 类型 | 文档 | 用途 |
 |------|------|------|
-| **第一性原理设计评审** | [first-principles-design.md](first-principles-design.md) | 不考虑既有预设，从最优设计评估模块切分、接口深度与缝。按 ID 逐项验证后再规划。**不是**缺陷修复清单。 |
+| **第一性原理设计评审** | [first-principles-design.md](first-principles-design.md) | 不考虑既有预设，从最优设计评估模块切分、接口深度与缝。owner 已逐项表态（附录 C）。**不是**缺陷修复清单。 |
+| **第一性原理实现计划** | [first-principles-plan.md](first-principles-plan.md) | 按附录 C + §11 波次切片的施工计划。Wave 0 可开工；E-5 先独立设计。 |
 | **Round 1 分模块代码审查** | 下文 prompt + [fix-plan.md](fix-plan.md) | 对照源码找缺陷并修复（F1–F11）。 |
 | **Round 2** | [round2/](round2/) | 第二轮审计与修复（G 批次）。 |
 | **Round 3** | [round3/](round3/) | 第三轮全量审核与验收。 |

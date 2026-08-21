@@ -2,7 +2,7 @@
 
 > 日期：2026-08-20（2026-08-21 评审修订；同日 owner 逐项表态）  
 > 基线：`main` @ `202211d`（落笔时工作区干净；提交 SHA 以 git 为准）  
-> 状态：**判断已表态的规划底稿**（事实经两轮独立抽查；2026-08-21 评审接受总体判断与 K 清单，修正 13 处事实细节——见附录 B。同日 owner 完成逐项 accept/修正——见附录 C；正文已吸收判断层修正。系统表化是方向而非已排期施工）  
+> 状态：**判断已表态的规划底稿**（事实经两轮独立抽查；2026-08-21 评审接受总体判断与 K 清单，修正 13 处事实细节——见附录 B。同日 owner 完成逐项 accept/修正——见附录 C。同日终审——见附录 D。施工计划：`docs/review/first-principles-plan.md`。系统表化是方向而非已排期施工）  
 > 方法：不考虑既有预设前提与已拍板决策，只从最优设计评估当前代码。已标明的另案（系统表化方向、Agent overlay）在判断里分开写，避免当成未规划的永久错误，也避免当成已有执行规格。  
 > 读者：按已接受的判断重排与施工。只认带前缀的稳定 ID，不按段落语序。
 
@@ -29,7 +29,7 @@ ID 前缀（不与 Round 1–3 的 F/G/H 批次碰撞）。**`P-` 是产品定�
 |---|---|---|
 | P/M/S/D/A/R/C | 发现 | 先核**事实**（属实/过时/部分属实），再对**判断**表态（接受/修正/驳回+原因） |
 | K | 保留项 | 核「是否仍成立」，再表态是否保留。驳回即允许在还债时改动 |
-| T / E | 规划提案 | 不依赖当前事实成立；可重排、合并、砍 |
+| T / E | 规划提案 | 方向已接受（附录 C）；可调波次与切口，**不得**推出附录 C 禁读 |
 | V | 代表路径（抽样） | 用来判断「改完是否更深」，不单独 accept/reject |
 
 每条发现分两类陈述：
@@ -75,7 +75,7 @@ Agent-native 目前是声明（Protobuf + OpenAPI + scoped API Key），不是�
 | M-1 | `internal/domain` 多数是端口目录；有不变式的是订单/订阅/ACL/资产 class | 中 | §3 |
 | M-2 | 系统实体是无类型文档（无 User/Session/Group 聚合） | 高 | §3 |
 | M-3 | 用户文档引擎是产品；`DocumentDB` 端口是神对象 | 高 | §3 / §5 |
-| M-4 | 资产五动词在 app 编排；应收进 Assets 领域服务（不放 Holding） | 中 | §3 |
+| M-4 | 资产五动词应收进 Assets 领域服务（不放 Holding） | 中 | §3 |
 | M-5 | Database 无独立类型（`GetDatabase` 返回 `*Collection`） | 中 | §3 / §5 |
 | M-6 | 事件信封超载（文档事件 + 经济事件） | 中 | §3 |
 
@@ -302,7 +302,7 @@ OpenAPI 与 scoped key 是正确挂钩，现有 SDK 有价值。roadmap 里「�
 
 对**用户 collection**，动态 schema + CRUD + 可选 ACL **就是** BaaS 产品，不要删「文档产品」。问题是：(1) 系统资源不该走这条口（D-1）；(2) catalog / DDL / 文档 / 引导焊在一个接口上。拆 Catalog / SchemaApplier / Documents（E-6）。规划语言分开「引擎」和「端口」——S-1 表里不要把 DocumentDB 当成「假缝所以可删」。
 
-### M-4 资产五动词在 app 编排，不在聚合上
+### M-4 资产五动词应收进 Assets 领域服务（不放 Holding）
 
 **事实**
 
@@ -490,7 +490,7 @@ Account 注册/登录走 `ListDocuments` + `query.BuildEqual("email", …)`，�
 
 每个 DocumentDB 文档方法都要 `Principal`。Account 热路径几乎全是 `SystemPrincipal`（`access.go`：`PlatformAdmin || __system__` 旁路）。
 
-默认集合权限：`read:any`，以及 `users` / `keys` / `admin` 的 create/update/delete（`DefaultCollectionPermissions`）。
+默认集合权限见 **D-9**（用户 collection 产品默认，不是本条的系统表化债）。
 
 List 用 `_perms` 相关子查询；Get 才 `attachDocumentPermissions`——同一 `Document` 类型两种形状。
 
@@ -504,13 +504,13 @@ List 用 `_perms` 相关子查询；Get 才 `attachDocumentPermissions`——同
 
 `pkg/query.Parse` 把 `equal("a","b")` 收成 `Filter{Op, Attribute, Values[]string}`。无 `or`/`and`/`not` 分组。值全是 string。SQL 编译在 `postgres.go` 的 `buildAppwriteQuery`（`contains` → `ILIKE`）。
 
-proto `ListRequest` 同时有 AIP `filter`/`order_by` 与 Appwrite `queries`（`proto/shared/v1/common.proto`）；文档类资源 handler 只接线 `queries`。例外：`servergrpc/projects.go` 的 ListProjects 已消费 AIP `filter`/`order_by`——AIP 风格已有先例，对 E-4 是利好而非从零开始。
+proto `ListRequest` 同时有 AIP `filter`/`order_by` 与 Appwrite `queries`（`proto/shared/v1/common.proto`）；文档类资源 handler 只接线 `queries`。例外：`servergrpc/projects.go` 的 ListProjects **把** AIP `filter`/`order_by` 传进 use-case，但 `ListProjects` 只做全量拉取 + offset 切片，**并不应用** Filter/OrderBy（`crud.ParseListParams` 只解析分页）。对 E-4 这是 handler 接线先例，**不是**可抄的 AIP-160 实现。
 
 分页：DSL `offset`/`cursor*` 与 AIP `page_token` 叠两套。
 
 **判断**
 
-对人类抄 Appwrite 友好，对 Agent 不友好。应升格为 proto `Query` AST（eq/in/range/text/and/or + keyset page）；`pkg/query` 变成 Appwrite codec。集合 schema 作为工具描述。这是 P-2 在数据面上的具体化。
+对人类抄 Appwrite 友好，对 Agent 不友好。应升格为 proto `Query` AST（eq/in/range/text/and/or + keyset page）；`pkg/query` 变成 Appwrite codec。集合 schema 作为工具描述。这是 P-2 在数据面上的具体化。ListProjects 的 AIP 字段接线不能当过滤/排序已落地。
 
 ### D-5 三件独立缺口：读路径 migrator、`Array` 不落地、懒 ALTER `_version`
 
@@ -529,9 +529,9 @@ CreateCollection/Attribute/Index 与 catalog 同事务（正向写路径正确�
 
 | 事 | 性质 | 建议 |
 |---|---|---|
-| `Attribute.Array` catalog 写入、DDL 忽略 | **产品撒谎**，独立缺陷（Wave 0） | 立刻二选一：实现 PG array，或 `CreateAttribute` 拒绝 `array=true` |
-| 写路径懒 `ALTER _version`（AccessExclusiveLock） | **运维地雷**，独立缺陷（Wave 0） | 列进 `projectschema` 迁移，不要热路径 ALTER |
-| `GetCollection` → `projectschema.Apply` | 架构 | 随 E-6：SchemaApplier 只走写路径 / 启动对账。已迁移版本会 skip，冲击低于前两件 |
+| `Attribute.Array` catalog 写入、DDL 忽略 | **产品撒谎**，独立缺陷（Wave 0） | 实现计划锁定：**拒绝** `array=true`（实现 PG array 另开产品单） |
+| 写路径懒 `ALTER _version`（AccessExclusiveLock） | **运维地雷**，独立缺陷（Wave 0） | **不要**新 `projectschema` SQL（用户表名来自 catalog，静态迁移写不出）。新建表继续 CREATE TABLE 带列；存量缺列做一次 catalog 驱动 reconcile；禁止写热路径 ALTER。**禁止**给系统集合加 `_version` |
+| `GetCollection` → `projectschema.Apply` | 架构 | 随 E-6：SchemaApplier 只走写路径 / 启动对账。已迁移版本会 skip，冲击低于前两件。**不进 Wave 0** |
 
 ### D-6 Staged transactions 是兼容层，不是数据面原语
 
@@ -968,7 +968,7 @@ AGENTS.md 已要求。D-4 / E-4 升 Query AST 时不要另起一套分页；AIP 
 
 ### K-22 端用户 Session 热路径
 
-会话上限驱逐、rotation key=`project+session`。系统表化后可换存储，不要先删行为。`sessions.secret_hash` 存明文 UUID **不是** keep——是缺陷，系统表化时应变成真 hash；若要提前修，需「写入哈希 + 校验」两半同改并处理存量会话，属独立缺陷单，不阻塞也不被 E-5 阻塞。
+会话上限驱逐、rotation key=`project+session`。系统表化后可换存储，不要先删行为。`sessions.secret_hash` 存明文 UUID **不是** keep——是缺陷，**Wave 0 做哈希写入**（见实现计划）；E-5 只换存储、不重做哈希语义。若 Wave 0 未做完就进 E-5，必须在迁移里补同一写入侧闭合。
 
 ### K-23 经济表物理位置以数据面方案为准
 
@@ -1021,7 +1021,7 @@ Grant      = 文档 ACL 角色  ≠  API scope  ≠  console RBAC
 public                         控制面 + 跨项目脊柱（projects, keys, outbox）
 tw_<project>                   系统表（users/sessions/files… 静态 DDL + FK）
                                + 文档 catalog + 账本
-tw_<project>_<database>        仅用户 collection（需要硬隔离/独立 dump 时才建）
+tw_<project>_<database>        随 CreateDatabase 建立，只装用户 collection（不是 E-5 的 schema 合并许可；第三层已经买到，见 D-2）
 ```
 
 | 模块 | 接口 |
@@ -1050,13 +1050,15 @@ tw_<project>_<database>        仅用户 collection（需要硬隔离/独立 dum
 
 ### Wave 0 — 独立缺陷（不动模块图）
 
+落点已锁在 `docs/review/first-principles-plan.md`（拒绝 array；`_version` 走 catalog reconcile 而非 projectschema SQL；secret 只闭合字段谎言；订阅走内部建单、公开 API 仍拒）。
+
 | 来源 | 做什么 |
 |---|---|
 | A-5 | admin refresh 路径加一次 `GetAdmin`（存在性 + 当前角色） |
-| A-4 / K-22 | `sessions.secret_hash`：写入哈希 + 校验两半同改，并处理存量会话 |
-| D-5 | `Attribute.Array`：实现 PG array，或 `CreateAttribute` 拒绝 `array=true` |
-| D-5 | `_version` 列进 `projectschema` 迁移；去掉热路径 `ALTER` |
-| R-6 | `CreateOrder` 接受 `PurposeSubscription`，或 `Subscribe` 走同一建单入口 |
+| A-4 / K-22 | `sessions.secret_hash`：写入 SHA-256 hex；查找仍按 session ID；存量双读 |
+| D-5 | `Attribute.Array`：拒绝 `array=true` |
+| D-5 | `_version`：去掉写热路径 `ALTER`；存量一次 catalog reconcile |
+| R-6 | 内部建单入口；公开 `CreateOrder` 继续拒绝 `PurposeSubscription` |
 
 ### Wave 1–3 — 架构
 
@@ -1115,7 +1117,7 @@ E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成
 
 1. **事实**：附录 A / B 已核对；漂移时改本文事实段，不改结论假装成立。
 2. **判断**：2026-08-21 owner 已逐项表态（[附录 C](#附录-cowner-逐项表态)）。正文已吸收修正。捆条 S-3、A-8 已分开接受。
-3. **规划**：只把已接受的判断纳入演进计划。按 §11 波次（Wave 0 缺陷 → 三条史诗）。E-5 未出独立设计前不施工。
+3. **规划**：只把已接受的判断纳入演进计划。施工顺序见 §11 与 `docs/review/first-principles-plan.md`：Wave 0 五条独立缺陷 → Wave 1（E-1 / E-2a / E-3 / E-8）→ Wave 2（E-4 / E-6 接口）→ Wave 3（E-5 先设计、E-2b、E-7）。E-5 未出独立设计前不施工。E-1 属 Wave 1，**不等** E-5。
 4. **不与 Round 1–3 混单**：那些是代码缺陷修复（`docs/review/README.md`、`round2/`、`round3/`）。本文是架构还债。两本账分开。Wave 0 缺陷可进缺陷账，但 ID 仍用本文前缀，避免与 F/G/H 碰撞。
 
 ---
@@ -1154,7 +1156,7 @@ E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成
 | A-2 | 补 `app/client/transactions.go:37` 同样丢 `PlatformAdmin` |
 | A-5 | client `TokenBundle` 是类型别名（`account.go:127`）非复制 DTO；仅 console `TokenPair` 为逐字段复制 |
 | A-6 | Account 方法散落 **13** 个生产文件（原 15） |
-| D-4 | 例外：`servergrpc/projects.go` ListProjects 已消费 AIP `filter`/`order_by`，为 E-4 先例 |
+| D-4 | 例外：`servergrpc/projects.go` ListProjects **接线** AIP `filter`/`order_by`，但 use-case 不应用（终审收窄；E-4 只当 handler 先例） |
 | D-7 | 升级为已确认：public `document_*` 无运行时读路径，删除安全 |
 | D-8 | Database/Collection DDL 仅在 Server；两侧分叉限定为文档用例（与 §7 表面地图对齐） |
 | M-3 | 补第 5 个进程缓存 `versionAlterTx`（本事务内 `_version` ALTER 标记） |
@@ -1243,4 +1245,18 @@ E-1～E-4 / E-2a 可在不改物理存储的情况下降低克隆和身份袋成
 - 把 T-1 概念图当成第一天必须切出的四个 Go 包
 - 把 Documents「不带 Principal」读成 List 也不下推授权过滤
 
-施工顺序见 §11：Wave 0 五条独立缺陷 → Wave 1（E-1 / E-2a / E-3 / E-8）→ Wave 2（E-4 / E-6 接口）→ Wave 3（E-5 先设计、E-2b、E-7）。
+施工顺序见 §11 与 `docs/review/first-principles-plan.md`：Wave 0 五条独立缺陷 → Wave 1（E-1 / E-2a / E-3 / E-8）→ Wave 2（E-4 / E-6 接口）→ Wave 3（E-5 先设计、E-2b、E-7）。C-1 后波。
+
+---
+
+## 附录 D：终审记录（2026-08-21）
+
+三名只读子代理（一致性 / 事实抽查 / 可施工性）对 owner 表态后的正文做终审。
+
+| 代理 | 结论 |
+|---|---|
+| 一致性 | **PASS WITH EDITS**。附录 C 与正文对齐。必须改：T-3「第三层才建」会被读成 E-5 合并 schema（与 D-2 冲突）。 |
+| 事实 | **Yes with nits**。Wave 0 五条 file:line 仍准；`apiKeyScopeRules=120`、Account 13 文件、Subscribe 直插等属实。必须改：D-4 把 ListProjects AIP 接线写成「已消费」——handler 传了字段，use-case **不应用** Filter/OrderBy。 |
+| 可施工性 | **Ready with planner decisions**。Wave 0 可开工，但 Array / `_version` 落点 / secret 校验对手 / R-6 入口必须在计划里锁默认，不能把 OR 留给每个 PR。 |
+
+已吸入正文：T-3 第三层措辞、D-4 ListProjects 范围、K-22 与 Wave 0 对齐、D-5 两件 Wave 0 的落点、T/E 前缀不再写「可砍」。规划锁定见 `docs/review/first-principles-plan.md`。
