@@ -12,26 +12,13 @@ func (a *Assets) LiveHoldingForUpdate(ctx context.Context, ownerID, defCode stri
 	if err := requireAssetWrite(ctx); err != nil {
 		return nil, err
 	}
-	projectID, ownerType, _, err := a.prepareWrite(ctx, domainassets.OwnerTypeUser, ownerID, "lookup:"+defCode)
+	scope, err := a.writeScope(ctx)
 	if err != nil {
 		return nil, err
 	}
-	code, err := validateCode(defCode)
+	h, err := a.svc.LiveHolding(ctx, scope, ownerID, defCode)
 	if err != nil {
-		return nil, err
+		return nil, mapWriteError(err)
 	}
-	def, err := a.requireActiveDef(ctx, projectID, code)
-	if err != nil {
-		return nil, err
-	}
-	holdings, err := a.holdings.ListForUpdate(ctx, projectID, ownerType, ownerID, def.ID)
-	if err != nil {
-		return nil, err
-	}
-	live := liveHoldings(holdings, a.ts())
-	if len(live) == 0 {
-		return nil, nil
-	}
-	h := live[0]
-	return &h, nil
+	return h, nil
 }

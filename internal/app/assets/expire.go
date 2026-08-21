@@ -7,7 +7,7 @@ import (
 
 // ExpireDue 扫描到期持有：产 expire 流水并删行（worker 周期任务）。
 // 每行独立短事务；SKIP LOCKED 保证多副本互不阻塞。全局预算 expireBatch
-// （K22）；项目遍历按轮转游标起始（队尾饥饿防护）。
+// （K22）；项目遍历按轮转游标起始（队尾饥饿防护）。单项目不变式在领域 Service。
 func (a *Assets) ExpireDue(ctx context.Context, now time.Time) (int64, error) {
 	if now.IsZero() {
 		now = a.ts()
@@ -50,28 +50,13 @@ func (a *Assets) ExpireDue(ctx context.Context, now time.Time) (int64, error) {
 }
 
 func (a *Assets) expireProject(ctx context.Context, projectID string, now time.Time, limit int) (int64, error) {
-	var n int64
-	err := a.db.RunInTx(ctx, func(txCtx context.Context) error {
-		txCtx = withSystemPrincipal(txCtx, projectID)
-		if err := requireAssetWrite(txCtx); err != nil {
-			return err
-		}
-		batch, err := a.holdings.ListExpiredInProject(txCtx, projectID, now, limit)
-		if err != nil {
-			return err
-		}
-		for i := range batch {
-			h := &batch[i]
-			key := "expire:" + h.ID
-			if h.ExpiresAt != nil {
-				key += ":" + h.ExpiresAt.UTC().Format(time.RFC3339Nano)
-			}
-			if _, err := a.expireHolding(txCtx, h.ProjectID, h.ID, key); err != nil {
-				return err
-			}
-			n++
-		}
-		return nil
-	})
-	return n, err
+	ctx = withSystemPrincipal(ctx, projectID)
+	if err := requireAssetWrite(ctx); err != nil {
+		return 0, err
+	}
+	scope, err := a.writeScope(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return a.svc.ExpireDue(ctx, scope, now, limit)
 }

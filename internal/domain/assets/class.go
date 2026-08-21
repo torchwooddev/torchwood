@@ -1,5 +1,5 @@
-// Package assets 定义 v3 统一资产系统的领域模型与端口（设计 §2）：
-// 四类别矩阵、defs / holdings / ledger、五动词原语。
+// Package assets 定义 v3 统一资产系统的领域模型、端口与写路径服务（设计 §2）：
+// 四类别矩阵、defs / holdings / ledger、五动词（Grant/Consume/Transfer/Mutate/Expire）。
 package assets
 
 import (

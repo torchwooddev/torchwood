@@ -1,5 +1,5 @@
 // Package assets 是 v3 统一资产系统的 use-case 聚合（设计 §2）：
-// Def CRUD、Grant/Consume/Transfer/Mutate/Expire、只读查询、到期扫描与对账。
+// Def CRUD、只读查询、对账、worker 到期轮转；五动词鉴权后委托领域 Service。
 package assets
 
 import (
@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,11 +24,8 @@ import (
 const (
 	defaultListLimit = 25
 	maxListLimit     = 100
-	maxIdempotency   = 128
 	expireBatch      = 500
 )
-
-var codePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 var (
 	assetOpsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -57,11 +52,10 @@ type txRunner interface {
 
 // Assets 是资产子域 use-case 聚合。
 type Assets struct {
-	db         txRunner
+	svc        *domainassets.Service
 	defs       domainassets.DefRepo
 	holdings   domainassets.HoldingRepo
 	ledger     domainassets.LedgerRepo
-	events     shared.EventPublisher
 	projects   projects.Repository
 	logger     *slog.Logger
 	now        func() time.Time
@@ -93,16 +87,16 @@ func newAssets(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Assets{
-		db:       db,
+	a := &Assets{
 		defs:     defs,
 		holdings: holdings,
 		ledger:   ledger,
-		events:   events,
 		projects: projectRepo,
 		logger:   logger,
 		now:      func() time.Time { return time.Now().UTC() },
 	}
+	a.svc = domainassets.NewService(db, defs, holdings, ledger, events, a.ts, newID)
+	return a
 }
 
 func (a *Assets) ts() time.Time {
@@ -127,41 +121,12 @@ func normalizeList(limit int, before time.Time) (int, time.Time) {
 	return limit, before
 }
 
-func normalizeExpiry(t *time.Time) *time.Time {
-	if t == nil {
-		return nil
-	}
-	u := t.UTC().Truncate(time.Microsecond)
-	return &u
-}
-
-func sameExpiry(a, b *time.Time) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return a.Equal(*b)
-}
-
 func validateCode(code string) (string, error) {
-	c := domainassets.NormalizeCode(code)
-	if !codePattern.MatchString(c) {
-		return "", status.Error(codes.InvalidArgument, "def code must match ^[a-z][a-z0-9_]{0,63}$")
+	c, err := domainassets.ValidateCode(code)
+	if err != nil {
+		return "", mapWriteError(err)
 	}
 	return c, nil
-}
-
-func validateIdempotency(key string) (string, error) {
-	k := strings.TrimSpace(key)
-	if k == "" {
-		return "", status.Error(codes.InvalidArgument, domainassets.ErrIdempotencyRequired.Error())
-	}
-	if len(k) > maxIdempotency {
-		return "", status.Errorf(codes.InvalidArgument, "idempotency_key exceeds %d characters", maxIdempotency)
-	}
-	return k, nil
 }
 
 func mapWriteError(err error) error {
@@ -171,13 +136,19 @@ func mapWriteError(err error) error {
 	if _, ok := status.FromError(err); ok {
 		return err
 	}
+	if errors.Is(err, domainassets.ErrInsufficient) {
+		assetNegativeBlockedTotal.Inc()
+	}
 	switch {
 	case errors.Is(err, domainassets.ErrMatrix),
 		errors.Is(err, domainassets.ErrInvalidQuantity),
 		errors.Is(err, domainassets.ErrExpiresAtRequired),
 		errors.Is(err, domainassets.ErrInvalidCode),
 		errors.Is(err, domainassets.ErrIdempotencyRequired),
-		errors.Is(err, domainassets.ErrInvalidOwnerType):
+		errors.Is(err, domainassets.ErrInvalidOwnerType),
+		errors.Is(err, domainassets.ErrOwnerRequired),
+		errors.Is(err, domainassets.ErrHoldingIDRequired),
+		errors.Is(err, domainassets.ErrSameOwner):
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, domainassets.ErrInsufficient),
 		errors.Is(err, domainassets.ErrMaxQuantity),

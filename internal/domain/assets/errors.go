@@ -33,4 +33,12 @@ var (
 	ErrInvalidCode = errors.New("assets: invalid def code")
 	// ErrDuplicateCode 是 (project_id, code) 冲突。
 	ErrDuplicateCode = errors.New("assets: def code already exists")
+	// ErrOwnerRequired 是 owner_id / from_owner_id / to_owner_id 为空。
+	ErrOwnerRequired = errors.New("assets: owner_id is required")
+	// ErrHoldingIDRequired 是 holding_id 为空。
+	ErrHoldingIDRequired = errors.New("assets: holding_id is required")
+	// ErrSameOwner 是转让双方相同。
+	ErrSameOwner = errors.New("assets: cannot transfer to the same owner")
+	// ErrProjectRequired 是写路径未注入 project_id（app 应先注入）。
+	ErrProjectRequired = errors.New("assets: missing project context")
 )
