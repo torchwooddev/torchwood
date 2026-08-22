@@ -598,3 +598,74 @@ func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 		require.Zero(t, n, "%s rows must be cleaned by DeleteProjectInternal", table)
 	}
 }
+
+// TestProjects_ListProjects_MemberGrantedProjects（B1）：member 在 admin_projects
+// 有 Grant 时 ListProjects 非空；无 Grant 的 member 列表为空且 Get 其它项目 NotFound。
+func TestProjects_ListProjects_MemberGrantedProjects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	repo := bunrepo.NewProjectRepository(db)
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	adminProjectRepo := bunrepo.NewAdminProjectRepository(db)
+	adminRepo := bunrepo.NewAdminRepository(db)
+	projectsUC := NewProjects(repo, docDB, db, adminProjectRepo)
+	require.NoError(t, adminRepo.CreateAdmin(ctx, &projects.Admin{
+		ID:           "adm-member-1",
+		Email:        "member-grant@test.local",
+		PasswordHash: "x",
+		Role:         "member",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}))
+
+	owned, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:   "memberapp",
+		Name: "Member App",
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = projectsUC.DeleteProjectInternal(ctx, owned.ID) })
+	other, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
+		ID:   "otherapp",
+		Name: "Other App",
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = projectsUC.DeleteProjectInternal(ctx, other.ID) })
+
+	// 无 Grant：member 的 ProjectID 不会被授权层绑定（这里以未绑定模拟），列表为空。
+	unboundCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:   "member-1",
+		ActorKind: shared.ActorKindAdmin,
+		AdminID:   "adm-member-1",
+		Roles:     []string{"member"},
+	})
+	list, info, err := projectsUC.ListProjects(unboundCtx, 10, "", "", "")
+	require.NoError(t, err)
+	require.Empty(t, list)
+	require.Zero(t, info.TotalCount)
+
+	// Grant 后（等价于授权层校验通过并绑定 ProjectID）：列表包含该项目；
+	// 但 Get 其它未授权项目仍 NotFound。
+	require.NoError(t, adminProjectRepo.GrantProjectAccess(ctx, "adm-member-1", owned.ID))
+	memberCtx := contexts.WithPrincipal(ctx, &shared.Principal{
+		ActorID:   "member-1",
+		ActorKind: shared.ActorKindAdmin,
+		AdminID:   "adm-member-1",
+		ProjectID: owned.ID,
+		Roles:     []string{"member"},
+	})
+	list, info, err = projectsUC.ListProjects(memberCtx, 10, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, 1, info.TotalCount)
+	require.Equal(t, owned.ID, list[0].ID)
+	got, err := projectsUC.GetProject(memberCtx, owned.ID)
+	require.NoError(t, err)
+	require.Equal(t, owned.ID, got.ID)
+	_, err = projectsUC.GetProject(memberCtx, other.ID)
+	require.Equal(t, codes.NotFound, status.Code(err))
+}

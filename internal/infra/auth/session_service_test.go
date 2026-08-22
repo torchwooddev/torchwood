@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -234,4 +235,40 @@ func TestSessionService_DeleteSessionsByUser_BulkDelete(t *testing.T) {
 	require.NoError(t, svc.DeleteSessionsByUser(ctx, "proj-1", "user-1"))
 	require.Equal(t, 1, sessions.len("proj-1"))
 	require.NotNil(t, sessions.get("proj-1", "sess-3"), "其他用户的会话不得被误删")
+}
+
+// TestSessionService_ImpersonationClaim（B2）：admin 调用方（CreateUserToken 路径）
+// 签发的 end_user JWT 带 imp=impersonator admin id；普通登录（无 admin principal）
+// imp 为空。签发点共用 CreateSessionAndTokens，此处直接断言 claims。
+func TestSessionService_ImpersonationClaim(t *testing.T) {
+	t.Parallel()
+
+	sessions := newStubSessionRepo()
+	svc := auth.NewSessionService(testSessionJWTConfig(), sessions, stubRoleResolver{}, nil)
+	cfg := testSessionJWTConfig()
+
+	adminCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind:       shared.ActorKindAdmin,
+		AdminID:         "adm-imp-1",
+		ProjectID:       "p1",
+		IsPlatformAdmin: true,
+	})
+	bundle, _, err := svc.CreateSessionAndTokens(adminCtx, "p1", "u1", "u1@test.local", "server_token")
+	require.NoError(t, err)
+
+	key := jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeEndUserJWT)
+	claims, ok := jwtparser.Parse(key, bundle.AccessToken)
+	require.True(t, ok)
+	require.Equal(t, "adm-imp-1", claims.Imp, "模拟登录的 access token 必须带 impersonator admin id")
+
+	userCtx := contexts.WithPrincipal(context.Background(), &shared.Principal{
+		ActorKind: shared.ActorKindEndUser,
+		ProjectID: "p1",
+		UserID:    "u1",
+	})
+	bundle2, _, err := svc.CreateSessionAndTokens(userCtx, "p1", "u1", "u1@test.local", "")
+	require.NoError(t, err)
+	claims2, ok := jwtparser.Parse(key, bundle2.AccessToken)
+	require.True(t, ok)
+	require.Empty(t, claims2.Imp, "普通登录不得携带 imp")
 }
