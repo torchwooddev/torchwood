@@ -310,14 +310,20 @@ console TS 类型 buf 生成；`.env` 中弱默认清理；仓库根二进制清
 
 - **本次改动涉及的全部包**：queue / app-functions / messaging / worker /
   serverhttp / servergrpc / events / projectschema / bunrepo / acceptance —— 全绿；
-- **全量 `go test ./...`**：62 个包 ok。5 个失败用例经 git stash / detached
-  HEAD 对照验证为**预存失败**（`ae0036d` 之前即失败，与本次修复无关），
-  其中 4 个为 perms 子系统的 `PermissionDenied` 家族（疑似同一根因，待排查）：
-  - `TestPayments_WeChatULIDCallbackClosesOrder`（purpose.amount 校验）
-  - `TestDatabases_ListDocuments_NextPageToken` / `TestDatabases_Document_Increment`
-    / `TestDatabases_ReservedIDDocumentCRUD` / `TestStorage_FileToken`
-    （PermissionDenied；初版记录的"4 个"系输出截断漏计，后经 detached HEAD
-    复核补全）
+- **全量 `go test ./...`**（2026-08-22 终态）：**65 个包全部通过，零失败**。
+  此前记录的 5 个预存失败已全部处置（detached HEAD 定位到两个根因）：
+  - **Databases 家族 3 个**（NextPageToken / Document_Increment /
+    ReservedIDDocumentCRUD）+ EmptyPermissions 断言：`017fc4d` C1 改动的
+    `read:__private__` 占位 ACE 不匹配任何常规角色且关闭集合回落，keys
+    创建的文档自己读不回，Server CRUD 往返整体断裂。修订：占位 ACE 绑定
+    创建者凭证角色（读写删，与 user: owner 分支同构），guest/any 仍剔除、
+    C1 的防 guest 目标不变；系统推导 ACE 不受授予者校验约束。
+  - **TestStorage_FileToken**：`1289922` A8/A9 有意移除文件文档权限回落
+    （CreateFile 的 Permissions 不再落地，canAccessFile 只认 public/属主/
+    特权）——陈旧测试前提，断言更新为"非属主非特权 users 角色签发受限
+    文件 token 被拒"。
+  - **TestPayments_WeChatULIDCallbackClosesOrder**：A2 校验要求
+    `purpose.amount` 与订单金额相等——测试建单命令补 Purpose 载荷。
 - **实施中的两个设计定案**（与原方案的偏差，均有代码注释）：
   1. P1-4 消费组起始位保留 `0-0`（`$` 会静默跳过 worker 首启前已入队的
      消息，重放危害已被 P0-1 闸门中和——详见 §2 P1-4）；

@@ -234,19 +234,19 @@ func TestStorage_FileToken(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 
-	// 文件系统集合集合级 read:any 兜底：任何可读主体均可签发 token。
+	// A8/A9 修订：文件访问不再走文档权限 read:any 兜底——CreateFile 的
+	// Permissions 切片被丢弃（不落地），canAccessFile 只认 public bucket /
+	// 属主 / 特权主体。非属主非特权的 users 角色不得为受限文件签发读 token。
 	restricted, err := uc.CreateFile(ctx, CreateFileCommand{
 		ProjectID:   projectID,
 		BucketID:    bucket.ID,
 		Name:        "restricted.txt",
 		MimeType:    "text/plain",
-		Permissions: []string{"read:keys", "read:admin"},
+		Permissions: []string{"read:keys", "read:admin"}, // A8：忽略，不再落地
 	}, strings.NewReader("restricted"), 10, principal)
 	require.NoError(t, err)
-	userToken, err := uc.CreateFileToken(ctx, projectID, bucket.ID, restricted.ID, 300, databases.Principal{Roles: []string{"users"}})
-	require.NoError(t, err)
-	_, _, _, err = uc.ParseFileToken(userToken.Token)
-	require.NoError(t, err)
+	_, err = uc.CreateFileToken(ctx, projectID, bucket.ID, restricted.ID, 300, databases.Principal{Roles: []string{"users"}})
+	require.Equal(t, codes.PermissionDenied, status.Code(err), "非属主非特权主体不得签发受限文件读 token")
 }
 
 // TestStorage_PublicBucket 公开 bucket 元数据读写：创建带 public、匿名列表可见。

@@ -150,8 +150,20 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 
 	created, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "no perms"}, nil, principal)
 	require.NoError(t, err)
-	require.Len(t, created.Permissions, 1)
-	require.Equal(t, "__private__", created.Permissions[0].Role)
+	// 2026-08 回归修订：空 ACE 占位绑定创建者凭证角色（keys 保留读写删），
+	// 不再是无人可匹配的 __private__；guest/any 仍被剔除、集合回落仍关闭。
+	require.Len(t, created.Permissions, 3)
+	require.Equal(t, "keys", created.Permissions[0].Role)
+	require.Equal(t, "keys", created.Permissions[1].Role)
+	require.Equal(t, "keys", created.Permissions[2].Role)
+
+	// 创建者读回可用（回归核心断言：Server CRUD 往返）。
+	got, err := uc.GetDocument(ctx, projectID, "app", "posts", created.ID, principal)
+	require.NoError(t, err)
+	require.Equal(t, "no perms", got.Data["title"])
+	// guest 不可见（C1 目标保持）。
+	_, err = uc.GetDocument(ctx, projectID, "app", "posts", created.ID, databases.Principal{})
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
 
 	explicit, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "explicit"}, []databases.Permission{
 		{Type: "read", Role: "any"},

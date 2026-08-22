@@ -365,37 +365,64 @@ func (d *Databases) CreateDocument(
 	}
 	// C1：Server 空文档 ACE 私有（不再回落到集合 read:any）。
 	// WHY: 默认集合已去 read:any，但历史集合仍可能含它；空 ACE 若仍 docHasPerms=false 会对 guest 可读。
-	// 实现：有 user: 前缀时按 owner 语义写入 user:<id> 的读写删，其余（API Key/Admin）写入仅 privileged 匹配的占位 ACE。
+	// 修订（2026-08 回归）：占位 ACE 给创建者凭证角色保留读写删（与 user:
+	// owner 分支同构）——原 read:__private__ 不匹配任何常规角色，keys 创建
+	// 的文档自己都读不回，Server API 的创建→读改删往返整体断裂；guest/any
+	// 仍被剔除，docHasPerms=true 依旧关闭集合回落，C1 目标不变。
+	seeded := false
 	if len(perms) == 0 {
-		hasUserRole := false
-		for _, r := range principal.Roles {
-			if strings.HasPrefix(r, "user:") {
-				hasUserRole = true
-				break
-			}
-		}
-		if hasUserRole {
+		seeded = true
+		switch role := ownerUserRole(principal); {
+		case role != "":
 			// 少见路径：Server 侧带用户身份，保持与 Client 相同的 owner ACE。
-			var userRole string
-			for _, r := range principal.Roles {
-				if strings.HasPrefix(r, "user:") {
-					userRole = r
-					break
-				}
-			}
 			perms = []databases.Permission{
-				{Type: "read", Role: userRole},
-				{Type: "update", Role: userRole},
-				{Type: "delete", Role: userRole},
+				{Type: "read", Role: role},
+				{Type: "update", Role: role},
+				{Type: "delete", Role: role},
 			}
-		} else {
-			// 私有占位：无任何常规角色匹配，仅 System/PlatformAdmin 旁路可读。
+		case creatorSeedRole(principal) != "":
+			role := creatorSeedRole(principal)
+			perms = []databases.Permission{
+				{Type: "read", Role: role},
+				{Type: "update", Role: role},
+				{Type: "delete", Role: role},
+			}
+		default:
+			// 无常规角色可绑定（如仅特权旁路的主体）：纯私有标记。
 			perms = []databases.Permission{{Type: "read", Role: "__private__"}}
 		}
 	}
+	// seeded 时 ACE 全部为系统推导（非调用方授予意图），不受授予者校验约束。
 	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{
-		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
+		AllowPrivilegedGrant: seeded || allowPrivilegedGrant(principal),
 	})
+}
+
+// ownerUserRole 返回 principal 的首个 user:<id> 角色（owner ACE 语义），
+// 无用户角色时返回空串。
+func ownerUserRole(principal databases.Principal) string {
+	for _, r := range principal.Roles {
+		if strings.HasPrefix(r, "user:") {
+			return r
+		}
+	}
+	return ""
+}
+
+// creatorSeedRole 返回空 ACE 文档占位绑定用的创建者常规角色（首个非
+// user: 前缀、非合成的角色，如 keys/admin）；找不到时返回空串。
+func creatorSeedRole(principal databases.Principal) string {
+	for _, r := range principal.Roles {
+		switch r {
+		case "", "any", "guest", "__system__", "__private__":
+			continue
+		}
+		if strings.HasPrefix(r, "user:") {
+			continue
+		}
+		return r
+	}
+	return ""
 }
 
 func (d *Databases) ListDocuments(

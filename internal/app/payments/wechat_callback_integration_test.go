@@ -189,6 +189,7 @@ func TestPayments_WeChatULIDCallbackClosesOrder(t *testing.T) {
 		Amount:         1999,
 		Currency:       "CNY",
 		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"amount": 1999, "currency_code": "CNY"},
 		IdempotencyKey: "idem-wechat-1",
 	})
 	require.NoError(t, err)
