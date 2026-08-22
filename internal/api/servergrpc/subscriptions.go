@@ -46,6 +46,9 @@ func (s *SubscriptionsService) CreatePlan(ctx context.Context, req *serverv1.Cre
 }
 
 func (s *SubscriptionsService) ListPlans(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListPlansResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	before, err := decodeServerOrderCursor(req.GetPageToken())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid page token")
@@ -133,6 +136,9 @@ func (s *SubscriptionsService) DeletePlan(ctx context.Context, req *serverv1.Del
 }
 
 func (s *SubscriptionsService) ListSubscriptions(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListSubscriptionsResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	before, err := decodeServerOrderCursor(req.GetPageToken())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid page token")

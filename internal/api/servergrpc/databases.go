@@ -61,7 +61,10 @@ func (s *DatabasesService) CreateDatabase(ctx context.Context, req *serverv1.Cre
 	return &serverv1.Database{Id: req.GetId(), Name: req.GetName()}, nil
 }
 
-func (s *DatabasesService) ListDatabases(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListDatabasesResponse, error) {
+func (s *DatabasesService) ListDatabases(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListDatabasesResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -308,9 +311,10 @@ func (s *DatabasesService) CreateDocument(ctx context.Context, req *serverv1.Cre
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
-	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	if req.GetDocumentId() != "" {
 		ctx = contexts.WithAuditResource(ctx, auditDocumentResource(req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId()))
+	} else {
+		ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
 	}
 	data := map[string]any{}
 	if req.GetData() != nil {

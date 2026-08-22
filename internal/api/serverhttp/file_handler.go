@@ -546,7 +546,8 @@ func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, b
 	}
 
 	// File token 匿名下载：token 绑定 project/bucket/file 与过期时间。
-	if token := r.URL.Query().Get("token"); token != "" {
+	// 优先从 header 读取（避免 query 泄露到日志/代理），兼容 query 参数。
+	if token := fileTokenFromRequest(r); token != "" {
 		projectID, tokBucket, tokFile, verr := h.storage.ParseFileToken(token)
 		if verr == nil && tokBucket == bucketID && tokFile == fileID {
 			return projectID, databases.SystemPrincipal, nil, false, nil
@@ -568,6 +569,25 @@ func (h *FileHandler) resolveReadContext(ctx context.Context, r *http.Request, b
 	}
 
 	return "", databases.Principal{}, nil, false, err
+}
+
+// fileTokenFromRequest 从请求提取 file token：优先 header（X-File-Token /
+// Authorization: Bearer），回退 query ?token=（兼容旧客户端，query 仍可用但建议迁移至 header）。
+func fileTokenFromRequest(r *http.Request) string {
+	if token := strings.TrimSpace(r.Header.Get("X-File-Token")); token != "" {
+		return token
+	}
+	if token := strings.TrimSpace(r.Header.Get("X-Torchwood-File-Token")); token != "" {
+		return token
+	}
+	if auth := strings.TrimSpace(r.Header.Get("Authorization")); auth != "" {
+		if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+			if token := strings.TrimSpace(auth[7:]); token != "" && strings.Count(token, ".") == 4 {
+				return token
+			}
+		}
+	}
+	return strings.TrimSpace(r.URL.Query().Get("token"))
 }
 
 // inlineSafeMime 判断文件 MIME 是否可安全以 inline 方式展示：

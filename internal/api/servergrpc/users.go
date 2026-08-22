@@ -54,6 +54,9 @@ func (s *UsersService) CreateUser(ctx context.Context, req *serverv1.CreateUserR
 }
 
 func (s *UsersService) ListUsers(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListUsersResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")

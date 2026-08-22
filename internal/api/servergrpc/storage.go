@@ -51,6 +51,9 @@ func (s *StorageService) CreateBucket(ctx context.Context, req *serverv1.CreateB
 }
 
 func (s *StorageService) ListBuckets(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListBucketsResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")

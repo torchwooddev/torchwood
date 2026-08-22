@@ -36,6 +36,12 @@ func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.Creat
 }
 
 func (s *ProjectsService) ListProjects(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListProjectsResponse, error) {
+	if req.GetFilter() != "" {
+		return nil, status.Error(codes.InvalidArgument, "filter is not yet supported for ListProjects")
+	}
+	if req.GetOrderBy() != "" {
+		return nil, status.Error(codes.InvalidArgument, "order_by is not yet supported for ListProjects")
+	}
 	list, info, err := s.projects.ListProjects(ctx, req.GetPageSize(), req.GetPageToken(), req.GetFilter(), req.GetOrderBy())
 	if err != nil {
 		return nil, err

@@ -56,7 +56,10 @@ func (s *APIKeysService) CreateAPIKey(ctx context.Context, req *serverv1.CreateA
 	}, nil
 }
 
-func (s *APIKeysService) ListAPIKeys(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListAPIKeysResponse, error) {
+func (s *APIKeysService) ListAPIKeys(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListAPIKeysResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")

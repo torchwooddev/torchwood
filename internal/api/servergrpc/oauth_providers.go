@@ -22,7 +22,10 @@ func NewOAuthProvidersService(oauthProviders *appserver.OAuthProviders) *OAuthPr
 	return &OAuthProvidersService{oauthProviders: oauthProviders}
 }
 
-func (s *OAuthProvidersService) ListOAuthProviders(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListOAuthProvidersResponse, error) {
+func (s *OAuthProvidersService) ListOAuthProviders(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListOAuthProvidersResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	projectID := projectIDFromContext(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")

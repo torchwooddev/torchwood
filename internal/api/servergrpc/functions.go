@@ -84,7 +84,10 @@ func (s *FunctionsService) CreateFunction(ctx context.Context, req *serverv1.Cre
 	return mapFunction(fn), nil
 }
 
-func (s *FunctionsService) ListFunctions(ctx context.Context, _ *sharedv1.ListRequest) (*serverv1.ListFunctionsResponse, error) {
+func (s *FunctionsService) ListFunctions(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListFunctionsResponse, error) {
+	if err := rejectListFilterOrderBy(req); err != nil {
+		return nil, err
+	}
 	projectID, err := s.projectID(ctx)
 	if err != nil {
 		return nil, err

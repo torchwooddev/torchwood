@@ -26,9 +26,10 @@ func NewDatabasesService(databases *client.Databases) *DatabasesService {
 }
 
 func (s *DatabasesService) CreateDocument(ctx context.Context, req *clientv1.CreateDocumentRequest) (*sharedv1.Document, error) {
-	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
 	if req.GetDocumentId() != "" {
 		ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId()+"/documents/"+req.GetDocumentId())
+	} else {
+		ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
 	}
 	data := map[string]any{}
 	if req.GetData() != nil {

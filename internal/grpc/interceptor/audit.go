@@ -14,8 +14,9 @@ import (
 )
 
 type AuditInterceptor struct {
-	repo   audit.Repository
-	logger *slog.Logger
+	repo    audit.Repository
+	logger  *slog.Logger
+	trusted *TrustedProxies
 }
 
 func NewAuditInterceptor(repo audit.Repository) *AuditInterceptor {
@@ -27,6 +28,13 @@ func (a *AuditInterceptor) WithLogger(l *slog.Logger) *AuditInterceptor {
 	if l != nil {
 		a.logger = l
 	}
+	return a
+}
+
+// WithTrustedProxies 配置可信代理网段，用于回退路径的 X-Forwarded-For 解析
+// （正常链路 ClientInfo 已携带校验后 IP，此配置仅在无 ClientInfo 时生效，避免伪造）。
+func (a *AuditInterceptor) WithTrustedProxies(trusted *TrustedProxies) *AuditInterceptor {
+	a.trusted = trusted
 	return a
 }
 
@@ -50,9 +58,18 @@ func (a *AuditInterceptor) UnaryAuditMiddleware(ctx context.Context, req any, in
 			entry.IP = ci.IP
 			entry.UserAgent = ci.UserAgent
 		} else {
-			entry.IP = FirstForwardedHop(firstMetadataValue(md, "x-forwarded-for"))
-			if entry.IP == "" {
-				entry.IP = firstMetadataValue(md, "x-real-ip")
+			xff := firstMetadataValue(md, "x-forwarded-for")
+			if xff == "" {
+				xff = firstMetadataValue(md, "grpcgateway-x-forwarded-for")
+			}
+			realIP := firstMetadataValue(md, "x-real-ip")
+			if a.trusted != nil {
+				entry.IP = a.trusted.ResolveClientIP(PeerIP(ctx), xff, realIP)
+			} else if peerIP := PeerIP(ctx); peerIP != "" {
+				entry.IP = peerIP
+			} else {
+				// 无 peer 且无可信配置（测试直调）时不信任 XFF，回退为空，避免伪造。
+				entry.IP = ""
 			}
 			entry.UserAgent = firstMetadataValue(md, "grpcgateway-user-agent")
 			if entry.UserAgent == "" {

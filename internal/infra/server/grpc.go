@@ -100,11 +100,11 @@ func NewGRPCServer(
 		return nil, err
 	}
 	authInterceptor = authInterceptor.WithLogger(app.Logger())
-	auditInterceptor := interceptor.NewAuditInterceptor(auditRepo).WithLogger(app.Logger())
 	trustedProxies, err := interceptor.ParseTrustedProxies(cfg.GetSecurity().GetTrustedProxies())
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
+	auditInterceptor := interceptor.NewAuditInterceptor(auditRepo).WithLogger(app.Logger()).WithTrustedProxies(trustedProxies)
 	clientInfoInterceptor := interceptor.NewClientInfoInterceptor(trustedProxies)
 	// 通用 API 限流（roadmap §3.4）：挂在 clientInfo 与 auth 之后（需要
 	// trusted-proxy 校验后的 IP 与 principal）、audit 之前；复用
