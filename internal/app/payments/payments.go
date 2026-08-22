@@ -12,7 +12,6 @@ import (
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
-	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/uow"
@@ -66,10 +65,10 @@ type Payments struct {
 	scanCursor   appshared.ProjectRotation // CloseExpiredOrders 轮转游标（tick 串行）
 }
 
-// NewPayments 构造 use-case 聚合（Wire：*clients.Database 满足 uow.Runner）。
+// NewPayments 构造 use-case 聚合（db 注入 uow.Runner 端口）。
 func NewPayments(
 	cfg *config.AppConfig,
-	db *clients.Database,
+	db uow.Runner,
 	orders domainpayments.OrderRepo,
 	callbacks domainpayments.CallbackEventRepo,
 	fulfillments domainpayments.FulfillmentRepo,

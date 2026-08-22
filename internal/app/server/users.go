@@ -12,10 +12,10 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/groups"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
-	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/password"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -24,7 +24,7 @@ type Users struct {
 	projectRepo projects.Repository
 	sessions    domainauth.SessionService
 	sessionRepo domainauth.SessionRepository
-	db          *clients.Database
+	db          uow.Runner
 	usersRepo   users.Repository
 	groupsRepo  groups.GroupRepository
 	memberships groups.MembershipRepository
@@ -33,7 +33,7 @@ type Users struct {
 func NewUsers(
 	projectRepo projects.Repository,
 	sessions domainauth.SessionService,
-	db *clients.Database,
+	db uow.Runner,
 	usersRepo users.Repository,
 	sessionRepo domainauth.SessionRepository,
 	groupsRepo groups.GroupRepository,
@@ -345,7 +345,7 @@ func (u *Users) DeleteUser(ctx context.Context, projectID, userID string, _ data
 	if _, err := u.resolveProject(ctx, projectID); err != nil {
 		return err
 	}
-	return u.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return u.db.Run(ctx, func(txCtx context.Context) error {
 		var groupIDs []string
 		if u.memberships != nil {
 			mems, err := u.memberships.ListByUser(txCtx, projectID, userID)

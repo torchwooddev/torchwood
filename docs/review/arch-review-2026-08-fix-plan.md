@@ -220,8 +220,15 @@ W-H 中以 per-语句 ctx deadline 收敛）。
    UpdateAccount/ConfirmEmailChange 两处 `errors.Is` 硬编码映射；
    占用检查的消息绑定 `users.ErrEmailAlreadyRegistered.Error()` 防字符串
    漂移；新增 table-driven 测试（含 wrapped sentinel 与未知错误透传）。
-2. `*clients.Database` 构造参数改 `pkg/uow.Runner` 端口（users.go 只用
-   RunInTx，零行为变化；payments.go:69 注释已自认接口满足）；
+2. ✅ `*clients.Database` 构造参数改端口注入（2026-08-22 完成）：
+   `server.NewUsers` / `assets.NewAssets` / `payments.NewPayments` 改收
+   `uow.Runner`；`subscriptions` 的本地 `txRunner` 上收为 `pkg/uow.Isolator`
+   （Runner + RunInNewTx，订单两段式语义保留），`NewSubscriptions` 改收
+   `uow.Isolator`；4 个 app 文件删除 `infra/clients` import；
+   `infra.ProviderSet` 与 `cmd/worker` 各加两个 `wire.Bind`（worker 不整包
+   引入 infra.ProviderSet，按既有 bind 复制先例）。wire_gen 无 diff
+   （具体类型变量直传接口参数，无需胶水）。users.go 的 `RunInTx` 调用改
+   `Run`（tx.go 中 Run 直接委托 RunInTx，零行为变化）；
 3. `app/server/projects.go` 的 CREATE/DROP SCHEMA 与清表 SQL 下沉为
    domain 端口（如 `projects.ProjectSchemaLifecycle`），infra/projectschema
    实现；
@@ -303,11 +310,14 @@ console TS 类型 buf 生成；`.env` 中弱默认清理；仓库根二进制清
 
 - **本次改动涉及的全部包**：queue / app-functions / messaging / worker /
   serverhttp / servergrpc / events / projectschema / bunrepo / acceptance —— 全绿；
-- **全量 `go test ./...`**：62 个包 ok。4 个失败用例经 git stash 对照验证为
-  **预存失败**（干净 HEAD 上同样失败，与本次修复无关，待另行排查）：
+- **全量 `go test ./...`**：62 个包 ok。5 个失败用例经 git stash / detached
+  HEAD 对照验证为**预存失败**（`ae0036d` 之前即失败，与本次修复无关），
+  其中 4 个为 perms 子系统的 `PermissionDenied` 家族（疑似同一根因，待排查）：
   - `TestPayments_WeChatULIDCallbackClosesOrder`（purpose.amount 校验）
   - `TestDatabases_ListDocuments_NextPageToken` / `TestDatabases_Document_Increment`
-    / `TestDatabases_ReservedIDDocumentCRUD`（app/server 数据库集成用例）
+    / `TestDatabases_ReservedIDDocumentCRUD` / `TestStorage_FileToken`
+    （PermissionDenied；初版记录的"4 个"系输出截断漏计，后经 detached HEAD
+    复核补全）
 - **实施中的两个设计定案**（与原方案的偏差，均有代码注释）：
   1. P1-4 消费组起始位保留 `0-0`（`$` 会静默跳过 worker 首启前已入队的
      消息，重放危害已被 P0-1 闸门中和——详见 §2 P1-4）；

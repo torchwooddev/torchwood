@@ -20,7 +20,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainsubs "github.com/torchwooddev/torchwood/internal/domain/subscriptions"
-	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -50,12 +49,6 @@ func init() {
 	prometheus.MustRegister(subscriptionBillingCycleTotal)
 }
 
-type txRunner interface {
-	uow.Runner
-	// RunInNewTx 强制新事务（不并入 ctx 已有事务），供订单两段式使用。
-	RunInNewTx(ctx context.Context, fn func(ctx context.Context) error) error
-}
-
 // assetOps 是订阅履约所需的资产动词（*assets.Assets 满足）。
 type assetOps interface {
 	Grant(ctx context.Context, cmd appassets.GrantCommand) (*appassets.OpResult, error)
@@ -67,7 +60,7 @@ type assetOps interface {
 // Subscriptions 是订阅子域 use-case 聚合。
 type Subscriptions struct {
 	cfg        *config.AppConfig
-	db         txRunner
+	db         uow.Isolator
 	plans      domainsubs.PlanRepo
 	subs       domainsubs.SubscriptionRepo
 	assets     assetOps
@@ -85,7 +78,7 @@ type Subscriptions struct {
 // NewSubscriptions 构造 use-case 聚合（Wire）。
 func NewSubscriptions(
 	cfg *config.AppConfig,
-	db *clients.Database,
+	db uow.Isolator,
 	plans domainsubs.PlanRepo,
 	subs domainsubs.SubscriptionRepo,
 	assets *appassets.Assets,
@@ -102,7 +95,7 @@ func NewSubscriptions(
 
 func newSubscriptions(
 	cfg *config.AppConfig,
-	db txRunner,
+	db uow.Isolator,
 	plans domainsubs.PlanRepo,
 	subs domainsubs.SubscriptionRepo,
 	assets assetOps,

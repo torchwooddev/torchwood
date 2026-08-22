@@ -10,3 +10,10 @@ import "context"
 type Runner interface {
 	Run(ctx context.Context, fn func(ctx context.Context) error) error
 }
+
+// Isolator 在 Runner 之上提供强制独立子事务（不并入 ctx 已有事务），
+// 供两段式提交路径使用（订单先于外层事务 COMMIT 的场景）。
+type Isolator interface {
+	Runner
+	RunInNewTx(ctx context.Context, fn func(ctx context.Context) error) error
+}

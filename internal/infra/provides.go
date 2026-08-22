@@ -23,12 +23,15 @@ import (
 	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 )
 
 var ProviderSet = wire.NewSet(
 	clients.NewDataClients,
 	clients.NewDatabase,
 	clients.NewRedis,
+	wire.Bind(new(uow.Runner), new(*clients.Database)),
+	wire.Bind(new(uow.Isolator), new(*clients.Database)),
 	health.NewCheckers,
 
 	auth.NewValidatorWithOneTimeTokens,

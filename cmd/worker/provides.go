@@ -28,6 +28,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 )
 
 //go:generate wire
@@ -64,6 +65,8 @@ var ProviderSet = wire.NewSet(
 	clients.NewDataClients,
 	clients.NewDatabase,
 	clients.NewRedis,
+	wire.Bind(new(uow.Runner), new(*clients.Database)),
+	wire.Bind(new(uow.Isolator), new(*clients.Database)),
 	bunrepo.NewProjectRepository,
 	bunrepo.NewFunctionRepository,
 	bunrepo.NewBucketRepository,

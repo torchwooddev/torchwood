@@ -14,7 +14,6 @@ import (
 	domainassets "github.com/torchwooddev/torchwood/internal/domain/assets"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
-	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/uow"
@@ -59,9 +58,9 @@ type Assets struct {
 	scanCursor appshared.ProjectRotation // ExpireDue 轮转游标（tick 串行）
 }
 
-// NewAssets 构造 use-case 聚合（Wire：*clients.Database 满足 uow.Runner）。
+// NewAssets 构造 use-case 聚合（db 注入 uow.Runner 端口）。
 func NewAssets(
-	db *clients.Database,
+	db uow.Runner,
 	defs domainassets.DefRepo,
 	holdings domainassets.HoldingRepo,
 	ledger domainassets.LedgerRepo,
