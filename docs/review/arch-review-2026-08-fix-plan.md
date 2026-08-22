@@ -214,9 +214,12 @@ W-H 中以 per-语句 ctx deadline 收敛）。
 
 ### W-A app→infra 依赖收口（架构 P2-1/P2-2）
 分四步，每步独立可合入：
-1. 错误映射收编：把 `app/client/account.go:757` 与 `app/server/users.go:424`
-   的两份 mapUserError 合并进 `app/shared`（消灭复制源），新增域错误映射
-   按域注册；
+1. ✅ 错误映射收编（2026-08-22 完成）：`app/shared.MapUserError` 成为
+   users 域错误映射唯一事实来源——删除 app/client 与 app/server 两份
+   逐行复制的 mapUserError（9 处调用点改引 shared）；统一
+   UpdateAccount/ConfirmEmailChange 两处 `errors.Is` 硬编码映射；
+   占用检查的消息绑定 `users.ErrEmailAlreadyRegistered.Error()` 防字符串
+   漂移；新增 table-driven 测试（含 wrapped sentinel 与未知错误透传）。
 2. `*clients.Database` 构造参数改 `pkg/uow.Runner` 端口（users.go 只用
    RunInTx，零行为变化；payments.go:69 注释已自认接口满足）；
 3. `app/server/projects.go` 的 CREATE/DROP SCHEMA 与清表 SQL 下沉为

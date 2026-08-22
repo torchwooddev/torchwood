@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -145,7 +146,7 @@ func (a *Account) findOrCreateUserByPhone(ctx context.Context, projectID, phone 
 		PhoneVerified: true,
 	})
 	if err != nil {
-		return nil, mapUserError(err)
+		return nil, appshared.MapUserError(err)
 	}
 	if err := a.usersRepo.Insert(ctx, projectID, registered); err != nil {
 		if errors.Is(err, users.ErrEmailAlreadyRegistered) {

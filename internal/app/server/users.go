@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -132,7 +131,7 @@ func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUser
 		return nil, err
 	}
 	if err := users.RequireUniqueEmail(existing); err != nil {
-		return nil, mapUserError(err)
+		return nil, appshared.MapUserError(err)
 	}
 
 	registered, err := users.Register(users.RegisterInput{
@@ -145,10 +144,10 @@ func (u *Users) CreateUser(ctx context.Context, projectID string, cmd CreateUser
 		Prefs:    cmd.Prefs,
 	})
 	if err != nil {
-		return nil, mapUserError(err)
+		return nil, appshared.MapUserError(err)
 	}
 	if err := u.usersRepo.Insert(ctx, projectID, registered); err != nil {
-		if mapped := mapUserError(err); mapped != err {
+		if mapped := appshared.MapUserError(err); mapped != err {
 			return nil, mapped
 		}
 		return nil, fmt.Errorf("create user: %w", err)
@@ -211,7 +210,7 @@ func (u *Users) UpdateUser(ctx context.Context, projectID, userID string, update
 		return nil, status.Error(codes.InvalidArgument, "no updatable fields supplied (password_hash is managed via the dedicated password endpoint)")
 	}
 	if err := u.usersRepo.Update(ctx, projectID, userID, filtered); err != nil {
-		if mapped := mapUserError(err); mapped != err {
+		if mapped := appshared.MapUserError(err); mapped != err {
 			return nil, mapped
 		}
 		return nil, fmt.Errorf("update user: %w", appshared.MapDocumentDBError(err))
@@ -419,21 +418,4 @@ func sessionAsDocument(s *domainauth.Session) databases.Document {
 			"expire_at":   s.ExpireAt,
 		},
 	}
-}
-
-func mapUserError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, users.ErrEmailAlreadyRegistered) {
-		return status.Error(codes.AlreadyExists, err.Error())
-	}
-	if errors.Is(err, users.ErrEmailRequired) ||
-		errors.Is(err, users.ErrUserIDRequired) ||
-		errors.Is(err, users.ErrPasswordTooShort) ||
-		errors.Is(err, users.ErrPasswordTooLong) ||
-		errors.Is(err, users.ErrPasswordWeak) {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
-	return err
 }

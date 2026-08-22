@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
@@ -214,7 +215,7 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 		return nil, nil, "", nil, err
 	}
 	if err := users.RequireUniqueEmail(existing); err != nil {
-		return nil, nil, "", nil, mapUserError(err)
+		return nil, nil, "", nil, appshared.MapUserError(err)
 	}
 
 	userID, err := a.generateUserID(ctx, project.ID)
@@ -228,11 +229,11 @@ func (a *Account) SignUp(ctx context.Context, cmd SignUpCommand) (*User, *TokenB
 		Name:     cmd.Name,
 	})
 	if err != nil {
-		return nil, nil, "", nil, mapUserError(err)
+		return nil, nil, "", nil, appshared.MapUserError(err)
 	}
 	if err := a.usersRepo.Insert(ctx, project.ID, registered); err != nil {
 		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
-			return nil, nil, "", nil, mapUserError(err)
+			return nil, nil, "", nil, appshared.MapUserError(err)
 		}
 		return nil, nil, "", nil, fmt.Errorf("insert user: %w", err)
 	}
@@ -433,7 +434,7 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 			return nil, err
 		}
 		if taken != nil && taken.ID != p.UserID {
-			return nil, status.Error(codes.AlreadyExists, "email already registered")
+			return nil, status.Error(codes.AlreadyExists, users.ErrEmailAlreadyRegistered.Error())
 		}
 		updates["pending_email"] = email
 		emailChanging = true
@@ -497,8 +498,8 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	}
 
 	if err := a.usersRepo.Update(ctx, p.ProjectID, p.UserID, updates); err != nil {
-		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
-			return nil, status.Error(codes.AlreadyExists, "email already registered")
+		if mapped := appshared.MapUserError(err); mapped != err {
+			return nil, mapped
 		}
 		return nil, fmt.Errorf("update account: %w", err)
 	}
@@ -550,7 +551,7 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 		return nil, err
 	}
 	if taken != nil && taken.ID != userID {
-		return nil, status.Error(codes.AlreadyExists, "email already registered")
+		return nil, status.Error(codes.AlreadyExists, users.ErrEmailAlreadyRegistered.Error())
 	}
 	if _, err := a.requireAccountUser(ctx, projectID, userID); err != nil {
 		return nil, err
@@ -563,8 +564,8 @@ func (a *Account) ConfirmEmailChange(ctx context.Context, cmd ConfirmEmailChange
 		"pending_email":  "",
 		"email_verified": true,
 	}); err != nil {
-		if errors.Is(err, users.ErrEmailAlreadyRegistered) {
-			return nil, status.Error(codes.AlreadyExists, "email already registered")
+		if mapped := appshared.MapUserError(err); mapped != err {
+			return nil, mapped
 		}
 		return nil, fmt.Errorf("confirm email change: %w", err)
 	}
@@ -752,23 +753,6 @@ func (a *Account) ensureUserCanAuthenticate(ctx context.Context, projectID, user
 		return status.Error(codes.Unauthenticated, "user account is not active")
 	}
 	return nil
-}
-
-func mapUserError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, users.ErrEmailAlreadyRegistered) {
-		return status.Error(codes.AlreadyExists, err.Error())
-	}
-	if errors.Is(err, users.ErrEmailRequired) ||
-		errors.Is(err, users.ErrUserIDRequired) ||
-		errors.Is(err, users.ErrPasswordTooShort) ||
-		errors.Is(err, users.ErrPasswordTooLong) ||
-		errors.Is(err, users.ErrPasswordWeak) {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
-	return err
 }
 
 func accountUser(u *users.User) *User {

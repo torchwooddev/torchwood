@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
@@ -46,7 +47,7 @@ func (a *Account) CreateAnonymousSession(ctx context.Context, cmd CreateAnonymou
 		Anonymous: true,
 	})
 	if err != nil {
-		return nil, nil, "", nil, mapUserError(err)
+		return nil, nil, "", nil, appshared.MapUserError(err)
 	}
 	if err := a.usersRepo.Insert(ctx, projectID, registered); err != nil {
 		return nil, nil, "", nil, err
