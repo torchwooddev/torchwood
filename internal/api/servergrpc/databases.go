@@ -9,6 +9,7 @@ import (
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -65,6 +66,10 @@ func (s *DatabasesService) ListDatabases(ctx context.Context, req *sharedv1.List
 	if err := rejectListFilterOrderBy(req); err != nil {
 		return nil, err
 	}
+	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -74,11 +79,37 @@ func (s *DatabasesService) ListDatabases(ctx context.Context, req *sharedv1.List
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*serverv1.Database, len(dbs))
-	for i := range dbs {
-		out[i] = mapDatabase(&dbs[i])
+	start := params.Offset
+	if start > len(dbs) {
+		start = len(dbs)
 	}
-	return &serverv1.ListDatabasesResponse{Databases: out, Meta: &sharedv1.ListResponseMeta{}}, nil
+	end := start + int(params.PageSize)
+	if end > len(dbs) {
+		end = len(dbs)
+	}
+	page := dbs[start:end]
+	hasMore := end < len(dbs)
+	info := crud.BuildPaginationInfo(params, len(dbs), hasMore)
+	var nextToken, prevToken string
+	if info.HasNext {
+		nextToken = crud.EncodePageToken(info.NextOffset)
+	}
+	if info.HasPrevious {
+		prevToken = crud.EncodePageToken(info.PreviousOffset)
+	}
+	out := make([]*serverv1.Database, len(page))
+	for i := range page {
+		out[i] = mapDatabase(&page[i])
+	}
+	return &serverv1.ListDatabasesResponse{
+		Databases: out,
+		Meta: &sharedv1.ListResponseMeta{
+			PageSize:      info.PageSize,
+			TotalCount:    int32(info.TotalCount),
+			NextPageToken: nextToken,
+			PrevPageToken: prevToken,
+		},
+	}, nil
 }
 
 func (s *DatabasesService) GetDatabase(ctx context.Context, req *serverv1.GetDatabaseRequest) (*serverv1.Database, error) {

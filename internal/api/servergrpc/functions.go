@@ -9,6 +9,7 @@ import (
 	appfunctions "github.com/torchwooddev/torchwood/internal/app/functions"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -88,6 +89,10 @@ func (s *FunctionsService) ListFunctions(ctx context.Context, req *sharedv1.List
 	if err := rejectListFilterOrderBy(req); err != nil {
 		return nil, err
 	}
+	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	projectID, err := s.projectID(ctx)
 	if err != nil {
 		return nil, err
@@ -96,14 +101,37 @@ func (s *FunctionsService) ListFunctions(ctx context.Context, req *sharedv1.List
 	if err != nil {
 		return nil, err
 	}
-	resp := &serverv1.ListFunctionsResponse{
-		Functions: make([]*serverv1.Function, len(fns)),
-		Meta:      &sharedv1.ListResponseMeta{},
+	start := params.Offset
+	if start > len(fns) {
+		start = len(fns)
 	}
-	for i := range fns {
-		resp.Functions[i] = mapFunction(&fns[i])
+	end := start + int(params.PageSize)
+	if end > len(fns) {
+		end = len(fns)
 	}
-	return resp, nil
+	page := fns[start:end]
+	hasMore := end < len(fns)
+	info := crud.BuildPaginationInfo(params, len(fns), hasMore)
+	var nextToken, prevToken string
+	if info.HasNext {
+		nextToken = crud.EncodePageToken(info.NextOffset)
+	}
+	if info.HasPrevious {
+		prevToken = crud.EncodePageToken(info.PreviousOffset)
+	}
+	out := make([]*serverv1.Function, len(page))
+	for i := range page {
+		out[i] = mapFunction(&page[i])
+	}
+	return &serverv1.ListFunctionsResponse{
+		Functions: out,
+		Meta: &sharedv1.ListResponseMeta{
+			PageSize:      info.PageSize,
+			TotalCount:    int32(info.TotalCount),
+			NextPageToken: nextToken,
+			PrevPageToken: prevToken,
+		},
+	}, nil
 }
 
 func (s *FunctionsService) GetFunction(ctx context.Context, req *serverv1.GetFunctionRequest) (*serverv1.Function, error) {

@@ -9,6 +9,7 @@ import (
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -60,6 +61,10 @@ func (s *APIKeysService) ListAPIKeys(ctx context.Context, req *sharedv1.ListRequ
 	if err := rejectListFilterOrderBy(req); err != nil {
 		return nil, err
 	}
+	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -68,13 +73,36 @@ func (s *APIKeysService) ListAPIKeys(ctx context.Context, req *sharedv1.ListRequ
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*serverv1.APIKey, len(keys))
-	for i := range keys {
-		out[i] = mapAPIKey(&keys[i])
+	start := params.Offset
+	if start > len(keys) {
+		start = len(keys)
+	}
+	end := start + int(params.PageSize)
+	if end > len(keys) {
+		end = len(keys)
+	}
+	page := keys[start:end]
+	hasMore := end < len(keys)
+	info := crud.BuildPaginationInfo(params, len(keys), hasMore)
+	var nextToken, prevToken string
+	if info.HasNext {
+		nextToken = crud.EncodePageToken(info.NextOffset)
+	}
+	if info.HasPrevious {
+		prevToken = crud.EncodePageToken(info.PreviousOffset)
+	}
+	out := make([]*serverv1.APIKey, len(page))
+	for i := range page {
+		out[i] = mapAPIKey(&page[i])
 	}
 	return &serverv1.ListAPIKeysResponse{
 		ApiKeys: out,
-		Meta:    &sharedv1.ListResponseMeta{},
+		Meta: &sharedv1.ListResponseMeta{
+			PageSize:      info.PageSize,
+			TotalCount:    int32(info.TotalCount),
+			NextPageToken: nextToken,
+			PrevPageToken: prevToken,
+		},
 	}, nil
 }
 

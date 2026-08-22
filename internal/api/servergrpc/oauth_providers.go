@@ -8,6 +8,7 @@ import (
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -26,6 +27,10 @@ func (s *OAuthProvidersService) ListOAuthProviders(ctx context.Context, req *sha
 	if err := rejectListFilterOrderBy(req); err != nil {
 		return nil, err
 	}
+	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	projectID := projectIDFromContext(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -34,13 +39,36 @@ func (s *OAuthProvidersService) ListOAuthProviders(ctx context.Context, req *sha
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*serverv1.OAuthProvider, len(items))
-	for i := range items {
-		out[i] = mapOAuthProvider(&items[i])
+	start := params.Offset
+	if start > len(items) {
+		start = len(items)
+	}
+	end := start + int(params.PageSize)
+	if end > len(items) {
+		end = len(items)
+	}
+	page := items[start:end]
+	hasMore := end < len(items)
+	info := crud.BuildPaginationInfo(params, len(items), hasMore)
+	var nextToken, prevToken string
+	if info.HasNext {
+		nextToken = crud.EncodePageToken(info.NextOffset)
+	}
+	if info.HasPrevious {
+		prevToken = crud.EncodePageToken(info.PreviousOffset)
+	}
+	out := make([]*serverv1.OAuthProvider, len(page))
+	for i := range page {
+		out[i] = mapOAuthProvider(&page[i])
 	}
 	return &serverv1.ListOAuthProvidersResponse{
 		OauthProviders: out,
-		Meta:           &sharedv1.ListResponseMeta{},
+		Meta: &sharedv1.ListResponseMeta{
+			PageSize:      info.PageSize,
+			TotalCount:    int32(info.TotalCount),
+			NextPageToken: nextToken,
+			PrevPageToken: prevToken,
+		},
 	}, nil
 }
 

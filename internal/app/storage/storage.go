@@ -446,11 +446,12 @@ func (s *Storage) GetStorageUsage(ctx context.Context, projectID string, princip
 	return &storage.Usage{Buckets: buckets, Files: files, TotalSize: totalSize}, nil
 }
 
-// maxFileTokenLifetime caps token validity at 7 days.
-const maxFileTokenLifetime = 7 * 24 * 3600
+// maxFileTokenLifetime caps token validity at 1 hour (short-lived, W-L).
+// Previously 7 days – excessive window for anonymous download URL leaked in logs.
+const maxFileTokenLifetime = 3600
 
-// defaultFileTokenLifetime is the validity when expires_in is not provided.
-const defaultFileTokenLifetime = 3600
+// defaultFileTokenLifetime is the validity when expires_in is not provided (15 minutes).
+const defaultFileTokenLifetime = 15 * 60
 
 // FileToken 是短期匿名下载凭证。
 type FileToken struct {
