@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -286,4 +287,89 @@ func TestUploads_AbortUpload_RejectedWhileCompleting(t *testing.T) {
 	got, err = upStore.Get(ctx, "up2")
 	require.NoError(t, err)
 	require.Nil(t, got, "锁释放后 abort 成功删除会话")
+}
+
+// listableFileRepo 支持按 ID / 桶查询的内存 FileRepository（owner 隔离测试用）。
+type listableFileRepo struct {
+	memFileRepo
+	files map[string]*domainstorage.File
+}
+
+func (r *listableFileRepo) Insert(_ context.Context, _ string, file *domainstorage.File) error {
+	_ = r.memFileRepo.Insert(nil, "", file)
+	if r.files == nil {
+		r.files = map[string]*domainstorage.File{}
+	}
+	r.files[file.ID] = file
+	return nil
+}
+
+func (r *listableFileRepo) GetByID(_ context.Context, _, id string) (*domainstorage.File, error) {
+	if f, ok := r.files[id]; ok {
+		cp := *f
+		return &cp, nil
+	}
+	return nil, nil
+}
+
+func (r *listableFileRepo) ListByBucket(_ context.Context, _, bucketID string) ([]*domainstorage.File, error) {
+	var out []*domainstorage.File
+	for _, f := range r.files {
+		if f.BucketID == bucketID {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+func endUserFilePrincipal(userID string) databases.Principal {
+	return databases.Principal{Roles: []string{"users", "user:" + userID}}
+}
+
+// TestStorage_EndUserIsolation（A8）：私有桶内文件仅 owner 可读/列/删；
+// public 桶对所有端用户开放；特权主体不受限。
+func TestStorage_EndUserIsolation(t *testing.T) {
+	files := &listableFileRepo{files: map[string]*domainstorage.File{}}
+	uc := &Storage{
+		cfg:         &config.AppConfig{},
+		projectRepo: &stubProjectRepo{p: &projects.Project{ID: "p1", InternalID: 1}},
+		store:       testutil.NewMemObjectStore(),
+		buckets: &memBucketRepo{byID: map[string]*domainstorage.Bucket{
+			"private": {ID: "private", ProjectID: "p1", Public: false},
+			"pub":     {ID: "pub", ProjectID: "p1", Public: true},
+		}},
+		files: files,
+	}
+
+	ctx := context.Background()
+	mine, err := uc.CreateFile(ctx, CreateFileCommand{ProjectID: "p1", BucketID: "private", Name: "a.txt"}, strings.NewReader("a"), 1, endUserFilePrincipal("u1"))
+	require.NoError(t, err)
+	require.Equal(t, "u1", mine.OwnerUserID, "owner 应从 principal 派生")
+
+	// 他人（u2）读/删 owner 文件：NotFound/拒绝；列表不可见。
+	_, _, err = uc.GetFile(ctx, "p1", "private", mine.ID, endUserFilePrincipal("u2"))
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	err = uc.DeleteFile(ctx, "p1", "private", mine.ID, endUserFilePrincipal("u2"))
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	list, total, _, err := uc.ListFiles(ctx, "p1", "private", databases.Query{}, endUserFilePrincipal("u2"))
+	require.NoError(t, err)
+	require.Empty(t, list)
+	require.Zero(t, total)
+
+	// owner（u1）可见自己的文件。
+	list, total, _, err = uc.ListFiles(ctx, "p1", "private", databases.Query{}, endUserFilePrincipal("u1"))
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, int64(1), total)
+
+	// public 桶：他人（u2）可读。
+	pubFile, err := uc.CreateFile(ctx, CreateFileCommand{ProjectID: "p1", BucketID: "pub", Name: "b.txt"}, strings.NewReader("b"), 1, endUserFilePrincipal("u1"))
+	require.NoError(t, err)
+	_, _, err = uc.GetFile(ctx, "p1", "pub", pubFile.ID, endUserFilePrincipal("u2"))
+	require.NoError(t, err)
+
+	// 特权主体（keys）可见私有桶全部文件。
+	list, _, _, err = uc.ListFiles(ctx, "p1", "private", databases.Query{}, keysPrincipal())
+	require.NoError(t, err)
+	require.Len(t, list, 1)
 }
