@@ -296,11 +296,14 @@ keyset token）、`postgres_query_compile.go`（336：DSL→SQL 编译 + 字段�
   `pg_indexes.indexdef` 断言表达式含 `(col)::text` + orders DESC 回归 +
   双入口多列拒绝。
 
-### W-F 函数运行时并发与队列治理（P1-15/P1-16）
-- Redis stream 周期 `XTRIM MAXLEN ~100000 APPROX`（worker 低频 ticker，
-  与 P1-2 清理任务同框架）；
-- run/build 信号量改全局配额：Redis 计数信号量（SETNX+TTL 租约）或
-  环境变量配置的 Docker daemon 层限流，消除"每进程各 16"的乘法。
+### W-F 函数运行时并发与队列治理（P1-15/P1-16）✅ 裁剪完成（2026-08-22）
+- ✅ Redis stream 周期裁剪：`Queue.Trim` 端口（XTRIM MAXLEN ~100000
+  APPROX）+ worker `StreamTrimmer` 服务（10min ticker，与 ChunkCleaner
+  同框架；PEL 崩溃恢复窗口 15min 远小于裁剪水位差，APPROX 风险可接受）；
+- ⏳ **残留**：run/build 信号量全局配额（Redis SETNX+TTL 租约，消除
+  server/worker 各 16 的乘法）——租约 TTL 须覆盖最长执行（300s+余量）、
+  Lua compare-and-del 防误释放、崩溃后租约自然过期；涉及 Functions
+  用例三处信号量点位改造与注入缝设计，单独排期实施。
 
 ### W-G 实时与审计卫生（P2-5/P2-6）
 - JWT AfterFunc 存 `*time.Timer`，cleanup 时 `Stop()`；

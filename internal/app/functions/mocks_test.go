@@ -237,6 +237,8 @@ func newMockQueue() *mockQueue {
 	return &mockQueue{}
 }
 
+func (q *mockQueue) Trim(context.Context, string, int64) error { return nil }
+
 func (q *mockQueue) Enqueue(_ context.Context, _ string, payload []byte) error {
 	if q.err != nil {
 		return q.err

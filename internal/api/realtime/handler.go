@@ -180,8 +180,11 @@ type connState struct {
 
 	lastPong atomic.Int64 // unix nano；hello_ok 后置初值
 	cancel   context.CancelFunc
-	closeMu  sync.Mutex
-	closed   bool
+	// expiryTimer 是 JWT 到期关连接定时器；连接提前断开时必须 Stop
+	// （P2-5：否则 timer 持有 conn 状态直至 token 到期，高 churn 下累积）。
+	expiryTimer *time.Timer
+	closeMu     sync.Mutex
+	closed      bool
 }
 
 func newConnState(principal *shared.Principal, projectID, quotaKey string, claims *jwtparser.Claims) *connState {
@@ -255,7 +258,7 @@ func (h *Handler) serveConn(r *http.Request, c *websocket.Conn) {
 	// （无 close frame），客户端只能看到 EOF；Close 则在等待握手前
 	// 先把 close frame 写上线。
 	if !st.expiresAt.IsZero() {
-		time.AfterFunc(time.Until(st.expiresAt), func() {
+		st.expiryTimer = time.AfterFunc(time.Until(st.expiresAt), func() {
 			_ = c.Close(websocket.StatusPolicyViolation, "token_expired")
 		})
 	}
@@ -292,6 +295,9 @@ func (h *Handler) cleanup(st *connState) {
 
 	if st.cancel != nil {
 		st.cancel()
+	}
+	if st.expiryTimer != nil {
+		st.expiryTimer.Stop()
 	}
 	h.hub.Remove(st.id)
 	h.conns.release(st.quotaKey)

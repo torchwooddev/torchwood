@@ -95,6 +95,7 @@ func (s *stubQueue) Dequeue(context.Context, string, time.Duration) ([]byte, str
 	return nil, "", nil
 }
 func (s *stubQueue) Ack(context.Context, string, string) error { return nil }
+func (s *stubQueue) Trim(context.Context, string, int64) error { return nil }
 
 func newTestService(repo *stubRepo) *FunctionsService {
 	uc := appfunctions.NewFunctions(&config.AppConfig{}, &stubExecutor{}, repo, &stubQueue{})

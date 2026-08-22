@@ -122,6 +122,16 @@ func (q *redisQueue) Dequeue(ctx context.Context, name string, timeout time.Dura
 	return []byte(s), msg.ID, nil
 }
 
+func (q *redisQueue) Trim(ctx context.Context, queue string, maxLen int64) error {
+	if maxLen <= 0 {
+		return nil
+	}
+	// APPROX：单次 O(被裁剪部分)，不精准到 maxLen——PEL 未 Ack 消息理论上
+	// 可能被裁掉，但 claimMinIdle(15min) 崩溃恢复窗口远小于裁剪水位差，
+	// 风险可接受（与 Enqueue 不设 MaxLen 的权衡一致，见其注释）。
+	return q.client.XTrimMaxLenApprox(ctx, queue, maxLen, 0).Err()
+}
+
 func (q *redisQueue) Ack(ctx context.Context, queue string, ack string) error {
 	if ack == "" {
 		return nil

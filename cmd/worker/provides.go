@@ -55,6 +55,7 @@ var ProviderSet = wire.NewSet(
 	NewAppConfig,
 	NewWorker,
 	NewChunkCleaner,
+	NewStreamTrimmer,
 	NewOutboxWorkerService,
 	NewPaymentCloser,
 	NewAssetExpirer,
@@ -112,8 +113,8 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	return &c, nil
 }
 
-func NewComponents(worker *Worker, cleaner *ChunkCleaner, outbox *OutboxWorkerService, paymentCloser *PaymentCloser, assetExpirer *AssetExpirer, subscriptionBiller *SubscriptionBiller, usageRollup *UsageRollupWorker) []lynx.Service {
-	return []lynx.Service{worker, cleaner, outbox, paymentCloser, assetExpirer, subscriptionBiller, usageRollup}
+func NewComponents(worker *Worker, cleaner *ChunkCleaner, trimmer *StreamTrimmer, outbox *OutboxWorkerService, paymentCloser *PaymentCloser, assetExpirer *AssetExpirer, subscriptionBiller *SubscriptionBiller, usageRollup *UsageRollupWorker) []lynx.Service {
+	return []lynx.Service{worker, cleaner, trimmer, outbox, paymentCloser, assetExpirer, subscriptionBiller, usageRollup}
 }
 
 func NewComponentBuilders() []lynx.ServiceFactory {

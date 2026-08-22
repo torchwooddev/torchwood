@@ -128,6 +128,8 @@ func newChannelQueue() *channelQueue {
 	return &channelQueue{ch: make(chan []byte, 64)}
 }
 
+func (q *channelQueue) Trim(context.Context, string, int64) error { return nil }
+
 func (q *channelQueue) Enqueue(_ context.Context, _ string, payload []byte) error {
 	q.mu.Lock()
 	q.enqueued = append(q.enqueued, payload)

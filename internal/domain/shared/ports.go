@@ -19,6 +19,9 @@ type Queue interface {
 	// 无任务时 payload==nil 且 ack=="".
 	Dequeue(ctx context.Context, queue string, timeout time.Duration) (payload []byte, ack string, err error)
 	Ack(ctx context.Context, queue string, ack string) error
+	// Trim 近似裁剪 stream 到 maxLen 以内（XTRIM MAXLEN ~，P1-15：未裁剪
+	// 的 at-least-once stream 内存单调增长）。周期性低频调用即可。
+	Trim(ctx context.Context, queue string, maxLen int64) error
 }
 
 // EventPublisher 是用户集合文档写事件的 transactional outbox 端口

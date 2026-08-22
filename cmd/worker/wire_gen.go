@@ -59,6 +59,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	fileRepository := bunrepo.NewFileRepository(database)
 	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository)
 	mainChunkCleaner := NewChunkCleaner(storageStorage, logger)
+	streamTrimmer := NewStreamTrimmer(sharedQueue, logger)
 	realtimeTransport := realtime.NewStreamTransport(client)
 	outboxWorker := events.NewOutboxWorker(database, realtimeTransport, logger)
 	outboxWorkerService := NewOutboxWorkerService(outboxWorker, logger)
@@ -88,7 +89,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	statementRepo := bunrepo.NewBillingStatementRepository(database)
 	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, fileRepository, logger)
 	usageRollupWorker := NewUsageRollupWorker(billingBilling, logger)
-	v := NewComponents(worker, mainChunkCleaner, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
+	v := NewComponents(worker, mainChunkCleaner, streamTrimmer, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
 	v2 := NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
 	return bootstrap, func() {
