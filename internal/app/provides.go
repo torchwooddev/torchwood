@@ -32,6 +32,7 @@ var ProviderSet = wire.NewSet(
 	console.NewSetup,
 	storage.NewStorage,
 	functions.NewFunctionsWithUsage,
+	functions.ProvideSemaphores,
 	payments.NewPayments,
 	assets.NewAssets,
 	subscriptions.NewSubscriptions,

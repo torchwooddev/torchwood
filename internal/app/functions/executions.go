@@ -32,14 +32,11 @@ const (
 var ErrInvalidQueuePayload = errors.New("invalid queue payload")
 
 // 执行信号量：同步执行与 worker 共用（§5.3）。
+// 默认进程内 4/16，生产通过 pkg/semaphore.RedisSemaphore 提供跨进程全局配额
+// （W-F，SETNX+TTL 租约，TTL 覆盖最长执行；崩溃后 TTL 过期自动释放）。
 const (
 	maxConcurrentBuilds = 4
 	maxConcurrentRuns   = 16
-)
-
-var (
-	buildSemaphore = make(chan struct{}, maxConcurrentBuilds)
-	runSemaphore   = make(chan struct{}, maxConcurrentRuns)
 )
 
 type CreateExecutionCommand struct {
@@ -186,16 +183,18 @@ func (f *Functions) selectDeployment(ctx context.Context, projectID, functionID,
 // runExecution 同步执行：占执行信号量 → executor → 写回结果（含截断）。
 // 超时等执行错误会写回 failed 记录并返回错误（映射 DeadlineExceeded/HTTP 504）。
 func (f *Functions) runExecution(ctx context.Context, fn *domainfunctions.Function, rec *domainfunctions.ExecutionRecord, vars map[string]string, data string) (*domainfunctions.ExecutionRecord, error) {
-	select {
-	case runSemaphore <- struct{}{}:
-		defer func() { <-runSemaphore }()
-	default:
+	ok, release, err := f.getRunSemaphore().TryAcquire(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "acquire run semaphore: %v", err)
+	}
+	if !ok {
 		rec.Status = domainfunctions.ExecutionStatusFailed
 		rec.Error = "too many concurrent executions"
 		rec.UpdatedAt = time.Now()
 		_ = f.repo.UpdateExecution(ctx, rec)
 		return nil, status.Error(codes.ResourceExhausted, "too many concurrent executions")
 	}
+	defer release()
 
 	result, err := f.executor.Execute(ctx, buildExecution(fn, rec, vars, data))
 	now := time.Now()
@@ -326,16 +325,18 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 	// worker 单任务失败不影响消费循环）。
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(fn.TimeoutSeconds)*time.Second)
 	defer cancel()
-	select {
-	case runSemaphore <- struct{}{}:
-		defer func() { <-runSemaphore }()
-	default:
+	ok, release, err := f.getRunSemaphore().TryAcquire(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
 		rec.Status = domainfunctions.ExecutionStatusFailed
 		rec.Error = "too many concurrent executions"
 		rec.UpdatedAt = time.Now()
 		_ = f.repo.UpdateExecution(ctx, rec)
 		return nil
 	}
+	defer release()
 
 	result, err := f.executor.Execute(runCtx, buildExecution(fn, rec, vars, msg.Data))
 	now := time.Now()

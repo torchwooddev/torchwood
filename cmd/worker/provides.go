@@ -38,6 +38,7 @@ import (
 var ProviderSet = wire.NewSet(
 	boot.New,
 
+	appfunctions.ProvideSemaphores,
 	appfunctions.NewFunctionsWithUsage,
 	apppayments.NewPayments,
 	assets.NewAssets,

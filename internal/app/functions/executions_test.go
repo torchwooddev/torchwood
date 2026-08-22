@@ -13,6 +13,7 @@ import (
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	domainprojects "github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -254,19 +255,16 @@ func TestCreateExecution_NotFound(t *testing.T) {
 }
 
 func TestCreateExecution_ResourceExhausted(t *testing.T) {
-	// 占满运行信号量。
-	for i := 0; i < maxConcurrentRuns; i++ {
-		runSemaphore <- struct{}{}
-	}
-	defer func() {
-		for i := 0; i < maxConcurrentRuns; i++ {
-			<-runSemaphore
-		}
-	}()
-
 	repo := newMockRepo()
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
+	sem, releases := newFullSemaphoreExec(maxConcurrentRuns)
+	defer func() {
+		for _, r := range releases {
+			r()
+		}
+	}()
+	uc.WithSemaphores(nil, sem)
 
 	_, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.Equal(t, codes.ResourceExhausted, status.Code(err))
@@ -418,6 +416,8 @@ func TestProcessExecution_SemaphoreFullReleasesAndKeepsDeployment(t *testing.T) 
 
 	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0, Stdout: "ok"}, nil)
 	uc := newTestUC(executor, repo, newMockQueue())
+	sem, releases := newFullSemaphoreExec(maxConcurrentBuilds)
+	uc.WithSemaphores(sem, nil)
 	rec := &domainfunctions.ExecutionRecord{
 		ID: "e1", FunctionID: "fn_1", ProjectID: "p1", DeploymentID: "dep_pending",
 		Status: domainfunctions.ExecutionStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -425,14 +425,11 @@ func TestProcessExecution_SemaphoreFullReleasesAndKeepsDeployment(t *testing.T) 
 	require.NoError(t, repo.CreateExecution(context.Background(), rec))
 
 	// 占满构建信号量：worker 补构建路径拿到 ResourceExhausted。
-	for i := 0; i < maxConcurrentBuilds; i++ {
-		buildSemaphore <- struct{}{}
-	}
 	err := uc.ProcessExecutionPayload(context.Background(), []byte(
 		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1"}`))
 	require.Equal(t, codes.ResourceExhausted, status.Code(err), "可重试失败必须上抛，由 worker requeue 兜底")
-	for i := 0; i < maxConcurrentBuilds; i++ {
-		<-buildSemaphore
+	for _, r := range releases {
+		r()
 	}
 
 	got, _ := repo.GetExecution(context.Background(), "p1", "fn_1", "e1")
@@ -526,7 +523,7 @@ func TestCreateExecution_MetersFunctionDuration(t *testing.T) {
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0, DurationMS: 42}, nil)
 	meter := &recUsage{}
-	uc := NewFunctionsWithUsage(&config.AppConfig{}, executor, repo, newMockQueue(), meter, nil)
+	uc := NewFunctionsWithUsage(&config.AppConfig{}, executor, repo, newMockQueue(), meter, nil, Semaphores{})
 
 	rec, err := uc.CreateExecution(platformAdminCtx(), CreateExecutionCommand{ProjectID: "p1", FunctionID: "fn_1"})
 	require.NoError(t, err)
@@ -564,11 +561,23 @@ func TestRecoverOrphanExecutions_EnumeratesActiveProjectsWithBudget(t *testing.T
 		{ID: "p-off", Status: "suspended"},
 		{ID: "p2", Status: "active"},
 	}}
-	uc := NewFunctionsWithUsage(&config.AppConfig{}, newMockExecutor(nil, nil), repo, newMockQueue(), nil, projects)
+	uc := NewFunctionsWithUsage(&config.AppConfig{}, newMockExecutor(nil, nil), repo, newMockQueue(), nil, projects, Semaphores{})
 
 	n, err := uc.RecoverOrphanExecutions(context.Background(), time.Hour)
 	require.NoError(t, err)
 	require.Equal(t, int64(500), n, "全局预算 500：p1 扣 300，p2 扣 remaining 200")
 	require.Equal(t, []string{"p1", "p2"}, repo.recoverCalls)
 	require.Equal(t, []int{500, 200}, repo.recoverLimits)
+}
+
+func newFullSemaphoreExec(max int) (*semaphore.InMemorySemaphore, []func()) {
+	sem := semaphore.NewInMemory(max)
+	var releases []func()
+	for i := 0; i < max; i++ {
+		ok, rel, _ := sem.TryAcquire(context.Background())
+		if ok {
+			releases = append(releases, rel)
+		}
+	}
+	return sem, releases
 }

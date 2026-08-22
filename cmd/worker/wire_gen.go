@@ -47,7 +47,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	client := clients.NewRedis(dataClients)
 	sharedQueue := queue.NewRedisQueue(client)
 	redisCounter := billing.NewRedisCounter(client)
-	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter, repository)
+	semaphores := functions2.ProvideSemaphores(client, appConfig)
+	functionsFunctions := functions2.NewFunctionsWithUsage(appConfig, executor, functionRepo, sharedQueue, redisCounter, repository, semaphores)
 	worker := NewWorker(functionsFunctions, sharedQueue, logger)
 	objectStore, err := storage.NewMinioObjectStore(appConfig)
 	if err != nil {

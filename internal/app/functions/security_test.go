@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
+	"github.com/torchwooddev/torchwood/pkg/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -205,18 +206,17 @@ func TestCreateExecution_CombinedDataAndEnvBudget(t *testing.T) {
 }
 
 func TestCreateDeployment_BuildSemaphoreFullCleansUp(t *testing.T) {
-	for i := 0; i < maxConcurrentBuilds; i++ {
-		buildSemaphore <- struct{}{}
-	}
-	defer func() {
-		for i := 0; i < maxConcurrentBuilds; i++ {
-			<-buildSemaphore
-		}
-	}()
-
 	repo := newMockRepo()
 	seedReadyFunction(repo, "p1", "fn_1", true, 15)
 	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
+	// 占满构建信号量（W-F 全局配额改为实例级，需通过注入的 semaphore 模拟）。
+	sem, releases := newFullSemaphore(maxConcurrentBuilds)
+	defer func() {
+		for _, r := range releases {
+			r()
+		}
+	}()
+	uc.WithSemaphores(sem, nil)
 
 	_, err := uc.CreateDeployment(platformAdminCtx(), CreateDeploymentCommand{
 		ProjectID:  "p1",
@@ -261,4 +261,16 @@ func TestMarkExecutionFailed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domainfunctions.ExecutionStatusFailed, got.Status)
 	require.Equal(t, "worker retries exhausted", got.Error)
+}
+
+func newFullSemaphore(max int) (*semaphore.InMemorySemaphore, []func()) {
+	sem := semaphore.NewInMemory(max)
+	var releases []func()
+	for i := 0; i < max; i++ {
+		ok, rel, _ := sem.TryAcquire(context.Background())
+		if ok {
+			releases = append(releases, rel)
+		}
+	}
+	return sem, releases
 }

@@ -84,12 +84,14 @@ func (f *Functions) CreateDeployment(ctx context.Context, cmd CreateDeploymentCo
 // 的决策（CreateDeployment 清理本次刚建的 pending 行；worker 补构建路径
 // 保留既有 deployment，靠队列重试在信号量释放后重建）。
 func (f *Functions) buildDeployment(ctx context.Context, dep *domainfunctions.Deployment, path string) error {
-	select {
-	case buildSemaphore <- struct{}{}:
-		defer func() { <-buildSemaphore }()
-	default:
+	ok, release, err := f.getBuildSemaphore().TryAcquire(ctx)
+	if err != nil {
+		return status.Errorf(codes.Internal, "acquire build semaphore: %v", err)
+	}
+	if !ok {
 		return status.Error(codes.ResourceExhausted, "too many concurrent builds")
 	}
+	defer release()
 
 	dep.Status = domainfunctions.DeploymentStatusBuilding
 	dep.UpdatedAt = time.Now()
@@ -97,7 +99,7 @@ func (f *Functions) buildDeployment(ctx context.Context, dep *domainfunctions.De
 		return err
 	}
 
-	err := f.executor.Build(ctx, dep.FunctionID, dep.ID, path)
+	err = f.executor.Build(ctx, dep.FunctionID, dep.ID, path)
 	dep.UpdatedAt = time.Now()
 	if err != nil {
 		dep.Status = domainfunctions.DeploymentStatusFailed
