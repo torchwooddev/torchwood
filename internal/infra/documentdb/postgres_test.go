@@ -1462,3 +1462,74 @@ func TestIsMissingCatalog_SQLStateFallback(t *testing.T) {
 	require.Equal(t, "42P01", missingCatalogSQLState(errors.New("SQLSTATE 42P01")))
 	require.Equal(t, "3F000", missingCatalogSQLState(errors.New("SQLSTATE 3F000")))
 }
+
+// TestCreateIndex_FulltextAlignment (W-E)：fulltext 索引表达式与查询编译
+// 逐字对齐（单列 ::text）；orders 对 GIN 无意义不再产生语法错误 DDL；
+// 多列 fulltext 在 CreateIndex 与 CreateCollection 两个入口均被拒绝
+// （拼接表达式与单字段查询永不匹配，索引形同虚设）。
+func TestCreateIndex_FulltextAlignment(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	attrs := []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+		{ID: "body", Key: "body", Type: "string", Size: 4096},
+	}
+	// infra 直连无 app 层默认权限，显式授予 keys create/read。
+	collPerms := []databases.Permission{
+		{Type: "create", Role: "keys"},
+		{Type: "read", Role: "keys"},
+	}
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", attrs, nil, collPerms, true))
+
+	// orders=["desc"]：GIN 忽略 order，此前拼接 DESC 会产生语法错误 DDL。
+	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", "posts", databases.Index{
+		ID: "body_ft", Type: "fulltext", Attributes: []string{"body"}, Orders: []string{"desc"},
+	}))
+
+	keys := databases.Principal{Roles: []string{"keys"}}
+	for i, body := range []string{"hello world", "goodbye moon", "hello again"} {
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "posts", databases.Document{
+			ID:   fmt.Sprintf("d%d", i),
+			Data: map[string]any{"title": "t", "body": body},
+		}, nil, keys)
+		require.NoError(t, err)
+	}
+
+	got, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`search("body","hello")`},
+	}, keys)
+	require.NoError(t, err, "对齐后的 fulltext 索引上 search 必须可用")
+	require.Len(t, got.Documents, 2)
+
+	// 物理索引表达式必须与查询编译逐字对齐（to_tsvector('simple', body::text)），
+	// 否则 GIN 不命中、search 退化为全表逐行 to_tsvector。
+	var indexdef string
+	require.NoError(t, db.DB.QueryRowContext(ctx,
+		`SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_body_ft'`).Scan(&indexdef))
+	require.Contains(t, indexdef, "to_tsvector")
+	require.Contains(t, indexdef, "(body)::text",
+		"fulltext 索引表达式须与 compilePredicate 的查询表达式一致（::text 对齐）")
+
+	// 多列 fulltext：CreateIndex 入口拒绝。
+	err = docDB.CreateIndex(ctx, projectID, "app", "posts", databases.Index{
+		ID: "multi_ft", Type: "fulltext", Attributes: []string{"body", "title"},
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.ErrorContains(t, err, "exactly one attribute")
+
+	// 多列 fulltext：CreateCollection 入口拒绝。
+	err = docDB.CreateCollection(ctx, projectID, "app", "bads", "Bad", attrs, []databases.Index{
+		{ID: "m", Type: "fulltext", Attributes: []string{"body", "title"}},
+	}, nil, true)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}

@@ -259,12 +259,23 @@ permissions.go / catalog.go（2597 行 → 5 个内聚文件，同包内拆分�
 - cursor：next token 编码 keyset 游标（sort 值 + _id），
   与首页 ORDER BY 同构，废除 cursor 模式下的 offset 混用。
 
-### W-E fulltext 索引表达式对齐（P1-9）
-- 建索引表达式改 `to_tsvector('simple', "col"::text)` 与查询编译一致；
-- 校验（postgres.go:2374）从"字段在索引属性集中"升级为"表达式逐字段匹配"；
-- fulltext 索引限制单属性（多列拼接索引与单字段查询永不相匹配），
-  创建入口加校验拒绝多属性 fulltext；
-- 修复 orders=["desc"] 时 fulltext DDL 拼出语法错误的分支。
+### W-E fulltext 索引表达式对齐（P1-9）✅（2026-08-22）
+- 建索引表达式改 `to_tsvector('simple', "col"::text)`，与查询编译
+  （compilePredicate）逐字对齐——此前索引建 `to_tsvector('simple', col)`、
+  查询编译 `col::text`，非 TEXT 列与多列索引永不命中，search 退化为
+  全表逐行 to_tsvector；
+- `validateIndexDefinition`：fulltext 索引限制单属性（多列拼接表达式与
+  任何单字段查询都不匹配，索引形同虚设），CreateIndex 与
+  CreateCollection 两个入口生效；存量 catalog 行不受影响（保留旧拼接
+  分支兼容重建路径）；
+- 修复 orders=["desc"] 时 fulltext DDL 拼出 `"col" DESC || ' '`
+  语法错误的分支（GIN 忽略 order，用无序列）；
+- search 查询校验保持宽进（字段 ∈ 任一 fulltext 索引属性集）：存量
+  多列 fulltext 上的 search 仍可用（结果正确、seq scan），随存量索引
+  重建自然消亡；
+- 集成测试 TestCreateIndex_FulltextAlignment：search 往返 +
+  `pg_indexes.indexdef` 断言表达式含 `(col)::text` + orders DESC 回归 +
+  双入口多列拒绝。
 
 ### W-F 函数运行时并发与队列治理（P1-15/P1-16）
 - Redis stream 周期 `XTRIM MAXLEN ~100000 APPROX`（worker 低频 ticker，

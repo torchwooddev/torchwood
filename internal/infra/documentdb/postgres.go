@@ -212,6 +212,11 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 			return err
 		}
 	}
+	for _, idx := range idxs {
+		if err := validateIndexDefinition(idx); err != nil {
+			return err
+		}
+	}
 	if err := p.EnsureCatalog(ctx, projectID); err != nil {
 		return err
 	}
@@ -490,6 +495,9 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
+	if err := validateIndexDefinition(idx); err != nil {
+		return err
+	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return err
@@ -1797,29 +1805,52 @@ func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, col
 }
 
 func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, collectionID string, idx databases.Index) error {
-	var cols []string
+	var plainCols, orderedCols []string
 	for i, attr := range idx.Attributes {
 		if !safeNameRe.MatchString(attr) {
 			return fmt.Errorf("invalid index attribute: %s", attr)
 		}
+		quoted := quoteIdent(attr)
+		plainCols = append(plainCols, quoted)
 		order := ""
 		if i < len(idx.Orders) && strings.EqualFold(idx.Orders[i], "desc") {
 			order = " DESC"
 		}
-		cols = append(cols, quoteIdent(attr)+order)
+		orderedCols = append(orderedCols, quoted+order)
 	}
 	idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, idx.ID))
 	var sql string
 	switch strings.ToLower(idx.Type) {
 	case "unique":
-		sql = fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, collectionID), strings.Join(cols, ", "))
+		sql = fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, collectionID), strings.Join(orderedCols, ", "))
 	case "fulltext":
-		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s))`, idxName, tableName(schema, collectionID), strings.Join(cols, " || ' ' || "))
+		// W-E：查询编译为 to_tsvector('simple', "col"::text)（compilePredicate），
+		// 索引表达式必须与之逐字对齐才可被 GIN 命中，否则 search 退化为
+		// 全表逐行 to_tsvector。单列限制见 validateIndexDefinition；多列仅
+		// 存量 catalog 重建可达（新创建已被入口校验拒绝），保留旧拼接表达式。
+		// GIN 忽略 order——用 plainCols（此前拼入 DESC 会产生语法错误 DDL）。
+		if len(plainCols) == 1 {
+			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s::text))`,
+				idxName, tableName(schema, collectionID), plainCols[0])
+		} else {
+			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s))`,
+				idxName, tableName(schema, collectionID), strings.Join(plainCols, " || ' ' || "))
+		}
 	default:
-		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, collectionID), strings.Join(cols, ", "))
+		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, collectionID), strings.Join(orderedCols, ", "))
 	}
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
 	return err
+}
+
+// validateIndexDefinition 拒绝与查询编译器不相容的索引定义：fulltext 查询
+// 按单列 to_tsvector("col"::text) 编译，多列拼接索引的表达式与任何单字段
+// 查询都不匹配——索引永不命中，只会误导用户以为 search 有索引支撑。
+func validateIndexDefinition(idx databases.Index) error {
+	if strings.ToLower(idx.Type) == "fulltext" && len(idx.Attributes) != 1 {
+		return status.Error(codes.InvalidArgument, "fulltext index requires exactly one attribute")
+	}
+	return nil
 }
 
 // rejectArrayAttribute 是 catalog 写入前的第二道防线：物理列是标量，
