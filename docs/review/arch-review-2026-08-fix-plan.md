@@ -251,13 +251,23 @@ testutil、acceptance）；AGENTS.md 与 developer/tech-decision/roadmap
 按端口能力拆：collection_ddl.go / document_crud.go / query_compile.go /
 permissions.go / catalog.go（2597 行 → 5 个内聚文件，同包内拆分零调用方影响）。
 
-### W-D ListDocuments 查询效率（P1-10/P1-11）
-- N+1：`attachDocumentPermissions` 改单条
-  `WHERE (collection, document) IN (...)` 批量查询；
-- COUNT：ListResponse 增加按需计数（请求带 `count_total` 或
-  `total_count` 仅在 offset 模式返回），或 `pg_class.reltuples` 近似；
-- cursor：next token 编码 keyset 游标（sort 值 + _id），
-  与首页 ORDER BY 同构，废除 cursor 模式下的 offset 混用。
+### W-D ListDocuments 查询效率（P1-10/P1-11）✅（2026-08-22）
+- **N+1**：`attachDocumentPermissionsBatch` 单条 `IN` 查询取回整页 `_perms`
+  （页大小 50 时权限读取从 51 次查询降到 1 次，同页混合命中/未命中按文档
+  正确分组）；
+- **COUNT**：keyset（cursorAfter/Before）模式不再执行精确 COUNT——COUNT 与
+  数据查询同价（含 EXISTS 权限子查询），对游标续页无意义且把翻页成本翻倍；
+  TotalCount 语义：keyset 分页下为 0（未知/不适用），offset 模式不变；
+- **cursor token**：NextPageToken 在 keyset 模式编码边界行 id
+  （`ka:<lastID>` / `kb:<firstID>`，明文前缀，与 crud 结构化 offset token
+  不冲突；token 只承载定位语义，越权由查询 ACL 兜底），PageToken 解码识别
+  keyset token 映射回 cursorAfter/Before，续页保持 keyset 语义——此前
+  cursor 首页的 token 编码 offset，第二页静默切回 OFFSET（并发写入跳/重行、
+  受 maxQueryOffset=10000 上限约束）；has-more 以满页判定；
+- **已知残留**：ASC + cursorBefore 返回表头窗口而非游标紧邻窗口（引擎既有
+  反向分页语义缺口，DESC 主路径不受影响，归 W-K 契约治理一并定案）；
+- 集成测试 TestListDocuments_KeysetTokenContinuation：ka:/kb: 往返、
+  不满页无 token、TotalCount=0、混合 ACE 批量回填。
 
 ### W-E fulltext 索引表达式对齐（P1-9）✅（2026-08-22）
 - 建索引表达式改 `to_tsvector('simple', "col"::text)`，与查询编译

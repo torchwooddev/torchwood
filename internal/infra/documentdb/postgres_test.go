@@ -1533,3 +1533,99 @@ func TestCreateIndex_FulltextAlignment(t *testing.T) {
 	}, nil, true)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
+
+// TestListDocuments_KeysetTokenContinuation (W-D)：cursor 模式的
+// NextPageToken 是 keyset token（ka:/kb:），PageToken 续页保持 keyset 语义
+// （不再切回 offset）；keyset 模式跳过精确 COUNT（TotalCount=0）；整页
+// permissions 经批量查询回填。
+func TestListDocuments_KeysetTokenContinuation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	// documentSecurity=false：不做 ACL 过滤，专注 perms 回填与分页语义。
+	// documentSecurity=false + read:any：集合级放行 guest，不做文档 ACL 过滤，
+	// 专注 perms 回填与 keyset 分页语义。
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "kdocs", "KDocs", []databases.Attribute{
+		{ID: "n", Key: "n", Type: "integer"},
+	}, nil, []databases.Permission{{Type: "read", Role: "any"}}, false))
+
+	for i := 0; i < 12; i++ {
+		perms := []databases.Permission(nil)
+		if i%3 == 0 { // 部分文档带 ACE，验证批量回填正确性
+			perms = []databases.Permission{{Type: "read", Role: "keys"}, {Type: "read", Role: "user:alice"}}
+		}
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "kdocs", databases.Document{
+			ID:   fmt.Sprintf("doc-%04d", i),
+			Data: map[string]any{"n": i},
+		}, perms, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+
+	guest := databases.Principal{}
+
+	// 首页：cursorAfter + orderAsc，满页（limit=5）→ keyset token。
+	page1, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
+		Queries: []string{`orderAsc("$id")`, `limit(5)`, `cursorAfter("doc-0004")`},
+	}, guest)
+	require.NoError(t, err)
+	require.Len(t, page1.Documents, 5)
+	require.Equal(t, "doc-0005", page1.Documents[0].ID)
+	require.Equal(t, "doc-0009", page1.Documents[4].ID)
+	require.Equal(t, "ka:doc-0009", page1.NextPageToken, "keyset 模式回传 ka: token 而非 offset token")
+	require.Zero(t, page1.TotalCount, "keyset 模式不做精确 COUNT")
+	// 批量回填：i%3==0 的文档（页内 0006、0009）带 2 条 ACE，其余为空——
+	// 同页混合命中/未命中验证批量查询按文档正确分组。
+	for _, d := range page1.Documents {
+		if d.ID == "doc-0006" || d.ID == "doc-0009" {
+			require.Len(t, d.Permissions, 2, d.ID)
+		} else {
+			require.Empty(t, d.Permissions, d.ID)
+		}
+	}
+
+	// 续页：PageToken（不带 cursorAfter 查询）→ 保持 keyset 语义。
+	page2, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
+		Queries:   []string{`orderAsc("$id")`, `limit(5)`},
+		PageToken: page1.NextPageToken,
+	}, guest)
+	require.NoError(t, err)
+	require.Len(t, page2.Documents, 2)
+	require.Equal(t, "doc-0010", page2.Documents[0].ID)
+	require.Equal(t, "doc-0011", page2.Documents[1].ID)
+	require.Empty(t, page2.NextPageToken, "不满页（2<5）无续页 token")
+	// offset 模式确认批量回填非空路径（doc-0000 有 2 条 ACE）与精确 COUNT 不受影响。
+	off, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
+		Queries: []string{`orderAsc("$id")`, `limit(1)`},
+	}, guest)
+	require.NoError(t, err)
+	require.Len(t, off.Documents[0].Permissions, 2, "批量回填必须返回完整 ACE 列表")
+
+	// before 方向（默认 DESC 展示序，与既有 rev 用例同模式）：
+	// cursorBefore(doc-0006) → 比它新的 5 行 [0011..0007]，满页 → kb:0011；
+	// 续页 before 0011 → 无更靠前（更新）的行 → 空页收尾。
+	b1, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
+		Queries: []string{`limit(5)`, `cursorBefore("doc-0006")`},
+	}, guest)
+	require.NoError(t, err)
+	require.Len(t, b1.Documents, 5)
+	require.Equal(t, "doc-0011", b1.Documents[0].ID)
+	require.Equal(t, "doc-0007", b1.Documents[4].ID)
+	require.Equal(t, "kb:doc-0011", b1.NextPageToken)
+
+	b2, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
+		Queries:   []string{`limit(5)`},
+		PageToken: b1.NextPageToken,
+	}, guest)
+	require.NoError(t, err)
+	require.Empty(t, b2.Documents)
+	require.Empty(t, b2.NextPageToken)
+}

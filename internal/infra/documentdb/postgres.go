@@ -1197,11 +1197,21 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 	offset := parsed.Offset
 	if q.PageToken != "" {
-		off, err := crud.DecodePageToken(q.PageToken)
-		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, "invalid page token")
+		// keyset token（cursor 模式回传，W-D）：映射回 cursorAfter/Before，
+		// 客户端在同请求中重发排序/过滤 queries 即可同构续页。
+		if id, kind, ok := decodeKeysetToken(q.PageToken); ok {
+			if kind == "before" {
+				parsed.CursorBefore = id
+			} else {
+				parsed.CursorAfter = id
+			}
+		} else {
+			off, err := crud.DecodePageToken(q.PageToken)
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, "invalid page token")
+			}
+			offset = int(off)
 		}
-		offset = int(off)
 	}
 	if offset > maxQueryOffset {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
@@ -1256,10 +1266,15 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		orderSQL = fmt.Sprintf(`ORDER BY d.%s %s, d._id %s`, quoteIdent(sortField), sortDir, sortDir)
 	}
 
-	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
+	// W-D：keyset 模式不产出精确 total——COUNT 与数据查询同价（含 EXISTS
+	// 权限子查询），对游标续页无意义且把翻页成本翻倍；offset 模式保持精确
+	// 计数（TotalCount 语义：keyset 分页下为 0=未知/不适用）。
 	var total int64
-	if err := p.conn(ctx).QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
-		return nil, err
+	if cursor == "" {
+		countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
+		if err := p.conn(ctx).QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+			return nil, err
+		}
 	}
 
 	querySQL := fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE %s %s LIMIT ? OFFSET ?`, tbl, strings.Join(whereParts, " AND "), orderSQL)
@@ -1282,11 +1297,9 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// B6：List 回传 permissions（与 Get 对齐）。N+1 可后续优化为批量 JOIN。
-	for i := range docs {
-		if err := p.attachDocumentPermissions(ctx, schema, collectionID, internalID, &docs[i]); err != nil {
-			return nil, err
-		}
+	// B6：List 回传 permissions（与 Get 对齐）；W-D 改单条 IN 批量取回。
+	if err := p.attachDocumentPermissionsBatch(ctx, schema, collectionID, internalID, docs); err != nil {
+		return nil, err
 	}
 
 	if len(parsed.Selects) > 0 {
@@ -1304,7 +1317,19 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 
 	next := ""
-	if len(docs) > 0 && int64(offset+len(docs)) < total {
+	if cursor != "" {
+		// W-D：keyset 模式的续页 token 编码边界行 id（方向沿用本次请求），
+		// 不再编码 offset——此前第二页会静默切回 OFFSET 语义（并发写入下
+		// 跳/重行，且受 maxQueryOffset 上限约束）。has-more 以满页判定
+		// （无精确 total 可用）。
+		if len(docs) == limit {
+			if cursorKind == "before" {
+				next = encodeKeysetToken("before", docs[0].ID)
+			} else {
+				next = encodeKeysetToken("after", docs[len(docs)-1].ID)
+			}
+		}
+	} else if len(docs) > 0 && int64(offset+len(docs)) < total {
 		next = crud.EncodePageToken(offset + len(docs))
 	}
 	return &databases.DocumentList{
@@ -1312,6 +1337,31 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		TotalCount:    total,
 		NextPageToken: next,
 	}, nil
+}
+
+// keyset token 是明文 "ka:<docID>" / "kb:<docID>"（与 crud 的结构化 offset
+// token 不冲突：那边是版本化编码数据）。简单前缀+docID，无需防篡改——
+// token 只承载定位语义，越权由查询 ACL 过滤兜底。
+const (
+	keysetAfterPrefix  = "ka:"
+	keysetBeforePrefix = "kb:"
+)
+
+func encodeKeysetToken(kind, docID string) string {
+	if kind == "before" {
+		return keysetBeforePrefix + docID
+	}
+	return keysetAfterPrefix + docID
+}
+
+func decodeKeysetToken(token string) (id, kind string, ok bool) {
+	if after, isAfter := strings.CutPrefix(token, keysetAfterPrefix); isAfter && after != "" {
+		return after, "after", true
+	}
+	if before, isBefore := strings.CutPrefix(token, keysetBeforePrefix); isBefore && before != "" {
+		return before, "before", true
+	}
+	return "", "", false
 }
 
 func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {

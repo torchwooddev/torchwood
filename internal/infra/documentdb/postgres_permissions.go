@@ -127,6 +127,48 @@ func (p *postgresDocumentDB) listPermissionFilter(
 	return where, args, nil
 }
 
+// attachDocumentPermissionsBatch 单条 IN 查询取回整页文档的 _perms（W-D：
+// 取代每文档一次点查的 N+1，页大小 50 时权限读取从 51 次查询降到 1 次）。
+// 未命中行保持 Permissions=nil（与逐条 attach 语义一致：无 ACE 文档回空）。
+func (p *postgresDocumentDB) attachDocumentPermissionsBatch(ctx context.Context, schema, collectionID string, tenant int64, docs []databases.Document) error {
+	if len(docs) == 0 {
+		return nil
+	}
+	ids := make([]string, len(docs))
+	for i := range docs {
+		ids[i] = docs[i].ID
+	}
+	permsTable := permsTableName(schema)
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, tenant, collectionID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := p.conn(ctx).QueryContext(ctx,
+		fmt.Sprintf(`SELECT _document, _type, _permission FROM %s WHERE _tenant = ? AND _collection = ? AND _document IN (%s) ORDER BY _document`, permsTable, placeholders),
+		args...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	byDoc := make(map[string][]databases.Permission, len(docs))
+	for rows.Next() {
+		var docID, typ, role string
+		if err := rows.Scan(&docID, &typ, &role); err != nil {
+			return err
+		}
+		byDoc[docID] = append(byDoc[docID], databases.Permission{Type: typ, Role: role})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range docs {
+		docs[i].Permissions = byDoc[docs[i].ID]
+	}
+	return nil
+}
+
 func (p *postgresDocumentDB) attachDocumentPermissions(ctx context.Context, schema, collectionID string, tenant int64, doc *databases.Document) error {
 	if doc == nil {
 		return nil
