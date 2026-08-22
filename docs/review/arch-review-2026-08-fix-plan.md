@@ -305,10 +305,14 @@ keyset token）、`postgres_query_compile.go`（336：DSL→SQL 编译 + 字段�
   Lua compare-and-del 防误释放、崩溃后租约自然过期；涉及 Functions
   用例三处信号量点位改造与注入缝设计，单独排期实施。
 
-### W-G 实时与审计卫生（P2-5/P2-6）
-- JWT AfterFunc 存 `*time.Timer`，cleanup 时 `Stop()`；
-- serverhttp 的 logOp 升级为 audit.Repository.Insert（复用 gRPC 拦截器的
-  Entry 结构），特权写操作获得持久审计轨迹。
+### W-G 实时与审计卫生（P2-5/P2-6）✅（2026-08-22）
+- ✅ JWT AfterFunc 存 `*time.Timer`，cleanup 时 `Stop()`；
+- ✅ serverhttp 审计入库：`auditFromHTTP` 助手（语义对齐 gRPC
+  AuditInterceptor——3s WithoutCancel、失败仅 Warn、不记凭证），
+  file/functions 两个 handler 的 logOp 单点接入 `audit.Repository`
+  （wire 注入）；action 形如 `http.storage.upload` /
+  `http.functions.deployment-upload`，授权失败也落一条（无 principal，
+  与拦截器一致）；专测断言失败路径的 Action/Status。
 
 ### W-H 交付工程门禁（P2-9 + P1-8 收尾）✅ 主体完成（2026-08-22）
 - CI：`go test -race ./...`（本地全量验证零数据竞争）、console vitest

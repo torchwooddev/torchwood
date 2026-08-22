@@ -18,6 +18,7 @@ import (
 	"github.com/disintegration/imaging"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
+	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
@@ -47,11 +48,12 @@ var inlineSafeMimeTypes = map[string]struct{}{
 
 // FileHandler provides HTTP multipart upload/download for storage.
 type FileHandler struct {
-	cfg     *config.AppConfig
-	auth    *httpAuth
-	storage *appstorage.Storage
-	trusted *interceptor.TrustedProxies
-	logger  *slog.Logger
+	cfg       *config.AppConfig
+	auth      *httpAuth
+	storage   *appstorage.Storage
+	trusted   *interceptor.TrustedProxies
+	auditRepo audit.Repository
+	logger    *slog.Logger
 }
 
 // NewFileHandler creates a new file HTTP handler.
@@ -59,6 +61,7 @@ func NewFileHandler(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	storage *appstorage.Storage,
+	auditRepo audit.Repository,
 	logger *slog.Logger,
 ) (*FileHandler, error) {
 	if logger == nil {
@@ -68,7 +71,8 @@ func NewFileHandler(
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
-	return &FileHandler{cfg: cfg, auth: newHTTPAuth(validator), storage: storage, trusted: trusted, logger: logger}, nil
+	return &FileHandler{cfg: cfg, auth: newHTTPAuth(validator), storage: storage, auditRepo: auditRepo,
+		trusted: trusted, logger: logger}, nil
 }
 
 // clientIP 与 gRPC ClientInfoInterceptor 走同一 trusted-proxy 规则。
@@ -96,6 +100,16 @@ func (h *FileHandler) logOp(r *http.Request, op, bucketID, fileID string, princi
 			slog.String("project_id", principal.ProjectID),
 		)
 	}
+	// slog 之外落持久审计（P2-6；best-effort，见 auditFromHTTP）。
+	meta := map[string]any{"op": op, "bucket_id": bucketID}
+	if principal != nil {
+		meta["project_id"] = principal.ProjectID
+	}
+	resource := fileID
+	if resource == "" {
+		resource = bucketID
+	}
+	auditFromHTTP(r, h.clientIP(r), h.auditRepo, h.logger, "http.storage."+op, meta, resource, principal, err)
 	if err != nil {
 		st, _ := status.FromError(err)
 		attrs = append(attrs, slog.String("error", st.Code().String()))

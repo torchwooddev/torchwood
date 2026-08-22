@@ -134,7 +134,7 @@ func TestHTTPAuth_SingleCredentialAccepted(t *testing.T) {
 func TestFileHandler_MultipleCredentialsRejected(t *testing.T) {
 	t.Parallel()
 
-	h, err := NewFileHandler(functionsTestConfig(), newFunctionsValidator(&functionsDocDB{}), nil, nil)
+	h, err := NewFileHandler(functionsTestConfig(), newFunctionsValidator(&functionsDocDB{}), nil, nil, nil)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodGet, "/v1/storage/buckets/b-1/files/f-1/download", nil)

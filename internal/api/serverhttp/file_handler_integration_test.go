@@ -88,7 +88,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 		bunrepo.NewUserRepository(db),
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil, nil)
 	require.NoError(t, err)
 
 	mux := runtime.NewServeMux()
@@ -308,7 +308,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 		bunrepo.NewUserRepository(db),
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil, nil)
 	require.NoError(t, err)
 	mux := runtime.NewServeMux()
 	handler.Register(mux)
@@ -409,7 +409,8 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 		bunrepo.NewUserRepository(db),
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil, nil)
+	require.NoError(t, err)
 	mux := runtime.NewServeMux()
 	handler.Register(mux)
 	server := httptest.NewServer(mux)
@@ -467,7 +468,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 		bunrepo.NewUserRepository(db),
 		nil,
 	)
-	handler, err := NewFileHandler(cfg, validator, storageUC, nil)
+	handler, err := NewFileHandler(cfg, validator, storageUC, nil, nil)
 	require.NoError(t, err)
 	mux := runtime.NewServeMux()
 	handler.Register(mux)

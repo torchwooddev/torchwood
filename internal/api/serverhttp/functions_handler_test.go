@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	appfunctions "github.com/torchwooddev/torchwood/internal/app/functions"
+	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainfunctions "github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
@@ -178,7 +179,7 @@ func functionsSignToken(t *testing.T, claims jwtparser.Claims) string {
 
 func newFunctionsHandler(t *testing.T, validator *auth.Validator) *FunctionsHandler {
 	t.Helper()
-	h, err := NewFunctionsHandler(functionsTestConfig(), validator, nil, nil)
+	h, err := NewFunctionsHandler(functionsTestConfig(), validator, nil, nil, nil)
 	require.NoError(t, err)
 	return h
 }
@@ -513,7 +514,7 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 		validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
 			admins: map[string]*projects.Admin{admin.ID: admin},
 		}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
-		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil)
+		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil, nil)
 		require.NoError(t, err)
 
 		token := functionsSignToken(t, jwtparser.Claims{
@@ -550,7 +551,7 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 				},
 			},
 		}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
-		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil)
+		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil, nil)
 		require.NoError(t, err)
 
 		r := newUploadRequest(t, map[string]string{"X-Api-Key": "fn-key-ok"})
@@ -562,4 +563,55 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 		require.True(t, ok, "executor 收到的 ctx 必须含 Principal")
 		require.Equal(t, shared.ActorKindService, p.ActorKind, "API key 的 ActorKind 必须为 service")
 	})
+}
+
+// functionsAuditRepo 记录插入的审计条目（内存桩）。
+type functionsAuditRepo struct {
+	entries []*audit.Entry
+}
+
+func (r *functionsAuditRepo) Insert(_ context.Context, e *audit.Entry) error {
+	r.entries = append(r.entries, e)
+	return nil
+}
+func (r *functionsAuditRepo) ListByActor(context.Context, string, string, int) ([]audit.Entry, error) {
+	return nil, nil
+}
+
+// TestFunctionsHandler_UploadWritesAudit（P2-6）：特权 HTTP 操作（代码包
+// 上传）必须有持久审计轨迹——授权失败也落一条 PermissionDenied。
+func TestFunctionsHandler_UploadWritesAudit(t *testing.T) {
+	t.Parallel()
+
+	projectID := "proj-1"
+	userID := "user-1"
+	docDB := &functionsDocDB{
+		users: map[string]map[string]map[string]any{
+			projectID: {userID: {"status": "active"}},
+		},
+	}
+	validator := newFunctionsValidator(docDB)
+	auditRepo := &functionsAuditRepo{}
+	h, err := NewFunctionsHandler(functionsTestConfig(), validator, nil, auditRepo, nil)
+	require.NoError(t, err)
+
+	token := functionsSignToken(t, jwtparser.Claims{
+		UserID:    userID,
+		ProjectID: projectID,
+		ActorKind: "end_user",
+		TokenType: jwtparser.TokenTypeAccess,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	})
+	r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	h.upload(rec, r, map[string]string{"functionId": "fn-1"})
+	require.Equal(t, http.StatusForbidden, rec.Code)
+
+	require.Len(t, auditRepo.entries, 1, "授权失败必须落审计")
+	entry := auditRepo.entries[0]
+	require.Equal(t, "http.functions.deployment-upload", entry.Action)
+	require.Equal(t, "PermissionDenied", entry.Status)
+	// 授权失败路径无 principal（与 gRPC AuditInterceptor 一致），actor 字段为空。
 }

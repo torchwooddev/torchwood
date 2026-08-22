@@ -166,7 +166,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	fileHandler, err := serverhttp.NewFileHandler(appConfig, validator, storageStorage, logger)
+	fileHandler, err := serverhttp.NewFileHandler(appConfig, validator, storageStorage, auditRepository, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -176,7 +176,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	functionsHandler, err := serverhttp.NewFunctionsHandler(appConfig, validator, functionsFunctions, logger)
+	functionsHandler, err := serverhttp.NewFunctionsHandler(appConfig, validator, functionsFunctions, auditRepository, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

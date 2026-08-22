@@ -9,6 +9,7 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	appfunctions "github.com/torchwooddev/torchwood/internal/app/functions"
+	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -30,6 +31,7 @@ type FunctionsHandler struct {
 	cfg       *config.AppConfig
 	auth      *httpAuth
 	functions *appfunctions.Functions
+	auditRepo audit.Repository
 	trusted   *interceptor.TrustedProxies
 	logger    *slog.Logger
 }
@@ -39,6 +41,7 @@ func NewFunctionsHandler(
 	cfg *config.AppConfig,
 	validator *auth.Validator,
 	functions *appfunctions.Functions,
+	auditRepo audit.Repository,
 	logger *slog.Logger,
 ) (*FunctionsHandler, error) {
 	if logger == nil {
@@ -48,7 +51,8 @@ func NewFunctionsHandler(
 	if err != nil {
 		return nil, fmt.Errorf("parse security.trusted_proxies: %w", err)
 	}
-	return &FunctionsHandler{cfg: cfg, auth: newHTTPAuth(validator), functions: functions, trusted: trusted, logger: logger}, nil
+	return &FunctionsHandler{cfg: cfg, auth: newHTTPAuth(validator), functions: functions, auditRepo: auditRepo,
+		trusted: trusted, logger: logger}, nil
 }
 
 // Register attaches the deployment upload route to the gateway mux.
@@ -72,6 +76,15 @@ func (h *FunctionsHandler) logOp(r *http.Request, op, functionID, deploymentID s
 			slog.String("project_id", principal.ProjectID),
 		)
 	}
+	// slog 之外落持久审计（P2-6；特权写操作——代码包上传——必须有审计轨迹）。
+	meta := map[string]any{"op": op, "function_id": functionID}
+	if principal != nil {
+		meta["project_id"] = principal.ProjectID
+	}
+	if deploymentID != "" {
+		meta["deployment_id"] = deploymentID
+	}
+	auditFromHTTP(r, h.clientIP(r), h.auditRepo, h.logger, "http.functions."+op, meta, deploymentID, principal, err)
 	if err != nil {
 		st, _ := status.FromError(err)
 		attrs = append(attrs, slog.String("error", st.Code().String()))
