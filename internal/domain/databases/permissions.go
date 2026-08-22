@@ -11,10 +11,10 @@ var SystemRoles = []string{"__system__"}
 
 // DefaultCollectionPermissions returns a reasonable default permission set for
 // user-created collections that do not specify explicit permissions.
+// WHY: 默认集合不再含 read:any，避免空权限文档通过集合回落对 guest 可读；公开集合需显式授予 read:any。
 func DefaultCollectionPermissions() []Permission {
 	return []Permission{
 		{Type: "create", Role: "users"},
-		{Type: "read", Role: "any"},
 		{Type: "update", Role: "users"},
 		{Type: "delete", Role: "users"},
 		{Type: "create", Role: "keys"},

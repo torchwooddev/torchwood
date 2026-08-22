@@ -57,9 +57,18 @@ func clientActorOK(p *domainshared.Principal) bool {
 	}
 }
 
+// clientWriteActorOK 仅允许 EndUser 写文档（对齐拦截器 ACCESS_AUTHENTICATED 的 users 角色语义）。
+// WHY: 拦截器对 Client 写已拒 API Key/admin，直调用例此前放宽为 Admin/Service，需收紧。
+func clientWriteActorOK(p *domainshared.Principal) bool {
+	if p == nil || !p.IsAuthenticated() {
+		return false
+	}
+	return p.ActorKind == domainshared.ActorKindEndUser
+}
+
 func (d *Databases) resolveProject(ctx context.Context) (*projects.Project, databases.Principal, error) {
 	p, ok := contexts.Principal(ctx)
-	if !ok || p.ProjectID == "" || !clientActorOK(p) {
+	if !ok || p.ProjectID == "" || !clientWriteActorOK(p) {
 		return nil, databases.Principal{}, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
 	project, err := d.loadProject(ctx, p.ProjectID)

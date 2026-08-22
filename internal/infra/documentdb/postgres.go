@@ -1274,6 +1274,12 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// B6：List 回传 permissions（与 Get 对齐）。N+1 可后续优化为批量 JOIN。
+	for i := range docs {
+		if err := p.attachDocumentPermissions(ctx, schema, collectionID, internalID, &docs[i]); err != nil {
+			return nil, err
+		}
+	}
 
 	if len(parsed.Selects) > 0 {
 		selected := make(map[string]struct{}, len(parsed.Selects))

@@ -63,11 +63,10 @@ func TestResolveProject_AdminWithoutUserID(t *testing.T) {
 		Roles:           []string{"member", shared.RoleConsole},
 		IsPlatformAdmin: true,
 	})
-	_, principal, err := d.resolveProject(ctx)
-	require.NoError(t, err)
-	require.True(t, principal.PlatformAdmin)
-	require.NotContains(t, principal.Roles, shared.RoleConsole)
-	require.Contains(t, principal.Roles, "user:a1")
+	_, _, err := d.resolveProject(ctx)
+	// C2：Client 写路径仅允许 EndUser，Admin 直调应被拒。
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unauthenticated")
 }
 
 func TestResolveReadPrincipal_AdminNotGuest(t *testing.T) {

@@ -253,13 +253,45 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		return err
 	}
 	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		// B8：同事务清理依赖该属性的索引，避免幽灵索引指向已删列。
+		cat, err := p.catalogIdent(projectID)
+		if err != nil {
+			return err
+		}
+		var idxs []*model.DocumentIndex
+		if err := p.conn(txCtx).NewSelect().Model((*model.DocumentIndex)(nil)).
+			ModelTableExpr("?.document_indexes AS di", cat).
+			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).
+			Scan(txCtx, &idxs); err != nil {
+			return err
+		}
+		for _, idx := range idxs {
+			contains := false
+			for _, attr := range idx.Attributes {
+				if attr == key {
+					contains = true
+					break
+				}
+			}
+			if !contains {
+				continue
+			}
+			idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, idx.ID))
+			if _, err := p.conn(txCtx).ExecContext(txCtx,
+				fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
+			); err != nil {
+				return err
+			}
+			if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
+				ModelTableExpr("?.document_indexes AS di", cat).
+				Where("project_id = ? AND database_id = ? AND collection_id = ? AND id = ?", projectID, databaseID, collectionID, idx.ID).
+				Exec(txCtx); err != nil {
+				return err
+			}
+		}
 		if _, err := p.conn(txCtx).ExecContext(txCtx,
 			fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, collectionID), quoteIdent(key)),
 		); err != nil {
-			return err
-		}
-		cat, err := p.catalogIdent(projectID)
-		if err != nil {
 			return err
 		}
 		_, err = p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).

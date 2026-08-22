@@ -363,6 +363,36 @@ func (d *Databases) CreateDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
+	// C1：Server 空文档 ACE 私有（不再回落到集合 read:any）。
+	// WHY: 默认集合已去 read:any，但历史集合仍可能含它；空 ACE 若仍 docHasPerms=false 会对 guest 可读。
+	// 实现：有 user: 前缀时按 owner 语义写入 user:<id> 的读写删，其余（API Key/Admin）写入仅 privileged 匹配的占位 ACE。
+	if len(perms) == 0 {
+		hasUserRole := false
+		for _, r := range principal.Roles {
+			if strings.HasPrefix(r, "user:") {
+				hasUserRole = true
+				break
+			}
+		}
+		if hasUserRole {
+			// 少见路径：Server 侧带用户身份，保持与 Client 相同的 owner ACE。
+			var userRole string
+			for _, r := range principal.Roles {
+				if strings.HasPrefix(r, "user:") {
+					userRole = r
+					break
+				}
+			}
+			perms = []databases.Permission{
+				{Type: "read", Role: userRole},
+				{Type: "update", Role: userRole},
+				{Type: "delete", Role: userRole},
+			}
+		} else {
+			// 私有占位：无任何常规角色匹配，仅 System/PlatformAdmin 旁路可读。
+			perms = []databases.Permission{{Type: "read", Role: "__private__"}}
+		}
+	}
 	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{
 		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
 	})
