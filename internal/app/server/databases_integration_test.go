@@ -150,7 +150,8 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 
 	created, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "no perms"}, nil, principal)
 	require.NoError(t, err)
-	require.Empty(t, created.Permissions)
+	require.Len(t, created.Permissions, 1)
+	require.Equal(t, "__private__", created.Permissions[0].Role)
 
 	explicit, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "explicit"}, []databases.Permission{
 		{Type: "read", Role: "any"},

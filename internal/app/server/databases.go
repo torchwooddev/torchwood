@@ -449,6 +449,31 @@ func (d *Databases) UpsertDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
+	if len(perms) == 0 {
+		hasUserRole := false
+		for _, r := range principal.Roles {
+			if strings.HasPrefix(r, "user:") {
+				hasUserRole = true
+				break
+			}
+		}
+		if hasUserRole {
+			var userRole string
+			for _, r := range principal.Roles {
+				if strings.HasPrefix(r, "user:") {
+					userRole = r
+					break
+				}
+			}
+			perms = []databases.Permission{
+				{Type: "read", Role: userRole},
+				{Type: "update", Role: userRole},
+				{Type: "delete", Role: userRole},
+			}
+		} else {
+			perms = []databases.Permission{{Type: "read", Role: "__private__"}}
+		}
+	}
 	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, documents.WriteOptions{
 		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
 	})
