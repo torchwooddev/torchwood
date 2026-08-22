@@ -193,7 +193,7 @@ func newFunctionsValidator(docDB *functionsDocDB) *auth.Validator {
 			}
 		}
 	}
-	return auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, users, nil)
+	return auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, nil, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, users, nil)
 }
 
 type functionsUserRepo struct {
@@ -297,7 +297,7 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 	t.Parallel()
 
 	admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
-	validatorWithAdmin := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
+	validatorWithAdmin := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, nil, &functionsAdminRepo{
 		admins: map[string]*projects.Admin{admin.ID: admin},
 	}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 	hAdmin := newFunctionsHandler(t, validatorWithAdmin)
@@ -328,7 +328,7 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 				Enabled:   true,
 			},
 		}}
-		v := auth.NewValidator(functionsTestConfig(), repo, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
+		v := auth.NewValidator(functionsTestConfig(), repo, nil, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h := newFunctionsHandler(t, v)
 		r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
 		r.Header.Set("X-Api-Key", "fn-key-ok")
@@ -346,7 +346,7 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 				Enabled:   true,
 			},
 		}}
-		v := auth.NewValidator(functionsTestConfig(), repo, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
+		v := auth.NewValidator(functionsTestConfig(), repo, nil, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h := newFunctionsHandler(t, v)
 		r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
 		r.Header.Set("X-Api-Key", "fn-key-bad")
@@ -365,7 +365,7 @@ func TestFunctionsHandler_Authorize_ViewerMemberDenied(t *testing.T) {
 	for _, role := range []string{"viewer", "member"} {
 		t.Run(role+" denied", func(t *testing.T) {
 			admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: role}
-			validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
+			validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, nil, &functionsAdminRepo{
 				admins: map[string]*projects.Admin{admin.ID: admin},
 			}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 			h := newFunctionsHandler(t, validator)
@@ -511,7 +511,7 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 		}}
 		executor := &functionsRecordingExecutor{}
 		uc := appfunctions.NewFunctions(functionsTestConfig(), executor, repo, nil)
-		validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
+		validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, nil, &functionsAdminRepo{
 			admins: map[string]*projects.Admin{admin.ID: admin},
 		}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil, nil)
@@ -550,7 +550,7 @@ func TestFunctionsHandler_Upload_InjectsPrincipalIntoCtx(t *testing.T) {
 					ID: "key-1", ProjectID: projectID, Scopes: []string{"functions.write"}, Enabled: true,
 				},
 			},
-		}, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
+		}, nil, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 		h, err := NewFunctionsHandler(functionsTestConfig(), validator, uc, nil, nil)
 		require.NoError(t, err)
 

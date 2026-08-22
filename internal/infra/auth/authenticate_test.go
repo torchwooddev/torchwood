@@ -20,7 +20,7 @@ func TestValidator_Authenticate_ConsoleCookieIsAccessToken(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: "owner"}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{admins: map[string]*projects.Admin{admin.ID: admin}}, &stubAdminProjectRepo{}, nil, nil, nil, nil)
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, nil, &stubAdminRepo{admins: map[string]*projects.Admin{admin.ID: admin}}, &stubAdminProjectRepo{}, nil, nil, nil, nil)
 
 	token := signToken(t, jwtparser.Claims{
 		UserID:    admin.ID,
@@ -46,7 +46,7 @@ func TestValidator_Authenticate_APIKeyIsService(t *testing.T) {
 	t.Parallel()
 	secret := "torchwood-test-api-key"
 	key := &projects.APIKey{ID: "key-1", ProjectID: "proj-1", Scopes: []string{"storage"}, Enabled: true}
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{keys: map[string]*projects.APIKey{hashSecret(secret): key}}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, nil, nil, nil)
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{keys: map[string]*projects.APIKey{hashSecret(secret): key}}, nil, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, nil, nil, nil)
 
 	p, err := v.Authenticate(context.Background(), shared.AuthnRequest{APIKey: []string{secret}})
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestValidator_Authenticate_APIKeyIsService(t *testing.T) {
 
 func TestValidator_Authenticate_MultipleCredentials(t *testing.T) {
 	t.Parallel()
-	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, nil, nil, nil)
+	v := auth.NewValidator(testValidatorConfig(), &stubAPIKeyRepo{}, nil, &stubAdminRepo{}, &stubAdminProjectRepo{}, nil, nil, nil, nil)
 	_, err := v.Authenticate(context.Background(), shared.AuthnRequest{
 		Authorization: []string{"Bearer tok"},
 		APIKey:        []string{"key"},

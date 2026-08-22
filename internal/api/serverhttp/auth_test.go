@@ -113,7 +113,7 @@ func TestHTTPAuth_SingleCredentialAccepted(t *testing.T) {
 			Enabled:   true,
 		},
 	}}
-	validator := auth.NewValidator(functionsTestConfig(), repo, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
+	validator := auth.NewValidator(functionsTestConfig(), repo, nil, &functionsAdminRepo{}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
 	a := newHTTPAuth(validator)
 
 	r := httptest.NewRequest(http.MethodGet, "/x", nil)

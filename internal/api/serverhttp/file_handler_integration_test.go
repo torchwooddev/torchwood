@@ -81,6 +81,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
+		nil,
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
@@ -301,6 +302,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
+		nil,
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
@@ -402,6 +404,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
+		nil,
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
@@ -461,6 +464,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
+		nil,
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,

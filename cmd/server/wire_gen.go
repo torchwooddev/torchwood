@@ -67,7 +67,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	membershipRepository := bunrepo.NewMembershipRepository(database)
 	userRoles := client.NewUserRoles(userRepository, membershipRepository)
 	redisOneTimeTokenStore := auth.NewRedisOneTimeTokenStore(redisClient)
-	validator := auth.NewValidatorWithOneTimeTokens(appConfig, apiKeyRepository, adminRepository, adminProjectRepository, redisAdminTokenRevokeStore, sessionRepository, userRepository, userRoles, redisOneTimeTokenStore)
+	validator := auth.NewValidatorWithOneTimeTokens(appConfig, apiKeyRepository, repository, adminRepository, adminProjectRepository, redisAdminTokenRevokeStore, sessionRepository, userRepository, userRoles, redisOneTimeTokenStore)
 	auditRepository := bunrepo.NewAuditRepository(database)
 	redisRateLimiter := auth.NewRedisRateLimiter(redisClient)
 	objectStore, err := storage.NewMinioObjectStore(appConfig)

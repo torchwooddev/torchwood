@@ -21,6 +21,7 @@ import (
 type Validator struct {
 	cfg              *config.AppConfig
 	apiKeyRepo       projects.APIKeyRepository
+	projectRepo      projects.Repository
 	adminRepo        projects.AdminRepository
 	adminProjectRepo projects.AdminProjectRepository
 	adminRevokeStore domainauth.AdminTokenRevokeStore
@@ -34,6 +35,7 @@ type Validator struct {
 func NewValidator(
 	cfg *config.AppConfig,
 	apiKeyRepo projects.APIKeyRepository,
+	projectRepo projects.Repository,
 	adminRepo projects.AdminRepository,
 	adminProjectRepo projects.AdminProjectRepository,
 	adminRevokeStore domainauth.AdminTokenRevokeStore,
@@ -41,7 +43,7 @@ func NewValidator(
 	usersRepo users.Repository,
 	roleResolver domainauth.UserRoleResolver,
 ) *Validator {
-	return NewValidatorWithOneTimeTokens(cfg, apiKeyRepo, adminRepo, adminProjectRepo, adminRevokeStore, sessions, usersRepo, roleResolver, nil)
+	return NewValidatorWithOneTimeTokens(cfg, apiKeyRepo, projectRepo, adminRepo, adminProjectRepo, adminRevokeStore, sessions, usersRepo, roleResolver, nil)
 }
 
 // NewValidatorWithOneTimeTokens 额外装配一次性 token 消费存储（CreateJWT
@@ -49,6 +51,7 @@ func NewValidator(
 func NewValidatorWithOneTimeTokens(
 	cfg *config.AppConfig,
 	apiKeyRepo projects.APIKeyRepository,
+	projectRepo projects.Repository,
 	adminRepo projects.AdminRepository,
 	adminProjectRepo projects.AdminProjectRepository,
 	adminRevokeStore domainauth.AdminTokenRevokeStore,
@@ -60,6 +63,7 @@ func NewValidatorWithOneTimeTokens(
 	return &Validator{
 		cfg:              cfg,
 		apiKeyRepo:       apiKeyRepo,
+		projectRepo:      projectRepo,
 		adminRepo:        adminRepo,
 		adminProjectRepo: adminProjectRepo,
 		adminRevokeStore: adminRevokeStore,
@@ -128,6 +132,15 @@ func (v *Validator) validateAPIKey(ctx context.Context, raw string) (*shared.Pri
 	}
 	if key.ExpireAt != nil && key.ExpireAt.Before(time.Now()) {
 		return nil, status.Error(codes.Unauthenticated, "api key expired")
+	}
+	if v.projectRepo != nil {
+		proj, err := v.projectRepo.GetProject(ctx, key.ProjectID)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "project lookup failed")
+		}
+		if proj == nil || proj.Status != "active" {
+			return nil, status.Error(codes.Unauthenticated, "project is not active")
+		}
 	}
 	return &shared.Principal{
 		ActorID:        idgen.ID(key.ID),

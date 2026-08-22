@@ -158,6 +158,7 @@ func TestAuth_ValidateCredential_ChecksRevokeStore(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		store,
 		nil,
 		nil,

@@ -172,6 +172,7 @@ func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
 	validator := auth.NewValidatorWithOneTimeTokens(
 		jwtTestConfig(),
 		bunrepo.NewAPIKeyRepository(db),
+		nil,
 		bunrepo.NewAdminRepository(db),
 		bunrepo.NewAdminProjectRepository(db),
 		nil,
