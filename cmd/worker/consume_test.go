@@ -112,16 +112,18 @@ func (q *channelQueue) Enqueue(_ context.Context, _ string, payload []byte) erro
 	return nil
 }
 
-func (q *channelQueue) Dequeue(ctx context.Context, _ string, timeout time.Duration) ([]byte, error) {
+func (q *channelQueue) Dequeue(ctx context.Context, _ string, timeout time.Duration) ([]byte, string, error) {
 	select {
 	case p := <-q.ch:
-		return p, nil
+		return p, "ack-" + string(p), nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, "", ctx.Err()
 	case <-time.After(timeout):
-		return nil, nil
+		return nil, "", nil
 	}
 }
+
+func (q *channelQueue) Ack(_ context.Context, _ string, _ string) error { return nil }
 
 // TestConsume_RetryAttemptsInPayloadAndExhausts 驱动 consume 循环验证（B2）：
 // 瞬时失败任务重抛回队时 payload 携带递增 attempt（计数随队列消息持久，

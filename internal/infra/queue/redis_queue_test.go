@@ -20,21 +20,25 @@ func TestRedisQueue_EnqueueDequeueRoundtrip(t *testing.T) {
 	q := NewRedisQueue(rdb)
 	ctx := context.Background()
 
-	// 空队列 BRPOP 超时 → nil,nil（miniredis 最小阻塞粒度 1s）。
-	payload, err := q.Dequeue(ctx, "torchwood:queue:functions-executions", 50*time.Millisecond)
+	// 空队列 → nil,nil
+	payload, ack, err := q.Dequeue(ctx, "torchwood:queue:functions-executions", 50*time.Millisecond)
 	require.NoError(t, err)
 	require.Nil(t, payload)
+	require.Empty(t, ack)
 
 	require.NoError(t, q.Enqueue(ctx, "torchwood:queue:functions-executions", []byte(`{"execution_id":"e1"}`)))
 	require.NoError(t, q.Enqueue(ctx, "torchwood:queue:functions-executions", []byte(`{"execution_id":"e2"}`)))
 
-	got, err := q.Dequeue(ctx, "torchwood:queue:functions-executions", time.Second)
+	got, ack, err := q.Dequeue(ctx, "torchwood:queue:functions-executions", time.Second)
 	require.NoError(t, err)
-	require.Equal(t, `{"execution_id":"e1"}`, string(got), "LPUSH+BRPOP 先进先出")
+	require.Equal(t, `{"execution_id":"e1"}`, string(got))
+	require.NotEmpty(t, ack)
+	require.NoError(t, q.Ack(ctx, "torchwood:queue:functions-executions", ack))
 
-	got, err = q.Dequeue(ctx, "torchwood:queue:functions-executions", time.Second)
+	got, ack, err = q.Dequeue(ctx, "torchwood:queue:functions-executions", time.Second)
 	require.NoError(t, err)
 	require.Equal(t, `{"execution_id":"e2"}`, string(got))
+	require.NoError(t, q.Ack(ctx, "torchwood:queue:functions-executions", ack))
 }
 
 func TestRedisQueue_DequeueBlocksUntilValue(t *testing.T) {
@@ -49,7 +53,7 @@ func TestRedisQueue_DequeueBlocksUntilValue(t *testing.T) {
 
 	done := make(chan []byte, 1)
 	go func() {
-		payload, _ := q.Dequeue(ctx, "torchwood:queue:functions-executions", 5*time.Second)
+		payload, _, _ := q.Dequeue(ctx, "torchwood:queue:functions-executions", 5*time.Second)
 		done <- payload
 	}()
 	time.Sleep(100 * time.Millisecond)
@@ -61,4 +65,33 @@ func TestRedisQueue_DequeueBlocksUntilValue(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("BRPOP 未在有值到达时返回")
 	}
+}
+
+func TestRedisQueue_NotAckRedelivers(t *testing.T) {
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	q := NewRedisQueue(rdb)
+	ctx := context.Background()
+
+	require.NoError(t, q.Enqueue(ctx, "torchwood:queue:functions-executions", []byte(`{"execution_id":"e1"}`)))
+
+	// 第一次 Dequeue 不 Ack
+	payload, ack, err := q.Dequeue(ctx, "torchwood:queue:functions-executions", time.Second)
+	require.NoError(t, err)
+	require.Equal(t, `{"execution_id":"e1"}`, string(payload))
+	require.NotEmpty(t, ack)
+	// 不 Ack，模拟崩溃
+
+	// 新消费者（同进程但经 XAUTOCLAIM）应能重投
+	require.Eventually(t, func() bool {
+		got, _, err := q.Dequeue(ctx, "torchwood:queue:functions-executions", 200*time.Millisecond)
+		if err != nil {
+			return false
+		}
+		return got != nil && string(got) == `{"execution_id":"e1"}`
+	}, 5*time.Second, 100*time.Millisecond)
 }

@@ -215,14 +215,16 @@ func (q *mockQueue) Enqueue(_ context.Context, _ string, payload []byte) error {
 	return nil
 }
 
-func (q *mockQueue) Dequeue(_ context.Context, _ string, _ time.Duration) ([]byte, error) {
+func (q *mockQueue) Dequeue(_ context.Context, _ string, _ time.Duration) ([]byte, string, error) {
 	if len(q.enqueued) == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 	p := q.enqueued[0]
 	q.enqueued = q.enqueued[1:]
-	return p, nil
+	return p, "mock-ack", nil
 }
+
+func (q *mockQueue) Ack(_ context.Context, _ string, _ string) error { return nil }
 
 // seedReadyFunction 构造函数 + ready 部署。
 func seedReadyFunction(repo *mockRepo, projectID, functionID string, enabled bool, timeout int) *domainfunctions.Function {

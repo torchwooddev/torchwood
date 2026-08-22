@@ -107,7 +107,7 @@ func (w *Worker) Stop(ctx context.Context) error {
 
 func (w *Worker) consume(ctx context.Context) {
 	for {
-		payload, err := w.queue.Dequeue(ctx, domainshared.QueueFunctionsExecutions, dequeuePollInterval)
+		payload, ack, err := w.queue.Dequeue(ctx, domainshared.QueueFunctionsExecutions, dequeuePollInterval)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -117,28 +117,36 @@ func (w *Worker) consume(ctx context.Context) {
 			continue
 		}
 		if payload == nil {
-			// BRPOP 超时（队列为空），继续轮询。
 			continue
+		}
+		ackDone := func() {
+			if ack != "" {
+				_ = w.queue.Ack(ctx, domainshared.QueueFunctionsExecutions, ack)
+			}
 		}
 		if err := w.functions.ProcessExecutionPayload(ctx, payload); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
 			if errors.Is(err, appfunctions.ErrInvalidQueuePayload) {
-				// 坏消息永久失败：不重试，仅记日志。
 				w.logger.Error("discarding invalid queue payload", "error", err)
+				ackDone()
 				continue
 			}
 			w.logger.Error("process execution failed", "error", err)
-			// 瞬时失败重抛回队（LPUSH），最多 maxProcessAttempts 次；超限兜底标 failed。
+			// 瞬时失败重抛回队，最多 maxProcessAttempts 次；超限兜底标 failed。
 			if next, ok := requeue(payload); ok {
 				if qerr := w.queue.Enqueue(ctx, domainshared.QueueFunctionsExecutions, next); qerr != nil {
 					w.logger.Error("re-enqueue failed", "error", qerr)
 				}
+				ackDone()
 			} else {
+				ackDone()
 				w.failPayload(ctx, payload, "worker retries exhausted")
 			}
+			continue
 		}
+		ackDone()
 	}
 }
 

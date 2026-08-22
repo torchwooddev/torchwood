@@ -8,14 +8,17 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/events"
 )
 
-// QueueFunctionsExecutions 是函数异步执行的队列名（Redis List）。
+// QueueFunctionsExecutions 是函数异步执行的队列名（Redis Stream，至少一次）。
 const QueueFunctionsExecutions = "torchwood:queue:functions-executions"
 
-// Queue 是异步任务队列端口（MVP：Redis List BRPOP 实现）。
+// Queue 是异步任务队列端口（A7 修复：至少一次）。
+// Dequeue 返回的 ack Token 需在处理成功后 Ack，否则消息在 PEL/inflight 超时后重投。
 type Queue interface {
 	Enqueue(ctx context.Context, queue string, payload []byte) error
 	// Dequeue 阻塞等待任务；timeout<=0 时阻塞直到有任务或 ctx 取消。
-	Dequeue(ctx context.Context, queue string, timeout time.Duration) ([]byte, error)
+	// 无任务时 payload==nil 且 ack=="".
+	Dequeue(ctx context.Context, queue string, timeout time.Duration) (payload []byte, ack string, err error)
+	Ack(ctx context.Context, queue string, ack string) error
 }
 
 // EventPublisher 是用户集合文档写事件的 transactional outbox 端口

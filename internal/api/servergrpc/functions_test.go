@@ -85,9 +85,10 @@ func (s *stubExecutor) RemoveImage(context.Context, string, string) error { retu
 type stubQueue struct{}
 
 func (s *stubQueue) Enqueue(context.Context, string, []byte) error { return nil }
-func (s *stubQueue) Dequeue(context.Context, string, time.Duration) ([]byte, error) {
-	return nil, nil
+func (s *stubQueue) Dequeue(context.Context, string, time.Duration) ([]byte, string, error) {
+	return nil, "", nil
 }
+func (s *stubQueue) Ack(context.Context, string, string) error { return nil }
 
 func newTestService(repo *stubRepo) *FunctionsService {
 	uc := appfunctions.NewFunctions(&config.AppConfig{}, &stubExecutor{}, repo, &stubQueue{})
