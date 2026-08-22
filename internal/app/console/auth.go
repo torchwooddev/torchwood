@@ -3,6 +3,7 @@ package console
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
@@ -63,6 +64,9 @@ func (a *Auth) SignIn(ctx context.Context, cmd SignInCommand) (*TokenPair, error
 		return nil, status.Error(codes.Internal, "admin lookup failed")
 	}
 	if admin == nil {
+		// 哑哈希时序均衡（P2-10，对齐 client SignIn）：admin 不存在时也执行
+		// 一次同价 Argon2 校验，消除按响应时延枚举已注册 admin 邮箱的侧信道。
+		_, _ = password.Verify(cmd.Password, consoleDummyPasswordHash())
 		return invalidCredentials()
 	}
 	if ok, _ := password.Verify(cmd.Password, admin.PasswordHash); !ok {
@@ -71,6 +75,18 @@ func (a *Auth) SignIn(ctx context.Context, cmd SignInCommand) (*TokenPair, error
 	a.resetLoginThrottle(ctx, throttleEmail, clientInfo.IP)
 	return a.issueAdminTokens(ctx, admin.ID, admin.Email, admin.Role)
 }
+
+// consoleDummyPasswordHash 是 console 登录的固定哑哈希（sync.OnceValue 惰性
+// 生成 + init 预热，语义与 app/client 的 dummyPasswordHash 一致）。
+var consoleDummyPasswordHash = sync.OnceValue(func() string {
+	h, err := password.Hash("torchwood-dummy-console-signin-password")
+	if err != nil {
+		return ""
+	}
+	return h
+})
+
+func init() { consoleDummyPasswordHash() }
 
 func (a *Auth) RefreshToken(ctx context.Context, cmd RefreshTokenCommand) (*TokenPair, error) {
 	if cmd.RefreshToken == "" {
