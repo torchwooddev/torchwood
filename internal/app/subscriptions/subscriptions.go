@@ -230,6 +230,8 @@ func (s *Subscriptions) publish(ctx context.Context, sub *domainsubs.Subscriptio
 		Domain:    domainsubs.EventDomain,
 		Channel:   domainsubs.AccountsChannel(sub.UserID),
 		CreatedAt: now,
+		// version 用订阅 updated_at 纳秒（判序语义同订单事件，P1-14）。
+		Version: sub.UpdatedAt.UnixNano(),
 		Attrs: map[string]any{
 			"subscription_id": sub.ID,
 			"user_id":         sub.UserID,

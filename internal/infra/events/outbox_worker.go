@@ -50,10 +50,16 @@ var (
 		Help:    "Latency between event creation and transport enqueue.",
 		Buckets: prometheus.DefBuckets,
 	})
+	// outboxDead 是死信表当前行数（W-J：死信可观测——非零即需人工介入，
+	// 重放工具见修复方案 W-J 残留）。
+	outboxDead = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "torchwood_outbox_dead",
+		Help: "Number of rows in document_events_outbox_dead.",
+	})
 )
 
 func init() {
-	prometheus.MustRegister(outboxPending, outboxPublishTotal, outboxPublishLag)
+	prometheus.MustRegister(outboxPending, outboxPublishTotal, outboxPublishLag, outboxDead)
 }
 
 // OutboxWorker 领取 document_events_outbox 并把完整信封 XADD 到
@@ -156,6 +162,9 @@ func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox,
 
 // cleanupOnce 删除超过保留窗口的已发布行与死信行（表无限增长治理）。
 func (w *OutboxWorker) cleanupOnce(ctx context.Context) {
+	if n, err := w.db.Conn(ctx).NewSelect().TableExpr("document_events_outbox_dead").Count(ctx); err == nil {
+		outboxDead.Set(float64(n))
+	}
 	if res, err := w.db.Conn(ctx).NewDelete().Model((*model.DocumentEventsOutbox)(nil)).
 		Where("published_at IS NOT NULL").
 		Where("published_at < ?", time.Now().Add(-outboxPublishedRetention)).

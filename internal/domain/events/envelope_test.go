@@ -131,3 +131,26 @@ func TestVisibleTo(t *testing.T) {
 	require.True(t, VisibleTo(acl, databases.Principal{PlatformAdmin: true}))
 	require.True(t, VisibleTo(acl, databases.SystemPrincipal))
 }
+
+// TestClientPayload_EconomyCarriesVersion (P1-14)：经济事件 payload 带
+// version（对齐文档事件），客户端可按其判序。
+func TestClientPayload_EconomyCarriesVersion(t *testing.T) {
+	e := Envelope{
+		EventID:   "evt_v1",
+		Event:     "payments.orders.paid",
+		ProjectID: "p1",
+		Domain:    "payments",
+		Channel:   "accounts.u1",
+		CreatedAt: time.Now(),
+		Version:   time.Now().UnixNano(),
+		Attrs:     map[string]any{"order_id": "o1"},
+	}
+	payload := e.ClientPayload()
+	v, ok := payload["version"]
+	if !ok {
+		t.Fatal("经济事件 payload 必须含 version")
+	}
+	if got, ok := v.(int64); !ok || got <= 0 {
+		t.Fatalf("version 必须为正 int64，got %v (%T)", v, v)
+	}
+}

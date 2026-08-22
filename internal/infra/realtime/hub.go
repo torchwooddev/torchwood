@@ -15,7 +15,8 @@ const connSendBuffer = 64
 
 // dedupWindow 是 Hub 按 event_id 去重的时间窗（回收重放 / 崩溃重投
 // 的重复条目不再二次扇出；窗口覆盖 2min 兜底 + 30s idle 认领余量）。
-const dedupWindow = 5 * time.Minute
+// var 而非 const：测试覆写缩短窗口验证刷新语义。
+var dedupWindow = 5 * time.Minute
 
 // dedupMax 是 event_id 去重表上限；超限先清理过期条目。
 const dedupMax = 4096
@@ -146,6 +147,10 @@ func (h *Hub) markSeen(eventID string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if _, ok := h.dedup[eventID]; ok {
+		// 命中刷新时间戳（P1-13）：redispatch 每 2min 重发同一 event 时窗口
+		// 随最新一次见到的时间滑动——否则窗口从首见起算，标记持续失败
+		// >dedupWindow 后客户端会收到可见重复帧。
+		h.dedup[eventID] = now
 		return false
 	}
 	if len(h.dedup) >= dedupMax {

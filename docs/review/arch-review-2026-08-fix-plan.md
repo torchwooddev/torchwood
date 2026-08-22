@@ -327,10 +327,19 @@ config 增加 `security.encryption_key`（可选，缺省回退 jwt.secret 派�
 Warn）；TOTP/OAuth secret 加密改用独立 key 域派生（沿用
 `jwtparser.DeriveKey` 前缀域分离模式，过渡期读旧值重加密）。
 
-### W-J 事件重复/乱序收敛（P1-13/P1-14）
-- Hub dedup 命中时刷新时间戳（消除 5min 窗口过期后的可见重复）；
-- 经济事件信封补 `version` 字段（对齐文档事件），客户端可判序；
-- 死信表增加重放 CLI（`torchwood admin outbox replay`）与 dead 计数告警。
+### W-J 事件重复/乱序收敛（P1-13/P1-14）✅ 主体完成（2026-08-22）
+- **Hub dedup 命中刷新时间戳**（P1-13）：去重窗口随每次命中滑动——
+  此前窗口从首见起算，`published_at` 标记持续失败超过 5min 后，redispatch
+  （每 2min）重发的同一事件会穿透去重窗，客户端收到可见重复帧；
+  窗口改为 var 供测试覆写，`TestHubDispatch_DedupWindowSlidesOnHit`
+  用 100ms 窗验证边缘滑动语义；
+- **经济事件信封补 version**（P1-14）：订单/订阅事件 payload 带
+  `version`（updated_at 纳秒，同频道单调递增），对齐文档事件——客户端
+  可判序，补偿 outbox 失败退避插队导致的乱序投递；
+- **死信可观测**：`torchwood_outbox_dead` gauge（cleanupOnce 周期计数），
+  非零即需人工介入；
+- **残留**：死信重放工具（`torchwood admin outbox replay`）需要新增
+  RPC + scope + 审计的完整 API 面，移交 W-K 契约治理一并设计。
 
 ### W-K API 契约治理（P2-7/P2-8）
 - ListRequest.filter/order_by：12 个未实现端点要么实现（复用 pkg/crud）

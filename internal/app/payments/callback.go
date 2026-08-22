@@ -373,6 +373,9 @@ func orderEnvelope(order *domainpayments.Order, event string, now time.Time) dom
 		Domain:    domainpayments.EventDomain,
 		Channel:   domainpayments.AccountsChannel(order.UserID),
 		CreatedAt: now,
+		// version 用订单 updated_at 纳秒：同一账户频道内单调递增，客户端可
+		// 判序（乱序投递补偿，P1-14）。
+		Version: order.UpdatedAt.UnixNano(),
 		Attrs: map[string]any{
 			"order_id":     order.ID,
 			"user_id":      order.UserID,

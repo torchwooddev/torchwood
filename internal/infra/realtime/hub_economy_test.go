@@ -101,3 +101,38 @@ func TestHubDispatchDocumentUnchangedWithEconomyFields(t *testing.T) {
 	require.NotContains(t, payload, "channel")
 	hub.Remove(conn.ID)
 }
+
+// TestHubDispatch_DedupWindowSlidesOnHit (P1-13)：去重窗口随命中滑动——
+// 同一 event 在窗口边缘被 redispatch 重发时不得重新扇出（此前窗口从首见
+// 起算，标记持续失败 >dedupWindow 后客户端会收到可见重复帧）。
+func TestHubDispatch_DedupWindowSlidesOnHit(t *testing.T) {
+	orig := dedupWindow
+	dedupWindow = 100 * time.Millisecond
+	defer func() { dedupWindow = orig }()
+
+	hub := NewHub(nil)
+	conn := &Conn{ID: "c1", Send: make(chan map[string]any, 4)}
+	hub.Subscribe("accounts.u1", conn)
+	defer hub.Remove(conn.ID)
+
+	env := events.Envelope{
+		EventID: "evt_slide", Event: "payments.orders.paid", ProjectID: "p1",
+		Domain: "payments", Channel: "accounts.u1", CreatedAt: time.Now(),
+	}
+	hub.Dispatch(env) // 首见 t0
+	select {
+	case <-conn.Send:
+	default:
+		t.Fatal("首见事件必须扇出")
+	}
+
+	time.Sleep(60 * time.Millisecond)
+	hub.Dispatch(env) // t0+60ms 命中（刷新窗口）
+	time.Sleep(60 * time.Millisecond)
+	hub.Dispatch(env) // t0+120ms：距首见已超窗，但距上次命中仅 60ms——必须仍去重
+	select {
+	case frame := <-conn.Send:
+		t.Fatalf("窗口滑动后不得重复扇出, got %v", frame)
+	default:
+	}
+}

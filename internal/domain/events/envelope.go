@@ -98,6 +98,9 @@ func (e Envelope) ClientPayload() map[string]any {
 			"domain":     e.Domain,
 			"channel":    e.Channel,
 			"created_at": e.CreatedAt.UTC().Format(time.RFC3339),
+			// version 对齐文档事件（P1-14）：同频道内单调递增，客户端可判序
+			//（补偿 outbox 失败退避插队导致的乱序投递）。
+			"version": e.Version,
 		}
 		for k, v := range e.Attrs {
 			m[k] = v
