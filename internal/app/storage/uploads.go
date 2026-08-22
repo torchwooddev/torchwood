@@ -100,6 +100,11 @@ func (s *Storage) GetUploadSession(ctx context.Context, projectID, uploadID stri
 	if session.ProjectID != projectID {
 		return nil, status.Error(codes.PermissionDenied, "upload session does not belong to project")
 	}
+	// 属主校验对齐 UploadChunk/Complete/Abort（P2-10：同项目其他认证主体
+	// 此前可查询他人会话的 received 分片进度）。
+	if err := checkUploadOwner(session, storageEndUserID(principal), principal); err != nil {
+		return nil, err
+	}
 	if _, err := s.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}

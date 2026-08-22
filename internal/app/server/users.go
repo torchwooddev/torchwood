@@ -409,13 +409,12 @@ func sessionAsDocument(s *domainauth.Session) databases.Document {
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
 		Data: map[string]any{
-			"user_id":     s.UserID,
-			"secret_hash": s.SecretHash,
-			"provider":    s.Provider,
-			"user_agent":  s.UserAgent,
-			"ip":          s.IP,
-			"country":     s.Country,
-			"expire_at":   s.ExpireAt,
+			"user_id":    s.UserID,
+			"provider":   s.Provider,
+			"user_agent": s.UserAgent,
+			"ip":         s.IP,
+			"country":    s.Country,
+			"expire_at":  s.ExpireAt,
 		},
 	}
 }
