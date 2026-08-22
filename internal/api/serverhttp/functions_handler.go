@@ -172,11 +172,12 @@ func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathPa
 	})
 }
 
-// authorize 与 file_handler 一致：API key 走 FunctionsService/CreateDeployment
-// scope（functions.write），admin 走 X-Torchwood-Project + ValidateAdminProjectAccess；
-// 认证/项目解析等公共逻辑见 httpAuth（auth.go）。端用户（Bearer JWT / 会话 cookie）
-// 一律禁止上传部署代码包：任意注册用户可借此触发 Docker 构建并部署恶意代码窃取
-// 函数环境变量（安全评审 03）。
+// authorize 与 gRPC 拦截器对齐：API key 走 FunctionsService/CreateDeployment
+// scope（functions.write）；admin 会话要求 owner/admin 角色（对齐
+// pkg/grpc/interceptor/admin_roles.go，viewer/member 只读）；端用户
+// （Bearer JWT / 会话 cookie）一律禁止上传部署代码包：任意注册用户可借此
+// 触发 Docker 构建并部署恶意代码窃取函数环境变量（安全评审 03）。
+// 认证/项目解析等公共逻辑见 httpAuth（auth.go）。
 func (h *FunctionsHandler) authorize(r *http.Request) (*shared.Principal, error) {
 	principal, err := h.auth.authorize(r, func(*http.Request) string {
 		return FunctionsServiceCreateDeployment
@@ -186,6 +187,9 @@ func (h *FunctionsHandler) authorize(r *http.Request) (*shared.Principal, error)
 	}
 	if principal.ActorKind == shared.ActorKindEndUser {
 		return nil, status.Error(codes.PermissionDenied, "end-user credentials cannot upload deployments")
+	}
+	if principal.ActorKind == shared.ActorKindAdmin && !principal.HasAnyRole([]string{"owner", "admin"}) {
+		return nil, status.Error(codes.PermissionDenied, "admin role not permitted for deployment upload")
 	}
 	return principal, nil
 }

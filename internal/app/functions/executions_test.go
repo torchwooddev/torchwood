@@ -379,6 +379,129 @@ func TestProcessExecution_InvalidPayload(t *testing.T) {
 	require.Error(t, err)
 }
 
+// 2026-08 评审 P0-1：重复投递收敛——终态/在途记录一律跳过，不重复执行。
+func TestProcessExecution_DuplicateDeliverySkipsTerminal(t *testing.T) {
+	for _, st := range []string{
+		domainfunctions.ExecutionStatusCompleted,
+		domainfunctions.ExecutionStatusFailed,
+		domainfunctions.ExecutionStatusRunning,
+		domainfunctions.ExecutionStatusBuilding,
+	} {
+		repo := newMockRepo()
+		seedReadyFunction(repo, "p1", "fn_1", true, 15)
+		executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0}, nil)
+		uc := newTestUC(executor, repo, newMockQueue())
+		rec := &domainfunctions.ExecutionRecord{
+			ID: "e1", FunctionID: "fn_1", ProjectID: "p1", DeploymentID: "dep_ready",
+			Status: st, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+		require.NoError(t, repo.CreateExecution(context.Background(), rec))
+
+		err := uc.ProcessExecutionPayload(context.Background(), []byte(
+			`{"execution_id":"e1","function_id":"fn_1","project_id":"p1"}`))
+		require.NoError(t, err, "status %s 的重复投递必须静默跳过", st)
+		require.Empty(t, executor.calls, "status %s 不得触发执行", st)
+		got, _ := repo.GetExecution(context.Background(), "p1", "fn_1", "e1")
+		require.Equal(t, st, got.Status, "status %s 不得被改写", st)
+	}
+}
+
+// 补构建遇信号量满（ResourceExhausted）：归还 queued 供 requeue 重试，且不得
+// 删除既有 deployment 行（2026-08 评审 P0-2）。信号量释放后同一执行重试成功。
+func TestProcessExecution_SemaphoreFullReleasesAndKeepsDeployment(t *testing.T) {
+	repo := newMockRepo()
+	fn := seedReadyFunction(repo, "p1", "fn_1", true, 15)
+	require.NoError(t, repo.DeleteDeployment(context.Background(), "p1", fn.ID, "dep_ready"))
+	require.NoError(t, repo.CreateDeployment(context.Background(), &domainfunctions.Deployment{
+		ID: "dep_pending", FunctionID: "fn_1", ProjectID: "p1", Status: domainfunctions.DeploymentStatusPending,
+	}))
+
+	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0, Stdout: "ok"}, nil)
+	uc := newTestUC(executor, repo, newMockQueue())
+	rec := &domainfunctions.ExecutionRecord{
+		ID: "e1", FunctionID: "fn_1", ProjectID: "p1", DeploymentID: "dep_pending",
+		Status: domainfunctions.ExecutionStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.CreateExecution(context.Background(), rec))
+
+	// 占满构建信号量：worker 补构建路径拿到 ResourceExhausted。
+	for i := 0; i < maxConcurrentBuilds; i++ {
+		buildSemaphore <- struct{}{}
+	}
+	err := uc.ProcessExecutionPayload(context.Background(), []byte(
+		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1"}`))
+	require.Equal(t, codes.ResourceExhausted, status.Code(err), "可重试失败必须上抛，由 worker requeue 兜底")
+	for i := 0; i < maxConcurrentBuilds; i++ {
+		<-buildSemaphore
+	}
+
+	got, _ := repo.GetExecution(context.Background(), "p1", "fn_1", "e1")
+	require.Equal(t, domainfunctions.ExecutionStatusQueued, got.Status, "归还 queued 供重试再次领取")
+
+	dep, _ := repo.GetDeployment(context.Background(), "p1", "fn_1", "dep_pending")
+	require.NotNil(t, dep, "既有 deployment 行不得被信号量满删除（P0-2）")
+	require.Equal(t, domainfunctions.DeploymentStatusPending, dep.Status, "deployment 状态不得被改动")
+	require.Empty(t, executor.calls, "构建失败不得进入执行")
+
+	// 信号量释放后重试成功。
+	require.NoError(t, uc.ProcessExecutionPayload(context.Background(), []byte(
+		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1"}`)))
+	got, _ = repo.GetExecution(context.Background(), "p1", "fn_1", "e1")
+	require.Equal(t, domainfunctions.ExecutionStatusCompleted, got.Status)
+	dep, _ = repo.GetDeployment(context.Background(), "p1", "fn_1", "dep_pending")
+	require.Equal(t, domainfunctions.DeploymentStatusReady, dep.Status)
+}
+
+// 第三次重复投递（completed 之后）：不再执行、不再计费用量。
+func TestProcessExecution_CompletedNotReexecuted(t *testing.T) {
+	repo := newMockRepo()
+	seedReadyFunction(repo, "p1", "fn_1", true, 15)
+	executor := newMockExecutor(&domainfunctions.ExecutionResult{StatusCode: 0, DurationMS: 42}, nil)
+	uc := newTestUC(executor, repo, newMockQueue())
+	rec := &domainfunctions.ExecutionRecord{
+		ID: "e1", FunctionID: "fn_1", ProjectID: "p1", DeploymentID: "dep_ready",
+		Status: domainfunctions.ExecutionStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.CreateExecution(context.Background(), rec))
+
+	require.NoError(t, uc.ProcessExecutionPayload(context.Background(), []byte(
+		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1"}`)))
+	require.Len(t, executor.calls, 1)
+
+	// 重复投递 ×2。
+	require.NoError(t, uc.ProcessExecutionPayload(context.Background(), []byte(
+		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1"}`)))
+	require.NoError(t, uc.ProcessExecutionPayload(context.Background(), []byte(
+		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1"}`)))
+	require.Len(t, executor.calls, 1, "completed 记录不得重复执行")
+}
+
+// 2026-08 评审 P1-7：MarkExecutionFailed 不覆盖终态。
+func TestMarkExecutionFailed_DoesNotOverwriteTerminal(t *testing.T) {
+	repo := newMockRepo()
+	seedReadyFunction(repo, "p1", "fn_1", true, 15)
+	uc := newTestUC(newMockExecutor(nil, nil), repo, newMockQueue())
+
+	completed := &domainfunctions.ExecutionRecord{
+		ID: "e-done", FunctionID: "fn_1", ProjectID: "p1", DeploymentID: "dep_ready",
+		Status: domainfunctions.ExecutionStatusCompleted, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.CreateExecution(context.Background(), completed))
+	require.NoError(t, uc.MarkExecutionFailed(context.Background(), "p1", "fn_1", "e-done", "worker retries exhausted"))
+	got, _ := repo.GetExecution(context.Background(), "p1", "fn_1", "e-done")
+	require.Equal(t, domainfunctions.ExecutionStatusCompleted, got.Status, "completed 不被改写")
+
+	queued := &domainfunctions.ExecutionRecord{
+		ID: "e-q", FunctionID: "fn_1", ProjectID: "p1", DeploymentID: "dep_ready",
+		Status: domainfunctions.ExecutionStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.CreateExecution(context.Background(), queued))
+	require.NoError(t, uc.MarkExecutionFailed(context.Background(), "p1", "fn_1", "e-q", "worker retries exhausted"))
+	got, _ = repo.GetExecution(context.Background(), "p1", "fn_1", "e-q")
+	require.Equal(t, domainfunctions.ExecutionStatusFailed, got.Status, "queued 正常标 failed")
+	require.Equal(t, "worker retries exhausted", got.Error)
+}
+
 type recUsage struct{ n int64 }
 
 func (r *recUsage) Incr(_ context.Context, _ string, metric string, delta int64) error {

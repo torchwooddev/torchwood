@@ -139,7 +139,7 @@ func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 	if err := ident.ValidateSchemaResourceID(id); err != nil {
 		return appshared.MapIdentError(err)
 	}
-	return s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := s.db.RunInTx(ctx, func(txCtx context.Context) error {
 		dbs, err := s.docDB.ListDatabases(txCtx, id)
 		if err != nil {
 			return fmt.Errorf("list databases: %w", err)
@@ -167,6 +167,13 @@ func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	// schema 已 DROP：清除 projectschema 就绪缓存，否则同 ID 重建项目时
+	// 缓存直通会跳过 schema 重建。
+	projectschema.Invalidate(s.db, id)
+	return nil
 }
 
 func (s *Projects) deletePublicProjectRows(ctx context.Context, projectID string) error {

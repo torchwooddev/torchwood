@@ -19,9 +19,13 @@ type redisQueue struct {
 
 const (
 	queueGroupSuffix = "-group"
-	// claimMinIdle 是 PEL 认领的最小 idle；队列侧用较短 idle（100ms）保证单元测试中不 Ack 后能快速重投，生产侧 worker 1s 轮询下仍满足至少一次。
-	claimMinIdle = 100 * time.Millisecond
 )
+
+// claimMinIdle 是 PEL 认领的最小 idle，必须显著大于消息最长在途处理时长
+// （补构建 5min 超时 + 执行超时），否则并发消费 goroutine 会把仍在处理中的
+// 消息从 PEL 重新认领、并发重复执行。15min 只服务崩溃恢复语义；单元测试
+// 需要快速重投时直接覆写本变量。
+var claimMinIdle = 15 * time.Minute
 
 // NewRedisQueue creates a Redis-backed queue adapter.
 func NewRedisQueue(client *redis.Client) domainshared.Queue {
@@ -44,6 +48,11 @@ func (q *redisQueue) Enqueue(ctx context.Context, name string, payload []byte) e
 }
 
 func (q *redisQueue) ensureGroup(ctx context.Context, name string) error {
+	// 保持 "0-0" 起始：组首次创建前已入队的消息（server 先于 worker 启动的
+	// 部署顺序）必须可投递，"$" 会静默跳过它们。组被误删重建时的全量重放
+	// 会产生重复投递，但 ProcessExecution 的 CAS 领取闸门
+	// （TransitionExecutionStatus queued→building）把重复投递收敛为幂等跳过，
+	// 重放无害（2026-08 评审 P1-4 定案：闸门兜底优于起始位取舍）。
 	err := q.client.XGroupCreateMkStream(ctx, name, queueGroup(name), "0-0").Err()
 	if err == nil || strings.Contains(err.Error(), "BUSYGROUP") {
 		return nil

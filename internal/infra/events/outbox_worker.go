@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/uptrace/bun"
 )
 
 const (
@@ -24,6 +25,12 @@ const (
 	outboxRedispatchAfter = 2 * time.Minute
 	// outboxMaxBackoff 是 XADD 失败后 available_at 退避上限。
 	outboxMaxBackoff = time.Minute
+	// outboxCleanupInterval 是已发布行/死信行清理周期。
+	outboxCleanupInterval = 10 * time.Minute
+	// outboxPublishedRetention 是已发布行保留窗口（排障/重放核对）。
+	outboxPublishedRetention = 24 * time.Hour
+	// outboxDeadRetention 是死信行保留窗口。
+	outboxDeadRetention = 30 * 24 * time.Hour
 )
 
 // outbox 领取与投递指标（前缀 torchwood_，注册到默认注册表，
@@ -65,15 +72,21 @@ func NewOutboxWorker(db *clients.Database, transport shared.RealtimeTransport, l
 	return &OutboxWorker{db: db, transport: transport, logger: logger}
 }
 
-// Run 以 200ms 间隔轮询领取；ctx 取消即返回。
+// Run 以 200ms 间隔轮询领取；低频 ticker 清理已发布/死信行；ctx 取消即返回。
 func (w *OutboxWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(outboxPollInterval)
 	defer ticker.Stop()
+	cleanup := time.NewTicker(outboxCleanupInterval)
+	defer cleanup.Stop()
+	// 启动即清一次，避免短命进程错过周期窗口。
+	w.cleanupOnce(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+		case <-cleanup.C:
+			w.cleanupOnce(ctx)
 		}
 		if err := w.pollOnce(ctx); err != nil {
 			if ctx.Err() != nil {
@@ -85,24 +98,14 @@ func (w *OutboxWorker) Run(ctx context.Context) error {
 }
 
 // pollOnce 领取一轮：主路径（dispatched_at IS NULL）+ 2min 整进程挂死
-// 兜底（dispatched_at 过旧）合并为同一查询，同一 FOR UPDATE SKIP LOCKED
-// 语义（v2 设计 §3.4 领取 SQL）。
+// 兜底（dispatched_at 过旧）合并为同一查询（v2 设计 §3.4 领取 SQL）。
 func (w *OutboxWorker) pollOnce(ctx context.Context) error {
 	if n, err := w.db.Conn(ctx).NewSelect().Model((*model.DocumentEventsOutbox)(nil)).
 		Where("published_at IS NULL").Count(ctx); err == nil {
 		outboxPending.Set(float64(n))
 	}
 
-	var rows []model.DocumentEventsOutbox
-	err := w.db.Conn(ctx).NewSelect().Model(&rows).
-		Column("event_id", "payload", "channel", "created_at", "attempts").
-		Where("published_at IS NULL").
-		Where("available_at <= NOW()").
-		Where("(dispatched_at IS NULL OR dispatched_at < NOW() - INTERVAL '2 minutes')").
-		Order("available_at").
-		Limit(outboxBatchSize).
-		For("UPDATE SKIP LOCKED").
-		Scan(ctx)
+	rows, err := w.claim(ctx)
 	if err != nil {
 		return err
 	}
@@ -112,8 +115,68 @@ func (w *OutboxWorker) pollOnce(ctx context.Context) error {
 	return nil
 }
 
-// dispatch 把单行信封 XADD 到 Stream；成功刷新 dispatched_at，失败
-// attempts+1 指数退避或迁入死信表。
+// claim 在单个事务内 SELECT ... FOR UPDATE SKIP LOCKED 并把领取行标记
+// dispatched_at——行锁在整个事务内生效，多副本不会领取同一批行重复 XADD。
+// 标记随事务提交持久化；XADD 在事务外进行（不持数据库行锁做 IO）。
+// claim 后崩溃的行由 2min redispatch 窗口兜底重发。
+func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox, error) {
+	var rows []model.DocumentEventsOutbox
+	err := w.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := w.db.Conn(txCtx).NewSelect().Model(&rows).
+			Column("event_id", "payload", "channel", "created_at", "attempts").
+			Where("published_at IS NULL").
+			Where("available_at <= NOW()").
+			Where("(dispatched_at IS NULL OR dispatched_at < NOW() - INTERVAL '2 minutes')").
+			Order("available_at").
+			Limit(outboxBatchSize).
+			For("UPDATE SKIP LOCKED").
+			Scan(txCtx); err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		ids := make([]string, len(rows))
+		for i := range rows {
+			ids[i] = rows[i].EventID
+		}
+		_, err := w.db.Conn(txCtx).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
+			Set("dispatched_at = NOW()").
+			Where("event_id IN (?)", bun.In(ids)).
+			Exec(txCtx)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// cleanupOnce 删除超过保留窗口的已发布行与死信行（表无限增长治理）。
+func (w *OutboxWorker) cleanupOnce(ctx context.Context) {
+	if res, err := w.db.Conn(ctx).NewDelete().Model((*model.DocumentEventsOutbox)(nil)).
+		Where("published_at IS NOT NULL").
+		Where("published_at < ?", time.Now().Add(-outboxPublishedRetention)).
+		Exec(ctx); err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			w.logger.Info("outbox purged published rows", "count", n)
+		}
+	} else if ctx.Err() == nil {
+		w.logger.Error("outbox purge published failed", "error", err)
+	}
+	if res, err := w.db.Conn(ctx).NewRaw(
+		`DELETE FROM document_events_outbox_dead WHERE created_at < ?`,
+		time.Now().Add(-outboxDeadRetention)).Exec(ctx); err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			w.logger.Info("outbox purged dead rows", "count", n)
+		}
+	} else if ctx.Err() == nil {
+		w.logger.Error("outbox purge dead failed", "error", err)
+	}
+}
+
+// dispatch 把单行信封 XADD 到 Stream。dispatched_at 已在 claim 事务内标记，
+// 此处无需回写；XADD 失败走 failRow（归还 dispatched_at 并按退避重试）。
 func (w *OutboxWorker) dispatch(ctx context.Context, row *model.DocumentEventsOutbox) {
 	ev, err := UnmarshalEnvelope(row.Payload)
 	if err != nil {
@@ -132,15 +195,12 @@ func (w *OutboxWorker) dispatch(ctx context.Context, row *model.DocumentEventsOu
 	}
 	outboxPublishTotal.WithLabelValues("ok").Inc()
 	outboxPublishLag.Observe(time.Since(ev.CreatedAt).Seconds())
-	if _, err := w.db.Conn(ctx).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
-		Set("dispatched_at = NOW()").
-		Where("event_id = ?", row.EventID).Exec(ctx); err != nil {
-		w.logger.Error("mark outbox dispatched failed", "event_id", row.EventID, "error", err)
-	}
 }
 
-// failRow 记录 XADD 失败：attempts+1、available_at 指数退避（上限 60s）；
-// attempts 达到 maxOutboxAttempts 时把行迁入 document_events_outbox_dead。
+// failRow 记录 XADD 失败：attempts+1、available_at 指数退避（上限 60s）、
+// 归还 dispatched_at（claim 时预标记的，置 NULL 恢复"按退避快速重试"语义，
+// 不必等 2min redispatch 窗口）；attempts 达到 maxOutboxAttempts 时把行
+// 迁入 document_events_outbox_dead。
 func (w *OutboxWorker) failRow(ctx context.Context, row *model.DocumentEventsOutbox, cause error) {
 	attempts := row.Attempts + 1
 	if attempts >= maxOutboxAttempts {
@@ -172,6 +232,7 @@ func (w *OutboxWorker) failRow(ctx context.Context, row *model.DocumentEventsOut
 	if _, err := w.db.Conn(ctx).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
 		Set("attempts = attempts + 1").
 		Set("available_at = ?", time.Now().Add(backoff)).
+		Set("dispatched_at = NULL").
 		Where("event_id = ?", row.EventID).Exec(ctx); err != nil {
 		w.logger.Error("mark outbox retry failed", "event_id", row.EventID, "error", err)
 	}

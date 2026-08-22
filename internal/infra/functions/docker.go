@@ -301,8 +301,17 @@ func (d *dockerExecutor) Execute(ctx context.Context, exec functions.Execution) 
 	waitCh, errCh := cli.ContainerWait(runCtx, containerID, container.WaitConditionNotRunning)
 	select {
 	case <-runCtx.Done():
-		// 超时或调用方取消：停止并强制清理容器（无残留）。
+		// 超时或调用方取消：停止并强制清理容器（无残留）。ContainerStop 使
+		// 容器退出后 docker client 内部 goroutine 会向无缓冲的结果通道发送，
+		// 此处必须异步排空 waitCh/errCh，否则该 goroutine（含 HTTP resp）
+		// 永久阻塞泄漏——每次超时执行泄漏一个。
 		_ = cli.ContainerStop(context.Background(), containerID, container.StopOptions{})
+		go func() {
+			select {
+			case <-waitCh:
+			case <-errCh:
+			}
+		}()
 		<-done
 		return nil, runCtx.Err()
 	case err := <-errCh:

@@ -43,6 +43,11 @@ func (m *MailerService) Send(ctx context.Context, to, subject, body string) erro
 	if !m.devLogOTP {
 		return fmt.Errorf("smtp is not configured")
 	}
+	// fail-closed：生产环境禁止把含验证码的邮件打到 stdout（日志可读 =
+	// 任意邮箱 OTP 接管面）。宁可发送失败也不泄漏。
+	if config.CurrentRuntimeEnv() == config.EnvProduction {
+		return fmt.Errorf("dev_log_otp is forbidden in production: configure messaging.smtp or set messaging.dev_log_otp=false")
+	}
 	fmt.Printf("[Torchwood-dev-mailer] to=%s subject=%q body=%q\n", to, subject, body)
 	return nil
 }

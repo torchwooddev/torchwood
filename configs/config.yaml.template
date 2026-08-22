@@ -136,8 +136,10 @@ messaging:
     password: ""            # env: TORCHWOOD_MESSAGING_SMTP_PASSWORD
     from: "noreply@torchwood.local"
     use_tls: true
-  dev_log_otp: true         # log OTP to stdout when SMTP host is empty (dev only)
-  dev_log_sms: true         # log SMS OTP to stdout when SMS provider is empty (dev only)
+  # dev only：SMTP/SMS 未配置时把验证码打到 stdout；生产环境（TORCHWOOD_ENV
+  # 非 development）发送路径会直接拒绝，防止日志泄漏 OTP。默认关闭。
+  dev_log_otp: false
+  dev_log_sms: false
   sms:
     provider: ""            # twilio
     twilio:

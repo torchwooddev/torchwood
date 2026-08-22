@@ -80,14 +80,14 @@ func (f *Functions) CreateDeployment(ctx context.Context, cmd CreateDeploymentCo
 }
 
 // buildDeployment 占用构建信号量并同步构建镜像；结果写入 dep 状态并落库。
+// 信号量满仅返回 ResourceExhausted——是否清理 deployment 行与 zip 是调用方
+// 的决策（CreateDeployment 清理本次刚建的 pending 行；worker 补构建路径
+// 保留既有 deployment，靠队列重试在信号量释放后重建）。
 func (f *Functions) buildDeployment(ctx context.Context, dep *domainfunctions.Deployment, path string) error {
 	select {
 	case buildSemaphore <- struct{}{}:
 		defer func() { <-buildSemaphore }()
 	default:
-		// 信号量满：删除 deployment 行与本地 zip（幂等）。
-		_ = f.repo.DeleteDeployment(ctx, dep.ProjectID, dep.FunctionID, dep.ID)
-		_ = removeZip(dep.ProjectID, dep.FunctionID, dep.ID)
 		return status.Error(codes.ResourceExhausted, "too many concurrent builds")
 	}
 

@@ -73,6 +73,12 @@ func (r *stubRepo) RecoverOrphanExecutionsInProject(context.Context, string, tim
 func (r *stubRepo) PruneOldExecutionsInProject(context.Context, string, string, int) error {
 	return nil
 }
+func (r *stubRepo) TransitionExecutionStatus(context.Context, string, string, string, string, string) (bool, error) {
+	return false, nil
+}
+func (r *stubRepo) FailExecutionIfActive(context.Context, string, string, string, string) error {
+	return nil
+}
 
 type stubExecutor struct{}
 

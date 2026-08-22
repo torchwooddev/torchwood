@@ -235,9 +235,11 @@ func (f *Functions) runExecution(ctx context.Context, fn *domainfunctions.Functi
 	return rec, nil
 }
 
-// ProcessExecution 供 worker 消费队列任务：加载记录 → 补构建（deployment 非
-// ready）→ building → running → 执行 → 写回。记录已被删除（更新影响 0 行）
-// 时静默忽略。
+// ProcessExecution 供 worker 消费队列任务：CAS 领取（queued→building，防
+// 重复投递并发执行）→ 加载部署 → 补构建（deployment 非 ready）→ running →
+// 执行 → 写回。记录已被删除时静默忽略；领取失败（已被其他消费者领取或已
+// 处于终态）同样静默跳过——队列 at-least-once 语义下的重复消息在此收敛为
+// 单次执行。
 func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) error {
 	rec, err := f.repo.GetExecution(ctx, msg.ProjectID, msg.FunctionID, msg.ExecutionID)
 	if err != nil {
@@ -246,15 +248,41 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 	if rec == nil {
 		return nil
 	}
-	fn, err := f.repo.GetFunction(ctx, msg.ProjectID, msg.FunctionID)
+	claimed, err := f.repo.TransitionExecutionStatus(ctx, msg.ProjectID, msg.FunctionID, msg.ExecutionID,
+		domainfunctions.ExecutionStatusQueued, domainfunctions.ExecutionStatusBuilding)
 	if err != nil {
 		return err
 	}
+	if !claimed {
+		return nil
+	}
+	rec.Status = domainfunctions.ExecutionStatusBuilding
+	rec.UpdatedAt = time.Now()
+
+	// release 把执行归还回队列（building→queued），供可重试失败后 worker
+	// requeue 重投再次领取；归还失败时记录停留在 building，由
+	// RecoverOrphanExecutions 在 1h 后标记 failed（与 worker 崩溃孤儿同一兜底）。
+	release := func() {
+		_, _ = f.repo.TransitionExecutionStatus(context.WithoutCancel(ctx), msg.ProjectID, msg.FunctionID, msg.ExecutionID,
+			domainfunctions.ExecutionStatusBuilding, domainfunctions.ExecutionStatusQueued)
+	}
+
+	fn, err := f.repo.GetFunction(ctx, msg.ProjectID, msg.FunctionID)
+	if err != nil {
+		release()
+		return err
+	}
 	if fn == nil {
+		// 函数已删除：终态失败（此前静默返回会让记录永久滞留 queued）。
+		rec.Status = domainfunctions.ExecutionStatusFailed
+		rec.Error = "function not found"
+		rec.UpdatedAt = time.Now()
+		_ = f.repo.UpdateExecution(ctx, rec)
 		return nil
 	}
 	dep, err := f.repo.GetDeployment(ctx, msg.ProjectID, msg.FunctionID, rec.DeploymentID)
 	if err != nil {
+		release()
 		return err
 	}
 	if dep == nil {
@@ -267,24 +295,23 @@ func (f *Functions) ProcessExecution(ctx context.Context, msg queueMessage) erro
 
 	vars, err := f.repo.GetVariables(ctx, msg.ProjectID, msg.FunctionID)
 	if err != nil {
+		release()
 		return err
 	}
 
 	// deployment 非 ready 先补构建（5 分钟超时，防挂死的 daemon 卡住消费）。
+	// 构建失败（含信号量满）按可重试处理：归还 queued 并返回错误，由 worker
+	// requeue 在退避后重试；重试超限走 failPayload 兜底。
 	if dep.Status != domainfunctions.DeploymentStatusReady {
-		rec.Status = domainfunctions.ExecutionStatusBuilding
-		rec.UpdatedAt = time.Now()
 		if err := f.repo.UpdateExecution(ctx, rec); err != nil {
+			release()
 			return err
 		}
 		buildCtx, cancel := context.WithTimeout(ctx, workerRebuildTimeout)
 		buildErr := f.buildDeployment(buildCtx, dep, zipPath(msg.ProjectID, msg.FunctionID, dep.ID))
 		cancel()
 		if buildErr != nil {
-			rec.Status = domainfunctions.ExecutionStatusFailed
-			rec.Error = "rebuild deployment failed"
-			rec.UpdatedAt = time.Now()
-			_ = f.repo.UpdateExecution(ctx, rec)
+			release()
 			return buildErr
 		}
 	}
@@ -384,18 +411,9 @@ func (f *Functions) ProcessExecutionPayload(ctx context.Context, payload []byte)
 }
 
 // MarkExecutionFailed 供 worker 在消费重试超限后兜底标记执行失败。
+// 仅作用于未终态记录：completed/failed 不被覆盖（防重复投递回写覆盖终态）。
 func (f *Functions) MarkExecutionFailed(ctx context.Context, projectID, functionID, executionID, reason string) error {
-	rec, err := f.repo.GetExecution(ctx, projectID, functionID, executionID)
-	if err != nil {
-		return err
-	}
-	if rec == nil {
-		return nil
-	}
-	rec.Status = domainfunctions.ExecutionStatusFailed
-	rec.Error = reason
-	rec.UpdatedAt = time.Now()
-	return f.repo.UpdateExecution(ctx, rec)
+	return f.repo.FailExecutionIfActive(ctx, projectID, functionID, executionID, reason)
 }
 
 // RecoverOrphanExecutions 按 public.projects 枚举 active 项目，将停留

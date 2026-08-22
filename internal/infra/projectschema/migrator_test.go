@@ -112,6 +112,11 @@ func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
 	// 回退到「已应用 1–5」：删 6/7/8 版本行（否则 MAX 停在 8，Apply 会跳过 000006），
 	// 把 subscriptions 表替换为缺列残缺版（provider/provider_sub_id 不存在），
 	// 令 000006 的 subscriptions_provider_sub 建索引失败。
+	//
+	// CreateTestProject 已做过全量 Apply，就绪缓存命中会直通跳过迁移检查——
+	// 迁移器之外的带外 schema 状态改动必须先 Invalidate（与项目删除路径
+	// 同一契约）。
+	projectschema.Invalidate(db, projectID)
 	_, err = db.DB.ExecContext(ctx,
 		`DELETE FROM `+quoted+`.schema_migrations WHERE version IN (6, 7, 8, 9)`)
 	require.NoError(t, err)
@@ -139,4 +144,43 @@ func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
 	err = projectschema.Apply(ctx, db, projectID)
 	require.ErrorContains(t, err, "is dirty")
 	require.Contains(t, err.Error(), schema)
+}
+
+// TestApply_ReadyCacheAndInvalidate 验证就绪缓存契约（2026-08 评审 P0-4）：
+// Apply 成功后缓存命中直通（外部 DROP SCHEMA 后不再重建）；Invalidate 清除
+// 缓存后 Apply 重建。这正是项目删除（DROP SCHEMA）路径必须调用 Invalidate
+// 的原因——否则同 ID 重建项目时缓存直通会跳过 schema 重建。
+func TestApply_ReadyCacheAndInvalidate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	// 显式 Apply 确保本进程缓存条目存在。
+	require.NoError(t, projectschema.Apply(ctx, db, projectID))
+
+	schema, err := ident.ProjectSchemaName(projectID)
+	require.NoError(t, err)
+	quoted := `"` + schema + `"`
+
+	// 模拟项目删除路径的外部 DROP。
+	_, err = db.DB.ExecContext(ctx, `DROP SCHEMA IF EXISTS `+quoted+` CASCADE`)
+	require.NoError(t, err)
+
+	// 缓存命中：Apply 直通，不重建。
+	require.NoError(t, projectschema.Apply(ctx, db, projectID))
+	var ns any
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
+	require.Nil(t, ns, "缓存命中时不得重建 schema")
+
+	// Invalidate 后 Apply 重建。
+	projectschema.Invalidate(db, projectID)
+	require.NoError(t, projectschema.Apply(ctx, db, projectID))
+	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
+	require.NotNil(t, ns, "Invalidate 后 Apply 必须重建 schema")
 }

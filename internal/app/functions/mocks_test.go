@@ -178,6 +178,36 @@ func (r *mockRepo) UpdateExecution(_ context.Context, e *domainfunctions.Executi
 	return nil
 }
 
+func (r *mockRepo) TransitionExecutionStatus(_ context.Context, projectID, functionID, executionID, from, to string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e := r.executions[executionID]
+	if e == nil || e.FunctionID != functionID || e.ProjectID != projectID || e.Status != from {
+		return false, nil
+	}
+	e.Status = to
+	e.UpdatedAt = time.Now()
+	return true, nil
+}
+
+func (r *mockRepo) FailExecutionIfActive(_ context.Context, projectID, functionID, executionID, reason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e := r.executions[executionID]
+	if e == nil || e.FunctionID != functionID || e.ProjectID != projectID {
+		return nil
+	}
+	switch e.Status {
+	case domainfunctions.ExecutionStatusQueued,
+		domainfunctions.ExecutionStatusBuilding,
+		domainfunctions.ExecutionStatusRunning:
+		e.Status = domainfunctions.ExecutionStatusFailed
+		e.Error = reason
+		e.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
 func (r *mockRepo) RecoverOrphanExecutionsInProject(_ context.Context, projectID string, olderThan time.Time, limit int) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

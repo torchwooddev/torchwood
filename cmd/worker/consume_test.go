@@ -75,6 +75,30 @@ func (r *retryRepo) UpdateExecution(_ context.Context, e *domainfunctions.Execut
 	r.rec = &cp
 	return nil
 }
+func (r *retryRepo) TransitionExecutionStatus(_ context.Context, _, _, _ string, from, to string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.rec == nil || r.rec.Status != from {
+		return false, nil
+	}
+	r.rec.Status = to
+	return true, nil
+}
+func (r *retryRepo) FailExecutionIfActive(_ context.Context, _, _, _, reason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.rec == nil {
+		return nil
+	}
+	switch r.rec.Status {
+	case domainfunctions.ExecutionStatusQueued,
+		domainfunctions.ExecutionStatusBuilding,
+		domainfunctions.ExecutionStatusRunning:
+		r.rec.Status = domainfunctions.ExecutionStatusFailed
+		r.rec.Error = reason
+	}
+	return nil
+}
 func (r *retryRepo) RecoverOrphanExecutionsInProject(context.Context, string, time.Time, int) (int64, error) {
 	return 0, nil
 }

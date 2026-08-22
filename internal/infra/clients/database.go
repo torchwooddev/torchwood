@@ -77,9 +77,18 @@ func newDatabase(cfg *config.Database, logger *slog.Logger) (*Database, func(), 
 	// document_events_outbox（256KiB 上限 + 余量），默认缓冲下 >4KB 参数报
 	// bufio: buffer full，整段 RunInTx 回滚、文档写失败。测试库已在
 	// testutil.SetupTestDB 对齐同值。
+	//
+	// 超时显式化：不设置时 pgdriver 隐式默认 ReadTimeout=10s 会在客户端
+	// 杀掉长查询（大集合 CREATE INDEX / 迁移）而服务端继续执行，重试放大
+	// 负载。ReadTimeout 放宽到 60s 容纳索引构建；不设服务端
+	// statement_timeout（会误杀控制面迁移与拷贝任务）。
 	sqldb := sql.OpenDB(pgdriver.NewConnector(
 		pgdriver.WithDSN(source),
 		pgdriver.WithBufferSize(2<<20),
+		pgdriver.WithDialTimeout(5*time.Second),
+		pgdriver.WithReadTimeout(60*time.Second),
+		pgdriver.WithWriteTimeout(10*time.Second),
+		pgdriver.WithApplicationName("torchwood"),
 	))
 	if pool := cfg.GetPool(); pool != nil {
 		maxOpen, maxIdle := normalizePoolSizes(int(pool.GetMaxOpenConns()), int(pool.GetMaxIdleConns()), logger)

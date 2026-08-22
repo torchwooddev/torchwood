@@ -42,6 +42,10 @@ func (s *SMSService) Send(ctx context.Context, to, body string) error {
 		if !s.devLogSMS {
 			return fmt.Errorf("sms provider is not configured")
 		}
+		// fail-closed：生产环境禁止把含验证码的短信打到 stdout（同 mailer）。
+		if config.CurrentRuntimeEnv() == config.EnvProduction {
+			return fmt.Errorf("dev_log_sms is forbidden in production: configure messaging.sms.provider or set messaging.dev_log_sms=false")
+		}
 		fmt.Printf("[Torchwood-dev-sms] to=%s body=%q\n", to, body)
 		return nil
 	}

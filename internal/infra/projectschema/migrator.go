@@ -20,13 +20,45 @@ var migrationFS embed.FS
 // systemTablesCutVersion 是 000009：Exec 前必须在同一事务 CopySystemDocuments。
 const systemTablesCutVersion int64 = 9
 
+// readySchemas 缓存"该 Database 实例上该 project schema 已达最新迁移版本"。
+// 键含 *clients.Database 指针：测试进程内多套 testutil 库共用同一 projectID
+// 时不互相污染；生产每进程一个 Database 实例。迁移集是编译期 embed，新增
+// 迁移 = 新二进制 = 新进程，缓存无需显式失效。
+var readySchemas sync.Map // map[readyKey]struct{}
+
+type readyKey struct {
+	db        *clients.Database
+	projectID string
+}
+
 // Apply 在调用方已打开的 tx（或自行 RunInTx）上执行待应用的项目 DDL。
 // SQL 文件替换 {{schema}} 后零查询参数，走 simple protocol 多语句 Exec。
 // 中途失败：事务内标记随 ROLLBACK 撤销，随后经独立连接补写 dirty=true
 // 持久化（EnsureAll 路径靠它跳过脏项目；CreateProject 路径整体回滚后
 // schema 不存在，补写失败属预期，best-effort 忽略）。
+//
+// 缓存命中（本进程确认过该 schema 已达最新）直接返回，跳过迁移事务与
+// advisory 锁——这是数据面 repo 每次 Scoped 调用的热路径。仅在独立事务
+// 提交成功后写缓存：外层事务回滚时 schema_migrations 写入一并撤销，
+// 缓存不得说谎。
 func Apply(ctx context.Context, db *clients.Database, projectID string) error {
-	return applyUpTo(ctx, db, projectID, 0)
+	if err := ident.ValidateSchemaResourceID(projectID); err != nil {
+		return fmt.Errorf("invalid project id: %w", err)
+	}
+	if _, ok := readySchemas.Load(readyKey{db: db, projectID: projectID}); ok {
+		return nil
+	}
+	err := applyUpTo(ctx, db, projectID, 0)
+	if err == nil && !clients.InTx(ctx) {
+		readySchemas.Store(readyKey{db: db, projectID: projectID}, struct{}{})
+	}
+	return err
+}
+
+// Invalidate 清除 project 的就绪缓存。项目删除（DROP SCHEMA）后必须调用，
+// 否则同 ID 重建项目时缓存直通会跳过 schema 重建。
+func Invalidate(db *clients.Database, projectID string) {
+	readySchemas.Delete(readyKey{db: db, projectID: projectID})
 }
 
 // ApplyUpTo 应用不超过 maxVersion 的迁移（maxVersion<=0 表示全部）。拷贝测试停在 000008。

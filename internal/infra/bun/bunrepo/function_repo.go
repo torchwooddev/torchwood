@@ -289,6 +289,49 @@ func (r *functionRepo) UpdateExecution(ctx context.Context, e *domainfunctions.E
 	return err
 }
 
+func (r *functionRepo) TransitionExecutionStatus(ctx context.Context, projectID, functionID, executionID, from, to string) (bool, error) {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_executions", "fe")
+	if err != nil {
+		return false, err
+	}
+	res, err := conn.NewUpdate().Model((*model.FunctionExecution)(nil)).
+		ModelTableExpr(expr, sch).
+		Set("status = ?", to).
+		Set("updated_at = ?", time.Now()).
+		Where("fe.project_id = ?", projectID).
+		Where("fe.function_id = ?", functionID).
+		Where("fe.id = ?", executionID).
+		Where("fe.status = ?", from).
+		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+func (r *functionRepo) FailExecutionIfActive(ctx context.Context, projectID, functionID, executionID, reason string) error {
+	conn, sch, expr, err := r.scoped(ctx, projectID, "function_executions", "fe")
+	if err != nil {
+		return err
+	}
+	_, err = conn.NewUpdate().Model((*model.FunctionExecution)(nil)).
+		ModelTableExpr(expr, sch).
+		Set("status = ?", domainfunctions.ExecutionStatusFailed).
+		Set("error = ?", reason).
+		Set("updated_at = ?", time.Now()).
+		Where("fe.project_id = ?", projectID).
+		Where("fe.function_id = ?", functionID).
+		Where("fe.id = ?", executionID).
+		Where("fe.status IN (?)", bun.In([]string{
+			domainfunctions.ExecutionStatusQueued,
+			domainfunctions.ExecutionStatusBuilding,
+			domainfunctions.ExecutionStatusRunning,
+		})).
+		Exec(ctx)
+	return err
+}
+
 func (r *functionRepo) RecoverOrphanExecutionsInProject(ctx context.Context, projectID string, olderThan time.Time, limit int) (int64, error) {
 	if limit <= 0 {
 		return 0, nil
@@ -337,9 +380,12 @@ func (r *functionRepo) PruneOldExecutionsInProject(ctx context.Context, projectI
 	if err != nil {
 		return err
 	}
+	// 只清理终态记录：queued/building/running 可能仍对应在途队列消息，
+	// 物理删除会导致消息被消费时静默丢弃（rec==nil → Ack）。
 	_, err = r.db.Conn(ctx).ExecContext(ctx, fmt.Sprintf(`
 DELETE FROM %s.function_executions
 WHERE project_id = ? AND function_id = ?
+  AND status IN (?, ?)
   AND id NOT IN (
     SELECT id FROM (
       SELECT id FROM %s.function_executions
@@ -348,7 +394,11 @@ WHERE project_id = ? AND function_id = ?
       LIMIT ?
     ) keep
   )
-`, quoted, quoted), projectID, functionID, projectID, functionID, keepRecent)
+`, quoted, quoted),
+		projectID, functionID,
+		domainfunctions.ExecutionStatusCompleted,
+		domainfunctions.ExecutionStatusFailed,
+		projectID, functionID, keepRecent)
 	return err
 }
 

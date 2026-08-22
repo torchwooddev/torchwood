@@ -354,6 +354,37 @@ func TestFunctionsHandler_Authorize_AdminAndAPIKey(t *testing.T) {
 	})
 }
 
+// TestFunctionsHandler_Authorize_ViewerMemberDenied（2026-08 评审 P0-3）：
+// viewer/member 角色的 admin 会话不得上传部署代码包——对齐 gRPC 拦截器
+// admin_roles.go 对 CreateDeployment 的 {owner, admin} 要求；此前 HTTP 路径
+// 缺该检查，viewer 可部署任意代码。
+func TestFunctionsHandler_Authorize_ViewerMemberDenied(t *testing.T) {
+	t.Parallel()
+
+	for _, role := range []string{"viewer", "member"} {
+		t.Run(role+" denied", func(t *testing.T) {
+			admin := &projects.Admin{ID: "admin-1", Email: "admin@torchwood.local", Role: role}
+			validator := auth.NewValidator(functionsTestConfig(), &functionsAPIKeyRepo{}, &functionsAdminRepo{
+				admins: map[string]*projects.Admin{admin.ID: admin},
+			}, &functionsAdminProjectRepo{}, nil, nil, nil, nil)
+			h := newFunctionsHandler(t, validator)
+
+			token := functionsSignToken(t, jwtparser.Claims{
+				UserID:    admin.ID,
+				Username:  admin.Email,
+				ActorKind: "admin",
+				TokenType: jwtparser.TokenTypeAccess,
+				IssuedAt:  time.Now().Unix(),
+				ExpiresAt: time.Now().Add(time.Hour).Unix(),
+			})
+			r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
+			r.Header.Set("Authorization", "Bearer "+token)
+			_, err := h.authorize(r)
+			require.Equal(t, codes.PermissionDenied, status.Code(err), "role %s 不得上传部署代码包", role)
+		})
+	}
+}
+
 // ---- Round3 H2-1：upload 必须把已鉴权 principal 注入 ctx 再调 CreateDeployment ----
 
 // functionsTestRepo 是最小 FunctionRepo 桩：仅 GetFunction/CreateDeployment/
@@ -417,6 +448,12 @@ func (r *functionsTestRepo) RecoverOrphanExecutionsInProject(context.Context, st
 	return 0, nil
 }
 func (r *functionsTestRepo) PruneOldExecutionsInProject(context.Context, string, string, int) error {
+	return nil
+}
+func (r *functionsTestRepo) TransitionExecutionStatus(context.Context, string, string, string, string, string) (bool, error) {
+	return false, nil
+}
+func (r *functionsTestRepo) FailExecutionIfActive(context.Context, string, string, string, string) error {
 	return nil
 }
 
