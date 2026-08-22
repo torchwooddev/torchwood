@@ -92,7 +92,6 @@ func (h *FunctionsHandler) clientIP(r *http.Request) string {
 // upload POST /v1/server/functions/{functionId}/deployments/code
 // multipart 字段 code（zip 文件，≤50MiB）。
 func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
-	ctx := r.Context()
 	functionID := pathParams["functionId"]
 	principal, err := h.authorize(r)
 	if err != nil {
@@ -149,7 +148,7 @@ func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathPa
 	// Round3 H2-1：把已鉴权 principal 注入 ctx 再调 use-case——HTTP 路径不经
 	// gRPC 拦截器，RequireServerWriteActor 依赖 ctx 中的 Principal，缺了会对
 	// 合法 admin / functions.write API Key 恒 401。
-	ctx = contexts.WithPrincipal(r.Context(), principal)
+	ctx := contexts.WithPrincipal(r.Context(), principal)
 	dep, err := h.functions.CreateDeployment(ctx, appfunctions.CreateDeploymentCommand{
 		ProjectID:  projectID,
 		FunctionID: functionID,

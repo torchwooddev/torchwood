@@ -1,0 +1,11 @@
+# golangci-lint v2 配置。默认五件套（errcheck/govet/ineffassign/staticcheck/unused）。
+# 存量 78 项为遗留技术债（docs/review/arch-review-2026-08-fix-plan.md W-H），
+# CI/Taskfile 以 --new-from-rev=origin/main 棘轮只拦新增；本地全量检查直接
+# `golangci-lint run`（不带 flag 可见全部）。
+version: "2"
+
+run:
+  timeout: 10m
+
+linters:
+  default: standard

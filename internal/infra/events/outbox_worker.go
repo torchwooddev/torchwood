@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -126,7 +127,8 @@ func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox,
 			Column("event_id", "payload", "channel", "created_at", "attempts").
 			Where("published_at IS NULL").
 			Where("available_at <= NOW()").
-			Where("(dispatched_at IS NULL OR dispatched_at < NOW() - INTERVAL '2 minutes')").
+			Where(fmt.Sprintf("(dispatched_at IS NULL OR dispatched_at < NOW() - INTERVAL '%d minutes')",
+				int(outboxRedispatchAfter.Minutes()))).
 			Order("available_at").
 			Limit(outboxBatchSize).
 			For("UPDATE SKIP LOCKED").

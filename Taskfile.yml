@@ -7,8 +7,9 @@ tasks:
     cmds:
       - go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
       - go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-      - go install github.com/bufbuild/buf/cmd/buf@v1.63.0
+      - go install github.com/bufbuild/buf/cmd/buf@v1.65.0
       - go install github.com/google/wire/cmd/wire@latest
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
   generate-config:
     dir: '{{.USER_WORKING_DIR}}/internal/pkg/config'
@@ -146,6 +147,7 @@ tasks:
 
   test:
     deps:
+      - lint-go
       - test-sdk-go
       - test-sdk-ts
     dir: '{{.USER_WORKING_DIR}}'
@@ -157,6 +159,14 @@ tasks:
     cmds:
       - go vet ./...
       - test -z "$(gofmt -l .)"
+
+  # golangci-lint 棘轮：只报相对 origin/main 的新增问题（存量遗留债见
+  # docs/review/arch-review-2026-08-fix-plan.md W-H；本地全量检查直接跑
+  # `golangci-lint run ./...`）。
+  lint-golangci:
+    dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - golangci-lint run --new-from-rev=origin/main ./...
 
   lint-sdk-go:
     dir: '{{.USER_WORKING_DIR}}/sdk/go'
@@ -172,6 +182,7 @@ tasks:
   lint:
     deps:
       - lint-go
+      - lint-golangci
       - lint-sdk-go
       - lint-console
 

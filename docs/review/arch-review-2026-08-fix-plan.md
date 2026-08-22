@@ -274,12 +274,20 @@ permissions.go / catalog.go（2597 行 → 5 个内聚文件，同包内拆分�
 - serverhttp 的 logOp 升级为 audit.Repository.Insert（复用 gRPC 拦截器的
   Entry 结构），特权写操作获得持久审计轨迹。
 
-### W-H 交付工程门禁（P2-9 + P1-8 收尾）
-- CI：`go test -race ./...`、console vitest job、golangci-lint
-  （errcheck/staticcheck 起步）、`task generate-all` + `git diff --exit-code`
-  codegen 漂移门禁、覆盖率上报；
-- Taskfile：`test` 依赖 `lint`；buf 版本与 CI 对齐；
-- 后台循环逐语句 ctx deadline（outbox/subscriber/cleaner）。
+### W-H 交付工程门禁（P2-9 + P1-8 收尾）✅ 主体完成（2026-08-22）
+- CI：`go test -race ./...`（本地全量验证零数据竞争）、console vitest
+  job（本地 4 文件 7 用例通过）、golangci-lint v2.12 棘轮门禁
+  （`--new-from-rev=origin/main` 只拦新增，存量 78 项遗留债渐进烧；
+  本地全量 `golangci-lint run` 可见全部）、codegen 漂移门禁
+  （buf generate + config.proto + wire-all + `git diff --exit-code`，
+  本地验证零漂移）、minio 服务镜像钉版（对齐 docker-compose）；
+- Taskfile：`test` 依赖 `lint-go`（质量门不再是可选项）、新增
+  `lint-golangci` 并入 `lint`、install-tools 补 golangci-lint 并将 buf
+  对齐 CI 版本（v1.65.0）；
+- 顺手修两个 lint 真发现：`outboxRedispatchAfter` 常量与 SQL 硬编码
+  统一（fmt.Sprintf 引用常量）、functions_handler 死赋值 ctx；
+- **残留**：覆盖率收集上报、outbox/subscriber/cleaner 后台循环的
+  per-语句 ctx deadline、78 项存量 lint 债的渐进清理。
 
 ### W-I 独立加密密钥（P1-12）
 config 增加 `security.encryption_key`（可选，缺省回退 jwt.secret 派生并

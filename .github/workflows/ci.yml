@@ -28,7 +28,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       minio:
-        image: minio/minio:latest
+        # 与 docker/local/docker-compose.yml 的本地版本对齐（不追 latest）。
+        image: minio/minio:RELEASE.2024-11-07T00-52-20Z
         command: server /data
         env:
           MINIO_ROOT_USER: minioadmin
@@ -47,6 +48,9 @@ jobs:
       TORCHWOOD_RUN_DOCKER_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          # golangci-lint --new-from-rev 需要 origin/main 可解析。
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -76,12 +80,30 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      - name: Tests (unit + integration)
-        run: go test ./...
+      # 棘轮：只拦相对 origin/main 的新增问题（存量 78 项为遗留债，见
+      # docs/review/arch-review-2026-08-fix-plan.md W-H）。
+      - name: golangci-lint (new issues only)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12
+          args: --new-from-rev=origin/main ./...
+
+      - name: Tests (unit + integration, race)
+        run: go test -race ./...
 
       - name: SDK Go tests (independent module)
         working-directory: sdk/go
-        run: go test ./...
+        run: go test -race ./...
+
+      - name: Codegen drift check
+        run: |
+          set -e
+          sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler
+          go build -o "$(go env GOPATH)/bin/protoc-gen-go" google.golang.org/protobuf/cmd/protoc-gen-go
+          buf generate
+          (cd internal/pkg/config && protoc -I. --go_out=. --go_opt=paths=source_relative ./config.proto)
+          task wire-all
+          git diff --exit-code -- genproto internal/pkg/config cmd go.mod go.sum
 
       - uses: pnpm/action-setup@v4
         with:
@@ -124,6 +146,9 @@ jobs:
 
       - name: Lint (eslint)
         run: pnpm lint
+
+      - name: Test (vitest)
+        run: pnpm test
 
       - name: Build (tsc + vite)
         run: pnpm build
