@@ -18,7 +18,8 @@ func (p *Payments) requireServerWrite(ctx context.Context) error {
 }
 
 // Refund 对已支付订单发起退款（Server 面，scope payments.write / owner+admin）。
-// D12：一期只翻订单状态 + 事件，不回收已发放资产。
+// 翻订单状态 + 事件，并在同一工作单元调 Fulfiller.Reverse 回收已发放资产
+// （A5；Reverse 失败仅记日志不阻塞翻单——资产可能已过期/耗尽）。
 func (p *Payments) Refund(ctx context.Context, orderID string, amount int64) (*domainpayments.Order, error) {
 	if err := p.requireServerWrite(ctx); err != nil {
 		return nil, err

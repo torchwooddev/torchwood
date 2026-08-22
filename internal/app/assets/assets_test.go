@@ -823,3 +823,19 @@ func anyHolding(s *memStore) *domainassets.Holding {
 	}
 	return nil
 }
+
+// TestOrderFulfiller_TopupQuantityFromOrderAmount（A2）：topup 履约数量一律取
+// Order.Amount，不信任 purpose.amount（建单已校验相等，此处为纵深防御）。
+func TestOrderFulfiller_TopupQuantityFromOrderAmount(t *testing.T) {
+	env := setupAssets(t)
+	env.createDef(t, domainassets.ClassCurrency, "gold")
+	f := NewOrderFulfiller(env.assets)
+	order := &domainpayments.Order{
+		ID: "ord-topup-src", ProjectID: "p1", UserID: "u1", Amount: 1,
+		PurposeKind: domainpayments.PurposeTopup,
+		Purpose:     json.RawMessage(`{"currency_code":"gold","amount":999999}`),
+	}
+	_, err := f.Fulfill(context.Background(), order)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), anyHolding(env.store).Quantity)
+}

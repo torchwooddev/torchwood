@@ -278,16 +278,19 @@ func (p memPublisher) Publish(_ context.Context, ev domainevents.Envelope) error
 
 type fakeProvider struct {
 	createCalls int
+	lastInput   domainpayments.CreatePaymentInput
 	createErr   error
 	session     *domainpayments.PaymentSession
 	verify      func(http.Header, []byte) (*domainpayments.CallbackEvent, error)
 	verifyErr   error
+	refundRes   *domainpayments.RefundResult
 }
 
 func (f *fakeProvider) Name() string { return domainpayments.ProviderStripe }
 
-func (f *fakeProvider) CreatePayment(_ context.Context, _ domainpayments.CreatePaymentInput) (*domainpayments.PaymentSession, error) {
+func (f *fakeProvider) CreatePayment(_ context.Context, in domainpayments.CreatePaymentInput) (*domainpayments.PaymentSession, error) {
 	f.createCalls++
+	f.lastInput = in
 	if f.createErr != nil {
 		return nil, f.createErr
 	}
@@ -315,6 +318,9 @@ func (f *fakeProvider) VerifyCallback(_ context.Context, h http.Header, raw []by
 }
 
 func (f *fakeProvider) Refund(context.Context, domainpayments.RefundInput) (*domainpayments.RefundResult, error) {
+	if f.refundRes != nil {
+		return f.refundRes, nil
+	}
 	return nil, domainpayments.ErrUnsupported
 }
 
@@ -330,10 +336,10 @@ func (r fakeRegistry) Get(name string) (domainpayments.PaymentProvider, error) {
 }
 
 type countingFulfiller struct {
-	calls       int
+	calls        int
 	reverseCalls int
-	err       error
-	reverseErr error
+	err          error
+	reverseErr   error
 }
 
 func (f *countingFulfiller) Fulfill(_ context.Context, order *domainpayments.Order) (string, error) {
@@ -805,4 +811,91 @@ func TestInsertCreatedOrder_IsSoleOrdersInsertCallSite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(re.FindAll(src, -1)))
 	require.Contains(t, string(src), "func InsertCreatedOrder(")
+}
+
+// TestCreateOrder_RejectsTopupAmountMismatch（A2）：purpose.amount 必须等于
+// Order.Amount，1 分钱买天量资产在建单即被拒（InvalidArgument，不触渠道）。
+func TestCreateOrder_RejectsTopupAmountMismatch(t *testing.T) {
+	env := setupUnit(t, &fakeProvider{}, NewRecordOnlyFulfiller())
+	_, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
+		Provider:       domainpayments.ProviderStripe,
+		Amount:         1,
+		Currency:       "USD",
+		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": 1_000_000_000_000},
+		IdempotencyKey: "idem-topup-mismatch",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, 0, env.provider.createCalls)
+	require.Empty(t, env.store.orders)
+}
+
+// TestCreateOrder_AcceptsTopupAmountEqual（A2）：amount == purpose.amount 放行。
+func TestCreateOrder_AcceptsTopupAmountEqual(t *testing.T) {
+	env := setupUnit(t, &fakeProvider{}, NewRecordOnlyFulfiller())
+	res, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
+		Provider:       domainpayments.ProviderStripe,
+		Amount:         100,
+		Currency:       "USD",
+		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": 100},
+		IdempotencyKey: "idem-topup-equal",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(100), res.Order.Amount)
+	require.Equal(t, domainpayments.OrderStatusPaying, res.Order.Status)
+}
+
+// TestCreateOrder_RejectsPurposeItemPurchase（A2）：Client 面拒绝 item_purchase
+// （无服务端定价目录，构建方用 Server Grant 发货）。
+func TestCreateOrder_RejectsPurposeItemPurchase(t *testing.T) {
+	env := setupUnit(t, &fakeProvider{}, NewRecordOnlyFulfiller())
+	_, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
+		Provider:       domainpayments.ProviderStripe,
+		Amount:         100,
+		Currency:       "USD",
+		PurposeKind:    domainpayments.PurposeItemPurchase,
+		Purpose:        map[string]any{"asset_code": "sword", "quantity": 1},
+		IdempotencyKey: "idem-item-reject",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, 0, env.provider.createCalls)
+	require.Empty(t, env.store.orders)
+}
+
+// TestCreateOrder_CreatePaymentAlwaysHasURLs（A3）：即使请求未带 success/cancel
+// URL，传给渠道的 CreatePaymentInput 也必须非空（public_url→兜底，不留空）。
+func TestCreateOrder_CreatePaymentAlwaysHasURLs(t *testing.T) {
+	env := setupUnit(t, &fakeProvider{}, NewRecordOnlyFulfiller())
+	_, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
+		Provider:       domainpayments.ProviderStripe,
+		Amount:         100,
+		Currency:       "USD",
+		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": 100},
+		IdempotencyKey: "idem-url-nonempty",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, env.provider.createCalls)
+	require.NotEmpty(t, env.provider.lastInput.SuccessURL)
+	require.NotEmpty(t, env.provider.lastInput.CancelURL)
+}
+
+// TestRefund_RejectsPartialRefund（A5）：一期仅支持全额退款，amount != 0 且
+// != order.Amount 直接 InvalidArgument，不触渠道、订单保持 paid。
+func TestRefund_RejectsPartialRefund(t *testing.T) {
+	provider := &fakeProvider{refundRes: &domainpayments.RefundResult{Succeeded: true}}
+	env := setupUnit(t, provider, NewRecordOnlyFulfiller())
+	order := seedPayingOrder(t, env.store, "ord-partial", 100)
+	order.Status = domainpayments.OrderStatusPaid
+	env.store.orders[order.ID] = order
+
+	admin := contexts.WithPrincipal(context.Background(), &domainshared.Principal{
+		ActorKind:      domainshared.ActorKindAdmin,
+		ProjectID:      "proj-1",
+		CredentialType: domainshared.CredentialTypeSession,
+	})
+	_, err := env.payments.Refund(admin, order.ID, 1)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, domainpayments.OrderStatusPaid, env.store.orders[order.ID].Status)
 }
