@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.com/torchwooddev/torchwood/pkg/ident"
 )
 

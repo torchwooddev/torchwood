@@ -9,14 +9,15 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/driver/pgdriver"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/query"
-	"github.com/uptrace/bun/driver/pgdriver"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func TestPostgresDocumentDatabase_CRUD(t *testing.T) {

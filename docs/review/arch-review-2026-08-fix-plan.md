@@ -247,9 +247,18 @@ testutil、acceptance）；AGENTS.md 与 developer/tech-decision/roadmap
 `IsAPIKeysServiceMethod` 裸子串匹配 → 全限定服务段后缀精确匹配
 （首版相等比较被既有测试当场纠正：服务段含包路径）。
 
-### W-C documentdb/postgres.go 拆分（P2-4）
-按端口能力拆：collection_ddl.go / document_crud.go / query_compile.go /
-permissions.go / catalog.go（2597 行 → 5 个内聚文件，同包内拆分零调用方影响）。
+### W-C documentdb/postgres.go 拆分（P2-4）✅（2026-08-22）
+2678 行单文件按端口能力拆为同包 7 文件（零调用方影响）：
+`postgres.go`（101 行核心：struct/构造/共享小工具）、
+`postgres_catalog.go`（307：database CRUD + schema 寻址 + 缺目录判别）、
+`postgres_collection_ddl.go`（884：建表/属性/索引 DDL + _version 生命周期
++ catalog 元数据）、`postgres_document_crud.go`（750：文档 CRUD 事务体 +
+OCC + 事件发布）、`postgres_document_query.go`（384：List/Count/Sum +
+keyset token）、`postgres_query_compile.go`（336：DSL→SQL 编译 + 字段校验）、
+既有 `postgres_permissions.go`（374）。纯声明级移动（按名字映射、注释块
+随声明走，goimports 清理各文件 import）；被移动代码中两处 `bun.In`
+弃用改 `bun.List`、两处 `rows.Close` 显式忽略（棘轮把移动视为新增，
+顺手修正）。
 
 ### W-D ListDocuments 查询效率（P1-10/P1-11）✅（2026-08-22）
 - **N+1**：`attachDocumentPermissionsBatch` 单条 `IN` 查询取回整页 `_perms`

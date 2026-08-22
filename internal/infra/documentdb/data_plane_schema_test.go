@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/ident"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func namespaceExists(t *testing.T, ctx context.Context, db *clients.Database, name string) bool {

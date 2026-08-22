@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
