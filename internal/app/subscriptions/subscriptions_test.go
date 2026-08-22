@@ -774,9 +774,12 @@ func TestProcessDue_SubscriptionOrderIdempotentByCycle(t *testing.T) {
 	store.subs[sub.ID] = cloneSub(sub)
 
 	require.NoError(t, uc.processDue(context.Background(), store.subs[sub.ID], now))
-	require.Equal(t, domainsubs.StatusPastDue, store.subs[sub.ID].Status)
+	require.Equal(t, domainsubs.StatusActive, store.subs[sub.ID].Status)
 	require.Equal(t, 1, fp.createCalls)
 	require.Equal(t, 1, len(pay.orders))
+	for _, o := range pay.orders {
+		require.Equal(t, domainpayments.OrderStatusPaying, o.Status)
+	}
 
 	cycle := strconv.FormatInt(sub.CurrentPeriodEnd.UTC().Unix(), 10)
 	var order *domainpayments.Order

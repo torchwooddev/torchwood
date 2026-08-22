@@ -491,6 +491,9 @@ func (a *Adapter) CreateCheckout(ctx context.Context, in domainsubs.HostedChecko
 	if in.PriceID == "" {
 		return nil, fmt.Errorf("stripe: hosted checkout requires price_id")
 	}
+	if in.SuccessURL == "" || in.CancelURL == "" {
+		return nil, fmt.Errorf("stripe: hosted checkout requires success_url and cancel_url")
+	}
 	form := url.Values{}
 	form.Set("mode", "subscription")
 	form.Set("client_reference_id", in.SubscriptionID)
@@ -500,16 +503,8 @@ func (a *Adapter) CreateCheckout(ctx context.Context, in domainsubs.HostedChecko
 	form.Set("subscription_data[metadata][project_id]", in.ProjectID)
 	form.Set("line_items[0][price]", in.PriceID)
 	form.Set("line_items[0][quantity]", "1")
-	success := in.SuccessURL
-	if success == "" {
-		success = "https://example.com/success?session_id={CHECKOUT_SESSION_ID}"
-	}
-	cancel := in.CancelURL
-	if cancel == "" {
-		cancel = "https://example.com/cancel"
-	}
-	form.Set("success_url", success)
-	form.Set("cancel_url", cancel)
+	form.Set("success_url", in.SuccessURL)
+	form.Set("cancel_url", in.CancelURL)
 
 	var out checkoutSessionResponse
 	reqID := in.IdempotencyKey

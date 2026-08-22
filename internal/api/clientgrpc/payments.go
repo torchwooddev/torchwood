@@ -43,6 +43,8 @@ func (s *PaymentsService) CreateOrder(ctx context.Context, req *clientv1.CreateO
 		PurposeKind:    domainpayments.PurposeKind(req.GetPurposeKind()),
 		Purpose:        purpose,
 		IdempotencyKey: req.GetIdempotencyKey(),
+		SuccessURL:     req.GetSuccessUrl(),
+		CancelURL:      req.GetCancelUrl(),
 	})
 	if err != nil {
 		return nil, err

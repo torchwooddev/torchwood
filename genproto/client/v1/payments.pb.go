@@ -176,8 +176,11 @@ type CreateOrderRequest struct {
 	// ISO-4217 三字母码（usd / cny ...）。
 	Currency string `protobuf:"bytes,4,opt,name=currency,proto3" json:"currency,omitempty"`
 	// topup | item_purchase（subscription 在 PR3 开放）。
-	PurposeKind   string           `protobuf:"bytes,5,opt,name=purpose_kind,json=purposeKind,proto3" json:"purpose_kind,omitempty"`
-	Purpose       *structpb.Struct `protobuf:"bytes,6,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	PurposeKind string           `protobuf:"bytes,5,opt,name=purpose_kind,json=purposeKind,proto3" json:"purpose_kind,omitempty"`
+	Purpose     *structpb.Struct `protobuf:"bytes,6,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	// Checkout 回跳地址（Stripe 一次性支付）；未传则用 server.http.public_url。
+	SuccessUrl    *string `protobuf:"bytes,7,opt,name=success_url,json=successUrl,proto3,oneof" json:"success_url,omitempty"`
+	CancelUrl     *string `protobuf:"bytes,8,opt,name=cancel_url,json=cancelUrl,proto3,oneof" json:"cancel_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -252,6 +255,20 @@ func (x *CreateOrderRequest) GetPurpose() *structpb.Struct {
 		return x.Purpose
 	}
 	return nil
+}
+
+func (x *CreateOrderRequest) GetSuccessUrl() string {
+	if x != nil && x.SuccessUrl != nil {
+		return *x.SuccessUrl
+	}
+	return ""
+}
+
+func (x *CreateOrderRequest) GetCancelUrl() string {
+	if x != nil && x.CancelUrl != nil {
+		return *x.CancelUrl
+	}
+	return ""
 }
 
 type CreateOrderResponse struct {
@@ -592,14 +609,20 @@ const file_client_v1_payments_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x1f\n" +
 	"\vpayment_url\x18\f \x01(\tR\n" +
-	"paymentUrl\"\xe3\x01\n" +
+	"paymentUrl\"\xcc\x02\n" +
 	"\x12CreateOrderRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1a\n" +
 	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x16\n" +
 	"\x06amount\x18\x03 \x01(\x03R\x06amount\x12\x1a\n" +
 	"\bcurrency\x18\x04 \x01(\tR\bcurrency\x12!\n" +
 	"\fpurpose_kind\x18\x05 \x01(\tR\vpurposeKind\x121\n" +
-	"\apurpose\x18\x06 \x01(\v2\x17.google.protobuf.StructR\apurpose\"{\n" +
+	"\apurpose\x18\x06 \x01(\v2\x17.google.protobuf.StructR\apurpose\x12$\n" +
+	"\vsuccess_url\x18\a \x01(\tH\x00R\n" +
+	"successUrl\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"cancel_url\x18\b \x01(\tH\x01R\tcancelUrl\x88\x01\x01B\x0e\n" +
+	"\f_success_urlB\r\n" +
+	"\v_cancel_url\"{\n" +
 	"\x13CreateOrderResponse\x127\n" +
 	"\x05order\x18\x01 \x01(\v2!.torchwood.client.v1.PaymentOrderR\x05order\x12+\n" +
 	"\x11idempotent_replay\x18\x02 \x01(\bR\x10idempotentReplay\".\n" +
@@ -692,6 +715,7 @@ func file_client_v1_payments_proto_init() {
 	if File_client_v1_payments_proto != nil {
 		return
 	}
+	file_client_v1_payments_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

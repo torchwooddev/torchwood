@@ -43,8 +43,11 @@ func (p *Payments) Refund(ctx context.Context, orderID string, amount int64) (*d
 	default:
 		return nil, status.Errorf(codes.FailedPrecondition, "order in status %s cannot be refunded", order.Status)
 	}
-	if amount < 0 || (amount != 0 && amount > order.Amount) {
+	if amount < 0 {
 		return nil, status.Error(codes.InvalidArgument, "refund amount must be 0 (full) or not exceed order amount")
+	}
+	if amount != 0 && amount != order.Amount {
+		return nil, status.Error(codes.InvalidArgument, "only full refund is supported")
 	}
 
 	provider, err := p.providers.Get(order.Provider)
@@ -87,6 +90,9 @@ func (p *Payments) Refund(ctx context.Context, orderID string, amount int64) (*d
 			return err
 		}
 		if to == domainpayments.OrderStatusRefunded {
+			if err := p.fulfiller.Reverse(txCtx, locked); err != nil {
+				p.logger.Error("reverse fulfillment on refund failed", "order_id", locked.ID, "error", err)
+			}
 			paymentOrdersTotal.WithLabelValues(locked.Provider, string(locked.Status)).Inc()
 			return p.events.Publish(txCtx, orderEnvelope(locked, eventName, now))
 		}
@@ -132,7 +138,14 @@ func (p *Payments) ManualFulfill(ctx context.Context, orderID, reason string) (*
 				fulfillment = existing
 				return nil // 幂等。
 			}
-			if err := p.fulfillments.MarkDone(txCtx, projectID, existing.ID, existing.Ref, map[string]any{
+			ref, err := p.fulfiller.Fulfill(txCtx, order)
+			if err != nil {
+				return err
+			}
+			if ref == "" {
+				ref = existing.Ref
+			}
+			if err := p.fulfillments.MarkDone(txCtx, projectID, existing.ID, ref, map[string]any{
 				"manual": true,
 				"reason": reason,
 			}); err != nil {
@@ -158,9 +171,33 @@ func (p *Payments) ManualFulfill(ctx context.Context, orderID, reason string) (*
 		}
 		if !inserted {
 			fulfillment, err = p.fulfillments.GetByOrder(txCtx, projectID, orderID)
+			if err != nil {
+				return err
+			}
+			if fulfillment != nil && fulfillment.Status == domainpayments.FulfillmentDone {
+				return nil
+			}
+			ref, err := p.fulfiller.Fulfill(txCtx, order)
+			if err != nil {
+				return err
+			}
+			if ref == "" {
+				ref = fulfillment.Ref
+			}
+			if err := p.fulfillments.MarkDone(txCtx, projectID, fulfillment.ID, ref, map[string]any{"manual": true, "reason": reason}); err != nil {
+				return err
+			}
+			fulfillment, err = p.fulfillments.GetByOrder(txCtx, projectID, orderID)
 			return err
 		}
-		if err := p.fulfillments.MarkDone(txCtx, projectID, f.ID, f.Ref, f.Detail); err != nil {
+		ref, err := p.fulfiller.Fulfill(txCtx, order)
+		if err != nil {
+			return err
+		}
+		if ref == "" {
+			ref = f.Ref
+		}
+		if err := p.fulfillments.MarkDone(txCtx, projectID, f.ID, ref, f.Detail); err != nil {
 			return err
 		}
 		fulfillment, err = p.fulfillments.GetByOrder(txCtx, projectID, orderID)

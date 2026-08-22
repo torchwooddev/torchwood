@@ -19,3 +19,5 @@ func NewRecordOnlyFulfiller() domainpayments.Fulfiller {
 func (recordOnlyFulfiller) Fulfill(_ context.Context, order *domainpayments.Order) (string, error) {
 	return "order:" + order.ID, nil
 }
+
+func (recordOnlyFulfiller) Reverse(_ context.Context, _ *domainpayments.Order) error { return nil }

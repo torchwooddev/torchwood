@@ -122,6 +122,9 @@ func (s *Subscriptions) billOrPastDue(ctx context.Context, sub *domainsubs.Subsc
 	if !charged {
 		return s.markPastDue(ctx, sub, plan, now)
 	}
+	if sub.BillingAssetCode == "" && plan.Amount != 0 {
+		return nil
+	}
 	return s.applySuccess(ctx, sub, plan, now)
 }
 
@@ -135,7 +138,7 @@ func (s *Subscriptions) tryCharge(ctx context.Context, sub *domainsubs.Subscript
 		if err != nil {
 			return false, err
 		}
-		return false, nil
+		return true, nil
 	}
 	periodKey := strconv.FormatInt(sub.CurrentPeriodEnd.UTC().Unix(), 10)
 	_, err := s.assets.Consume(ctx, appassets.ConsumeCommand{

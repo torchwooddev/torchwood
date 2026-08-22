@@ -260,6 +260,13 @@
         },
         "purpose": {
           "type": "object"
+        },
+        "successUrl": {
+          "type": "string",
+          "title": "Checkout 回跳地址（Stripe 一次性支付）；未传则用 server.http.public_url。"
+        },
+        "cancelUrl": {
+          "type": "string"
         }
       }
     },

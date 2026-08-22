@@ -32,6 +32,13 @@ func (f *compositeFulfiller) Fulfill(ctx context.Context, order *domainpayments.
 	return f.items.Fulfill(ctx, order)
 }
 
+func (f *compositeFulfiller) Reverse(ctx context.Context, order *domainpayments.Order) error {
+	if order != nil && order.PurposeKind == domainpayments.PurposeSubscription {
+		return nil
+	}
+	return f.items.Reverse(ctx, order)
+}
+
 // FulfillPaidOrder 订单 paid 后激活/续期订阅 + benefits（设计 §1.5 subscription）。
 func (s *Subscriptions) FulfillPaidOrder(ctx context.Context, order *domainpayments.Order) (string, error) {
 	if order == nil {

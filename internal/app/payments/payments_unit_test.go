@@ -330,8 +330,10 @@ func (r fakeRegistry) Get(name string) (domainpayments.PaymentProvider, error) {
 }
 
 type countingFulfiller struct {
-	calls int
-	err   error
+	calls       int
+	reverseCalls int
+	err       error
+	reverseErr error
 }
 
 func (f *countingFulfiller) Fulfill(_ context.Context, order *domainpayments.Order) (string, error) {
@@ -340,6 +342,11 @@ func (f *countingFulfiller) Fulfill(_ context.Context, order *domainpayments.Ord
 		return "", f.err
 	}
 	return "order:" + order.ID, nil
+}
+
+func (f *countingFulfiller) Reverse(_ context.Context, _ *domainpayments.Order) error {
+	f.reverseCalls++
+	return f.reverseErr
 }
 
 type unitEnv struct {
@@ -442,7 +449,7 @@ func TestCreateOrder_IdempotencyKeySkipsSecondCreatePayment(t *testing.T) {
 		Amount:         1999,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
-		Purpose:        map[string]any{"currency_code": "gold"},
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(1999)},
 		IdempotencyKey: "idem-dup",
 	}
 
@@ -655,7 +662,8 @@ func TestCreateOrder_IOSKeepsCreated(t *testing.T) {
 	ctx := unitUserCtx("proj-1", "u1")
 	got, err := env.payments.CreateOrder(ctx, CreateOrderCommand{
 		Provider: domainpayments.ProviderIOSIAP, Amount: 199, Currency: "USD",
-		PurposeKind: domainpayments.PurposeTopup, IdempotencyKey: "ios-1",
+		PurposeKind: domainpayments.PurposeTopup, Purpose: map[string]any{"currency_code": "gold", "amount": int64(199)},
+		IdempotencyKey: "ios-1",
 	})
 	require.NoError(t, err)
 	require.Equal(t, domainpayments.OrderStatusCreated, got.Order.Status)

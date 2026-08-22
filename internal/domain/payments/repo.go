@@ -80,4 +80,7 @@ type Fulfiller interface {
 	// Fulfill 在订单已翻 paid、履约行已插入后调用；返回履约 ref。
 	// 返回错误则整段事务回滚（订单保持 paying，渠道重推后再试）。
 	Fulfill(ctx context.Context, order *Order) (ref string, err error)
+	// Reverse 回收已发放资产：按 fulfill:{orderID} 找到 Grant，再 Consume 同数量
+	//（幂等 reverse:{orderID}）；无持有则应记录错误但不阻塞退款翻转。
+	Reverse(ctx context.Context, order *Order) error
 }

@@ -42,6 +42,8 @@ func (f failingFulfiller) Fulfill(_ context.Context, _ *domainpayments.Order) (s
 	return "", f.err
 }
 
+func (f failingFulfiller) Reverse(_ context.Context, _ *domainpayments.Order) error { return nil }
+
 // testEnv 组装端到端用例环境（真实 stripe adapter + httptest 渠道服务 +
 // 真实 outbox publisher + 真实 bun repo）。
 type testEnv struct {
@@ -165,7 +167,7 @@ func createPaidOrder(t *testing.T, env *testEnv, ctx context.Context, idemKey, u
 		Amount:         amount,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
-		Purpose:        map[string]any{"currency_code": "gold"},
+		Purpose:        map[string]any{"currency_code": "gold", "amount": amount},
 		IdempotencyKey: idemKey,
 	})
 	require.NoError(t, err)
@@ -199,7 +201,7 @@ func TestPayments_CreateOrderIdempotencyReturnsOriginal(t *testing.T) {
 		Amount:         1999,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
-		Purpose:        map[string]any{"currency_code": "gold"},
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(1999)},
 		IdempotencyKey: "idem-1",
 	})
 	require.NoError(t, err)
@@ -213,7 +215,7 @@ func TestPayments_CreateOrderIdempotencyReturnsOriginal(t *testing.T) {
 		Amount:         1999,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
-		Purpose:        map[string]any{"currency_code": "gold"},
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(1999)},
 		IdempotencyKey: "idem-1",
 	})
 	require.NoError(t, err)
@@ -243,8 +245,8 @@ func TestPayments_CallbackPaidSameTxFulfillmentAndOutbox(t *testing.T) {
 		Provider:       domainpayments.ProviderStripe,
 		Amount:         1999,
 		Currency:       "USD",
-		PurposeKind:    domainpayments.PurposeItemPurchase,
-		Purpose:        map[string]any{"asset_code": "sword", "quantity": 1},
+		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(1999)},
 		IdempotencyKey: "idem-paid",
 	})
 	require.NoError(t, err)
@@ -298,6 +300,7 @@ func TestPayments_CallbackVerifyFailNoRowsWritten(t *testing.T) {
 		Amount:         500,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(500)},
 		IdempotencyKey: "idem-401",
 	})
 	require.NoError(t, err)
@@ -341,6 +344,7 @@ func TestPayments_CallbackAmountMismatchRollsBackEverything(t *testing.T) {
 		Amount:         1999,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(1999)},
 		IdempotencyKey: "idem-mismatch",
 	})
 	require.NoError(t, err)
@@ -371,6 +375,7 @@ func TestPayments_CallbackFulfillFailureRollsBack(t *testing.T) {
 		Amount:         300,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(300)},
 		IdempotencyKey: "idem-ff",
 	})
 	require.NoError(t, err)
@@ -401,6 +406,7 @@ func TestPayments_CloseExpiredOrders(t *testing.T) {
 		Amount:         100,
 		Currency:       "USD",
 		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": int64(100)},
 		IdempotencyKey: "idem-expire",
 		ExpiresIn:      time.Minute,
 	})

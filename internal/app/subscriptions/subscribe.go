@@ -20,6 +20,8 @@ type SubscribeCommand struct {
 	Mode             domainsubs.Mode
 	IdempotencyKey   string
 	BillingAssetCode string
+	SuccessURL       string
+	CancelURL        string
 }
 
 // SubscribeResult 是 Subscribe 结果。
@@ -118,7 +120,7 @@ func (s *Subscriptions) Subscribe(ctx context.Context, cmd SubscribeCommand) (*S
 
 		switch cmd.Mode {
 		case domainsubs.ModeHosted:
-			return s.startHosted(txCtx, sub, plan, &result)
+			return s.startHostedWithURLs(txCtx, sub, plan, &result, cmd.SuccessURL, cmd.CancelURL)
 		case domainsubs.ModePlatform:
 			return s.startPlatform(txCtx, sub, plan, &result, now)
 		}
@@ -140,7 +142,31 @@ func (s *Subscriptions) startHosted(ctx context.Context, sub *domainsubs.Subscri
 	if plan.ProviderOverrides.StripePriceID == "" {
 		return status.Error(codes.FailedPrecondition, "plan is missing stripe_price_id for hosted mode")
 	}
-	success, cancel := s.checkoutURLs()
+	success, cancel := s.resolveCheckoutURLs("", "")
+	// 若外层已注入（未来可从 SubscribeCommand 透传），此处可覆盖；当前由 checkoutURLs 的调用方传入
+	sess, err := s.hosted.CreateCheckout(ctx, domainsubs.HostedCheckoutInput{
+		SubscriptionID: sub.ID,
+		ProjectID:      sub.ProjectID,
+		PriceID:        plan.ProviderOverrides.StripePriceID,
+		SuccessURL:     success,
+		CancelURL:      cancel,
+		IdempotencyKey: "sub:" + sub.ID,
+	})
+	if err != nil {
+		return err
+	}
+	result.PaymentURL = sess.PaymentURL
+	return s.upsertIndex(ctx, sub.Provider, domainpayments.IndexKindSubscription, sub.ID, sub.ProjectID)
+}
+
+func (s *Subscriptions) startHostedWithURLs(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, result *SubscribeResult, reqSuccess, reqCancel string) error {
+	if s.hosted == nil {
+		return domainsubs.ErrNotConfigured
+	}
+	if plan.ProviderOverrides.StripePriceID == "" {
+		return status.Error(codes.FailedPrecondition, "plan is missing stripe_price_id for hosted mode")
+	}
+	success, cancel := s.resolveCheckoutURLs(reqSuccess, reqCancel)
 	sess, err := s.hosted.CreateCheckout(ctx, domainsubs.HostedCheckoutInput{
 		SubscriptionID: sub.ID,
 		ProjectID:      sub.ProjectID,
@@ -207,11 +233,23 @@ func (s *Subscriptions) startPlatform(ctx context.Context, sub *domainsubs.Subsc
 }
 
 func (s *Subscriptions) checkoutURLs() (success, cancel string) {
+	return s.resolveCheckoutURLs("", "")
+}
+
+func (s *Subscriptions) resolveCheckoutURLs(reqSuccess, reqCancel string) (string, string) {
 	base := "https://localhost"
 	if s.cfg != nil && s.cfg.GetServer().GetHttp().GetPublicUrl() != "" {
 		base = strings.TrimRight(s.cfg.GetServer().GetHttp().GetPublicUrl(), "/")
 	}
-	return base + "/?checkout=success&session_id={CHECKOUT_SESSION_ID}", base + "/?checkout=cancel"
+	success := strings.TrimSpace(reqSuccess)
+	if success == "" {
+		success = base + "/?checkout=success&session_id={CHECKOUT_SESSION_ID}"
+	}
+	cancel := strings.TrimSpace(reqCancel)
+	if cancel == "" {
+		cancel = base + "/?checkout=cancel&session_id={CHECKOUT_SESSION_ID}"
+	}
+	return success, cancel
 }
 
 // createBillingOrder 生成订阅扣款订单（Stripe，两段式，对齐 payments.CreateOrder）：
@@ -262,13 +300,16 @@ func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.
 	if !inserted {
 		return existing, "", nil
 	}
+	successURL, cancelURL := s.resolveCheckoutURLs("", "")
 	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{
 		OrderID:        order.ID,
 		ProjectID:      order.ProjectID,
 		Amount:         order.Amount,
 		Currency:       order.Currency,
-		Description:    "Torchwood subscription " + sub.ID,
+		Description:    "subscription " + sub.ID,
 		ExpiresAt:      order.ExpiresAt,
+		SuccessURL:     successURL,
+		CancelURL:      cancelURL,
 		IdempotencyKey: "order:" + order.ID,
 	})
 	if err != nil {

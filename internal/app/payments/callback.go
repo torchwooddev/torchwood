@@ -257,8 +257,7 @@ func (p *Payments) applyTerminal(ctx context.Context, order *domainpayments.Orde
 	return p.events.Publish(ctx, orderEnvelope(order, domainpayments.EventOrderFailed, now))
 }
 
-// applyRefunded 回调 refunded：paid/refunding → refunded + 事件（D12：
-// 只翻状态 + 事件，不动已发放资产）。
+// applyRefunded 回调 refunded：paid/refunding → refunded + 事件；同事务回收资产。
 func (p *Payments) applyRefunded(ctx context.Context, order *domainpayments.Order, event *domainpayments.CallbackEvent, now time.Time) error {
 	switch order.Status {
 	case domainpayments.OrderStatusRefunded:
@@ -273,6 +272,9 @@ func (p *Payments) applyRefunded(ctx context.Context, order *domainpayments.Orde
 	}
 	if err := p.orders.Update(ctx, order, from); err != nil {
 		return err
+	}
+	if err := p.fulfiller.Reverse(ctx, order); err != nil {
+		p.logger.Error("reverse fulfillment on refund callback failed", "order_id", order.ID, "error", err)
 	}
 	paymentOrdersTotal.WithLabelValues(order.Provider, string(order.Status)).Inc()
 	return p.events.Publish(ctx, orderEnvelope(order, domainpayments.EventOrderRefunded, now))

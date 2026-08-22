@@ -48,7 +48,7 @@ func TestIntegration_PaidTopupGrantsInSameTx(t *testing.T) {
 
 	f := NewOrderFulfiller(uc)
 	order := &domainpayments.Order{
-		ID: "ord-it-1", ProjectID: projectID, UserID: "u1",
+		ID: "ord-it-1", ProjectID: projectID, UserID: "u1", Amount: 100,
 		PurposeKind: domainpayments.PurposeTopup,
 		Purpose:     json.RawMessage(`{"currency_code":"gold","amount":100}`),
 	}

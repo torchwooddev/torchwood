@@ -721,7 +721,7 @@ func TestOrderFulfiller_TopupGrantsCurrency(t *testing.T) {
 	env.createDef(t, domainassets.ClassCurrency, "gold")
 	f := NewOrderFulfiller(env.assets)
 	order := &domainpayments.Order{
-		ID: "ord-1", ProjectID: "p1", UserID: "u1",
+		ID: "ord-1", ProjectID: "p1", UserID: "u1", Amount: 42,
 		PurposeKind: domainpayments.PurposeTopup,
 		Purpose:     json.RawMessage(`{"currency_code":"gold","amount":42}`),
 	}

@@ -28,7 +28,9 @@ type CreateOrderCommand struct {
 	Purpose        map[string]any
 	IdempotencyKey string
 	// ExpiresIn 可选有效期；缺省 defaultOrderTTL。
-	ExpiresIn time.Duration
+	ExpiresIn  time.Duration
+	SuccessURL string
+	CancelURL  string
 }
 
 // CreatedOrderSpec 是内部建单规格（公开 CreateOrder 与订阅共用校验）。
@@ -64,6 +66,14 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 	if cmd.PurposeKind == domainpayments.PurposeSubscription {
 		// 订阅用途只允许 Subscribe 走内部入口，避免 Client 乱建订阅单。
 		return nil, status.Error(codes.InvalidArgument, "subscription orders are not supported yet")
+	}
+	if cmd.PurposeKind == domainpayments.PurposeItemPurchase {
+		return nil, status.Error(codes.InvalidArgument, "item_purchase orders are not supported yet")
+	}
+	if cmd.PurposeKind == domainpayments.PurposeTopup {
+		if err := validateTopupAmount(cmd.Purpose, cmd.Amount); err != nil {
+			return nil, err
+		}
 	}
 	purpose, err := json.Marshal(cmd.Purpose)
 	if err != nil {
@@ -108,6 +118,7 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 	}
 
 	// 渠道下单（Checkout Session / 预下单）：成功后同一短事务回填渠道引用并翻 paying。
+	successURL, cancelURL := p.resolveCheckoutURLs(cmd.SuccessURL, cmd.CancelURL)
 	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{
 		OrderID:        order.ID,
 		ProjectID:      order.ProjectID,
@@ -115,6 +126,8 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 		Currency:       order.Currency,
 		Description:    orderDescription(order),
 		ExpiresAt:      order.ExpiresAt,
+		SuccessURL:     successURL,
+		CancelURL:      cancelURL,
 		IdempotencyKey: "order:" + order.ID,
 	})
 	if err != nil {
@@ -165,7 +178,58 @@ func (p *Payments) CreateOrder(ctx context.Context, cmd CreateOrderCommand) (*Cr
 
 // orderDescription 返回收银台展示名（按用途拼接，不含敏感信息）。
 func orderDescription(order *domainpayments.Order) string {
-	return "Torchwood order " + order.ID
+	return "order " + order.ID
+}
+
+func (p *Payments) resolveCheckoutURLs(reqSuccess, reqCancel string) (string, string) {
+	if strings.TrimSpace(reqSuccess) != "" && strings.TrimSpace(reqCancel) != "" {
+		return strings.TrimSpace(reqSuccess), strings.TrimSpace(reqCancel)
+	}
+	base := ""
+	if p.cfg != nil && p.cfg.GetServer().GetHttp().GetPublicUrl() != "" {
+		base = strings.TrimRight(p.cfg.GetServer().GetHttp().GetPublicUrl(), "/")
+	}
+	if base == "" {
+		base = "https://localhost"
+	}
+	success := strings.TrimSpace(reqSuccess)
+	if success == "" {
+		success = base + "/?checkout=success&session_id={CHECKOUT_SESSION_ID}"
+	}
+	cancel := strings.TrimSpace(reqCancel)
+	if cancel == "" {
+		cancel = base + "/?checkout=cancel&session_id={CHECKOUT_SESSION_ID}"
+	}
+	return success, cancel
+}
+
+func validateTopupAmount(purpose map[string]any, amount int64) error {
+	v, ok := purpose["amount"]
+	if !ok {
+		return status.Error(codes.InvalidArgument, "purpose.amount is required")
+	}
+	var pa int64
+	switch n := v.(type) {
+	case int:
+		pa = int64(n)
+	case int32:
+		pa = int64(n)
+	case int64:
+		pa = n
+	case float32:
+		pa = int64(n)
+	case float64:
+		pa = int64(n)
+	case json.Number:
+		i, _ := n.Int64()
+		pa = i
+	default:
+		return status.Error(codes.InvalidArgument, "purpose.amount must be an integer")
+	}
+	if pa != amount {
+		return status.Error(codes.InvalidArgument, "purpose.amount must equal order amount")
+	}
+	return nil
 }
 
 // GetMyOrder 返回本人订单（Client 面）。

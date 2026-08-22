@@ -111,6 +111,9 @@ message CreateOrderRequest {
   // topup | item_purchase（subscription 在 PR3 开放）。
   string purpose_kind = 5;
   google.protobuf.Struct purpose = 6;
+  // Checkout 回跳地址（Stripe 一次性支付）；未传则用 server.http.public_url。
+  optional string success_url = 7;
+  optional string cancel_url = 8;
 }
 
 message CreateOrderResponse {

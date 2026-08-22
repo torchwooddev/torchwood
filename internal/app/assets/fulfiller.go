@@ -39,10 +39,55 @@ func (f *orderFulfiller) Fulfill(ctx context.Context, order *domainpayments.Orde
 	}
 }
 
+func (f *orderFulfiller) Reverse(ctx context.Context, order *domainpayments.Order) error {
+	if order == nil {
+		return status.Error(codes.Internal, "nil order")
+	}
+	ctx = withSystemPrincipal(ctx, order.ProjectID)
+	var code string
+	var qty int64
+	switch order.PurposeKind {
+	case domainpayments.PurposeTopup:
+		c, _, err := parsePurpose(order.Purpose, true)
+		if err != nil {
+			return err
+		}
+		code = c
+		qty = order.Amount
+	case domainpayments.PurposeItemPurchase:
+		c, q, err := parsePurpose(order.Purpose, false)
+		if err != nil {
+			return err
+		}
+		code = c
+		qty = q
+	case domainpayments.PurposeSubscription:
+		return nil
+	default:
+		return status.Errorf(codes.FailedPrecondition, "unsupported purpose_kind %q", order.PurposeKind)
+	}
+	if code == "" || qty <= 0 {
+		return status.Error(codes.InvalidArgument, "invalid reverse purpose")
+	}
+	_, err := f.assets.Consume(ctx, ConsumeCommand{
+		OwnerType:      domainassets.OwnerTypeUser,
+		OwnerID:        order.UserID,
+		DefCode:        code,
+		Quantity:       qty,
+		IdempotencyKey: "reverse:" + order.ID,
+		RefType:        "order",
+		RefID:          order.ID,
+	})
+	return err
+}
+
 func (f *orderFulfiller) grantFromPurpose(ctx context.Context, order *domainpayments.Order, topup bool) (string, error) {
 	code, qty, err := parsePurpose(order.Purpose, topup)
 	if err != nil {
 		return "", err
+	}
+	if topup {
+		qty = order.Amount
 	}
 	res, err := f.assets.Grant(ctx, GrantCommand{
 		OwnerType:      domainassets.OwnerTypeUser,
