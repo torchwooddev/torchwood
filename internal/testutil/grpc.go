@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
-	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

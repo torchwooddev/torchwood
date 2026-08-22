@@ -12,7 +12,7 @@
 | 层级 | 是否需要真实数据库 | 典型位置 | 示例 |
 |------|-------------------|----------|------|
 | 纯单元测试 | 否（stub/memstore） | `pkg/`、`internal/domain/`、`internal/api/*grpc/` | `pkg/crud/list_test.go`、`internal/domain/projects/idgen_settings_test.go`、`internal/api/servergrpc/projects_test.go` |
-| 拦截器测试 | 部分需要（validator 依赖 repo） | `pkg/grpc/interceptor/` | `jwt_auth_test.go`、`apikey_scope_test.go` |
+| 拦截器测试 | 部分需要（validator 依赖 repo） | `internal/grpc/interceptor/` | `jwt_auth_test.go`、`apikey_scope_test.go` |
 | 集成测试 | 是（testutil 建库） | `internal/infra/*/`、`internal/app/*/` | `internal/infra/documentdb/postgres_test.go`、`internal/app/client/account_test.go` |
 | 端到端/真实监听 | 是 | `internal/infra/server/` | `grpc_gateway_test.go`、`healthz_test.go`（readiness 503 真实监听） |
 
@@ -202,7 +202,7 @@ TORCHWOOD_RUN_DOCKER_TESTS: "1"
 - 全链路 `*slog.Logger`（lynx + zap 后端），由 `cmd/server/provides.go` 的 `NewLogger` 暴露；
 - gateway 请求日志：`lynxhttp.WithRequestLog(true)` + `lynxhttp.WithLogger(...)`
   （`internal/infra/server/grpc_gateway.go`），**级别为 Debug**，需 `--log-level debug` 可见；
-- 认证拒绝日志：`pkg/grpc/interceptor/jwt.go` 的 `logAuthFailure` 输出 Warn（方法名/拒绝原因/凭证
+- 认证拒绝日志：`internal/grpc/interceptor/jwt.go` 的 `logAuthFailure` 输出 Warn（方法名/拒绝原因/凭证
   类型/IP/UA，**不记录 token**）。
 
 ### 6.4 慢查询日志（`internal/infra/clients/dbhook.go`）

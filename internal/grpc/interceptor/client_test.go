@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
-	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"

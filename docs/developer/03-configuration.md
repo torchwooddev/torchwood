@@ -216,7 +216,7 @@ cmd/server/main.go
 
 ### 5.2 security.trusted_proxies（反向代理恢复真实 IP）
 
-- 语义：声明可信代理的 CIDR 网段（也接受裸 IP，按 `/32`、`/128` 处理）。**仅当 gRPC 直连 peer 命中这些网段时，才采纳其转发的 `X-Forwarded-For` 首跳或 `X-Real-Ip`**；否则一律使用 peer 自身地址（`pkg/grpc/interceptor/trusted_proxy.go`）。
+- 语义：声明可信代理的 CIDR 网段（也接受裸 IP，按 `/32`、`/128` 处理）。**仅当 gRPC 直连 peer 命中这些网段时，才采纳其转发的 `X-Forwarded-For` 首跳或 `X-Real-Ip`**；否则一律使用 peer 自身地址（`internal/grpc/interceptor/trusted_proxy.go`）。
 - **默认空列表 = 不信任任何代理**，此时 XFF/X-Real-Ip 一律忽略，防止客户端伪造来源绕过 IP 限流与审计。
 - grpc-gateway 与 gRPC 同进程部署时，需包含 `127.0.0.1/32` 才能恢复客户端真实 IP（配置模板注释已说明）。
 
@@ -257,6 +257,6 @@ security:
 - `cmd/server/provides.go` / `cmd/worker/provides.go`：`NewAppConfig` 启动校验。
 - `configs/config.yaml.template`、`.env.example`：配置模板与环境变量示例。
 - `internal/app/console/setup.go`：setup token 校验与首次引导。
-- `pkg/grpc/interceptor/trusted_proxy.go`：可信代理解析与真实 IP 恢复。
+- `internal/grpc/interceptor/trusted_proxy.go`：可信代理解析与真实 IP 恢复。
 - `internal/api/consolegrpc/cookies.go`、`internal/app/console/auth.go`：Console 会话 cookie。
 - `internal/testutil/db.go`：测试 DSN 读取。

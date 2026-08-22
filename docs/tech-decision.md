@@ -260,7 +260,7 @@ internal/
 | 动态文档层 | 原生 SQL adapter（方案 B）或 JSONB 单表（方案 A） |
 | 结构化 API | `gRPC` + `grpc-gateway/v2` |
 | 文件 / OAuth / WS | 标准库 `net/http` + `gorilla/websocket` |
-| 认证 | JWT（`golang-jwt/jwt/v5`）+ session/api-key，参考 fleework `pkg/grpc/interceptor/jwt.go` |
+| 认证 | JWT（`golang-jwt/jwt/v5`）+ session/api-key，参考 fleework `internal/grpc/interceptor/jwt.go` |
 | 密码/MFA | `golang.org/x/crypto/argon2|bcrypt|scrypt` + `pquerna/otp` |
 | 队列 | 优先 **PostgreSQL 队列表**（纯 PG 栈）；保留 Redis 适配可选 |
 | 缓存 | `go-redis` / `ristretto` |

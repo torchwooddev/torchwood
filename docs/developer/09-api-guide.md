@@ -303,7 +303,7 @@ if cmd.Name == "" {
 }
 ```
 
-- Principal 由认证拦截器注入（`pkg/grpc/interceptor`），用例层通过 `contexts.Principal(ctx)` 读取
+- Principal 由认证拦截器注入（`internal/grpc/interceptor`），用例层通过 `contexts.Principal(ctx)` 读取
   （`internal/pkg/contexts/principal.go`），不要自己解析凭证；
 - 校验规则写为 package 级常量/正则或共用包（如 `pkg/ident.ValidateSchemaResourceID` 校验 project.id / database.id）。
 
@@ -509,7 +509,7 @@ app 层所有预期内错误必须返回带 gRPC code 的 `status.Error`，禁�
 | gRPC code | 场景（以代码为准） |
 |-----------|--------------------|
 | `codes.Unauthenticated` | `contexts.Principal(ctx)` 取不到；凭证缺失/无效（拦截器） |
-| `codes.PermissionDenied` | 角色/scope 不足；平台级操作被 API key 调用；`pkg/grpc/interceptor` 的 `permissionMethods` 未命中 |
+| `codes.PermissionDenied` | 角色/scope 不足；平台级操作被 API key 调用；`internal/grpc/interceptor` 的 `permissionMethods` 未命中 |
 | `codes.NotFound` | 资源不存在；**越权访问伪装 NotFound 防枚举** |
 | `codes.InvalidArgument` | 必填缺失、长度超限（description ≤ 512）、ID 白名单不匹配（`^[a-z0-9-]{1,64}$`）、nothing to update、撞名 |
 | `codes.AlreadyExists` | 重复创建（DB unique violation 经 `MapDocumentDBError` 映射） |

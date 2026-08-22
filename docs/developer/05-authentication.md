@@ -1,7 +1,7 @@
 # Torchwood 认证与授权
 
 > 本文描述 Torchwood 的认证方法与授权模型：四种认证方式（终端用户 JWT、session cookie、API Key、Console admin session）、Principal 注入、gRPC 方法级 authz 注解、JWT claims 与密码/加密工具。
-> 相关代码：`pkg/grpc/interceptor/`、`internal/infra/auth/validator.go`、`internal/infra/auth/session_cookie.go`、`pkg/jwtparser/`、`pkg/password/`、`pkg/secretbox/`、`proto/shared/v1/authz.proto`、`internal/infra/server/grpc.go`、`internal/api/consolegrpc/cookies.go`、`internal/infra/bun/bunrepo/apikey_repo.go`。
+> 相关代码：`internal/grpc/interceptor/`、`internal/infra/auth/validator.go`、`internal/infra/auth/session_cookie.go`、`pkg/jwtparser/`、`pkg/password/`、`pkg/secretbox/`、`proto/shared/v1/authz.proto`、`internal/infra/server/grpc.go`、`internal/api/consolegrpc/cookies.go`、`internal/infra/bun/bunrepo/apikey_repo.go`。
 
 ---
 
@@ -14,7 +14,7 @@
 | `CredentialType` | `token`（JWT：Bearer）、`session`（session cookie）、`api_key`（API Key） |
 | `ActorKind` | `end_user`（终端用户）、`admin`（Console 管理员）、`service`（API Key / 自动化） |
 
-`pkg/grpc/interceptor/jwt.go` 的 `extractCredential` 按以下优先级从 gRPC metadata 提取凭证：
+`internal/grpc/interceptor/jwt.go` 的 `extractCredential` 按以下优先级从 gRPC metadata 提取凭证：
 
 | 优先级 | 来源 | 映射 |
 |:---:|------|------|
@@ -30,7 +30,7 @@
 | API Key | `api_key` | Server API（Agent/自动化） | 细粒度 scoped（见 §4） |
 
 ```go
-// internal/pkg/grpc/interceptor/jwt.go —— 凭证解析优先级
+// internal/grpc/interceptor/jwt.go —— 凭证解析优先级
 md 中:
   authorization: "Bearer eyJ..."   -> CredentialTypeToken
   authorization: "Session <val>"   -> CredentialTypeSession
@@ -44,7 +44,7 @@ md 中:
 
 ## 2. Principal 注入机制
 
-认证通过后，`AuthInterceptor.UnaryAuthMiddleware`（`pkg/grpc/interceptor/jwt.go`）把校验结果封装为 `shared.Principal` 并写入上下文（`contexts.WithPrincipal`），handler 通过 `contexts.Principal(ctx)` 读取。
+认证通过后，`AuthInterceptor.UnaryAuthMiddleware`（`internal/grpc/interceptor/jwt.go`）把校验结果封装为 `shared.Principal` 并写入上下文（`contexts.WithPrincipal`），handler 通过 `contexts.Principal(ctx)` 读取。
 
 Principal 结构（`internal/domain/shared/principal.go`）：
 
@@ -129,7 +129,7 @@ UnaryAuthMiddleware(ctx, req)
 
 ### 4.2 scope 命名规则（B2）
 
-`pkg/grpc/interceptor/apikey_scope.go` 显式登记全部 8 个 `ACCESS_API_KEY` 服务的方法 → `{resource, op}`，是 scope 格式的**单一事实来源**：
+`internal/grpc/interceptor/apikey_scope.go` 显式登记全部 8 个 `ACCESS_API_KEY` 服务的方法 → `{resource, op}`，是 scope 格式的**单一事实来源**：
 
 | 资源（裸 scope） | 服务 | 读 scope | 写 scope |
 |-----------------|------|----------|----------|
@@ -267,7 +267,7 @@ $argon2id$v=19$m=65536,t=3,p=4$<salt-b64>$<hash-b64>
 
 ## 7. 参考
 
-- `pkg/grpc/interceptor/*.go`：凭证提取、Principal 注入、API Key scope 校验、可信代理、审计。
+- `internal/grpc/interceptor/*.go`：凭证提取、Principal 注入、API Key scope 校验、可信代理、审计。
 - `internal/infra/auth/validator.go`：三种凭证的完整校验。
 - `internal/infra/auth/session_cookie.go`：不透明 session cookie 的 HMAC 格式。
 - `internal/api/consolegrpc/cookies.go` / `internal/app/console/auth.go`：Console 会话 cookie 与 admin 刷新/撤销。

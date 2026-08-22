@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
-	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

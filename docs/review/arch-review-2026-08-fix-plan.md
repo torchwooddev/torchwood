@@ -239,10 +239,13 @@ W-H 中以 per-语句 ctx deadline 收敛）。
    （AST 解析，复用 cmd/client 守卫模式）禁止非测试源码 import internal/infra；
    现存 6 个 client 文件以棘轮白名单锁定（只许缩减不许新增，条目带 W-A 待办说明）。
 
-### W-B pkg/grpc/interceptor 迁 internal（P2-3）
-`internal/grpcinterceptor`（或 internal/interceptor），同步改 AGENTS.md。
-依赖它的 serverhttp/realtime/grpc 装配点 import 路径机械替换。
-顺带修 `IsAPIKeysServiceMethod` 子串匹配（改精确方法前缀表）。
+### W-B pkg/grpc/interceptor 迁 internal（P2-3）✅（2026-08-22）
+`git mv` 至 `internal/grpc/interceptor`（保留文件历史）；9 个引用方机械
+替换（api/realtime、serverhttp×4、app/server/apikeys、infra/server、
+testutil、acceptance）；AGENTS.md 与 developer/tech-decision/roadmap
+在世文档同步（implementation-*/archived 历史文档保留原文）；顺带修
+`IsAPIKeysServiceMethod` 裸子串匹配 → 全限定服务段后缀精确匹配
+（首版相等比较被既有测试当场纠正：服务段含包路径）。
 
 ### W-C documentdb/postgres.go 拆分（P2-4）
 按端口能力拆：collection_ddl.go / document_crud.go / query_compile.go /

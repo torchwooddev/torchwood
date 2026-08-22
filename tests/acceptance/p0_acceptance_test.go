@@ -14,7 +14,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
+	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

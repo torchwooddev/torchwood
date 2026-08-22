@@ -10,10 +10,10 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	appfunctions "github.com/torchwooddev/torchwood/internal/app/functions"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
-	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -173,7 +173,7 @@ func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathPa
 
 // authorize 与 gRPC 拦截器对齐：API key 走 FunctionsService/CreateDeployment
 // scope（functions.write）；admin 会话要求 owner/admin 角色（对齐
-// pkg/grpc/interceptor/admin_roles.go，viewer/member 只读）；端用户
+// internal/grpc/interceptor/admin_roles.go，viewer/member 只读）；端用户
 // （Bearer JWT / 会话 cookie）一律禁止上传部署代码包：任意注册用户可借此
 // 触发 Docker 构建并部署恶意代码窃取函数环境变量（安全评审 03）。
 // 认证/项目解析等公共逻辑见 httpAuth（auth.go）。

@@ -19,8 +19,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
-	"github.com/torchwooddev/torchwood/pkg/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 )

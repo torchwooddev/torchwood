@@ -59,7 +59,7 @@ func printJSON(w io.Writer, b []byte) error {
 }
 
 // formatRPCError 把 gRPC 调用错误转成 CLI 可读文本；
-// PermissionDenied 时附加 scope 提示（scope 格式见 pkg/grpc/interceptor/apikey_scope.go）。
+// PermissionDenied 时附加 scope 提示（scope 格式见 internal/grpc/interceptor/apikey_scope.go）。
 func formatRPCError(err error) string {
 	if server.IsPermissionDenied(err) {
 		return fmt.Sprintf("rpc failed: %v\n提示：请检查 API Key 的 scope（如 users.read / users.write，或 * / all），或用 Console 重新生成 key", err)

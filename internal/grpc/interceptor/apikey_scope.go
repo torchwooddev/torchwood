@@ -203,7 +203,11 @@ func IsAPIKeysServiceMethod(fullMethod string) bool {
 	if len(parts) < 2 {
 		return false
 	}
-	return strings.Contains(parts[len(parts)-2], "APIKeys")
+	// 全限定服务段的后缀精确匹配（torchwood.server.v1.APIKeysService）：
+	// 裸子串匹配会让未来任何名字含 "APIKeys" 的服务被误拒（fail-closed
+	// 方向无危害，但注解与执行会静默漂移）。
+	seg := parts[len(parts)-2]
+	return seg == "APIKeysService" || strings.HasSuffix(seg, ".APIKeysService")
 }
 
 // APIKeyScopeRule 是单个 gRPC 方法对应的 scope 资源名与读写方向（B2），

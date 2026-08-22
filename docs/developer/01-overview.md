@@ -186,7 +186,7 @@ HTTP 客户端 / LLM Agent
 grpc-gateway（internal/infra/server/grpc_gateway.go）
    │  JSON ↔ protobuf 转换、CORS、header 透传
    ▼
-gRPC 服务端 + 认证拦截器（pkg/grpc/interceptor）
+gRPC 服务端 + 认证拦截器（internal/grpc/interceptor）
    │  JWT / API Key 校验、scope 检查、Principal 注入
    ▼
 internal/api/servergrpc.UsersService.CreateUser        【传输层】
@@ -226,7 +226,7 @@ PostgreSQL
 4. **用例层不感知协议**：app 层不 import gRPC/HTTP 相关类型，便于单测与协议演进。
 5. **gRPC 方法必须带 proto authz 注解**：否则 `collectMethodsByAccess` 收集方法时会报错，无法通过注册校验。
 6. **列表查询复用 `pkg/crud` 或 `pkg/query`**：不手拼 SQL filter/order；动态文档查询优先使用 Appwrite 风格 DSL。
-7. **JWT claims 与 `pkg/jwtparser` 映射保持一致**；Principal 由 `pkg/grpc/interceptor` 统一注入。
+7. **JWT claims 与 `pkg/jwtparser` 映射保持一致**；Principal 由 `internal/grpc/interceptor` 统一注入。
 8. **配置单一入口**：`internal/pkg/config/config.proto` 定义 schema，`bind.go` 负责环境变量绑定（`TORCHWOOD_` 前缀、点号路径映射）。
 9. **三层物理存储**：`public` 控制面（projects / admins / api_keys / …）用 bun + golang-migrate（**无** public `document_*` catalog，D-7 已 DROP）；项目数据面 `tw_<project>` 容纳系统静态表（users / sessions / identities / groups / memberships / buckets / files）+ 文档目录 + 账本（bun / projectschema）；用户 collection 才走两段式 schema 的 documentdb（`_tenant` + `_perms`）。
 
