@@ -55,16 +55,36 @@ gRPC StorageService (proto/server/v1/storage.proto) ──→ app/storage.Storag
 
 表在 `tw_<project>`（`internal/infra/bun/model/{buckets,files}.go`），无 `_id` / `_perms` / `_version`。
 
-`buckets` 列：`id`（PK）、`name`、`permissions`（JSONB，调用方传入的字符串数组，**不是**文档 `_perms`）、`public`、`created_at`、`updated_at`。
+`buckets` 列：`id`（PK）、`name`、`permissions`（JSONB，**已废弃**：A8 起读路径忽略该列，不用于鉴权，仅为兼容旧数据保留；Console 不应展示为 ACL）、`public`、`created_at`、`updated_at`。
 `files` 列：`id`（PK）、`bucket_id`、`name`、`mime_type`、`size`、`metadata`（JSONB）、`owner_user_id`、`created_at`、`updated_at`。文件没有文档级 ACE；归属用 `owner_user_id`。
 
-CreateBucket / CreateFile **不**再合成默认 `read:any` 等文档权限；`permissions` 仅 bucket 列按请求原样写入。鉴权在 Server API scope / HTTP `authorize`（凭证、File Token、公开 bucket 的 `public` 标志）。
+CreateBucket 的 `permissions` 仍落库但**读路径忽略**（鉴权以 `public` + privileged/owner 为准，见 §3.1）。CreateFile / CreateUpload 的 `permissions` 切片已废弃：服务端忽略请求中的 `permissions`，`CreateFileRequest.permissions` 字段标记 `deprecated` 保留字段号 6 兼容旧 SDK。文件 `OwnerUserID` 在服务端从 `principal` 派生（EndUser 填 `user:<id>`，API key/admin 留空）。
+
+### 3.1 权限模型（A8 最小落地）
+
+> bun 模型不再假装 `_perms`；文件行已有 `owner_user_id`。
+
+- **读/删/改**（`GetFile` / `DeleteFile` / `UpdateFile` / `CreateFileToken` / `ListFiles` 过滤）：
+  - `bucket.Public == true` → 允许（匿名 `GuestPrincipal` 经 `?project=` 或 `FileToken` 亦走此分支）；
+  - `isStoragePrivileged(principal)` → 允许（`SystemPrincipal` / `PlatformAdmin` / `keys` 角色 / `owner|admin|member|viewer` 任一 admin 角色）；
+  - 否则 `EndUser` 仅当 `file.OwnerUserID == principalUserID`（从 `databases.Principal` 的 `user:<id>` 角色提取，且 `users` 角色存在）；
+  - 其余一律 `PermissionDenied`。`ListFiles` 对 `EndUser` 在私有 bucket 下仅返回 `OwnerUserID` 匹配的条目；`public` bucket 返回全部。
+
+- **创建**（`CreateFile` / `CompleteUpload` / `CreateUploadSession`）：`OwnerUserID` 从 `principal` 填（仅 EndUser 有 `users` 角色时提取 `user:<id>`），丢弃请求中的 `Permissions`；API key/admin 创建的文件 `OwnerUserID` 为空（不归属）。
+
+- **`Bucket.permissions` 列**：历史数据仍存 JSONB，但读路径忽略，注释标明未使用；Console 不要展示成 ACL。
 
 MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、`application/xhtml+xml`、`application/javascript`、`text/javascript`、`application/xml`、`text/xml`，取分号前 base 判断）一律改判 `application/octet-stream`，防止存储型 XSS 经 `/view` 端点内联执行。
 
 ---
 
 ## 4. API
+
+> **双入口**（A9/C5 对齐）：
+> - **Server 管理**：`/v1/server/storage/...`（gRPC `StorageService` 经 grpc-gateway，见 §4.1），供 API Key / Console Admin 调用，负责 bucket 元数据 CRUD 与 `GetFile/ListFiles/DeleteFile/UpdateFile/CreateFileToken/Usage`；
+> - **Client 直传**：`/v1/storage/...`（`FileHandler` 独立 HTTP handler，见 §4.2），保留作为端用户直传合法路径（与 A9 端用户 JWT 对齐，但受 A8  owner 约束不再越权读别人文件），也允许 API Key/Admin 以相同 scope 复用；
+> - **TS Server SDK**：`sdk/typescript/src/server/storage.ts` 的 `uploadFile` 若以 API Key 调用，建议打 `server` 前缀（`POST /v1/server/storage/buckets/{id}/files` 的 multipart 变体）或复用现有 `/v1/storage/...` 但 `auth=apiKey`（网关转发时仍校验 `storage.write` scope）；文档已在此明确两条入口，SDK 暂保持 `auth=apiKey` 打现有路径，未来可新增 `serverUploadFile` 封装；
+> - **Functions HTTP**：`POST /v1/server/functions/{functionId}/deployments/code` 继续拒绝 `EndUser`（任意注册用户上传代码可窃取函数环境变量），仅 API Key / Admin 可调用。
 
 ### 4.1 gRPC `StorageService`（Server API，`/v1/server/storage/...`）
 
@@ -75,7 +95,7 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 | `GetBucket` | `GET /v1/server/storage/buckets/{id}` |
 | `UpdateBucket` | `PATCH /v1/server/storage/buckets/{id}`（name / public） |
 | `DeleteBucket` | `DELETE /v1/server/storage/buckets/{id}`（先分页删除该 bucket 全部文件对象，再删元数据） |
-| `CreateFile` | `POST /v1/server/storage/buckets/{bucket_id}/files`（gRPC body `data` bytes） |
+| `CreateFile` | `POST /v1/server/storage/buckets/{bucket_id}/files`（gRPC body `data` bytes；`permissions` 字段已废弃 deprecated） |
 | `ListFiles` | `GET /v1/server/storage/buckets/{bucket_id}/files`（queries / page_size / page_token） |
 | `GetFile` | `GET /v1/server/storage/buckets/{bucket_id}/files/{file_id}` |
 | `UpdateFile` | `PATCH /v1/server/storage/buckets/{bucket_id}/files/{file_id}`（name / mime_type / metadata 整体替换） |
@@ -85,12 +105,12 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 
 ### 4.2 HTTP multipart / 文件流（`internal/api/serverhttp/file_handler.go`）
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `POST` | `/v1/storage/buckets/{bucketId}/files` | multipart 上传，字段名 `file`；请求体上限 **100 MiB + 1MiB 缓冲**（`maxUploadBytes`），`ParseMultipartForm(32MB)` 后读取 |
-| `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/download` | 下载（`Content-Disposition: attachment`） |
-| `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/view` | 浏览器查看（安全 MIME 内联，见 §5） |
-| `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/preview` | 图片缩略图（见 §5） |
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| `POST` | `/v1/storage/buckets/{bucketId}/files` | multipart 上传，字段名 `file`；请求体上限 **100 MiB + 1MiB 缓冲**（`maxUploadBytes`），`ParseMultipartForm(32MB)` 后读取 | EndUser 允许（受 A8 约束，`owner_user_id` 填调用者）；API Key 需 `storage.write` scope，Admin 需 `member|owner|admin` 角色 + 项目绑定；写操作 `logOp` 结构化审计（`actor_id/kind/project_id/ip`，与 gRPC 审计一致，若 handler 注入 `audit.Repository` 则额外 Insert） |
+| `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/download` | 下载（`Content-Disposition: attachment`） | 同下 |
+| `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/view` | 浏览器查看（安全 MIME 内联，见 §5） | EndUser / API Key(`storage.read`) / Admin 同上；未凭证时走 `resolveReadContext` 的 File Token / public bucket 分支 |
+| `GET` | `/v1/storage/buckets/{bucketId}/files/{fileId}/preview` | 图片缩略图（见 §5） | 同上 |
 
 ### 4.3 分片上传（upload session）
 
@@ -98,27 +118,27 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/v1/storage/buckets/{bucketId}/uploads` | 创建会话，JSON body `{name, mime_type, size, metadata?, permissions?}`（1MiB 上限）；201 返回 `{upload_id, file_id, chunk_size, part_count, expires_at}` |
+| `POST` | `/v1/storage/buckets/{bucketId}/uploads` | 创建会话，JSON body `{name, mime_type, size, metadata?}`（`permissions` 已废弃忽略，1MiB 上限）；201 返回 `{upload_id, file_id, chunk_size, part_count, expires_at}` |
 | `GET` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}` | 查询会话（断点续传）：`{upload_id, part_count, received: [1,3,...], chunk_size}`；**GET 分支要求 `storage.read` scope** |
 | `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/chunks/{partNumber}` | 上传分片，multipart 字段名 `chunk`（16MiB 整片 + 1MiB 缓冲上限）；同号覆盖 = 幂等；成功不记 logOp |
-| `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/complete` | 合并分片并写入 files 元数据（mime 已归一化）；缺片 400 |
+| `POST` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}/complete` | 合并分片并写入 files 元数据（mime 已归一化，`owner_user_id` 从会话或 EndUser principal 派生）；缺片 400 |
 | `DELETE` | `/v1/storage/buckets/{bucketId}/uploads/{uploadId}` | 取消上传：删会话 + 清理暂存分片对象；204 |
 
 **约定**：
 
 - 常量（`internal/domain/storage/upload_session.go`）：`DefaultChunkSize = MaxChunkSize = 16MiB`、`UploadSessionTTL = 24h`、`MinComposePartSize = 5MiB`、`MaxComposePartCount = 10000`、`MaxUploadSize ≈ 156.25GB`；
 - 分片大小严格校验：非末片 **== chunkSize**（保证 sum(parts)==size），末片 `1..chunkSize`（可 < 5MiB，5MiB 约束仅对非末片，由 ComposeObject 兜底）；
-- 会话存 Redis：`torchwood:upload:{id}` Hash（metadata/permissions JSON）+ `:parts` Set，Create/MarkChunk 刷新 24h TTL（MarkChunk 前 EXISTS 检查防孤儿 key）；
+- 会话存 Redis：`torchwood:upload:{id}` Hash（metadata JSON，`permissions` 历史字段兼容保留）+ `:parts` Set，Create/MarkChunk 刷新 24h TTL（MarkChunk 前 EXISTS 检查防孤儿 key）；
 - complete 互斥：`SETNX torchwood:upload:{id}:lock EX 300`，重复 complete → FailedPrecondition（HTTP 400）；时序 Lock → 缺片校验 → Compose → 写 files 行 → 删分片 → 删会话 → Unlock；
 - 分片对象 key：`{projectID}/{bucketID}/{fileID}/chunks/{part:03d}`；
-- 鉴权：create/uploadChunk/complete/abort 复用 `authorize`（POST 分支要求 `storage.write`）；项目归属在 use-case 二次校验（`databases.Principal` 无 ProjectID，由 handler 传入）；
+- 鉴权：`FileHandler.authorize` 对齐 gRPC（A9/C5）：EndUser 允许 upload/download/view（含分片上传全链路，受 A8 file owner 约束）；API Key 按 `storage.write/read` scope，Admin 按 `member|owner|admin` 写方法角色 + `X-Torchwood-Project` 项目绑定；项目归属在 use-case 二次校验（`databases.Principal` 无 ProjectID，由 handler 传入）；
 - Console：`ChunkedUploader`（`console/src/routes/storage/chunked-uploader.tsx`）对 >16MiB 文件自动分片：`File.slice` 顺序上传、进度条（`components/ui/progress.tsx`）、uploadId 存 localStorage（键含 bucketId+fileName+size）实现失败/刷新后续传（getUploadSession 跳过已收分片）、complete/abort 后清除。
 
 ### 4.4 读上下文解析（`resolveReadContext`，优先级从高到低）
 
 认证（`authorize`）：`X-Api-Key` / `Authorization`（Bearer/Session/ApiKey scheme，与 gRPC 拦截器同一解析）/ `TORCHWOOD_session_*` cookie；API Key 按方法检查 scope（上传 → `StorageServiceCreateFile`，下载/预览 → `StorageServiceGetFile`，避免只读 key 越权上传）；admin 会话带 `X-Torchwood-Project` header 并校验项目访问权。上传/下载输出结构化访问日志（含解析后的客户端 IP，与 gRPC 同一 trusted-proxy 规则）。
 
-1. **常规凭证**：API key / admin / end-user JWT / session cookie；
+1. **常规凭证**：API key / admin / end-user JWT / session cookie（A9 后端用户直传合法，但 GetFile/ListFiles/DeleteFile 的 `principal` 参与 A8 判定，EndUser 仅见自己文件或 public bucket）；
 2. **File Token**：URL 携带 `?token=` 且解析后与路径 bucket/file 匹配 → 匿名下载；
 3. **公开 bucket**：无凭证但 bucket 为 `public`，URL 携带 `?project=` 定位项目 → `GuestPrincipal`（看 `buckets.public`，不是文档 `_perms`）。
 
@@ -140,7 +160,7 @@ MIME 归一化（`normalizeMimeType`）：空值及危险类型（`text/html`、
 - 签发：`POST /v1/server/storage/buckets/{bucket_id}/files/{file_id}/tokens`，`expires_in` 缺省 **3600s（1h）**，上限 **7 天**（`maxFileTokenLifetime`）；
 - 格式：`"{expiresAt}.{projectID}.{bucketID}.{fileID}.{hex(hmac)}"`，HMAC-SHA256 密钥取自 `security.jwt.secret`（`TORCHWOOD_SECURITY_JWT_SECRET`）；
 - 校验：`ParseFileToken` 检查段数、过期时间、重算 HMAC 比对（`hmac.Equal` 防时序攻击）；任一不符 → `Unauthenticated`；下载 URL 形如 `/v1/storage/buckets/{b}/files/{f}/download?token=...`；
-- 签发需先通过文件 read 权限校验。
+- 签发需先通过文件 read 权限校验（A8：`canAccessFile`）。
 
 ---
 

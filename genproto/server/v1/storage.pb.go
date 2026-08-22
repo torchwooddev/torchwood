@@ -326,13 +326,16 @@ func (x *Bucket) GetPublic() bool {
 }
 
 type CreateFileRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BucketId      string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	MimeType      string                 `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
-	Data          []byte                 `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
-	Metadata      map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Permissions   []string               `protobuf:"bytes,6,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	BucketId string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
+	Name     string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	MimeType string                 `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	Data     []byte                 `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	Metadata map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// permissions 已废弃（A8）：文件权限仅由 owner_user_id + bucket.Public 决定，服务端忽略该字段；保留字段号 6 兼容旧 SDK，勿复用。
+	//
+	// Deprecated: Marked as deprecated in server/v1/storage.proto.
+	Permissions   []string `protobuf:"bytes,6,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -402,6 +405,7 @@ func (x *CreateFileRequest) GetMetadata() map[string]string {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in server/v1/storage.proto.
 func (x *CreateFileRequest) GetPermissions() []string {
 	if x != nil {
 		return x.Permissions
@@ -999,14 +1003,14 @@ const file_server_v1_storage_proto_rawDesc = "" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x16\n" +
-	"\x06public\x18\x06 \x01(\bR\x06public\"\xa6\x02\n" +
+	"\x06public\x18\x06 \x01(\bR\x06public\"\xaa\x02\n" +
 	"\x11CreateFileRequest\x12\x1b\n" +
 	"\tbucket_id\x18\x01 \x01(\tR\bbucketId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
 	"\tmime_type\x18\x03 \x01(\tR\bmimeType\x12\x12\n" +
 	"\x04data\x18\x04 \x01(\fR\x04data\x12P\n" +
-	"\bmetadata\x18\x05 \x03(\v24.torchwood.server.v1.CreateFileRequest.MetadataEntryR\bmetadata\x12 \n" +
-	"\vpermissions\x18\x06 \x03(\tR\vpermissions\x1a;\n" +
+	"\bmetadata\x18\x05 \x03(\v24.torchwood.server.v1.CreateFileRequest.MetadataEntryR\bmetadata\x12$\n" +
+	"\vpermissions\x18\x06 \x03(\tB\x02\x18\x01R\vpermissions\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x85\x01\n" +

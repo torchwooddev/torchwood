@@ -491,7 +491,8 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "title": "permissions 已废弃（A8）：文件权限仅由 owner_user_id + bucket.Public 决定，服务端忽略该字段；保留字段号 6 兼容旧 SDK，勿复用。"
         }
       }
     },

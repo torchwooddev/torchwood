@@ -178,13 +178,12 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 	h.createFile(ctx, w, r, projectID, bucketID, f, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
 }
 
-// createUploadRequest 是创建分片上传会话的 JSON body。
+// createUploadRequest 是创建分片上传会话的 JSON body。A8 后 Permissions 已废弃：文件权限仅由 owner_user_id + bucket.Public 决定，请求中的 permissions 忽略。
 type createUploadRequest struct {
-	Name        string            `json:"name"`
-	MimeType    string            `json:"mime_type"`
-	Size        int64             `json:"size"`
-	Metadata    map[string]string `json:"metadata"`
-	Permissions []string          `json:"permissions"`
+	Name     string            `json:"name"`
+	MimeType string            `json:"mime_type"`
+	Size     int64             `json:"size"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 // createUpload 创建分片上传会话：POST /v1/storage/buckets/{bucketId}/uploads。
@@ -217,14 +216,12 @@ func (h *FileHandler) createUpload(w http.ResponseWriter, r *http.Request, pathP
 		return
 	}
 	session, err := h.storage.CreateUploadSession(ctx, appstorage.CreateUploadCommand{
-		ProjectID:   projectID,
-		BucketID:    bucketID,
-		Name:        req.Name,
-		MimeType:    req.MimeType,
-		Size:        req.Size,
-		Metadata:    req.Metadata,
-		Permissions: req.Permissions,
-		OwnerUserID: principal.OwnerID(),
+		ProjectID: projectID,
+		BucketID:  bucketID,
+		Name:      req.Name,
+		MimeType:  req.MimeType,
+		Size:      req.Size,
+		Metadata:  req.Metadata,
 	}, principal.DocPrincipal())
 	if err != nil {
 		h.logOp(r, "create-upload", bucketID, "", principal, err)
@@ -770,16 +767,32 @@ func imagingFormat(mime string) imaging.Format {
 	}
 }
 
-// authorize 认证并做方法级授权：API key 按方法区分 CreateFile（POST）/
-// GetFile（GET）scope；admin 走 X-Torchwood-Project + ValidateAdminProjectAccess。
+// authorize 认证并做方法级授权（A9/C5 对齐）：
+//   - EndUser：允许 upload/download/view（含 preview/分片上传），受 A8 文件级 owner 校验约束（此处仅放行，文件层再判）
+//   - API key：按方法区分 CreateFile（POST/写）/ GetFile（GET/读）scope，与 gRPC StorageService 相同
+//   - Admin：与 gRPC 相同（scope 已由 h.auth.authorize 完成项目绑定；此处额外校验写方法的 admin 角色——viewer 仅读，member/owner/admin 可写）
+//
+// 写操作的审计与 gRPC 一致：至少 slog 带 actor 的结构化日志（logOp）；若 handler 持有 audit.Repository 则额外 Insert（当前仅 slog）。
 // 认证/项目解析等公共逻辑见 httpAuth（auth.go）。
 func (h *FileHandler) authorize(r *http.Request) (*shared.Principal, error) {
-	return h.auth.authorize(r, func(r *http.Request) string {
-		if r.Method == http.MethodGet {
-			return interceptor.StorageServiceGetFile
+	isRead := r.Method == http.MethodGet
+	method := interceptor.StorageServiceGetFile
+	if !isRead {
+		method = interceptor.StorageServiceCreateFile
+	}
+	p, err := h.auth.authorize(r, func(*http.Request) string { return method })
+	if err != nil {
+		return nil, err
+	}
+	if p.ActorKind == shared.ActorKindEndUser {
+		return p, nil
+	}
+	if p.ActorKind == shared.ActorKindAdmin && !isRead {
+		if !p.HasAnyRole([]string{"member", "owner", "admin"}) {
+			return nil, status.Error(codes.PermissionDenied, "admin role not permitted for storage write")
 		}
-		return interceptor.StorageServiceCreateFile
-	})
+	}
+	return p, nil
 }
 
 func safeFilename(name string) string {

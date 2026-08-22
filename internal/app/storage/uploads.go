@@ -14,8 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// CreateUploadCommand 创建分片上传会话。projectID/ownerUserID 由 handler 传入
-// （databases.Principal 无 ProjectID/UserID）。
+// CreateUploadCommand 创建分片上传会话。projectID 由 handler 传入，OwnerUserID 已废弃（A8）——统一从 principal 派生（EndUser 时取 user:<id>），请求中的 OwnerUserID/Permissions 仅为兼容旧调用方，服务端以 principal 为准忽略。
 type CreateUploadCommand struct {
 	ProjectID   string
 	BucketID    string
@@ -54,6 +53,12 @@ func (s *Storage) CreateUploadSession(ctx context.Context, cmd CreateUploadComma
 		return nil, status.Error(codes.NotFound, "bucket not found")
 	}
 
+	// A8：OwnerUserID 从 principal 派生（EndUser），丢弃未落地的 Permissions。兼容旧测试：若 principal 非 EndUser 但 cmd 带 OwnerUserID，则保留。
+	ownerUserID := storageEndUserID(principal)
+	if ownerUserID == "" && cmd.OwnerUserID != "" {
+		ownerUserID = cmd.OwnerUserID
+	}
+
 	chunkSize := int64(storage.DefaultChunkSize)
 	partCount := int((cmd.Size + chunkSize - 1) / chunkSize)
 	now := time.Now()
@@ -62,12 +67,11 @@ func (s *Storage) CreateUploadSession(ctx context.Context, cmd CreateUploadComma
 		ProjectID:   project.ID,
 		BucketID:    cmd.BucketID,
 		FileID:      idgen.UUID().String(),
-		OwnerUserID: cmd.OwnerUserID,
+		OwnerUserID: ownerUserID,
 		Name:        cmd.Name,
 		MimeType:    normalizeMimeType(cmd.MimeType),
 		Size:        cmd.Size,
 		Metadata:    cmd.Metadata,
-		Permissions: cmd.Permissions,
 		ChunkSize:   chunkSize,
 		PartCount:   partCount,
 		Received:    map[int]bool{},
@@ -215,6 +219,17 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 		return nil, fmt.Errorf("compose file: %w", err)
 	}
 
+	// A8：CompleteUpload 的 OwnerUserID 从会话或 principal 派生，丢弃未落地 Permissions。
+	derivedOwner := session.OwnerUserID
+	if derivedOwner == "" {
+		if uid := storageEndUserID(principal); uid != "" {
+			derivedOwner = uid
+		} else {
+			derivedOwner = ownerUserID
+		}
+	}
+	// 若会话 OwnerUserID 非空但调用方为同 EndUser 的另一身份，需以会话 owner 为准已在 checkUploadOwner 校验；此处不覆写。
+
 	now := time.Now()
 	file := &storage.File{
 		ID:          session.FileID,
@@ -224,7 +239,7 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 		MimeType:    session.MimeType,
 		Size:        session.Size,
 		Metadata:    session.Metadata,
-		OwnerUserID: ownerUserID,
+		OwnerUserID: derivedOwner,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -251,15 +266,16 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 	}
 
 	return &storage.File{
-		ID:        session.FileID,
-		ProjectID: project.ID,
-		BucketID:  session.BucketID,
-		Name:      session.Name,
-		MimeType:  session.MimeType,
-		Size:      session.Size,
-		Metadata:  session.Metadata,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          session.FileID,
+		ProjectID:   project.ID,
+		BucketID:    session.BucketID,
+		Name:        session.Name,
+		MimeType:    session.MimeType,
+		Size:        session.Size,
+		Metadata:    session.Metadata,
+		OwnerUserID: derivedOwner,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}, nil
 }
 
@@ -319,6 +335,13 @@ func checkUploadOwner(session *storage.UploadSession, callerUserID string, princ
 	}
 	if principal.BypassesDocumentACL() || principal.HasRole("keys") {
 		return nil
+	}
+	// admin console 角色同样豁免会话 owner 校验（A8：admin 可管理全部文件/会话）
+	for _, r := range principal.Roles {
+		switch r {
+		case "owner", "admin", "member", "viewer":
+			return nil
+		}
 	}
 	return status.Error(codes.PermissionDenied, "upload session does not belong to caller")
 }

@@ -45,8 +45,9 @@ func NewStorage(
 }
 
 type CreateBucketCommand struct {
-	ProjectID   string
-	Name        string
+	ProjectID string
+	Name      string
+	// Permissions 保留落库但读路径不用于鉴权（A8）：bucket 行 permissions JSONB 仅作兼容，访问控制以 Public/owner+privileged 为准；Console 不应展示为 ACL。
 	Permissions []string
 	Public      bool
 }
@@ -58,6 +59,7 @@ type CreateFileCommand struct {
 	Name        string
 	MimeType    string
 	Metadata    map[string]string
+	// Permissions 已废弃（A8）：文件不再使用文档 _perms，服务端忽略该字段；保留以兼容旧调用方（proto 字段 6 仍存在）。
 	Permissions []string
 }
 
@@ -230,6 +232,18 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 		return nil, status.Error(codes.NotFound, "bucket not found")
 	}
 
+	// A8：OwnerUserID 从 principal 派生（EndUser 填 user:<id>），丢弃未落地的 Permissions 切片。
+	// 非 EndUser（keys/admin/system）保持空或调用方传入的 OwnerUserID（admin 可能携带 AdminID 但无鉴权意义）。
+	ownerUserID := cmd.OwnerUserID
+	if uid := storageEndUserID(principal); uid != "" {
+		ownerUserID = uid
+	} else if isStoragePrivileged(principal) {
+		// API key / admin / system 创建的文件不归属到特定用户，保持传入值（通常空）。
+		// 若调用方误传 EndUser 的 user id 但 principal 并非 EndUser，不覆盖以免伪造。
+	} else {
+		// 访客等无特权且非 EndUser 的主体不应通过 gRPC 直调进入文件创建（应由 HTTP 拦截器阻断），此处兜底不覆写。
+	}
+
 	fileID := idgen.UUID().String()
 	now := time.Now()
 	file := &storage.File{
@@ -240,7 +254,7 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 		MimeType:    cmd.MimeType,
 		Size:        size,
 		Metadata:    cmd.Metadata,
-		OwnerUserID: cmd.OwnerUserID,
+		OwnerUserID: ownerUserID,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -262,12 +276,22 @@ func (s *Storage) GetFile(ctx context.Context, projectID, bucketID, fileID strin
 	if err != nil {
 		return nil, nil, err
 	}
+	bucket, err := s.buckets.GetByID(ctx, project.ID, bucketID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if bucket == nil {
+		return nil, nil, status.Error(codes.NotFound, "bucket not found")
+	}
 	file, err := s.files.GetByID(ctx, project.ID, fileID)
 	if err != nil {
 		return nil, nil, err
 	}
 	if file == nil || file.BucketID != bucketID {
 		return nil, nil, status.Error(codes.NotFound, "file not found")
+	}
+	if !canAccessFile(bucket, file, principal) {
+		return nil, nil, status.Error(codes.PermissionDenied, "permission denied")
 	}
 	reader, err := s.store.Get(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID))
 	if err != nil {
@@ -281,6 +305,23 @@ func (s *Storage) DeleteFile(ctx context.Context, projectID, bucketID, fileID st
 	if err != nil {
 		return err
 	}
+	bucket, err := s.buckets.GetByID(ctx, project.ID, bucketID)
+	if err != nil {
+		return err
+	}
+	if bucket == nil {
+		return status.Error(codes.NotFound, "bucket not found")
+	}
+	file, err := s.files.GetByID(ctx, project.ID, fileID)
+	if err != nil {
+		return err
+	}
+	if file == nil || file.BucketID != bucketID {
+		return status.Error(codes.NotFound, "file not found")
+	}
+	if !canAccessFile(bucket, file, principal) {
+		return status.Error(codes.PermissionDenied, "permission denied")
+	}
 	if err := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID)); err != nil {
 		// Continue to delete metadata even if object missing.
 	}
@@ -292,6 +333,13 @@ func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q d
 	if err != nil {
 		return nil, 0, "", err
 	}
+	bucket, err := s.buckets.GetByID(ctx, project.ID, bucketID)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	if bucket == nil {
+		return nil, 0, "", status.Error(codes.NotFound, "bucket not found")
+	}
 
 	list, err := s.files.ListByBucket(ctx, project.ID, bucketID)
 	if err != nil {
@@ -302,6 +350,20 @@ func (s *Storage) ListFiles(ctx context.Context, projectID, bucketID string, q d
 		if f != nil {
 			out = append(out, *f)
 		}
+	}
+	// A8：EndUser 仅见自己文件，public bucket 或特权主体可见全部。
+	if !bucket.Public && !isStoragePrivileged(principal) {
+		uid := storageEndUserID(principal)
+		if uid == "" {
+			return nil, 0, "", status.Error(codes.PermissionDenied, "permission denied")
+		}
+		filtered := make([]storage.File, 0, len(out))
+		for _, f := range out {
+			if f.OwnerUserID == uid {
+				filtered = append(filtered, f)
+			}
+		}
+		out = filtered
 	}
 	return paginateFiles(out, q.PageSize, q.PageToken)
 }
@@ -322,12 +384,22 @@ func (s *Storage) UpdateFile(ctx context.Context, cmd UpdateFileCommand) (*stora
 	if err != nil {
 		return nil, err
 	}
+	bucket, err := s.buckets.GetByID(ctx, project.ID, cmd.BucketID)
+	if err != nil {
+		return nil, err
+	}
+	if bucket == nil {
+		return nil, status.Error(codes.NotFound, "bucket not found")
+	}
 	file, err := s.files.GetByID(ctx, project.ID, cmd.FileID)
 	if err != nil {
 		return nil, err
 	}
 	if file == nil || file.BucketID != cmd.BucketID {
 		return nil, status.Error(codes.NotFound, "file not found")
+	}
+	if !canAccessFile(bucket, file, cmd.Principal) {
+		return nil, status.Error(codes.PermissionDenied, "permission denied")
 	}
 
 	data := map[string]any{}
@@ -392,12 +464,22 @@ func (s *Storage) CreateFileToken(ctx context.Context, projectID, bucketID, file
 	if err != nil {
 		return nil, err
 	}
+	bucket, err := s.buckets.GetByID(ctx, project.ID, bucketID)
+	if err != nil {
+		return nil, err
+	}
+	if bucket == nil {
+		return nil, status.Error(codes.NotFound, "bucket not found")
+	}
 	file, err := s.files.GetByID(ctx, project.ID, fileID)
 	if err != nil {
 		return nil, err
 	}
 	if file == nil || file.BucketID != bucketID {
 		return nil, status.Error(codes.NotFound, "file not found")
+	}
+	if !canAccessFile(bucket, file, principal) {
+		return nil, status.Error(codes.PermissionDenied, "permission denied")
 	}
 
 	if expiresIn <= 0 {
@@ -493,49 +575,54 @@ func objectKey(projectID, bucketID, fileID string) string {
 	return fmt.Sprintf("%s/%s/%s", projectID, bucketID, fileID)
 }
 
-func bucketPermissions(bucketID string, explicit []string) []databases.Permission {
-	if len(explicit) > 0 {
-		return parseRawPermissions(explicit)
+// A8 权限辅助：storage 的 file 级鉴权以 owner_user_id + bucket.Public 为最小模型，不再假装文档 _perms。
+func isStoragePrivileged(p databases.Principal) bool {
+	if p.BypassesDocumentACL() {
+		return true
 	}
-	return []databases.Permission{
-		{Type: "read", Role: "any"},
-		{Type: "create", Role: "users"},
-		{Type: "update", Role: "users"},
-		{Type: "delete", Role: "users"},
+	if p.HasRole("keys") {
+		return true
 	}
-}
-
-func filePermissions(fileID, ownerUserID string, explicit []string) []databases.Permission {
-	if len(explicit) > 0 {
-		return parseRawPermissions(explicit)
-	}
-	perms := []databases.Permission{
-		{Type: "read", Role: "any"},
-		{Type: "read", Role: "keys"},
-		{Type: "read", Role: "admin"},
-		{Type: "update", Role: "keys"},
-		{Type: "update", Role: "admin"},
-		{Type: "delete", Role: "keys"},
-		{Type: "delete", Role: "admin"},
-	}
-	if ownerUserID != "" {
-		perms = append(perms,
-			databases.Permission{Type: "update", Role: fmt.Sprintf("user:%s", ownerUserID)},
-			databases.Permission{Type: "delete", Role: fmt.Sprintf("user:%s", ownerUserID)},
-		)
-	}
-	return perms
-}
-
-func parseRawPermissions(raw []string) []databases.Permission {
-	var perms []databases.Permission
-	for _, r := range raw {
-		parts := strings.SplitN(r, ":", 2)
-		if len(parts) == 2 {
-			perms = append(perms, databases.Permission{Type: parts[0], Role: parts[1]})
+	for _, r := range p.Roles {
+		switch r {
+		case "owner", "admin", "member", "viewer":
+			return true
 		}
 	}
-	return perms
+	return false
+}
+
+func storageEndUserID(p databases.Principal) string {
+	hasUsers := false
+	for _, r := range p.Roles {
+		if r == "users" {
+			hasUsers = true
+			break
+		}
+	}
+	if !hasUsers {
+		return ""
+	}
+	for _, r := range p.Roles {
+		if strings.HasPrefix(r, "user:") {
+			return strings.TrimPrefix(r, "user:")
+		}
+	}
+	return ""
+}
+
+func canAccessFile(bucket *storage.Bucket, file *storage.File, principal databases.Principal) bool {
+	if bucket != nil && bucket.Public {
+		return true
+	}
+	if isStoragePrivileged(principal) {
+		return true
+	}
+	uid := storageEndUserID(principal)
+	if uid != "" && file != nil && file.OwnerUserID == uid {
+		return true
+	}
+	return false
 }
 
 func paginateBuckets(items []storage.Bucket, pageSize int32, pageToken string) ([]storage.Bucket, int64, string, error) {
