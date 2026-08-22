@@ -10,12 +10,8 @@ import (
 )
 
 const (
-	// streamKey 是实时事件的 Redis Stream 键（历史，保留用于 metrics 兼容）。
-	streamKey = "torchwood:realtime"
 	// realtimeChannel 是广播扇出的 Pub/Sub 频道（A6：每副本都收到，不再消费组抢同一条）。
 	realtimeChannel = "torchwood:realtime"
-	// streamMaxLen 是历史 XADD 近似裁剪上限（保留未用）。
-	streamMaxLen = 50000
 )
 
 // streamTransport 是 shared.RealtimeTransport 的 Redis Pub/Sub 实现

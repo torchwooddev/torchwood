@@ -15,9 +15,6 @@ import (
 )
 
 const (
-	// realtimeGroup 保留常量以兼容旧 metrics，但 Pub/Sub 模式不再使用 consumer group。
-	realtimeGroup = "torchwood-realtime"
-	claimMinIdle  = 30 * time.Second
 	// maxRedisBackoff 是 Redis 断线重试退避上限。
 	maxRedisBackoff = 30 * time.Second
 )
@@ -35,8 +32,6 @@ type Subscriber struct {
 	logger *slog.Logger
 
 	consumer string
-	// claimIdle 保留字段以兼容旧测试桩，Pub/Sub 模式不使用。
-	claimIdle time.Duration
 }
 
 // NewRealtimeSubscriber 构造 Pub/Sub 消费端。consumer 为 hostname:pid
@@ -47,12 +42,11 @@ func NewRealtimeSubscriber(client *redis.Client, db *clients.Database, hub *Hub,
 	}
 	hostname, _ := os.Hostname()
 	return &Subscriber{
-		client:    client,
-		db:        db,
-		hub:       hub,
-		logger:    logger,
-		consumer:  fmt.Sprintf("%s:%d", hostname, os.Getpid()),
-		claimIdle: claimMinIdle,
+		client:   client,
+		db:       db,
+		hub:      hub,
+		logger:   logger,
+		consumer: fmt.Sprintf("%s:%d", hostname, os.Getpid()),
 	}
 }
 

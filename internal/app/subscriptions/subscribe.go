@@ -135,30 +135,6 @@ func (s *Subscriptions) Subscribe(ctx context.Context, cmd SubscribeCommand) (*S
 	return &result, nil
 }
 
-func (s *Subscriptions) startHosted(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, result *SubscribeResult) error {
-	if s.hosted == nil {
-		return domainsubs.ErrNotConfigured
-	}
-	if plan.ProviderOverrides.StripePriceID == "" {
-		return status.Error(codes.FailedPrecondition, "plan is missing stripe_price_id for hosted mode")
-	}
-	success, cancel := s.resolveCheckoutURLs("", "")
-	// 若外层已注入（未来可从 SubscribeCommand 透传），此处可覆盖；当前由 checkoutURLs 的调用方传入
-	sess, err := s.hosted.CreateCheckout(ctx, domainsubs.HostedCheckoutInput{
-		SubscriptionID: sub.ID,
-		ProjectID:      sub.ProjectID,
-		PriceID:        plan.ProviderOverrides.StripePriceID,
-		SuccessURL:     success,
-		CancelURL:      cancel,
-		IdempotencyKey: "sub:" + sub.ID,
-	})
-	if err != nil {
-		return err
-	}
-	result.PaymentURL = sess.PaymentURL
-	return s.upsertIndex(ctx, sub.Provider, domainpayments.IndexKindSubscription, sub.ID, sub.ProjectID)
-}
-
 func (s *Subscriptions) startHostedWithURLs(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, result *SubscribeResult, reqSuccess, reqCancel string) error {
 	if s.hosted == nil {
 		return domainsubs.ErrNotConfigured

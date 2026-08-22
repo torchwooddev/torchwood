@@ -21,7 +21,6 @@ const (
 	queueGroupSuffix = "-group"
 	// claimMinIdle 是 PEL 认领的最小 idle；队列侧用较短 idle（100ms）保证单元测试中不 Ack 后能快速重投，生产侧 worker 1s 轮询下仍满足至少一次。
 	claimMinIdle = 100 * time.Millisecond
-	streamMaxLen = 10000
 )
 
 // NewRedisQueue creates a Redis-backed queue adapter.
@@ -36,10 +35,10 @@ func queueGroup(queue string) string {
 }
 
 func (q *redisQueue) Enqueue(ctx context.Context, name string, payload []byte) error {
+	// 不设 MaxLen 裁剪：至少一次语义下未投递消息不得被近似裁剪丢弃，
+	// 积压治理交给消息消费（重试超限标 failed）。
 	return q.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: name,
-		MaxLen: streamMaxLen,
-		Approx: true,
 		Values: map[string]any{"payload": string(payload)},
 	}).Err()
 }
@@ -57,7 +56,7 @@ func (q *redisQueue) Dequeue(ctx context.Context, name string, timeout time.Dura
 		return nil, "", err
 	}
 	group := queueGroup(name)
-	// 先认领 PEL 中 idle 30s 的消息（崩溃重投）。
+	// 先认领 PEL 中超过 claimMinIdle 的消息（崩溃/未 Ack 重投）。
 	claimed, _, err := q.client.XAutoClaim(ctx, &redis.XAutoClaimArgs{
 		Stream:   name,
 		Group:    group,
