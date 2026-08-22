@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -11,9 +12,9 @@ import (
 	infraevents "github.com/torchwooddev/torchwood/internal/infra/events"
 )
 
-// TestStreamTransport_XAddsFullEnvelope：XADD 载荷是完整信封 JSON
-// （含 acl），与 outbox.payload 同形；往返解码不丢字段。
-func TestStreamTransport_XAddsFullEnvelope(t *testing.T) {
+// TestStreamTransport_PublishFullEnvelope：PUBLISH 载荷是完整信封 JSON
+// （含 acl），与 outbox.payload 同形；订阅方可收且往返解码不丢字段（A6 广播）。
+func TestStreamTransport_PublishFullEnvelope(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -23,13 +24,25 @@ func TestStreamTransport_XAddsFullEnvelope(t *testing.T) {
 
 	ev := testEnvelope()
 	transport := NewStreamTransport(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	pubsub := client.Subscribe(ctx, realtimeChannel)
+	t.Cleanup(func() { _ = pubsub.Close() })
+	_, err := pubsub.Receive(ctx)
+	require.NoError(t, err)
+	ch := pubsub.Channel()
+
 	require.NoError(t, transport.Enqueue(context.Background(), ev))
 
-	entries, err := client.XRange(context.Background(), streamKey, "-", "+").Result()
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	raw, ok := entries[0].Values["payload"].(string)
-	require.True(t, ok)
+	var raw string
+	select {
+	case msg := <-ch:
+		raw = msg.Payload
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for publish")
+	}
+	require.NotEmpty(t, raw)
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &m))
