@@ -20,27 +20,9 @@ var SystemCollectionIDs = []string{
 	"files",
 }
 
-// SensitiveSystemCollectionIDs 是高敏系统集合：Server API 仅 PlatformAdmin 可读
-// （返回前脱敏），Client API 一律拒绝（有 Account 专用 API）。
-var SensitiveSystemCollectionIDs = []string{
-	"users",
-	"sessions",
-	"identities",
-}
-
 // IsSystemCollectionID 报告集合 ID 是否命中系统集合名单。
 func IsSystemCollectionID(id string) bool {
 	for _, c := range SystemCollectionIDs {
-		if c == id {
-			return true
-		}
-	}
-	return false
-}
-
-// IsSensitiveSystemCollectionID 报告集合 ID 是否属于高敏系统集合。
-func IsSensitiveSystemCollectionID(id string) bool {
-	for _, c := range SensitiveSystemCollectionIDs {
 		if c == id {
 			return true
 		}
