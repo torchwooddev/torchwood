@@ -322,10 +322,18 @@ keyset token）、`postgres_query_compile.go`（336：DSL→SQL 编译 + 字段�
 - **残留**：覆盖率收集上报、outbox/subscriber/cleaner 后台循环的
   per-语句 ctx deadline、78 项存量 lint 债的渐进清理。
 
-### W-I 独立加密密钥（P1-12）
-config 增加 `security.encryption_key`（可选，缺省回退 jwt.secret 派生并
-Warn）；TOTP/OAuth secret 加密改用独立 key 域派生（沿用
-`jwtparser.DeriveKey` 前缀域分离模式，过渡期读旧值重加密）。
+### W-I 独立加密密钥（P1-12）✅（2026-08-22）
+- `config.Security.encryption_key`（字段 7，env
+  `TORCHWOOD_SECURITY_ENCRYPTION_KEY`）：静态加密（OAuth client secret /
+  TOTP secret）的独立密钥，与 `jwt.secret`（HMAC 签名）分离；
+- `config.EncryptionSecret(cfg) (string, fallback)`：显式配置优先，
+  未配置回退 jwt.secret——存量部署行为零变化，server/worker 启动期
+  Warn 提示配置独立密钥；
+- 迁移兼容（配置独立密钥后存量密文不丢）：
+  - OAuth repo：解密按 新密钥 → 旧密钥（jwt 原文）双读，写入一律新密钥；
+  - TOTP：解密按 新域（Derive(encKey,"totp")）→ 旧域（Derive(jwt,"totp")）
+    → jwt 原文 三读兼容；
+- 模板补 `encryption_key` 配置项与注释。
 
 ### W-J 事件重复/乱序收敛（P1-13/P1-14）✅ 主体完成（2026-08-22）
 - **Hub dedup 命中刷新时间戳**（P1-13）：去重窗口随每次命中滑动——

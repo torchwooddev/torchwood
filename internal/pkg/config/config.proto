@@ -79,6 +79,10 @@ message Security {
   string setup_token = 4;
   Sessions sessions = 5;
   RateLimit rate_limit = 6;
+  // Static data-encryption key (OAuth client secrets / TOTP secrets, secretbox
+  // AES-256-GCM). Independent from jwt.secret; when empty the JWT secret is
+  // used as fallback (startup warns). env: TORCHWOOD_SECURITY_ENCRYPTION_KEY
+  string encryption_key = 7;
 }
 
 message Database {

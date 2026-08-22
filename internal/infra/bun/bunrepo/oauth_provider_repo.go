@@ -17,14 +17,18 @@ import (
 type oauthProviderRepo struct {
 	db            *clients.Database
 	encryptionKey string
+	legacyKey     string
 }
 
 func NewOAuthProviderRepository(db *clients.Database, cfg *config.AppConfig) projects.OAuthProviderRepository {
-	key := ""
+	key, _ := config.EncryptionSecret(cfg)
+	// 旧版本直接用 jwt.secret 原文加密（无域分离）；配置独立 encryption_key
+	// 后存量密文靠 legacyKey 读兼容（W-I 迁移期）。
+	legacy := ""
 	if cfg != nil && cfg.GetSecurity() != nil && cfg.GetSecurity().GetJwt() != nil {
-		key = cfg.GetSecurity().GetJwt().GetSecret()
+		legacy = cfg.GetSecurity().GetJwt().GetSecret()
 	}
-	return &oauthProviderRepo{db: db, encryptionKey: key}
+	return &oauthProviderRepo{db: db, encryptionKey: key, legacyKey: legacy}
 }
 
 func (r *oauthProviderRepo) scoped(ctx context.Context, projectID string) (bun.IDB, bun.Ident, string, error) {
@@ -46,7 +50,7 @@ func (r *oauthProviderRepo) GetOAuthProvider(ctx context.Context, projectID, pro
 		}
 		return nil, err
 	}
-	return mapOAuthProvider(m, r.encryptionKey)
+	return mapOAuthProvider(m, r.encryptionKey, r.legacyKey)
 }
 
 func (r *oauthProviderRepo) ListOAuthProviders(ctx context.Context, projectID string) ([]projects.OAuthProvider, error) {
@@ -64,7 +68,7 @@ func (r *oauthProviderRepo) ListOAuthProviders(ctx context.Context, projectID st
 	}
 	out := make([]projects.OAuthProvider, len(rows))
 	for i := range rows {
-		mapped, err := mapOAuthProvider(&rows[i], r.encryptionKey)
+		mapped, err := mapOAuthProvider(&rows[i], r.encryptionKey, r.legacyKey)
 		if err != nil {
 			return nil, err
 		}
@@ -122,13 +126,16 @@ func (r *oauthProviderRepo) DeleteOAuthProvider(ctx context.Context, projectID, 
 	return err
 }
 
-func mapOAuthProvider(m *model.ProjectOAuthProvider, encryptionKey string) (*projects.OAuthProvider, error) {
+func mapOAuthProvider(m *model.ProjectOAuthProvider, encryptionKey, legacyOAuthKey string) (*projects.OAuthProvider, error) {
 	if m == nil {
 		return nil, nil
 	}
 	secret, err := secretbox.Decrypt(m.ClientSecret, encryptionKey)
 	if err != nil {
-		return nil, err
+		secret, err = secretbox.Decrypt(m.ClientSecret, legacyOAuthKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &projects.OAuthProvider{
 		ProjectID:    m.ProjectID,

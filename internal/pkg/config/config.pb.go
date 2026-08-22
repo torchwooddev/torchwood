@@ -319,9 +319,13 @@ type Security struct {
 	TrustedProxies []string `protobuf:"bytes,3,rep,name=trusted_proxies,json=trustedProxies,proto3" json:"trusted_proxies,omitempty"`
 	// Console bootstrap token required to sign up the first admin. When empty,
 	// Console SignUp is rejected (prevents setup takeover).
-	SetupToken    string              `protobuf:"bytes,4,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
-	Sessions      *Security_Sessions  `protobuf:"bytes,5,opt,name=sessions,proto3" json:"sessions,omitempty"`
-	RateLimit     *Security_RateLimit `protobuf:"bytes,6,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
+	SetupToken string              `protobuf:"bytes,4,opt,name=setup_token,json=setupToken,proto3" json:"setup_token,omitempty"`
+	Sessions   *Security_Sessions  `protobuf:"bytes,5,opt,name=sessions,proto3" json:"sessions,omitempty"`
+	RateLimit  *Security_RateLimit `protobuf:"bytes,6,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
+	// Static data-encryption key (OAuth client secrets / TOTP secrets, secretbox
+	// AES-256-GCM). Independent from jwt.secret; when empty the JWT secret is
+	// used as fallback (startup warns). env: TORCHWOOD_SECURITY_ENCRYPTION_KEY
+	EncryptionKey string `protobuf:"bytes,7,opt,name=encryption_key,json=encryptionKey,proto3" json:"encryption_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -396,6 +400,13 @@ func (x *Security) GetRateLimit() *Security_RateLimit {
 		return x.RateLimit
 	}
 	return nil
+}
+
+func (x *Security) GetEncryptionKey() string {
+	if x != nil {
+		return x.EncryptionKey
+	}
+	return ""
 }
 
 type Database struct {
@@ -2382,7 +2393,7 @@ const file_config_proto_rawDesc = "" +
 	"\rallow_headers\x18\x03 \x03(\tR\fallowHeaders\x12%\n" +
 	"\x0eexpose_headers\x18\x04 \x03(\tR\rexposeHeaders\x12+\n" +
 	"\x11allow_credentials\x18\x05 \x01(\bR\x10allowCredentials\x12\x17\n" +
-	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xd4\x06\n" +
+	"\amax_age\x18\x06 \x01(\x05R\x06maxAge\"\xfb\x06\n" +
 	"\bSecurity\x124\n" +
 	"\x03jwt\x18\x01 \x01(\v2\".torchwood.api.config.Security.JwtR\x03jwt\x12>\n" +
 	"\aapi_key\x18\x02 \x01(\v2%.torchwood.api.config.Security.ApiKeyR\x06apiKey\x12'\n" +
@@ -2391,7 +2402,8 @@ const file_config_proto_rawDesc = "" +
 	"setupToken\x12C\n" +
 	"\bsessions\x18\x05 \x01(\v2'.torchwood.api.config.Security.SessionsR\bsessions\x12G\n" +
 	"\n" +
-	"rate_limit\x18\x06 \x01(\v2(.torchwood.api.config.Security.RateLimitR\trateLimit\x1a]\n" +
+	"rate_limit\x18\x06 \x01(\v2(.torchwood.api.config.Security.RateLimitR\trateLimit\x12%\n" +
+	"\x0eencryption_key\x18\a \x01(\tR\rencryptionKey\x1a]\n" +
 	"\x03Jwt\x12\x16\n" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\x12\x1d\n" +
 	"\n" +

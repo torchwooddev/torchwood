@@ -21,7 +21,10 @@ server:
 
 security:
   jwt:
-    secret: ""              # env: TORCHWOOD_SECURITY_JWT_SECRET（必填，≥32 字符，弱默认值拒绝启动）
+    secret: ""              # env: TORCHWOOD_SECURITY_JWT_SECRET
+  # 独立静态加密密钥（OAuth client secret / TOTP secret，secretbox AES-256-GCM）。
+  # 未配置时回退 jwt.secret（启动告警）；配置后存量密文读取侧自动兼容。
+  encryption_key: ""       # env: TORCHWOOD_SECURITY_ENCRYPTION_KEY（必填，≥32 字符，弱默认值拒绝启动）
     access_ttl: "15m"
     refresh_ttl: "7d"
   api_key:

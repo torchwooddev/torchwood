@@ -103,6 +103,9 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	if err := config.UnmarshalConfig(app.Config(), &c); err != nil {
 		return nil, err
 	}
+	if _, fallback := config.EncryptionSecret(&c); fallback {
+		app.Logger().Warn("security.encryption_key is not set: static encryption (OAuth/TOTP secrets) falls back to security.jwt.secret; configure a dedicated key (env TORCHWOOD_SECURITY_ENCRYPTION_KEY)")
+	}
 	if c.GetData().GetDatabase().GetSource() == "" {
 		return nil, errors.New("data.database.source must be set (env TORCHWOOD_DATA_DATABASE_SOURCE)")
 	}

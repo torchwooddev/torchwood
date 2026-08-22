@@ -44,9 +44,17 @@ func (s *TOTPService) jwtSecret() string {
 	return s.cfg.GetSecurity().GetJwt().GetSecret()
 }
 
-// totpKey 派生 TOTP 专属密钥域（HMAC(master, "totp")），与 JWT 主密钥域分离；
-// 域分离后旧版本用主密钥加密的存量 secret 由 decryptSecret 双密钥读兼容。
+// totpKey 派生 TOTP 专属密钥域（HMAC(encryptionKey, "totp")）。密钥源是
+// security.encryption_key（独立加密密钥，W-I），未配置时回退 jwt.secret
+// （行为与历史一致）。读取侧 decryptSecret 按 新域 → 旧域（jwt 派生）→
+// jwt 原文 三级兼容存量密文。
 func (s *TOTPService) totpKey() string {
+	src, _ := config.EncryptionSecret(s.cfg)
+	return hex.EncodeToString(jwtparser.DeriveKey(src, "totp"))
+}
+
+// legacyTotpKey 是旧版本的 TOTP 域密钥（从 jwt.secret 派生）。
+func (s *TOTPService) legacyTotpKey() string {
 	return hex.EncodeToString(jwtparser.DeriveKey(s.jwtSecret(), "totp"))
 }
 
@@ -136,6 +144,10 @@ func (s *TOTPService) decryptSecret(factor *domainauth.Factor) (string, bool, er
 		return "", false, status.Error(codes.Internal, "mfa secret is not configured")
 	}
 	if plain, err := secretbox.Decrypt(factor.Secret, s.totpKey()); err == nil && plain != "" {
+		return plain, false, nil
+	}
+	// 旧域密钥（jwt.secret 派生）与更早的 jwt 原文密钥依次兜底（W-I 迁移期）。
+	if plain, err := secretbox.Decrypt(factor.Secret, s.legacyTotpKey()); err == nil && plain != "" {
 		return plain, false, nil
 	}
 	plain, err := secretbox.Decrypt(factor.Secret, s.jwtSecret())
