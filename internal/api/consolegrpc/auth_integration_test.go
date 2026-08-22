@@ -18,6 +18,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -49,7 +50,7 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	projectRepo := bunrepo.NewProjectRepository(db)
 	apiKeyRepo := bunrepo.NewAPIKeyRepository(db)
 	admins := console.NewAdmins(adminRepo, bunrepo.NewAdminProjectRepository(db))
-	projects := server.NewProjects(projectRepo, docDB, db, bunrepo.NewAdminProjectRepository(db))
+	projects := server.NewProjects(projectRepo, docDB, db, projectschema.NewSchemaManager(db), bunrepo.NewAdminProjectRepository(db))
 	auth := console.NewAuth(cfg, adminRepo, nil, nil, nil)
 	setupUC := console.NewSetup(cfg, admins, projects, auth, adminRepo, bunrepo.NewAdminProjectRepository(db), projectRepo)
 	svc := NewAuthService(auth, setupUC)

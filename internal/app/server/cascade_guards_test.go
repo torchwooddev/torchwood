@@ -340,3 +340,5 @@ func TestUsers_UpdateUserEmailUniqueness(t *testing.T) {
 		require.Equal(t, false, updated.Data["email_verified"])
 	})
 }
+
+func (r fakeProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }

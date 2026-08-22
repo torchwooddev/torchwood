@@ -9,6 +9,23 @@ type Repository interface {
 	ListProjects(ctx context.Context) ([]Project, error)
 	UpdateProject(ctx context.Context, p *Project) error
 	DeleteProject(ctx context.Context, id string) error
+	// DeleteProjectControlPlaneRows 清理 public 控制面中该项目的派生行
+	// （outbox/死信/api_keys/audit_logs/admin_projects/provider_resource_index）。
+	// 感知调用方事务：项目删除事务内执行，与 schema DROP 原子提交。
+	DeleteProjectControlPlaneRows(ctx context.Context, projectID string) error
+}
+
+// SchemaManager 管理项目数据面 schema 的生命周期（infra/projectschema 适配）。
+// Ensure/DropCascade 感知调用方事务：ctx 携带事务时并入同一事务，
+// 与项目行写入/删除原子提交。
+type SchemaManager interface {
+	// Ensure 幂等确保 tw_<projectID> schema 存在且迁移到最新版本。
+	Ensure(ctx context.Context, projectID string) error
+	// DropCascade 删除项目数据面 schema（CASCADE，连带其全部对象）。
+	DropCascade(ctx context.Context, projectID string) error
+	// Invalidate 清除本进程的 schema 就绪缓存（DropCascade 后自动调用；
+	// 迁移器之外带外改动 schema 状态时同样需要）。
+	Invalidate(projectID string)
 }
 
 type APIKeyRepository interface {

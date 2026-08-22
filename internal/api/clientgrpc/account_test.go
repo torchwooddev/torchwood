@@ -633,3 +633,5 @@ func (r *grpcMemSessionRepo) DeleteByUser(_ context.Context, _, userID string) e
 func (r *grpcMemSessionRepo) DeleteOldestByUser(context.Context, string, string, int) error {
 	return nil
 }
+
+func (r *fakeProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }

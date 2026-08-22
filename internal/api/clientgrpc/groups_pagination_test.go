@@ -177,3 +177,7 @@ func (clientGroupsRepo) List(context.Context, string) ([]*domaingroups.Group, er
 }
 func (clientGroupsRepo) AddTotal(context.Context, string, string, int64) error { return nil }
 func (clientGroupsRepo) RecountAccepted(context.Context, string, string) error { return nil }
+
+func (r clientGroupsProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error {
+	return nil
+}

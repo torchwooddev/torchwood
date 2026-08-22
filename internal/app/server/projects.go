@@ -10,12 +10,10 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
-	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
-	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/ident"
+	"github.com/torchwooddev/torchwood/pkg/uow"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -27,12 +25,15 @@ const maxProjectDescriptionLen = 512
 type Projects struct {
 	projectRepo      projects.Repository
 	docDB            databases.DocumentDB
-	db               *clients.Database
+	tx               uow.Runner
+	schema           projects.SchemaManager
 	adminProjectRepo projects.AdminProjectRepository
 }
 
-func NewProjects(projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database, adminProjectRepo projects.AdminProjectRepository) *Projects {
-	return &Projects{projectRepo: projectRepo, docDB: docDB, db: db, adminProjectRepo: adminProjectRepo}
+// NewProjects 构造项目用例。tx 注入 uow.Runner 端口（事务编排），schema
+// 注入 projects.SchemaManager 端口（数据面 schema 生命周期，infra 适配）。
+func NewProjects(projectRepo projects.Repository, docDB databases.DocumentDB, tx uow.Runner, schema projects.SchemaManager, adminProjectRepo projects.AdminProjectRepository) *Projects {
+	return &Projects{projectRepo: projectRepo, docDB: docDB, tx: tx, schema: schema, adminProjectRepo: adminProjectRepo}
 }
 
 type CreateProjectCommand struct {
@@ -85,18 +86,12 @@ func (s *Projects) CreateProjectInternal(ctx context.Context, cmd CreateProjectC
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	err := s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := s.tx.Run(ctx, func(txCtx context.Context) error {
 		if err := s.projectRepo.CreateProject(txCtx, p); err != nil {
 			return fmt.Errorf("insert project: %w", err)
 		}
-		schema, err := ident.ProjectSchemaName(p.ID)
-		if err != nil {
-			return appshared.MapIdentError(err)
-		}
-		if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
-			return fmt.Errorf("create project schema: %w", err)
-		}
-		if err := projectschema.Apply(txCtx, s.db, p.ID); err != nil {
+		// Ensure 幂等（含 CREATE SCHEMA IF NOT EXISTS + 迁移），并入本事务。
+		if err := s.schema.Ensure(txCtx, p.ID); err != nil {
 			return fmt.Errorf("apply project schema: %w", err)
 		}
 		if err := s.docDB.CreateDatabase(txCtx, p.ID, firstDBID, firstDBID); err != nil {
@@ -139,7 +134,7 @@ func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 	if err := ident.ValidateSchemaResourceID(id); err != nil {
 		return appshared.MapIdentError(err)
 	}
-	err := s.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := s.tx.Run(ctx, func(txCtx context.Context) error {
 		dbs, err := s.docDB.ListDatabases(txCtx, id)
 		if err != nil {
 			return fmt.Errorf("list databases: %w", err)
@@ -152,15 +147,11 @@ func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 				return fmt.Errorf("drop business schema %s: %w", db.ID, err)
 			}
 		}
-		if err := s.deletePublicProjectRows(txCtx, id); err != nil {
+		if err := s.projectRepo.DeleteProjectControlPlaneRows(txCtx, id); err != nil {
 			return err
 		}
-		schema, err := ident.ProjectSchemaName(id)
-		if err != nil {
-			return appshared.MapIdentError(err)
-		}
-		if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
-			return fmt.Errorf("drop project schema: %w", err)
+		if err := s.schema.DropCascade(txCtx, id); err != nil {
+			return err
 		}
 		if err := s.projectRepo.DeleteProject(txCtx, id); err != nil {
 			return fmt.Errorf("delete project row: %w", err)
@@ -170,37 +161,10 @@ func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	// schema 已 DROP：清除 projectschema 就绪缓存，否则同 ID 重建项目时
-	// 缓存直通会跳过 schema 重建。
-	projectschema.Invalidate(s.db, id)
+	// schema 已 DROP：清除就绪缓存，否则同 ID 重建项目时缓存直通会跳过重建
+	//（DropCascade 语义的一部分，见 projects.SchemaManager）。
+	s.schema.Invalidate(id)
 	return nil
-}
-
-func (s *Projects) deletePublicProjectRows(ctx context.Context, projectID string) error {
-	conn := s.db.Conn(ctx)
-	if _, err := conn.NewDelete().Model((*model.DocumentEventsOutbox)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete outbox: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, `DELETE FROM document_events_outbox_dead WHERE project_id = ?`, projectID); err != nil {
-		return fmt.Errorf("delete outbox dead: %w", err)
-	}
-	if _, err := conn.NewDelete().Model((*model.APIKey)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete api_keys: %w", err)
-	}
-	if _, err := conn.NewDelete().Model((*model.AuditLog)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete audit_logs: %w", err)
-	}
-	if _, err := conn.NewDelete().Model((*model.AdminProject)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
-		return fmt.Errorf("delete admin_projects: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, `DELETE FROM provider_resource_index WHERE project_id = ?`, projectID); err != nil {
-		return fmt.Errorf("delete provider_resource_index: %w", err)
-	}
-	return nil
-}
-
-func quoteIdent(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 func (s *Projects) ListProjects(ctx context.Context, pageSize int32, pageToken, filter, orderBy string) ([]projects.Project, *crud.PaginationInfo, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
@@ -16,6 +17,31 @@ type projectRepo struct {
 
 func NewProjectRepository(db *clients.Database) projects.Repository {
 	return &projectRepo{db: db}
+}
+
+// DeleteProjectControlPlaneRows 清理 public 控制面中该项目的派生行；感知
+// 调用方事务（项目删除事务内执行）。错误消息与既有删除流程保持一致。
+func (r *projectRepo) DeleteProjectControlPlaneRows(ctx context.Context, projectID string) error {
+	conn := r.db.Conn(ctx)
+	if _, err := conn.NewDelete().Model((*model.DocumentEventsOutbox)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete outbox: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `DELETE FROM document_events_outbox_dead WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("delete outbox dead: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.APIKey)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete api_keys: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.AuditLog)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete audit_logs: %w", err)
+	}
+	if _, err := conn.NewDelete().Model((*model.AdminProject)(nil)).Where("project_id = ?", projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("delete admin_projects: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `DELETE FROM provider_resource_index WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("delete provider_resource_index: %w", err)
+	}
+	return nil
 }
 
 func (r *projectRepo) CreateProject(ctx context.Context, p *projects.Project) error {

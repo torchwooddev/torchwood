@@ -226,3 +226,7 @@ func TestServerGRPC_GetBucket_UsesBuildEqual(t *testing.T) {
 		require.Equal(t, codes.NotFound, status.Code(err), "含引号的 id 必须安全走完查询并返回 NotFound")
 	})
 }
+
+func (r paginationProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error {
+	return nil
+}

@@ -229,12 +229,15 @@ W-H 中以 per-语句 ctx deadline 收敛）。
    引入 infra.ProviderSet，按既有 bind 复制先例）。wire_gen 无 diff
    （具体类型变量直传接口参数，无需胶水）。users.go 的 `RunInTx` 调用改
    `Run`（tx.go 中 Run 直接委托 RunInTx，零行为变化）；
-3. `app/server/projects.go` 的 CREATE/DROP SCHEMA 与清表 SQL 下沉为
-   domain 端口（如 `projects.ProjectSchemaLifecycle`），infra/projectschema
-   实现；
-4. app 层 import 守卫测试（复制 domain/assets/service_test.go 的模式），
-   禁止 `internal/app/**` import `internal/infra/**`（test_helpers 白名单），
-   之后逐步偿还 oauth2.go 自建适配器等欠债（改为 Wire 注入工厂）。
+3. ✅ `app/server/projects.go` 的 DDL/清表 SQL 下沉（2026-08-22 完成）：
+   `domain/projects` 新增 `SchemaManager` 端口（Ensure/DropCascade/Invalidate，
+   infra/projectschema/manager.go 适配，事务感知）与 `Repository.DeleteProjectControlPlaneRows`
+   （bunrepo 实现）；Projects 用例改持 `uow.Runner + SchemaManager` 端口，
+   删除 `*clients.Database`/`infra/bun/model`/`infra/projectschema` 三个
+   import 与本地 quoteIdent——app/server 包零 infra 依赖。
+4. ✅ app 层 import 守卫测试（2026-08-22 完成）：`internal/app/import_guard_test.go`
+   （AST 解析，复用 cmd/client 守卫模式）禁止非测试源码 import internal/infra；
+   现存 6 个 client 文件以棘轮白名单锁定（只许缩减不许新增，条目带 W-A 待办说明）。
 
 ### W-B pkg/grpc/interceptor 迁 internal（P2-3）
 `internal/grpcinterceptor`（或 internal/interceptor），同步改 AGENTS.md。

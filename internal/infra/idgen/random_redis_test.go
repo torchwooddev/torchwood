@@ -96,3 +96,5 @@ func TestService_NewID_RandomRetriesOnCollision(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, "11111111", id)
 }
+
+func (r stubProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }

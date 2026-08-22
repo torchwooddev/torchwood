@@ -48,12 +48,13 @@ func (r *stubProjectRepo) UpdateProject(_ context.Context, p *projects.Project) 
 	return nil
 }
 
-func (r *stubProjectRepo) DeleteProject(context.Context, string) error { return nil }
+func (r *stubProjectRepo) DeleteProject(context.Context, string) error                 { return nil }
+func (r *stubProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }
 
 // newTestProjectsService 组装 handler（UpdateProject 只依赖 projectRepo，
 // docDB/db 传 nil）。
 func newTestProjectsService(repo *stubProjectRepo) *ProjectsService {
-	uc := appserver.NewProjects(repo, nil, nil, nil)
+	uc := appserver.NewProjects(repo, nil, nil, nil, nil)
 	return NewProjectsService(uc)
 }
 

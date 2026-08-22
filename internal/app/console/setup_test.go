@@ -109,6 +109,10 @@ func (r *fakeProjectRepo) DeleteProject(_ context.Context, id string) error {
 	return nil
 }
 
+func (r *fakeProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error {
+	return nil
+}
+
 var _ projects.Repository = (*fakeProjectRepo)(nil)
 
 type fakeAdminProjectRepo struct {

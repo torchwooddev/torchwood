@@ -18,7 +18,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -43,7 +42,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
 		ID:          "txapp",
@@ -102,7 +101,7 @@ func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	// API key 主体（ActorKind=service）被拒。
 	apiKeyCtx := contexts.WithPrincipal(ctx, &shared.Principal{
@@ -136,7 +135,7 @@ func TestProjects_CreateProject_RejectsInvalidID(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	for _, id := range []string{"", "Bad_Name", "my-shop", "1shop", "MyShop"} {
 		_, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{ID: id, Name: "App"})
@@ -169,14 +168,7 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 		if err := repo.CreateProject(txCtx, p); err != nil {
 			return err
 		}
-		schema, err := ident.ProjectSchemaName(p.ID)
-		if err != nil {
-			return err
-		}
-		if _, err := db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
-			return err
-		}
-		if err := projectschema.Apply(txCtx, db, p.ID); err != nil {
+		if err := projectschema.NewSchemaManager(db).Ensure(txCtx, p.ID); err != nil {
 			return err
 		}
 		if err := docDB.CreateDatabase(txCtx, p.ID, "default", "default"); err != nil {
@@ -232,7 +224,7 @@ func TestProjects_UpdateProject_PlatformAdminSuccess(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	created := createTestProject(t, repo, "alpha", "Alpha App")
 	time.Sleep(2 * time.Millisecond) // 保证 updated_at 严格递增
@@ -266,7 +258,7 @@ func TestProjects_UpdateProject_RestrictedAdminOwnProject(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	createTestProject(t, repo, "own", "Own App")
 	got, err := projectsUC.UpdateProject(restrictedAdminCtx(ctx, "own"), UpdateProjectCommand{
@@ -287,7 +279,7 @@ func TestProjects_UpdateProject_RestrictedAdminOtherProjectNotFound(t *testing.T
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	createTestProject(t, repo, "own", "Own App")
 	createTestProject(t, repo, "other", "Other App")
@@ -317,7 +309,7 @@ func TestProjects_UpdateProject_ProjectNotFound(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	_, err := projectsUC.UpdateProject(platformAdminCtx(ctx), UpdateProjectCommand{
 		ProjectID: "missing",
@@ -336,7 +328,7 @@ func TestProjects_UpdateProject_NothingToUpdate(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	// 前置检查：name 与 description 均未提供 → InvalidArgument（先于取数/越权）。
 	_, err := projectsUC.UpdateProject(platformAdminCtx(ctx), UpdateProjectCommand{ProjectID: "alpha"})
@@ -354,7 +346,7 @@ func TestProjects_UpdateProject_EmptyID(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	_, err := projectsUC.UpdateProject(platformAdminCtx(ctx), UpdateProjectCommand{
 		Name: strPtr("Whatever"),
@@ -372,7 +364,7 @@ func TestProjects_UpdateProject_BlankNameRejected(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	createTestProject(t, repo, "alpha", "Alpha App")
 
@@ -395,7 +387,7 @@ func TestProjects_UpdateProject_NameCollision(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	createTestProject(t, repo, "alpha", "Alpha App")
 	createTestProject(t, repo, "beta", "Beta App")
@@ -423,7 +415,7 @@ func TestProjects_CreateProject_RejectsLongDescription(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	// 口径 a：CreateProject 与 UpdateProject 对 description 施加同一上限 512。
 	_, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
@@ -456,7 +448,7 @@ func TestProjects_DeleteProject_DropsSchemas(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
 		ID:              "delme",
@@ -495,7 +487,7 @@ func TestProjects_DeleteProject_RequiresPlatformAdmin(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
 		ID:   "delauth",
@@ -549,7 +541,7 @@ func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 
 	p, err := projectsUC.CreateProject(platformAdminCtx(ctx), CreateProjectCommand{
 		ID:   "delrows",
@@ -613,7 +605,7 @@ func TestProjects_ListProjects_MemberGrantedProjects(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	adminProjectRepo := bunrepo.NewAdminProjectRepository(db)
 	adminRepo := bunrepo.NewAdminRepository(db)
-	projectsUC := NewProjects(repo, docDB, db, adminProjectRepo)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), adminProjectRepo)
 	require.NoError(t, adminRepo.CreateAdmin(ctx, &projects.Admin{
 		ID:           "adm-member-1",
 		Email:        "member-grant@test.local",

@@ -24,9 +24,10 @@ func (f *emptyProjectRepo) GetProject(context.Context, string) (*projects.Projec
 func (f *emptyProjectRepo) GetProjectByName(context.Context, string) (*projects.Project, error) {
 	return nil, nil
 }
-func (f *emptyProjectRepo) ListProjects(context.Context) ([]projects.Project, error) { return nil, nil }
-func (f *emptyProjectRepo) UpdateProject(context.Context, *projects.Project) error   { return nil }
-func (f *emptyProjectRepo) DeleteProject(context.Context, string) error              { return nil }
+func (f *emptyProjectRepo) ListProjects(context.Context) ([]projects.Project, error)    { return nil, nil }
+func (f *emptyProjectRepo) UpdateProject(context.Context, *projects.Project) error      { return nil }
+func (f *emptyProjectRepo) DeleteProject(context.Context, string) error                 { return nil }
+func (f *emptyProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }
 
 var _ projects.Repository = (*emptyProjectRepo)(nil)
 

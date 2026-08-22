@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
 
@@ -25,7 +26,7 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	projectsUC := NewProjects(repo, docDB, db, nil)
+	projectsUC := NewProjects(repo, docDB, db, projectschema.NewSchemaManager(db), nil)
 	uc := NewDatabases(repo, docDB)
 
 	p, err := projectsUC.CreateProject(ctx, CreateProjectCommand{

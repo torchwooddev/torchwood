@@ -5,6 +5,7 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	domaingroups "github.com/torchwooddev/torchwood/internal/domain/groups"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
+	domainprojects "github.com/torchwooddev/torchwood/internal/domain/projects"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	domainusers "github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -19,6 +20,7 @@ import (
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
 	infrapayments "github.com/torchwooddev/torchwood/internal/infra/payments"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
 	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
@@ -32,6 +34,8 @@ var ProviderSet = wire.NewSet(
 	clients.NewRedis,
 	wire.Bind(new(uow.Runner), new(*clients.Database)),
 	wire.Bind(new(uow.Isolator), new(*clients.Database)),
+	projectschema.NewSchemaManager,
+	wire.Bind(new(domainprojects.SchemaManager), new(*projectschema.SchemaManager)),
 	health.NewCheckers,
 
 	auth.NewValidatorWithOneTimeTokens,

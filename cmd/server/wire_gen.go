@@ -34,6 +34,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/messaging"
 	"github.com/torchwooddev/torchwood/internal/infra/payments"
+	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
@@ -125,7 +126,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	subscriptionsService := clientgrpc.NewSubscriptionsService(subscriptionsSubscriptions)
 	buildInfo := NewBuildInfo()
 	healthService := servergrpc.NewHealthService(checkers, buildInfo)
-	projects := server.NewProjects(repository, documentDB, database, adminProjectRepository)
+	schemaManager := projectschema.NewSchemaManager(database)
+	projects := server.NewProjects(repository, documentDB, database, schemaManager, adminProjectRepository)
 	projectsService := servergrpc.NewProjectsService(projects)
 	uploadSessionStore := storage.NewRedisUploadSessionStore(redisClient)
 	bucketRepository := bunrepo.NewBucketRepository(database)

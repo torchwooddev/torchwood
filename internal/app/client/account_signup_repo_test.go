@@ -306,3 +306,5 @@ func (usersCollectionGuardDocDB) BulkDeleteDocuments(context.Context, string, st
 }
 
 var _ databases.DocumentDB = usersCollectionGuardDocDB{}
+
+func (r signupProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }

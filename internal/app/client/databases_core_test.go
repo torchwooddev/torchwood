@@ -251,3 +251,5 @@ func (s *stubDocDB) BulkDeleteDocuments(context.Context, string, string, string,
 }
 
 var _ databases.DocumentDB = (*stubDocDB)(nil)
+
+func (s stubProjects) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }

@@ -553,7 +553,8 @@ func (s *stubProjectRepo) ListProjects(context.Context) ([]domainprojects.Projec
 func (s *stubProjectRepo) UpdateProject(context.Context, *domainprojects.Project) error {
 	return nil
 }
-func (s *stubProjectRepo) DeleteProject(context.Context, string) error { return nil }
+func (s *stubProjectRepo) DeleteProject(context.Context, string) error                 { return nil }
+func (s *stubProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }
 
 func TestRecoverOrphanExecutions_EnumeratesActiveProjectsWithBudget(t *testing.T) {
 	repo := newMockRepo()
