@@ -581,3 +581,46 @@ func TestDatabases_Document_Increment(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
+
+// TestDatabases_DeleteAttribute_CascadesDependentIndex（B8）：属性仍被索引引用时
+// 直接删属性，同一事务内依赖索引（document_indexes 行 + 物理 PG index）一并清理。
+func TestDatabases_DeleteAttribute_CascadesDependentIndex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := platformAdminCtx(context.Background())
+	db := testutil.SetupTestDB(t)
+	defer db.Close()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+		{ID: "views", Key: "views", Type: "integer"},
+	}, []databases.Index{
+		{ID: "idx_views", Type: "key", Attributes: []string{"views"}},
+	}, nil, true))
+
+	// 不先删索引，直接删属性：级联清理依赖索引。
+	require.NoError(t, uc.DeleteAttribute(ctx, projectID, "app", "posts", "views"))
+	got, err := uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, got.Indexes, 0, "依赖索引应随属性级联删除")
+	require.Len(t, got.Attributes, 1)
+
+	// 同名索引可重建（catalog 行与物理索引均已清理）。
+	require.NoError(t, uc.CreateIndex(ctx, projectID, "app", "posts", databases.Index{
+		ID:         "idx_views",
+		Type:       "key",
+		Attributes: []string{"title"},
+	}))
+	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, got.Indexes, 1)
+}
