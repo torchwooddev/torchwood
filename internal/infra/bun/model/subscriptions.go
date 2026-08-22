@@ -11,21 +11,21 @@ import (
 type SubscriptionPlan struct {
 	bun.BaseModel `bun:"table:subscription_plans,alias:sp"`
 
-	ID                 string          `bun:"id,pk"`
-	ProjectID          string          `bun:"project_id,notnull"`
-	Code               string          `bun:"code,notnull"`
-	Name               string          `bun:"name,notnull"`
-	Amount             int64           `bun:"amount,notnull"`
-	Currency           string          `bun:"currency,notnull"`
-	Interval           string          `bun:"interval,notnull"`
-	IntervalDays       int64           `bun:"interval_days,notnull"`
-	GraceDays          int32           `bun:"grace_days,notnull"`
-	TrialDays          int32           `bun:"trial_days,notnull"`
-	Benefits           json.RawMessage `bun:"benefits,type:jsonb,notnull"`
-	ProviderOverrides  json.RawMessage `bun:"provider_overrides,type:jsonb"`
-	Status             string          `bun:"status,notnull"`
-	CreatedAt          time.Time       `bun:"created_at,notnull"`
-	UpdatedAt          time.Time       `bun:"updated_at,notnull"`
+	ID                string          `bun:"id,pk"`
+	ProjectID         string          `bun:"project_id,notnull"`
+	Code              string          `bun:"code,notnull"`
+	Name              string          `bun:"name,notnull"`
+	Amount            int64           `bun:"amount,notnull"`
+	Currency          string          `bun:"currency,notnull"`
+	Interval          string          `bun:"interval,notnull"`
+	IntervalDays      int64           `bun:"interval_days,notnull"`
+	GraceDays         int32           `bun:"grace_days,notnull"`
+	TrialDays         int32           `bun:"trial_days,notnull"`
+	Benefits          json.RawMessage `bun:"benefits,type:jsonb,notnull"`
+	ProviderOverrides json.RawMessage `bun:"provider_overrides,type:jsonb"`
+	Status            string          `bun:"status,notnull"`
+	CreatedAt         time.Time       `bun:"created_at,notnull"`
+	UpdatedAt         time.Time       `bun:"updated_at,notnull"`
 }
 
 // Subscription 是订阅合同行（public.subscriptions，v3 设计 §3.1）。

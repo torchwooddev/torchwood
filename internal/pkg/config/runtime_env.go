@@ -7,7 +7,7 @@ import (
 )
 
 // 运行时环境（TORCHWOOD_ENV）与排水窗口。Lynx 在 NewRunner 时就要 DrainTimeout
-//（早于 YAML 绑定），因此这两项只从进程环境读取，不进 config.proto。
+// （早于 YAML 绑定），因此这两项只从进程环境读取，不进 config.proto。
 const (
 	EnvVarRuntime      = "TORCHWOOD_ENV"
 	EnvVarDrainTimeout = "TORCHWOOD_SERVER_DRAIN_TIMEOUT"
