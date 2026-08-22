@@ -723,7 +723,7 @@
     },
     "apiKey": {
       "type": "apiKey",
-      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "description": "项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。",
       "name": "X-API-Key",
       "in": "header"
     },

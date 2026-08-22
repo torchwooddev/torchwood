@@ -810,3 +810,11 @@ func boolValue(v any) bool {
 	b, _ := v.(bool)
 	return b
 }
+
+// SecureCookies 报告端用户会话 cookie 是否需 Secure 标志（与 console 保持一致：public_url 为 https 时才标记 Secure）。
+func (a *Account) SecureCookies() bool {
+	if a == nil || a.cfg == nil || a.cfg.GetServer() == nil || a.cfg.GetServer().GetHttp() == nil {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(a.cfg.GetServer().GetHttp().GetPublicUrl()), "https://")
+}

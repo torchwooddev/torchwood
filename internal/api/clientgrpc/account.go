@@ -2,6 +2,8 @@ package clientgrpc
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"time"
 
 	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
@@ -11,7 +13,9 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,7 +31,7 @@ func NewAccountService(account *client.Account) *AccountService {
 }
 
 func (s *AccountService) SignUp(ctx context.Context, req *clientv1.SignUpRequest) (*clientv1.SignUpResponse, error) {
-	user, tokens, _, mfa, err := s.account.SignUp(ctx, client.SignUpCommand{
+	user, tokens, cookie, mfa, err := s.account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: req.GetProjectId(),
 		Email:     req.GetEmail(),
 		Password:  req.GetPassword(),
@@ -35,6 +39,9 @@ func (s *AccountService) SignUp(ctx context.Context, req *clientv1.SignUpRequest
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return &clientv1.SignUpResponse{
 		Account:        mapUser(user),
@@ -46,13 +53,16 @@ func (s *AccountService) SignUp(ctx context.Context, req *clientv1.SignUpRequest
 }
 
 func (s *AccountService) SignIn(ctx context.Context, req *clientv1.SignInRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, mfa, err := s.account.SignIn(ctx, client.SignInCommand{
+	user, tokens, cookie, mfa, err := s.account.SignIn(ctx, client.SignInCommand{
 		ProjectID: req.GetProjectId(),
 		Email:     req.GetEmail(),
 		Password:  req.GetPassword(),
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return mapSignInResult(user, tokens, mfa), nil
 }
@@ -74,12 +84,15 @@ func (s *AccountService) Me(ctx context.Context, _ *clientv1.MeRequest) (*client
 }
 
 func (s *AccountService) RefreshToken(ctx context.Context, req *clientv1.RefreshTokenRequest) (*clientv1.RefreshTokenResponse, error) {
-	tokens, _, err := s.account.RefreshToken(ctx, client.RefreshTokenCommand{
+	tokens, cookie, err := s.account.RefreshToken(ctx, client.RefreshTokenCommand{
 		ProjectID:    req.GetProjectId(),
 		RefreshToken: req.GetRefreshToken(),
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" && req.GetProjectId() != "" {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return &clientv1.RefreshTokenResponse{Tokens: mapTokens(tokens)}, nil
 }
@@ -182,7 +195,7 @@ func (s *AccountService) CreateEmailOTP(ctx context.Context, req *clientv1.Creat
 }
 
 func (s *AccountService) CreateEmailOTPSession(ctx context.Context, req *clientv1.CreateEmailOTPSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, mfa, err := s.account.CreateEmailOTPSession(ctx, client.CreateEmailOTPSessionCommand{
+	user, tokens, cookie, mfa, err := s.account.CreateEmailOTPSession(ctx, client.CreateEmailOTPSessionCommand{
 		ProjectID:   req.GetProjectId(),
 		Email:       req.GetEmail(),
 		ChallengeID: req.GetChallengeId(),
@@ -190,6 +203,9 @@ func (s *AccountService) CreateEmailOTPSession(ctx context.Context, req *clientv
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return mapSignInResult(user, tokens, mfa), nil
 }
@@ -208,7 +224,7 @@ func (s *AccountService) CreateOAuth2Session(ctx context.Context, req *clientv1.
 }
 
 func (s *AccountService) CreateOAuth2TokenSession(ctx context.Context, req *clientv1.CreateOAuth2TokenSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, mfa, err := s.account.CreateOAuth2TokenSession(ctx, client.CreateOAuth2TokenSessionCommand{
+	user, tokens, cookie, mfa, err := s.account.CreateOAuth2TokenSession(ctx, client.CreateOAuth2TokenSessionCommand{
 		ProjectID: req.GetProjectId(),
 		Provider:  req.GetProvider(),
 		Success:   req.GetSuccess(),
@@ -218,6 +234,9 @@ func (s *AccountService) CreateOAuth2TokenSession(ctx context.Context, req *clie
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return mapSignInResult(user, tokens, mfa), nil
 }
@@ -237,7 +256,7 @@ func (s *AccountService) CreatePhoneOTP(ctx context.Context, req *clientv1.Creat
 }
 
 func (s *AccountService) CreatePhoneOTPSession(ctx context.Context, req *clientv1.CreatePhoneOTPSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, mfa, err := s.account.CreatePhoneOTPSession(ctx, client.CreatePhoneOTPSessionCommand{
+	user, tokens, cookie, mfa, err := s.account.CreatePhoneOTPSession(ctx, client.CreatePhoneOTPSessionCommand{
 		ProjectID:   req.GetProjectId(),
 		Phone:       req.GetPhone(),
 		ChallengeID: req.GetChallengeId(),
@@ -246,26 +265,35 @@ func (s *AccountService) CreatePhoneOTPSession(ctx context.Context, req *clientv
 	if err != nil {
 		return nil, err
 	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
+	}
 	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) CreateWeChatMiniProgramSession(ctx context.Context, req *clientv1.CreateWeChatMiniProgramSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, mfa, err := s.account.CreateWeChatMiniProgramSession(ctx, client.CreateWeChatMiniProgramSessionCommand{
+	user, tokens, cookie, mfa, err := s.account.CreateWeChatMiniProgramSession(ctx, client.CreateWeChatMiniProgramSessionCommand{
 		ProjectID: req.GetProjectId(),
 		Code:      req.GetCode(),
 	})
 	if err != nil {
 		return nil, err
 	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
+	}
 	return mapSignInResult(user, tokens, mfa), nil
 }
 
 func (s *AccountService) CreateAnonymousSession(ctx context.Context, req *clientv1.CreateAnonymousSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, mfa, err := s.account.CreateAnonymousSession(ctx, client.CreateAnonymousSessionCommand{
+	user, tokens, cookie, mfa, err := s.account.CreateAnonymousSession(ctx, client.CreateAnonymousSessionCommand{
 		ProjectID: req.GetProjectId(),
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return mapSignInResult(user, tokens, mfa), nil
 }
@@ -403,9 +431,12 @@ func (s *AccountService) DeleteFactor(ctx context.Context, req *clientv1.DeleteF
 }
 
 func (s *AccountService) CreateMFASession(ctx context.Context, req *clientv1.CreateMFASessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, err := s.account.CompleteMFASession(ctx, req.GetProjectId(), req.GetChallengeToken(), req.GetFactorId(), req.GetCode())
+	user, tokens, cookie, err := s.account.CompleteMFASession(ctx, req.GetProjectId(), req.GetChallengeToken(), req.GetFactorId(), req.GetCode())
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return mapSignInResult(user, tokens, nil), nil
 }
@@ -434,13 +465,16 @@ func (s *AccountService) CreateMagicURLSession(ctx context.Context, req *clientv
 }
 
 func (s *AccountService) UpdateMagicURLSession(ctx context.Context, req *clientv1.UpdateMagicURLSessionRequest) (*clientv1.SignInResponse, error) {
-	user, tokens, _, mfa, err := s.account.UpdateMagicURLSession(ctx, client.UpdateMagicURLSessionCommand{
+	user, tokens, cookie, mfa, err := s.account.UpdateMagicURLSession(ctx, client.UpdateMagicURLSessionCommand{
 		ProjectID: req.GetProjectId(),
 		UserID:    req.GetUserId(),
 		Secret:    req.GetSecret(),
 	})
 	if err != nil {
 		return nil, err
+	}
+	if tokens != nil && cookie != "" && mfa == nil {
+		setEndUserSessionCookie(ctx, s.account, req.GetProjectId(), cookie)
 	}
 	return mapSignInResult(user, tokens, mfa), nil
 }
@@ -572,4 +606,24 @@ func mapTokens(t *client.TokenBundle) *clientv1.TokenBundle {
 		RefreshToken: t.RefreshToken,
 		ExpiresAt:    timestamppb.New(time.Unix(t.ExpiresAt, 0)),
 	}
+}
+
+// setEndUserSessionCookie 以与 Console 相同机制把 HMAC session cookie 写入 Set-Cookie gateway metadata。
+// Cookie 名保持 TORCHWOOD_session_<project>，复用与 SessionService 相同的 HMAC 签名。
+func setEndUserSessionCookie(ctx context.Context, account *client.Account, projectID, cookie string) {
+	if projectID == "" || cookie == "" || account == nil {
+		return
+	}
+	secure := account.SecureCookies()
+	name := fmt.Sprintf("TORCHWOOD_session_%s", projectID)
+	c := &http.Cookie{
+		Name:     name,
+		Value:    cookie,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   7 * 24 * 3600,
+	}
+	_ = grpc.SetHeader(ctx, metadata.Pairs("set-cookie", c.String()))
 }

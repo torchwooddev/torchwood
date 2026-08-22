@@ -290,11 +290,11 @@ const file_server_v1_health_proto_rawDesc = "" +
 	"\x05Check\x12'.torchwood.server.v1.HealthCheckRequest\x1a(.torchwood.server.v1.HealthCheckResponse\"'\x82\xd3\xe4\x93\x02!Z\x13\x12\x11/v1/server/health\x12\n" +
 	"/v1/health\x12\x80\x01\n" +
 	"\n" +
-	"GetVersion\x12&.torchwood.server.v1.GetVersionRequest\x1a'.torchwood.server.v1.GetVersionResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/server/health/version\x1a\x06\x92\xb2\x19\x02\b\x01B\xcc\x02\x92A\x89\x02Z\xe6\x01\n" +
+	"GetVersion\x12&.torchwood.server.v1.GetVersionRequest\x1a'.torchwood.server.v1.GetVersionResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/server/health/version\x1a\x06\x92\xb2\x19\x02\b\x01B\xf7\x02\x92A\xb4\x02Z\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02z\x1e\n" +
 	"\x12x-torchwood-access\x12\b\x1a\x06publicZ=github.com/torchwooddev/torchwood/genproto/server/v1;serverv1b\x06proto3"

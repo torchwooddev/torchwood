@@ -25,13 +25,14 @@ import (
 const maxProjectDescriptionLen = 512
 
 type Projects struct {
-	projectRepo projects.Repository
-	docDB       databases.DocumentDB
-	db          *clients.Database
+	projectRepo      projects.Repository
+	docDB            databases.DocumentDB
+	db               *clients.Database
+	adminProjectRepo projects.AdminProjectRepository
 }
 
-func NewProjects(projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database) *Projects {
-	return &Projects{projectRepo: projectRepo, docDB: docDB, db: db}
+func NewProjects(projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database, adminProjectRepo projects.AdminProjectRepository) *Projects {
+	return &Projects{projectRepo: projectRepo, docDB: docDB, db: db, adminProjectRepo: adminProjectRepo}
 }
 
 type CreateProjectCommand struct {
@@ -204,13 +205,56 @@ func (s *Projects) ListProjects(ctx context.Context, pageSize int32, pageToken, 
 	if err != nil {
 		return nil, nil, err
 	}
-	// 非平台 admin（API key 或受限 console 管理员）无权列出全量项目：
-	// AdminProjectRepository 端口仅提供单项目授权判定（HasProjectAccess），
-	// 无"列出授权项目"方法，故对非平台 admin 返回空列表（防跨项目信息泄露），
-	// 项目级访问经 GetProject 按 principal.ProjectID 白名单放行（安全评审 M7）。
+	// 平台 admin 全表；否则返回 admin_projects 里的项目（B1）。
 	if !principal.IsPlatformAdmin {
-		info := crud.BuildPaginationInfo(params, 0, false)
-		return []projects.Project{}, &info, nil
+		// API key / 服务账号无 admin_project 关联，仍返回空列表。
+		if principal.ActorKind != shared.ActorKindAdmin {
+			info := crud.BuildPaginationInfo(params, 0, false)
+			return []projects.Project{}, &info, nil
+		}
+		adminID := principal.AdminLookupID()
+		if adminID == "" {
+			info := crud.BuildPaginationInfo(params, 0, false)
+			return []projects.Project{}, &info, nil
+		}
+		if s.adminProjectRepo == nil {
+			info := crud.BuildPaginationInfo(params, 0, false)
+			return []projects.Project{}, &info, nil
+		}
+		ids, err := s.adminProjectRepo.ListProjectIDs(ctx, adminID)
+		if err != nil {
+			return nil, nil, status.Errorf(codes.Internal, "list admin projects: %v", err)
+		}
+		if len(ids) == 0 {
+			info := crud.BuildPaginationInfo(params, 0, false)
+			return []projects.Project{}, &info, nil
+		}
+		all, err := s.projectRepo.ListProjects(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		idSet := make(map[string]struct{}, len(ids))
+		for _, id := range ids {
+			idSet[id] = struct{}{}
+		}
+		filtered := make([]projects.Project, 0, len(ids))
+		for _, p := range all {
+			if _, ok := idSet[p.ID]; ok {
+				filtered = append(filtered, p)
+			}
+		}
+		start := params.Offset
+		if start > len(filtered) {
+			start = len(filtered)
+		}
+		end := start + int(params.PageSize)
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		page := filtered[start:end]
+		hasMore := end < len(filtered)
+		info := crud.BuildPaginationInfo(params, len(filtered), hasMore)
+		return page, &info, nil
 	}
 	all, err := s.projectRepo.ListProjects(ctx)
 	if err != nil {

@@ -143,6 +143,9 @@ func (r *stubAdminProjectRepo) HasProjectAccess(_ context.Context, adminID, proj
 	return false, nil
 }
 func (r *stubAdminProjectRepo) GrantProjectAccess(context.Context, string, string) error { return nil }
+func (r *stubAdminProjectRepo) ListProjectIDs(context.Context, string) ([]string, error) {
+	return nil, nil
+}
 
 type stubDocDB struct {
 	users          map[string]map[string]map[string]any

@@ -612,11 +612,11 @@ const file_server_v1_payments_proto_rawDesc = "" +
 	"ListOrders\x12 .torchwood.shared.v1.ListRequest\x1a'.torchwood.server.v1.ListOrdersResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/payments/orders\x12\x82\x01\n" +
 	"\bGetOrder\x12$.torchwood.server.v1.GetOrderRequest\x1a!.torchwood.server.v1.PaymentOrder\"-\x82\xd3\xe4\x93\x02'\x12%/v1/server/payments/orders/{order_id}\x12\x8e\x01\n" +
 	"\x06Refund\x12\".torchwood.server.v1.RefundRequest\x1a!.torchwood.server.v1.PaymentOrder\"=\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x021:\x01*\",/v1/server/payments/orders/{order_id}:refund\x12\xa6\x01\n" +
-	"\rManualFulfill\x12).torchwood.server.v1.ManualFulfillRequest\x1a*.torchwood.server.v1.ManualFulfillResponse\">\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x022:\x01*\"-/v1/server/payments/orders/{order_id}:fulfill\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"\rManualFulfill\x12).torchwood.server.v1.ManualFulfillRequest\x1a*.torchwood.server.v1.ManualFulfillResponse\">\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x022:\x01*\"-/v1/server/payments/orders/{order_id}:fulfill\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
 	"\n" +

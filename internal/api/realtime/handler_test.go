@@ -348,9 +348,7 @@ func TestHandshake_RejectsMultipleCredentials(t *testing.T) {
 	expectErrorFrame(t, c, errCodeUnauthenticated)
 }
 
-// TestHandshake_RejectsEndUserSessionCookie：端用户会话 cookie
-// （TORCHWOOD_session_<project>）不是 WS 凭证（v2 设计 §4.2：SDK 必须
-// access_token，cookie 仅接受 Console 的 TORCHWOOD_session_console）。
+// TestHandshake_RejectsEndUserSessionCookie：无效端用户会话 cookie 仍拒（B10 后有效 TORCHWOOD_session_<project> 与 JWT 二选一可握手）。
 func TestHandshake_RejectsEndUserSessionCookie(t *testing.T) {
 	validator := &fakeValidator{}
 	_, _, srv := testHandler(t, validator, &fakeDocDB{collections: map[string]*databases.Collection{}})
@@ -364,6 +362,29 @@ func TestHandshake_RejectsEndUserSessionCookie(t *testing.T) {
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("proj-x", ""))
 	expectErrorFrame(t, c, errCodeUnauthenticated)
+}
+
+// TestHandshake_AcceptsEndUserSessionCookie：有效端用户会话 cookie（TORCHWOOD_session_<project>）可单独握手（B10）。
+func TestHandshake_AcceptsEndUserSessionCookie(t *testing.T) {
+	validator := &fakeValidator{
+		principal: endUserPrincipal("proj-x", "u1"),
+		claims:    &jwtparser.Claims{TokenType: jwtparser.TokenTypeAccess, ExpiresAt: time.Now().Add(time.Hour).Unix()},
+	}
+	_, _, srv := testHandler(t, validator, &fakeDocDB{collections: map[string]*databases.Collection{}})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_proj-x=valid-cookie"}},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.CloseNow() })
+	sendJSON(t, c, hello("proj-x", ""))
+	var resp struct {
+		Type string `json:"type"`
+	}
+	readTestFrame(t, c, &resp)
+	require.Equal(t, "hello_ok", resp.Type)
 }
 
 // TestHandshake_AdminBindsProjectBeforeAccessCheck：admin 必须先绑

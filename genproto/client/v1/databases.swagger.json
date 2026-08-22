@@ -272,7 +272,7 @@
         "x-torchwood-access": "public"
       },
       "post": {
-        "summary": "自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用\ndocument_id 命名空间；document_id 可自由取任意合法值。",
+        "summary": "自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间；document_id 可自由取任意合法值。",
         "operationId": "DatabasesService_CreateDocument",
         "responses": {
           "200": {
@@ -795,7 +795,7 @@
           },
           {
             "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\r\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
             "in": "body",
             "required": true,
             "schema": {
@@ -871,7 +871,7 @@
           },
           {
             "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\r\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
             "in": "body",
             "required": true,
             "schema": {
@@ -967,7 +967,7 @@
       "properties": {
         "documentId": {
           "type": "string",
-          "title": "客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），\n不再占用 document_id 命名空间，可自由取任意合法值。"
+          "title": "客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），\r\n不再占用 document_id 命名空间，可自由取任意合法值。"
         },
         "data": {
           "type": "object"
@@ -1212,7 +1212,7 @@
     },
     "apiKey": {
       "type": "apiKey",
-      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "description": "项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。",
       "name": "X-API-Key",
       "in": "header"
     },

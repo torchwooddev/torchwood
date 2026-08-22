@@ -80,6 +80,9 @@ func (functionsAdminProjectRepo) HasProjectAccess(context.Context, string, strin
 func (functionsAdminProjectRepo) GrantProjectAccess(context.Context, string, string) error {
 	return nil
 }
+func (functionsAdminProjectRepo) ListProjectIDs(context.Context, string) ([]string, error) {
+	return nil, nil
+}
 
 type functionsDocDB struct {
 	users map[string]map[string]map[string]any

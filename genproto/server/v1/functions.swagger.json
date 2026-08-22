@@ -505,7 +505,7 @@
     },
     "/v1/server/functions:runtimes": {
       "get": {
-        "summary": "functions:runtimes / functions:specifications 为自定义方法段（REST\n自定义动词），不再占用 function_id 命名空间；function_id 可自由取任意合法值。",
+        "summary": "functions:runtimes / functions:specifications 为自定义方法段（REST\r\n自定义动词），不再占用 function_id 命名空间；function_id 可自由取任意合法值。",
         "operationId": "FunctionsService_ListRuntimes",
         "responses": {
           "200": {
@@ -558,7 +558,7 @@
           "format": "byte"
         }
       },
-      "title": "code 为 zip 代码包，≤1MiB 走此通道；更大的包走 multipart 上传\n（POST /v1/server/functions/{function_id}/deployments/code）。"
+      "title": "code 为 zip 代码包，≤1MiB 走此通道；更大的包走 multipart 上传\r\n（POST /v1/server/functions/{function_id}/deployments/code）。"
     },
     "FunctionsServiceCreateExecutionBody": {
       "type": "object",
@@ -642,7 +642,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "title": "客户端自选 function_id；functions:runtimes / functions:specifications\n为自定义方法段（REST 自定义动词），不再占用 function_id 命名空间，\n可自由取任意合法值。"
+          "title": "客户端自选 function_id；functions:runtimes / functions:specifications\r\n为自定义方法段（REST 自定义动词），不再占用 function_id 命名空间，\r\n可自由取任意合法值。"
         },
         "name": {
           "type": "string"
@@ -909,7 +909,7 @@
         },
         "value": {
           "type": "string",
-          "title": "环境变量值：SetVariables 请求透传明文；GetVariables 与 SetVariables\n响应统一返回掩码（\"******\"），真实值仅在 SetVariables 请求中可见一次\n（对齐 internal/app/functions/variables.go 的 secretMask 约定）。"
+          "title": "环境变量值：SetVariables 请求透传明文；GetVariables 与 SetVariables\r\n响应统一返回掩码（\"******\"），真实值仅在 SetVariables 请求中可见一次\r\n（对齐 internal/app/functions/variables.go 的 secretMask 约定）。"
         }
       }
     },
@@ -935,7 +935,7 @@
     },
     "apiKey": {
       "type": "apiKey",
-      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "description": "项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。",
       "name": "X-API-Key",
       "in": "header"
     },

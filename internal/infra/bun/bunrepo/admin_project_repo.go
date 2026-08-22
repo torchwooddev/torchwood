@@ -39,3 +39,15 @@ func (r *adminProjectRepo) GrantProjectAccess(ctx context.Context, adminID, proj
 	}
 	return nil
 }
+
+func (r *adminProjectRepo) ListProjectIDs(ctx context.Context, adminID string) ([]string, error) {
+	var rows []model.AdminProject
+	if err := r.db.NewSelect().Model(&rows).Where("admin_id = ?", adminID).Scan(ctx); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ProjectID)
+	}
+	return ids, nil
+}

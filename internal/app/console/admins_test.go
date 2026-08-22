@@ -112,7 +112,7 @@ func mkAdmin(id, email, role string) projects.Admin {
 
 func TestAdmins_Create_ValidatesInput(t *testing.T) {
 	t.Parallel()
-	uc := console.NewAdmins(newAdminRepo())
+	uc := console.NewAdmins(newAdminRepo(), nil)
 
 	_, err := uc.Create(adminActorCtx(context.Background()), console.CreateAdminCommand{Email: "", Password: "Passw0rd", Role: "owner"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -127,7 +127,7 @@ func TestAdmins_Create_ValidatesInput(t *testing.T) {
 func TestAdmins_Create_HashesPasswordAndNormalizesEmail(t *testing.T) {
 	t.Parallel()
 	repo := newAdminRepo()
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	created, err := uc.Create(adminActorCtx(context.Background()), console.CreateAdminCommand{
 		Email: "  Ops@Example.COM ", Password: "Passw0rd", Role: "member",
@@ -147,7 +147,7 @@ func TestAdmins_Create_HashesPasswordAndNormalizesEmail(t *testing.T) {
 func TestAdmins_Update_RejectsSelfDemotion(t *testing.T) {
 	t.Parallel()
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"), mkAdmin("a2", "admin@x.com", "admin"))
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	_, err := uc.Update(adminActorCtx(context.Background()), console.UpdateAdminCommand{ID: "a1", CallerID: "a1", Role: "member"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -156,7 +156,7 @@ func TestAdmins_Update_RejectsSelfDemotion(t *testing.T) {
 func TestAdmins_Update_RejectsDemotingLastOwner(t *testing.T) {
 	t.Parallel()
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	_, err := uc.Update(adminActorCtx(context.Background()), console.UpdateAdminCommand{ID: "a1", CallerID: "a2", Role: "member"})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
@@ -168,7 +168,7 @@ func TestAdmins_Update_AllowsRoleChangeAndPasswordReset(t *testing.T) {
 		mkAdmin("a1", "owner@x.com", "owner"),
 		mkAdmin("a2", "admin@x.com", "admin"),
 	)
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	updated, err := uc.Update(adminActorCtx(context.Background()), console.UpdateAdminCommand{
 		ID: "a2", CallerID: "a1", Role: "member", Password: "NewPassw0rd",
@@ -183,7 +183,7 @@ func TestAdmins_Update_AllowsRoleChangeAndPasswordReset(t *testing.T) {
 func TestAdmins_Delete_RejectsSelfDeletion(t *testing.T) {
 	t.Parallel()
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	err := uc.Delete(adminActorCtx(context.Background()), "a1", "a1")
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -193,7 +193,7 @@ func TestAdmins_Delete_RejectsSelfDeletion(t *testing.T) {
 func TestAdmins_Delete_RejectsDeletingLastOwner(t *testing.T) {
 	t.Parallel()
 	repo := newAdminRepo(mkAdmin("a1", "owner@x.com", "owner"))
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	err := uc.Delete(adminActorCtx(context.Background()), "a1", "a2")
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
@@ -207,7 +207,7 @@ func TestAdmins_Delete_AllowsWithSecondOwner(t *testing.T) {
 		mkAdmin("a2", "owner2@x.com", "owner"),
 		mkAdmin("a3", "admin@x.com", "admin"),
 	)
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	require.NoError(t, uc.Delete(adminActorCtx(context.Background()), "a3", "a1"))
 	require.Len(t, repo.admins, 2)
@@ -222,7 +222,7 @@ func TestAdmins_WriteMethods_RequireAdminActor(t *testing.T) {
 		mkAdmin("a1", "owner@x.com", "owner"),
 		mkAdmin("a2", "admin@x.com", "admin"),
 	)
-	uc := console.NewAdmins(repo)
+	uc := console.NewAdmins(repo, nil)
 
 	denied := []*shared.Principal{
 		{ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"}, Permissions: []string{"*"}},

@@ -848,11 +848,11 @@ const file_client_v1_subscriptions_proto_rawDesc = "" +
 	"\tListPlans\x12%.torchwood.client.v1.ListPlansRequest\x1a&.torchwood.client.v1.ListPlansResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/subscriptions/plans\x12x\n" +
 	"\tSubscribe\x12%.torchwood.client.v1.SubscribeRequest\x1a&.torchwood.client.v1.SubscribeResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/subscriptions\x12\x83\x01\n" +
 	"\x11GetMySubscription\x12-.torchwood.client.v1.GetMySubscriptionRequest\x1a!.torchwood.client.v1.Subscription\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/subscriptions/me\x12\x86\x01\n" +
-	"\x06Cancel\x12\".torchwood.client.v1.CancelRequest\x1a!.torchwood.client.v1.Subscription\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/subscriptions/{subscription_id}:cancel\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
+	"\x06Cancel\x12\".torchwood.client.v1.CancelRequest\x1a!.torchwood.client.v1.Subscription\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/subscriptions/{subscription_id}:cancel\x1a\x06\x92\xb2\x19\x02\b\x02B\xa6\x03\x92A\xe3\x02Z\xab\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
 	"\n" +

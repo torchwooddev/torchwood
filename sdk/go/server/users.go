@@ -94,7 +94,8 @@ func (u *UsersService) DeleteUserSession(ctx context.Context, userID, sessionID 
 	return err
 }
 
-// CreateUserToken 为任意用户签发 client token（如 Agent 登录凭证）。
+// CreateUserToken 为任意用户签发 client token（模拟登录/调试）。
+
 func (u *UsersService) CreateUserToken(ctx context.Context, userID string) (*serverv1.CreateUserTokenResponse, error) {
 	return u.c.users.CreateUserToken(ctx, &serverv1.GetUserRequest{Id: userID})
 }

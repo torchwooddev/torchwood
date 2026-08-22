@@ -1276,11 +1276,11 @@ const file_server_v1_subscriptions_proto_rawDesc = "" +
 	"\x11ListSubscriptions\x12 .torchwood.shared.v1.ListRequest\x1a..torchwood.server.v1.ListSubscriptionsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/subscriptions\x12\x95\x01\n" +
 	"\x0fGetSubscription\x12+.torchwood.server.v1.GetSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"2\x82\xd3\xe4\x93\x02,\x12*/v1/server/subscriptions/{subscription_id}\x12\xab\x01\n" +
 	"\x12CancelSubscription\x12..torchwood.server.v1.CancelSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"B\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x026:\x01*\"1/v1/server/subscriptions/{subscription_id}:cancel\x12\xab\x01\n" +
-	"\x12ExpireSubscription\x12..torchwood.server.v1.ExpireSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"B\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x026:\x01*\"1/v1/server/subscriptions/{subscription_id}:expire\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"\x12ExpireSubscription\x12..torchwood.server.v1.ExpireSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"B\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x026:\x01*\"1/v1/server/subscriptions/{subscription_id}:expire\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
 	"\n" +

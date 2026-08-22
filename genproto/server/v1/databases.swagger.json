@@ -1234,7 +1234,7 @@
           },
           {
             "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\r\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
             "in": "body",
             "required": true,
             "schema": {
@@ -1302,7 +1302,7 @@
           },
           {
             "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\r\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
             "in": "body",
             "required": true,
             "schema": {
@@ -1587,7 +1587,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "title": "optional：未设置（或空串）= 不修改；设置非空串 = 更新（R10-P1-6；\nadapter 对空串同样按不修改处理，清空 name 的语义暂不支持）。"
+          "title": "optional：未设置（或空串）= 不修改；设置非空串 = 更新（R10-P1-6；\r\nadapter 对空串同样按不修改处理，清空 name 的语义暂不支持）。"
         },
         "permissions": {
           "$ref": "#/definitions/v1PermissionsUpdate"
@@ -1650,7 +1650,7 @@
       "properties": {
         "documentId": {
           "type": "string",
-          "title": "客户端自选 document_id；documents:count / documents:bulkUpdate /\ndocuments:bulkDelete 为自定义方法段（REST 自定义动词），不再占用\ndocument_id 命名空间，可自由取任意合法值。"
+          "title": "客户端自选 document_id；documents:count / documents:bulkUpdate /\r\ndocuments:bulkDelete 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间，可自由取任意合法值。"
         },
         "data": {
           "type": "object"
@@ -2076,7 +2076,7 @@
     },
     "apiKey": {
       "type": "apiKey",
-      "description": "Server API key（需同时携带 X-Torchwood-Project 请求头）",
+      "description": "项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。",
       "name": "X-API-Key",
       "in": "header"
     },

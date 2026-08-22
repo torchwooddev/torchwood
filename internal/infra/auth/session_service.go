@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
@@ -98,6 +99,11 @@ func (s *SessionService) IssueTokensWithRefreshID(ctx context.Context, projectID
 	if err != nil {
 		return nil, "", err
 	}
+	// B2：模拟登录可区分——若调用方为 admin，写入 imp 字段（impersonator admin id）。
+	var impersonator string
+	if p, ok := contexts.Principal(ctx); ok && p.ActorKind == shared.ActorKindAdmin && p.AdminLookupID() != "" {
+		impersonator = p.AdminLookupID()
+	}
 	accessClaims := jwtparser.Claims{
 		TokenID:   idgen.UUID().String(),
 		UserID:    userID,
@@ -107,6 +113,7 @@ func (s *SessionService) IssueTokensWithRefreshID(ctx context.Context, projectID
 		SessionID: sessionID,
 		TokenType: jwtparser.TokenTypeAccess,
 		Roles:     baseRoles,
+		Imp:       impersonator,
 		ExpiresAt: now.Add(accessTTL).Unix(),
 		IssuedAt:  now.Unix(),
 	}

@@ -120,6 +120,10 @@ func (r *fakeAdminProjectRepo) HasProjectAccess(context.Context, string, string)
 	return false, nil
 }
 
+func (r *fakeAdminProjectRepo) ListProjectIDs(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (r *fakeAdminProjectRepo) GrantProjectAccess(_ context.Context, adminID, projectID string) error {
 	if r.err != nil {
 		return r.err
@@ -190,7 +194,7 @@ func setupCmd() SignUpCommand {
 // 具体类型，字段收窄为接口；测试直接改字段注入 fake 即可）。
 func setupWithFakes(adminRepo *fakeAdminRepo, projectRepo *fakeProjectRepo, adminProjectRepo *fakeAdminProjectRepo, projectsCreator *fakeProjects, auth *fakeAuth) *Setup {
 	cfg := &config.AppConfig{Security: &config.Security{SetupToken: setupToken}}
-	s := NewSetup(cfg, NewAdmins(adminRepo), nil, nil, adminRepo, adminProjectRepo, projectRepo)
+	s := NewSetup(cfg, NewAdmins(adminRepo, nil), nil, nil, adminRepo, adminProjectRepo, projectRepo)
 	projectsCreator.projectRepo = projectRepo
 	s.projects = projectsCreator
 	s.auth = auth
@@ -336,7 +340,7 @@ func TestSetup_SignUp_RejectedWhenTokenNotConfigured(t *testing.T) {
 	ctx := context.Background()
 	adminRepo := &fakeAdminRepo{}
 	cfg := &config.AppConfig{Security: &config.Security{}}
-	s := NewSetup(cfg, NewAdmins(adminRepo), nil, nil, adminRepo, &fakeAdminProjectRepo{}, &fakeProjectRepo{})
+	s := NewSetup(cfg, NewAdmins(adminRepo, nil), nil, nil, adminRepo, &fakeAdminProjectRepo{}, &fakeProjectRepo{})
 
 	cmd := setupCmd()
 	cmd.SetupToken = ""

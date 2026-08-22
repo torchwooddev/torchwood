@@ -647,11 +647,11 @@ const file_client_v1_payments_proto_rawDesc = "" +
 	"\n" +
 	"GetMyOrder\x12&.torchwood.client.v1.GetMyOrderRequest\x1a!.torchwood.client.v1.PaymentOrder\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/payments/orders/{order_id}\x12\x80\x01\n" +
 	"\fListMyOrders\x12(.torchwood.client.v1.ListMyOrdersRequest\x1a).torchwood.client.v1.ListMyOrdersResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/payments/orders\x12\x92\x01\n" +
-	"\rVerifyReceipt\x12).torchwood.client.v1.VerifyReceiptRequest\x1a*.torchwood.client.v1.VerifyReceiptResponse\"*\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/payments/ios/verify-receipt\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
+	"\rVerifyReceipt\x12).torchwood.client.v1.VerifyReceiptRequest\x1a*.torchwood.client.v1.VerifyReceiptResponse\"*\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/payments/ios/verify-receipt\x1a\x06\x92\xb2\x19\x02\b\x02B\xa6\x03\x92A\xe3\x02Z\xab\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
 	"\n" +

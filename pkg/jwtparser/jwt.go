@@ -31,6 +31,7 @@ type Claims struct {
 	Roles     []string `json:"rls,omitempty"`
 	Scopes    []string `json:"scp,omitempty"`
 	OneTime   bool     `json:"one_time,omitempty"` // 一次性 JWT：验证方必须消费后放行
+	Imp       string   `json:"imp,omitempty"`      // 模拟登录时为 impersonator admin id（审计用），端用户正常登录为空
 	ExpiresAt int64    `json:"exp,omitempty"`
 	IssuedAt  int64    `json:"iat,omitempty"`
 }

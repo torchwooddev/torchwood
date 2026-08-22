@@ -761,11 +761,11 @@ const file_client_v1_assets_proto_rawDesc = "" +
 	"\rListAssetDefs\x12).torchwood.client.v1.ListAssetDefsRequest\x1a*.torchwood.client.v1.ListAssetDefsResponse\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/assets/defs\x12w\n" +
 	"\fListMyAssets\x12(.torchwood.client.v1.ListMyAssetsRequest\x1a).torchwood.client.v1.ListMyAssetsResponse\"\x12\x82\xd3\xe4\x93\x02\f\x12\n" +
 	"/v1/assets\x12\x8d\x01\n" +
-	"\x11ListMyAssetLedger\x12-.torchwood.client.v1.ListMyAssetLedgerRequest\x1a..torchwood.client.v1.ListMyAssetLedgerResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/assets/ledger\x1a\x06\x92\xb2\x19\x02\b\x02B\xfb\x02\x92A\xb8\x02Z\x80\x02\n" +
+	"\x11ListMyAssetLedger\x12-.torchwood.client.v1.ListMyAssetLedgerRequest\x1a..torchwood.client.v1.ListMyAssetLedgerResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/assets/ledger\x1a\x06\x92\xb2\x19\x02\b\x02B\xa6\x03\x92A\xe3\x02Z\xab\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
 	"\n" +

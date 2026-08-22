@@ -352,7 +352,7 @@ func (h *Handler) authenticate(ctx context.Context, r *http.Request, hello *hell
 
 	req := shared.AuthnRequest{
 		Authorization: r.Header.Values("Authorization"),
-		CookieHeaders: consoleSessionCookieHeaders(r),
+		CookieHeaders: realtimeSessionCookieHeaders(r),
 		AccessToken:   hello.AccessToken,
 	}
 	principal, err := h.validator.Authenticate(ctx, req)
@@ -398,17 +398,29 @@ func (h *Handler) authenticate(ctx context.Context, r *http.Request, hello *hell
 	return principal, claims, nil
 }
 
-// consoleSessionCookieHeaders 只收集 Console 会话 cookie（v2 设计 §4.2：
-// WS 握手只接受 SDK access_token 与 TORCHWOOD_session_console；
-// 端用户的 TORCHWOOD_session_<project> cookie 不是 WS 凭证，不接受）。
-func consoleSessionCookieHeaders(r *http.Request) []string {
+// realtimeSessionCookieHeaders 收集 WS 握手可用的 cookie：
+// - TORCHWOOD_session_console（Console admin 会话）
+// - TORCHWOOD_session_<project>（B10 端用户 cookie，与 JWT 二选一，仍拒 API key）
+func realtimeSessionCookieHeaders(r *http.Request) []string {
 	var out []string
 	for _, c := range r.Cookies() {
-		if c.Name == shared.ConsoleSessionCookieName && c.Value != "" {
+		if c.Value == "" {
+			continue
+		}
+		if c.Name == shared.ConsoleSessionCookieName {
+			out = append(out, c.Name+"="+c.Value)
+			continue
+		}
+		if strings.HasPrefix(c.Name, shared.SessionCookiePrefix) {
 			out = append(out, c.Name+"="+c.Value)
 		}
 	}
 	return out
+}
+
+// consoleSessionCookieHeaders 保留别名兼容旧测试桩（若有外部调用），内部已由 realtimeSessionCookieHeaders 接管。
+func consoleSessionCookieHeaders(r *http.Request) []string {
+	return realtimeSessionCookieHeaders(r)
 }
 
 // readLoop 逐帧读取客户端控制帧；60s 无帧时按 pong 滑窗判定，

@@ -53,7 +53,7 @@ type Client struct {
 
 	// Health 提供服务健康检查（ACCESS_PUBLIC，可不配置 API Key）。
 	Health *HealthService
-	// Users 提供用户管理（含 CreateUserToken 签发 Agent 凭证）。
+	// Users 提供用户管理（含 CreateUserToken 模拟登录）。
 	Users *UsersService
 	// Groups 提供服务端用户组管理。
 	Groups *GroupsService

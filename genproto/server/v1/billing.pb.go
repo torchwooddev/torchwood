@@ -627,11 +627,11 @@ const file_server_v1_billing_proto_rawDesc = "" +
 	"\x0eBillingService\x12n\n" +
 	"\bGetUsage\x12$.torchwood.server.v1.GetUsageRequest\x1a\x1a.torchwood.server.v1.Usage\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/billing/usage\x12\x84\x01\n" +
 	"\vListRollups\x12'.torchwood.server.v1.ListRollupsRequest\x1a(.torchwood.server.v1.ListRollupsResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/billing/rollups\x12\x86\x01\n" +
-	"\x0eListStatements\x12 .torchwood.shared.v1.ListRequest\x1a+.torchwood.server.v1.ListStatementsResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/server/billing/statements\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"\x0eListStatements\x12 .torchwood.shared.v1.ListRequest\x1a+.torchwood.server.v1.ListStatementsResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/server/billing/statements\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
 	"\n" +

@@ -361,11 +361,11 @@ const file_server_v1_projects_proto_rawDesc = "" +
 	"\n" +
 	"GetProject\x12&.torchwood.server.v1.GetProjectRequest\x1a\x1c.torchwood.server.v1.Project\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/projects/{id}\x12}\n" +
 	"\rUpdateProject\x12).torchwood.server.v1.UpdateProjectRequest\x1a\x1c.torchwood.server.v1.Project\"#\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/server/projects/{id}\x12u\n" +
-	"\rDeleteProject\x12&.torchwood.server.v1.GetProjectRequest\x1a\x1a.torchwood.shared.v1.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/projects/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xdb\x02\x92A\x98\x02Z\xe6\x01\n" +
+	"\rDeleteProject\x12&.torchwood.server.v1.GetProjectRequest\x1a\x1a.torchwood.shared.v1.Empty\" \x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/projects/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
-	"\\\n" +
-	"\x06apiKey\x12R\b\x02\x12AServer API key（需同时携带 X-Torchwood-Project 请求头）\x1a\tX-API-Key \x02\n" +
+	"\x86\x01\n" +
+	"\x06apiKey\x12|\b\x02\x12k项目绑定在密钥行上，不需要 X-Torchwood-Project。该头仅 Console admin 会话切换项目。\x1a\tX-API-Key \x02\n" +
 	"Q\n" +
 	"\x06cookie\x12G\b\x02\x129TORCHWOOD_session_console=<sid>（Console admin 会话）\x1a\x06Cookie \x02b\f\n" +
 	"\n" +

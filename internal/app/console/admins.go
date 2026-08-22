@@ -8,6 +8,7 @@ import (
 	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"github.com/torchwooddev/torchwood/pkg/password"
 	"google.golang.org/grpc/codes"
@@ -32,11 +33,12 @@ var validAdminRoles = map[string]struct{}{
 // Admins 管理系统管理员；写操作的调用者身份（callerID）由 transport 层
 // 从 principal 传入，use case 内完成业务级保护（最后 owner、自我保护）。
 type Admins struct {
-	repo projects.AdminRepository
+	repo             projects.AdminRepository
+	adminProjectRepo projects.AdminProjectRepository
 }
 
-func NewAdmins(repo projects.AdminRepository) *Admins {
-	return &Admins{repo: repo}
+func NewAdmins(repo projects.AdminRepository, adminProjectRepo projects.AdminProjectRepository) *Admins {
+	return &Admins{repo: repo, adminProjectRepo: adminProjectRepo}
 }
 
 type CreateAdminCommand struct {
@@ -109,6 +111,14 @@ func (a *Admins) Create(ctx context.Context, cmd CreateAdminCommand) (*projects.
 	}
 	if err := a.repo.CreateAdmin(ctx, admin); err != nil {
 		return nil, status.Errorf(codes.Internal, "create admin: %v", err)
+	}
+	// B1：若当前 principal 携带 ProjectID（Console header），对 member/viewer 授予该项目；owner/admin 仍全局，可不写行。
+	if principal, ok := contexts.Principal(ctx); ok && principal.ProjectID != "" && a.adminProjectRepo != nil {
+		if cmd.Role == AdminRoleMember || cmd.Role == AdminRoleViewer {
+			if err := a.adminProjectRepo.GrantProjectAccess(ctx, admin.ID, principal.ProjectID); err != nil {
+				return nil, status.Errorf(codes.Internal, "grant project access: %v", err)
+			}
+		}
 	}
 	return admin, nil
 }
