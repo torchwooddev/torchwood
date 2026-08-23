@@ -24,7 +24,7 @@ func invoke(g *globalFlags, method string, req any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), g.timeoutDur)
 	defer cancel()

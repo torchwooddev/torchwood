@@ -117,7 +117,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 设计示例里的 websocket.NetConn + SetReadDeadline 实测（coder/websocket
 	// v1.8.14 netconn.go）只操作包装层自己的计时器，够不到底层 conn，
 	// 故此处不做空调用；保活完全靠下面的帧级 deadline + ping 滑窗。
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	h.serveConn(r, conn)
 }
 

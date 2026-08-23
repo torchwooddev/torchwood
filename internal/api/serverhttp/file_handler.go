@@ -167,7 +167,7 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 		httpError(w, status.Error(codes.InvalidArgument, "invalid multipart form or file too large"))
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
 	fileHeader := r.MultipartForm.File["file"]
 	if len(fileHeader) == 0 {
@@ -176,7 +176,7 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 			httpError(w, status.Error(codes.InvalidArgument, "missing file"))
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		h.createFile(ctx, w, r, projectID, bucketID, file, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
 		return
 	}
@@ -187,7 +187,7 @@ func (h *FileHandler) upload(w http.ResponseWriter, r *http.Request, pathParams 
 		httpError(w, status.Error(codes.Internal, "cannot open uploaded file"))
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h.createFile(ctx, w, r, projectID, bucketID, f, fh.Size, fh.Filename, fh.Header.Get("Content-Type"), principal)
 }
@@ -343,7 +343,7 @@ func (h *FileHandler) uploadChunk(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, status.Error(codes.InvalidArgument, "invalid multipart form or chunk too large"))
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
 	fh := r.MultipartForm.File["chunk"]
 	if len(fh) == 0 {
@@ -355,7 +355,7 @@ func (h *FileHandler) uploadChunk(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, status.Error(codes.Internal, "cannot open uploaded chunk"))
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	received, err := h.storage.UploadChunk(ctx, projectID, uploadID, partNumber, f, fh[0].Size, principal.OwnerID(), principal.DocPrincipal())
 	if err != nil {

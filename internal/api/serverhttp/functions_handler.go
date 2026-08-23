@@ -129,7 +129,7 @@ func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, status.Error(codes.InvalidArgument, "invalid multipart form or file too large"))
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
 	fileHeaders := r.MultipartForm.File["code"]
 	if len(fileHeaders) == 0 {
