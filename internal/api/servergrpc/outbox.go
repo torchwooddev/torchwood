@@ -2,6 +2,7 @@ package servergrpc
 
 import (
 	"context"
+	"time"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
@@ -68,7 +69,8 @@ func (s *OutboxService) ReplayDeadLetter(ctx context.Context, req *serverv1.Repl
 	if err := s.outbox.ReplayDeadLetter(ctx, req.GetEventId(), projectID); err != nil {
 		return nil, err
 	}
-	return &serverv1.ReplayDeadLetterResponse{EventId: req.GetEventId()}, nil
+	// available_at 为重放时刻的 NOW（与 outbox_repo 的 AvailableAt 一致在秒级内）.
+	return &serverv1.ReplayDeadLetterResponse{EventId: req.GetEventId(), AvailableAt: timestamppb.New(time.Now())}, nil
 }
 
 func (s *OutboxService) projectID(ctx context.Context) string {

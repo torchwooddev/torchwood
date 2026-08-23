@@ -2,20 +2,39 @@ package events
 
 import (
 	"context"
+	"time"
 
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/events"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type OutboxAdmin struct {
-	repo events.OutboxRepository
+	repo     events.OutboxRepository
+	projects projects.Repository
 }
 
-func NewOutboxAdmin(repo events.OutboxRepository) *OutboxAdmin {
-	return &OutboxAdmin{repo: repo}
+func NewOutboxAdmin(repo events.OutboxRepository, projects projects.Repository) *OutboxAdmin {
+	return &OutboxAdmin{repo: repo, projects: projects}
+}
+
+func (o *OutboxAdmin) ensureProjectActive(ctx context.Context, projectID string) error {
+	if o.projects == nil {
+		return nil
+	}
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	proj, err := o.projects.GetProject(ctx2, projectID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "project lookup failed: %v", err)
+	}
+	if proj == nil || proj.Status != "active" {
+		return status.Error(codes.FailedPrecondition, "project is not active")
+	}
+	return nil
 }
 
 func (o *OutboxAdmin) ListDeadLetters(ctx context.Context, projectID string, pageSize int32, pageToken string) ([]events.DeadLetter, int64, string, error) {
@@ -27,6 +46,9 @@ func (o *OutboxAdmin) ListDeadLetters(ctx context.Context, projectID string, pag
 	}
 	if p, ok := contexts.Principal(ctx); ok && p != nil && p.ProjectID != "" && p.ProjectID != projectID {
 		return nil, 0, "", status.Error(codes.PermissionDenied, "project mismatch")
+	}
+	if err := o.ensureProjectActive(ctx, projectID); err != nil {
+		return nil, 0, "", err
 	}
 	return o.repo.ListDeadLetters(ctx, projectID, pageSize, pageToken)
 }
@@ -43,6 +65,9 @@ func (o *OutboxAdmin) ReplayDeadLetter(ctx context.Context, eventID, projectID s
 	}
 	if p, ok := contexts.Principal(ctx); ok && p != nil && p.ProjectID != "" && p.ProjectID != projectID {
 		return status.Error(codes.PermissionDenied, "project mismatch")
+	}
+	if err := o.ensureProjectActive(ctx, projectID); err != nil {
+		return err
 	}
 	return o.repo.ReplayDeadLetter(ctx, eventID, projectID)
 }

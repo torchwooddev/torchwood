@@ -84,7 +84,7 @@ func (r *outboxRepo) ReplayDeadLetter(ctx context.Context, eventID, projectID st
 			CreatedAt:   dead.CreatedAt,
 			AvailableAt: time.Now(),
 			Attempts:    0,
-		}).Exec(txCtx); err != nil {
+		}).On("CONFLICT (event_id) DO NOTHING").Exec(txCtx); err != nil {
 			return err
 		}
 		_, err := r.db.Conn(txCtx).NewDelete().Model((*model.DocumentEventsOutboxDead)(nil)).Where("event_id = ?", eventID).Exec(txCtx)

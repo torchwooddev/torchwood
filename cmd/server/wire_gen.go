@@ -164,7 +164,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	authService := consolegrpc.NewAuthService(consoleAuth, setup)
 	adminsService := consolegrpc.NewAdminsService(admins)
 	outboxRepository := bunrepo.NewOutboxRepository(database)
-	outboxAdmin := events2.NewOutboxAdmin(outboxRepository)
+	outboxAdmin := events2.NewOutboxAdmin(outboxRepository, repository)
 	outboxService := servergrpc.NewOutboxService(outboxAdmin)
 	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, auditRepository, redisRateLimiter, checkers, accountService, databasesService, groupsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcGroupsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, billingService, redisCounter, authService, adminsService, outboxService)
 	if err != nil {

@@ -23,8 +23,8 @@ export class OutboxService {
     return res.dead_letters ?? [];
   }
 
-  async replayDeadLetter(eventId: string, projectId: string): Promise<{ event_id: string }> {
-    return this.http.request<{ event_id: string }>("POST", `/v1/server/outbox/dead-letters/${eventId}:replay`, {
+  async replayDeadLetter(eventId: string, projectId: string): Promise<{ event_id: string; available_at: string }> {
+    return this.http.request<{ event_id: string; available_at: string }>("POST", `/v1/server/outbox/dead-letters/${eventId}:replay`, {
       auth: "apiKey",
       body: { event_id: eventId, project_id: projectId },
     });
