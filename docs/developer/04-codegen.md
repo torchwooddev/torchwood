@@ -1,162 +1,152 @@
 # Torchwood 代码生成与工具链
 
-> 本文描述 Torchwood 的代码生成体系：Task 工作流执行器、Buf 驱动的 proto 生成（`proto/` → `genproto/`）、配置生成、Wire 依赖注入，以及推荐的生成流程顺序。
-> 相关文件：`Taskfile.yml`、`buf.yaml`、`buf.gen.yaml`、`proto/`、`cmd/server/provides.go`、`cmd/server/wire.go`、`cmd/server/wire_gen.go`、`cmd/worker/`。
+> Task、Buf、Wire 三件套：`Taskfile.yml`、`buf.yaml`/`buf.gen.yaml`、`cmd/*/provides.go→wire_gen.go`。以代码为准。
+> 最新更新：2026-08-23
 
 ---
 
-## 1. Task 工作流执行器
+## 1. Task 工作流（Taskfile.yml）
 
-Torchwood 使用 **Task**（`Taskfile.yml`，version 3）作为主要工作流执行器。`Taskfile.yml` 顶部 `dotenv: ['.env']`，因此任务运行时自动把 `.env` 中的变量加载进环境（集成测试 DSN、迁移 DSN 等依赖此行为）。
+`Taskfile.yml:2` `dotenv: ['.env']` 自动加载 `.env`（测试/迁移 DSN 依赖）。
 
-### 1.1 常用任务总览
+| 任务 | 命令 | 用途 |
+|------|------|------|
+| `install-tools` | `go install protoc-gen-go / migrate / buf@v1.65.0 / wire / golangci-lint@v2.12.2` | 首次安装工具链 |
+| `generate-proto` | `buf lint` + `buf generate` | 生成 gRPC/gateway/Swagger（§2） |
+| `generate-config` | `protoc -I. --go_out=. --go_opt=paths=source_relative ./config.proto`（`internal/pkg/config` 内执行） | 生成 `config.pb.go` |
+| `wire-server` / `wire-worker` | `go mod tidy && go run -mod=mod github.com/google/wire/cmd/wire` | 各自重算 `wire_gen.go` |
+| `wire-all` | `wire-server` + `wire-worker` | 全量 Wire |
+| `generate-all` | `generate-proto` → `generate-config` → `wire-all` | 一键全量（§5） |
+| `lint-proto` | `buf lint` + `buf breaking --against '.git#branch=origin/main'` | proto 兼容门禁 |
+| `lint-golangci` | `golangci-lint run --new-from-rev=origin/main ./...` | 增量棘轮（全量 `golangci-lint run ./...` 0 warning） |
+| `lint-go` | `go vet ./...` + `gofmt -l .` | Go 静态/格式检查 |
+| `up`/`down`/`clean` | `docker compose`（`docker/local`） | 基础设施 |
+| `migrate` | `migrate -path ./db/migrations -database <DSN> up`（`TORCHWOOD_DATA_DATABASE_SOURCE` 优先） | 迁移 |
+| `build` | `console-build` + `go build -ldflags version/commit/date` 三二进制 | 产出 `bin/server` `bin/worker` `bin/torchwood` |
+| `test` | `lint-go` + `test-sdk-go` + `test-sdk-ts` + `go test -v ./... -cover` | 全量测试 |
 
-| 任务 | 命令内容 | 用途 |
-|------|---------|------|
-| `install-tools` | `go install` protoc-gen-go / migrate / buf / wire | 安装代码生成与迁移工具链 |
-| `generate-proto` | `buf lint` + `buf generate` | Buf 生成 gRPC stub / gateway / Swagger（见 §2） |
-| `generate-config` | `protoc` 在 `internal/pkg/config` 内生成 Go 代码（见 §3） |
-| `wire-server` | 在 `cmd/server` 运行 `go run github.com/google/wire/cmd/wire` | 重新生成 server 的 `wire_gen.go` |
-| `wire-worker` | 在 `cmd/worker` 运行 wire | 重新生成 worker 的 `wire_gen.go` |
-| `wire-all` | `wire-server` + `wire-worker` | 两个入口的 Wire 生成 |
-| `generate-all` | `generate-proto` → `generate-config` → `wire-all` | 一键全量生成（见 §5） |
-| `up` / `down` / `clean` | `docker compose up -d` / `down` / `down -v` | 本地基础设施（Postgres/Redis/MinIO） |
-| `migrate` | `migrate -path ./db/migrations -database <DSN> up` | 应用数据库迁移；DSN 来自 `TORCHWOOD_DATA_DATABASE_SOURCE` 或 `POSTGRES_*` 默认值 |
-| `dev-server` | `go run ./cmd/server` | 本地起 server |
-| `worker` | `go run ./cmd/worker` | 本地起 worker |
-| `console-install` / `console-build` / `console-dev` | pnpm 命令 | Console 前端安装 / 构建 / 开发 |
-| `sdk-install` / `sdk-build` / `sdk-demo` / `sdk-demo-build` | npm 命令 | TypeScript SDK 安装 / 构建 / demo |
-| `build` | `console-build` + `go build -ldflags "..." ./cmd/server ./cmd/worker ./cmd/client` | 全量构建（注入 version/commit/date，产出 server / worker / CLI 三个二进制） |
-| `test` | `test-sdk-go` + `test-sdk-ts` + `go test -v ./... -cover` | 全部测试（SDK 测试 + 仓库测试，自动加载 `.env`） |
-| `lint-go` / `lint-sdk-go` / `lint-console` / `lint` | `go vet` + `gofmt -l`；sdk/go 同款检查；Console 侧 `pnpm lint` | 代码静态检查 |
-| `build-docker` | `docker build -t torchwood:<ver>` | 构建 Docker 镜像 |
-
-> 常用组合：开发前 `task up` + `task migrate`；改动 proto/config/provider 后 `task generate-all`；修改 Console 后需先 `task console-build` 再 `task build`（Go embed 只会打进已构建的 `dist/`）。
+常用组合：改动前 `task up && task migrate`；改动 proto/config/provider 后 `task generate-all && task build`；改 Console 后 `task console-build && task build`（`embed dist`）。
 
 ---
 
 ## 2. Buf 驱动的 proto 生成
 
-### 2.1 Buf 配置
+### 2.1 buf.yaml（v2）
 
-**`buf.yaml`**（Buf v2）：
-
-```
+```yaml
 version: v2
-deps:
-  - buf.build/googleapis/googleapis
-  - buf.build/bufbuild/protovalidate
-  - buf.build/grpc-ecosystem/grpc-gateway
-modules:
-  - path: proto
-lint:
-  use:
-    - STANDARD
-  except:                 # 与项目既有契约不符的规则显式豁免
-    - PACKAGE_DIRECTORY_MATCH
-    - RPC_REQUEST_RESPONSE_UNIQUE
-    - RPC_REQUEST_STANDARD_NAME
-    - RPC_RESPONSE_STANDARD_NAME
-    - ENUM_VALUE_PREFIX
-breaking:
-  use:
-    - FILE
+deps: [buf.build/googleapis/googleapis, buf.build/bufbuild/protovalidate, buf.build/grpc-ecosystem/grpc-gateway]
+modules: [{path: proto}]
+lint:   {use: [STANDARD], except: [PACKAGE_DIRECTORY_MATCH, RPC_REQUEST_RESPONSE_UNIQUE, RPC_REQUEST_STANDARD_NAME, RPC_RESPONSE_STANDARD_NAME, ENUM_VALUE_PREFIX]}
+breaking: {use: [FILE]}
 ```
 
-- `modules.path: proto` 声明 `proto/` 为模块根；
-- `deps` 引入 googleapis（`google.api.http`）、protovalidate、grpc-gateway 的公共依赖；
-- `lint: STANDARD` 与 `breaking: FILE` 是 Buf 的 lint / breaking 规则集（`buf lint` / `buf breaking`）；
-- 五项 lint 豁免均有理由注释（包名与目录有意分离、复用 `shared.v1.ListRequest`/`Empty`、
-  `ACCESS_*` 枚举语义命名），改动前先读 `buf.yaml` 注释。
+- `modules.path: proto` 声明模块根；
+- `STANDARD` lint + 5 项豁免（包名与目录有意分离、复用 `shared.v1.Empty/ListRequest`、AIP-132 复用、`ACCESS_*` 语义命名）；
+- `breaking: FILE` 文件级不兼容检测。
 
-**`buf.gen.yaml`**（Buf v2，四个插件全部输出到 `genproto/`）：
+### 2.2 buf.gen.yaml（4 插件 → `genproto/`，`paths=source_relative`）
 
-| 插件 | 版本 | 输出 | 产物 |
-|------|------|------|------|
-| `protocolbuffers/go` | v1.36.10 | `genproto`（`paths=source_relative`） | `*.pb.go`（message / service 定义） |
-| `grpc-ecosystem/gateway` | v2.27.4 | `genproto`（`paths=source_relative`） | `*.pb.gw.go`（grpc-gateway REST handler） |
-| `grpc/go` | v1.6.0 | `genproto`（`paths=source_relative`） | `*_grpc.pb.go`（gRPC stub） |
-| `grpc-ecosystem/openapiv2` | v2.27.3 | `genproto` | `*.swagger.json`（OpenAPI 规范） |
+| 插件 | 版本 | 产物 |
+|------|------|------|
+| `protocolbuffers/go` | v1.36.10 | `*.pb.go` |
+| `grpc/go` | v1.6.0 | `*_grpc.pb.go` |
+| `grpc-ecosystem/gateway` | v2.27.4 | `*.pb.gw.go` |
+| `grpc-ecosystem/openapiv2` | v2.27.3 | `*.swagger.json`（`json_names_for_fields=true`） |
 
-### 2.2 proto/ 四组 → genproto/ 输出
+### 2.3 proto → genproto 四组
 
-| 组 | 目录 | 用途 | genproto 输出目录 |
-|----|------|------|-------------------|
-| Client API | `proto/client/v1/` | 终端用户直接调用（Account、Databases、Groups 等） | `genproto/client/v1/` |
-| Server API | `proto/server/v1/` | Agent / 自动化通过 scoped API Key 调用管理面（Projects、Users、Storage、Databases、Functions、APIKeys、Groups、Health、OAuthProviders） | `genproto/server/v1/` |
-| Console API | `proto/console/v1/` | Admin Console 后台（ConsoleAuth、Admins） | `genproto/console/v1/` |
-| Shared | `proto/shared/v1/` | 跨组共享：`authz.proto`（鉴权注解）、`common.proto`（列表/响应元数据） | `genproto/shared/v1/` |
+| 组 | 源目录 | 语义 | 输出 |
+|----|--------|------|------|
+| Client API | `proto/client/v1` | 终端用户直调（Account/Databases/Groups/Payments/Assets/Subscriptions） | `genproto/client/v1` |
+| Server API | `proto/server/v1` | Agent/自动化经 scoped API Key（Projects/Users/Storage/Databases/Functions/APIKeys/Groups/Health/OAuthProviders/Payments/Assets/Subscriptions/Billing/Outbox） | `genproto/server/v1` |
+| Console API | `proto/console/v1` | 管理后台（ConsoleAuth/Admins） | `genproto/console/v1` |
+| Shared | `proto/shared/v1` | `authz.proto`（鉴权注解）、`common.proto`（分页元数据） | `genproto/shared/v1` |
 
-每个 service proto 生成的产物示例：`<svc>.pb.go`、`<svc>_grpc.pb.go`、`<svc>.pb.gw.go`、`<svc>.swagger.json`。
-
-> **禁止手工编辑 `genproto/` 中生成的 `*.pb.go`（以及 `*_grpc.pb.go`、`*.pb.gw.go`）**：所有改动必须回到 `proto/` 源文件并重新 `buf generate`。`generate-proto` 任务即执行 `buf generate`。
+**禁手改 `genproto/`**：一切改动回 `proto/` 后重 `buf generate`。
 
 ---
 
-## 3. task generate-config
+## 3. generate-config
 
-配置 schema（`internal/pkg/config/config.proto`）的 Go 代码**不经过 Buf**，而是由 `task generate-config` 直接用 `protoc` 在 `internal/pkg/config` 目录内生成：
+`Taskfile.yml:14` 在 `internal/pkg/config` 内执行：
 
-```
+```bash
 protoc -I. --go_out=. --go_opt=paths=source_relative ./config.proto
 ```
 
-- 工作目录固定在 `internal/pkg/config`；
-- 产出 `internal/pkg/config/config.pb.go`；
-- 生成代码仅含 message 结构与 getter（`GetSecurity()`、`GetJwt()` 等），供 `bind.go` 的反射（`collectKeys` / `collectLeaves`，依赖 json tag）与各层 `NewAppConfig` 校验使用。
+产出 `internal/pkg/config/config.pb.go`（仅 message/getter，供 `bind.go` 反射与 `NewAppConfig` 校验）。
 
 ---
 
 ## 4. Wire 依赖注入
 
-### 4.1 三个文件的分工
-
 | 文件 | 角色 |
 |------|------|
-| `cmd/server/provides.go` | 手写 provider 声明：`var ProviderSet = wire.NewSet(boot.New, api.ProviderSet, app.ProviderSet, infra.ProviderSet, domain.ProviderSet, NewLogger, NewComponents, ...)`，以及各构造器（`NewLogger`、`NewAppConfig`、`NewBuildInfo` 等） |
-| `cmd/server/wire.go` | 生成入口：`//go:generate wire` + `wire.Build(ProviderSet, ...)` |
-| `cmd/server/wire_gen.go` | **由 wire 生成的装配代码**，不要手工编辑 |
+| `cmd/server/provides.go:30` | 手写 `ProviderSet = wire.NewSet(boot.New, api.ProviderSet, app.ProviderSet, infra.ProviderSet, domain.ProviderSet, NewLogger, NewComponents, ...)` + `NewAppConfig`/`NewBuildInfo` 等 |
+| `cmd/server/wire.go` | `//go:generate wire` + `wire.Build(ProviderSet)` |
+| `cmd/server/wire_gen.go` | 生成装配代码（禁手改） |
 
-`cmd/worker/` 结构与 server 完全同构：`provides.go`、`wire.go`、`wire_gen.go`（worker 的 `NewAppConfig` 校验 `data.database.source`，`NewWorker` 装配后台任务）。
+`cmd/worker/` 同构（`provides.go:22`）：校验 `data.database.source`，装配 `Worker`/`OutboxWorker` 等。
 
-### 4.2 变更后必须 wire-all
-
-**provider 变更后必须执行 `task wire-all`**（或分别 `wire-server` / `wire-worker`）。wire 依赖编译时类型推导，`wire_gen.go` 与 `provides.go` 不同步会导致启动失败——这与 `AGENTS.md` 的约定一致。
+**变更后必 `task wire-all`**（`AGENTS.md` 约定），否则 `wire_gen.go` 与 `provides.go` 失步启动失败。
 
 ---
 
-## 5. 生成流程顺序
-
-`task generate-all` 的依赖顺序固定为：
+## 5. 生成顺序与漂移门禁
 
 ```
 generate-all
-  ├─ generate-proto      # buf generate：proto/ → genproto/
-  ├─ generate-config     # protoc：config.proto → config.pb.go
-  └─ wire-all
-       ├─ wire-server    # cmd/server → wire_gen.go
-       └─ wire-worker    # cmd/worker → wire_gen.go
+ ├─ generate-proto      # proto/ → genproto/
+ ├─ generate-config     # config.proto → config.pb.go
+ └─ wire-all
+      ├─ wire-server
+      └─ wire-worker
 ```
-
-推荐在以下场景运行：
 
 | 场景 | 命令 |
 |------|------|
-| 修改 `proto/**/*.proto` | `task generate-proto` |
-| 修改 `internal/pkg/config/config.proto` | `task generate-config` |
-| 修改任何 `provides.go` / provider 构造器签名 | `task wire-all` |
-| 以上全部 / 首次拉取代码后 | `task generate-all` |
+| 改 `proto/**/*.proto` | `task generate-proto` |
+| 改 `config.proto` | `task generate-config` |
+| 改 `provides.go` / provider 签名 | `task wire-all` |
+| 全量/首次拉取 | `task generate-all && task build` |
 
-> 生成完成后应 `task build` 验证编译，原型变更过大时同时留意 `collectMethodsByAccess` 对新增 gRPC 方法的 authz 注解要求（见 `docs/developer/05-authentication.md` §5）。
+**漂移门禁（CI 与本地一致）**
+
+- **proto 兼容**：`task lint-proto` → `buf breaking --against '.git#branch=origin/main'`（`Taskfile.yml:29`），禁字段号复用、删除未 `reserved`、破坏性变更；`buf lint` 的 5 项 `except` 已在 `buf.yaml:19` 注释理由，改前必读；
+- **codegen 零漂移**：`task generate-all && git diff --exit-code`（CI `lint` job），本地验证同样执行；任何 `genproto/`、`config.pb.go`、`wire_gen.go` 未提交即失败；
+- **lint 棘轮**：`golangci-lint run --new-from-rev=origin/main` 仅拦新增（`Taskfile.yml:172`），全量 `golangci-lint run ./...` 零告警后渐进烧存量债（`docs/review/arch-review-2026-08-fix-plan.md:317`）；`go vet` + `gofmt` 为前置门禁。
+
+**新增 gRPC 方法清单**（fail-closed，`05-authentication.md §5`）：
+
+1. 在 `proto/*/v1/*.proto` 为方法加 `(method_auth)`（或依赖 `service_auth` 默认），必填否则 `collectMethodsByAccess` 启动 `missing auth policy`；
+2. 若 `ACCESS_API_KEY`，在 `internal/grpc/interceptor/apikey_scope.go:25` 登记 `{resource, op}`，否则 `AssertAPIKeyScopeCoverage` panic；
+3. 若 `op==write`，在 `admin_roles.go:16` 登记允许角色，否则 `AssertAdminRoleWriteCoverage` panic；
+4. 在对应 `app/shared/authz.go` 选择 `RequireServerWriteActor`（业务写，API Key 可做）或 `RequirePlatformAdmin`（平台级）做纵深防御；
+5. 运行 `task generate-all && task build && go vet ./...` 验证零漂移。
+
+`proto/shared/v1/authz.proto:18` 的 `AccessLevel` 与 `method_auth` 为鉴权唯一事实源，OpenAPI `x-torchwood-access` 扩展一致性由 `internal/infra/server/grpc_swagger_test.go` 断言。
+
+> 生成产物一律可重放：同一 commit 下重复 `task generate-all` 应零 diff；CI 以此为门禁，本地提交前必跑。
 
 ---
 
-## 6. 参考
+## 6. 常见问题
 
-- `Taskfile.yml`：全部任务定义与命令。
-- `buf.yaml` / `buf.gen.yaml`：Buf 版本、模块、依赖与生成规则。
-- `proto/client/v1/`、`proto/server/v1/`、`proto/console/v1/`、`proto/shared/v1/`：API 单一事实来源。
-- `genproto/`：生成的 Go 代码与 Swagger（禁止手工编辑）。
-- `cmd/server/provides.go` / `cmd/server/wire.go` / `cmd/server/wire_gen.go`、`cmd/worker/`：Wire 装配。
-- `internal/pkg/config/config.proto`：配置 schema（另见 `docs/developer/03-configuration.md`）。
-- `AGENTS.md`：生成任务与编辑约定。
+- **改了 proto 但未生成**：`buf generate` 未跑导致 `genproto/` 旧代码，`go build` 会报方法缺失；先 `task generate-proto` 再 `task build`。
+- **Wire 失步**：改 `provides.go` 签名后未 `wire-all`，编译报 `wire_gen.go` 类型不匹配；按 §5 重算。
+- **config 改后未生效**：改 `config.proto` 后漏 `generate-config`，`bind.go` 反射不到新键，环境变量覆盖失效。
+- **CI 漂移失败**：本地 `git diff --exit-code` 有未提交生成物，先 `task generate-all` 并提交全部改动。
+
+---
+
+## 7. 参考
+
+- `Taskfile.yml` 任务全表
+- `buf.yaml` / `buf.gen.yaml` Buf 版本与依赖
+- `proto/client|server|console|shared` 唯一事实来源
+- `genproto/` 生成产物（禁手改）
+- `cmd/server|worker/provides.go` / `wire.go` / `wire_gen.go`
+- `internal/pkg/config/config.proto`
+- `AGENTS.md` 生成约定
+- `internal/infra/server/grpc_swagger_test.go` swagger/`method_auth` 一致性断言

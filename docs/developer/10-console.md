@@ -1,29 +1,27 @@
 # Torchwood Console 前端开发指南
 
-> 本文面向需要在 Admin Console 新增页面/功能的开发者。Console 是 React 19 + Vite + TanStack Query +
-> shadcn/ui 风格的管理后台，构建产物通过 `go:embed` 打进 Go 二进制，经 `/console/` 路径由 server 直接 serve。
-> 目标读者：前端开发者（新增管理页面）。
-> 关联：`AGENTS.md`（开发约定）、`docs/developer/09-api-guide.md`（后端 API 约定）。
-> 修订记录：2026-08-09 初版（目录结构、API client、会话 cookie、新增页面流程按代码核实）；2026-08-12 更新构建产物说明。
+> 面向需在 Admin Console 新增页面的开发者。Console 为 React 19 + Vite 8 + TanStack Query + shadcn/ui 的管理后台，产物经 `go:embed` 打进二进制，由 `internal/infra/server/console.go` 在 `/console/` 下 serve。
+> 目标读者：前端开发者。关联：`AGENTS.md`、`docs/developer/09-api-guide.md`。
+> 修订记录：2026-08-23 重写（以 `console/package.json`、`console/embed.go`、`console/src/api/client.ts`、`internal/api/consolegrpc/cookies.go` 为准）。
 
 ---
 
 ## 1. 技术栈（以 `console/package.json` 为准）
 
-| 依赖 | 版本（^） | 用途 |
-|------|-----------|------|
-| react / react-dom | 19.x | UI 框架 |
-| react-router-dom | 7.x | 路由（`BrowserRouter` + 嵌套路由） |
-| @tanstack/react-query | 5.x | 服务端状态管理（`useQuery` / `useMutation` / `useQueryClient`） |
-| axios | 1.x | HTTP client（`console/src/api/client.ts` 封装） |
-| sonner | 2.x | toast 提示 |
-| lucide-react | 1.x | 图标 |
-| tailwindcss + tailwindcss-animate | 3.x | 样式 |
-| class-variance-authority + clsx + tailwind-merge | — | `cn()` 工具（`lib/utils.ts`） |
-| @radix-ui/react-* | 1.x / 2.x 混用 | 无头组件（dialog/select/label/avatar 等，版本以 `package.json` 为准） |
-| typescript | ~6.x | 构建时类型检查（`tsc -b`） |
-| vite | 8.x | 构建/开发服务器 |
-| pnpm | 11.20.0 | 包管理器（`packageManager` 字段锁定） |
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| `react` / `react-dom` | `^19.2.6` | UI 框架 |
+| `react-router-dom` | `^7.18.0` | 路由（`BrowserRouter` + 嵌套路由，见 `console/src/App.tsx:2`） |
+| `@tanstack/react-query` | `^5.101.0` | 服务端状态（`useQuery`/`useMutation`/`useQueryClient`） |
+| `axios` | `^1.18.0` | HTTP 客户端（`console/src/api/client.ts:11`） |
+| `sonner` | `^2.0.7` | toast |
+| `lucide-react` | `^1.20.0` | 图标 |
+| `tailwindcss` + `tailwindcss-animate` | `^3.4.19` | 样式 |
+| `class-variance-authority` + `clsx` + `tailwind-merge` | — | `cn()`（`console/src/lib/utils.ts`） |
+| `@radix-ui/react-*` | `^1.x`/`^2.x` | 无头组件（dialog/select/label/avatar 等） |
+| `typescript` | `~6.0.2` | 类型检查（`tsc -b`） |
+| `vite` | `^8.0.12` | 构建/开发服务器 |
+| `pnpm` | `11.20.0` | 包管理器（`packageManager` 字段锁定） |
 
 ---
 
@@ -31,290 +29,182 @@
 
 ```
 console/
-├── embed.go                    # //go:embed dist → console.Dist（Go 侧嵌入）
+├── embed.go                          # //go:embed dist → console.Dist
 ├── package.json / vite.config.ts / tailwind.config.js / eslint.config.js
-├── dist/                       # pnpm build 产物（已构建，随 Go 二进制发布）
+├── dist/                             # pnpm run build 产物（Go embed 打包）
 └── src/
-    ├── main.tsx                # 入口：createRoot + StrictMode
-    ├── App.tsx                 # QueryClientProvider + AuthProvider + BrowserRouter + 路由表
-    ├── api/                    # 每个资源的 API 封装（axios）
-    │   ├── client.ts           # axios 实例 + 拦截器（cookie/refresh/项目头/错误 toast）
-    │   ├── auth.ts / admins.ts / projects.ts / users.ts / groups.ts
-    │   ├── apiKeys.ts / databases.ts / storage.ts / functions.ts / oauthProviders.ts
+    ├── main.tsx                      # createRoot + StrictMode
+    ├── App.tsx                       # QueryClientProvider + AuthProvider + BrowserRouter + 路由表
+    ├── api/
+    │   ├── client.ts                 # axios 实例 + 拦截器（见 §3）
+    │   ├── auth.ts                   # sign-in / sign-out / setup-status / sign-up
+    │   └── admins.ts / projects.ts / users.ts / groups.ts / databases.ts / storage.ts / functions.ts / oauthProviders.ts
     ├── components/
-    │   ├── Layout.tsx          # 侧边栏 + 顶部栏 + 项目选择器 + 路由出口
-    │   ├── ProjectBootstrap.tsx # 自动选择默认项目（保证 X-Torchwood-Project 就绪）
+    │   ├── Layout.tsx                # 侧边栏 + 顶部栏 + 项目选择器 + Outlet
+    │   ├── ProjectBootstrap.tsx      # 自动选中默认项目（保证 X-Torchwood-Project）
     │   ├── ProjectSelector.tsx / PageHeader.tsx / EmptyState.tsx / LoadingTable.tsx
-    │   ├── ConfirmDialog.tsx / FormPage.tsx
-    │   ├── list/               # DataTable / ListToolbar / ResourceListPage（通用列表页）
-    │   ├── resource/           # PermissionEditor / permission-presets / shared（行操作按钮）
-    │   └── ui/                 # shadcn/ui 风格基础组件
+    │   ├── ConfirmDialog.tsx / FormPage.tsx / ErrorBoundary.tsx
+    │   ├── list/                     # DataTable / ListToolbar / ResourceListPage
+    │   ├── resource/                 # PermissionEditor / shared（行操作）
+    │   └── ui/                       # shadcn/ui 原语（必须放于此）
     │       ├── button.tsx / card.tsx / input.tsx / label.tsx / select.tsx
-    │       ├── dialog.tsx / badge.tsx / table.tsx / checkbox.tsx / skeleton.tsx
+    │       ├── dialog.tsx / badge.tsx / table.tsx / checkbox.tsx / skeleton.tsx / progress.tsx
     ├── hooks/
-    │   ├── useAuth.tsx         # 会话状态（refresh 探测 + 登录/登出/选项目）
-    │   ├── useListParams.ts    # 列表页 URL 参数（q/page/pageSize）读写
-    │   └── useRowSelection.ts  # 行选择
-    ├── lib/utils.ts            # cn()（clsx + tailwind-merge）
-    └── routes/                 # 按资源分目录，每目录一个 pages.tsx
+    │   ├── useAuth.tsx               # 会话状态（refresh 探测 + login/logout）
+    │   ├── useAdminRole.ts           # 角色守卫（canWrite / isPlatformAdmin）
+    │   ├── useListParams.ts          # 列表 URL 参数 q/page/pageSize
+    │   └── useRowSelection.ts
+    ├── lib/utils.ts                  # cn()
+    └── routes/                       # 按资源分目录
         ├── Login.tsx / Dashboard.tsx
-        ├── admins/  api-keys/  databases/  functions/  projects/
-        ├── settings/  storage/  groups/  users/
+        ├── admins/ / api-keys/ / databases/ / functions/ / projects/
+        ├── settings/ / storage/ / groups/ / users/ / payments/ / assets/ / subscriptions/
 ```
 
 约定：
 
-- **路由页面按资源分目录**（`routes/<resource>/pages.tsx`），一个页面一个导出组件；
-- **通用组件**放 `components/`，shadcn 风格原语必须放 `components/ui/`；
-- **API 封装**放 `api/`，页面不得直接 `axios`。
+- 路由页面按 `routes/<resource>/pages.tsx` 组织，一资源一目录；
+- shadcn 风格原语必须放在 `console/src/components/ui/`（见 `AGENTS.md`）；
+- 页面不得直连 `axios`，一律通过 `src/api/` 封装。
 
 ---
 
-## 3. API client 封装（`console/src/api/client.ts`）
+## 3. API Client（`console/src/api/client.ts`）
 
-### 3.1 实例与请求拦截器
+### 3.1 实例与请求头
 
 ```ts
-export const api = axios.create({
-  baseURL: "/v1",
-  headers: { "Content-Type": "application/json" },
-});
+export const api = axios.create({ baseURL: "/v1", headers: { "Content-Type": "application/json" } });
 
 api.interceptors.request.use((config) => {
-  const projectID = getProjectID();          // localStorage: TORCHWOOD_console_project
-  if (projectID) {
-    config.headers["X-Torchwood-Project"] = projectID;
-  }
+  const projectID = getProjectID(); // localStorage: TORCHWOOD_console_project
+  if (projectID) config.headers["X-Torchwood-Project"] = projectID;
   return config;
 });
 ```
 
-要点：
+- 会话凭证**不在 JS**：由 `TORCHWOOD_session_console` + `TORCHWOOD_console_refresh` 两个 HttpOnly cookie 自动携带（见 §4），`client.ts:8` 会清理迁移前残留的旧 token；
+- 项目上下文：`X-Torchwood-Project` 头由 `setProjectID`/`getProjectID` 读写；
+- `baseURL` 为 `/v1`，与 `google.api.http` 注解一致。
 
-- 会话凭证**不在 JS 里**：登录态由 HttpOnly cookie（`TORCHWOOD_session_console` /
-  `TORCHWOOD_console_refresh`）携带，同源 XHR 自动附带；前端不再读写 token
-  （`client.ts` 启动时会清理 localStorage 中迁移前残留的旧 token）；
-- 项目上下文：`X-Torchwood-Project` 头从 localStorage 读取，由 `setProjectID` / `getProjectID` 管理；
-- baseURL 为 `/v1`，与后端 grpc-gateway 路由前缀一致（如 `/v1/server/projects`）。
+### 3.2 401 自动刷新（single-flight）
 
-### 3.2 响应拦截器：401 自动刷新（single-flight）
+`refreshAuthTokenSingleFlight()`（`client.ts:36`）用裸 `axios` 直调 `POST /v1/console/auth/refresh`（空 body，服务端读 cookie），并发 401 共享同一 Promise，避免雪崩。
 
-```ts
-// 并发 401 只触发一次刷新；用裸 axios 绕过拦截器避免递归。
-export function refreshAuthTokenSingleFlight(): Promise<void> {
-  if (!refreshPromise) {
-    refreshPromise = axios
-      .post("/v1/console/auth/refresh")   // 空 body，服务端读 refresh cookie
-      .finally(() => { refreshPromise = null; });
-  }
-  return refreshPromise;
-}
-```
+响应拦截器流程（`client.ts:82`）：
 
-401 处理流程（`client.ts` 的 response interceptor）：
+1. 登录请求 `/console/auth/sign-in` 401 → 直接 `toast.error`；
+2. 其他 401 且未标记 `__skipAuthRetry`/`__authRetried` 且非 `missing project context` → 刷新一次后带 `__authRetried` 重试原请求；刷新失败 → `forceReLogin()` 跳 `/console/login`；
+3. 其它 `>=400` 且非 `__skipToast` → 从 `error.response.data.error.message` 取后端消息 `toast.error`。
 
-1. 登录请求（`/console/auth/sign-in`）401 → 直接 toast 错误；
-2. 其他请求 401 → 先 `refreshAuthTokenSingleFlight()` 刷新一次，成功后重试原请求（带
-   `__authRetried` 标记防死循环）；刷新失败 → `forceReLogin()` 跳转 `/console/login`；
-3. 业务错误（≥400）→ 从 `error.response.data.error.message` 取后端错误消息并 `toast.error`，
-   最后 `Promise.reject(error)` 交给调用方。
-
-> 后端错误体结构为 `{ error: { message, code, error_code, ... } }`，见
-> `docs/developer/09-api-guide.md` §8.2。
-
-### 3.3 资源 API 封装示例（`console/src/api/projects.ts`）
-
-```ts
-import { api } from "./client";
-
-export interface Project {
-  id: string;
-  name: string;
-  description?: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export async function listProjects(): Promise<Project[]> {
-  const res = await api.get<ListProjectsResponse>("/server/projects");
-  return res.data.projects ?? [];
-}
-
-export async function createProject(input: { name: string; description?: string }): Promise<Project> {
-  const res = await api.post<Project>("/server/projects", input);
-  return res.data;
-}
-```
-
-惯例：
-
-- 每个文件导出接口类型 + 纯 async 函数；列表函数内部已解包 `res.data.xxx ?? []`；
-- 路径与后端 `google.api.http` 注解一致（`/server/projects`、`/console/admins` 等）；
-- JSON 字段名使用 proto 的 snake_case（后端 `CustomMarshaler` 用 `UseProtoNames: true`）。
+自定义标记（`ApiRequestConfig`）：`__skipAuthRetry`（如 sign-out）、`__authRetried`（防重入）、`__skipToast`（调用方自渲染错误）。
 
 ---
 
-## 4. 认证流程（Console admin 会话）
+## 4. 认证：`TORCHWOOD_session_console` HttpOnly Cookie
 
-### 4.1 服务端（Go）
+### 4.1 服务端（`internal/api/consolegrpc/`）
 
-- 登录：`POST /v1/console/auth/sign-in`（`internal/api/consolegrpc/auth.go`）；
-- 会话凭证：`TORCHWOOD_session_console`（Path `/`）+ `TORCHWOOD_console_refresh`
-  （Path 限定 `/v1/console/auth`），两者均 **HttpOnly + SameSite=Lax**（`cookies.go`）；
-  - HttpOnly：JS 不可读，天然免疫 XSS 窃取；
-  - SameSite=Lax：跨站 POST 不携带 cookie，配合「变更类端点均为 POST」即构成 CSRF 防护，无需 CSRF token；
-  - `Set-Cookie` 由 grpc-gateway 的 `authOutgoingHeaderMatcher` 透传（`internal/infra/server/grpc_gateway.go`）；
-- 刷新：`POST /v1/console/auth/refresh`，空 body，从 cookie 取 refresh token。
+| Cookie | Path | 属性 | 说明 |
+|--------|------|------|------|
+| `TORCHWOOD_session_console` | `/` | `HttpOnly` + `SameSite=Lax` | access token（`consolegrpc/cookies.go:25`） |
+| `TORCHWOOD_console_refresh` | `/v1/console/auth` | `HttpOnly` + `SameSite=Lax` | refresh token，仅发往刷新端点（`cookies.go:28`） |
 
-### 4.2 前端（`hooks/useAuth.tsx`）
+- 签发：`POST /v1/console/auth/sign-in`（`auth.go:23`）与 `POST /v1/console/auth/refresh` 成功后 `setSessionCookies`；
+- `Set-Cookie` 经 `internal/infra/server/grpc_gateway.go` 的 `authOutgoingHeaderMatcher` 透传；
+- CSRF 防护：`SameSite=Lax` 使跨站 POST 不携带 cookie；本服务变更类端点均为 POST，故无需额外 CSRF token（`console.go:32` 注释）；
+- `Secure` 由 `console.Auth.SecureCookies()` 决定（非本地环境自动启用）。
 
-- 挂载时调用 `refreshSession()`（即上面的 single-flight refresh）探测会话：成功 → 已登录（顺带续期）；
-  失败 → 匿名；`loading` 为 true 期间 `RequireAuth` 返回 null，避免闪现登录页；
-- `login(email, password)` → 成功后置 `authenticated`，cookie 由服务端下发；
-- `logout()` → 调 `/console/auth/sign-out`（`__skipAuthRetry` 标记跳过 401 刷新流，best-effort）+
-  清空本地项目 ID + 立即清本地状态；
-- `RequireAuth`（`App.tsx`）：未登录跳 `/console/login`；
-- 路由守卫只做「登录与否」，角色细粒度控制（如仅 owner 可管理管理员）在页面内判断
-  （如 `admins/pages.tsx` 的 `me?.role === "owner"`）。
+### 4.2 前端（`console/src/hooks/useAuth.tsx` + `console/src/api/auth.ts`）
+
+- 挂载时 `refreshSession()`（即 single-flight refresh）探测会话：成功 → `isAuthenticated=true`（顺带续期），失败 → 匿名；`loading=true` 期间 `RequireAuth` 返回 `null` 避免闪屏；
+- `login(email,password)` 调 `POST /console/auth/sign-in`，成功后置 `authenticated`，`__skipToast` 让登录页自渲染错误；
+- `logout()` 调 `POST /console/auth/sign-out`（`__skipAuthRetry`），无论成败清空 `TORCHWOOD_console_project` 与 `queryClient`；
+- 路由守卫：`RequireAuth` 判登录；`RequireRole`（`App.tsx:167`）判写权限（`canWrite`）或平台管理员（`isPlatformAdmin`），失败重定向 `/console`。
 
 ---
 
-## 5. 开发与构建流程
+## 5. 开发与构建
 
 ```bash
-task console-install    # pnpm install（包管理器锁定 pnpm@11.20.0）
-task console-dev        # pnpm run dev → vite dev server
-task console-build      # pnpm run build → tsc -b && vite build，产出 dist/
-task build              # Go 侧：console-build（依赖）+ go build cmd/server + cmd/worker + cmd/client（CLI）
+task console-install   # pnpm install（锁定 pnpm@11.20.0）
+task console-dev       # pnpm run dev → vite dev server
+task console-build     # pnpm run build → tsc -b && vite build → dist/
+task build             # 依赖 console-build → go build ./cmd/server ./cmd/worker ./cmd/client
 ```
 
-- **dev 代理**（`vite.config.ts`）：`base: '/console/'`；`server.proxy` 把 `/v1` 代理到
-  `http://localhost:9099`（本地 Go server 的 `server.http` 端口），保证 dev 下 `/v1` 与页面同源，
-  HttpOnly 会话 cookie 正常工作；
-- **路径别名**：`@` → `./src`（tsconfig + vite alias 双配置）；
-- **嵌入二进制**（`console/embed.go`）：
+- `vite.config.ts:8`：`base: '/console/'`，`@` → `./src`（tsconfig + vite 双别名）；
+- `vite.config.ts:20`：`server.proxy['/v1'] → http://localhost:9099`（与 `configs/config.yaml.template` 的 `server.http.addr` 对齐），保证 dev 下 `/v1` 同源，HttpOnly cookie 正常工作；
+- `console/embed.go:8`：`//go:embed dist` → `console.Dist`，由 `internal/infra/server/console.go:7` 的 `NewConsoleHandler` 挂载，SPA fallback（未知路径回 `index.html`）+ 安全头（`X-Frame-Options: DENY` / CSP / `X-Content-Type-Options`）。
 
-```go
-//go:embed dist
-var Dist embed.FS
-```
-
-  由 `internal/infra/server/console.go` 的 `NewConsoleHandler` 挂载：`/console/*` 命中 dist，
-  SPA fallback（未知路由回 index.html）+ 安全头（`X-Frame-Options: DENY`、CSP 等）；
-- **重要**：修改 Console 代码后必须 `task console-build` 再 `task build`，否则 Go embed 打包的是
-  旧版本 dist。
+> **必做**：修改 Console 后先 `task console-build` 再 `task build`，否则 `go:embed` 打包旧 `dist/`。
 
 ---
 
-## 6. 如何新增一个管理页面（以现有页面为模板）
+## 6. 新增页面流程（以 `admins` 为模板）
 
-以「admins」为最小模板（列表页 + 新建/编辑弹窗），按以下四步：
-
-### 6.1 编写 API 封装（`src/api/<resource>.ts`）
+### 6.1 API 封装（`src/api/<resource>.ts`）
 
 ```ts
-// src/api/admins.ts（真实文件）
 export async function listAdmins(): Promise<Admin[]> {
   const res = await api.get<ListAdminsResponse>("/console/admins");
   return res.data.admins ?? [];
 }
-export async function createAdmin(input: { email: string; password: string; role: string }): Promise<Admin> {
-  const res = await api.post<Admin>("/console/admins", input);
-  return res.data;
-}
 ```
 
-### 6.2 编写页面（`src/routes/<resource>/pages.tsx`）
+路径与后端 `google.api.http` 一致（`/server/projects`、`/console/admins`），JSON 字段为 snake_case（后端 `CustomMarshaler` 设 `UseProtoNames: true`）。
 
-列表页直接复用 `ResourceListPage`（搜索/分页/选择/空态/加载骨架全内置），只需提供列定义与行操作：
+### 6.2 页面（`src/routes/<resource>/pages.tsx`）
+
+复用 `ResourceListPage`（搜索/分页/空态/骨架内置），仅提供列定义与行操作：
 
 ```tsx
-// 参照 src/routes/admins/pages.tsx
 const columns: ColumnDef<Admin>[] = [
   { key: "email", header: "邮箱", cell: (a) => a.email },
-  { key: "role", header: "角色", cell: (a) => <Badge>{a.role}</Badge> },
+  { key: "role",  header: "角色", cell: (a) => <Badge>{a.role}</Badge> },
 ];
-
 export function AdminsListPage() {
-  const queryClient = useQueryClient();
-  const { data: admins = [], isLoading } = useQuery({
-    queryKey: ["console-admins"],
-    queryFn: listAdmins,
-  });
-  const remove = useMutation({
-    mutationFn: deleteAdmin,
-    onSuccess: () => {
-      toast.success("管理员已删除");
-      queryClient.invalidateQueries({ queryKey: ["console-admins"] });
-    },
-  });
-  return (
-    <ResourceListPage
-      title="系统管理员"
-      isLoading={isLoading}
-      items={admins}
-      columns={columns}
-      getSearchText={(a) => `${a.email} ${a.role}`}
-      toolbarActions={<CreateAdminDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["console-admins"] })} />}
-      rowActions={(a) => <RowDeleteButton onConfirm={() => remove.mutate(a.id)} loading={remove.isPending} />}
-    />
-  );
+  const { data: admins = [], isLoading } = useQuery({ queryKey: ["console-admins"], queryFn: listAdmins });
+  return <ResourceListPage title="系统管理员" isLoading={isLoading} items={admins} columns={columns}
+    getSearchText={(a) => `${a.email} ${a.role}`} />;
 }
 ```
 
-增删改交互惯例：
-
-- 弹窗表单用 `Dialog`（Radix）组合 `useMutation`；成功 → `toast.success` + 关闭弹窗 +
-  `queryClient.invalidateQueries` 使列表刷新；
-- 行内删除用 `RowDeleteButton`（`components/resource/shared.tsx`，内嵌确认弹窗）；
-- 列表搜索/分页由 `useListParams`（URL query `q`/`page`/`pageSize`）+ `filterByQuery`/`paginate` 完成
-  ——前端列表为「全量拉取 + 本地分页」模式（`ResourceListPage` 内部实现）。
+弹窗表单用 `Dialog`（Radix）+ `useMutation`，成功 `toast.success` + `queryClient.invalidateQueries`。
 
 ### 6.3 注册路由（`src/App.tsx`）
 
 ```tsx
 import { AdminsListPage } from "@/routes/admins/pages";
-// ...
-<Route path="admins" element={<AdminsListPage />} />
+<Route path="admins" element={<RouteErrorBoundary><AdminsListPage /></RouteErrorBoundary>} />
 ```
 
-- 所有页面挂在受 `RequireAuth` 保护的 `/console` 布局路由下（`<Route element={<RequireAuth><Layout/></RequireAuth>}>`）；
-- 嵌套详情页模式参照 databases：`databases/:dbId/collections/:collId` 用 `CollectionLayout` 包子路由。
+所有业务页挂在 `<RequireAuth><Layout/></RequireAuth>` 下的 `/console` 布局路由；写路由外层再包 `<RequireRole>`。
 
-### 6.4 接入菜单（`src/components/Layout.tsx`）
+### 6.4 接入菜单（`src/components/Layout.tsx:14`）
 
-`navSections` 数组按分组声明菜单项，图标用 lucide-react：
+在 `navSections` 按分组追加：
 
-```tsx
-{
-  title: "System",
-  items: [
-    { to: "/console/projects", label: "Projects", icon: FolderKanban },
-    { to: "/console/admins", label: "Admins", icon: ShieldCheck },
-    { to: "/console/settings", label: "Settings", icon: Settings },
-  ],
-}
+```ts
+{ title: "System", items: [
+  { to: "/console/admins", label: "Admins", icon: ShieldCheck },
+]}
 ```
 
 ### 6.5 验证
 
 ```bash
-task console-build && task build   # 或先 task console-dev 手工走一遍流程
+task console-build && task build
+# 或 task console-dev 手工走查：登录 → 切换项目 → 列表/创建/删除 → 刷新鉴权
 ```
 
 ---
 
 ## 7. 常见坑
 
-1. **改了前端忘了重构建**：`go:embed` 只打包构建时刻的 `dist/`，务必 `task console-build` 后再
-   `task build`；
-2. **dev 下 cookie 失效**：vite proxy 必须指向与后端 cookie Secure 配置匹配的地址（本地
-   `http://localhost:9099`，同源才行）；
-3. **列表接口空返回**：服务端 `ListProjectsResponse.projects` 为空数组时 `res.data.projects ?? []`
-   兜底，页面拿到 `[]` 显示空态而不是 undefined 崩溃；
-4. **错误消息**：从 `error.response.data.error.message` 读取，不要用 axios 默认 message；
-5. **请求别绕过 `api` 实例**：刷新（refresh）故意用裸 axios，其余请求一律走 `api` 以获得
-   `X-Torchwood-Project` 头与 401 自动刷新能力；
-6. **角色/权限判断在页面做**：`useAuth()` 只给登录态，owner/admin/viewer 差异在页面内按
-   `getCurrentAdmin()` 的 `role` 判断。
+1. **忘了重构建**：`go:embed` 只打包构建时刻的 `dist/`；
+2. **dev cookie 失效**：`vite.config.ts` 代理须与后端 `server.http.addr` 同源（默认 `9099`）；
+3. **空列表兜底**：`res.data.xxx ?? []`，否则空态崩溃；
+4. **错误消息**：从 `error.response.data.error.message` 读取；
+5. **绕过 `api` 实例**：仅 refresh 用裸 `axios`，其余一律走 `api` 以带 `X-Torchwood-Project` 与 401 刷新；
+6. **权限在页面/路由双 gating**：按钮用 `useAdminRole`，写路由用 `RequireRole`。

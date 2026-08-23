@@ -1,279 +1,159 @@
 # Torchwood 认证与授权
 
-> 本文描述 Torchwood 的认证方法与授权模型：四种认证方式（终端用户 JWT、session cookie、API Key、Console admin session）、Principal 注入、gRPC 方法级 authz 注解、JWT claims 与密码/加密工具。
-> 相关代码：`internal/grpc/interceptor/`、`internal/infra/auth/validator.go`、`internal/infra/auth/session_cookie.go`、`pkg/jwtparser/`、`pkg/password/`、`pkg/secretbox/`、`proto/shared/v1/authz.proto`、`internal/infra/server/grpc.go`、`internal/api/consolegrpc/cookies.go`、`internal/infra/bun/bunrepo/apikey_repo.go`。
+> 四凭证、Principal 注入、方法级 authz 双表与纵深防御。以代码为准：`internal/infra/auth/validator.go:21`、`internal/grpc/interceptor/`、`proto/shared/v1/authz.proto`、`internal/infra/server/grpc.go:217`。
+> 最新更新：2026-08-23
 
 ---
 
-## 1. 认证方法矩阵
+## 1. 四凭证与优先级
 
-所有认证在这里归结为三种**凭证类型**（`internal/domain/shared/principal.go`）与三种**主体类型**（ActorKind）：
+`internal/domain/shared/principal.go` 定义两正交维度：
 
 | 维度 | 取值 |
 |------|------|
-| `CredentialType` | `token`（JWT：Bearer）、`session`（session cookie）、`api_key`（API Key） |
-| `ActorKind` | `end_user`（终端用户）、`admin`（Console 管理员）、`service`（API Key / 自动化） |
+| `CredentialType` | `token`（JWT Bearer）· `session`（cookie 不透明/HMAC）· `api_key` |
+| `ActorKind` | `end_user`（终端用户）· `admin`（Console 管理员）· `service`（API Key 自动化） |
 
-`internal/grpc/interceptor/jwt.go` 的 `extractCredential` 按以下优先级从 gRPC metadata 提取凭证：
+`internal/grpc/interceptor/jwt.go:77` 的 `Authenticate` 按以下优先级解析 `metadata`（`shared.ParseAuthnRequest`）：
 
-| 优先级 | 来源 | 映射 |
-|:---:|------|------|
-| 1 | `authorization` 头 | `Bearer <jwt>` → `token`；`Session <cookie>` → `session`；`Apikey` / `Api-Key <key>` → `api_key`（`ParseAuthorizationHeader`，无法识别 scheme 时一律拒绝） |
-| 2 | `cookie` 头 | `TORCHWOOD_session_console` → 项目 `console`；`TORCHWOOD_session_<projectID>` → 对应项目（`parseSessionCookie`） |
-| 3 | `x-api-key` 头 | 视为 `api_key` |
+| 优先级 | 头 | 映射 |
+|--------|----|------|
+| 1 | `authorization` | `Bearer <jwt>` → `token`；`Session <val>` → `session`；`ApiKey`/`Apikey <key>` → `api_key` |
+| 2 | `cookie` | `TORCHWOOD_session_console` → console；`TORCHWOOD_session_<projectID>` → 对应项目 |
+| 3 | `x-api-key` | 一律 `api_key`（header 名可配 `security.api_key.header`，默认 `x-api-key`） |
 
-| 认证方法 | 凭证类型 | 面向对象 | 说明 |
-|----------|----------|----------|------|
-| 终端用户 JWT | `token` | Client API 终端用户 | 用 `end-user-jwt` 派生密钥签发，claims 带 `end_user` 角色，可含 `pid`/`sid` |
-| End-user session cookie | `session` | Client API 浏览器 | `TORCHWOOD_session_<projectID>`，HMAC 签名的不透明 cookie，或 JWT 形式（见 §3） |
-| Console admin session | `session` / `token` | Admin Console | `TORCHWOOD_session_console` HttpOnly cookie；刷新限 `/v1/console/auth`（见 §3.1） |
-| API Key | `api_key` | Server API（Agent/自动化） | 细粒度 scoped（见 §4） |
-
-```go
-// internal/grpc/interceptor/jwt.go —— 凭证解析优先级
-md 中:
-  authorization: "Bearer eyJ..."   -> CredentialTypeToken
-  authorization: "Session <val>"   -> CredentialTypeSession
-  authorization: "ApiKey <val>"    -> CredentialTypeAPIKey
-  cookie: "TORCHWOOD_session_console=..."   -> CredentialTypeSession, project="console"
-  cookie: "TORCHWOOD_session_proj-x=..."    -> CredentialTypeSession, project="proj-x"
-  x-api-key: "...key..."           -> CredentialTypeAPIKey
-```
+| 凭证 | 面向 | 说明 |
+|------|------|------|
+| 终端用户 JWT | Client API | `end-user-jwt` 域密钥签发，claims 含 `pid`/`sid`/`uid`，Roles 实时解析 |
+| End-user session | Client API 浏览器 | `TORCHWOOD_session_<projectID>`，`SessionCookieCodec` HMAC（`internal/infra/auth/session_cookie.go`）或 JWT 形态 |
+| Console admin session | Console | `TORCHWOOD_session_console` HttpOnly cookie（`internal/api/consolegrpc/cookies.go`），refresh 限 `/v1/console/auth` |
+| API Key | Server API | `secret → sha256 hex` 存库，细粒度 scope（§4），以 `keys` 角色参与 `_perms` |
 
 ---
 
-## 2. Principal 注入机制
+## 2. Validator（`internal/infra/auth/validator.go:21`）
 
-认证通过后，`AuthInterceptor.UnaryAuthMiddleware`（`internal/grpc/interceptor/jwt.go`）把校验结果封装为 `shared.Principal` 并写入上下文（`contexts.WithPrincipal`），handler 通过 `contexts.Principal(ctx)` 读取。
+`Validator` 实现 `interceptor.Validator`：
 
-Principal 结构（`internal/domain/shared/principal.go`）：
-
-| 字段 | 说明 |
+| 凭证 | 校验 |
 |------|------|
-| `ActorID` / `ActorKind` | 主体 ID 与类型（end_user / admin / service） |
-| `CredentialType` | 本次认证使用的凭证类型 |
-| `IsPlatformAdmin` | 管理员是否为 owner/admin 平台级 |
-| `ProjectID` / `UserID` / `SessionID` / `APIKeyID` | 归属信息 |
-| `Roles` | 角色（终端用户角色如 `users`、`user:{id}`；API Key 固定 `["keys"]`；admin 为其角色） |
-| `Permissions` | **API Key 专用于存放 scopes**（`Principal.Permissions` 即 `api_keys.scopes`） |
+| `api_key` | `sha256(raw)` → `GetAPIKeyBySecretHash`；查 `Enabled`/`ExpireAt`；**查 `project Status==active`**（`validator.go:136`）否则 `Unauthenticated: project is not active`；成功 `ActorKind=service`、`Roles=["keys"]`、`Permissions=Scopes`、`ProjectID=key.ProjectID` |
+| `token` | 先 `admin-jwt` 域验签，失配再试 `end-user-jwt`（`parseJWT:109`，域分离见 §6）；分发到 `principalFromJWT` |
+| `session` | 先当 JWT 试解（console JWT），否则 `SessionCookieCodec.Verify` 得 `projectID:sessionID` → `principalFromSession` 查 `sessions` 集合 |
 
-### 2.1 拦截器判定流程
+`principalFromJWT` 分支：
+
+- `akd=admin`：校验 `ttp==access`、查 `adminRepo`、校验 `RevokeBefore`（`checkAdminTokenRevoked:334`），`IsPlatformAdmin = role∈{owner,admin}`；
+- `akd=end_user`（含一次性 JWT：`oneTimeTokens.Consume` 原子消费防重放）、校验绑定 `sessionID` 的会话仍有效（`validateEndUserSession:257`）、校验 `ensureUserCanAuthenticate`（用户存在且 `CanAuthenticate`）、**实时 `resolveEndUserRoles:279`（`UserRoleResolver`）fail-closed 拒绝，防 JWT 旧角色残留**。
+
+`ValidateAdminProjectAccess:310`：非平台 admin 且 `principal.ProjectID` 非空时，校验 `adminProjectRepo.HasProjectAccess`。
+
+---
+
+## 3. Principal 注入
+
+`AuthInterceptor.UnaryAuthMiddleware`（`jwt.go:77`）：
 
 ```
-UnaryAuthMiddleware(ctx, req)
-  ├─ ACCESS_PUBLIC 方法: 尽力解析凭证（可选）→ 直接放行
-  ├─ 无凭证 → 401 Unauthenticated
-  ├─ ValidateCredential 失败 → 401
-  ├─ API_KEY 方法（apiKeyMethods）:
-  │    ├─ 要求 CredentialType==api_key 或 ActorKind==admin
-  │    │      （所以 API_KEY 方法允许 admin console session 调用）
-  │    ├─ 若为 API key 凭证:
-  │    │    ├─ 禁止调用 APIKeys 服务（防泄露 key 自铸新 key 提权）→ 403
-  │    │    └─ APIKeyScopeAllowed 校验 scope → 403
-  ├─ admin 主体: 读取 X-Torchwood-Project 头 → principal.ProjectID，
-  │    ValidateAdminProjectAccess（非平台级管理员须有该项目访问权）
-  ├─ permissionMethods: HasAnyPermission 校验
-  └─ contexts.WithPrincipal(ctx, principal) → handler
+ACCESS_PUBLIC → 尽力解析凭证 → 直接放行
+无凭证 / ValidateCredential 失败 → 401
+ACCESS_API_KEY：
+  ├─ 要求 token=api_key 或 admin 会话（所以 admin 可经 X-Torchwood-Project 调 Server API）
+  ├─ api_key 禁调 APIKeysService（IsAPIKeysServiceMethod → 403）
+  └─ APIKeyScopeAllowed(scope) → 403
+admin 主体：查 adminRoleMethodRules → 403（viewer 细粒度）；读 X-Torchwood-Project → ValidateAdminProjectAccess
+permissionMethods：HasAnyRole(perms) → 403（且 api_key 一律 403）
+→ contexts.WithPrincipal(ctx, principal) → handler（handler 经 contexts.Principal 读取）
 ```
 
-**Admin console session 指定项目**：仅针对 `ActorKind == Admin`，当请求带 `X-Torchwood-Project` header 时把该值写入 `principal.ProjectID`，随后 `ValidateAdminProjectAccess` 校验此管理员是否有权访问该项目（owner/admin 平台级豁免，`internal/infra/auth/validator.go`）。这也是 console 多项目访问的载体。
+`Principal`（`domain/shared/principal.go`）：`ActorID`/`ActorKind`/`CredentialType`/`IsPlatformAdmin`/`ProjectID`/`UserID`/`SessionID`/`APIKeyID`/`Roles`/`Permissions`（API Key 的 scopes 在 `Permissions`）。
 
-### 2.2 Validator
-
-`internal/infra/auth/validator.go` 实现 `interceptor.Validator` 接口，`ValidateCredential` 分发到：
-
-| 凭证 | 校验逻辑 |
-|------|---------|
-| api_key | `sha256(raw)` → `GetAPIKeyBySecretHash` 查询（secret 只存哈希）；校验 `Enabled` 与 `ExpireAt`；Principal：`ActorKind=service`、`Roles=["keys"]`、`Permissions=Scopes`、`ProjectID=key.ProjectID` |
-| token | 两次尝试：先用 `admin-jwt` 派生密钥解析，失败再用 `end-user-jwt`（同密钥域内由 ActorKind claim 分发；`parseJWT`） |
-| session | 先尝试当 JWT 解析（console access/refresh token 是 JWT）；失败则用 `SessionCookieCodec.Verify` 解出 `projectID:sessionID` 后在 `sessions` 集合查证（`principalFromSession`） |
-
-终端用户请求还会做**实时角色解析与账户状态检查**（fail-closed）：
-- `ensureUserCanAuthenticate`：用户文档存在且 `status` 允许登录（`users.CanAuthenticate`）；
-- `resolveEndUserRoles`：通过 `UserRoleResolver` 实时加载角色，避免 JWT claims 里的旧角色残留；解析失败一律按 Unauthenticated 拒绝。
+Console 多项目：仅 `admin` 会话读 `X-Torchwood-Project` 写入 `ProjectID` 再校验项目访问权。
 
 ---
 
-## 3. Session 处理
+## 4. API Key 与 scope（`apikey_scope.go:25`）
 
-### 3.1 Console admin session（HttpOnly cookie，不用 localStorage）
+**存储**：`secret = uuid()+uuid()`，库中仅 `sha256(secret)` hex（`internal/app/server/apikeys.go`），明文只在创建响应出现一次。
 
-见 `internal/api/consolegrpc/cookies.go` 与 `internal/app/console/auth.go`：
+**scope 规则**：`apiKeyScopeRules`（`apikey_scope.go:25`）显式映射全部 `ACCESS_API_KEY` 方法为 `{resource, op}`，为单一事实源；`apiKeyScopeAllowed` 匹配、创建时 `ValidAPIKeyScope` 校验（≤32 项、每项 ≤64 字符）。
 
-| 项 | 值 |
-|----|-----|
-| access cookie | `TORCHWOOD_session_console`，Path `/`，**HttpOnly + SameSite=Lax**，`Max-Age = access_ttl` |
-| refresh cookie | `TORCHWOOD_console_refresh`，**Path 限 `/v1/console/auth`**（只发向刷新端点，界面无法在其它路径使用它），`Max-Age = refresh_ttl` |
-| `Secure` | **仅当 `server.http.public_url` 以 `https://` 开头**（`SecureCookies()`），本地 HTTP 开发不置位 |
-| XSS / CSRF | HttpOnly 免疫 JS 窃取；SameSite=Lax 下跨站 POST 不携带 cookie，本服务变更类端点均为 POST，故无需额外 CSRF token（前提：cookie 仅限同源 `/v1` 使用） |
-| 刷新 | `POST /v1/console/auth/refresh`；`refresh_token` 为空时从 refresh cookie 读取（cookie-only 浏览器流，`refreshTokenFromCookie`） |
-| 登出 | `Max-Age=0` 清除两个 cookie，并撤销该 admin 此前签发的全部 token（`RevokeBefore`） |
+| 资源 | scope | 服务 | 读 | 写 |
+|------|-------|------|----|----|
+| `databases` | `databases.read/write` | DatabasesService | List/Get/Count | Create/Update/Delete/Upsert/Bulk |
+| `users` | `users.read/write` | UsersService | List/Get | Create/Update/Delete |
+| `groups` | `groups.read/write` | GroupsService | List/Get | Create/Update/Delete |
+| `storage` | `storage.read/write` | StorageService | List/Get/Usage | Create/Update/Delete |
+| `projects` | `projects.read/write` | ProjectsService | List/Get | Create/Update/Delete |
+| `oauthproviders` | `oauthproviders.read/write` | OAuthProvidersService | List | Upsert/Delete |
+| `apikeys` | `apikeys.read/write` | APIKeysService | List/Get | Create/Delete（但 API key 凭证被上游禁调） |
+| `functions` | `functions.read/write` | FunctionsService | List/Get | Create/Update/Delete/SetVariables |
+| `payments` | `payments.read/write` | PaymentsService | List/Get | Refund/ManualFulfill |
+| `economy` | `economy.read/write` | AssetsService | List/Get | Create/Update/Delete/Grant/Consume/... |
+| `subscriptions` | `subscriptions.read/write` | SubscriptionsService | List/Get | Create/Update/Delete/Cancel |
+| `billing` | `billing.read` | BillingService | Get/List | — |
+| `outbox` | `outbox.read/write` | **OutboxService** | `ListDeadLetters` | `ReplayDeadLetter`（W-J 死信，`proto/server/v1/outbox.proto:43`） |
 
-刷新令牌采用 **rotation + 重用检测**：`RefreshToken` 通过 `RefreshRotationStore.Rotate` 校验 `jti`，旧 refresh token 被再次使用 → `RotateMismatch` → 撤销该 admin 全部 token 并返回 Unauthenticated（`internal/app/console/auth.go`）。Console admin 的 access/refresh 均用 `admin-jwt` 派生密钥签发（HS256）。
+匹配：裸资源名=`*`/`all` 全量放行；`*.read` 仅读方法；`*.write` 仅写方法；**未登记方法即使 `*` 也 fail-closed**。
 
-### 3.2 End-user session cookie
-
-- 浏览器端 Client API 可用 `TORCHWOOD_session_<projectID>` cookie 认证。
-- 另一种形式是**不透明 session cookie**：`SessionCookieCodec.Sign` 生成 `base64url(projectID:sessionID):hmac-sha256`（密钥由 `jwt.secret` 经 `PurposeSessionCookie` 派生，`internal/infra/auth/session_cookie.go`）；验证时先验签名，再查 `sessions` 文档确认存在、未过期、`user_id` 匹配。
-- refresh token 换新、重用即删会话：`POST /v1/account/refresh` 在 `RotateMismatch` 时直接删除该 sessions 文档，使该会话全部 token 失效（`internal/app/client/account.go`）。
-
----
-
-## 4. API Key（scoped）
-
-### 4.1 存储与校验
-
-- 创建时：`secret = uuid()+uuid()`，只往 `api_keys` 表写 `sha256(secret)` 的 hex（`internal/app/server/apikeys.go`）；secret 仅在创建响应中出现一次，数据库不存明文。
-- 校验：`Validator.validateAPIKey` 对原始 key 做 sha256 后 `GetAPIKeyBySecretHash` 精确命中；`api_key` 不在库中 / 被禁用（`Enabled=false`）/ 过期（`ExpireAt`）均拒绝。
-- 请求头默认 `x-api-key`（`security.api_key.header`），也支持 `Authorization: ApiKey <key>`。
-
-### 4.2 scope 命名规则（B2）
-
-`internal/grpc/interceptor/apikey_scope.go` 显式登记全部 8 个 `ACCESS_API_KEY` 服务的方法 → `{resource, op}`，是 scope 格式的**单一事实来源**：
-
-| 资源（裸 scope） | 服务 | 读 scope | 写 scope |
-|-----------------|------|----------|----------|
-| `databases` | DatabasesService | `databases.read` | `databases.write` |
-| `users` | UsersService | `users.read` | `users.write` |
-| `groups` | GroupsService | `groups.read` | `groups.write` |
-| `storage` | StorageService | `storage.read` | `storage.write` |
-| `projects` | ProjectsService | `projects.read` | `projects.write` |
-| `oauthproviders` | OAuthProvidersService | `oauthproviders.read` | `oauthproviders.write` |
-| `apikeys` | APIKeysService | `apikeys.read` | `apikeys.write` |
-| `functions` | FunctionsService | `functions.read` | `functions.write` |
-
-**scope 合法格式**：`*` / `all`（全量）、裸资源名（`databases` 全量放行该资源）、`<resource>.read`（仅读方法）、`<resource>.write`（仅写方法）。创建时校验 `interceptor.ValidAPIKeyScope`，上限：**≤32 项、每项 ≤64 字符**。
-
-**匹配规则**：
-- 裸资源名与 `*` / `all` 全量放行该资源；
-- `<resource>.read` 只放读方法（List/Get/Count 类），`<resource>.write` 只放写方法；
-- **fail-closed**：未登记的方法即使带 `*`/`all` 也拒绝；新增 `ACCESS_API_KEY` 服务必须在 `apiKeyScopeRules` 登记，否则 `APIKeyScopeAllowed` 恒返回 false。
-
-**防护**：API key 凭证**禁止调用 APIKeys 服务**（`IsAPIKeysServiceMethod` → 403 `"api keys cannot manage api keys"`），防止泄露的 key 自铸新 key 造成永久提权；admin console session 不受此限制。
-
-### 4.3 API Key 以 keys 角色参与 _perms（不默认 bypass）
-
-- 校验成功后 Principal 的 `Roles = ["keys"]`（`internal/infra/auth/validator.go` 的 `validateAPIKey`）；
-- 动态文档层把 `keys` 视为与 `users`、`user:{id}` 并列的角色参与 `_perms` 判定，**不默认绕过文档权限**：
-  - `ExpandPermissionRoles` 只在调用方持 `keys` 角色时注入 `keys`（`postgres_permissions.go` / `internal/domain/databases/`）；
-  - API Key `keys` 角色只参与**用户 collection** `_perms`；系统资源不走 `_perms`，只经 Account、Server Users、Storage、Groups 专用 RPC。
-  - Server API 读写用户文档时，文档 `_perms` 上需显式授予 `read:keys` / `write:keys` 等才可访问。
-- 特权主体（`SystemPrincipal`、PlatformAdmin）才走完全绕过（`IsSystem()`）。
-
-API Key 不在首次部署引导中生成。登录 Console 后到 **API Keys** 页面创建；
-scope 由创建者指定（`all` 表示全量放行，等价于旧的逐资源 read/write 组合）。
+**防护**：`IsAPIKeysServiceMethod` 拒绝 API key 调 `APIKeysService`（防自铸提权）；API Key 以 `Roles=["keys"]` 参与用户 collection `_perms`（`read:keys`/`write:keys` 需显式授予，不默认 bypass；仅 `SystemPrincipal`/平台 admin 绕过）。
 
 ---
 
-## 5. gRPC 方法级 authz 注解（method_auth）
-
-### 5.1 注解定义
-
-`proto/shared/v1/authz.proto` 定义 AccessLevel 与扩展：
+## 5. gRPC 方法级 authz（`proto/shared/v1/authz.proto:9`）
 
 ```proto
-enum AccessLevel {
-  ACCESS_LEVEL_UNSPECIFIED = 0;
-  ACCESS_PUBLIC         = 1;  // 无需认证（仅尽力解析可选凭证）
-  ACCESS_AUTHENTICATED  = 2;  // 已认证 + required permissions [配置为 users]
-  ACCESS_PERMISSION     = 3;  // 已认证 + 显式 permissions
-  ACCESS_API_KEY        = 4;  // 需要 API Key 凭证 或 admin session
-}
-
-extend google.protobuf.MethodOptions  { MethodAuth  method_auth  = 52001; }
-extend google.protobuf.ServiceOptions { ServiceAuth service_auth = 52002; }
+enum AccessLevel { ACCESS_PUBLIC=1; ACCESS_AUTHENTICATED=2; ACCESS_PERMISSION=3; ACCESS_API_KEY=4; }
+extend MethodOptions  { MethodAuth  method_auth  = 52001; }
+extend ServiceOptions { ServiceAuth service_auth = 52002; }
 ```
 
-- `method_auth = { access: ACCESS_API_KEY }` 标注方法；
-- 服务可用 `(service_auth) = { default_access: ... }` 声明默认级别，方法未标注时回退到服务默认（`resolveMethodAccess`）。
-- 例：`ConsoleAuthService` 服务默认 `ACCESS_PUBLIC`；`APIKeysService` 服务默认 `ACCESS_API_KEY`；`AdminsService` 默认 `ACCESS_PERMISSION` 并对个别方法显式声明。
+- 服务可 `service_auth.default_access` 提供默认，方法未标时回退（`resolveMethodAccess:267`）；
+- `ACCESS_AUTHENTICATED` 缺省 `["users"]`，`ACCESS_PERMISSION` 缺 `permissions` 直接报错。
 
-### 5.2 为什么必须带注解（collectMethodsByAccess）
+`internal/infra/server/grpc.go:65` 启动期 `collectMethodsByAccess` 聚合四类：
 
-`internal/infra/server/grpc.go` 启动时调用 `collectMethodsByAccess(...)` 扫描所有 proto 描述符，按 access 归集方法清单：
+| access | 归集 | 拦截器语义 |
+|--------|------|------------|
+| `ACCESS_PUBLIC` | `publicMethods` | 可选凭证，必放行 |
+| `ACCESS_API_KEY` | `apiKeyMethods` | 须 `api_key` 或 `admin`，走 scope 门禁 |
+| `ACCESS_AUTHENTICATED` | `permissionMethods[method]=["users"]` | 已认证 + 默认 users |
+| `ACCESS_PERMISSION` | `permissionMethods[method]=perms` | 已认证 + 显式 perms（空则启动失败） |
 
-| access | 归集 |
-|--------|------|
-| `ACCESS_PUBLIC` | `publicMethods`（拦截器放行 + 可选凭证） |
-| `ACCESS_API_KEY` | `apiKeyMethods`（须 API Key 或 admin） |
-| `ACCESS_AUTHENTICATED` | `permissionMethods[method] = perms`；未写 permissions 时默认 `["users"]` |
-| `ACCESS_PERMISSION` | `permissionMethods[method] = perms`；**未写 permissions 直接报错** |
+**守门**：
 
-校验规则：
-- 方法未标注、且服务无默认级别 → `missing auth policy for method ...`，**启动失败**；
-- **服务默认未标注**：注册的 gRPC 方法若未覆盖到 authz 注解（`verifyRegisteredMethodsMissingAuthz`），同样导致启动失败（`registered grpc methods missing authz annotation`）。
-
-因此**每个新增 gRPC 方法都必须带 `method_auth`（或依赖服务默认）**，否则 server 起不来——这是把「漏标注解」从运行期漏洞变成「启动期硬失败」的守门机制（`HasAnyPermission` 对空列表 fail-open，依赖该守门保证注解非空）。
+1. 方法未标且服务无默认 → `missing auth policy` 启动失败；
+2. `AssertAPIKeyScopeCoverage(apiKeyMethods)`（`apikey_scope.go:237`）：`apiKeyScopeRules` 必须与 `ACCESS_API_KEY` 方法集完全一致，否则 panic（漏登记写方法会被 `*` 误放）；
+3. `AssertAdminRoleWriteCoverage()`（`apikey_scope.go:302`）：`adminRoleMethodRules` 必须覆盖 `apiKeyScopeRules` 全部 `op==write` 方法，且不得含 `read`/未映射方法，否则 viewer 可越权写；
+4. `assertRegisteredMethodsHaveAuthz`（`grpc.go:179`）：已注册 gRPC 方法（除 `grpc.health.v1`/`grpc.reflection` 白名单）必须落在三集合之一，否则 `registered grpc methods missing authz annotation`。
 
 ---
 
-## 6. JWT claims 与加密工具
+## 6. adminRoleMethodRules 与纵深防御
 
-### 6.1 pkg/jwtparser —— claims 映射
+`internal/grpc/interceptor/admin_roles.go:16` 登记 Server API **全部写方法**的允许角色，拦截器 `adminRoleMethodRules[method]` 非空时 `HasAnyRole(perms)`（`jwt.go:131`）：
 
-`pkg/jwtparser/jwt.go` 定义 Claims 与 JSON claim 名（短名映射）：
+- `owner,admin`：`APIKeysService`、用户接管面（`UpdateUser/DeleteUser` 等）、Databases schema DDL（`CreateDatabase/Collection/Attribute/Index`）、Functions、`OAuthProviders`、`Projects Create/Delete`、`Payments Refund/ManualFulfill`、`Assets Grant/Consume...`、`OutboxService ReplayDeadLetter`；
+- `member,owner,admin`：用户文档 CRUD、Storage 桶/文件、Groups、Projects Update、`Assets` 目录 CRUD 等业务写。
 
-| 字段 | claim | 说明 |
-|------|-------|------|
-| `TokenID` | `tid` | token ID（rotation 用的 jti） |
-| `UserID` | `uid` | 用户/管理员 ID |
-| `Username` | `usn` | 邮箱（user）或 email（admin） |
-| `ActorKind` | `akd` | `end_user` / `admin` / `service` |
-| `ProjectID` | `pid` | 项目 ID |
-| `SessionID` | `sid` | 会话 ID |
-| `TokenType` | `ttp` | `access` / `refresh` |
-| `Roles` | `rls` | 角色列表 |
-| `Scopes` | `scp` | scope 列表 |
-| `ExpiresAt` | `exp` | Unix 秒 |
-| `IssuedAt` | `iat` | Unix 秒 |
+纵深防御（`internal/app/shared/authz.go`）：
 
-- 用 **HS256** 签名；解析强制要求 `exp` 与 `iat`，且仅接受 HS256（`jwt.WithExpirationRequired()`、`jwt.WithValidMethods([]string{"HS256"})`）。
-- 验证时会校验 `TokenType`（access/refresh 必须匹配）与 `ActorKind`（admin/end_user）。
+- `RequireServerWriteActor:45`（Databases DDL 等业务写）：放行 `admin` 或 `service`（API Key），匿名/端用户 `PermissionDenied`——绕过拦截器直调 use-case 时仍不可 `SystemPrincipal` 写；
+- `RequirePlatformAdmin:18`（Functions 写、API Key 管理、用户密码/令牌等平台级）：仅 `admin.IsPlatformAdmin`，API Key / 受限 admin 一律拒绝；
+- `RequireAdminActor:32`（Console 专属）。
 
-### 6.2 密钥派生（域分离）
-
-`pkg/jwtparser/keys.go` 用 `HMAC-SHA256(master, purpose)` 从同一个 `security.jwt.secret` 派生**域分离子密钥**，跨域 token 互不通用：
-
-```
-PurposeEndUserJWT    = "end-user-jwt"     # 终端用户 access/refresh/一次性 JWT
-PurposeAdminJWT      = "admin-jwt"        # Console admin access/refresh
-PurposeSessionCookie = "session-cookie"   # 不透明 session cookie 的 HMAC 密钥
-```
-
-改动 master secret 或 purpose 标签会立即使对应域的全部凭证失效。
-
-### 6.3 pkg/password —— 密码哈希（Argon2id）
-
-`pkg/password/password.go` 使用 **Argon2id**：`time=3`、`memory=64*1024`、`parallelism=4`、`keyLen=32`、`saltLen=16`，存储格式：
-
-```
-$argon2id$v=19$m=65536,t=3,p=4$<salt-b64>$<hash-b64>
-```
-
-`Verify` 按格式解析参数并重新计算，用 `subtle.ConstantTimeCompare` 常时比较。用于 users `password_hash`、Console admins `PasswordHash`。
-
-### 6.4 pkg/secretbox —— 敏感字段加密（AES-256-GCM）
-
-`pkg/secretbox/secretbox.go`：密钥由 `sha256("torchwood-secretbox:" + secret)` 派生，AES-256-GCM，密文带前缀 `enc:v1:`（`Encrypt` 空值返回空串；`Decrypt` 对无前缀的旧明文直接透传，保证向后兼容）。
-
-实际用途（以代码为准）：
-
-| 场景 | 位置 |
-|------|------|
-| OAuth provider `client_secret` 落库加密 | `internal/infra/bun/bunrepo/oauth_provider_repo.go`（用 JWT secret 作加密密钥） |
-| MFA TOTP factor secret 加密存储 | `internal/infra/auth/totp.go`（`secretbox` 加密/解密 `factor.Secret`） |
+Functions DDL 与 Storage 已对齐 `RequireServerWriteActor` 口径（Databases 组自 Round3 起与 Functions 同口径，API Key 持 `databases.write` 可做 DDL）。
 
 ---
 
-## 7. 参考
+## 7. JWT / cookie / 加密工具
 
-- `internal/grpc/interceptor/*.go`：凭证提取、Principal 注入、API Key scope 校验、可信代理、审计。
-- `internal/infra/auth/validator.go`：三种凭证的完整校验。
-- `internal/infra/auth/session_cookie.go`：不透明 session cookie 的 HMAC 格式。
-- `internal/api/consolegrpc/cookies.go` / `internal/app/console/auth.go`：Console 会话 cookie 与 admin 刷新/撤销。
-- `internal/app/server/apikeys.go`：API Key scope 校验与 secret 哈希。
-- `internal/infra/server/grpc.go`：`collectMethodsByAccess` 启动期守门。
-- `proto/shared/v1/authz.proto`：authz 注解定义。
-- `pkg/jwtparser/`、`pkg/password/`、`pkg/secretbox/`：JWT、密码哈希、敏感字段加密。
-- `docs/developer/06-databases.md` §3：`_perms` 权限模型与角色清单（含 `keys`）。
-- `docs/developer/03-configuration.md` §5：cookie 与 trusted_proxies 配置。
+| 工具 | 位置 | 要点 |
+|------|------|------|
+| `jwtparser` | `pkg/jwtparser/jwt.go` + `keys.go` | HS256，`tid/uid/usn/akd/pid/sid/ttp/rls/scp/exp/iat` 短名；`exp`+`iat` 必校验，仅 `HS256`；`PurposeEndUserJWT/AdminJWT/SessionCookie` 三域 `HMAC-SHA256(master,purpose)` 派生，跨域不通用（改 master 即全域失效） |
+| Console cookie | `internal/api/consolegrpc/cookies.go` | `TORCHWOOD_session_console`（`Path /`）+ `TORCHWOOD_console_refresh`（`Path /v1/console/auth`），`HttpOnly`+`SameSite=Lax`+`Secure(https)`；refresh 带 rotation + 重用 `RotateMismatch` 撤销；登出 `Max-Age=0` |
+| SessionCodec | `internal/infra/auth/session_cookie.go` | `base64url(projectID:sessionID):HMAC-SHA256`，验签后查 `sessions` 集合 |
+| `password` | `pkg/password/password.go` | Argon2id `t=3 m=65536 p=4`，`$argon2id$v=19$...`，`ConstantTimeCompare` |
+| `secretbox` | `pkg/secretbox/secretbox.go` | `sha256("torchwood-secretbox:"+secret)` → AES-256-GCM，`enc:v1:` 前缀，空透传兼容旧明文；OAuth `client_secret`（`bunrepo/oauth_provider_repo.go:24`）、TOTP `factor.Secret`（`infra/auth/totp.go:52`） |
+
+> 详见 `docs/developer/06-databases.md §3`（`_perms` 与 `keys` 角色）、`03-configuration.md §6.2`（会话 cookie）、`pkg/jwtparser` 源码。

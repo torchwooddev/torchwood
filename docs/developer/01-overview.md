@@ -1,247 +1,172 @@
 # Torchwood 架构总览
 
-> 面向新开发者与贡献者的架构说明文档，描述 Torchwood 的产品定位、技术栈、分层结构、目录组织、调用链与设计原则。
-> 最新更新：2026-08-12
+> 面向后端开发者的分层、进程与存储总览。以代码为事实源：`AGENTS.md`、`README.md`、`cmd/server/provides.go`、`internal/pkg/config/config.proto`、`proto/`。
+> 最新更新：2026-08-23
 
 ---
 
 ## 1. 产品定位
 
-Torchwood 是一个 **Appwrite-inspired、AI/Agent-Native 的 Backend-as-a-Service（BaaS）平台**，用 Go 编写，基于 PostgreSQL，API 层采用 gRPC + grpc-gateway。
-
-与一般 BaaS 的区别在于：Torchwood 的后端不仅服务人类用户，也**从第一天起就面向 LLM Agent、自动化脚本与 MCP Tool Server 设计**：
+Torchwood 是 **Appwrite-inspired、AI/Agent-Native 的 BaaS**，Go + PostgreSQL，`gRPC + grpc-gateway` 双表面。
 
 | 能力 | 说明 |
 |------|------|
-| Protobuf 单一事实来源 | API 定义在 `proto/`，`buf generate` 自动产出 gRPC stub、grpc-gateway handler 与 OpenAPI/Swagger 规范，Agent 可直接消费 |
-| 细粒度 Scope 的 API Key | Agent/自动化通过 scoped API Key 调用 Server API（管理面），按 `api_keys.scopes` 限权 |
-| 结构化鉴权注解 | 每个 gRPC 方法声明 `method_auth`（`proto/shared/v1/authz.proto`），便于生成工具 schema 与权限校验 |
-| 可预测的 REST 表面 | JSON REST + 结构化错误，便于 LLM 工具调用与代码生成 |
-| 动态文档层 | Agent 可运行时创建数据库/集合/文档，无需手工迁移 |
-| 官方 SDK | `sdk/typescript`（HTTP）与 `sdk/go`（gRPC 直连）两个官方 SDK，适配 Agent 工作流 |
+| Protobuf 单一事实来源 | `proto/` → `buf generate` 产出 gRPC stub / gateway / OpenAPI（`genproto/`），Agent 可直接消费 |
+| scoped API Key | `x-api-key` 调用 Server API，按 `api_keys.scopes` 限权（`internal/grpc/interceptor/apikey_scope.go:25`） |
+| 结构化鉴权注解 | 每个 gRPC 方法带 `method_auth`（`proto/shared/v1/authz.proto:18`），启动期强校验 |
+| 动态文档层 | 运行时建库/集合/文档，无需手工迁移（`internal/infra/documentdb/` + `pkg/query`） |
+| 官方 SDK | `sdk/typescript`（HTTP）与 `sdk/go`（gRPC 直连 + `InvokeJSON` 动态分发） |
 
-核心功能域：
-
-- **项目管理**：多项目隔离；每个 `(project.id, database.id)` 对应一个 PostgreSQL schema（`tw_<projectID>_<databaseID>`）；
-- **用户认证**：邮箱注册/登录、JWT access/refresh、会话 cookie、API Key 认证、Email/Phone OTP、OAuth2、匿名会话、Magic URL、一次性 JWT、TOTP MFA；
-- **动态文档数据库**：用户 collection 在两段式 schema（`tw_<project>_<database>`）；系统静态表（users/sessions/…）在一段式 `tw_<project>`；用户表 `_tenant` 隔离、`_perms` 文档级权限；
-- **文件存储**：S3/MinIO 兼容对象存储，multipart 上传/下载、分片上传/断点续传、预览缩略图、公开 bucket、HMAC File Token；
-- **函数执行**：Docker 真实执行器（构建/运行）与异步 worker（`cmd/worker`），含执行历史与保留策略；
-- **Admin Console**：React SPA，嵌入 Go 二进制，通过 `/console/` 提供管理界面；
-- **Server API**：Projects、API Keys、Users、Groups、Storage、Databases、Collections、Attributes、Indexes、Functions、OAuth Providers 等管理面 CRUD。
+核心域：项目多租户隔离、用户认证（JWT/session/OTP/OAuth/MFA）、动态文档、S3/MinIO 存储、Docker 函数执行、React Console（`/console/`）。
 
 ---
 
-## 2. 技术栈总览
+## 2. 技术栈
 
-### 后端
+| 层 | 选型 |
+|----|------|
+| 语言/框架 | Go 1.26.5 · Lynx（Runner/生命周期/配置绑定） |
+| API | gRPC + grpc-gateway；Buf（`buf.yaml`/`buf.gen.yaml`）驱动生成 |
+| DI | Wire（`cmd/server/provides.go:30` → `wire_gen.go`） |
+| 存储 | bun（静态表）· PostgreSQL 18 · Redis 7 · MinIO/S3 |
+| 前端 | React 19 + TS 6 + Vite 8 + TanStack Query + Tailwind/shadcn |
 
-| 组件 | 用途 |
-|------|------|
-| Go 1.26.5 | 语言与运行时（`go.mod` 要求） |
-| [Lynx](https://github.com/lynx-go/lynx) | 服务框架：Runner、生命周期、配置绑定、HTTP/gRPC server 基元 |
-| gRPC + grpc-gateway | RPC 与 JSON REST 双表面 |
-| [Wire](https://github.com/google/wire) | 编译期依赖注入，`cmd/server/provides.go` 声明 provider |
-| [bun](https://github.com/uptrace/bun) | 静态表 ORM：public 控制面（projects、admins、api_keys、…）与 `tw_<project>` 系统表 / 文档目录 / 账本（**无** public `document_*` catalog） |
-| [cobra](https://github.com/spf13/cobra) | CLI 框架（`cmd/client`） |
-| PostgreSQL 18 | 元数据 + 动态文档层（本地 docker-compose 镜像） |
-| Redis 7 | 队列/上传会话/ID 生成等 |
-| MinIO / S3 | 对象存储 |
-
-### 前端
-
-| 组件 | 用途 |
-|------|------|
-| React 19 + TypeScript 6 | UI 框架 |
-| Vite 8 | 构建工具，dev 下代理 `/v1` 到本地 Go server |
-| React Router 7 | 路由 |
-| TanStack Query 5 | 服务端状态 |
-| Tailwind CSS 3 + shadcn/ui 风格组件 | 样式 |
-| sonner / lucide-react | 通知与图标 |
-
-### 基础设施
-
-- **Buf**：`buf.yaml` + `buf.gen.yaml` 驱动 proto 生成；
-- **golang-migrate**：`db/migrations/` SQL 迁移；
-- **Docker Compose**：`docker/local/docker-compose.yml` 本地开发基础设施；
-- **Task**：`Taskfile.yml` 定义全部开发任务。
+工具链：`Taskfile.yml` 任务编排、`golang-migrate`（`db/migrations/`）、`docker/local/docker-compose.yml`（PG/Redis/MinIO）。
 
 ---
 
-## 3. Clean Architecture 分层
+## 3. Clean 四层（依赖外→内）
 
-Torchwood 采用 Clean Architecture / DDD 分层：**依赖方向始终从外向内**，传输层依赖用例层，用例层依赖领域端口，适配器实现端口。
+```
+internal/api  ──→  internal/app  ──→  internal/domain  ←──  internal/infra
+ 传输层              用例层              领域层（端口）       适配器层
+```
 
-| 层 | 目录 | 职责 | 依赖方向 |
-|----|------|------|----------|
-| 传输层 | `internal/api` | gRPC handler、自定义 HTTP handler：请求校验、Principal/参数映射、错误转换 | → `internal/app` |
-| 用例层 | `internal/app` | use case：业务规则、事务编排、跨领域协调，不感知 gRPC/HTTP | → `internal/domain` |
-| 领域层 | `internal/domain` | 领域模型与端口（`*Repo` 接口）、领域服务定义 | ← 无外部依赖 |
-| 适配器层 | `internal/infra` | 端口实现：bun 仓储、documentdb 动态文档、MinIO 存储、server 组件装配 | 实现 `internal/domain` |
-| 内部公共包 | `internal/pkg` | 进程内共享：config schema/绑定、database、contexts、buildinfo | 可被上四层引用 |
-| 外部公共库 | `pkg/` | 可复用库：query DSL、crud、grpc 拦截器、jwtparser、password、idgen、secretbox | 可被任意包引用 |
+| 层 | 目录 | 职责 | 依赖 |
+|----|------|------|------|
+| 传输层 | `internal/api` | gRPC handler + 自定义 HTTP（`serverhttp/` multipart/OAuth 回调）、参数校验、错误映射 | → `app` |
+| 用例层 | `internal/app` | 业务规则与事务编排，不感知 gRPC/HTTP（`app/client`/`console`/`server`/`storage`/`functions`） | → `domain` |
+| 领域层 | `internal/domain` | 模型与端口接口（`*Repo`），无外部依赖（`domain/users` 定义 `UserRepo`） | — |
+| 适配器层 | `internal/infra` | 端口实现：`bun/bunrepo`、`documentdb`、`storage`、`queue`、`messaging`、`infra/server` | 实现 `domain` |
 
-关键点：
+公共包：`internal/pkg`（`config`/`database`/`contexts`/`buildinfo`）进程内共享；`pkg/`（`query`/`crud`/`jwtparser`/`password`/`secretbox`/`idgen`/`semaphore`）可复用库。
 
-- **端口在 domain，实现在 infra**：例如 `internal/domain/users` 定义 `UserRepo` 接口，`internal/infra/bun/bunrepo` 提供 bun 实现，`internal/infra/documentdb` 提供动态文档实现。app 层只依赖接口，因此可以替换实现或注入 mock 做单元测试。
-- **传输层不写业务**：`internal/api/*` 只做协议层工作（解析请求、组装响应），业务逻辑一律下沉到 `internal/app/*`。
-- **配置 schema 用 protobuf 定义**（`internal/pkg/config/config.proto`），避免 YAML/结构体两处维护。
+规则：
+
+- **端口在 domain，实现在 infra**；`app` 只依赖接口，可替实现或注入 mock；
+- 传输层不写业务，全部下沉到用例层；
+- 列表复用 `pkg/crud`（AIP-132/158/160），动态文档用 `pkg/query` DSL。
 
 ---
 
-## 4. 完整目录树
+## 4. 目录树（三段式内部）
 
 ```
 torchwood/
-├── cmd/                                # 可执行入口
-│   ├── server/                         # 服务器入口（main.go + provides.go + wire.go + wire_gen.go）
-│   ├── worker/                         # Worker 入口（后台任务，Wire 独立装配）
-│   └── client/                         # Torchwood CLI（cobra，无 Wire：main.go + cmd/ 子包）
-├── console/                            # Admin Console React SPA
-│   ├── embed.go                        # go:embed dist，编译进 Go 二进制
-│   ├── vite.config.ts                  # dev 代理 /v1 → localhost:9099
-│   └── src/
-├── configs/                            # 配置模板与本地配置
-│   ├── config.yaml.template            # 配置模板（env 覆盖说明见注释）
-│   └── config.yaml                     # 本地实际配置（gitignore）
-├── db/migrations/                      # golang-migrate SQL 迁移
-├── docker/local/                       # 本地 Docker Compose（Postgres + Redis + MinIO）
-├── docs/                               # 设计文档（roadmap、tech-decision、implementation-*、archived/）
-├── genproto/                           # 生成的 protobuf 代码
-│   ├── client/v1/ server/v1/ console/v1/ shared/v1/
-│   └── ...                             # *.pb.go / *_grpc.pb.go / *.pb.gw.go / *.swagger.json
+├── cmd/server/        # 主服务入口：main.go + provides.go + wire.go → wire_gen.go
+├── cmd/worker/        # 异步 worker 入口：独立 Wire 装配（同构）
+├── cmd/client/        # CLI（cobra，sdk/go InvokeJSON，不直连 genproto；import_guard_test 兜底）
+├── console/           # React SPA，embed.go //go:embed dist；Vite 代理 /v1
+├── proto/             # client/v1 · server/v1 · console/v1 · shared/v1（唯一事实源）
+├── genproto/          # 生成产物 *.pb.go / *_grpc.pb.go / *.pb.gw.go / *.swagger.json（禁手改）
 ├── internal/
-│   ├── api/                            # 传输层
-│   │   ├── clientgrpc/                 # Client API：Account、Databases、Groups
-│   │   ├── consolegrpc/                # Console API：ConsoleAuth、Admins
-│   │   ├── servergrpc/                 # Server API：Projects、APIKeys、Users、Storage、Databases、Functions、Groups、Health、OAuthProviders
-│   │   └── serverhttp/                 # 自定义 HTTP handler：文件 multipart 上传下载、OAuth 回调、Functions 代码包
-│   ├── app/                            # 用例层
-│   │   ├── client/                     # Account 注册/登录/OTP/MFA/会话/邮箱变更确认
-│   │   ├── console/                    # Console 认证（含 Setup 引导）
-│   │   ├── functions/                  # Functions use case（部署/执行/变量）
-│   │   ├── server/                     # Projects / API keys / users / databases / groups
-│   │   ├── shared/                     # 跨用例共享逻辑（错误映射等）
-│   │   └── storage/                    # 文件 / bucket 元数据 / 分片上传会话
-│   ├── domain/                         # 领域层：模型 + 端口
-│   │   ├── audit/                      # 审计
-│   │   ├── auth/                       # 认证领域（Principal、SessionService 端口等）
-│   │   ├── databases/                  # 数据库/集合/文档/属性/索引
-│   │   ├── functions/
-│   │   ├── idgen/                      # ID 生成端口
-│   │   ├── messaging/                  # 邮件/SMS 端口
-│   │   ├── projects/
-│   │   ├── shared/                     # 共享领域类型（Principal、Queue 端口等）
-│   │   ├── storage/
-│   │   ├── groups/
-│   │   └── users/
-│   ├── infra/                          # 适配器层
-│   │   ├── auth/                       # Principal / Validator / session cookie / TOTP
-│   │   ├── bun/                        # 元数据仓储（bunrepo/）+ 模型（model/）
-│   │   ├── clients/                    # PG / Redis / S3 客户端
-│   │   ├── documentdb/                 # PostgreSQL 动态文档适配器（schema-per-database、_tenant、_perms）
-│   │   ├── functions/                  # Docker 执行器（构建/运行）
-│   │   ├── health/                     # /healthz 检查器
-│   │   ├── idgen/                      # UUID/ULID/雪花/随机 ID 实现
-│   │   ├── messaging/                  # SMTP/SMS 实现
-│   │   ├── queue/                      # Redis List 队列
-│   │   ├── server/                     # gRPC / grpc-gateway / metrics / console SPA / CORS / 错误映射
-│   │   └── storage/                    # MinIO 对象存储
-│   ├── pkg/                            # 进程内公共包
-│   │   ├── buildinfo/                  # 构建版本信息
-│   │   ├── config/                     # config.proto schema + bind.go 环境变量绑定
-│   │   ├── contexts/                   # 上下文工具（Principal、AuditResource 注入）
-│   │   └── database/                   # 数据库连接辅助（SourceFromEnv 等）
-│   └── testutil/                       # 集成测试数据库辅助工具
-├── pkg/                                # 外部公共库
-│   ├── crud/                           # 列表/分页/排序抽象（AIP-132/158/160）
-│   ├── grpc/interceptor/               # 认证拦截器：JWT、API Key scope、Principal 注入
-│   ├── idgen/                          # ID 生成
-│   ├── jwtparser/                      # JWT 签发/解析
-│   ├── password/                       # 密码哈希（Argon2id）
-│   ├── query/                          # Appwrite 风格查询 DSL 解析器
-│   └── secretbox/                      # AES-256-GCM 加密（敏感字段保护）
-├── proto/                              # protobuf 源文件（单一事实来源）
-│   ├── client/v1/  server/v1/  console/v1/  shared/v1/
-├── sdk/                                # 官方 SDK
-│   ├── typescript/                     # TypeScript SDK（@torchwood/sdk）
-│   ├── go/                             # Go SDK（sdk/go/client + sdk/go/server）
-│   └── demo/                           # SDK Web 演示（端口 5174）
-├── buf.yaml / buf.gen.yaml             # Buf 配置与生成规则
-├── go.mod
-├── Taskfile.yml                        # Task 任务定义
-└── README.md / README_ZH.md
+│   ├── api/           # clientgrpc | consolegrpc | servergrpc | serverhttp | realtime
+│   │   ├── clientgrpc/   # Account、Databases、Groups（Client 面）
+│   │   ├── consolegrpc/  # ConsoleAuth、Admins
+│   │   ├── servergrpc/   # Projects/Users/Storage/Databases/Functions/APIKeys/Groups/Health/OAuthProviders/Billing/Outbox
+│   │   └── serverhttp/   # multipart 上传下载、OAuth 回调、Functions code 上传
+│   ├── app/           # client | console | server | storage | functions | shared
+│   ├── domain/        # projects/users/auth/databases/storage/functions/billing/audit/shared...
+│   ├── infra/         # bun/bunrepo | documentdb | storage | functions/docker.go | auth/validator.go:21 | server/grpc.go:31 | queue | messaging | health
+│   ├── pkg/           # config/config.proto + bind.go:21 | contexts(Principal) | database | buildinfo
+│   └── testutil/      # 集成测试 DB 辅助（TORCHWOOD_TEST_*，os.Getenv 直读）
+├── pkg/               # query(DSL) | crud | grpc/interceptor | jwtparser | password | secretbox | semaphore | idgen | uow
+├── sdk/               # typescript/ | go/client+server | demo/
+├── configs/config.yaml.template  # 全部键与默认值，敏感键注释环境变量
+├── db/migrations/     # golang-migrate SQL
+├── buf.yaml / buf.gen.yaml       # Buf v2 驱动
+└── Taskfile.yml       # 任务全表
 ```
+
+`internal/api/app/domain/infra` 三段式为代码组织主轴；`pkg/` 为可对外复用，`internal/pkg` 仅进程内。
 
 ---
 
-## 5. 典型调用链
+## 5. 三进程
 
-以「Server API 创建用户」为例，完整链路如下：
+| 进程 | 入口 | 职责 | 配置校验 |
+|------|------|------|----------|
+| `server` | `cmd/server` | Lynx Runner：gRPC `127.0.0.1:9060` + gateway/Console SPA `:9080` + Metrics `127.0.0.1:9040` + 自定义 HTTP；注册顺序 `grpc→gateway→realtime→metrics` | `security.jwt.secret` 必填（`provides.go:63`） |
+| `worker` | `cmd/worker` | 后台任务消费者：Functions 队列、outbox 分发、chunk 清理、Stream 修剪、计费闭环等；与 server 共享 `app/domain/infra` 但独立 `ProviderSet`（无 `api` 层） | `data.database.source` 必填（`worker/provides.go:108`） |
+| `CLI` | `cmd/client` | `bin/torchwood`，cobra + `sdk/go/server.InvokeJSON` 按 `protoregistry.GlobalFiles` 动态分发；`rpc` 逃生舱覆盖全部 Server RPC，新增 RPC 无需登记 | `TORCHWOOD_CLI_*` 环境覆盖 |
+
+三者均 `godotenv.Load()` 加载 `.env`，配置绑定走 `config.NewBindConfigFunc()`（`internal/pkg/config/bind.go:21`），Wire 生成见 `04-codegen.md`。
+
+---
+
+## 6. 三类库（物理三层）
+
+| 层 | schema | 内容 | 驱动 | 说明 |
+|----|--------|------|------|------|
+| 控制面 | `public` | `projects`/`admins`/`admin_projects`/`api_keys`/`audit_logs`/`outbox`+`outbox_dead`/`provider_resource_index`/`billing_*` | bun + golang-migrate | 事件脊柱 + 审计，公库唯一 |
+| 项目数据面 | `tw_<project.id>` | 系统静态表 `users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files`（无 `_id`/`_perms`/`_version`） + 账本/Functions/OAuth/文档目录（`internal/infra/projectschema/`） | bun | 每项目一 schema |
+| 业务文档面 | `tw_<project.id>_<database.id>` | 用户 collection 真表（`_tenant` 隔离 + `_perms` 文档级权限，`pkg/query` DSL） | documentdb | 每 `(project,database)` 一 schema |
+
+- sentinel `_`（`ident.ProjectDataPlaneID`）仅内部寻址，对外 `RejectExternalDatabaseID`；
+- `default` 为普通首库可删可重建；
+- DDL 只走两段式 `businessSchema`，永不解析一段式；
+- `project.id` / `database.id` 规则见 `docs/developer/06-databases.md`。
+
+---
+
+## 7. 典型调用链
 
 ```
-HTTP 客户端 / LLM Agent
-   │  POST /v1/server/users  (x-api-key / Authorization)
-   ▼
-grpc-gateway（internal/infra/server/grpc_gateway.go）
-   │  JSON ↔ protobuf 转换、CORS、header 透传
-   ▼
-gRPC 服务端 + 认证拦截器（internal/grpc/interceptor）
-   │  JWT / API Key 校验、scope 检查、Principal 注入
-   ▼
-internal/api/servergrpc.UsersService.CreateUser        【传输层】
-   │  请求校验、Principal → 上下文、调用 use case
-   ▼
-internal/app/server.Users 用例                         【用例层】
-   │  业务规则、事务编排（创建用户、签发会话等）
-   ▼
-internal/domain/users.UserRepo（端口接口）              【领域层】
-   │  只定义接口，不关心实现
-   ▼
-internal/infra/bun/bunrepo                             【适配器层】
-   │  bun ORM / SQL 访问 tw_<project>.users 等系统静态表
-   ▼
-PostgreSQL
+HTTP 客户端 / Agent
+  │ POST /v1/server/users（x-api-key）
+  ▼ grpc-gateway（internal/infra/server/grpc_gateway.go）
+  │ JSON↔proto、CORS、header 透传
+  ▼ gRPC Server + AuthInterceptor（internal/grpc/interceptor/jwt.go:77）
+  │ 校验 scope/角色、Principal 注入（contexts.WithPrincipal）
+  ▼ internal/api/servergrpc.UsersService.CreateUser     【传输层】
+  │ 请求校验、Principal 读取
+  ▼ internal/app/server.Users                           【用例层】
+  │ 业务规则、RequireServerWriteActor 等纵深防御
+  ▼ internal/domain/users.UserRepo                      【端口】
+  ▼ internal/infra/bun/bunrepo | documentdb             【适配器层】
+  ▼ PostgreSQL / Redis / S3
 ```
 
-对应代码路径示例（创建用户）：
+认证：`jwt.go:77` → `auth.Validator:21`（`internal/infra/auth/validator.go:21`）校验 `api_key` 的 `Enabled`/`ExpireAt` 与 `project Status==active` → 写入 `Principal`。
+
+代码路径示例：
 
 | 环节 | 位置 |
 |------|------|
-| gRPC handler | `internal/api/servergrpc/users.go` → `CreateUser` |
-| 用例 | `internal/app/server/users.go`（对应 use case） |
-| 端口 | `internal/domain/users`（`UserRepo` 接口） |
-| 适配器 | `internal/infra/bun/bunrepo`（元数据仓储） |
-| 传输注册 | `internal/infra/server/grpc.go` + `grpc_gateway.go` |
-
-另一个典型链路是**动态文档**：`internal/api/servergrpc/databases.go` → `internal/app/server` → `internal/domain/databases` 端口 → `internal/infra/documentdb`（schema-per-database、`_tenant` 隔离、`_perms` 权限过滤，查询使用 `pkg/query` DSL）。
+| gRPC handler | `internal/api/servergrpc/users.go:CreateUser` |
+| 用例 | `internal/app/server/users.go` |
+| 端口 | `internal/domain/users` (`UserRepo`) |
+| 适配器 | `internal/infra/bun/bunrepo` + `internal/infra/documentdb` |
+| 注册 | `internal/infra/server/grpc.go:31` + `grpc_gateway.go` |
 
 ---
 
-## 6. 设计原则
+## 8. 近期加固一句话点列
 
-1. **端口在 domain，适配器在 infra**：领域层只声明接口，实现放 infra；新增存储后端（如纯 SQL vs documentdb）不需要改动 app 层。
-2. **Protobuf 是 API 单一事实来源**：`proto/` 定义 → `buf generate` 生成 `genproto/`（gRPC stub、gateway、Swagger）；不要手工编辑 `*.pb.go`。
-3. **运行时 Wire 注入**：`cmd/server/provides.go`（及 `cmd/worker/provides.go`）声明全部 provider，`wire_gen.go` 由 `task wire-all` 生成；provider 变更后必须重新生成。
-4. **用例层不感知协议**：app 层不 import gRPC/HTTP 相关类型，便于单测与协议演进。
-5. **gRPC 方法必须带 proto authz 注解**：否则 `collectMethodsByAccess` 收集方法时会报错，无法通过注册校验。
-6. **列表查询复用 `pkg/crud` 或 `pkg/query`**：不手拼 SQL filter/order；动态文档查询优先使用 Appwrite 风格 DSL。
-7. **JWT claims 与 `pkg/jwtparser` 映射保持一致**；Principal 由 `internal/grpc/interceptor` 统一注入。
-8. **配置单一入口**：`internal/pkg/config/config.proto` 定义 schema，`bind.go` 负责环境变量绑定（`TORCHWOOD_` 前缀、点号路径映射）。
-9. **三层物理存储**：`public` 控制面（projects / admins / api_keys / …）用 bun + golang-migrate（**无** public `document_*` catalog，D-7 已 DROP）；项目数据面 `tw_<project>` 容纳系统静态表（users / sessions / identities / groups / memberships / buckets / files）+ 文档目录 + 账本（bun / projectschema）；用户 collection 才走两段式 schema 的 documentdb（`_tenant` + `_perms`）。
+- **W-J 事件脊柱**：`outbox` + `outbox_dead` 死信表，`OutboxService/ListDeadLetters:ReplayDeadLetter`（`outbox:read/write`，`proto/server/v1/outbox.proto:43`）+ gauge `torchwood_outbox_dead`，经济事件信封补 `version`（`updated_at` 纳秒）判序，防重发与乱序（`arch-review-2026-08-fix-plan.md:345`）。
+- **W-H 工程门禁**：`golangci-lint run --new-from-rev=origin/main` 棘轮 + 全量 0 warning、`buf breaking --against '.git#branch=origin/main'`、零漂移 `buf generate + config + wire-all + git diff --exit-code`、`go test -race` 全量（`Taskfile.yml:29,172`）。
+- **W-K 契约治理**：`ListRequest.filter/order_by` 未实现一律 `reserved` 消灭静默 no-op，client/server 重复 message 抽 `shared` 基底，新增 RPC 须同步 `method_auth` + `apiKeyScopeRules` + `adminRoleMethodRules`（启动期双断言 `grpc.go:94`）。
+- **W-I 独立加密密钥**：`security.encryption_key`（`TORCHWOOD_SECURITY_ENCRYPTION_KEY`）隔离静态字段加密（OAuth/TOTP），未配回退 `jwt.secret` 并告警（`internal/pkg/config/crypto.go:10`）。
+- **全局信号量**：`pkg/semaphore` Redis `SET NX + TTL` 分布式计数（`build 4` / `run 16`，TTL 5m，多槽 `slot:<idx>`），内存 `InMemory` 回退（`internal/app/functions/functions.go:31`）。
+- **逐语句超时**：跨 `bun`/`documentdb` 仓储 `context.WithTimeout 5s/10s` 收敛慢查询与残留连接（`W-H` 收敛项）。
 
 ---
 
-## 7. 三大运行入口
+## 9. 约束与入口
 
-| 入口 | 说明 |
-|------|------|
-| `cmd/server` | **主服务器**。Lynx Runner 启动：gRPC（默认 `127.0.0.1:9060`）、grpc-gateway + Console SPA（`server.http.addr`）、独立 HTTP handler（multipart 上传下载、OAuth 回调）、Metrics。Wire 装配见 `provides.go` |
-| `cmd/worker` | **Worker**。后台任务进程（函数异步执行队列消费者），独立 Wire 装配（`cmd/worker/provides.go`），与 server 共享 app/domain/infra 代码 |
-| `cmd/client` | **Torchwood CLI**（`task build` 产出 `bin/torchwood[.exe]`）。面向 Agent / 自动化 / 运维，用 cobra 实现（不依赖 Wire），通过 API Key 调用 Server API。`health` 公开可调用、`uuid` 本地生成无需 key，其余命令需 API key；含 `health`、`uuid`、`projects`、`users`、`databases`、`groups`、`storage`、`functions`、`oauth-providers` 具名命令与覆盖全部 Server API 方法的 `rpc` 逃生舱命令 |
+- gRPC 方法必须带 `method_auth`（或服务 `service_auth` 默认），否则 `collectMethodsByAccess` 启动失败（`internal/infra/server/grpc.go:217`）。
+- Proto 删除字段一律 `reserved`（号+名）；更新请求可选字段 `proto3 optional`；时间 `google.protobuf.Timestamp`（JSON RFC3339）。
+- 列表复用 `pkg/crud`（AIP-132/158/160），动态文档用 `pkg/query`；配置单一入口 `config.proto`。
+- JWT claims 映射与 `pkg/jwtparser` 保持一致；Console 会话 `TORCHWOOD_session_console` HttpOnly cookie（`03-configuration.md §6.2`）。
 
-两个服务入口都通过 `godotenv` 加载 `.env`，并从 `./configs` 绑定配置；统一使用 `config.NewBindConfigFunc()` 完成配置绑定。
-
-> CLI 的动态分发基于 `sdk/go/server` 的 `InvokeJSON`（按 full method name 从 `protoregistry.GlobalFiles` 查找），**新增 Server API RPC 无需在 CLI 登记**；`cmd/client/import_guard_test.go` 兜底禁止 CLI 源码直接 import genproto/grpc。使用示例见 `docs/developer/02-quickstart.md` §7。
-
-> 首个管理员与首个 project/database 不再由离线脚本引导：全新数据库上打开 `/console/` 后按「初始化设置」表单注册第一个管理员（自动成为 owner，须同时填写 project id 与 database id）。API Key 不在注册时生成，登录后到 API Keys 页面创建。详见 `docs/implementation-bootstrap-and-cli.md` §3。注意：bootstrap 要求配置 `security.setup_token`（`TORCHWOOD_SECURITY_SETUP_TOKEN`），未配置时注册会被拒绝。
+> 详见 `AGENTS.md`（开发约定总纲）、`docs/roadmap.md` §0（Agent-Native 战略）、`02-quickstart.md`（启动）、`03-configuration.md`（配置）、`04-codegen.md`（生成）、`05-authentication.md`（鉴权）。

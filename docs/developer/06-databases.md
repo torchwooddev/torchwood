@@ -1,280 +1,165 @@
-# Torchwood 动态文档数据库（Databases / Documents）
+# 06 数据库：三类库、标识与动态文档
 
-> 本文描述 Torchwood 的**动态文档层**：运行时创建数据库、集合（collection）、属性与索引，并以 Appwrite 风格查询 DSL 读写文档，全程无需手工迁移。
-> 相关代码：`internal/infra/documentdb/`、`pkg/query/`、`pkg/crud/`、`internal/domain/databases/`、`db/migrations/`。
+> 面向后端开发者：围绕 Postgres 三层 schema、标识规则、DDL 约束、静态/动态表分工与查询/权限实现。
+> 源码锚点：`pkg/ident/ident.go`、`internal/infra/documentdb/`、`pkg/query/query.go`、`pkg/crud/`、`internal/domain/databases/`。
 
----
+## 1 三类库
 
-## 1. 架构总览
+| 层 | Schema 形态 | 技术 | 关键表 |
+|---|---|---|---|
+| `public` 控制面 + 事件脊柱 | 固定 `public` | `bun` + `golang-migrate`（`db/migrations/`） | `projects`/`admins`/`admin_projects`/`api_keys`/`audit_logs`/`provider_resource_index`/`document_events_outbox`+`_dead` |
+| 项目数据面 `tw_<project>` | 一段式 `tw_<p>` | `bun` + `internal/infra/projectschema/` | 静态表 `users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files` + 目录 `document_databases`/`document_collections`/`document_attributes`/`document_indexes` + 账本/Functions/OAuth |
+| 业务文档面 `tw_<project>_<database>` | 两段式 `tw_<p>_<db>` | 原生 SQL（`documentdb`） | 每个 `database.id` 一个 schema，只放用户 collection 真实表 + 每业务 schema 一张 `_perms` |
 
-Torchwood 采用 **三层 PostgreSQL schema** 映射（当前态以本文为准；`docs/design/project-data-plane-schema.md` 已落地但部分被 E-5/D-7 supersede，文首有过期横幅）：
+`default` 是首个业务库（普通库，可删可重建）；系统静态表不再是文档集合（`internal/infra/projectschema/migrator.go` 在 `CreateProject` 同事务 `CREATE SCHEMA` + `Apply`，进程启动 `EnsureAll` 自愈）。
 
-- `public`：平台控制面与事件脊柱；
-- `tw_<project>`（一段式）：项目数据面，**bun 系统静态表**（users / sessions / identities / groups / memberships / buckets / files，无 `_id` / `_perms` / `_version`）+ 文档目录 + 账本 / Functions / OAuth；
-- `tw_<project>_<database>`（两段式）：每个开发者 database 一个业务文档面，只放用户 collection；
-- 每个用户 collection 对应 schema 内的一张**真实表** + `_perms`（不是 JSONB 堆表）；
-- 表名 / schema 名均经过严格标识符白名单校验与引用转义，杜绝 SQL 注入。
+## 2 标识与 Schema 规则
 
-### 1.1 命名规则
+`pkg/ident/ident.go:27`：`^[a-z][a-z0-9]{0,27}$`、`MaxSchemaResourceIDLen=28`。入口 `ValidateSchemaResourceID`；对外再走 `RejectExternalDatabaseID` 显式拒绝 sentinel。
 
-| 对象 | 命名 | 示例 |
-|------|------|------|
-| 项目数据面 schema | `tw_<projectID>` | `tw_shop` |
-| 业务库 schema | `tw_<projectID>_<databaseID>` | `tw_shop_default`、`tw_shop_app` |
-| 系统静态表 | `tw_<project>.users` 等（bun，无 `_id`/`_perms`/`_version`） | `tw_shop.users` |
-| 业务集合表 | `tw_<project>_<database>.<collectionID>` | `tw_shop_app.posts` |
-| 权限表 | 用户 collection 所在 schema 的 `_perms`（每业务 schema 一张；**不**服务系统静态表） | `tw_shop_app._perms` |
+- `ProjectSchemaName(p)` → `tw_<p>`，匹配 `^tw_[a-z][a-z0-9]{0,27}$`（`projectSchemaNameRe`）——仅一段式。
+- `SchemaName(p,db)` → `tw_<p>_<db>`，匹配 `^tw_[a-z][a-z0-9]{0,27}_[a-z][a-z0-9]{0,27}$`（`schemaNameRe`）——两段式。
+- `IsTwoSegmentSchema(name)` 断言 DDL 目标必须两段式，与一段式不相交。
+- `ident.ProjectDataPlaneID = "_"` 仅内部寻址：`documentSchema` 在 `databaseID=="_"` 时映射到 `ProjectSchemaName`；对外非法。
+- `_tenant` 取 `projects.internal_id`（`postgres.go:resolveInternalID` + `sync.Map` 缓存），所有行查询强制 `d._tenant=?`。
 
-`projectID` / `databaseID` 须匹配 `^[a-z][a-z0-9]{0,27}$`（`pkg/ident`）。对外 `database_id` 另走 `RejectExternalDatabaseID`（charset + 显式拒绝 sentinel `_`）。`CreateDatabase` 即 `CREATE SCHEMA IF NOT EXISTS` 两段式，`DeleteDatabase` 即 `DROP SCHEMA ... CASCADE`（**永不** DROP 一段式 `tw_<project>`）。行内 `_tenant` 仍取 `projects.internal_id`（`resolveInternalID`，进程内缓存）。
+字段/表名均 `quoteIdent` 转义（`"` → `""`），并经 `safeNameRe=^[a-zA-Z_][a-zA-Z0-9_]*$` 白名单。
 
-### 1.2 集合表结构
+## 3 两段式 DDL（`businessSchema`）
+
+只接受两段式，永不解析一段式：
+
+```go
+schema, err := ident.SchemaName(projectID, databaseID) // 非法直接 InvalidArgument
+if !ident.IsTwoSegmentSchema(schema) { return status.Error(codes.InvalidArgument, "...") }
+conn.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
+```
+
+- `CreateDatabase` = `CREATE SCHEMA IF NOT EXISTS`；`DeleteDatabase` = `DROP SCHEMA ... CASCADE`（绝不 `DROP` 一段式 `tw_<project>`）。
+- catalog 无 `database_id='_'` 行；`ListDatabases` 过滤 sentinel。
+- 进程内 `projectschema.Apply` 带 `sync.Map` 就绪缓存（事务内不写缓存）。
+
+## 4 静态表 vs 动态表
+
+**静态表**（`tw_<project>`，`internal/infra/bun/model/*.go`）：`users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files`，`bun` 模型，无 `_id`/`_perms`/`_version`，经 Account / Groups / Storage 专用 RPC 读写。`SystemCollectionIDs` 仍在 `internal/domain/databases/system_collections.go` 仅用于 DocumentDB 跳过 `_version`/写保护与测试重建。
+
+**动态表**（`tw_<project>_<db>.<collection>`，每集合一张真实表）：
 
 ```sql
-CREATE TABLE IF NOT EXISTS tw_shop_default.posts (
-    _id          TEXT NOT NULL,
-    _tenant      BIGINT NOT NULL DEFAULT 1,
-    _created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    _updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    _created_by  TEXT,
-    _updated_by  TEXT,
-    -- ...每个 attribute 一列...
-    PRIMARY KEY (_tenant, _id)
+CREATE TABLE tw_shop_app.posts (
+  _id TEXT NOT NULL, _tenant BIGINT NOT NULL DEFAULT 1,
+  _created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  _updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  _created_by TEXT, _updated_by TEXT,
+  _version BIGINT NOT NULL DEFAULT 1, -- 用户集合有，系统静态表无
+  -- 每个 attribute 一列（pgTypeFor 映射）
+  PRIMARY KEY (_tenant, _id)
+);
+CREATE TABLE tw_shop_app._perms (
+  _id BIGSERIAL PRIMARY KEY, _tenant BIGINT NOT NULL,
+  _collection TEXT NOT NULL, _document TEXT NOT NULL,
+  _type TEXT NOT NULL, _permission TEXT NOT NULL,
+  UNIQUE (_tenant,_collection,_document,_type,_permission)
 );
 ```
 
-### 1.3 系统列
+目录位于项目面：`document_databases` → `document_collections`（含 `permissions`/`document_security`/`disabled`/`is_system`）→ `document_attributes` → `document_indexes`。`DeleteCollection` 同步清理 `_perms` 行，防同名重建泄漏。
+
+## 5 Attribute / Index 动态管理
+
+| 操作 | SQL |
+|---|---|
+| `CreateAttribute` | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + 写 `document_attributes`，`required→NOT NULL`、`default→DEFAULT` |
+| `DeleteAttribute` | `ALTER TABLE ... DROP COLUMN IF EXISTS` + 同事务清理依赖该列的索引（`postgres_permissions.go:DeleteAttribute`） |
+| `CreateIndex` | `CREATE INDEX idx_<coll>_<idx> ON <tbl>(cols)` / `UNIQUE` / `USING gin(to_tsvector('simple', col))` + 写 `document_indexes` |
+| `DeleteIndex` | `DROP INDEX IF EXISTS` + 删目录（`RunInTx` 原子，`DeleteIndex`） |
+
+类型映射（`pgTypeFor`）：`string/email/url→VARCHAR(n)/TEXT`、`integer→BIGINT`、`float→DOUBLE PRECISION`、`boolean→BOOLEAN`、`datetime→TIMESTAMPTZ`、`json→JSONB`。
+
+## 6 查询 DSL（`pkg/query`）
+
+`pkg/query/query.go:184` `Parse` 以 `^(\w+)\((.*)\)$` 匹配算子，`splitArgs` 处理引号/转义/括号嵌套；`ParseMany` 合并多串为 `Query{Filter, Filters, Orders, Selects, Limit, Offset, CursorAfter/Before, PageSize, PageToken}`，`Filter` 为 `OpAnd` 树。
+
+| 类 | 算子 | 示例 | SQL |
+|---|---|---|---|
+| 过滤 | `equal`/`notEqual` | `equal("status","a")` / `equal("tag",["a","b"])` | `=` / `IN` / `NOT IN` |
+|  | `lessThan`/`greaterThan`/`between` | `between("age",18,60)` | `<`/`>`/`BETWEEN ? AND ?` |
+|  | `contains`/`startsWith`/`endsWith` | `contains("name","jo")` | `ILIKE '%v%' ESCAPE '\'`（`escapeLikePattern` 转义 `%_\'） |
+|  | `search` | `search("title","hello")` | `to_tsvector('simple',col::text) @@ plainto_tsquery('simple',?)` |
+|  | `isNull`/`isNotNull` | `isNull("deleted_at")` | `IS NULL` |
+| 排序 | `orderAsc`/`orderDesc` | `orderDesc("$createdAt")` | `ORDER BY d."field" ASC/DESC, d._created_at DESC`（`_id` tiebreaker） |
+| 分页 | `limit`/`offset` | `limit(25)` | `LIMIT/OFFSET` |
+|  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（与 `offset` 互斥） |
+| 投影 | `select` | `select(["name","age"])` | 返回后裁剪 `Data` |
+
+别名 ` $id→_id`、`$createdAt→_created_at`、`$updatedAt→_updated_at`、`$version→_version`（`mapQueryField`）。程序化拼串用 `BuildFilter`/`BuildEqual`/`BuildLimit`（自动转义 `"`/`\`）。
+
+**输入上限**（`internal/infra/documentdb/postgres.go:46`）：`queries≤100`、`单串≤4096`、`equal 多值≤1000`、`maxQueryLimit=100`、`maxQueryOffset=10000`（`validateQueryInput`）。
+
+**编译与校验**（`postgres_query_compile.go`）：`astFrom` 优先 `Query.AST`（`shared.v1.Query` typed 形态，与 `queries` 互斥），否则 `ParseMany`；`validateQueryFields` 白名单=系统列+已声明 attribute，`search` 需命中 `fulltext` 索引，`_version` 缺列返回 `version_column_unavailable`（`InvalidArgument`），系统集合敏感列（`users.password_hash/prefs/labels` 等）黑名单仅按 `IsSystemCollection` 生效（`pkg/query/proto` 双栈见 `docs/review/wave2-e4-query-ast.md`）。
+
+## 7 权限模型（`_perms`）
+
+条目 `type:role`，`type∈{read,create,update,delete}`（`write` 展开为三写）。角色：`any`（合成，仅 read 可授予）/`users`/`user:{id}`/`group:{id}`/`keys`/`admin`/`guests`/`__system__`。`ExpandPermissionRoles` 无条件注入 `any`；`ExpandPermissionTemplates` 展开 `user:`/`group:` 模板。
+
+`_perms` 按 `_type='read'` 匹配；`documentSecurity=false` 只看集合级，`true` 时文档有 `_perms` 则覆盖，无行回集合级（`AllowsDocumentAccess`）。
+
+| 操作 | 检查点 |
+|---|---|
+| `CreateDocument` | 集合 `create` + `isWriteProtectedSystemCollection` 拦截（`users/sessions/identities` + `databaseID=="_"`） |
+| `GetDocument` | 文档 `read`（`checkDocumentPermission`） |
+| `UpdateDocument` | 仅文档 `update`（不强制 `read`） |
+| `DeleteDocument` | 文档 `delete` |
+| `ListDocuments`/`CountDocuments`/`Sum` | `ListAccessDenied` 预拒 → `listPermissionFilter` 生成 `EXISTS(SELECT 1 FROM _perms p WHERE p._tenant=d._tenant AND ... p._type='read' AND p._permission=ANY(?::text[]))`；由集合 `read` 兜底分支时追加 `OR NOT EXISTS(...)` |
+
+`ValidateGrantablePermissions`：普通用户不可授予未持有角色与 `any` 写权限（`keys`/`System`/`PlatformAdmin` 跳过）。
+
+## 8 OCC（`_version`）
+
+用户集合 `BIGINT NOT NULL DEFAULT 1`，`Create/Upsert/Bulk` 盲写但 `_version+1`（`Bulk` `SkipVersion=true` LWW），`Update/Delete` 必填且等于当前值（行锁下比较，`versionColumnReady` 校验 `bigint`），成功 `+1`。错误 `version_required`/`version_mismatch`/`version_column_conflict`（`FailedPrecondition`），`version_column_unavailable`（`InvalidArgument`）。`_version` 可作过滤/排序/投影；系统表无此列。
+
+## 9 事务与分页一致性
+
+`BulkUpdate/BulkDelete` 与单文档写走 `clients.Database.RunInTx`（已在事务内复用，否则开短事务，`internal/infra/documentdb/postgres_permissions.go:195`）；`ListDocuments` 先 `COUNT` 后主查询，非原子快照（`READ COMMITTED`，与 Appwrite 一致，以 `nextPageToken` 续页）。`pkg/crud` 提供 `ParseListParams`/`BuildPaginationInfo`（`pkg/crud/list.go:57`/`pagination.go:360`），游标 `EncodePageToken`/`DecodePageToken`（`v1` base64 JSON，TTL 24h，`filterDigest`/`orderBy` 一致性校验）。
+
+## 10 系统列与写入过滤
 
 | 列 | 说明 |
-|----|------|
-| `_id` | 文档 ID（客户端缺省由 `idgen.UUID()` 生成；合法字符 `[a-zA-Z0-9_.:-]{1,64}`） |
-| `_tenant` | 项目隔离键（`projects.internal_id`），所有查询强制带 `d._tenant = ?` |
-| `_created_at` / `_updated_at` | 时间戳，自动维护 |
-| `_created_by` / `_updated_by` | 审计列，取自调用方 principal 的第一个 `user:<id>` 角色；仅含 keys 角色的主体留空 |
-| `_perms`（独立表） | 文档级权限（见 §3） |
+|---|---|
+| `_id` | 文档主键，`idgen.UUID()` 默认，`^[a-zA-Z0-9_.:-]{1,64}$`（`docIDRe`） |
+| `_created_at/_updated_at` | 自动维护（`NOW()`） |
+| `_created_by/_updated_by` | 取 `principal` 首个 `user:<id>`，仅含 `keys` 的主体留空（`buildInsertParts/buildUpdateParts`） |
+| 用户输入 `_` 前缀字段 | `buildInsertParts`/`buildUpdateParts` 直接过滤，防伪造系统列 |
+| `documentSecurity/disabled` | 目录层控制：`disabled=true` 时非 `BypassesDocumentACL` 一律 `PermissionDenied`（`ensureCollectionAccessible`） |
 
-写入时 `_` 前缀字段一律被过滤（`buildInsertParts` / `buildUpdateParts`），用户数据无法伪造系统列。
+写保护：`isWriteProtectedSystemCollection` 仅对 `databaseID=="_"` 的 `users/sessions/identities` 生效，业务库同名集合不受影响。
 
-### 1.4 权限表 `_perms`
+## 11 常见用法与示例
 
-```sql
-CREATE TABLE IF NOT EXISTS tw_shop_default._perms (
-    _id         BIGSERIAL PRIMARY KEY,
-    _tenant     BIGINT NOT NULL,
-    _collection TEXT NOT NULL,
-    _document   TEXT NOT NULL,
-    _type       TEXT NOT NULL,      -- read / create / update / delete
-    _permission TEXT NOT NULL,      -- 角色（any / users / user:<id> / keys / ...）
-    _created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (_tenant, _collection, _document, _type, _permission)
-);
--- 索引：idx_perms_lookup (_tenant,_collection,_document,_type)、idx_perms_role (_tenant,_collection,_type,_permission)
+```go
+// 创建集合后增属性
+docDB.CreateCollection(ctx, pid, "app", "posts", perms, false)
+docDB.CreateAttribute(ctx, pid, "app", "posts", Attribute{Key:"title", Type:"string", Size:128, Required:true})
+
+// Appwrite DSL 查询（ListDocuments 的 queries）
+queries := []string{
+  query.BuildEqual("status", "published"),
+  `greaterThan("views", 100)`,
+  `orderDesc("$createdAt")`,
+  `limit(25)`,
+}
+docs, total, nextToken, _ := docDB.ListDocuments(ctx, pid, "app", "posts", Query{Queries: queries, PageSize: 25}, principal)
+
+// Typed 双栈（shared.v1.Query AST 与 queries 互斥）
+ast := sharedv1.Query{Filter: &sharedv1.Filter{Op:"and", Children: ...}}
+docDB.ListDocuments(ctx, pid, "app", "posts", Query{AST: &ast}, principal)
 ```
 
-删除 collection 时同步清理该 collection 的 `_perms` 行（`DeleteCollection`），避免同名重建后旧权限泄漏到新文档。
+分页用 `pkg/crud`（见 `09-api-guide.md` §3）：`ParseListParams` 校验 `page_size/page_token/filter/order_by`，`BuildPaginationInfo` 产出 `HasNext/NextOffset`，handler 用 `EncodePageToken` 编码 `next_page_token`。
 
----
+## 12 测试与参考
 
-## 2. public 控制面与项目数据面的分工
-
-「控制面 / 项目数据面 / 业务文档面」的动静分离由三层承担（见 `docs/design/project-data-plane-schema.md`）：
-
-| 层 | 技术 | 职责 | 表 |
-|----|------|------|-----|
-| public 控制面 + 事件脊柱 | bun + golang-migrate（`db/migrations/`） | 无项目上下文就要访问的表、跨项目领取的事件 | `projects`、`admins`、`admin_projects`、`api_keys`、`audit_logs`、`provider_resource_index`、`document_events_outbox(+dead)` |
-| 项目数据面 `tw_<project>` | bun + go:embed 项目迁移（`internal/infra/projectschema/migrations/`，CreateProject 同事务 Apply、启动 EnsureAll 自愈） | 系统静态表、项目账本、Functions、OAuth 配置、文档目录 | `users`、`sessions`、`identities`、`groups`、`memberships`、`buckets`、`files`、`payment_*`、`asset_*`、`subscription_*`、`usage_rollups`、`billing_statements`、`functions*`、`project_oauth_providers`、`document_databases`、`document_collections`、`document_attributes`、`document_indexes`、`schema_migrations` |
-| 文档层（两段式） | 原生 SQL | 用户动态 collection（含 `_perms`） | `tw_shop_app.posts` |
-
-- `document_databases` / `document_collections` / `document_attributes` / `document_indexes` 构成**目录**（位于 `tw_<project>`）：属性/索引的声明（含 `is_system`、`document_security`、`permissions` 等）。catalog **无** `database_id='_'` 行。
-- 文档层表结构由目录驱动：`CreateCollection` 先建表 + 索引，再写目录元数据（用户集合重复创建返回 `ErrDuplicateKey` → `AlreadyExists`）。
-
-### 2.1 系统资源（bun 静态表，不是文档集合）
-
-系统资源由 `internal/infra/projectschema/` 迁移创建：CreateProject 同事务 `CREATE SCHEMA` + `projectschema.Apply`，进程启动 `EnsureAll` 自愈。**不要**再把 `EnsureSystemCollections` 当活路径——该方法已从 `SchemaApplier` 删除。
-
-`default` 是 CreateProject 自动创建的普通第一库（可删可重建），其中的同名 `users` 是普通用户集合（`is_system=false`，有 `_version`）。
-
-对外 Databases API 摸不到系统资源：`RejectExternalDatabaseID("_")` → InvalidArgument；ListDatabases 过滤 sentinel。系统用户 / 文件 / 组只经 Account、Server Users、Storage、Groups 专用 RPC。
-
-`SystemCollectionIDs`（`internal/domain/databases/system_collections.go`）仍存在：DocumentDB 跳过用户表 `_version`、写保护，以及测试重建旧文档表（`SeedLegacySystemDocumentCollections`）。**不是**「仍是文档集合」。
-
-| 资源 | 专用 RPC |
-|------|----------|
-| `users` | Account / Server Users |
-| `sessions` | Account |
-| `identities` | OAuth / OTP |
-| `groups` | Groups |
-| `memberships` | Groups |
-| `buckets` | Storage |
-| `files` | Storage |
-
----
-
-## 3. 权限模型（_perms）
-
-权限条目格式为 `type:role`，`type` 为 `read` / `create` / `update` / `delete`（`write` 在解析时展开为 create + update + delete）。
-
-### 3.1 角色清单（以 `permissions.go` 为准）
-
-| 角色 | 含义 | 授予规则 |
-|------|------|---------|
-| `any` | 公开（匿名） | **合成角色**：`ExpandPermissionRoles` 无条件注入；只允许 read 类授予，写类授予一律拒绝（`syntheticRoles` 校验） |
-| `users` | 任何已认证终端用户 | 仅当调用方持有 `users` 角色时注入 |
-| `user:{id}` | 指定用户（模板，落库前展开为 `user:<uuid>`） | `ExpandPermissionTemplates` 按调用方首个 `user:` 角色替换 |
-| `group:{id}` | 指定用户组（模板，同上） | 按调用方首个 `group:` 角色替换 |
-| `keys` | API Key / 自动化主体 | 不默认 bypass；按 scope 限权 |
-| `admin` | 平台管理员（Console admin） | PlatformAdmin 走 `IsSystem()` 完全绕过 |
-| `guests` | 匿名 Client API 读（`GuestPrincipal`） | 用于公开 bucket 匿名读等场景 |
-| `__system__` | 内部基础设施主体（`SystemPrincipal`） | 绕过全部文档级权限检查 |
-
-### 3.2 documentSecurity 语义（B1，`AllowsDocumentAccess`）
-
-- `documentSecurity = false`：只按**集合级**权限判定；
-- `documentSecurity = true`：
-  - 文档无 `_perms` 行 → 集合级权限兜底；
-  - 文档有 `_perms` 行 → 用户集合**文档权限覆盖集合权限**（私有文档）；sentinel `_` 上的 `SystemCollectionIDs`（测试重建旧文档表）保持 **OR** 语义。
-
-### 3.3 各操作的检查点
-
-| 操作 | 检查 |
-|------|------|
-| `CreateDocument` | 集合级 `create` 权限 + 写保护集合拦截 |
-| `GetDocument` | 文档级 `read`（`checkDocumentPermission`） |
-| `UpdateDocument` | 仅检查文档级 `update`（D3：不再强制 read 预检；独立 update 策略） |
-| `DeleteDocument` | 文档级 `delete` |
-| `ListDocuments` / `CountDocuments` | 集合级 `read` 拒绝（`ListAccessDenied`）→ 逐文档 SQL 过滤（`listPermissionFilter`，见 §4.2）；sentinel `_` 上的 `SystemCollectionIDs` + 集合级 read 可跳过文档级过滤（D1，测试重建旧表） |
-| `SumDocumentField` | 同 List 的 read 过滤（对用户 collection 数值列求和；存储用量走 bun `files.SumSize`，不经本方法） |
-
-### 3.4 授权授予约束
-
-`ValidateGrantablePermissions`：非特权主体（普通用户）不能授予自己未持有的角色，且不能授予 `any` 的写类权限（`create` 类型豁免）；API Key（keys 角色 + scope）、System、PlatformAdmin 跳过校验。
-
-### 3.5 乐观并发（`_version` / OCC）
-
-用户集合表有整型系统列 `_version`（`BIGINT NOT NULL DEFAULT 1`，CREATE TABLE 即带列；存量缺列由 catalog reconcile 一次补齐，文档写路径不 `ALTER`）。系统静态表无此列；DocumentDB 对 sentinel `_` 上的 `SystemCollectionIDs`（含测试重建的旧文档表）跳过 `_version`。
-
-| 操作 | version 语义 |
-|------|-------------|
-| `CreateDocument` / `UpsertDocument` / `Bulk*` | 不读 version（Upsert 更新支盲写、Bulk LWW，但均 `_version + 1`） |
-| `UpdateDocument`（含仅 increment / 仅 permissions） | **必填**：等于当前 `_version`，成功写 `+1` |
-| `DeleteDocument` | **必填**：等于当前 `_version`，行锁下比较 |
-| `GetDocument` / `ListDocuments` | 返回顶层 `version`；存量表尚未 reconcile 时读路径视为 1 |
-
-错误码（`FailedPrecondition`）：
-
-| 消息 | 触发 |
-|------|------|
-| `version_required` | 未带 version 或 ≤ 0 |
-| `version_mismatch` | 不等于当前行（行不变） |
-| `version_column_conflict` | 已有非 bigint 的 `_version` 列（用户属性抢占，fail-closed） |
-| `version_column_unavailable`（`InvalidArgument`） | 旧表尚未 reconcile 时写文档或用 `$version` 查询 |
-
-查询：`$version` / `_version` 可作过滤/排序/投影字段（映射为 `_version`）；sentinel `_` 上的 `SystemCollectionIDs` 禁止 `$version` 查询（无此列）；`_version` 与 `_perms` 等系统列为保留属性名，`CreateAttribute` / `CreateCollection` 拒绝。系统资源不经 `Document.Version`。
-
----
-
-## 4. Appwrite 风格查询 DSL（pkg/query）
-
-### 4.1 算子完整清单（以 `pkg/query/query.go` `Parse` 与 `postgres.go` `buildAppwriteQuery` 为准）
-
-| 类别 | 算子 | 语法 | SQL 映射 |
-|------|------|------|---------|
-| 过滤 | `equal` | `equal("field","v")` 或 `equal("field",["a","b"])` | 单值 `=`；多值 `IN (...)` |
-| 过滤 | `notEqual` | `notEqual("field","v")` | 单值 `!=`；多值 `NOT IN (...)` |
-| 过滤 | `lessThan` | `lessThan("field",18)` | `<` |
-| 过滤 | `lessThanEqual` | `lessThanEqual("field",18)` | `<=` |
-| 过滤 | `greaterThan` | `greaterThan("field",18)` | `>` |
-| 过滤 | `greaterThanEqual` | `greaterThanEqual("field",18)` | `>=` |
-| 过滤 | `contains` | `contains("name","john")` | `ILIKE '%v%'` |
-| 过滤 | `startsWith` | `startsWith("name","jo")` | `ILIKE 'v%'` |
-| 过滤 | `endsWith` | `endsWith("name","hn")` | `ILIKE '%v'` |
-| 过滤 | `search` | `search("title","hello")` | `to_tsvector('simple', col::text) @@ plainto_tsquery('simple', ?)`（**需 fulltext 索引列**） |
-| 过滤 | `isNull` | `isNull("field")` | `IS NULL` |
-| 过滤 | `isNotNull` | `isNotNull("field")` | `IS NOT NULL` |
-| 过滤 | `between` | `between("age",18,60)` | `BETWEEN ? AND ?` |
-| 排序 | `orderAsc` / `orderDesc` | `orderAsc("$createdAt")` | `ORDER BY col ASC/DESC`（默认 `_created_at DESC` 兜底） |
-| 分页 | `limit` | `limit(25)` | `LIMIT ?` |
-| 分页 | `offset` | `offset(10)` | `OFFSET ?` |
-| 分页 | `cursorAfter` / `cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词 `(col, _id) >/< (?, ?)` + 同构 `ORDER BY`（与 offset 互斥，cursor 优先） |
-| 投影 | `select` | `select(["name","age"])` | 返回后裁剪 `Data`（系统字段始终保留） |
-
-字段别名：`$id` ↔ `_id`、`$createdAt` ↔ `_created_at`、`$updatedAt` ↔ `_updated_at`。
-
-### 4.2 解析与校验机制
-
-1. **语法层**（`pkg/query`）：正则 `^(\w+)\((.*)\)$` 匹配算子，`splitArgs` 处理引号/转义/嵌套括号；未知算子、参数个数错误、`limit(-1)` 等在解析期 fail-fast。
-2. **输入上限**（`postgres.go` `validateQueryInput`，A2）：
-   - queries 条数 ≤ 100；单条查询串 ≤ 4096 字符；`equal`/`notEqual` 多值 ≤ 1000 个。
-3. **翻页防护**（A1）：`page_size`/`limit` 上限 100（`maxQueryLimit`），默认 50；`offset` 上限 10000（`maxQueryOffset`），超限返回 `InvalidArgument`。
-4. **字段白名单**（A7，仅非 System 路径）：过滤/排序/投影字段必须是系统列（`_id`/`_created_at`/`_updated_at`）或已声明 attribute；`search` 必须命中 fulltext 索引列；sentinel `_` 上的 `SystemCollectionIDs` 另有**敏感列黑名单**（`users.password_hash`/`prefs`/`labels`、`sessions.secret_hash`、`identities.provider_data` 禁止作为过滤条件；自定义库同名集合不受影响）。
-5. **列表过滤**：非 System 主体先经 `ListAccessDenied` 拒绝，再生成 `EXISTS (SELECT 1 FROM ..._perms p WHERE p._tenant = d._tenant AND ...)` 子查询按 `_type='read'` 过滤；`documentSecurity=true` 且集合级有 read 时，无 `_perms` 行的文档由集合级权限兜底。
-
-### 4.3 列表分页
-
-`pkg/crud` 提供 AIP-132 风格的游标编码（`crud.EncodePageToken` / `DecodePageToken`，offset 整数编码），List 返回 `totalCount` + `nextPageToken`；collection 列表与 document 列表复用同一抽象。
-
-### 4.4 Count 与 List 非原子快照（R02-P2-1 已知行为）
-
-`ListDocuments` 在同一查询内先执行 `COUNT(*)` 再执行主查询（两条独立语句），`CountDocuments` 更是完全独立的查询。在 PostgreSQL 默认的 `READ COMMITTED` 隔离级别下，两次查询**不保证同一快照**：并发写入时可能出现 `totalCount` 与返回行数不一致（能 count 不能 list，或反之）。这是与 Appwrite 一致的已知弱一致性行为：
-
-- 客户端续页基于 offset 游标（`NextPageToken`），不受该差异影响；
-- `totalCount` 仅作为参考值，客户端不应将其与 `len(documents)` 做强一致断言；
-- 如需强一致快照，需将 COUNT 与主查询包进同一事务并使用 `REPEATABLE READ`——当前不实现，保持弱一致性语义。
-
----
-
-## 5. Attribute / Index 动态管理
-
-| 操作 | 行为 |
-|------|------|
-| `CreateAttribute` | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + 写入 `document_attributes` 目录 |
-| `DeleteAttribute` | `ALTER TABLE ... DROP COLUMN IF EXISTS` + 删除目录行（`DELETE /v1/server/databases/{db}/collections/{coll}/attributes/{key}`） |
-| `CreateIndex` | 建真实索引 + 写 `document_indexes` 目录 |
-| `DeleteIndex` | `DROP INDEX idx_<collection>_<indexID>` + 删除目录行 |
-
-### 5.1 属性类型 → PostgreSQL 类型映射（`pgTypeFor`）
-
-| 类型 | PostgreSQL |
-|------|-----------|
-| `string` / `email` / `url` | `VARCHAR(n)`（`size` 1..64000）否则 `TEXT` |
-| `integer` | `BIGINT` |
-| `float` | `DOUBLE PRECISION` |
-| `boolean` | `BOOLEAN` |
-| `datetime` | `TIMESTAMPTZ` |
-| `json` | `JSONB` |
-| 其他 | `TEXT`（兜底） |
-
-`required` → `NOT NULL`；`default` → `DEFAULT <literal>`（boolean/integer/float 做类型化校验）。
-
-### 5.2 索引类型（`createCollectionIndex`）
-
-| 类型 | SQL |
-|------|-----|
-| `key`（默认） | 普通 btree：`CREATE INDEX idx_<coll>_<idx> ON <tbl> (cols...)` |
-| `unique` | `CREATE UNIQUE INDEX ...` |
-| `fulltext` | `USING gin(to_tsvector('simple', col1 || ' ' || col2))`（`search` 算子依赖） |
-
----
-
-## 6. 事务处理注意点
-
-- **已删除 staged transaction**（D-6，内测无兼容）：Client/Server 不再提供 Create/Commit/Rollback 事务 RPC。多文档原子性仅内部 `uow.Run` / `clients.Database.RunInTx` 与 Server `BulkUpdate`/`BulkDelete`。
-- **批量操作原子化**：`BulkUpdateDocuments` / `BulkDeleteDocuments` 在未处于外层事务时整体包在 `clients.RunInTx` 中，中途失败整体回滚（行为从“部分成功”收紧为“原子”）；已在外层事务（`clients.InTx` 检测）时直接复用外层事务，不嵌套。
-- 单文档写（Create/Update/Upsert/Delete）同样走 `RunInTx`：未在外层事务时自行开短事务，已在事务内则复用；文档行、`_perms`、outbox 同 COMMIT。
-
----
-
-## 7. 测试
-
-- 集成测试：`internal/infra/documentdb/postgres_test.go`（跳过条件 `testing.Short()`）。
-- 数据库由 `internal/testutil.SetupTestDB` 管理：从 `TORCHWOOD_TEST_DATABASE_SOURCE`（基础 DSN，默认库名前缀 `TORCHWOOD_test`）与 `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE`（维护库）读取；每个测试创建独立数据库（`<前缀>_<pid>_<序号>`）、按序执行 `db/migrations/*.up.sql`、结束后 `pg_terminate_backend` + `DROP DATABASE`。两个环境变量缺失时 fail-fast（通过 `task test` 加载 `.env` 运行）。
-- 覆盖：CRUD、权限正反例、多项目隔离、批量回滚、cursor 翻页、输入上限、字段白名单、敏感列黑名单、审计列；系统表由 `projectschema` 迁移 / `CreateTestProject` 创建。
-
----
-
-## 8. 参考
-
-- `internal/domain/databases/`：端口（`DocumentDB`）、Principal、权限语义、`SystemCollectionIDs`（DocumentDB 跳过 `_version` / 写保护 / 测试重建旧文档表，不是活文档集合）。
-- `internal/infra/documentdb/postgres.go` / `postgres_permissions.go`：PostgreSQL 适配器实现。
-- `pkg/query/`：DSL 解析器与安全构造工具（`BuildFilter` / `BuildEqual` / `BuildLimit`，供程序化拼查询）。
-- `pkg/crud/`：列表分页游标抽象。
-- `db/migrations/`：静态元数据表迁移（含安全修复迁移 000007/000008/000009）。
+- 集成 `internal/infra/documentdb/postgres_test.go`（`testing.Short` 跳过），`internal/testutil/db.go:SetupTestDB` 按 `TORCHWOOD_TEST_DATABASE_SOURCE` 创建隔离库（`pg_terminate_backend` + `DROP DATABASE`）。
+- `pkg/query/query_test.go`、`postgres_query_compile_test.go`、`permissions_test.go` 覆盖算子/转义/白名单/敏感列/权限分支。
+- `pkg/crud/`：AIP-132/158/160 抽象，`filter.go`/`order.go`/`pagination.go` 供静态表列表复用，动态文档优先 `pkg/query`。
+- 参考：`internal/domain/databases/` 端口与 `Principal`；`internal/infra/documentdb/postgres*.go`；`pkg/query/proto/proto.go` typed AST；`db/migrations/` + `internal/infra/projectschema/`；`AGENTS.md` §数据库约定。

@@ -2,255 +2,199 @@
 
 **English** | [简体中文](README_ZH.md)
 
-Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service (BaaS) platform built with Go, PostgreSQL, and gRPC/grpc-gateway. It provides user authentication, a dynamic document database, file storage, function execution, and an Admin Console — with APIs and tooling designed for LLM agents, automation, and MCP tool servers from day one.
+Torchwood is an Appwrite-inspired, **AI/Agent-Native** Backend-as-a-Service built with Go, PostgreSQL and gRPC/grpc-gateway. It provides auth, a dynamic document database, file storage, function execution and an Admin Console — APIs and tooling designed for LLM agents, automation and MCP from day one.
 
 ## Features
 
-- **AI / Agent-Native**: Protobuf-first APIs with auto-generated OpenAPI/Swagger specs; scoped API Keys for autonomous Server-side automation; predictable JSON REST surface and structured errors; official TypeScript and Go SDKs for agent workflows and tool integration.
-- **Project management**: Multi-project isolation; each `(project.id, database.id)` maps to a PostgreSQL schema (`tw_<projectID>_<databaseID>`).
-- **User authentication**: Email sign-up/sign-in, JWT access/refresh tokens with rotation, session cookies, Email/Phone OTP, OAuth2 (Google/GitHub/WeChat), anonymous sessions, Magic URL, one-time JWTs, TOTP MFA with sign-in challenges, and two-step email-change confirmation.
-- **Dynamic document database**: Schema-per-database with `_tenant`, `_perms`, dynamic attributes/indexes, an Appwrite-style query DSL, bulk operations, and field increments.
-- **File storage**: S3/MinIO-compatible object storage with upload/download/view, preview thumbnails, public buckets, HMAC file tokens, and chunked upload with resume.
-- **Function execution**: Docker-based executor (build/run with security baseline) with sync/async execution, an async worker (`cmd/worker`), and execution history with retention policy.
-- **Admin Console**: React + Vite + TanStack Query + shadcn/ui admin UI, embedded in the Go binary at `/console/`.
-- **Server API**: CRUD for Projects, API Keys, Users, Groups, Storage, Databases, Collections, Attributes, Indexes, Functions, and OAuth Providers; health & version endpoints.
-- **Observability**: dependency health checks, version endpoint, structured slog logging, slow query logging, and Prometheus metrics.
+- **Agent-native API**: Protobuf is the single source of truth; `buf generate` produces gRPC stubs, grpc-gateway handlers and OpenAPI (`genproto/`). Scoped API Keys (`x-api-key`) expose the Server API for automation.
+- **Projects**: multi-project isolation; each `(project.id, database.id)` maps to a Postgres schema.
+- **Auth**: email/password, JWT access/refresh with rotation, session cookies, Email/Phone OTP, OAuth2 (Google/GitHub/WeChat), anonymous sessions, Magic URL, one-time JWT, TOTP MFA and email-change confirmation.
+- **Database**: schema-per-database, `_tenant` isolation, `_perms` document permissions, Appwrite-style query DSL (`pkg/query`), bulk ops and increments.
+- **Storage**: S3/MinIO-compatible, upload/download/view, thumbnails, public buckets, HMAC file tokens, chunked resumable upload.
+- **Functions**: Docker build/run executor, sync/async execution, async `cmd/worker` and retention policy.
+- **Console**: React SPA embedded in the Go binary at `/console/`.
 
 ## Tech Stack
 
 ### Backend
 
-- Go 1.26.5
-- [Lynx](https://github.com/lynx-go/lynx) service framework
-- gRPC + grpc-gateway
-- [Wire](https://github.com/google/wire) dependency injection
-- [bun](https://github.com/uptrace/bun) ORM (metadata tables)
-- PostgreSQL (dynamic document layer)
-- Redis
-- MinIO / S3 (object storage)
+- Go 1.26.5 · [Lynx](https://github.com/lynx-go/lynx) (service framework) · gRPC + grpc-gateway · [Wire](https://github.com/google/wire) DI · [bun](https://github.com/uptrace/bun) ORM · PostgreSQL · Redis · MinIO/S3
 
 ### Frontend
 
-- React 19 + TypeScript 6
-- Vite 8
-- React Router 7
-- TanStack Query 5
-- Tailwind CSS 3 + shadcn/ui-style components
-- sonner (toast)
-- lucide-react
+- React 19 + TypeScript 6 · Vite 8 · React Router 7 · TanStack Query 5 · Tailwind CSS 3 + shadcn/ui · sonner · lucide-react
+
+See `go.mod` and `console/package.json` for exact versions.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.26.5+
-- Node.js 22+ and pnpm
-- Docker + Docker Compose
-- [Task](https://taskfile.dev/) (`go install github.com/go-task/task/v3/cmd/task@latest`)
+Go 1.26.5+, Node.js 22+ with pnpm, Docker + Compose, [Task](https://taskfile.dev/) (`go install github.com/go-task/task/v3/cmd/task@latest`).
 
-### 1. Start local infrastructure
+### 1. Start infrastructure
 
 ```bash
 task up
 ```
 
-This starts PostgreSQL (5432), Redis (6379), and MinIO (9000/9001). Ports are configurable via the `POSTGRES_PORT`, `REDIS_PORT`, `MINIO_API_PORT`, and `MINIO_CONSOLE_PORT` variables in `.env`.
+Starts PostgreSQL (5432), Redis (6379) and MinIO (9000/9001). Ports are overridable via `POSTGRES_PORT`/`REDIS_PORT`/`MINIO_API_PORT`/`MINIO_CONSOLE_PORT` in `.env`.
 
-### 2. Configure environment variables
-
-Copy the template and fill in required values:
+### 2. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Key variables:
+Key vars (`TORCHWOOD_` prefix, see `internal/pkg/config/config.proto` + `internal/pkg/config/bind.go`):
 
 ```env
 TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
-TORCHWOOD_DATA_REDIS_PASSWORD=            # Redis addr comes from data.redis.addr in configs/config.yaml
-TORCHWOOD_SECURITY_JWT_SECRET=dev-only-0123456789abcdef-0123456789abcdef
+TORCHWOOD_SECURITY_JWT_SECRET=dev-only-0123456789abcdef-0123456789abcdef  # >=32 chars, no weak substrings
 TORCHWOOD_SECURITY_SETUP_TOKEN=dev-setup-0123456789abcdef0123456789abcdef
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
 TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
 TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 ```
 
-> `TORCHWOOD_SECURITY_JWT_SECRET` must be at least 32 characters and must not contain known weak substrings (`change-me`, `secret`, `password`, `torchwood`, `minioadmin`, ...) — the server refuses to start otherwise. `TORCHWOOD_SECURITY_SETUP_TOKEN` gates first-run setup: without it, registering the first admin is rejected. Generate strong random values in production (e.g. `openssl rand -hex 32`).
+Generate strong random values for `JWT_SECRET`/`SETUP_TOKEN` in production (`openssl rand -hex 32`). Without `SETUP_TOKEN`, first-admin registration is rejected.
 
-### 3. Run database migrations
+### 3. Migrate
 
 ```bash
 task migrate
 ```
 
-### 4. Install dependencies
+### 4. Toolchain & codegen
 
 ```bash
-# Install tools (first time)
-task install-tools
-
-# Install Console dependencies
-task console-install
-
-# Generate protobuf, wire, etc.
-task generate-all
+task install-tools   # buf, wire, migrate, protoc-gen-go, golangci-lint (first time)
+task generate-all    # buf generate + config proto + wire-all
+task console-install # pnpm install (first time)
 ```
 
-### 5. Build and run
+### 5. Build & run
 
 ```bash
-task build      # runs console-build, then compiles server, worker and CLI into ./bin/
-./bin/server.exe
+task build        # console-build then server + worker + CLI -> ./bin/
+./bin/server      # or ./bin/server.exe on Windows
+# dev mode:
+task dev-server   # go run ./cmd/server
 ```
 
-Or use dev mode:
+Modify Console code? `task console-build` before `task build` — the SPA is `//go:embed`'d.
 
-```bash
-task dev-server
-```
+### 6. Bootstrap
 
-### 6. First-run setup (bootstrap)
+Open `http://127.0.0.1:9080/console/` — the login page becomes a setup form. Provide `project_id` + `database_id` and the `SETUP_TOKEN`:
 
-On a fresh database, open the Admin Console at `http://127.0.0.1:9080/console/`.
-The login page switches to the **setup form**. Registering the first admin
-(with the `TORCHWOOD_SECURITY_SETUP_TOKEN` you configured) requires a
-`project_id` and `database_id`, and automatically:
+- creates the owner admin (first admin is always `owner`);
+- creates the project and its system `default` database (creates the extra `database_id` if not `default`).
 
-- creates the owner admin account (first admin is always `owner`);
-- creates the specified project (system `default` database is created with it)
-  and, if `database_id` is not `default`, the specified application database.
+Create API Keys afterwards in Console → **API Keys** and call the Server API with `x-api-key`.
 
-API Keys are **not** created during setup. After login, open **API Keys** in
-the Console to generate a key. Use that secret with `x-api-key` metadata to
-call the Server API.
+### Endpoints (defaults from `configs/config.yaml.template`)
 
-Endpoints (defaults from `configs/config.yaml.template`; not hardcoded):
+| Surface | Address |
+|---------|---------|
+| Console | `http://127.0.0.1:9080/console/` |
+| HTTP / grpc-gateway | `http://127.0.0.1:9080/v1/...` |
+| gRPC (loopback) | `127.0.0.1:9060` |
+| Metrics | `http://127.0.0.1:9040/metrics` |
+| Health | `http://127.0.0.1:9080/healthz/liveness`, `/healthz/readiness` |
 
-- Admin Console: `http://127.0.0.1:9080/console/`
-- HTTP/gRPC-gateway API: `http://127.0.0.1:9080/v1/...`
-- gRPC (loopback only): `127.0.0.1:9060`
-- Metrics: `http://127.0.0.1:9040/metrics`
-- Health: `http://127.0.0.1:9080/healthz/liveness`, `/healthz/readiness`
+## Common Tasks
 
-> Note: `console/vite.config.ts` and the CORS `allow_origins` in the config template still reference the legacy port 9099; adjust them (or your local `configs/config.yaml`) if you use `task console-dev`.
-
-## Common Development Tasks
-
-```bash
-# Infrastructure
-task up          # docker compose up
-task down        # docker compose down
-task migrate     # run database migrations
-
-# Code generation
-task generate-proto    # buf generate
-task generate-config   # generate Go config
-task wire-all          # regenerate Wire
-task generate-all      # all of the above
-
-# Frontend
-task console-install   # pnpm install
-task console-build     # pnpm run build
-task console-dev       # pnpm run dev
-
-# Backend
-task dev-server        # go run ./cmd/server
-task test              # SDK Go/TS tests + go test -v ./... -cover
-task build             # build server, worker and CLI binaries (includes console)
-```
+| Task | Purpose |
+|------|---------|
+| `task up` / `down` / `clean` | start / stop / wipe local infra |
+| `task migrate` | run `db/migrations` |
+| `task generate-proto` / `generate-config` / `wire-all` / `generate-all` | buf / config proto / Wire |
+| `task console-install` / `console-build` / `console-dev` | frontend pnpm workflow |
+| `task dev-server` / `task worker` | run server/worker without building |
+| `task build` | console + server + worker + `bin/torchwood` CLI |
+| `task test` | SDK Go/TS tests + `go test -v ./... -cover` |
+| `task lint` | `go vet` + `golangci-lint` + console lint |
 
 ## Project Structure
 
 ```
 .
-├── cmd/
-│   ├── server/            # server entrypoint and Wire assembly
-│   ├── worker/            # async worker (functions executions queue consumer)
-│   └── client/            # Torchwood CLI (cobra; main.go + cmd/)
-├── console/               # Admin Console React SPA
-│   ├── embed.go           # go:embed dist
-│   └── src/
-├── configs/               # config templates
-├── db/migrations/         # golang-migrate SQL migrations
-├── docker/local/          # local Docker Compose
-├── docs/                  # design documents
-├── genproto/              # generated protobuf code
+├── cmd/server/          # server entry + Wire (provides.go -> wire_gen.go)
+├── cmd/worker/          # async worker (functions queue consumer, own Wire)
+├── cmd/client/          # Torchwood CLI (cobra, sdk/go InvokeJSON)
+├── console/             # Admin Console SPA (embed.go -> //go:embed dist)
+├── configs/             # config.yaml.template (+ local config.yaml)
+├── db/migrations/       # golang-migrate SQL
+├── docker/local/        # Compose: Postgres + Redis + MinIO
+├── genproto/            # generated protobuf (*.pb.go / *.pb.gw.go / *.swagger.json)
+├── proto/               # protobuf sources (client / server / console / shared)
 ├── internal/
-│   ├── api/               # transport layer: gRPC handlers + custom HTTP handlers
-│   │   ├── clientgrpc/    # Client API (Account / Databases / Groups)
-│   │   ├── consolegrpc/   # Console API (ConsoleAuth / Admins)
-│   │   ├── servergrpc/    # Server API (Projects / APIKeys / Users / Databases / ...)
-│   │   └── serverhttp/    # custom HTTP: file multipart uploads, OAuth callbacks, functions
-│   ├── app/               # use cases (client / console / functions / server / shared / storage)
-│   ├── domain/            # domain models and ports (audit / auth / databases / functions / idgen / messaging / projects / shared / storage / groups / users)
-│   ├── infra/             # adapters (auth / bun / clients / documentdb / functions / health / idgen / messaging / queue / server / storage)
-│   ├── pkg/               # in-process shared packages (buildinfo / config / contexts / database)
-│   └── testutil/          # integration test helpers
-├── pkg/                   # reusable libraries (crud / grpc / idgen / jwtparser / password / query / secretbox)
-├── proto/                 # protobuf source files
-├── sdk/                   # official SDKs: typescript/ + go/ + demo/
+│   ├── api/             # transport: clientgrpc / consolegrpc / servergrpc / serverhttp
+│   ├── app/             # use-cases (client / console / server / functions / storage)
+│   ├── domain/          # models + ports (audit / auth / databases / functions / users / ...)
+│   ├── infra/           # adapters (bun / documentdb / storage / queue / messaging / ...)
+│   ├── pkg/             # in-process shared (config / database / contexts / buildinfo)
+│   └── testutil/        # integration test helpers
+├── pkg/                 # reusable libs (crud / query DSL / jwtparser / password / idgen / semaphore / secretbox)
+├── sdk/                 # official SDKs: typescript/ + go/ + demo/
 ├── buf.yaml / buf.gen.yaml
-├── go.mod
 ├── Taskfile.yml
-└── README.md
+└── README.md / README_ZH.md
 ```
 
 ## Architecture
 
-- **Clean Architecture / DDD**: domain defines ports, infra provides implementations, app orchestrates use cases, api handles transport.
-- **AI / Agent-Native API design**: protobuf is the single source of truth; `buf generate` produces gRPC stubs, grpc-gateway handlers, and OpenAPI specs under `genproto/`. The **Server API** (`/v1/server/*`) is scoped for programmatic and agent access via API Keys; the **Client API** (`/v1/account/*`, `/v1/databases/*`, etc.) serves end-user flows. See [`sdk/README.md`](sdk/README.md) for the official TypeScript and Go SDKs.
-- **Dynamic document database**: each database maps to a PostgreSQL schema; collections are real tables; `_tenant` isolates projects; `_perms` implements role-based document permissions.
-- **Authentication**: end-user JWT, session cookies, API Keys, and console admin JWT. API Keys do not bypass `_perms`—they participate as the `keys` role; admins can target a project via the `X-Torchwood-Project` header.
-- **REST API**: gRPC methods are exposed as JSON REST via grpc-gateway; file upload/download uses custom HTTP handlers.
-- **Console**: the React SPA is embedded into the Go binary via `//go:embed dist` and served at `/console/`.
+- **Clean Architecture**: `internal/api` (transport) → `internal/app` (use-cases) → `internal/domain` (models & ports) → `internal/infra` (adapters). `domain` holds interfaces, `infra` implements them.
+- **Wire DI**: `cmd/server/provides.go` declares the provider set, `cmd/server/wire_gen.go` (and `cmd/worker` equivalent) is generated by `task wire-all`. Re-run after provider changes.
+- **Three processes**: `server` (gRPC + gateway + custom HTTP handlers + metrics + embedded Console), `worker` (function execution queue consumer, independent Wire), `CLI` (`bin/torchwood`, cobra over `sdk/go/server` `InvokeJSON`; no direct `genproto` import — `rpc` escape hatch covers all new RPCs).
+- **Three-tier storage**: `public` control plane & event spine (`projects`, `admins`, `api_keys`, `audit_logs`, `outbox`/`outbox_dead`, via bun + golang-migrate); `tw_<project.id>` project plane — system static tables (`users`, `sessions`, `identities`, `groups`, `memberships`, `buckets`, `files`) + ledger/functions/OAuth/catalog (`internal/infra/projectschema/`); `tw_<project.id>_<database.id>` business plane — user collections only (real tables, `_tenant` + `_perms`).
+- **API surface**: Protobuf is the single source of truth (`proto/` → `genproto/`). REST via grpc-gateway; file multipart and OAuth callbacks via `internal/api/serverhttp`. gRPC methods require `method_auth` annotations.
+- **Auth**: end-user JWT/session cookie, API Key (participates as `keys` role in `_perms`, not a bypass), console admin JWT (`TORCHWOOD_session_console` HttpOnly cookie). Admins target a project via `X-Torchwood-Project`.
+- **Hardening (recent, not expanded)**: outbox dead-letter replay `torchwood admin outbox list-dead/replay` (`document_events_outbox_dead`); global Redis semaphore `pkg/semaphore` (build 4 / run 16, TTL-guarded, in-memory fallback); per-statement 5s/10s `context.WithTimeout` across stores; `golangci-lint` 0 warnings full and `--new-from-rev=origin/main` ratchet; `buf breaking --against '.git#branch=origin/main'` gate.
 
 ## Testing
 
 ```bash
-# Unit / integration tests (requires local Postgres)
-task test
+task test   # lint-go + sdk/go + sdk/typescript + go test -v ./... -cover
 ```
 
-`task test` runs the Go SDK tests (`sdk/go`), the TypeScript SDK test suite (`sdk/typescript`), and then `go test -v ./... -cover` for the whole repository.
-
-Integration tests include:
-
-- `internal/infra/documentdb/postgres_test.go`
-- `internal/app/client/account_test.go`
-
-Tests automatically create and drop the `TORCHWOOD_test` database.
-
-The test database DSNs are read from the `TORCHWOOD_TEST_DATABASE_SOURCE` and `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` environment variables (defined in `.env.example`); `task test` loads them from `.env` automatically. When running `go test` directly, export them first:
-
-```bash
-# go test ./...               # fails fast without the variables
-task test                     # loads .env and runs everything
-```
+Integration tests (`internal/infra/documentdb/postgres_test.go`, `internal/app/client/account_test.go`, etc.) auto-create/drop the `TORCHWOOD_test` DB. DSNs come from `TORCHWOOD_TEST_DATABASE_SOURCE` / `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` (in `.env.example`); `task test` loads `.env` automatically.
 
 ## SDKs
 
-See [`sdk/README.md`](sdk/README.md) for details on both official SDKs:
+See [`sdk/README.md`](sdk/README.md):
 
-- **TypeScript SDK** (`sdk/typescript`, package `@torchwood/sdk`) — Client API + Server API over HTTP (grpc-gateway), with a web demo.
-- **Go SDK** (`sdk/go`, module `github.com/torchwooddev/torchwood/sdk/go`) — gRPC-direct thin wrappers: `client` (end-user auth with automatic token refresh) and `server` (API Key auth with `InvokeJSON` dynamic dispatch). The CLI (`cmd/client`) is built on the Go SDK's `server` package.
+- **TypeScript** (`sdk/typescript`, `@torchwood/sdk`) — Client + Server API over HTTP (grpc-gateway), with `sdk/demo`.
+- **Go** (`sdk/go`, `github.com/torchwooddev/torchwood/sdk/go`) — gRPC-direct thin wrappers: `client` (end-user auth, auto token refresh) and `server` (API Key + `InvokeJSON` dynamic dispatch; CLI is built on it).
 
 ```bash
-task sdk-install
-task sdk-build
-task sdk-demo   # demo at http://localhost:5174
+task sdk-install && task sdk-build
+task sdk-demo   # http://localhost:5174
 ```
 
 ## Developer Documentation
 
-Full developer docs (architecture, configuration, authentication, databases, storage, functions, API guide, Console, testing, SDK, operations) live in [`docs/developer/`](docs/developer/README.md).
+Full docs live in [`docs/developer/`](docs/developer/README.md):
 
-## Design Documents
+| Doc | Scope |
+|-----|-------|
+| [01-overview](docs/developer/01-overview.md) | architecture, stack, layers, call chain |
+| [02-quickstart](docs/developer/02-quickstart.md) | setup, bootstrap, endpoints, CLI |
+| [03-configuration](docs/developer/03-configuration.md) | config.proto, `TORCHWOOD_` env mapping |
+| [04-codegen](docs/developer/04-codegen.md) | Task / Buf / Wire |
+| [05-authentication](docs/developer/05-authentication.md) | JWT / session / API Key / scopes |
+| [06-databases](docs/developer/06-databases.md) | dynamic documents, `_tenant`/`_perms`, query DSL |
+| [07-storage](docs/developer/07-storage.md) | S3/MinIO, chunked upload, file tokens |
+| [08-functions](docs/developer/08-functions.md) | Docker executor, worker, lifecycle |
+| [09-api-guide](docs/developer/09-api-guide.md) | adding gRPC methods, errors, pagination |
+| [10-console](docs/developer/10-console.md) | frontend structure, session cookie |
+| [11-testing](docs/developer/11-testing.md) | test layers, CI, lint, observability |
+| [12-sdk](docs/developer/12-sdk.md) | SDK guide |
+| [13-operations](docs/developer/13-operations.md) | deploy, health, backup |
+| [14-agent-tools](docs/developer/14-agent-tools.md) | agent tool overlay (18 verbs) |
 
-- `docs/roadmap.md` — development roadmap (includes AI/Agent-Native strategy)
-- `docs/tech-decision.md` — technology decisions
-- `docs/developer/` — developer documentation (see index above)
-- `docs/archived/` — archived design docs (P0 design, migration checklist, security reviews, fix plans)
+Also: `AGENTS.md` (contributor conventions), `docs/roadmap.md` (AI/Agent-Native strategy), `docs/tech-decision.md`.
 
 ## License
 

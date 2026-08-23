@@ -1,233 +1,182 @@
 # Torchwood 测试与质量保障
 
-> 本文说明测试分层、集成测试数据库约定、CI 流水线、Lint 与质量观测能力。
-> 目标读者：所有提交代码的开发者。
-> 关联：`AGENTS.md`、`docs/implementation-health-observability.md`（健康/日志/慢查询实现细节）。
-> 修订记录：2026-08-09 初版（testutil、CI、lint、可观测性按代码核实）；2026-08-12 更新 CI 步骤、test/lint 任务组成（按 `.github/workflows/ci.yml` 与 `Taskfile.yml` 核实）。
+> 说明测试分层、`internal/testutil` 集成库约定、CI 门禁与代码质量棘轮。
+> 目标读者：所有提交代码的开发者。关联：`AGENTS.md`、`Taskfile.yml`、`.github/workflows/ci.yml`。
+> 修订记录：2026-08-23 重写（以 `internal/testutil/db.go`、`Taskfile.yml:154` 的 `test` 任务、CI `buf breaking`/`golangci-lint --new-from-rev`/`wire` 漂移检查为准）。
 
 ---
 
 ## 1. 测试分层
 
-| 层级 | 是否需要真实数据库 | 典型位置 | 示例 |
-|------|-------------------|----------|------|
-| 纯单元测试 | 否（stub/memstore） | `pkg/`、`internal/domain/`、`internal/api/*grpc/` | `pkg/crud/list_test.go`、`internal/domain/projects/idgen_settings_test.go`、`internal/api/servergrpc/projects_test.go` |
-| 拦截器测试 | 部分需要（validator 依赖 repo） | `internal/grpc/interceptor/` | `jwt_auth_test.go`、`apikey_scope_test.go` |
-| 集成测试 | 是（testutil 建库） | `internal/infra/*/`、`internal/app/*/` | `internal/infra/documentdb/postgres_test.go`、`internal/app/client/account_test.go` |
-| 端到端/真实监听 | 是 | `internal/infra/server/` | `grpc_gateway_test.go`、`healthz_test.go`（readiness 503 真实监听） |
+| 层级 | 需真实 DB | 典型位置 | 示例 |
+|------|-----------|----------|------|
+| 纯单元 | 否（stub/mem） | `pkg/`、`internal/domain/`、`internal/api/*grpc/` | `pkg/crud/list_test.go`、`internal/api/servergrpc/projects_test.go`（`stubProjectRepo` + `contexts.WithPrincipal`） |
+| 拦截器 | 部分需 DB | `internal/grpc/interceptor/` | `jwt_auth_test.go`、`apikey_scope_test.go` |
+| 集成 | 是（`SetupTestDB`） | `internal/infra/*`、`internal/app/*` | `internal/infra/documentdb/postgres_test.go` |
+| 端到端 | 是 | `internal/infra/server/` | `grpc_gateway_test.go`、`healthz_test.go`（readiness 503） |
 
 通用约定：
 
-- 集成测试开头必须 `if testing.Short() { t.Skip("skipping integration test") }`，
-  与 `go test -short` 兼容（`postgres_test.go` 全文如此）；
-- 断言统一使用 `github.com/stretchr/testify/require`；
-- gRPC 错误断言用 `status.Code(err)` + `codes.X`（如 `account_test.go` 校验重复邮箱 →
-  `codes.AlreadyExists`；`postgres_test.go` 校验越界 offset → `codes.InvalidArgument`）；
-- api 层 handler 测试用最小 stub 端口 + `contexts.WithPrincipal` 注入身份
-  （`internal/api/servergrpc/projects_test.go`：`stubProjectRepo` + `newTestProjectsService`），
-  不需要数据库。
+- 集成测试首行 `if testing.Short() { t.Skip("skipping integration test") }`；
+- 断言 `github.com/stretchr/testify/require`；
+- gRPC 错误用 `status.Code(err)` + `codes.*`；
+- API handler 测试用最小 stub 端口注入 Principal，不连 DB。
 
 ---
 
-## 2. 集成测试数据库辅助（`internal/testutil/`）
+## 2. `task test` 是唯一入口
 
-### 2.1 环境变量约定（`.env.example`）
+`Taskfile.yml:154` 定义：
 
-```dotenv
-# Integration tests (task test loads this file automatically)
-TORCHWOOD_TEST_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/TORCHWOOD_test?sslmode=disable
-TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/postgres?sslmode=disable
+```yaml
+test:
+  deps: [lint-go, test-sdk-go, test-sdk-ts]
+  cmds: [go test -v ./... -cover]
 ```
 
-- `TORCHWOOD_TEST_DATABASE_SOURCE`：测试 DSN 模板。**库名会被替换**：`SetupTestDB` 基于它派生一个
-  唯一数据库名 `<库名>_<pid>_<seq>`（强制小写，如 `torchwood_test_1234_1`）后自动 `CREATE DATABASE`；
-- `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE`：Postgres 维护库（`postgres`）DSN，用于建库/删库；
-- 没有硬编码回退：两个变量缺失时 `SetupTestDB` 直接 `t.Fatal`（提示“run via `task test`”）。
+| 子任务 | 位置 | 命令 |
+|--------|------|------|
+| `lint-go` | `Taskfile.yml:163` | `go vet ./...` + `gofmt -l .` 零差异 |
+| `test-sdk-go` | `sdk/go` | `go test -v ./... -cover` |
+| `test-sdk-ts` | `sdk/typescript` | `npm ci && npm run test`（见 `sdk/typescript/package.json:18`） |
+| 主测 | 根 module | `go test -v ./... -cover`（含集成测试） |
 
-### 2.2 `testutil.SetupTestDB(t)` 生命周期
+- `dotenv: ['.env']` 使所有 task 自动加载根 `.env`，因此集成测试所需环境变量由 `task test` 注入；**直接 `go test ./...` 会 `t.Fatal`**（见 §3）；
+- 手工等价：`export TORCHWOOD_TEST_DATABASE_SOURCE=... TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE=... && go test ./...`；
+- 前置：`task up` 启动本地三件套（`docker/local/docker-compose.yml`）。
+
+覆盖率：`go test -cover` 输出各包语句覆盖率；CI 另以 `-race` 跑全量（见 §5）。
+
+---
+
+## 3. 集成测试数据库（`internal/testutil/`）
+
+### 3.1 环境变量
+
+| 变量 | 示例 | 说明 |
+|------|------|------|
+| `TORCHWOOD_TEST_DATABASE_SOURCE` | `postgres://torchwood:torchwood@127.0.0.1:5432/TORCHWOOD_test?sslmode=disable` | 测试 DSN 模板，**库名会被替换** |
+| `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` | `postgres://torchwood:torchwood@127.0.0.1:5432/postgres?sslmode=disable` | 维护库 DSN（建库/删库） |
+
+无硬编码回退，缺失时 `SetupTestDB` 直接 `t.Fatal` 提示 `run via task test`（`testutil/db.go:48`）。
+
+### 3.2 `SetupTestDB(t)` 生命周期（`testutil/db.go:43`）
 
 ```go
-db := testutil.SetupTestDB(t)   // 建唯一测试库 → 执行 db/migrations/*.up.sql（按文件名排序）
+db := testutil.SetupTestDB(t)
 defer db.Close()
 ```
 
-- 自动注册 `t.Cleanup`：先 `pg_terminate_backend` 杀残留连接，再 `DROP DATABASE IF EXISTS`，
-  测试结束不留垃圾库；
-- 迁移执行的是 `db/migrations/*.up.sql`（无需 golang-migrate 实例）；
-- 返回 `*clients.Database`（内嵌 bun.DB），可直接跑 bun 查询。
+1. 派生唯一库名：`<原库名>_<pid>_<seq>`，强制小写（`uniqueTestDBName:97`，PG 标识符小写折叠）；
+2. `CREATE DATABASE <name>`（`adminDB`）；
+3. `t.Cleanup` 注册：`pg_terminate_backend` 杀残留连接 → `DROP DATABASE IF EXISTS`；
+4. 执行迁移：`db/migrations/*.up.sql` 按文件名排序逐条 `ExecContext`（`runMigrations:135`，无需 `golang-migrate`）；
+5. 返回 `*clients.Database`（内嵌 `bun.DB`，`pgdriver.WithBufferSize(2<<20)` 避免大文档截断，见 `db.go:82`）；
+6. 测试结束自动删库，无残留。
 
-### 2.3 常用 fixture（均返回 cleanup func）
+### 3.3 常用 Fixture
 
-| 函数 | 用途 |
+| 函数 | 说明 |
 |------|------|
-| `testutil.CreateTestProject(ctx, db)` | 插入测试项目，返回 `(projectID, internalID, cleanup)` |
-| `testutil.CreateTestAdmin(ctx, db, role)` | 插入 console admin（默认密码 `Admin@123`），返回 `(model, cleanup)` |
-| `testutil.SignAdminToken(cfg, admin)` | 签发与 `auth.Validator` 兼容的 admin JWT |
-| `testutil.GrantAdminProject(ctx, db, adminID, projectID)` | 把非平台 admin 绑定到项目 |
-| `testutil.CreateTestAPIKey(ctx, db, projectID, scopes)` | 插入 API key，返回 `(rawSecret, cleanup)` |
-| `testutil.NewMemObjectStore` | 内存 ObjectStore（storage/health 测试用，实现 `ObjectStore` 端口含 `Ping`） |
-| `testutil.NewInterceptorEnv(db, cfg, docDB)` | 按生产方式装配 auth + audit 拦截器，`InvokeUnary` 直接跑鉴权链 |
+| `CreateTestProject(ctx,db)` | 插入项目 + `projectschema.Apply`，返回 `(projectID,internalID,cleanup)` |
+| `CreateTestProjectThrough(ctx,db,maxVersion)` | 同上，部分迁移（`maxVersion<=0` 为全量） |
+| `CreateTestAdmin` / `SignAdminToken` / `GrantAdminProject` | console admin 相关 |
+| `CreateTestAPIKey` | 插入 API Key，返回 `(rawSecret,cleanup)` |
+| `NewMemObjectStore` | 内存 `ObjectStore`（含 `Ping`） |
+| `NewInterceptorEnv` | 组装 auth + audit 拦截器，`InvokeUnary` 跑完整鉴权链 |
 
-### 2.4 集成测试示例（`internal/infra/documentdb/postgres_test.go`）
+### 3.4 示例
 
 ```go
 func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	db := testutil.SetupTestDB(t)
-	defer db.Close()
-
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
-	defer cleanup()
-
-	docDB := NewPostgresDocumentDB(db, nil)
-	// ... CRUD / 权限 / 分页 / 输入限制断言
+  if testing.Short() { t.Skip("skipping integration test") }
+  ctx := context.Background()
+  db := testutil.SetupTestDB(t)
+  defer db.Close()
+  projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+  defer cleanup()
+  docDB := NewPostgresDocumentDB(db, nil)
+  // ... CRUD / 权限 / 分页断言
 }
 ```
 
 ---
 
-## 3. 直接 `go test` 会失败——用 `task test`
+## 4. Lint 棘轮：`--new-from-rev` 0 → 全量 0
 
-`Taskfile.yml` 中 `test` 任务带两个依赖并加载 `.env`：
-
-```yaml
-version: '3'
-dotenv: ['.env']        # 所有 task 自动加载根目录 .env
-
-test:
-  deps:
-    - test-sdk-go       # sdk/go: go test -v ./... -cover
-    - test-sdk-ts       # sdk/typescript: npm ci && npm run test
-  dir: '{{.USER_WORKING_DIR}}'
-  cmds:
-    - go test -v ./... -cover
-```
-
-- **必须用 `task test`（或 `task dev-server` 等任意 task）而非直接 `go test ./...`**：集成测试需要
-  的环境变量由 `.env` 提供，Task 的 `dotenv` 指令负责加载；
-- 直接 `go test ./...` 时，集成测试会以
-  `TORCHWOOD_TEST_DATABASE_SOURCE is not set (run via `task test`, which loads .env, or export it manually)`
-  fatal 退出；
-- 手工方式：先 `export TORCHWOOD_TEST_DATABASE_SOURCE=... TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE=...`
-  再 `go test ./...`；
-- 前置条件：本地 Postgres 已启动（`task up`，来自 `docker/local/docker-compose.yml`）。
-
----
-
-## 4. CI 流水线（`.github/workflows/ci.yml`）
-
-**触发时机**：push 到 `main` + 所有 pull request；`concurrency.cancel-in-progress: true`（同分支新提交
-取消旧运行）。
-
-### 4.1 backend job（lint + test + build）
-
-- 环境：`ubuntu-latest`；services 起 `postgres:18-alpine`（`torchwood:torchwood`，暴露 5432）与
-  `minio/minio:latest`（`minioadmin:minioadmin`，暴露 9000）；
-- 环境变量：
-
-```yaml
-TORCHWOOD_TEST_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/TORCHWOOD_test?sslmode=disable
-TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE: postgres://torchwood:torchwood@localhost:5432/postgres?sslmode=disable
-TORCHWOOD_TEST_MINIO_ENDPOINT: http://localhost:9000
-TORCHWOOD_RUN_DOCKER_TESTS: "1"
-```
-
-- 步骤顺序：
-  1. checkout（actions/checkout@v4）；
-  2. setup-go（`go-version-file: go.mod`，带缓存）；
-  3. arduino/setup-task@v2（version 3.x）；
-  4. buf-setup-action@v1（v1.65.0）→ **Buf lint**（`buf lint`）；
-  5. 预拉函数运行时基础镜像（`node:18-alpine`、`python:3.11-alpine`，供 Functions 集成测试用）；
-  6. 格式检查：`test -z "$(gofmt -l .)"`；
-  7. **Prepare console embed stub**：`mkdir -p console/dist && touch console/dist/index.html`
-     （保证 `go vet` / `go test` 阶段 `console/embed.go` 可编译）；
-  8. 静态检查：`go vet ./...`；
-  9. 测试：`go test ./...`（单元 + 集成，含 documentdb/app 集成测试）；
-  10. **SDK Go tests**（独立 module）：`working-directory: sdk/go` 下 `go test ./...`；
-  11. pnpm/action-setup（11.20.0）+ setup-node（22）；
-  12. **TS SDK test**：`working-directory: sdk/typescript` 下 `npm ci && npm run test`；
-  13. **SDK demo build**：`task sdk-demo-build`；
-  14. 构建：`task build`（先 console-build 再 go build server/worker/CLI，验证 embed 链路）。
-
-### 4.2 frontend job（lint + build）
-
-- `working-directory: console`；pnpm 11.20.0（actions/pnpm 显式指定），node 22；
-- 步骤：`pnpm install --frozen-lockfile` → `pnpm lint`（eslint）→ `pnpm build`（`tsc -b && vite build`）。
-
----
-
-## 5. Lint
-
-| 命令 | 内容 |
-|------|------|
-| `task lint-go` | `go vet ./...` + `test -z "$(gofmt -l .)"`（gofmt 必须零差异） |
-| `task lint-sdk-go` | `sdk/go` 内 `go vet ./...` + `gofmt -l .` |
-| `task lint-console` | `pnpm lint`（eslint，`console/eslint.config.js`） |
-| `task lint` | 依次执行 lint-go + lint-sdk-go + lint-console |
-
-提交前自检：`task lint && task test`（或至少 `task lint` + `go build ./...`）。
-
----
-
-## 6. 质量观测
-
-### 6.1 健康检查（`internal/infra/health/checks.go`）
-
-- `DependencyChecker`（Name/Timeout/Check，实现 `lynx.Checker`；`CheckHealth()` 内部自带超时，
-  默认 `DefaultTimeout = 2s`）；
-- `NewCheckers(db, rdb, obj)` 注册三个依赖：postgres（`db.PingContext`）、redis（`rdb.Ping`）、
-  minio（`obj.Ping`，`ObjectStore` 端口方法）；
-- `Details(ctx)` 并行探测（goroutine + WaitGroup，panic recover 兜底为 unavailable），
-  失败不影响其他依赖；
-- 端点：
-  - `GET /v1/health`（别名 `/v1/server/health`，`Check` RPC，ACCESS_PUBLIC）：返回
-    `{status: ok|unavailable, dependencies: [{name, status, error?}]}`，gRPC 返回码保持 200；
-  - `GET /healthz/liveness`：恒 200；`GET /healthz/readiness`：任一依赖失败 503
-    （`lynxhttp.WithHealthCheckers` 驱动，gRPC 与 gateway 双端注册）；
-  - `GET /v1/server/health/version`（`GetVersion` RPC）：返回 `{version, commit, date}`。
-
-### 6.2 版本信息
-
-- `cmd/server/main.go`：`var version, commit, date string`（全小写），由 Taskfile build 的 ldflags
-  注入（`-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}`，
-  `VERSION` 来自 `git describe --tags --always`）；
-- 类型 `buildinfo.BuildInfo` 位于 `internal/pkg/buildinfo/`，经 `cmd/server/provides.go` 的
-  `NewBuildInfo()` 注入 `servergrpc.NewHealthService`。
-
-### 6.3 结构化日志
-
-- 全链路 `*slog.Logger`（lynx + zap 后端），由 `cmd/server/provides.go` 的 `NewLogger` 暴露；
-- gateway 请求日志：`lynxhttp.WithRequestLog(true)` + `lynxhttp.WithLogger(...)`
-  （`internal/infra/server/grpc_gateway.go`），**级别为 Debug**，需 `--log-level debug` 可见；
-- 认证拒绝日志：`internal/grpc/interceptor/jwt.go` 的 `logAuthFailure` 输出 Warn（方法名/拒绝原因/凭证
-  类型/IP/UA，**不记录 token**）。
-
-### 6.4 慢查询日志（`internal/infra/clients/dbhook.go`）
-
-- `SlowQueryHook` 实现 `bun.QueryHook`，挂在 `newDatabase`（`database.go`）内、`NewDataClients` 链上；
-- 语义：阈值空字符串 → 默认 `500ms`（`DefaultSlowQueryThreshold`）；`"0"` → 禁用；解析失败 → Warn 并禁用；
-- `data.database.debug=true` → `LogAll`（全量 SQL Debug 日志）；默认仅超阈值输出 Warn：
-
-```text
-slow query  operation=SELECT query=... duration=812ms error=
-```
-
-- 配置键：`data.database.slow_query_threshold`，环境变量
-  `TORCHWOOD_DATA_DATABASE_SLOW_QUERY_THRESHOLD`；
-- 注意：`e.Query` 是含内联参数的格式化 SQL（可能含 PII），文档注明；`testutil.SetupTestDB`
-  不经过 `NewDataClients`，不受 hook 影响。
-
-### 6.5 验证清单
+`Taskfile.yml:172` 与 CI `golangci-lint-action@v8` 均以 `origin/main` 为基线：
 
 ```bash
-task up            # 启动本地 Postgres/Redis/MinIO
-task test          # SDK 测试 + 单元 + 集成（自动加载 .env）
-task lint          # go vet + gofmt + SDK go vet + eslint
-task build         # console-build + go build（ldflags 注入版本）
+golangci-lint run --new-from-rev=origin/main ./...
 ```
 
-构建后手动验证：`GET /v1/health`、`GET /v1/server/health/version`、`GET /healthz/readiness`
-（停掉 MinIO 后应 503）。
+- **含义**：仅报告相对 `origin/main` 新增的问题，存量遗留债不阻塞 PR；
+- **目标**：棘轮式收敛——新代码 0 问题，存量逐步消化，最终过渡到全量 0（本地 `golangci-lint run ./...` 即全量检查，当前已无新增）；
+- **CI 配置**：`ci.yml:88` 用 `args: --new-from-rev=origin/main`，`fetch-depth: 0` 保证基线可解析；
+- **本地自检**：`task lint` 依次执行 `lint-go` + `lint-golangci` + `lint-sdk-go` + `lint-console`（`Taskfile.yml:188`）。
+
+提交前：`task lint && task test`（或至少 `task lint` + `go test -short ./...`）。
+
+---
+
+## 5. CI 流水线（`.github/workflows/ci.yml`）
+
+触发：`push` 到 `main` + 全部 `pull_request`；`concurrency.cancel-in-progress: true`。
+
+### 5.1 `backend`（`ubuntu-latest`）
+
+Services：`postgres:18-alpine`（`torchwood:torchwood`）与 `minio:RELEASE.2024-11-07T00-52-20Z`（`minioadmin:minioadmin`），均带 healthcheck。
+
+步骤（精简）：
+
+1. `checkout@v4`（`fetch-depth: 0` 供 `--new-from-rev`）；
+2. `setup-go`（`go-version-file: go.mod`）+ `setup-task` + `buf-setup-action@v1`（`v1.65.0`）；
+3. `buf lint` → **`buf breaking --against '.git#branch=origin/main'`**（见 §6）；
+4. 预拉 `node:18-alpine` / `python:3.11-alpine`（Functions 运行时基镜像）；
+5. `test -z "$(gofmt -l .)"` → `mkdir -p console/dist && touch console/dist/index.html`（保证 `console/embed.go` 可编译）；
+6. `go vet ./...` → `golangci-lint run --new-from-rev=origin/main`；
+7. `go test -race ./...`（单元+集成）→ `sdk/go: go test -race ./...`；
+8. **Codegen 漂移门禁**（`ci.yml:101`）：`buf generate` + `protoc config.proto` + `task wire-all` 后 `git diff --exit-code -- genproto internal/pkg/config cmd go.mod go.sum`，任何生成物漂移直接失败；
+9. `pnpm@11.20.0` + `node@22` → `sdk/typescript: npm ci && npm run test` → `task sdk-demo-build` → `task build`（含 `console-build` 的 embed 链路验证）。
+
+### 5.2 `frontend`（`working-directory: console`）
+
+`pnpm install --frozen-lockfile` → `pnpm lint`（`eslint.config.js`）→ `pnpm test`（`vitest run`，`vite.config.ts:13` 含 `test.environment: jsdom`）→ `pnpm build`（`tsc -b && vite build`）。
+
+---
+
+## 6. 三类漂移门禁
+
+| 门禁 | 命令 | 失败含义 |
+|------|------|----------|
+| Proto 兼容性 | `buf breaking --against '.git#branch=origin/main'`（`buf.yaml` 规则） | 删除/改类型字段未 `reserved`、改字段号等破坏性变更 |
+| Lint 棘轮 | `golangci-lint run --new-from-rev=origin/main` | 相对基线新增 lint 问题 |
+| 生成物一致性 | `buf generate` + `protoc` + `task wire-all` 后 `git diff --exit-code` | `genproto/`、`internal/pkg/config/*.pb.go`、`cmd/*/wire_gen.go` 未提交或手改生成物 |
+
+本地复现：
+
+```bash
+buf breaking --against '.git#branch=origin/main'
+golangci-lint run --new-from-rev=origin/main ./...
+task generate-all && git diff --exit-code -- genproto internal/pkg/config cmd
+```
+
+---
+
+## 7. 健康与可观测（测试相关）
+
+- `internal/infra/health/checks.go`：`DependencyChecker`（`Name/Timeout/Check` 实现 `lynx.Checker`，`DefaultTimeout=2s`），`NewCheckers(db,rdb,obj)` 并行探测 postgres/redis/minio，`Details(ctx)` panic 兜底为 `unavailable`；
+- 端点：`GET /v1/health`（别名 `/v1/server/health`，`ACCESS_PUBLIC`）返回 `{status,dependencies}`；`GET /healthz/readiness` 任一失败 503；`GET /v1/server/health/version` 返回构建注入的 `{version,commit,date}`；
+- 慢查询：`internal/infra/clients/dbhook.go` 的 `SlowQueryHook`（`bun.QueryHook`），阈值 `data.database.slow_query_threshold`（默认 `500ms`，`"0"` 禁用，`debug=true` 全量 Debug），`TORCHWOOD_DATA_DATABASE_SLOW_QUERY_THRESHOLD` 覆盖。
+
+---
+
+## 8. 本地验证清单
+
+```bash
+task up                  # Postgres/Redis/MinIO
+task lint                # go vet + gofmt + golangci-lint(棘轮) + sdk vet + eslint
+task test                # sdk-go + sdk-ts + go test -v -cover（自动加载 .env）
+task build               # console-build + go build（ldflags 注入 version/commit/date）
+# 手工：curl /v1/health  /v1/server/health/version  /healthz/readiness
+```

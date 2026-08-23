@@ -1,681 +1,207 @@
-# Torchwood 后端 API 开发指南
+# 09 后端 API 开发指南
 
-> 本文面向需要新增 gRPC API 方法的开发者，以 `ProjectsService`（`proto/server/v1/projects.proto` →
-> `internal/api/servergrpc/projects.go` → `internal/app/server/projects.go` → `internal/infra/bun/bunrepo/project_repo.go`）
-> 为真实范例，手把手走完「proto → 生成 → domain → app → infra → api → Wire」全流程。
-> 目标读者：新增资源 / 新增方法的后端开发者。
-> 关联：`AGENTS.md`（开发约定，必读）、`docs/roadmap.md` §0（Agent-Native API 定位）。
-> 修订记录：2026-08-09 初版（以 projects 全链路为范例；错误映射与分页约定按代码核实）；2026-08-12 更新错误映射表与 CLI 章节（按代码核实）。
+> 面向后端开发者：以 `ProjectsService` 为范例，走完 `proto→genproto→domain→app→infra→api→Wire` 全流程，并约定分页、错误与 OpenAPI 一致性。
+> 源码：`proto/server/v1/projects.proto`、`internal/api/servergrpc/`、`internal/app/server/`、`pkg/crud/`、`internal/infra/server/grpc_swagger_test.go`。
 
----
-
-## 0. 调用链总览
-
-典型调用链（与 AGENTS.md 一致）：
+## 1 调用链总览
 
 ```
-gRPC handler（internal/api/servergrpc）
-  → app use-case（internal/app/server）
-    → domain repo port（internal/domain/projects，interface）
-      → infra adapter（internal/infra/bun/bunrepo 或 internal/infra/documentdb）
+gRPC handler (internal/api/*grpc) → app use-case (internal/app/*) → domain port (internal/domain/*, interface) → infra adapter (internal/infra/{bun,documentdb,storage})
 ```
 
-每一层只依赖下层接口：
+每层只依赖下层接口；Wire（`cmd/server/provides.go→wire_gen.go`）按构造器类型自动装配。
 
-| 层 | 目录 | 职责 |
-|----|------|------|
-| 传输层 | `internal/api/` | proto 编解码、参数提取、分页 token 编解码、审计资源标注 |
-| 用例层 | `internal/app/` | 鉴权判定、输入校验、事务编排、错误映射为 gRPC status |
-| 领域层 | `internal/domain/` | 模型（struct）、仓库端口（interface） |
-| 适配层 | `internal/infra/` | bun 元数据表查询 / documentdb 动态文档查询 |
+## 2 步骤 1：proto 定义
 
----
+`proto/` 四组：`server/v1`（管理面，API Key / Admin）/`client/v1`（终端用户）/`console/v1`（Console 专用）/`shared/v1`（`authz.proto`/`common.proto`/`document.proto`/`error.proto`/`query.proto`）。生成到 `genproto/`（禁止手改）。
 
-## 1. 步骤 1：在 proto 中定义 RPC 与 message
-
-API 的单一事实来源是 `proto/` 下的 `.proto` 文件，分四组：
-
-- `proto/server/v1/`：管理面（Agent / API Key / Console 调用），如 `projects.proto`、`users.proto`；
-- `proto/client/v1/`：终端用户面，如 `account.proto`、`databases.proto`；
-- `proto/console/v1/`：Console 专用管理面，如 `admins.proto`、`auth.proto`；
-- `proto/shared/v1/`：共享定义，如 `authz.proto`（鉴权注解）、`common.proto`（`ListRequest`/`ListResponseMeta`）、`error.proto`（错误枚举）、`document.proto`（`Document` 载荷）。
-
-### 1.1 服务与方法的骨架
-
-以 `proto/server/v1/projects.proto` 为模板：
+以 `proto/server/v1/projects.proto:5` 为模板：
 
 ```proto
-syntax = "proto3";
-
+syntax="proto3";
 package torchwood.server.v1;
-
-option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
-
 import "google/api/annotations.proto";
-import "google/protobuf/timestamp.proto";
+import "google/google/protobuf/timestamp.proto";
 import "shared/v1/authz.proto";
 import "shared/v1/common.proto";
-
+option go_package="github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions:{ security:{key:"apiKey" value:{type:TYPE_API_KEY in:IN_HEADER name:"X-API-Key"}}}
+  security:{security_requirement:{key:"apiKey" value:{}}}
+  extensions:{key:"x-torchwood-access" value:{string_value:"api_key"}}
+};
 service ProjectsService {
-  // 服务级默认访问级别：未在方法上单独标注时，所有方法默认 ACCESS_API_KEY。
-  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
-
-  rpc CreateProject(CreateProjectRequest) returns (Project) {
-    option (google.api.http) = { post: "/v1/server/projects", body: "*" };
-  }
-
-  rpc ListProjects(shared.v1.ListRequest) returns (ListProjectsResponse) {
-    option (google.api.http) = { get: "/v1/server/projects" };
-  }
-
-  rpc GetProject(GetProjectRequest) returns (Project) {
-    option (google.api.http) = { get: "/v1/server/projects/{id}" };
-  }
-
-  rpc UpdateProject(UpdateProjectRequest) returns (Project) {
-    option (google.api.http) = { patch: "/v1/server/projects/{id}", body: "*" };
-  }
+  option (torchwood.shared.v1.service_auth)={default_access:ACCESS_API_KEY};
+  rpc CreateProject(CreateProjectRequest) returns (Project){ option (google.api.http)={post:"/v1/server/projects" body:"*"}; }
+  rpc ListProjects(shared.v1.ListRequest) returns (ListProjectsResponse){ option (google.api.http)={get:"/v1/server/projects"}; }
+  rpc GetProject(GetProjectRequest) returns (Project){ option (google.api.http)={get:"/v1/server/projects/{id}"}; }
+  rpc UpdateProject(UpdateProjectRequest) returns (Project){ option (google.api.http)={patch:"/v1/server/projects/{id}" body:"*"}; }
 }
 ```
 
-要点：
+### 2.1 鉴权注解（强制）
 
-- 每个 RPC 必须声明 `google.api.http` 注解，grpc-gateway 据此生成 HTTP 路由（`POST/GET/PATCH/DELETE`）。
-- 路径字段用 `{id}` 语法绑定到请求 message 的同名字段（如 `GetProjectRequest.id`）。
-- **列表请求复用 `shared.v1.ListRequest`，响应 meta 复用 `shared.v1.ListResponseMeta`**（见 §9），不要为每个资源重造分页字段。
+`proto/shared/v1/authz.proto:9`：`ACCESS_PUBLIC(1)`/`ACCESS_AUTHENTICATED(2)`/`ACCESS_PERMISSION(3)`/`ACCESS_API_KEY(4)`；`MethodAuth{access,permissions}` 扩展 `52001`，`ServiceAuth{default_access}` 扩展 `52002`。服务级 `service_auth` 可省略方法级，单方法可用 `method_auth` 覆盖（如 `console/v1/admins.proto:ListAdmins` `access:ACCESS_PERMISSION permissions:["owner","admin"]`）。未解析出 authz 的方法启动即 `missing auth policy`。
 
-### 1.2 authz 注解（强制）
+### 2.2 消息约定
 
-`proto/shared/v1/authz.proto` 定义了两级注解：
+- 更新类 `optional` 表达 presence：`optional string name=2;` 未传=不修改（`HasName()` 判别）；空串语义由 `UpdateCollectionRequest` 注释显式说明。
+- 删除字段一律 `reserved`（字段号+字段名，禁止复用），`buf breaking --against '.git#branch=origin/main'` 门禁。
+- 时间 `google.protobuf.Timestamp`（HTTP JSON RFC3339，`timestamppb.New`）。
+- 列表统一 `shared.v1.ListRequest`/`ListResponseMeta`（`proto/shared/v1/common.proto:7`），勿重造分页字段。
 
-```proto
-enum AccessLevel {
-  ACCESS_LEVEL_UNSPECIFIED = 0;
-  ACCESS_PUBLIC = 1;          // 匿名可访问
-  ACCESS_AUTHENTICATED = 2;   // 任意有效凭证
-  ACCESS_PERMISSION = 3;      // 必须命中 permissions 之一
-  ACCESS_API_KEY = 4;         // API key 或 admin console session
-}
-
-message MethodAuth { AccessLevel access = 1; repeated string permissions = 2; }
-message ServiceAuth { AccessLevel default_access = 1; }
-
-extend google.protobuf.MethodOptions { MethodAuth method_auth = 52001; }
-extend google.protobuf.ServiceOptions { ServiceAuth service_auth = 52002; }
-```
-
-- 服务级 `service_auth.default_access` 可省略方法级标注（`ProjectsService` 即此模式）；
-- 需要收紧的单个方法可显式覆盖。参照 `proto/console/v1/admins.proto`：
-
-```proto
-rpc ListAdmins(ListAdminsRequest) returns (ListAdminsResponse) {
-  option (google.api.http) = { get: "/v1/console/admins" };
-  option (torchwood.shared.v1.method_auth) = {
-    access: ACCESS_PERMISSION
-    permissions: ["owner", "admin"]
-  };
-}
-```
-
-> **强约束**：所有 gRPC 方法必须能解析出 authz 注解，否则 server 启动即失败，见 §10。
-
-### 1.3 message 定义约定
-
-- **proto3 optional 表达字段 presence**：更新类请求中「未传 ≠ 空串」的字段用 `optional string`，
-  app 层据此判断是否要更新，如 `proto/server/v1/projects.proto` 的 `UpdateProjectRequest`：
-
-```proto
-message UpdateProjectRequest {
-  string id = 1;
-  optional string name = 2;         // 空值不修改（proto3 optional 表达 presence）
-  optional string description = 3;
-}
-```
-
-- **删除字段一律 `reserved`**：禁止直接删除或复用已发布的字段号/字段名；
-  删除时声明 `reserved 5;`（字段号）与 `reserved "old_name";`（字段名），
-  buf breaking（`buf.yaml` 已启用 `breaking: use: FILE`）据此拦截破坏性变更。
-- 时间字段用 `google.protobuf.Timestamp`（HTTP JSON 映射为 RFC3339 字符串）；
-- 生成的 Go 代码在 `genproto/`，**禁止手工编辑**。
-
-> **⚠️ Breaking change（REST 自定义动词迁移，R10-P1-3/B3）**：Server API 的字面量
-> 路由段 `documents/count`、`documents/bulk`、`documents/bulk/delete`、
-> `functions/runtimes`、`functions/specifications` 已废弃，改为自定义动词
-> `:count`/`:bulkUpdate`/`:bulkDelete`/`:runtimes`/`:specifications`（旧路径返回 404）。
-> `count`/`bulk`/`runtimes`/`specifications` 不再占用 id 命名空间，可作
-> document_id/function_id 使用；升级前请先重命名或删除历史保留字 id 资源。
-> **Client API 同步迁移**：`/v1/databases/{database_id}/collections/{collection_id}/
-> documents/count` 同样改为 `documents:count`（旧路径 404），Client API 的
-> `count` 不再占用 document_id 命名空间。
-
-> **⚠️ Breaking change（E-2b，Document 迁到 shared）**：Client/Server 同构的
-> `message Document` 已从 `torchwood.client.v1.Document` /
-> `torchwood.server.v1.Document` 迁到 `torchwood.shared.v1.Document`
->（`proto/shared/v1/document.proto`）。REST JSON 字段名与编号不变
-> （`id`/`data`/`created_at`/`updated_at`/`permissions`/`version`，字段号 1–6）。
-> OpenAPI `$ref` 变为 `#/definitions/v1Document`（原 `#/definitions/torchwoodclientv1Document`
-> / `torchwoodserverv1Document`）；Go SDK 返回类型变为 `*sharedv1.Document`（不 bump v2）。
-> 请求消息（`ListDocumentsRequest` 等）仍分包，未合并。详见
-> `docs/review/wave3-e2b-document-proto.md`。
-
----
-
-## 1.4 OpenAPI 认证建模约定
-
-所有 service proto 通过 `grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger`
-文件选项声明 `securityDefinitions` 与全局 `security`，使生成的 swagger.json 可被
-外部 Agent 直接用于鉴权调用（roadmap §0 验收标准）。
-
-三个统一 security scheme（所有文件保持一致）：
-
-| scheme | 传输方式 | 适用面 |
-|--------|----------|--------|
-| `apiKey` | 请求头 `X-API-Key` | Server API / Agent 调用（access=api_key） |
-| `Bearer` | `Authorization: Bearer <jwt>` | Client API 登录态（access=authenticated/permission） |
-| `cookie` | `Cookie: TORCHWOOD_session_console=<sid>` | Console admin 会话 |
-
-`method_auth` 的 access level 以 `x-torchwood-access` 扩展透传到 swagger 顶层
-与 operation 级（值域 = AccessLevel 小写：`public`/`authenticated`/`permission`/`api_key`）：
-
-- operation 未显式声明时继承 swagger 顶层（服务默认）值；
-- `ACCESS_PUBLIC` 方法必须声明 `security: []`（匿名可达，覆盖全局 security）；
-- 顶层扩展必须等于服务默认 access（`service_auth.default_access`），operation 级
-  有效值必须等于 `method_auth` 的 access——由 `internal/infra/server/grpc_swagger_test.go`
-  的 `TestSwaggerAccessExtensionMatchesCollectMethodsByAccess` 启动期断言。
-
-新增服务/方法的规范：文件级设置 `openapiv2_swagger`（`security_definitions` +
-`security` + `extensions.x-torchwood-access`）；与方法级 `method_auth` 不一致的
-方法用 `openapiv2_operation` 覆盖（`security` + `extensions.x-torchwood-access`）。
-
----
-
-## 2. 步骤 2：生成代码
+## 3 步骤 2：生成
 
 ```bash
-task generate-proto    # 即 cd 仓库根后执行 buf lint + buf generate
+task generate-proto # buf lint + buf generate（buf.gen.yaml v2：go/gateway/grpc/openapiv2 → genproto，paths=source_relative）
 ```
 
-`buf.gen.yaml`（v2 格式）声明四个远程插件，全部输出到 `genproto/`：
+产物：`*_grpc.pb.go`（`XxxServiceServer` + `Register`）、`*.pb.gw.go`（`RegisterXxxHandlerFromEndpoint`）、`*.swagger.json`（`json_names_for_fields`）、`* .pb.go` 描述符（供 `collectMethodsByAccess` 聚合鉴权）。
 
-```yaml
-version: v2
-plugins:
-  - remote: buf.build/protocolbuffers/go:v1.36.10   # *.pb.go
-    out: genproto
-    opt: [paths=source_relative]
-  - remote: buf.build/grpc-ecosystem/gateway:v2.27.4 # *_gw.pb.go（HTTP 转换）
-    out: genproto
-    opt: [paths=source_relative]
-  - remote: buf.build/grpc/go:v1.6.0                 # *_grpc.pb.go（服务接口）
-    out: genproto
-    opt: [paths=source_relative]
-  - remote: buf.build/grpc-ecosystem/openapiv2:v2.27.3 # *.swagger.json
-    out: genproto
-    opt: [json_names_for_fields=true]
-```
+## 4 步骤 3：domain 端口
 
-生成后：
-
-- `genproto/server/v1/projects_grpc.pb.go` 提供 `ProjectsServiceServer` 接口与
-  `RegisterProjectsServiceServer`；
-- `genproto/server/v1/projects.pb.gw.go` 提供 `RegisterProjectsServiceHandlerFromEndpoint`
-  供 gateway 使用；
-- 每个 proto 文件还会生成 `File_server_v1_projects_proto` 描述符，供 §10 的鉴权收集使用。
-
----
-
-## 3. 步骤 3：domain 层定义端口与模型
-
-领域层只定义「端口」（interface）与「模型」（struct），不依赖任何存储实现。
-
-### 3.1 模型（`internal/domain/projects/project.go`）
-
-```go
-type Project struct {
-	ID          string
-	Name        string
-	Description string
-	Status      string
-	Settings    map[string]any
-	InternalID  int64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-```
-
-注意字段全部是领域类型（`string`/`int64`/`time.Time`），不含 protobuf 类型——proto 与领域模型的
-互转（`mapProject`）只在 api 层做。
-
-### 3.2 仓库端口（`internal/domain/projects/repository.go`）
+`internal/domain/projects/project.go` 纯 struct（`string/time.Time/map`，无 protobuf 类型），`repository.go` 接口：
 
 ```go
 type Repository interface {
-	CreateProject(ctx context.Context, p *Project) error
-	GetProject(ctx context.Context, id string) (*Project, error)
-	GetProjectByName(ctx context.Context, name string) (*Project, error)
-	ListProjects(ctx context.Context) ([]Project, error)
-	UpdateProject(ctx context.Context, p *Project) error
-	DeleteProject(ctx context.Context, id string) error
+  CreateProject(ctx context.Context, p *Project) error
+  GetProject(ctx context.Context, id string)(*Project,error) // 不存在→(nil,nil)，由上层映射 NotFound
+  ListProjects(ctx context.Context)([]Project,error)
 }
 ```
 
-约定：
+跨资源端口按需新增（如 `APIKeyRepository`）。所有 infra 实现以 `wire.Bind(new(domainauth.SessionService), new(*auth.SessionService))` 绑定（`internal/infra/provides.go`）。
 
-- 方法返回 `(*Project, error)` 时，「不存在」返回 `(nil, nil)`，由上层决定映射为 NotFound 还是
-  AlreadyExists（`project_repo.go` 中 `sql.ErrNoRows` → nil）；
-- 一个资源一个 interface 文件；跨资源协作按需新增端口（如同文件的 `APIKeyRepository`）。
+## 5 步骤 4：app 用例
 
----
-
-## 4. 步骤 4：app 层实现用例
-
-用例层是业务规则的家（`internal/app/server/projects.go`）：Principal 鉴权、输入校验、事务、错误映射。
-
-### 4.1 用例结构体与构造器
+`internal/app/server/projects.go` 以 `XxxCommand` 解耦 proto：鉴权→校验→事务→错误映射。
 
 ```go
-type Projects struct {
-	projectRepo projects.Repository
-	docDB       databases.DocumentDB   // 动态文档层端口（可选依赖）
-	db          *clients.Database      // 事务执行器
-}
-
-func NewProjects(projectRepo projects.Repository, docDB databases.DocumentDB, db *clients.Database) *Projects {
-	return &Projects{projectRepo: projectRepo, docDB: docDB, db: db}
-}
-```
-
-命令模式：入参定义为 `XxxCommand` struct，不直接吃 proto 类型，保持用例层与传输层解耦。
-
-### 4.2 鉴权与校验（CreateProject 前半段）
-
-```go
-principal, ok := contexts.Principal(ctx)
-if !ok {
-	return nil, status.Error(codes.Unauthenticated, "unauthenticated")
-}
-// 项目是平台级资源，创建仅限平台 admin（console 会话的 owner/admin 角色）。
-if principal.ActorKind != shared.ActorKindAdmin || !principal.IsPlatformAdmin {
-	return nil, status.Error(codes.PermissionDenied, "platform admin required to create projects")
-}
-if cmd.Name == "" {
-	return nil, status.Error(codes.InvalidArgument, "name is required")
-}
-```
-
-- Principal 由认证拦截器注入（`internal/grpc/interceptor`），用例层通过 `contexts.Principal(ctx)` 读取
-  （`internal/pkg/contexts/principal.go`），不要自己解析凭证；
-- 校验规则写为 package 级常量/正则或共用包（如 `pkg/ident.ValidateSchemaResourceID` 校验 project.id / database.id）。
-
-### 4.3 事务（CreateProject 后半段）
-
-```go
-err := s.db.RunInTx(ctx, func(txCtx context.Context) error {
-	if err := s.projectRepo.CreateProject(txCtx, p); err != nil {
-		return fmt.Errorf("insert project: %w", err)
-	}
-	schema, err := ident.ProjectSchemaName(p.ID)
-	if err != nil {
-		return appshared.MapIdentError(err)
-	}
-	if _, err := s.db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
-		return fmt.Errorf("create project schema: %w", err)
-	}
-	if err := projectschema.Apply(txCtx, s.db, p.ID); err != nil {
-		return fmt.Errorf("apply project schema: %w", err)
-	}
-	if err := s.docDB.CreateDatabase(txCtx, p.ID, firstDBID, firstDBID); err != nil {
-		return fmt.Errorf("create first database: %w", err)
-	}
-	return nil
+principal, ok := contexts.Principal(ctx) // interceptor 注入
+if principal.ActorKind!=shared.ActorKindAdmin || !principal.IsPlatformAdmin { return PermissionDenied }
+if cmd.Name=="" { return InvalidArgument }
+err := db.RunInTx(ctx, func(txCtx context.Context) error {
+  if err:=projectRepo.CreateProject(txCtx,p); err!=nil{return err}
+  schema,_:=ident.ProjectSchemaName(p.ID)
+  conn.ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
+  return projectschema.Apply(txCtx, db, p.ID)
 })
 ```
 
-事务内多个仓库调用必须共用 `txCtx`；事务外返回包装错误（`fmt.Errorf("...: %w", err)`）保留错误链。
+- 越权返回 `NotFound` 防枚举（`GetProject` 对非绑定项目伪装）。
+- 撞名先查后返回 `InvalidArgument`/`AlreadyExists`，勿依赖裸 `unique_violation→500`。
+- 所有预期错误 `status.Error(codes.X, msg)`（裸 `errors.New` 会被 gateway 包为 `Internal`）。
 
-### 4.4 越权与错误语义（GetProject / UpdateProject）
+## 6 步骤 5：infra 适配
 
-- 越权访问**返回 NotFound 而不是 PermissionDenied**，避免资源存在性探测（安全评审 M7）：
+元数据 `bun`：`internal/infra/bun/model/project.go` + `bunrepo/project_repo.go:NewSelect().Where("id=?").Scan`（`sql.ErrNoRows→nil`），构造器 `func NewXxxRepository(db *clients.Database) xxx.Repository`。
+
+动态文档仅业务集合走 `internal/infra/documentdb/postgres.go:NewPostgresDocumentDB(db,pub)`：`schema-per-database + _tenant + _perms`，`pkg/query` 优先（`equal/contains/search...`），字段白名单+敏感黑名单，未声明列→`InvalidArgument`；端口错误经 `internal/app/shared.MapDocumentDBError` 映射。
+
+## 7 步骤 6：api handler
+
+`internal/api/servergrpc/projects.go`：
 
 ```go
-if !principal.IsPlatformAdmin && (principal.ProjectID == "" || principal.ProjectID != id) {
-	return nil, status.Error(codes.NotFound, "project not found")
+type ProjectsService struct{ serverv1.UnimplementedProjectsServiceServer; projects *appserver.Projects }
+func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.CreateProjectRequest)(*serverv1.Project,error){
+  p, err:=s.projects.CreateProject(ctx, appserver.CreateProjectCommand{ID:req.GetId(), Name:req.GetName()})
+  if err!=nil{return nil,err}
+  return mapProject(p), nil // timestamppb.New 转换时间
 }
 ```
 
-- 更新类请求把「nothing to update」前置检查放在取数之前，避免语义歧义；
-- 撞名查重返回 `InvalidArgument`（而不是依赖 DB unique violation 变 500）。
+职责：嵌 `Unimplemented`、参数→Command、用例→`map` 回 proto；更新类 `ctx=contexts.WithAuditResource(ctx,req.GetId())`；列表编码 token（下）。
 
----
+### 7.1 列表分页（`shared.v1.ListRequest` + `pkg/crud`）
 
-## 5. 步骤 5：infra 层实现 adapter
+`proto/shared/v1/common.proto:7`：`page_size/page_token/filter/order_by/queries`；响应 `ListResponseMeta{page_size,next_page_token,prev_page_token,total_count}`（AIP-132/158/160）。
 
-### 5.1 元数据表：bun 仓库（`internal/infra/bun/bunrepo/project_repo.go`）
+`pkg/crud/list.go:57` `ParseListParams(pageSize,pageToken,filter,orderBy)`：校验 `page_size∈[1,1000]`（默认 50）、`page_token` 解析得 `Offset`；`pagination.go:360` `BuildPaginationInfo(params,totalCount,hasMore)` 产出 `HasNext/NextOffset/HasPrevious/PreviousOffset`，`EncodePageToken(offset)`（`v1` base64 JSON，`DefaultTokenTTL=24h`，`FilterDigest`/`order_by` 校验）。
 
-```go
-func (r *projectRepo) GetProject(ctx context.Context, id string) (*projects.Project, error) {
-	m := new(model.Project)
-	err := r.db.NewSelect().Model(m).Where("id = ?", id).Scan(ctx)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return mapProjectToDomain(m), nil
-}
-```
-
-- 表模型在 `internal/infra/bun/model/`（如 `model.Project`），仓库内用 `mapProjectToModel` /
-  `mapProjectToDomain` 双向转换；
-- `db` 来自 `*clients.Database`（内嵌 bun.DB），构造器签名 `func NewXxxRepository(db *clients.Database) xxx.Repository`，
-  返回类型写**端口 interface**，便于 Wire 注入与测试替换。
-
-### 5.2 动态文档：documentdb adapter
-
-**只有用户 collection** 走 PostgreSQL 动态文档 adapter：`schema-per-database + _tenant + _perms` + `pkg/query`。
-系统资源（users / sessions / identities / groups / memberships / buckets / files）是 `tw_<project>` 上的 bun 静态表，经 Account、Server Users、Storage、Groups 专用 RPC，不经 DocumentDB。
-
-端口在 `internal/domain/databases`（`DocumentDB`：`CreateDatabase` / `CreateCollection` / `ListDocuments` / `CountDocuments` 等）。
-实现为 `internal/infra/documentdb/postgres.go` 的 `NewPostgresDocumentDB(db, pub)`（`*clients.Database` + `shared.EventPublisher`；测试可传 `nil` publisher）。
-
-- 动态文档查询**优先使用 `pkg/query`**（Appwrite 风格 DSL）：`equal`、`notEqual`、`greaterThan`、
-  `contains`、`orderDesc`、`orderAsc`、`limit`、`offset`、`select`、`cursorAfter`/`cursorBefore` 等；
-- 非 System 路径有字段白名单 + 敏感字段黑名单校验（未声明列 → `InvalidArgument`）；
-- adapter 返回领域错误（`databases.ErrDuplicateKey`、`ErrPermissionDenied` 等），由
-  `internal/app/shared.MapDocumentDBError`（`internal/app/shared/docdb_errors.go`）
-  统一映射为 gRPC status（`AlreadyExists` / `PermissionDenied` / ...）。
-
----
-
-## 6. 步骤 6：api 层 handler 与注册
-
-### 6.1 handler（`internal/api/servergrpc/projects.go`）
+Handler：
 
 ```go
-type ProjectsService struct {
-	serverv1.UnimplementedProjectsServiceServer
-	projects *appserver.Projects
-}
-
-func NewProjectsService(projects *appserver.Projects) *ProjectsService {
-	return &ProjectsService{projects: projects}
-}
-
-func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.CreateProjectRequest) (*serverv1.Project, error) {
-	p, err := s.projects.CreateProject(ctx, appserver.CreateProjectCommand{
-		ID:          req.GetId(),
-		Name:        req.GetName(),
-		Description: req.GetDescription(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return mapProject(p), nil
-}
+list, info, _ := s.projects.ListProjects(ctx, req.GetPageSize(), req.GetPageToken(), req.GetFilter(), req.GetOrderBy())
+meta := &sharedv1.ListResponseMeta{PageSize: info.PageSize, TotalCount: int32(info.TotalCount)}
+if info.HasNext { meta.NextPageToken = crud.EncodePageToken(info.NextOffset) }
+if info.HasPrevious { meta.PrevPageToken = crud.EncodePageToken(info.PreviousOffset) }
 ```
 
-handler 的职责边界：
+- `filter/order_by` 显性化：`ValidatePageTokenForRequest`（`list.go:163`）要求翻页时二者与首请求一致（digest 不一致→`InvalidArgument`）；勿手拼 SQL `filter/order`。
+- `pkg/crud/filter.go`/`order.go` 供静态表列表复用，动态文档优先 `pkg/query`（见 `06-databases.md` §6）。
 
-- 嵌入 `UnimplementedXxxServiceServer`（新增方法时旧 client 不 panic）；
-- 从 proto 请求提取参数 → 组装 Command → 调用用例 → 错误原样向上抛（错误映射已在用例层完成）；
-- 用 `mapXxx(domain)` 私有函数转回 proto 响应（`timestamppb.New(...)` 转时间）；
-- 更新类方法给审计拦截器标注资源：`ctx = contexts.WithAuditResource(ctx, req.GetId())`；
-- 列表方法负责 page token 编解码（§6.2）。
-
-### 6.2 列表 handler：分页 token 编解码
-
-```go
-func (s *ProjectsService) ListProjects(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListProjectsResponse, error) {
-	list, info, err := s.projects.ListProjects(ctx, req.GetPageSize(), req.GetPageToken(), req.GetFilter(), req.GetOrderBy())
-	if err != nil {
-		return nil, err
-	}
-	var nextToken, prevToken string
-	if info.HasNext {
-		nextToken = crud.EncodePageToken(info.NextOffset)
-	}
-	if info.HasPrevious {
-		prevToken = crud.EncodePageToken(info.PreviousOffset)
-	}
-	resp := &serverv1.ListProjectsResponse{
-		Projects: make([]*serverv1.Project, len(list)),
-		Meta: &sharedv1.ListResponseMeta{
-			PageSize:      info.PageSize,
-			NextPageToken: nextToken,
-			PrevPageToken: prevToken,
-			TotalCount:    int32(info.TotalCount),
-		},
-	}
-	for i, p := range list {
-		resp.Projects[i] = mapProject(&p)
-	}
-	return resp, nil
-}
-```
-
-用例层负责真实分页（`internal/app/server/projects.go` 的 `ListProjects`）：
-
-```go
-params, err := crud.ParseListParams(pageSize, pageToken, filter, orderBy)
-// ... 取全量 → 按 params.Offset/params.PageSize 切片
-info := crud.BuildPaginationInfo(params, len(all), hasMore)
-```
-
-### 6.3 注册 gRPC 服务（`internal/infra/server/grpc.go`）
-
-新增服务时改三处：
-
-1. `collectMethodsByAccess(...)` 的 file descriptor 列表追加
-   `serverv1.File_server_v1_projects_proto`（新增 RPC 自动纳入鉴权收集）；
-2. `serverv1.RegisterProjectsServiceServer(grpcSrv, projects)`；
-3. 若该服务有新的 http 路由，同时在 `internal/infra/server/grpc_gateway.go` 的 `register` 列表追加
-   `serverv1.RegisterProjectsServiceHandlerFromEndpoint`。
-
-> 启动期有两道 fail-closed 检查（§10），漏了注解或漏了注册都会直接报错退出，这是设计预期。
-
----
-
-## 7. 步骤 7：Wire 装配
-
-Provider 声明分散在四层，`task wire-all` 生成 `cmd/server/wire_gen.go`：
-
-| 文件 | 注册内容 |
-|------|----------|
-| `internal/api/provides.go` | `servergrpc.NewProjectsService`（handler 构造器） |
-| `internal/app/provides.go` | `server.NewProjects`（use-case 构造器） |
-| `internal/infra/bun/provides.go` | `bunrepo.NewProjectRepository`（adapter 构造器） |
-| `cmd/server/provides.go` | 汇总 `api.ProviderSet` + `app.ProviderSet` + `infra.ProviderSet` + `domain.ProviderSet` |
-
-构造器签名变化（新增/删除参数）后执行：
+示例：
 
 ```bash
-task wire-all     # wire-server + wire-worker
+curl -H 'X-API-Key: <key>' 'http://127.0.0.1:9080/v1/server/storage/buckets?page_size=20&filter=name%20eq%20"a"&order_by=name%20asc'
+# 响应 {buckets:[...], meta:{page_size:20,next_page_token:"...",total_count:42}}
 ```
 
-Wire 按构造器参数类型自动匹配依赖（`*clients.Database`、`databases.DocumentDB` 等均为单例 provider）。
+## 8 步骤 7：Wire
 
----
+`internal/{api,app,infra}/provides.go` 各自 `ProviderSet`，汇总于 `cmd/server/provides.go`。
 
-## 8. 错误处理约定
+```go
+// api/provides.go
+wire.Bind(new(serverv1.ProjectsServiceServer), new(*servergrpc.ProjectsService))
+// app/provides.go
+wire.NewSet(server.NewProjects)
+// infra/bun/provides.go
+wire.Bind(new(projects.Repository), new(*bunrepo.ProjectRepo))
+```
 
-### 8.1 用例层：`status.Error(codes.X, message)`
+改构造器签名后 `task wire-all`（含 `wire-server` + `wire-worker`）重生成 `cmd/server/wire_gen.go`。
 
-app 层所有预期内错误必须返回带 gRPC code 的 `status.Error`，禁止裸 `errors.New` 泄漏到 gRPC 边界
-（裸错误在 gateway 会被包装为 `codes.Internal`）。
+### 注册
 
-代码中已确认的状态码用法：
+`internal/infra/server/grpc.go:collectMethodsByAccess(descriptors...)` 聚合全部 `File_xxx_proto` 的 `method_auth/service_auth`，未覆盖服务增 file 后两处登记（此处 + `grpc_gateway.go:RegisterXxxHandlerFromEndpoint`），`assertRegisteredMethodsHaveAuthz` fail-closed。
 
-| gRPC code | 场景（以代码为准） |
-|-----------|--------------------|
-| `codes.Unauthenticated` | `contexts.Principal(ctx)` 取不到；凭证缺失/无效（拦截器） |
-| `codes.PermissionDenied` | 角色/scope 不足；平台级操作被 API key 调用；`internal/grpc/interceptor` 的 `permissionMethods` 未命中 |
-| `codes.NotFound` | 资源不存在；**越权访问伪装 NotFound 防枚举** |
-| `codes.InvalidArgument` | 必填缺失、长度超限（description ≤ 512）、ID 白名单不匹配（`^[a-z0-9-]{1,64}$`）、nothing to update、撞名 |
-| `codes.AlreadyExists` | 重复创建（DB unique violation 经 `MapDocumentDBError` 映射） |
-| `codes.Internal` | 未映射的存储层错误（外层 `fmt.Errorf` 包装后透出） |
+## 9 错误与网关
 
-### 8.2 gateway：统一 JSON 错误体（`internal/infra/server/errors.go`）
+用例层 `codes.Unauthenticated/PermissionDenied/NotFound/InvalidArgument/AlreadyExists`；`FailedPrecondition/OutOfRange` 用于 `version_*`/`超限`。
 
-grpc-gateway 用自定义 `HTTPErrorHandler` 把 gRPC status 转为统一结构：
+`internal/infra/server/errors.go:HTTPErrorHandler` 统转 JSON：
 
 ```json
-{
-  "error": {
-    "type": "invalid_request_error",
-    "code": "InvalidArgument",
-    "message": "name is required",
-    "error_id": "<uuid>",
-    "error_code": "ERROR_CODE_INVALID_REQUEST"
+{"error":{"type":"invalid_request_error","code":"InvalidArgument","message":"...","error_id":"<uuid>","error_code":"ERROR_CODE_INVALID_REQUEST"}}
+```
+
+映射：`InvalidArgument→400/ERROR_CODE_INVALID_REQUEST`、`Unauthenticated→401/INVALID_CREDENTIALS`、`PermissionDenied→403/PERMISSION_DENIED`、`NotFound→404/RESOURCE_NOT_FOUND`、`AlreadyExists/Aborted→409/RESOURCE_CONFLICT/CONCURRENT_MODIFICATION`、`ResourceExhausted→429/QUOTA_EXCEEDED`、`DeadlineExceeded→504/TIMEOUT`。
+
+## 10 OpenAPI 与一致性断言
+
+每服务文件声明 `openapiv2_swagger`：`security_definitions{apiKey(X-API-Key),Bearer(Authorization: Bearer),cookie(Cookie: TORCHWOOD_session_console)}` + `security{apiKey}` + `extensions{x-torchwood-access: api_key/public/authenticated/permission}`。
+
+`method_auth` 与 `x-torchwood-access` 必须一致：未显式声明的 operation 继承 swagger 顶层（服务默认），`ACCESS_PUBLIC` 需 `security:[]`。
+
+`internal/infra/server/grpc_swagger_test.go:73` `TestSwaggerAccessExtensionMatchesCollectMethodsByAccess` 逐 `genproto/**/*.swagger.json` 断言：`businessFileDescriptors()`（与 `grpc.go` 同步）→ `collectMethodsByAccess` 推导 access → 比对 `doc.XAccess`（顶层=服务默认）与每 `operation.x-torchwood-access`（继承或显式）完全一致；新增服务后两处 file 列表同步更新，否则测试失败（≥14 文件、≥140 operation）。
+
+## 11 OutboxService 示例（新增服务的完整参照）
+
+`proto/server/v1/outbox.proto:56`（`ACCESS_API_KEY` 默认，顶层 `x-torchwood-access=api_key`）：
+
+```proto
+service OutboxService {
+  rpc ListDeadLetters(ListDeadLettersRequest) returns (ListDeadLettersResponse){
+    option (google.api.http)={get:"/v1/server/outbox/dead-letters"};
+  }
+  rpc ReplayDeadLetter(ReplayDeadLetterRequest) returns (ReplayDeadLetterResponse){
+    option (google.api.http)={post:"/v1/server/outbox/dead-letters/{event_id}:replay" body:"*"};
   }
 }
 ```
 
-- `error_id` 每次请求生成新 UUID，便于日志关联排障；
-- `error_code` 取自 `proto/shared/v1/error.proto` 的 `ErrorCode` 枚举，现有映射（`HTTPErrorHandler`
-  内 `switch st.Code()` + `grpcCodeToHTTP`）：
+步骤复盘：`proto` 定义→`task generate-proto`→`internal/domain/shared/ports.go:OutboxRepository` 扩展→`internal/app/events/outbox_admin.go` 用例（`5s` per-statement 超时）→`internal/infra/events/outbox.go` 适配（`document_events_outbox_dead`）→`internal/api/servergrpc/outbox.go` handler（`ListRequest→crud.ParseListParams`）→`grpc.go`/`grpc_gateway.go` 注册→`task wire-all`。
 
-| gRPC code | error_code | HTTP 状态码 |
-|-----------|-----------|-------------|
-| InvalidArgument | `ERROR_CODE_INVALID_REQUEST` | 400 |
-| FailedPrecondition | `ERROR_CODE_PRECONDITION_FAILED` | 400 |
-| OutOfRange | `ERROR_CODE_INTERNAL_ERROR`（未显式映射，走默认） | 400 |
-| Unauthenticated | `ERROR_CODE_INVALID_CREDENTIALS` | 401 |
-| PermissionDenied | `ERROR_CODE_PERMISSION_DENIED` | 403 |
-| NotFound | `ERROR_CODE_RESOURCE_NOT_FOUND` | 404 |
-| AlreadyExists | `ERROR_CODE_RESOURCE_CONFLICT` | 409 |
-| Aborted | `ERROR_CODE_CONCURRENT_MODIFICATION` | 409 |
-| ResourceExhausted | `ERROR_CODE_QUOTA_EXCEEDED` | 429 |
-| DeadlineExceeded | `ERROR_CODE_TIMEOUT` | 504 |
-| 其他（Unknown/Unimplemented/Unavailable/Canceled 等） | `ERROR_CODE_INTERNAL_ERROR` | 500（Canceled=499、Unavailable=503、Unimplemented=501 等对应码） |
+CLI 调用：`torchwood outbox list-dead --project <id>` / `torchwood rpc /torchwood.server.v1.OutboxService/ListDeadLetters --data '{"project_id":"shop","pageSize":20}'`。
 
-- `type` 字段：`invalid_request_error` / `authentication_error` / `permission_error` /
-  `not_found_error` / `conflict_error` / `rate_limit_error` / `server_error`；
-- `ErrorCode` 枚举完整清单（`proto/shared/v1/error.proto`）：
-  `ERROR_CODE_INVALID_REQUEST`、`ERROR_CODE_RESOURCE_NOT_FOUND`、`ERROR_CODE_INVALID_CREDENTIALS`、
-  `ERROR_CODE_PERMISSION_DENIED`、`ERROR_CODE_RESOURCE_CONFLICT`、`ERROR_CODE_QUOTA_EXCEEDED`、
-  `ERROR_CODE_PRECONDITION_FAILED`、`ERROR_CODE_CONCURRENT_MODIFICATION`、
-  `ERROR_CODE_VALUE_OUT_OF_RANGE`、`ERROR_CODE_OPERATION_NOT_ALLOWED`、
-  `ERROR_CODE_INTERNAL_ERROR`、`ERROR_CODE_SERVICE_UNAVAILABLE`、`ERROR_CODE_TIMEOUT`。
+## 12 自检清单
 
----
+1. `task generate-proto && go build ./...` 通过，`genproto/` 无手改；2. `task wire-all` 已重生成；3. `go vet` + `gofmt -l` 空；4. 错误码/分页符合 §7/§9；5. `TestSwaggerAccessExtensionMatches...` 通过；6. 集成测试参照 `internal/api/servergrpc/projects_test.go`（`stub repo + contexts.WithPrincipal`）与 `internal/testutil` 真库。
 
-## 9. 列表查询约定（AIP-132 / 158 / 160）
+## 13 参考
 
-列表复用 `shared.v1.ListRequest` 与 `shared.v1.ListResponseMeta`（`proto/shared/v1/common.proto`），
-由 `pkg/crud` 统一处理：
-
-**请求参数**（`shared.v1.ListRequest`）：
-
-| 字段 | 说明 | 标准 |
-|------|------|------|
-| `page_size` | 每页条数，默认 50，上限 1000 | AIP-158 |
-| `page_token` | 上一页返回的 `next_page_token`，base64 编码的 offset，TTL 24h | AIP-158 |
-| `filter` | 过滤表达式（带 digest 校验，翻页时 filter/order_by 必须一致） | AIP-160 |
-| `order_by` | 排序（AIP-132 的 ordering） | AIP-132 |
-| `queries` | 动态文档层 Appwrite DSL 查询串（documentdb 场景） | — |
-
-**响应 meta**（`shared.v1.ListResponseMeta`）：`page_size`、`next_page_token`、`prev_page_token`、`total_count`。
-
-**`pkg/crud` 关键入口**（`pkg/crud/list.go`、`pagination.go`）：
-
-- `crud.ParseListParams(pageSize, pageToken, filter, orderBy)`：校验 page_size 边界与 token 格式，返回
-  `ListParams{PageSize, PageToken, Filter, OrderBy, Offset}`；
-- `crud.EncodePageToken(offset)` / `crud.DecodePageToken(token)`：offset 型 token 编解码（`v1:legacy`，
-  过期自动拒绝）；
-- `crud.BuildPaginationInfo(params, totalCount, hasMore)`：产出 `HasNext/HasPrevious/NextOffset/PreviousOffset`，
-  供 handler 生成 next/prev token；
-- 常量：`DefaultPageSize = 50`、`MaxPageSize = 1000`。
-
-> **强约束**：列表查询复用 `pkg/crud`（或等价的 AIP 抽象），不要手拼 SQL filter/order；动态文档
-> 优先使用 `pkg/query`。翻页一致性由 token 内嵌的 filter digest / order_by 校验保证
-> （`ValidatePageTokenForRequest`），filter/order_by 变化会报 `InvalidArgument`。
-
----
-
-## 10. 强制约束清单（对应 AGENTS.md）
-
-1. **gRPC 方法必须带 authz 注解**：
-   - `collectMethodsByAccess`（`internal/infra/server/grpc.go`）对每个方法解析 `method_auth` 或
-     服务级 `service_auth`，解析不到（`UNSPECIFIED`）即报
-     `missing auth policy for method <service>/<method>`；
-   - `ACCESS_PERMISSION` 方法必须显式声明非空 `permissions`，否则报错；
-   - 启动期 `assertRegisteredMethodsHaveAuthz` 再校验一次：已注册但不在任何 access map 的方法
-     直接拒绝启动（fail-closed，防漏配方法被任意凭证放行）。
-   - 新增服务文件后记得把它加入 `collectMethodsByAccess` 的 file descriptor 列表。
-2. **列表复用 `pkg/crud`**，动态文档优先 `pkg/query`；不要手拼 SQL filter/order。
-3. **JWT claims 保持 `pkg/jwtparser` 兼容**：新增凭证/上下文字段必须沿用 `Claims` 的短键映射
-   （`tid`/`uid`/`usn`/`akd`/`pid`/`sid`/`ttp`/`rls`/`scp`/`exp`/`iat`），不要自造键名。
-4. **端口在 domain、适配器在 infra**：用例层只依赖 `internal/domain/xxx` 的 interface；
-   `wire.Bind` 在 `internal/infra/provides.go` 完成接口绑定（如 `wire.Bind(new(domainauth.SessionService), new(*auth.SessionService))`）。
-5. **错误必须带 code**：预期内错误用 `status.Error`；存储层原始错误用 `%w` 包装保留错误链。
-6. **安全默认值**：越权返回 NotFound 防枚举；平台级资源仅平台 admin 可操作；API key 禁止管理 API Keys
-   （`IsAPIKeysServiceMethod` 拦截，防自铸 key 提权）。
-
----
-
-## 11. 开发后自检清单
-
-1. `task generate-proto` 后编译通过，`genproto/` 无手工改动；
-2. `go build ./...` 通过；
-3. `task wire-all` 重新生成 wire_gen.go（构造器签名有变化时）；
-4. 新增方法跑一遍 `go vet ./...` 与 `gofmt -l .`（必须空输出）；
-5. 按 §8/§9 核对错误码与分页参数命名；
-6. 集成测试参照 `internal/api/servergrpc/projects_test.go`（stub repo + `contexts.WithPrincipal`）与
-   `internal/testutil`（真实 DB），详见 `docs/developer/11-testing.md`。
-
----
-
-## 12. 用 Torchwood CLI 调用 Server API
-
-`cmd/client`（二进制 `bin/torchwood[.exe]`，cobra）通过 gRPC 调用 Server API，认证走 `x-api-key` metadata（**不传** `X-Torchwood-Project`，该 header 仅对 admin console session 有效）。`health` 为公开命令、`uuid` 为本地工具（无需 key），其余命令必须先提供 API key（`--api-key` 或 `TORCHWOOD_CLI_API_KEY`）。
-
-常用示例：
-
-```bash
-torchwood health get
-torchwood uuid
-torchwood users list --api-key <secret> --page-size 20
-torchwood users create --email a@b.c --password 'pw' --data '{"labels":{"group":"core"}}'
-torchwood projects get default
-torchwood databases documents create app notes --data '{"title":"hi"}'
-torchwood storage usage
-torchwood functions executions create hello --input '{}' --async
-torchwood oauth-providers list
-torchwood rpc /torchwood.server.v1.UsersService/ListUsers --data '{"pageSize": 10}'
-```
-
-命令树（`torchwood --help`）：
-
-```text
-uuid         生成本地 UUID v4（无需 API key；纯文本输出，便于传给 --id）
-databases    create/list/get/delete；collections create/list/get/update/delete；
-             attributes create/delete；indexes create/delete；
-             documents create/list/get/update/upsert/delete/count/bulk-update/bulk-delete
-groups        create/list/get/delete；prefs get/update；memberships create/list/get/
-             update/update-status/delete
-storage      buckets create/list/get/update/delete；files list/get/update/delete；
-             usage（不做文件上传/下载与分片会话，也不提供 files create/token）
-functions    runtimes/specifications；create/list/get/update/delete；
-             deployments create/list/get/delete（create 走 gRPC 纯消息，≤8MiB；
-             更大代码包走 multipart 上传接口，≤50MiB）；
-             variables set/get；executions create/list/get
-oauth-providers list/upsert/delete（proto 无 get 方法）
-outbox       list-dead/replay（W-J 死信查询与重放；admin outbox list-dead/replay）
-```
-
-要点：
-
-- **动态分发机制**：`rpc` 逃生舱与全部具名命令最终都走 `sdk/go/server` 的
-  `InvokeJSON`——按 full method name 从 `protoregistry.GlobalFiles` 查找，限定
-  `torchwood.server.v1.*` 且排除 `APIKeysService`。**新增 Server API RPC 无需
-  在 CLI 登记**，proto 方法自动获得支持；`cmd/client/import_guard_test.go` 兜底
-  禁止 CLI 源码直接 import genproto/grpc/protobuf。
-- **具名命令**覆盖 `proto/server/v1` 全部资源（health/projects/users/databases/groups/
-  storage/functions/oauth-providers）以及本地 `uuid` 工具，方法级覆盖见上方命令树。
-- **请求参数**：标量用具名 flag，复杂结构（labels/prefs 等 `Struct`、document data）
-  用 `--data` 传 protojson（camelCase 字段名），与 flag 冲突时以 `--data` 为准。
-- **安全边界**：CLI 不提供 api-keys 命令（API Key 凭证被服务端拦截器禁止调用），
-  不提供 `projects create/update`（限平台 admin）。
-- 错误统一输出 `code + message`（`PermissionDenied` 附带 scope 提示）到 stderr，非 0 退出码。
-- 设计文档：`docs/implementation-bootstrap-and-cli.md` §4；快速上手：`docs/developer/02-quickstart.md` §7。
+- `AGENTS.md` §编辑遵循模式（端口/适配器、`reserved`/`optional`/`Timestamp`、`pkg/crud/pkg/query`）、`README.md` §Architecture。
+- `docs/developer/06-databases.md`（三层与 `pkg/query`）、`07-storage.md`（File Token 与 multipart）、`08-functions.md`（信号量与 Trim）。
+- `sdk/README.md` 与 `sdk/go/server`（`InvokeJSON` 动态分发，CLI `import_guard_test.go`）。
