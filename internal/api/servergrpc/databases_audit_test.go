@@ -27,7 +27,7 @@ func TestDatabasesService_AuditResource(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -81,7 +81,7 @@ func TestDatabasesService_UpsertDocumentAuditResource(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

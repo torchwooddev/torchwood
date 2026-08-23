@@ -32,7 +32,7 @@ func occTestProject(t *testing.T, ctx context.Context) (databases.DocumentDB, st
 		{Type: "delete", Role: "users"},
 	}, true))
 	cleanupFn := func() {
-		db.Close()
+		_ = db.Close()
 		cleanup()
 	}
 	return docDB, projectID, internalID, cleanupFn
@@ -214,7 +214,7 @@ func TestUpsert_NoVersionCheck(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -257,7 +257,7 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -294,7 +294,7 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -359,7 +359,7 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -403,7 +403,7 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -512,7 +512,7 @@ func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -561,7 +561,7 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -597,7 +597,7 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -626,7 +626,7 @@ func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
@@ -673,7 +673,7 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 

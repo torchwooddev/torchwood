@@ -22,7 +22,7 @@ func TestProviderIndex_KindsDoNotCollide(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	p1, _, c1 := testutil.CreateTestProject(ctx, db)
 	defer c1()

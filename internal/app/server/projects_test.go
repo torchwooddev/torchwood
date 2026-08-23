@@ -38,7 +38,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -97,7 +97,7 @@ func TestProjects_CreateProject_RequiresPlatformAdmin(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -131,7 +131,7 @@ func TestProjects_CreateProject_RejectsInvalidID(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -149,7 +149,7 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -220,7 +220,7 @@ func TestProjects_UpdateProject_PlatformAdminSuccess(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -254,7 +254,7 @@ func TestProjects_UpdateProject_RestrictedAdminOwnProject(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -275,7 +275,7 @@ func TestProjects_UpdateProject_RestrictedAdminOtherProjectNotFound(t *testing.T
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -305,7 +305,7 @@ func TestProjects_UpdateProject_ProjectNotFound(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -324,7 +324,7 @@ func TestProjects_UpdateProject_NothingToUpdate(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -342,7 +342,7 @@ func TestProjects_UpdateProject_EmptyID(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -360,7 +360,7 @@ func TestProjects_UpdateProject_BlankNameRejected(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -383,7 +383,7 @@ func TestProjects_UpdateProject_NameCollision(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -411,7 +411,7 @@ func TestProjects_CreateProject_RejectsLongDescription(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -444,7 +444,7 @@ func TestProjects_DeleteProject_DropsSchemas(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -483,7 +483,7 @@ func TestProjects_DeleteProject_RequiresPlatformAdmin(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -537,7 +537,7 @@ func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
@@ -599,7 +599,7 @@ func TestProjects_ListProjects_MemberGrantedProjects(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)

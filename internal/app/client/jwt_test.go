@@ -38,7 +38,7 @@ func TestAccount_CreateJWT(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer func() { _ = rdb.Close() }()
+	defer func() { _ = r_ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -135,13 +135,13 @@ func TestAccount_CreateJWT_SecondUseRejected(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer func() { _ = rdb.Close() }()
+	defer func() { _ = r_ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

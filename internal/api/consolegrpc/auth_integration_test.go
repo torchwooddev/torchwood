@@ -106,7 +106,7 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var payload signUpPayload
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	require.NotEmpty(t, payload.Admin.Role)
 	require.Equal(t, "owner", payload.Admin.Role)
@@ -144,7 +144,7 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 		NeedsSetup bool `json:"needs_setup"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&statusResp))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.False(t, statusResp.NeedsSetup)
 
 	// 3) 二次 sign-up → FailedPrecondition（grpc-gateway 映射为 HTTP 400）。
@@ -157,7 +157,7 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 		Message string `json:"message"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&errResp))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Contains(t, errResp.Message, "setup already completed")
 }
 
@@ -171,6 +171,6 @@ func TestBootstrap_SetupStatusBeforeSignUp(t *testing.T) {
 		NeedsSetup bool `json:"needs_setup"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&statusResp))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.True(t, statusResp.NeedsSetup)
 }

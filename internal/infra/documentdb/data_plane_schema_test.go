@@ -30,7 +30,7 @@ func TestDataPlaneSchema_DeleteDatabaseDefaultKeepsUsers(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -73,7 +73,7 @@ func TestDataPlaneSchema_DeleteDatabaseSentinelRefused(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -103,7 +103,7 @@ func TestDataPlaneSchema_CreateCollectionWhitelist(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -121,7 +121,7 @@ func TestDataPlaneSchema_SystemCRUDHitsOneSegment(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

@@ -174,7 +174,7 @@ func (d *dockerExecutor) Build(ctx context.Context, functionID, deploymentID, zi
 	if err != nil {
 		return fmt.Errorf("create build dir: %w", err)
 	}
-	defer os.RemoveAll(buildDir)
+	defer func() { _ = os.RemoveAll(buildDir) }()
 
 	runtime, err := extractZip(zipPath, buildDir)
 	if err != nil {
@@ -202,7 +202,7 @@ func (d *dockerExecutor) Build(ctx context.Context, functionID, deploymentID, zi
 		// daemon 侧构建失败时错误消息包含构建日志尾部。
 		return fmt.Errorf("docker build failed: %s", truncateLog(err.Error()))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// 读取构建输出（保留尾部 64KB）并扫描流内 {"error":...} JSON：
 	// BuildKit 模式下构建失败不返回 Go error，只在流末尾携带 error 消息。
 	log, buildErr := readBuildOutput(resp.Body)

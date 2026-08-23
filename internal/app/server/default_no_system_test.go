@@ -22,7 +22,7 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 	}
 	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := bunrepo.NewProjectRepository(db)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)

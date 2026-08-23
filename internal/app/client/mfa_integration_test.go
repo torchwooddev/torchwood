@@ -30,7 +30,7 @@ func TestMFAFullFlowIntegration(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = r_ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

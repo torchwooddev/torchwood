@@ -28,7 +28,7 @@ func TestP0_Section6_AdminProjectAccess(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	defer projectCleanup()
@@ -79,7 +79,7 @@ func TestP0_Section7_AuditLogs(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	defer projectCleanup()
@@ -138,7 +138,7 @@ func TestP0_Section8_AccessPermission(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	defer projectCleanup()
@@ -203,7 +203,7 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
 	defer projectCleanup()

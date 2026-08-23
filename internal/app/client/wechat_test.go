@@ -18,7 +18,7 @@ func TestAccount_ResolveWeChatUser_CrossProviderLink(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -57,7 +57,7 @@ func TestAccount_CreateWeChatMiniProgramSession(t *testing.T) {
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

@@ -38,7 +38,7 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 
 	ctx := serverWriteCtx()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -75,7 +75,7 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 	gotMeta, reader, err := uc.GetFile(ctx, projectID, bucket.ID, file.ID, principal)
 	require.NoError(t, err)
 	require.NotNil(t, gotMeta)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	gotContent, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Equal(t, content, gotContent)

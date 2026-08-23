@@ -26,7 +26,7 @@ func TestRedisRefreshRotationStore_RegisterRotateOK(t *testing.T) {
 	t.Cleanup(mr.Close)
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = r_ = db.Close() })
 
 	store := auth.NewRedisRefreshRotationStore(rdb)
 	ctx := context.Background()
@@ -48,7 +48,7 @@ func TestRedisRefreshRotationStore_RotateMismatchKeepsValue(t *testing.T) {
 	t.Cleanup(mr.Close)
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = r_ = db.Close() })
 
 	store := auth.NewRedisRefreshRotationStore(rdb)
 	ctx := context.Background()
@@ -70,7 +70,7 @@ func TestRedisRefreshRotationStore_RotateMissing(t *testing.T) {
 	t.Cleanup(mr.Close)
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = r_ = db.Close() })
 
 	store := auth.NewRedisRefreshRotationStore(rdb)
 	result, err := store.Rotate(context.Background(), domainauth.RefreshRotationKey("proj-1", "gone"), "tid-1", "tid-2", time.Hour)

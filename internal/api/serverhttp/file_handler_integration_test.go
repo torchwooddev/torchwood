@@ -51,7 +51,7 @@ func newUploadSessionStoreForTest(t *testing.T) domainstorage.UploadSessionStore
 	require.NoError(t, err)
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = r_ = db.Close() })
 	return infrastorage.NewRedisUploadSessionStore(rdb)
 }
 
@@ -489,7 +489,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 		adminCleanup()
 		otherCleanup()
 		projectCleanup()
-		db.Close()
+		_ = db.Close()
 	})
 
 	body := &bytes.Buffer{}

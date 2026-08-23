@@ -165,7 +165,7 @@ func TestCreateFile_Success(t *testing.T) {
 	require.Empty(t, files.deleted)
 	reader, err := memStore.Get(context.Background(), domainstorage.DefaultBucketName, objectKey("p1", "b1", file.ID))
 	require.NoError(t, err)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	got := make([]byte, 5)
 	_, err = reader.Read(got)
 	require.NoError(t, err)

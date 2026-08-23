@@ -21,7 +21,7 @@ func TestGroupRepository_AddTotalGREATESTAndConcurrent(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 	repo := bunrepo.NewGroupRepository(db)
@@ -93,7 +93,7 @@ func TestGroupRepository_RecountAcceptedAfterUserCascade(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
@@ -138,7 +138,7 @@ func TestMembershipRepository_AcceptCASAndDuplicates(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
@@ -304,7 +304,7 @@ func TestMembershipRepository_AcceptedInsertDeleteAdjustsTotal(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 

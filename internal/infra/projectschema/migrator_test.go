@@ -16,7 +16,7 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -60,7 +60,7 @@ func TestApply_RejectsInvalidProjectID(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	require.Error(t, projectschema.Apply(ctx, db, "_"))
 	require.Error(t, projectschema.Apply(ctx, db, "Default"))
@@ -73,7 +73,7 @@ func TestEnsureAll_AppliesListedProjects(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	p1, _, c1 := testutil.CreateTestProject(ctx, db)
 	defer c1()
@@ -100,7 +100,7 @@ func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
@@ -156,7 +156,7 @@ func TestApply_ReadyCacheAndInvalidate(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

@@ -42,7 +42,7 @@ func setupMagicURL(t *testing.T, withMailer bool) *magicURLFixture {
 	require.NoError(t, err)
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = r_ = db.Close() })
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	t.Cleanup(cleanup)

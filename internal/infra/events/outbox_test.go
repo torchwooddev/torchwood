@@ -126,7 +126,7 @@ func TestPublish_InsertsOutboxRow(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	o := NewEventOutbox(db)
 
 	ev := testEnvelope()
@@ -154,7 +154,7 @@ func TestPublish_WithinRunInTx(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	o := NewEventOutbox(db)
 	ctx := context.Background()
 

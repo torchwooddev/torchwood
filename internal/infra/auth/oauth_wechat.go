@@ -105,7 +105,7 @@ func (w *weChatOAuth) exchangeCode(ctx context.Context, code string) (map[string
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return decodeWeChatResponse(resp)
 }
 
@@ -122,7 +122,7 @@ func (w *weChatOAuth) fetchUserInfo(ctx context.Context, accessToken, openid str
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return decodeWeChatResponse(resp)
 }
 
@@ -148,7 +148,7 @@ func exchangeWeChatMiniProgramCode(ctx context.Context, client *http.Client, app
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	payload, err := decodeWeChatResponse(resp)
 	if err != nil {
 		return nil, err

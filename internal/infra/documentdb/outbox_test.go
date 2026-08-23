@@ -35,7 +35,7 @@ func outboxTestProject(t *testing.T, ctx context.Context) (databases.DocumentDB,
 		// 文档级写权限仅由 _perms 授予（避免集合级兜底影响断言）。
 	}, true))
 	cleanupFn := func() {
-		db.Close()
+		_ = db.Close()
 		cleanup()
 	}
 	return docDB, db, projectID, cleanupFn
@@ -365,7 +365,7 @@ func TestOutbox_SystemCollectionNoRows(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 	docDB := NewPostgresDocumentDB(db, events.NewEventOutbox(db))
@@ -429,7 +429,7 @@ func TestOutbox_NoPublisherIsNop(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 	docDB := NewPostgresDocumentDB(db, nil)

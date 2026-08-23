@@ -16,7 +16,7 @@ func TestRedisQueue_EnqueueDequeueRoundtrip(t *testing.T) {
 	defer mr.Close()
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	q := NewRedisQueue(rdb)
 	ctx := context.Background()
 
@@ -47,7 +47,7 @@ func TestRedisQueue_DequeueBlocksUntilValue(t *testing.T) {
 	defer mr.Close()
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	q := NewRedisQueue(rdb)
 	ctx := context.Background()
 
@@ -78,7 +78,7 @@ func TestRedisQueue_NotAckRedelivers(t *testing.T) {
 	defer mr.Close()
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	q := NewRedisQueue(rdb)
 	ctx := context.Background()
 
@@ -110,7 +110,7 @@ func TestRedisQueue_InFlightNotReclaimed(t *testing.T) {
 	defer mr.Close()
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	q := NewRedisQueue(rdb)
 	ctx := context.Background()
 

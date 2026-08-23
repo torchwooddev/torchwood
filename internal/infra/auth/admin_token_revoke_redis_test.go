@@ -18,7 +18,7 @@ func TestRedisAdminTokenRevokeStore(t *testing.T) {
 	t.Cleanup(mr.Close)
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = r_ = db.Close() })
 
 	store := auth.NewRedisAdminTokenRevokeStore(rdb)
 	ctx := context.Background()

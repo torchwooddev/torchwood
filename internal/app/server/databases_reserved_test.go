@@ -64,7 +64,7 @@ func TestDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 
 	ctx := platformAdminCtx(context.Background())
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

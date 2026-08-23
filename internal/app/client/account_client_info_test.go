@@ -21,7 +21,7 @@ func TestAccount_SignInRecordsClientInfo(t *testing.T) {
 	})
 
 	db := testutil.SetupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()

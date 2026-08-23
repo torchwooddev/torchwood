@@ -43,7 +43,7 @@ func setupMFATestAccount(t *testing.T) (context.Context, *Account, string, strin
 	require.NoError(t, err)
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = r_ = db.Close() })
 
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	t.Cleanup(cleanup)
@@ -119,7 +119,7 @@ func TestAccount_CreateTOTPFactor_RequiresJWTSecret(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = r_ = db.Close() }()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 

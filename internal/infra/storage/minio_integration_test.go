@@ -72,7 +72,7 @@ func TestMinio_ComposeTwoParts(t *testing.T) {
 
 	reader, err := m.Get(ctx, bucket, dst)
 	require.NoError(t, err)
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	got, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	want := append(append([]byte{}, part1...), part2...)

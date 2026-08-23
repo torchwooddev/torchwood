@@ -51,7 +51,7 @@ func TestHealthz_Readiness(t *testing.T) {
 		for time.Now().Before(deadline) {
 			resp, err = http.Get(base + "/healthz/liveness")
 			if err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				return resp
 			}
 			time.Sleep(20 * time.Millisecond)
@@ -66,12 +66,12 @@ func TestHealthz_Readiness(t *testing.T) {
 
 		resp, err := http.Get("http://" + addr + "/healthz/readiness")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		resp, err = http.Get("http://" + addr + "/healthz/liveness")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
@@ -81,12 +81,12 @@ func TestHealthz_Readiness(t *testing.T) {
 
 		resp, err := http.Get("http://" + addr + "/healthz/readiness")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 
 		resp, err = http.Get("http://" + addr + "/healthz/liveness")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }
