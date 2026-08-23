@@ -69,7 +69,7 @@ x-api-key metadata（scope 见 API Key 的 scopes）。默认连接 127.0.0.1:90
 		NewStorageCmd(g),
 		NewFunctionsCmd(g),
 		NewOAuthProvidersCmd(g),
-		NewOutboxCmd(g),
+		NewAdminCmd(g),
 		NewRPCCmd(g),
 	)
 	return root
