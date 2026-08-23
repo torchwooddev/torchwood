@@ -114,9 +114,11 @@ func (s *Subscriber) processPayload(ctx context.Context, payload string) {
 		return
 	}
 	s.hub.Dispatch(ev)
-	if _, err := s.db.Conn(ctx).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if _, err := s.db.Conn(ctx2).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
 		Set("published_at = NOW()").
-		Where("event_id = ?", ev.EventID).Exec(ctx); err != nil {
+		Where("event_id = ?", ev.EventID).Exec(ctx2); err != nil {
 		s.logger.Error("mark outbox published failed", "event_id", ev.EventID, "error", err)
 	}
 }

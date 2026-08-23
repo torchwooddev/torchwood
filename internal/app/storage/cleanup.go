@@ -19,7 +19,9 @@ const orphanChunkAge = 48 * time.Hour
 // 分片 key 前缀 `{projectID}/` 与文件对象相同，过滤以 "/chunks/" 段为准
 // （文件对象 key 无该段）。返回删除的对象数。
 func (s *Storage) CleanupOrphanChunks(ctx context.Context) (int, error) {
-	projects, err := s.projectRepo.ListProjects(ctx)
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	projects, err := s.projectRepo.ListProjects(ctx2)
 	if err != nil {
 		return 0, fmt.Errorf("list projects: %w", err)
 	}
