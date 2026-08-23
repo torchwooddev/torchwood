@@ -97,4 +97,6 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.ProjectsService/CreateProject": {"owner", "admin"},
 	"/torchwood.server.v1.ProjectsService/UpdateProject": {"member", "owner", "admin"},
 	"/torchwood.server.v1.ProjectsService/DeleteProject": {"owner", "admin"},
+	// OutboxService（死信重放是平台运维敏感写，仅 owner/admin）
+	"/torchwood.server.v1.OutboxService/ReplayDeadLetter": {"owner", "admin"},
 }

@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package torchwood.server.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/server/v1;serverv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "shared/v1/authz.proto";
+import "shared/v1/common.proto";
+
+// OutboxService 管理死信（W-J）。仅平台运维可读/重放，scope outbox:read/write。
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  security_definitions: {
+    security: {
+      key: "apiKey"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "X-API-Key"
+        description: "API key"
+      }
+    }
+    security: {
+      key: "Bearer"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "Bearer <jwt>"
+      }
+    }
+    security: {
+      key: "cookie"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Cookie"
+        description: "TORCHWOOD_session_console=<sid>"
+      }
+    }
+  }
+  security: {
+    security_requirement: {
+      key: "apiKey"
+      value: {}
+    }
+  }
+  extensions: {
+    key: "x-torchwood-access"
+    value: { string_value: "api_key" }
+  }
+};
+
+service OutboxService {
+  option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
+
+  rpc ListDeadLetters(ListDeadLettersRequest) returns (ListDeadLettersResponse) {
+    option (google.api.http) = { get: "/v1/server/outbox/dead-letters" };
+  }
+
+  rpc ReplayDeadLetter(ReplayDeadLetterRequest) returns (ReplayDeadLetterResponse) {
+    option (google.api.http) = { post: "/v1/server/outbox/dead-letters/{event_id}:replay", body: "*" };
+  }
+}
+
+message ListDeadLettersRequest {
+  string project_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message DeadLetter {
+  string event_id = 1;
+  string project_id = 2;
+  string topic = 3;
+  string channel = 4;
+  bytes payload = 5;
+  int32 attempts = 6;
+  string last_error = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListDeadLettersResponse {
+  repeated DeadLetter dead_letters = 1;
+  shared.v1.ListResponseMeta meta = 2;
+}
+
+message ReplayDeadLetterRequest {
+  string event_id = 1;
+  string project_id = 2;
+}
+
+message ReplayDeadLetterResponse {
+  string event_id = 1;
+  google.protobuf.Timestamp available_at = 2;
+}

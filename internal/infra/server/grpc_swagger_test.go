@@ -38,6 +38,7 @@ func businessFileDescriptors() []protoreflect.FileDescriptor {
 		serverv1.File_server_v1_assets_proto,
 		serverv1.File_server_v1_subscriptions_proto,
 		serverv1.File_server_v1_billing_proto,
+		serverv1.File_server_v1_outbox_proto,
 		consolev1.File_console_v1_auth_proto,
 		consolev1.File_console_v1_admins_proto,
 	}

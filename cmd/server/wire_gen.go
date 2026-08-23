@@ -18,6 +18,7 @@ import (
 	billing2 "github.com/torchwooddev/torchwood/internal/app/billing"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
+	events2 "github.com/torchwooddev/torchwood/internal/app/events"
 	functions2 "github.com/torchwooddev/torchwood/internal/app/functions"
 	payments2 "github.com/torchwooddev/torchwood/internal/app/payments"
 	"github.com/torchwooddev/torchwood/internal/app/server"
@@ -162,7 +163,10 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	setup := console.NewSetup(appConfig, admins, projects, consoleAuth, adminRepository, adminProjectRepository, repository)
 	authService := consolegrpc.NewAuthService(consoleAuth, setup)
 	adminsService := consolegrpc.NewAdminsService(admins)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, auditRepository, redisRateLimiter, checkers, accountService, databasesService, groupsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcGroupsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, billingService, redisCounter, authService, adminsService)
+	outboxRepository := bunrepo.NewOutboxRepository(database)
+	outboxAdmin := events2.NewOutboxAdmin(outboxRepository)
+	outboxService := servergrpc.NewOutboxService(outboxAdmin)
+	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, auditRepository, redisRateLimiter, checkers, accountService, databasesService, groupsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcGroupsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, billingService, redisCounter, authService, adminsService, outboxService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

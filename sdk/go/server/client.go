@@ -75,6 +75,8 @@ type Client struct {
 	Subscriptions *SubscriptionsService
 	// Billing 提供用量合计、小时 rollup 与月账单文档（只读）。
 	Billing *BillingService
+	// Outbox 提供死信查询与重放。
+	Outbox *OutboxService
 }
 
 // New 建立 Server API 连接。target 为 gRPC 目标地址，不能为空。
@@ -106,6 +108,7 @@ func New(target string, opts ...Option) (*Client, error) {
 	c.Assets = &AssetsService{c: c, api: serverv1.NewAssetsServiceClient(gc)}
 	c.Subscriptions = &SubscriptionsService{c: c, api: serverv1.NewSubscriptionsServiceClient(gc)}
 	c.Billing = &BillingService{c: c, api: serverv1.NewBillingServiceClient(gc)}
+	c.Outbox = &OutboxService{c: c, api: serverv1.NewOutboxServiceClient(gc)}
 	return c, nil
 }
 

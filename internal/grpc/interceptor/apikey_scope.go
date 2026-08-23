@@ -147,6 +147,9 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.FunctionsService/CreateExecution":    {"functions", "write"},
 	"/torchwood.server.v1.FunctionsService/ListExecutions":     {"functions", "read"},
 	"/torchwood.server.v1.FunctionsService/GetExecution":       {"functions", "read"},
+	// OutboxService (W-J)
+	"/torchwood.server.v1.OutboxService/ListDeadLetters":  {"outbox", "read"},
+	"/torchwood.server.v1.OutboxService/ReplayDeadLetter": {"outbox", "write"},
 }
 
 // validAPIKeyScopes 是 API key scope 允许的格式全集：{*, all, 裸资源名,

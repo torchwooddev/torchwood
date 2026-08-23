@@ -1,0 +1,80 @@
+package servergrpc
+
+import (
+	"context"
+
+	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+	"github.com/torchwooddev/torchwood/internal/app/events"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+type OutboxService struct {
+	serverv1.UnimplementedOutboxServiceServer
+	outbox *events.OutboxAdmin
+}
+
+func NewOutboxService(outbox *events.OutboxAdmin) *OutboxService {
+	return &OutboxService{outbox: outbox}
+}
+
+func (s *OutboxService) ListDeadLetters(ctx context.Context, req *serverv1.ListDeadLettersRequest) (*serverv1.ListDeadLettersResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		projectID = req.GetProjectId()
+	}
+	if projectID == "" {
+		return nil, status.Error(codes.InvalidArgument, "project_id is required")
+	}
+	ctx = contexts.WithAuditResource(ctx, "outbox/dead")
+	letters, total, next, err := s.outbox.ListDeadLetters(ctx, projectID, req.GetPageSize(), req.GetPageToken())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*serverv1.DeadLetter, len(letters))
+	for i, dl := range letters {
+		out[i] = &serverv1.DeadLetter{
+			EventId:   dl.EventID,
+			ProjectId: dl.ProjectID,
+			Topic:     dl.Topic,
+			Channel:   dl.Channel,
+			Payload:   dl.Payload,
+			Attempts:  dl.Attempts,
+			LastError: dl.LastError,
+			CreatedAt: timestamppb.New(dl.CreatedAt),
+		}
+	}
+	return &serverv1.ListDeadLettersResponse{
+		DeadLetters: out,
+		Meta:        &sharedv1.ListResponseMeta{PageSize: req.GetPageSize(), TotalCount: int32(total), NextPageToken: next},
+	}, nil
+}
+
+func (s *OutboxService) ReplayDeadLetter(ctx context.Context, req *serverv1.ReplayDeadLetterRequest) (*serverv1.ReplayDeadLetterResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		projectID = req.GetProjectId()
+	}
+	if req.GetEventId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "event_id is required")
+	}
+	if projectID == "" {
+		return nil, status.Error(codes.InvalidArgument, "project_id is required")
+	}
+	ctx = contexts.WithAuditResource(ctx, "outbox/dead/"+req.GetEventId())
+	if err := s.outbox.ReplayDeadLetter(ctx, req.GetEventId(), projectID); err != nil {
+		return nil, err
+	}
+	return &serverv1.ReplayDeadLetterResponse{EventId: req.GetEventId()}, nil
+}
+
+func (s *OutboxService) projectID(ctx context.Context) string {
+	p, ok := contexts.Principal(ctx)
+	if !ok {
+		return ""
+	}
+	return p.ProjectID
+}

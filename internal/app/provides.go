@@ -6,6 +6,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/billing"
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	"github.com/torchwooddev/torchwood/internal/app/console"
+	"github.com/torchwooddev/torchwood/internal/app/events"
 	"github.com/torchwooddev/torchwood/internal/app/functions"
 	"github.com/torchwooddev/torchwood/internal/app/payments"
 	"github.com/torchwooddev/torchwood/internal/app/server"
@@ -33,6 +34,7 @@ var ProviderSet = wire.NewSet(
 	storage.NewStorage,
 	functions.NewFunctionsWithUsage,
 	functions.ProvideSemaphores,
+	events.NewOutboxAdmin,
 	payments.NewPayments,
 	assets.NewAssets,
 	subscriptions.NewSubscriptions,
