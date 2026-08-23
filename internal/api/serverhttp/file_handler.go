@@ -505,7 +505,7 @@ func (h *FileHandler) download(w http.ResponseWriter, r *http.Request, pathParam
 		httpError(w, err)
 		return
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	h.logOp(r, "download", bucketID, fileID, actor, nil)
 
 	w.Header().Set("Content-Type", file.MimeType)
@@ -670,7 +670,7 @@ func (h *FileHandler) preview(w http.ResponseWriter, r *http.Request, pathParams
 		httpError(w, err)
 		return
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	if _, ok := previewImageMimeTypes[file.MimeType]; !ok {
 		httpError(w, status.Error(codes.InvalidArgument, "file type is not previewable"))

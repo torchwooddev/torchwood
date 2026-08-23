@@ -29,7 +29,7 @@ func (f *storageHTTPFixture) doJSON(method, path string, body any, headers map[s
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(f.t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	payload := map[string]any{}
 	if resp.StatusCode < 300 {
 		require.NoError(f.t, json.NewDecoder(resp.Body).Decode(&payload))
@@ -58,7 +58,7 @@ func (f *storageHTTPFixture) uploadChunkViaHTTP(bucketID, uploadID string, partN
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(f.t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var payload struct {
 		ReceivedCount int `json:"received_count"`
 	}

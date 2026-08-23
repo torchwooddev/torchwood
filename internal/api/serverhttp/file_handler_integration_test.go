@@ -106,7 +106,7 @@ func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
 		server.Close()
 		keyCleanup()
 		projectCleanup()
-		db.Close()
+		_ = db.Close()
 	})
 
 	return &storageHTTPFixture{
@@ -150,7 +150,7 @@ func (f *storageHTTPFixture) upload(content []byte, headers map[string]string, c
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(f.t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var payload struct {
 		ID       string `json:"id"`
@@ -173,7 +173,7 @@ func (f *storageHTTPFixture) download(path string, headers map[string]string) (i
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(f.t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	require.NoError(f.t, err)
 	return resp.StatusCode, data, resp.Header
@@ -320,7 +320,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 		server.Close()
 		cleanupB()
 		cleanupA()
-		db.Close()
+		_ = db.Close()
 	})
 
 	userHeaders := map[string]string{"Authorization": "Bearer " + tokens.AccessToken}
@@ -346,7 +346,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 		ID string `json:"id"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	require.NotEmpty(t, created.ID)
 
@@ -366,7 +366,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	reqB.Header.Set("X-Torchwood-Project", projectB)
 	respB, err := http.DefaultClient.Do(reqB)
 	require.NoError(t, err)
-	respB.Body.Close()
+	_ = respB.Body.Close()
 	require.NotEqual(t, http.StatusCreated, respB.StatusCode)
 
 	downloadReq, err := http.NewRequest(
@@ -380,7 +380,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	}
 	downloadResp, err := http.DefaultClient.Do(downloadReq)
 	require.NoError(t, err)
-	defer downloadResp.Body.Close()
+	defer func() { _ = downloadResp.Body.Close() }()
 	require.Equal(t, http.StatusOK, downloadResp.StatusCode)
 	got, err := io.ReadAll(downloadResp.Body)
 	require.NoError(t, err)
@@ -428,7 +428,7 @@ func TestFileHandler_APIKeyRequiresStorageScope(t *testing.T) {
 		server.Close()
 		keyCleanup()
 		projectCleanup()
-		db.Close()
+		_ = db.Close()
 	})
 
 	_, _, status := (&storageHTTPFixture{
@@ -508,7 +508,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
@@ -682,7 +682,7 @@ func (f *storageHTTPFixture) uploadTo(bucketID string, content []byte, headers m
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(f.t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var payload struct {
 		ID       string `json:"id"`

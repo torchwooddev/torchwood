@@ -142,7 +142,7 @@ func (h *FunctionsHandler) upload(w http.ResponseWriter, r *http.Request, pathPa
 		httpError(w, status.Error(codes.Internal, "cannot open uploaded code package"))
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	code, err := io.ReadAll(io.LimitReader(f, maxCodePackageBytes+1))
 	if err != nil {
