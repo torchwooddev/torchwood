@@ -75,7 +75,6 @@
         ]
       },
       "post": {
-        "summary": "API key 凭证禁止调用本服务（IsAPIKeysServiceMethod 拦截，防自铸 key 提权），\r\n仅 admin console session 可管理；全部方法显式声明 method_auth（R10-P1-1）。",
         "operationId": "APIKeysService_CreateAPIKey",
         "responses": {
           "200": {

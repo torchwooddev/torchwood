@@ -30,8 +30,6 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type APIKeysServiceClient interface {
-	// API key 凭证禁止调用本服务（IsAPIKeysServiceMethod 拦截，防自铸 key 提权），
-	// 仅 admin console session 可管理；全部方法显式声明 method_auth（R10-P1-1）。
 	CreateAPIKey(ctx context.Context, in *CreateAPIKeyRequest, opts ...grpc.CallOption) (*APIKeyWithSecret, error)
 	ListAPIKeys(ctx context.Context, in *v1.ListRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error)
 	GetAPIKey(ctx context.Context, in *GetAPIKeyRequest, opts ...grpc.CallOption) (*APIKey, error)
@@ -90,8 +88,6 @@ func (c *aPIKeysServiceClient) DeleteAPIKey(ctx context.Context, in *GetAPIKeyRe
 // All implementations must embed UnimplementedAPIKeysServiceServer
 // for forward compatibility.
 type APIKeysServiceServer interface {
-	// API key 凭证禁止调用本服务（IsAPIKeysServiceMethod 拦截，防自铸 key 提权），
-	// 仅 admin console session 可管理；全部方法显式声明 method_auth（R10-P1-1）。
 	CreateAPIKey(context.Context, *CreateAPIKeyRequest) (*APIKeyWithSecret, error)
 	ListAPIKeys(context.Context, *v1.ListRequest) (*ListAPIKeysResponse, error)
 	GetAPIKey(context.Context, *GetAPIKeyRequest) (*APIKey, error)

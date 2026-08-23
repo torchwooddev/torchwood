@@ -55,10 +55,11 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
 };
 
 service APIKeysService {
+  // 注意：本服务名义上标记为 ACCESS_API_KEY（历史原因，见 W-K），
+  // 但运行时通过 IsAPIKeysServiceMethod 拦截禁止任何 API key 凭证调用，
+  // 仅允许 admin console session（owner/admin）管理，防止泄露的 key 自铸新 key 永久提权。
+  // 未来应新增 ACCESS_CONSOLE 显式表达 console-only 语义（W-K 待办）。
   option (torchwood.shared.v1.service_auth) = { default_access: ACCESS_API_KEY };
-
-  // API key 凭证禁止调用本服务（IsAPIKeysServiceMethod 拦截，防自铸 key 提权），
-  // 仅 admin console session 可管理；全部方法显式声明 method_auth（R10-P1-1）。
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (APIKeyWithSecret) {
     option (google.api.http) = { post: "/v1/server/api-keys", body: "*" };
     option (torchwood.shared.v1.method_auth) = { access: ACCESS_API_KEY };
