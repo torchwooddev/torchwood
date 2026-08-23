@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package torchwood.shared.v1;
+
+option go_package = "github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1";
+
+import "google/protobuf/timestamp.proto";
+
+// TokenBundle 是可复用的令牌束（W-K 共享基底）。
+// 客户端与服务端的 TokenBundle 语义一致（access/refresh/expires_at），
+// 字段号与 server/v1/users.proto TokenBundle 保持一致，client/v1/account.proto
+// 的同名消息应逐步迁移至此类型（当前保留本地定义，仅通过 buf breaking 保证不漂移）。
+message TokenBundle {
+  string access_token = 1;
+  string refresh_token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// Session 是用户会话的共享视图（W-K）。
+// server 的 Session 含 7 字段，client 的 Session 额外有 current 字段（8）。
+// 共享基底采用 server 的 7 字段为最小公共集，client 的 current 扩展保留在本地。
+message Session {
+  string id = 1;
+  string user_id = 2;
+  string provider = 3;
+  string user_agent = 4;
+  string ip = 5;
+  google.protobuf.Timestamp expire_at = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+// Group 是用户组的共享视图（W-K）。
+// server 的 Group 含 permissions 字段（4），client 侧无；共享基底保留 permissions
+// 为可选扩展，client 迁移后可直接使用。
+message Group {
+  string id = 1;
+  string name = 2;
+  int32 total = 3;
+  repeated string permissions = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// SubscriptionPlan 订阅计划的共享视图（W-K）。
+// 以 server 的 15 字段为全集，client 的 10 字段为子集（缺少 project_id/provider_overrides/status/timestamps 的扩展字段）。
+message SubscriptionPlan {
+  string id = 1;
+  string project_id = 2;
+  string code = 3;
+  string name = 4;
+  int64 amount = 5;
+  string currency = 6;
+  string interval = 7;
+  int64 interval_days = 8;
+  int32 grace_days = 9;
+  int32 trial_days = 10;
+  // Benefits 与 ProviderOverrides 在共享层暂保留为透传结构，
+  // 迁移时可进一步抽取为共享的 Benefits 消息（当前仅占位）。
+  // 为避免与现有 Benefits 定义冲突，此处先保留空扩展点。
+  // 实际迁移应将 BenefitGrant/BenefitEntitlement/Benefits 一并抽取。
+  // 字段 11/12 预留给 benefits/provider_overrides，13 为 status，14/15 为 timestamps。
+  string status = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+// Subscription 订阅实例的共享视图（W-K）。
+// server 的 17 字段为全集，client 的 12 字段为子集。
+message Subscription {
+  string id = 1;
+  string project_id = 2;
+  string user_id = 3;
+  string plan_id = 4;
+  string plan_code = 5;
+  string mode = 6;
+  string provider = 7;
+  string provider_sub_id = 8;
+  string status = 9;
+  google.protobuf.Timestamp current_period_start = 10;
+  google.protobuf.Timestamp current_period_end = 11;
+  bool cancel_at_period_end = 12;
+  google.protobuf.Timestamp grace_until = 13;
+  string billing_asset_code = 14;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+}

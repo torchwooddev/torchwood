@@ -68,6 +68,9 @@ jobs:
       - name: Buf lint
         run: buf lint
 
+      - name: Buf breaking (proto field drift)
+        run: buf breaking --against '.git#branch=origin/main'
+
       - name: Pre-pull function runtime base images
         run: docker pull node:18-alpine && docker pull python:3.11-alpine
 

@@ -22,6 +22,12 @@ tasks:
       - buf lint
       - buf generate
 
+  lint-proto:
+    dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - buf lint
+      - buf breaking --against '.git#branch=origin/main'
+
   up:
     dir: '{{.USER_WORKING_DIR}}/docker/local'
     cmds:
