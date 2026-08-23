@@ -35,7 +35,7 @@ func TestRedisSemaphore_Basic(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	sem := NewRedis(rdb, "test:sem:basic", 2, 10*time.Second)
 	require.NotNil(t, sem)
@@ -72,7 +72,7 @@ func TestRedisSemaphore_TTLExpiry(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	sem := NewRedis(rdb, "test:sem:ttl", 1, 1*time.Second)
 	ok, _, err := sem.TryAcquire(context.Background())
@@ -98,7 +98,7 @@ func TestRedisSemaphore_LuaCompareAndDel(t *testing.T) {
 	require.NoError(t, err)
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	sem := NewRedis(rdb, "test:sem:lua", 1, 10*time.Second)
 	ok, rel, err := sem.TryAcquire(context.Background())
@@ -107,7 +107,7 @@ func TestRedisSemaphore_LuaCompareAndDel(t *testing.T) {
 
 	// Simulate another holder overwriting the key after TTL (but before release)
 	// by manually setting a different token
-	mr.Set("test:sem:lua:slot:0", "other-token")
+	require.NoError(t, mr.Set("test:sem:lua:slot:0", "other-token"))
 
 	// Our release should not delete the other holder's key (Lua compare-and-del)
 	rel()
