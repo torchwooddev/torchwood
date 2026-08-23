@@ -32,6 +32,9 @@ const (
 	outboxPublishedRetention = 24 * time.Hour
 	// outboxDeadRetention 是死信行保留窗口。
 	outboxDeadRetention = 30 * 24 * time.Hour
+	// outboxStatementTimeout 是每条 DB 语句的独立超时（W-H per-语句 deadline，
+	// 防单条慢查询卡住 200ms 轮询；事务整体取 2*statement）。
+	outboxStatementTimeout = 5 * time.Second
 )
 
 // outbox 领取与投递指标（前缀 torchwood_，注册到默认注册表，
@@ -107,10 +110,14 @@ func (w *OutboxWorker) Run(ctx context.Context) error {
 // pollOnce 领取一轮：主路径（dispatched_at IS NULL）+ 2min 整进程挂死
 // 兜底（dispatched_at 过旧）合并为同一查询（v2 设计 §3.4 领取 SQL）。
 func (w *OutboxWorker) pollOnce(ctx context.Context) error {
-	if n, err := w.db.Conn(ctx).NewSelect().Model((*model.DocumentEventsOutbox)(nil)).
-		Where("published_at IS NULL").Count(ctx); err == nil {
-		outboxPending.Set(float64(n))
-	}
+	func() {
+		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
+		defer cancel()
+		if n, err := w.db.Conn(ctx2).NewSelect().Model((*model.DocumentEventsOutbox)(nil)).
+			Where("published_at IS NULL").Count(ctx2); err == nil {
+			outboxPending.Set(float64(n))
+		}
+	}()
 
 	rows, err := w.claim(ctx)
 	if err != nil {
@@ -128,7 +135,9 @@ func (w *OutboxWorker) pollOnce(ctx context.Context) error {
 // claim 后崩溃的行由 2min redispatch 窗口兜底重发。
 func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox, error) {
 	var rows []model.DocumentEventsOutbox
-	err := w.db.RunInTx(ctx, func(txCtx context.Context) error {
+	ctx2, cancel := context.WithTimeout(ctx, 2*outboxStatementTimeout)
+	defer cancel()
+	err := w.db.RunInTx(ctx2, func(txCtx context.Context) error {
 		if err := w.db.Conn(txCtx).NewSelect().Model(&rows).
 			Column("event_id", "payload", "channel", "created_at", "attempts").
 			Where("published_at IS NULL").
@@ -162,28 +171,40 @@ func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox,
 
 // cleanupOnce 删除超过保留窗口的已发布行与死信行（表无限增长治理）。
 func (w *OutboxWorker) cleanupOnce(ctx context.Context) {
-	if n, err := w.db.Conn(ctx).NewSelect().TableExpr("document_events_outbox_dead").Count(ctx); err == nil {
-		outboxDead.Set(float64(n))
-	}
-	if res, err := w.db.Conn(ctx).NewDelete().Model((*model.DocumentEventsOutbox)(nil)).
-		Where("published_at IS NOT NULL").
-		Where("published_at < ?", time.Now().Add(-outboxPublishedRetention)).
-		Exec(ctx); err == nil {
-		if n, _ := res.RowsAffected(); n > 0 {
-			w.logger.Info("outbox purged published rows", "count", n)
+	func() {
+		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
+		defer cancel()
+		if n, err := w.db.Conn(ctx2).NewSelect().TableExpr("document_events_outbox_dead").Count(ctx2); err == nil {
+			outboxDead.Set(float64(n))
 		}
-	} else if ctx.Err() == nil {
-		w.logger.Error("outbox purge published failed", "error", err)
-	}
-	if res, err := w.db.Conn(ctx).NewRaw(
-		`DELETE FROM document_events_outbox_dead WHERE created_at < ?`,
-		time.Now().Add(-outboxDeadRetention)).Exec(ctx); err == nil {
-		if n, _ := res.RowsAffected(); n > 0 {
-			w.logger.Info("outbox purged dead rows", "count", n)
+	}()
+	func() {
+		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
+		defer cancel()
+		if res, err := w.db.Conn(ctx2).NewDelete().Model((*model.DocumentEventsOutbox)(nil)).
+			Where("published_at IS NOT NULL").
+			Where("published_at < ?", time.Now().Add(-outboxPublishedRetention)).
+			Exec(ctx2); err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				w.logger.Info("outbox purged published rows", "count", n)
+			}
+		} else if ctx.Err() == nil {
+			w.logger.Error("outbox purge published failed", "error", err)
 		}
-	} else if ctx.Err() == nil {
-		w.logger.Error("outbox purge dead failed", "error", err)
-	}
+	}()
+	func() {
+		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
+		defer cancel()
+		if res, err := w.db.Conn(ctx2).NewRaw(
+			`DELETE FROM document_events_outbox_dead WHERE created_at < ?`,
+			time.Now().Add(-outboxDeadRetention)).Exec(ctx2); err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				w.logger.Info("outbox purged dead rows", "count", n)
+			}
+		} else if ctx.Err() == nil {
+			w.logger.Error("outbox purge dead failed", "error", err)
+		}
+	}()
 }
 
 // dispatch 把单行信封 XADD 到 Stream。dispatched_at 已在 claim 事务内标记，
@@ -215,7 +236,9 @@ func (w *OutboxWorker) dispatch(ctx context.Context, row *model.DocumentEventsOu
 func (w *OutboxWorker) failRow(ctx context.Context, row *model.DocumentEventsOutbox, cause error) {
 	attempts := row.Attempts + 1
 	if attempts >= maxOutboxAttempts {
-		if err := w.db.RunInTx(ctx, func(txCtx context.Context) error {
+		ctx2, cancel := context.WithTimeout(ctx, 2*outboxStatementTimeout)
+		defer cancel()
+		if err := w.db.RunInTx(ctx2, func(txCtx context.Context) error {
 			if _, err := w.db.Conn(txCtx).NewRaw(`INSERT INTO document_events_outbox_dead
 				(event_id, project_id, topic, channel, payload, attempts, last_error, created_at)
 				SELECT event_id, project_id, topic, channel, payload, ? AS attempts, ? AS last_error, created_at
@@ -240,11 +263,15 @@ func (w *OutboxWorker) failRow(ctx context.Context, row *model.DocumentEventsOut
 	if backoff > outboxMaxBackoff {
 		backoff = outboxMaxBackoff
 	}
-	if _, err := w.db.Conn(ctx).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
-		Set("attempts = attempts + 1").
-		Set("available_at = ?", time.Now().Add(backoff)).
-		Set("dispatched_at = NULL").
-		Where("event_id = ?", row.EventID).Exec(ctx); err != nil {
-		w.logger.Error("mark outbox retry failed", "event_id", row.EventID, "error", err)
-	}
+	func() {
+		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
+		defer cancel()
+		if _, err := w.db.Conn(ctx2).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
+			Set("attempts = attempts + 1").
+			Set("available_at = ?", time.Now().Add(backoff)).
+			Set("dispatched_at = NULL").
+			Where("event_id = ?", row.EventID).Exec(ctx2); err != nil {
+			w.logger.Error("mark outbox retry failed", "event_id", row.EventID, "error", err)
+		}
+	}()
 }
