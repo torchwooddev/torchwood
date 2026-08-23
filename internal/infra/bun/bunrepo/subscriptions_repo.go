@@ -26,11 +26,13 @@ func NewSubscriptionPlanRepository(db *clients.Database) subscriptions.PlanRepo 
 }
 
 func (r *subscriptionPlanRepo) Insert(ctx context.Context, plan *subscriptions.Plan) error {
-	conn, sch, expr, err := Scoped(ctx, r.db, plan.ProjectID, "subscription_plans", "sp")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, plan.ProjectID, "subscription_plans", "sp")
 	if err != nil {
 		return err
 	}
-	_, err = conn.NewInsert().Model(mapPlanToModel(plan)).ModelTableExpr(expr, sch).Exec(ctx)
+	_, err = conn.NewInsert().Model(mapPlanToModel(plan)).ModelTableExpr(expr, sch).Exec(ctx2)
 	if isSubUniqueViolation(err) {
 		return subscriptions.ErrDuplicateCode
 	}
@@ -54,7 +56,9 @@ func (r *subscriptionPlanRepo) GetByIDForShare(ctx context.Context, projectID, p
 }
 
 func (r *subscriptionPlanRepo) selectPlan(ctx context.Context, projectID, pred string, arg any, lock string) (*subscriptions.Plan, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscription_plans", "sp")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscription_plans", "sp")
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +69,7 @@ func (r *subscriptionPlanRepo) selectPlan(ctx context.Context, projectID, pred s
 		q = q.For(lock)
 	}
 	m := new(model.SubscriptionPlan)
-	if err := q.Scan(ctx, m); err != nil {
+	if err := q.Scan(ctx2, m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -75,7 +79,9 @@ func (r *subscriptionPlanRepo) selectPlan(ctx context.Context, projectID, pred s
 }
 
 func (r *subscriptionPlanRepo) List(ctx context.Context, projectID string, includeArchived bool, limit int, before time.Time) ([]subscriptions.Plan, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscription_plans", "sp")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscription_plans", "sp")
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +92,7 @@ func (r *subscriptionPlanRepo) List(ctx context.Context, projectID string, inclu
 	if !includeArchived {
 		q = q.Where("sp.status = ?", string(subscriptions.PlanStatusActive))
 	}
-	if err := q.Order("sp.created_at DESC").Limit(limit).Scan(ctx); err != nil {
+	if err := q.Order("sp.created_at DESC").Limit(limit).Scan(ctx2); err != nil {
 		return nil, err
 	}
 	out := make([]subscriptions.Plan, 0, len(rows))
@@ -101,14 +107,16 @@ func (r *subscriptionPlanRepo) List(ctx context.Context, projectID string, inclu
 }
 
 func (r *subscriptionPlanRepo) Update(ctx context.Context, plan *subscriptions.Plan) error {
-	conn, sch, expr, err := Scoped(ctx, r.db, plan.ProjectID, "subscription_plans", "sp")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, plan.ProjectID, "subscription_plans", "sp")
 	if err != nil {
 		return err
 	}
 	_, err = conn.NewUpdate().Model(mapPlanToModel(plan)).ModelTableExpr(expr, sch).
 		WherePK().
 		Where("sp.project_id = ?", plan.ProjectID).
-		Exec(ctx)
+		Exec(ctx2)
 	return err
 }
 
@@ -126,20 +134,22 @@ func (r *subscriptionRepo) Insert(ctx context.Context, sub *subscriptions.Subscr
 	if err != nil {
 		return nil, false, err
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, sub.ProjectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, sub.ProjectID, "subscriptions", "ss")
 	if err != nil {
 		return nil, false, err
 	}
 	res, err := conn.NewInsert().Model(m).ModelTableExpr(expr, sch).
 		On("CONFLICT (project_id, idempotency_key) DO NOTHING").
-		Exec(ctx)
+		Exec(ctx2)
 	if err != nil {
 		return nil, false, err
 	}
 	if n, _ := res.RowsAffected(); n == 1 {
 		return nil, true, nil
 	}
-	existing, err := r.GetByIdempotencyKey(ctx, sub.ProjectID, sub.IdempotencyKey)
+	existing, err := r.GetByIdempotencyKey(ctx2, sub.ProjectID, sub.IdempotencyKey)
 	if err != nil {
 		return nil, false, err
 	}
@@ -173,7 +183,9 @@ func (r *subscriptionRepo) selectByProvider(ctx context.Context, projectID, prov
 	if provider == "" || providerSubID == "" {
 		return nil, nil
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscriptions", "ss")
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +197,7 @@ func (r *subscriptionRepo) selectByProvider(ctx context.Context, projectID, prov
 		q = q.For(lock)
 	}
 	m := new(model.Subscription)
-	if err := q.Scan(ctx, m); err != nil {
+	if err := q.Scan(ctx2, m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -195,7 +207,9 @@ func (r *subscriptionRepo) selectByProvider(ctx context.Context, projectID, prov
 }
 
 func (r *subscriptionRepo) selectSub(ctx context.Context, projectID, pred string, arg any, lock string) (*subscriptions.Subscription, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscriptions", "ss")
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +220,7 @@ func (r *subscriptionRepo) selectSub(ctx context.Context, projectID, pred string
 		q = q.For(lock)
 	}
 	m := new(model.Subscription)
-	if err := q.Scan(ctx, m); err != nil {
+	if err := q.Scan(ctx2, m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -216,7 +230,9 @@ func (r *subscriptionRepo) selectSub(ctx context.Context, projectID, pred string
 }
 
 func (r *subscriptionRepo) GetCurrentByUser(ctx context.Context, projectID, userID, planID string) (*subscriptions.Subscription, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscriptions", "ss")
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +246,7 @@ func (r *subscriptionRepo) GetCurrentByUser(ctx context.Context, projectID, user
 		Order("ss.created_at DESC").
 		Limit(1)
 	m := new(model.Subscription)
-	if err := q.Scan(ctx, m); err != nil {
+	if err := q.Scan(ctx2, m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -240,7 +256,9 @@ func (r *subscriptionRepo) GetCurrentByUser(ctx context.Context, projectID, user
 }
 
 func (r *subscriptionRepo) ListNonTerminalByUserPlan(ctx context.Context, projectID, userID, planID string) ([]subscriptions.Subscription, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscriptions", "ss")
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +269,7 @@ func (r *subscriptionRepo) ListNonTerminalByUserPlan(ctx context.Context, projec
 		Where("ss.plan_id = ?", planID).
 		Where("ss.status IN ('trialing','active','past_due')").
 		Order("ss.created_at").
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +277,9 @@ func (r *subscriptionRepo) ListNonTerminalByUserPlan(ctx context.Context, projec
 }
 
 func (r *subscriptionRepo) ListByUser(ctx context.Context, projectID, userID string, limit int, before time.Time) ([]subscriptions.Subscription, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscriptions", "ss")
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +290,7 @@ func (r *subscriptionRepo) ListByUser(ctx context.Context, projectID, userID str
 		Where("ss.created_at < ?", before).
 		Order("ss.created_at DESC").
 		Limit(limit).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +298,9 @@ func (r *subscriptionRepo) ListByUser(ctx context.Context, projectID, userID str
 }
 
 func (r *subscriptionRepo) ListByProject(ctx context.Context, projectID string, limit int, before time.Time) ([]subscriptions.Subscription, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "subscriptions", "ss")
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +310,7 @@ func (r *subscriptionRepo) ListByProject(ctx context.Context, projectID string, 
 		Where("ss.created_at < ?", before).
 		Order("ss.created_at DESC").
 		Limit(limit).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +322,9 @@ func (r *subscriptionRepo) Update(ctx context.Context, sub *subscriptions.Subscr
 	if err != nil {
 		return err
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, sub.ProjectID, "subscriptions", "ss")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, sub.ProjectID, "subscriptions", "ss")
 	if err != nil {
 		return err
 	}
@@ -308,7 +332,7 @@ func (r *subscriptionRepo) Update(ctx context.Context, sub *subscriptions.Subscr
 		WherePK().
 		Where("ss.project_id = ?", sub.ProjectID).
 		Where("ss.status = ?", string(expectStatus)).
-		Exec(ctx)
+		Exec(ctx2)
 	if err != nil {
 		return err
 	}
@@ -322,7 +346,9 @@ func (r *subscriptionRepo) ListDueForBillingInProject(ctx context.Context, proje
 	if limit <= 0 {
 		return nil, nil
 	}
-	if _, _, _, err := Scoped(ctx, r.db, projectID, "subscriptions", "ss"); err != nil {
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if _, _, _, err := Scoped(ctx2, r.db, projectID, "subscriptions", "ss"); err != nil {
 		return nil, err
 	}
 	quoted, err := ProjectQuoted(projectID)
@@ -330,7 +356,7 @@ func (r *subscriptionRepo) ListDueForBillingInProject(ctx context.Context, proje
 		return nil, err
 	}
 	var rows []model.Subscription
-	err = r.db.Conn(ctx).NewRaw(fmt.Sprintf(`
+	err = r.db.Conn(ctx2).NewRaw(fmt.Sprintf(`
 SELECT id, project_id, user_id, plan_id, mode, provider, provider_sub_id, status,
        current_period_start, current_period_end, cancel_at_period_end, grace_until,
        billing_asset_code, benefits, idempotency_key, created_at, updated_at
@@ -341,7 +367,7 @@ WHERE mode = ?
 ORDER BY current_period_end
 LIMIT ?
 FOR UPDATE SKIP LOCKED`, quoted),
-		string(subscriptions.ModePlatform), now, now, limit).Scan(ctx, &rows)
+		string(subscriptions.ModePlatform), now, now, limit).Scan(ctx2, &rows)
 	if err != nil {
 		return nil, err
 	}
