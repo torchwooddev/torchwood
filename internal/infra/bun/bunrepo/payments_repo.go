@@ -29,21 +29,23 @@ func NewPaymentOrderRepository(db *clients.Database) payments.OrderRepo {
 }
 
 func (r *paymentOrderRepo) Insert(ctx context.Context, order *payments.Order) (*payments.Order, bool, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, order.ProjectID, "payment_orders", "po")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, order.ProjectID, "payment_orders", "po")
 	if err != nil {
 		return nil, false, err
 	}
 	m := mapOrderToModel(order)
 	res, err := conn.NewInsert().Model(m).ModelTableExpr(expr, sch).
 		On("CONFLICT (project_id, idempotency_key) DO NOTHING").
-		Exec(ctx)
+		Exec(ctx2)
 	if err != nil {
 		return nil, false, err
 	}
 	if n, _ := res.RowsAffected(); n == 1 {
 		return nil, true, nil
 	}
-	existing, err := r.GetByIDempotencyKey(ctx, order.ProjectID, order.IdempotencyKey)
+	existing, err := r.GetByIDempotencyKey(ctx2, order.ProjectID, order.IdempotencyKey)
 	if err != nil {
 		return nil, false, err
 	}
@@ -54,7 +56,9 @@ func (r *paymentOrderRepo) Insert(ctx context.Context, order *payments.Order) (*
 }
 
 func (r *paymentOrderRepo) GetByIDempotencyKey(ctx context.Context, projectID, key string) (*payments.Order, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_orders", "po")
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +66,7 @@ func (r *paymentOrderRepo) GetByIDempotencyKey(ctx context.Context, projectID, k
 	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("po.project_id = ?", projectID).
 		Where("po.idempotency_key = ?", key).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -81,7 +85,9 @@ func (r *paymentOrderRepo) GetByIDForUpdate(ctx context.Context, projectID, orde
 }
 
 func (r *paymentOrderRepo) selectOne(ctx context.Context, projectID, orderID, lock string) (*payments.Order, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_orders", "po")
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +98,7 @@ func (r *paymentOrderRepo) selectOne(ctx context.Context, projectID, orderID, lo
 		q = q.For(lock)
 	}
 	m := new(model.PaymentOrder)
-	if err := q.Scan(ctx, m); err != nil {
+	if err := q.Scan(ctx2, m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -105,7 +111,9 @@ func (r *paymentOrderRepo) GetByProviderRef(ctx context.Context, projectID, prov
 	if providerSessionID == "" && providerOrderID == "" {
 		return nil, nil
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_orders", "po")
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +129,7 @@ func (r *paymentOrderRepo) GetByProviderRef(ctx context.Context, projectID, prov
 	}
 	q = q.Order("po.created_at").Limit(1)
 	m := new(model.PaymentOrder)
-	if err := q.Scan(ctx, m); err != nil {
+	if err := q.Scan(ctx2, m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -131,7 +139,9 @@ func (r *paymentOrderRepo) GetByProviderRef(ctx context.Context, projectID, prov
 }
 
 func (r *paymentOrderRepo) Update(ctx context.Context, order *payments.Order, expectStatus payments.OrderStatus) error {
-	conn, sch, expr, err := Scoped(ctx, r.db, order.ProjectID, "payment_orders", "po")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, order.ProjectID, "payment_orders", "po")
 	if err != nil {
 		return err
 	}
@@ -144,7 +154,7 @@ func (r *paymentOrderRepo) Update(ctx context.Context, order *payments.Order, ex
 		Where("po.id = ?", order.ID).
 		Where("po.project_id = ?", order.ProjectID).
 		Where("po.status = ?", string(expectStatus)).
-		Exec(ctx)
+		Exec(ctx2)
 	if err != nil {
 		return err
 	}
@@ -155,7 +165,9 @@ func (r *paymentOrderRepo) Update(ctx context.Context, order *payments.Order, ex
 }
 
 func (r *paymentOrderRepo) ListByUser(ctx context.Context, projectID, userID string, limit int, before time.Time) ([]payments.Order, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_orders", "po")
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +178,7 @@ func (r *paymentOrderRepo) ListByUser(ctx context.Context, projectID, userID str
 		Where("po.created_at < ?", before).
 		Order("po.created_at DESC").
 		Limit(limit).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +186,9 @@ func (r *paymentOrderRepo) ListByUser(ctx context.Context, projectID, userID str
 }
 
 func (r *paymentOrderRepo) ListByProject(ctx context.Context, projectID string, limit int, before time.Time) ([]payments.Order, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_orders", "po")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_orders", "po")
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +198,7 @@ func (r *paymentOrderRepo) ListByProject(ctx context.Context, projectID string, 
 		Where("po.created_at < ?", before).
 		Order("po.created_at DESC").
 		Limit(limit).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		return nil, err
 	}
@@ -195,14 +209,16 @@ func (r *paymentOrderRepo) CloseExpiredInProject(ctx context.Context, projectID 
 	if limit <= 0 {
 		return 0, nil
 	}
-	if _, _, _, err := Scoped(ctx, r.db, projectID, "payment_orders", "po"); err != nil {
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, _, _, err := Scoped(ctx2, r.db, projectID, "payment_orders", "po"); err != nil {
 		return 0, err
 	}
 	quoted, err := ProjectQuoted(projectID)
 	if err != nil {
 		return 0, err
 	}
-	res, err := r.db.Conn(ctx).ExecContext(ctx, fmt.Sprintf(`
+	res, err := r.db.Conn(ctx2).ExecContext(ctx2, fmt.Sprintf(`
 UPDATE %s.payment_orders po
 SET status = ?, updated_at = ?
 WHERE po.id IN (
@@ -246,7 +262,9 @@ func (r *paymentCallbackEventRepo) InsertIfAbsent(ctx context.Context, event *pa
 	if err != nil {
 		return false, err
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_callback_events", "pce")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_callback_events", "pce")
 	if err != nil {
 		return false, err
 	}
@@ -259,7 +277,7 @@ func (r *paymentCallbackEventRepo) InsertIfAbsent(ctx context.Context, event *pa
 		OrderID:         nullIfEmpty(orderID),
 		Payload:         payload,
 		CreatedAt:       event.ReceivedAt,
-	}).ModelTableExpr(expr, sch).On("CONFLICT (provider, provider_event_id) DO NOTHING").Exec(ctx)
+	}).ModelTableExpr(expr, sch).On("CONFLICT (provider, provider_event_id) DO NOTHING").Exec(ctx2)
 	if err != nil {
 		return false, err
 	}
@@ -278,7 +296,9 @@ func NewPaymentFulfillmentRepository(db *clients.Database) payments.FulfillmentR
 }
 
 func (r *paymentFulfillmentRepo) InsertPending(ctx context.Context, f *payments.Fulfillment) (*payments.Fulfillment, bool, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, f.ProjectID, "payment_fulfillments", "pf")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, f.ProjectID, "payment_fulfillments", "pf")
 	if err != nil {
 		return nil, false, err
 	}
@@ -292,14 +312,14 @@ func (r *paymentFulfillmentRepo) InsertPending(ctx context.Context, f *payments.
 		Detail:      f.Detail,
 		CreatedAt:   f.CreatedAt,
 		UpdatedAt:   f.UpdatedAt,
-	}).ModelTableExpr(expr, sch).On("CONFLICT (order_id, purpose_kind) DO NOTHING").Exec(ctx)
+	}).ModelTableExpr(expr, sch).On("CONFLICT (order_id, purpose_kind) DO NOTHING").Exec(ctx2)
 	if err != nil {
 		return nil, false, err
 	}
 	if n, _ := res.RowsAffected(); n == 1 {
 		return nil, true, nil
 	}
-	existing, err := r.GetByOrder(ctx, f.ProjectID, f.OrderID)
+	existing, err := r.GetByOrder(ctx2, f.ProjectID, f.OrderID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -307,7 +327,9 @@ func (r *paymentFulfillmentRepo) InsertPending(ctx context.Context, f *payments.
 }
 
 func (r *paymentFulfillmentRepo) MarkDone(ctx context.Context, projectID, fulfillmentID, ref string, detail map[string]any) error {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_fulfillments", "pf")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_fulfillments", "pf")
 	if err != nil {
 		return err
 	}
@@ -317,12 +339,14 @@ func (r *paymentFulfillmentRepo) MarkDone(ctx context.Context, projectID, fulfil
 		Set("detail = ?", detail).
 		Set("updated_at = ?", time.Now()).
 		Where("pf.id = ?", fulfillmentID).
-		Exec(ctx)
+		Exec(ctx2)
 	return err
 }
 
 func (r *paymentFulfillmentRepo) MarkFailed(ctx context.Context, projectID, fulfillmentID, reason string) error {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_fulfillments", "pf")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_fulfillments", "pf")
 	if err != nil {
 		return err
 	}
@@ -331,12 +355,14 @@ func (r *paymentFulfillmentRepo) MarkFailed(ctx context.Context, projectID, fulf
 		Set("detail = ?", map[string]any{"reason": reason}).
 		Set("updated_at = ?", time.Now()).
 		Where("pf.id = ?", fulfillmentID).
-		Exec(ctx)
+		Exec(ctx2)
 	return err
 }
 
 func (r *paymentFulfillmentRepo) GetByOrder(ctx context.Context, projectID, orderID string) (*payments.Fulfillment, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "payment_fulfillments", "pf")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "payment_fulfillments", "pf")
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +370,7 @@ func (r *paymentFulfillmentRepo) GetByOrder(ctx context.Context, projectID, orde
 	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("pf.project_id = ?", projectID).
 		Where("pf.order_id = ?", orderID).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
