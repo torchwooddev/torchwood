@@ -34,7 +34,7 @@ MCP Tool Server 以类型安全的方式调用后端。
 |------|------|
 | `sdk/typescript/` | SDK 包 `@torchwood/sdk` |
 | `sdk/typescript/src/client/` | Client API 服务（Account / Databases / Groups） |
-| `sdk/typescript/src/server/` | Server API 服务（Health / Projects / Users / Groups / Databases / APIKeys / OAuthProviders / Storage / Functions / Payments / Assets / Subscriptions / Billing） |
+| `sdk/typescript/src/server/` | Server API 服务（Health / Projects / Users / Groups / Databases / APIKeys / OAuthProviders / Storage / Functions / Payments / Assets / Subscriptions / Billing / Outbox） |
 | `sdk/typescript/src/server/tools.ts` | Agent 默认工具箱 overlay（18 个动词 → Server RPC FullMethod；`TOOL_*` / `agentTools`） |
 | `sdk/typescript/src/graviton.ts` | `Torchwood` 门面类与静态工厂 |
 | `sdk/typescript/src/http.ts` | `HttpTransport` 传输层与 `TorchwoodConfig` 配置类型 |
@@ -121,6 +121,7 @@ tw.server.databases;     // Server: 库/集合/属性/索引/文档/Bulk
 tw.server.apiKeys;       // Server: API Key 管理
 tw.server.oauthProviders;// Server: OAuth Provider 配置
 tw.server.storage;       // Server: Bucket / File
+tw.server.outbox;        // Server: Outbox 死信查询与重放（W-J）
 ```
 
 ### 3.4 基础用法示例
@@ -276,6 +277,18 @@ tw.server.oauthProviders.delete(provider)
 // Agent 上传文件示例
 const file = new Blob([jsonText], { type: "application/json" });
 const uploaded = await tw.server.storage.uploadFile("bucket-id", file, "export.json");
+```
+
+### 5.5 Server Outbox（`tw.server.outbox`，W-J）
+
+| 方法 | 说明 |
+|------|------|
+| `listDeadLetters(projectId, params?)` | 列出死信（`auth: "apiKey"`，`outbox:read`，`owner|admin` 可读） |
+| `replayDeadLetter(eventId, projectId)` | 重放单条死信（`outbox:write`，`owner|admin`，幂等，返回 `{event_id, available_at}`） |
+
+```typescript
+const letters = await tw.server.outbox.listDeadLetters("default", { pageSize: 20 });
+await tw.server.outbox.replayDeadLetter("01H...", "default");
 ```
 
 ---

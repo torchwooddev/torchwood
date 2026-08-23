@@ -23,6 +23,7 @@ import {
   ServerGroupsService,
   StorageService,
   UsersService,
+  OutboxService,
 } from "./server/index.js";
 
 export type { TorchwoodConfig } from "./http.js";
@@ -62,6 +63,7 @@ export class Torchwood {
     assets: ServerAssetsService;
     subscriptions: ServerSubscriptionsService;
     billing: BillingService;
+    outbox: OutboxService;
   };
 
   private readonly transport: HttpTransport;
@@ -89,6 +91,7 @@ export class Torchwood {
       assets: new ServerAssetsService(this.transport),
       subscriptions: new ServerSubscriptionsService(this.transport),
       billing: new BillingService(this.transport),
+      outbox: new OutboxService(this.transport),
     };
   }
 

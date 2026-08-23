@@ -661,6 +661,7 @@ functions    runtimes/specifications；create/list/get/update/delete；
              更大代码包走 multipart 上传接口，≤50MiB）；
              variables set/get；executions create/list/get
 oauth-providers list/upsert/delete（proto 无 get 方法）
+outbox       list-dead/replay（W-J 死信查询与重放；admin outbox list-dead/replay）
 ```
 
 要点：
