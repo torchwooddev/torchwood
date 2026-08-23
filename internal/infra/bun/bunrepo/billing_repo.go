@@ -31,7 +31,9 @@ func (r *usageRepo) Upsert(ctx context.Context, rollup *billing.Rollup) error {
 		rollup.CreatedAt = now
 	}
 	rollup.UpdatedAt = now
-	conn, sch, expr, err := Scoped(ctx, r.db, rollup.ProjectID, "usage_rollups", "ur")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, rollup.ProjectID, "usage_rollups", "ur")
 	if err != nil {
 		return err
 	}
@@ -40,12 +42,14 @@ func (r *usageRepo) Upsert(ctx context.Context, rollup *billing.Rollup) error {
 		On("CONFLICT (project_id, metric, period_start) DO UPDATE").
 		Set("value = EXCLUDED.value").
 		Set("updated_at = EXCLUDED.updated_at").
-		Exec(ctx)
+		Exec(ctx2)
 	return err
 }
 
 func (r *usageRepo) Get(ctx context.Context, projectID, metric string, periodStart time.Time) (*billing.Rollup, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "usage_rollups", "ur")
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +58,7 @@ func (r *usageRepo) Get(ctx context.Context, projectID, metric string, periodSta
 		Where("ur.project_id = ?", projectID).
 		Where("ur.metric = ?", metric).
 		Where("ur.period_start = ?", periodStart.UTC()).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -65,7 +69,9 @@ func (r *usageRepo) Get(ctx context.Context, projectID, metric string, periodSta
 }
 
 func (r *usageRepo) List(ctx context.Context, projectID, metric string, from, to time.Time, limit int, before time.Time, beforeID string) ([]billing.Rollup, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "usage_rollups", "ur")
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +97,7 @@ func (r *usageRepo) List(ctx context.Context, projectID, metric string, from, to
 	if limit <= 0 {
 		limit = 25
 	}
-	if err := q.Order("ur.period_start DESC", "ur.id DESC").Limit(limit).Scan(ctx); err != nil {
+	if err := q.Order("ur.period_start DESC", "ur.id DESC").Limit(limit).Scan(ctx2); err != nil {
 		return nil, err
 	}
 	out := make([]billing.Rollup, len(ms))
@@ -102,7 +108,9 @@ func (r *usageRepo) List(ctx context.Context, projectID, metric string, from, to
 }
 
 func (r *usageRepo) SumByMetric(ctx context.Context, projectID string, from, to time.Time) (map[string]int64, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "usage_rollups", "ur")
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +131,7 @@ func (r *usageRepo) SumByMetric(ctx context.Context, projectID string, from, to 
 		q = q.Where("ur.period_start < ?", to.UTC())
 	}
 	var rows []row
-	if err := q.Scan(ctx, &rows); err != nil {
+	if err := q.Scan(ctx2, &rows); err != nil {
 		return nil, err
 	}
 	out := make(map[string]int64, len(rows))
@@ -134,7 +142,9 @@ func (r *usageRepo) SumByMetric(ctx context.Context, projectID string, from, to 
 }
 
 func (r *usageRepo) DistinctHours(ctx context.Context, projectID string, from, to time.Time) (int, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "usage_rollups", "ur")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "usage_rollups", "ur")
 	if err != nil {
 		return 0, err
 	}
@@ -149,7 +159,7 @@ func (r *usageRepo) DistinctHours(ctx context.Context, projectID string, from, t
 		q = q.Where("ur.period_start < ?", to.UTC())
 	}
 	var n int
-	if err := q.Scan(ctx, &n); err != nil {
+	if err := q.Scan(ctx2, &n); err != nil {
 		return 0, err
 	}
 	return n, nil
@@ -202,7 +212,9 @@ func (r *statementRepo) Upsert(ctx context.Context, s *billing.Statement) error 
 	if err != nil {
 		return err
 	}
-	conn, sch, expr, err := Scoped(ctx, r.db, s.ProjectID, "billing_statements", "bs")
+	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, s.ProjectID, "billing_statements", "bs")
 	if err != nil {
 		return err
 	}
@@ -226,12 +238,14 @@ func (r *statementRepo) Upsert(ctx context.Context, s *billing.Statement) error 
 		Set("updated_at = EXCLUDED.updated_at").
 		Set("finalized_at = EXCLUDED.finalized_at").
 		Where("bs.status <> ?", string(billing.StatementFinal)).
-		Exec(ctx)
+		Exec(ctx2)
 	return err
 }
 
 func (r *statementRepo) Get(ctx context.Context, projectID string, periodStart time.Time) (*billing.Statement, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "billing_statements", "bs")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "billing_statements", "bs")
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +253,7 @@ func (r *statementRepo) Get(ctx context.Context, projectID string, periodStart t
 	err = conn.NewSelect().Model(m).ModelTableExpr(expr, sch).
 		Where("bs.project_id = ?", projectID).
 		Where("bs.period_start = ?", periodStart.UTC()).
-		Scan(ctx)
+		Scan(ctx2)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -250,7 +264,9 @@ func (r *statementRepo) Get(ctx context.Context, projectID string, periodStart t
 }
 
 func (r *statementRepo) List(ctx context.Context, projectID string, limit int, before time.Time) ([]billing.Statement, error) {
-	conn, sch, expr, err := Scoped(ctx, r.db, projectID, "billing_statements", "bs")
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, sch, expr, err := Scoped(ctx2, r.db, projectID, "billing_statements", "bs")
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +279,7 @@ func (r *statementRepo) List(ctx context.Context, projectID string, limit int, b
 	if limit <= 0 {
 		limit = 25
 	}
-	if err := q.Order("bs.period_start DESC").Limit(limit).Scan(ctx); err != nil {
+	if err := q.Order("bs.period_start DESC").Limit(limit).Scan(ctx2); err != nil {
 		return nil, err
 	}
 	out := make([]billing.Statement, 0, len(ms))
