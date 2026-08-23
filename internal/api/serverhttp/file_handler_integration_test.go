@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -51,7 +50,7 @@ func newUploadSessionStoreForTest(t *testing.T) domainstorage.UploadSessionStore
 	require.NoError(t, err)
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = r_ = db.Close() })
+	t.Cleanup(func() { _ = rdb.Close() })
 	return infrastorage.NewRedisUploadSessionStore(rdb)
 }
 
@@ -132,7 +131,7 @@ func (f *storageHTTPFixture) upload(content []byte, headers map[string]string, c
 		require.NoError(f.t, err)
 	} else {
 		part, err := writer.CreatePart(textproto.MIMEHeader{
-			"Content-Disposition": {fmt.Sprintf(`form-data; name="file"; filename="test.txt"`)},
+			"Content-Disposition": {`form-data; name="file"; filename="test.txt"`},
 			"Content-Type":        {contentType},
 		})
 		require.NoError(f.t, err)
@@ -664,7 +663,7 @@ func (f *storageHTTPFixture) uploadTo(bucketID string, content []byte, headers m
 		require.NoError(f.t, err)
 	} else {
 		part, err := writer.CreatePart(textproto.MIMEHeader{
-			"Content-Disposition": {fmt.Sprintf(`form-data; name="file"; filename="test.png"`)},
+			"Content-Disposition": {`form-data; name="file"; filename="test.png"`},
 			"Content-Type":        {contentType},
 		})
 		require.NoError(f.t, err)

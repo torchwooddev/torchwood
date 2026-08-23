@@ -323,7 +323,7 @@ func (r *functionRepo) FailExecutionIfActive(ctx context.Context, projectID, fun
 		Where("fe.project_id = ?", projectID).
 		Where("fe.function_id = ?", functionID).
 		Where("fe.id = ?", executionID).
-		Where("fe.status IN (?)", bun.In([]string{
+		Where("fe.status IN (?)", bun.List([]string{
 			domainfunctions.ExecutionStatusQueued,
 			domainfunctions.ExecutionStatusBuilding,
 			domainfunctions.ExecutionStatusRunning,

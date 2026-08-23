@@ -26,12 +26,12 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 
 	quoted := testutil.CatalogQuoted(projectID)
 	var version int64
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
 	require.Equal(t, int64(9), version)
 
 	var dirty bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT COALESCE(bool_or(dirty), false) FROM "+quoted+".schema_migrations").Scan(&dirty))
 	require.False(t, dirty)
 
@@ -42,7 +42,7 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 		"users", "sessions", "identities", "groups", "memberships", "buckets", "files",
 	} {
 		var reg any
-		require.NoError(t, db.DB.QueryRowContext(ctx,
+		require.NoError(t, db.QueryRowContext(ctx,
 			`SELECT to_regclass(?)`, quoted+"."+table).Scan(&reg), table)
 		require.NotNil(t, reg, "expected %s.%s", quoted, table)
 	}
@@ -50,7 +50,7 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 	schema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
 	var ns any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
 	require.NotNil(t, ns)
 }
 
@@ -117,12 +117,12 @@ func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
 	// 迁移器之外的带外 schema 状态改动必须先 Invalidate（与项目删除路径
 	// 同一契约）。
 	projectschema.Invalidate(db, projectID)
-	_, err = db.DB.ExecContext(ctx,
+	_, err = db.ExecContext(ctx,
 		`DELETE FROM `+quoted+`.schema_migrations WHERE version IN (6, 7, 8, 9)`)
 	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, `DROP TABLE `+quoted+`.subscriptions CASCADE`)
+	_, err = db.ExecContext(ctx, `DROP TABLE `+quoted+`.subscriptions CASCADE`)
 	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, `CREATE TABLE `+quoted+`.subscriptions (id TEXT PRIMARY KEY)`)
+	_, err = db.ExecContext(ctx, `CREATE TABLE `+quoted+`.subscriptions (id TEXT PRIMARY KEY)`)
 	require.NoError(t, err)
 
 	err = projectschema.Apply(ctx, db, projectID)
@@ -130,13 +130,13 @@ func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
 
 	// 事务内无成功行：version 6 未被记为 applied。
 	var applied6 bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT EXISTS (SELECT 1 FROM `+quoted+`.schema_migrations WHERE version = 6 AND NOT dirty)`).Scan(&applied6))
 	require.False(t, applied6)
 
 	// dirty 标记在 ROLLBACK 之后仍持久可见（独立连接补写）。
 	var dirty bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COALESCE(bool_or(dirty), false) FROM `+quoted+`.schema_migrations`).Scan(&dirty))
 	require.True(t, dirty)
 
@@ -169,18 +169,18 @@ func TestApply_ReadyCacheAndInvalidate(t *testing.T) {
 	quoted := `"` + schema + `"`
 
 	// 模拟项目删除路径的外部 DROP。
-	_, err = db.DB.ExecContext(ctx, `DROP SCHEMA IF EXISTS `+quoted+` CASCADE`)
+	_, err = db.ExecContext(ctx, `DROP SCHEMA IF EXISTS `+quoted+` CASCADE`)
 	require.NoError(t, err)
 
 	// 缓存命中：Apply 直通，不重建。
 	require.NoError(t, projectschema.Apply(ctx, db, projectID))
 	var ns any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
 	require.Nil(t, ns, "缓存命中时不得重建 schema")
 
 	// Invalidate 后 Apply 重建。
 	projectschema.Invalidate(db, projectID)
 	require.NoError(t, projectschema.Apply(ctx, db, projectID))
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
 	require.NotNil(t, ns, "Invalidate 后 Apply 必须重建 schema")
 }

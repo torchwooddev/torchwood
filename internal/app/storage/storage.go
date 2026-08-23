@@ -237,10 +237,10 @@ func (s *Storage) CreateFile(ctx context.Context, cmd CreateFileCommand, content
 	ownerUserID := cmd.OwnerUserID
 	if uid := storageEndUserID(principal); uid != "" {
 		ownerUserID = uid
-	} else if isStoragePrivileged(principal) {
+	} else if isStoragePrivileged(principal) { //nolint:staticcheck
 		// API key / admin / system 创建的文件不归属到特定用户，保持传入值（通常空）。
 		// 若调用方误传 EndUser 的 user id 但 principal 并非 EndUser，不覆盖以免伪造。
-	} else {
+	} else { //nolint:staticcheck
 		// 访客等无特权且非 EndUser 的主体不应通过 gRPC 直调进入文件创建（应由 HTTP 拦截器阻断），此处兜底不覆写。
 	}
 
@@ -322,7 +322,7 @@ func (s *Storage) DeleteFile(ctx context.Context, projectID, bucketID, fileID st
 	if !canAccessFile(bucket, file, principal) {
 		return status.Error(codes.PermissionDenied, "permission denied")
 	}
-	if err := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID)); err != nil {
+	if err := s.store.Delete(ctx, defaultBucketName(s.cfg), objectKey(project.ID, bucketID, fileID)); err != nil { //nolint:staticcheck
 		// Continue to delete metadata even if object missing.
 	}
 	return s.files.Delete(ctx, project.ID, fileID)

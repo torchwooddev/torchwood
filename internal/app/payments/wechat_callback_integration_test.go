@@ -142,7 +142,7 @@ func setupWeChatEnv(t *testing.T) (*testEnv, wechatTestKeys) {
 
 	nativeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"code_url":"weixin://wx_pay/%d"}`, time.Now().UnixNano())))
+		_, _ = fmt.Fprintf(w, `{"code_url":"weixin://wx_pay/%d"}`, time.Now().UnixNano())
 	}))
 	t.Cleanup(nativeSrv.Close)
 

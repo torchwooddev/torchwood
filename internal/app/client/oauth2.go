@@ -102,12 +102,7 @@ func (a *Account) CreateOAuth2LinkTokenSession(ctx context.Context, cmd CreateOA
 	if _, err := a.requireUser(ctx); err != nil {
 		return nil, err
 	}
-	result, err := a.completeOAuth2Code(ctx, completeOAuth2CodeCommand{
-		ProjectID: cmd.ProjectID,
-		Provider:  cmd.Provider,
-		Code:      cmd.Code,
-		State:     cmd.State,
-	})
+	result, err := a.completeOAuth2Code(ctx, completeOAuth2CodeCommand(cmd))
 	if err != nil {
 		return nil, err
 	}

@@ -58,7 +58,7 @@ func SetupTestDB(t *testing.T) *clients.Database {
 	}
 
 	adminDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
-	defer adminDB.Close()
+	defer func() { _ = adminDB.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -70,7 +70,7 @@ func SetupTestDB(t *testing.T) *clients.Database {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
 		cleanupDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
-		defer cleanupDB.Close()
+		defer func() { _ = cleanupDB.Close() }()
 		if err := dropTestDatabase(cleanupCtx, cleanupDB, dbName); err != nil {
 			t.Errorf("drop test db %s: %v", dbName, err)
 		}

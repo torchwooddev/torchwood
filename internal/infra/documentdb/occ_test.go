@@ -60,7 +60,7 @@ func occCreate(t *testing.T, docDB databases.DocumentDB, projectID, id string) d
 func versionColumnCount(t *testing.T, ctx context.Context, db *clients.Database, schema, table string) int {
 	t.Helper()
 	var count int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = '_version'`,
 		schema, table).Scan(&count))
 	return count
@@ -299,9 +299,9 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	defer cleanup()
 
 	schema := testSchema(t, projectID, "app")
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
 	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
 		_id TEXT NOT NULL,
 		_tenant BIGINT NOT NULL,
 		"title" TEXT,
@@ -315,7 +315,7 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err = db.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s (_id, _tenant) VALUES ('legacy', ?)`, tableName(schema, "docs")), internalID)
 	require.NoError(t, err)
 
@@ -365,9 +365,9 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 
 	// 模拟存量表：_version 被 TEXT 列抢占。
 	schema := testSchema(t, projectID, "app")
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
 	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
 		_id TEXT NOT NULL,
 		_tenant BIGINT NOT NULL,
 		_version TEXT NOT NULL DEFAULT 'v0',
@@ -389,7 +389,7 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "写路径遇非 bigint _version 必须 fail-closed")
 
 	var udtName string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,
 		schema).Scan(&udtName))
 	require.Equal(t, "text", udtName)
@@ -421,10 +421,10 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	}, true))
 
 	schema := testSchema(t, projectID, "app")
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s (_id, _tenant, "title") VALUES ('d1', ?, 't1')`, tableName(schema, "docs")), internalID)
 	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
 	// 新实例：避免旧进程 cache 把已 DROP 的列当成就绪。
@@ -541,7 +541,7 @@ func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, nil, true))
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
 	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
@@ -572,10 +572,10 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 	}, true))
 
 	schema := testSchema(t, projectID, "app")
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
 		`ALTER TABLE %s ALTER COLUMN _version DROP DEFAULT`, tableName(schema, "docs")))
 	require.NoError(t, err)
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err = db.ExecContext(ctx, fmt.Sprintf(
 		`ALTER TABLE %s ALTER COLUMN _version TYPE TEXT USING _version::text`, tableName(schema, "docs")))
 	require.NoError(t, err)
 
@@ -612,7 +612,7 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	// 列未被改动：_version 仍为 bigint（未退化成用户属性）。
 	schema := testSchema(t, projectID, "app")
 	var udtName string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,
 		schema).Scan(&udtName))
 	require.Equal(t, "int8", udtName)
@@ -649,7 +649,7 @@ func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
 	}
 	schema := testSchema(t, projectID, "app")
 	var n int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = 'tags'`,
 		schema).Scan(&n))
 	require.Equal(t, 0, n)

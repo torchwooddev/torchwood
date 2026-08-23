@@ -61,9 +61,9 @@ func setupEnv(t *testing.T, fulfiller domainpayments.Fulfiller, refundSucceeded 
 
 	checkoutSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(
+		_, _ = fmt.Fprintf(w,
 			`{"id":"cs_%d","url":"https://checkout.stripe.com/c/pay/cs_%d","payment_intent":"pi_%d"}`,
-			time.Now().UnixNano(), time.Now().UnixNano(), time.Now().UnixNano())))
+			time.Now().UnixNano(), time.Now().UnixNano(), time.Now().UnixNano())
 	}))
 	t.Cleanup(checkoutSrv.Close)
 
@@ -73,7 +73,7 @@ func setupEnv(t *testing.T, fulfiller domainpayments.Fulfiller, refundSucceeded 
 	}
 	refundSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"id":"re_%d","status":%q}`, time.Now().UnixNano(), refundStatus)))
+		_, _ = fmt.Fprintf(w, `{"id":"re_%d","status":%q}`, time.Now().UnixNano(), refundStatus)
 	}))
 	t.Cleanup(refundSrv.Close)
 
@@ -131,7 +131,7 @@ func signStripeBody(t *testing.T, body []byte) (http.Header, []byte) {
 	t.Helper()
 	ts := time.Now().Unix()
 	mac := hmac.New(sha256.New, []byte(testWebhookSecret))
-	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	_, _ = fmt.Fprintf(mac, "%d.", ts)
 	mac.Write(body)
 	h := http.Header{}
 	h.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))
@@ -310,7 +310,7 @@ func TestPayments_CallbackVerifyFailNoRowsWritten(t *testing.T) {
 	body := paidEventBody(t, "evt_fake", orderID, orderID, 500)
 	ts := time.Now().Unix()
 	mac := hmac.New(sha256.New, []byte("whsec_attacker"))
-	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	_, _ = fmt.Fprintf(mac, "%d.", ts)
 	mac.Write(body)
 	h := http.Header{}
 	h.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))

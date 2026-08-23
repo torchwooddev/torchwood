@@ -29,7 +29,7 @@ func newTestUploadSessionStore(t *testing.T) (*miniredis.Miniredis, domainstorag
 	require.NoError(t, err)
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = r_ = db.Close() })
+	t.Cleanup(func() { _ = rdb.Close() })
 	return mr, infrastorage.NewRedisUploadSessionStore(rdb)
 }
 

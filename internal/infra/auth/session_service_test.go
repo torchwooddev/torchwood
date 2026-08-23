@@ -112,7 +112,9 @@ func TestProviderConstants(t *testing.T) {
 	require.Equal(t, "wechat_web", domainauth.ProviderWeChatWeb)
 }
 
-// g3SessionData 构造会话文档数据（expire_at 为 RFC3339Nano，字符串序=时间序）。
+// g3SessionData 构造会话文档数据（expire_at 为 RFC3339Nano，字符串序=时间序）.
+
+//nolint:unused
 func g3SessionData(expireAt time.Time) map[string]any {
 	return map[string]any{
 		"user_id":     "user-1",

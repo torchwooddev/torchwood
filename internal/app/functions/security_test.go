@@ -99,7 +99,7 @@ func TestWriteZip_RejectsEscapingPath(t *testing.T) {
 
 func TestWriteZipRemoveZip_RoundTripInRoot(t *testing.T) {
 	path := zipPath("p1", "fn_1", "d1")
-	defer func() { _ = os.RemoveAll(filepath.Join(zipRoot() }(), "p1")) }()
+	defer func() { _ = os.RemoveAll(filepath.Join(zipRoot(), "p1")) }()
 	require.NoError(t, writeZip(path, []byte("PK\x03\x04payload")))
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)

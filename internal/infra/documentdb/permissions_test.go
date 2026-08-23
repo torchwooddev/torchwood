@@ -43,7 +43,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	permsTable := permsTableName(testSchema(t, projectID, "app"))
 	// 异租户 _perms 行（同 collection/文档/类型/角色）不得影响本租户列表。
 	foreignTenant := internalID + 1000
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err = db.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, ?, ?, 'read', 'user:bob')`,
 		permsTable), foreignTenant, "docs", created.ID)
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	require.Len(t, list.Documents, 0)
 
 	// 同租户 _perms 行放行（正对照）。
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err = db.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, ?, ?, 'read', 'user:bob')`,
 		permsTable), internalID, "docs", created.ID)
 	require.NoError(t, err)
@@ -511,7 +511,7 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 
 	// 直插 _type='write' 行（模拟未展开的直调路径）。
 	permsTable := permsTableName(testSchema(t, projectID, "app"))
-	_, err = db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err = db.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, ?, ?, 'write', 'user:alice')`,
 		permsTable), internalID, "docs", created.ID)
 	require.NoError(t, err)

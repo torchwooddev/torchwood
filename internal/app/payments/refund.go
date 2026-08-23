@@ -225,12 +225,12 @@ func mapProviderError(err error) error {
 		return status.Error(codes.PermissionDenied, "receipt already bound to another user")
 	}
 	if pe := domainpayments.AsProviderError(err); pe != nil {
-		switch code := pe.Status; {
-		case code == 401, code == 403:
+		switch code := pe.Status; code {
+		case 401, 403:
 			return status.Error(codes.Unauthenticated, "payment provider rejected credentials")
-		case code == 404:
+		case 404:
 			return status.Error(codes.NotFound, "payment provider resource not found")
-		case code == 400, code == 402, code == 422:
+		case 400, 402, 422:
 			return status.Error(codes.FailedPrecondition, "payment provider rejected the request")
 		default:
 			return status.Error(codes.Internal, "payment provider request failed")

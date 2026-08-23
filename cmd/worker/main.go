@@ -13,6 +13,11 @@ import (
 
 var version, commit, date string
 
+var (
+	_ = commit
+	_ = date
+)
+
 func main() {
 	_ = godotenv.Load()
 

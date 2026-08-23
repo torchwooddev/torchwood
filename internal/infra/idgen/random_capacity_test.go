@@ -17,7 +17,7 @@ const capTestSetKey = "Torchwood:id:random:proj-1:users"
 func newCapTestService(t *testing.T, mr *miniredis.Miniredis) *Service {
 	t.Helper()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = r_ = db.Close() })
+	t.Cleanup(func() { _ = rdb.Close() })
 	return &Service{
 		rdb: rdb,
 		randomCfg: pkgidgen.RandomConfig{
@@ -33,7 +33,7 @@ func seedSet(t *testing.T, mr *miniredis.Miniredis, n int) {
 	t.Helper()
 	ctx := context.Background()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = r_ = db.Close() })
+	t.Cleanup(func() { _ = rdb.Close() })
 	for i := 0; i < n; i++ {
 		require.NoError(t, rdb.SAdd(ctx, capTestSetKey, fmt.Sprintf("seed-%d", i)).Err())
 	}

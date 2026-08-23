@@ -11,22 +11,6 @@ import (
 
 const EnvPrefix = "TORCHWOOD"
 
-var envBoundKeys = []string{
-	"security.jwt.secret",
-	"security.setup_token",
-	"security.trusted_proxies",
-	"data.database.source",
-	"data.redis.addr",
-	"data.redis.password",
-	"storage.s3.access_key_id",
-	"storage.s3.secret_access_key",
-	"messaging.smtp.host",
-	"messaging.smtp.password",
-	"messaging.sms.twilio.account_sid",
-	"messaging.sms.twilio.auth_token",
-	"telemetry.otlp_endpoint",
-}
-
 // envNameForKey 把点号路径键名映射为环境变量名，例如
 // "data.database.source" -> "TORCHWOOD_DATA_DATABASE_SOURCE"。
 func envNameForKey(key string) string {
@@ -99,7 +83,7 @@ func UnmarshalConfig(c lynx.Config, out *AppConfig) error {
 
 // collectKeys 递归收集 message 结构的所有叶子 json 路径。
 func collectKeys(t reflect.Type, prefix string, emit func(path string)) {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	for i := 0; i < t.NumField(); i++ {
@@ -116,7 +100,7 @@ func collectKeys(t reflect.Type, prefix string, emit func(path string)) {
 			path = prefix + "." + name
 		}
 		ft := f.Type
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		if ft.Kind() == reflect.Struct {
@@ -129,7 +113,7 @@ func collectKeys(t reflect.Type, prefix string, emit func(path string)) {
 
 // collectLeaves 按 json tag 逐叶子从 Config 取值，组装为嵌套 map。
 func collectLeaves(t reflect.Type, prefix string, c lynx.Config, out map[string]any) {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	for i := 0; i < t.NumField(); i++ {
@@ -146,7 +130,7 @@ func collectLeaves(t reflect.Type, prefix string, c lynx.Config, out map[string]
 			path = prefix + "." + name
 		}
 		ft := f.Type
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		switch {

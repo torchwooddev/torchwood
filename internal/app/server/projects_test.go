@@ -74,7 +74,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 		"public.document_databases",
 	} {
 		var reg any
-		require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, rel).Scan(&reg), rel)
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regclass(?)`, rel).Scan(&reg), rel)
 		require.Nil(t, reg, "D-7: %s 已删除", rel)
 	}
 
@@ -87,7 +87,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 	require.Zero(t, projectCatalog, "cut 后 catalog 无 is_system 行")
 
 	var staticUsers any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, "tw_"+p.ID+".users").Scan(&staticUsers))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regclass(?)`, "tw_"+p.ID+".users").Scan(&staticUsers))
 	require.NotNil(t, staticUsers)
 }
 
@@ -183,7 +183,7 @@ func TestProjects_CreateProject_RollsBackOnFailure(t *testing.T) {
 	require.Nil(t, got)
 
 	var ns any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_"+projectID).Scan(&ns))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_"+projectID).Scan(&ns))
 	require.Nil(t, ns)
 }
 
@@ -471,9 +471,9 @@ func TestProjects_DeleteProject_DropsSchemas(t *testing.T) {
 	require.Nil(t, got)
 
 	var projectNS, appNS any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_delme").Scan(&projectNS))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_delme").Scan(&projectNS))
 	require.Nil(t, projectNS)
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_delme_app").Scan(&appNS))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, "tw_delme_app").Scan(&appNS))
 	require.Nil(t, appNS)
 }
 
@@ -567,11 +567,11 @@ func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 		 VALUES ('stripe', 'payment_session', 'cs_seed_1', 'delrows')`,
 	}
 	for _, q := range seed {
-		_, err := db.DB.ExecContext(ctx, q)
+		_, err := db.ExecContext(ctx, q)
 		require.NoError(t, err, q)
 	}
 	t.Cleanup(func() {
-		_, _ = db.DB.ExecContext(ctx, `DELETE FROM admins WHERE id = 'adm-1'`)
+		_, _ = db.ExecContext(ctx, `DELETE FROM admins WHERE id = 'adm-1'`)
 	})
 
 	require.NoError(t, projectsUC.DeleteProjectInternal(ctx, p.ID))
@@ -585,7 +585,7 @@ func TestProjects_DeleteProject_CleansPublicRows(t *testing.T) {
 		"provider_resource_index",
 	} {
 		var n int
-		require.NoError(t, db.DB.QueryRowContext(ctx,
+		require.NoError(t, db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM `+table+` WHERE project_id = 'delrows'`).Scan(&n), table)
 		require.Zero(t, n, "%s rows must be cleaned by DeleteProjectInternal", table)
 	}

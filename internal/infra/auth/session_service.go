@@ -201,6 +201,7 @@ func (s *SessionService) evictOldestSessions(ctx context.Context, projectID, use
 	return nil
 }
 
+//nolint:unused
 func parseSessionTime(v any) (time.Time, error) {
 	return ParseSessionTime(v)
 }

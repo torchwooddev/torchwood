@@ -208,6 +208,7 @@ func (s *Subscriptions) startPlatform(ctx context.Context, sub *domainsubs.Subsc
 	return nil
 }
 
+//nolint:unused
 func (s *Subscriptions) checkoutURLs() (success, cancel string) {
 	return s.resolveCheckoutURLs("", "")
 }

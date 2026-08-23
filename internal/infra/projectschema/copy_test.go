@@ -32,13 +32,13 @@ func TestApply_StagingLeavesDocumentUsers(t *testing.T) {
 
 	quoted := testutil.CatalogQuoted(projectID)
 	var version int64
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
 	require.Equal(t, int64(8), version)
 
 	for _, table := range stagingTableNames {
 		var reg any
-		require.NoError(t, db.DB.QueryRowContext(ctx,
+		require.NoError(t, db.QueryRowContext(ctx,
 			`SELECT to_regclass(?)`, quoted+"."+table).Scan(&reg), table)
 		require.NotNil(t, reg, "expected %s.%s", quoted, table)
 	}
@@ -69,7 +69,7 @@ func TestApply_CutRenamesToFinalNames(t *testing.T) {
 
 	quoted := testutil.CatalogQuoted(projectID)
 	var version int64
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
 	require.Equal(t, int64(9), version)
 
@@ -79,7 +79,7 @@ func TestApply_CutRenamesToFinalNames(t *testing.T) {
 	require.False(t, columnExists(t, ctx, db, schema, "users", "_id"))
 	require.False(t, columnExists(t, ctx, db, schema, "users", "_version"))
 	var sys any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, quoted+".sys_users").Scan(&sys))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regclass(?)`, quoted+".sys_users").Scan(&sys))
 	require.Nil(t, sys)
 }
 
@@ -118,12 +118,12 @@ func TestApply_CopyFailureDoesNotMarkDirtyOrAdvanceVersion(t *testing.T) {
 
 	quoted := testutil.CatalogQuoted(projectID)
 	var version int64
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
 	require.Equal(t, int64(8), version)
 
 	var applied9 bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT EXISTS (SELECT 1 FROM `+quoted+`.schema_migrations WHERE version = 9)`).Scan(&applied9))
 	require.False(t, applied9)
 
@@ -135,7 +135,7 @@ func TestApply_CopyFailureDoesNotMarkDirtyOrAdvanceVersion(t *testing.T) {
 	require.True(t, columnExists(t, ctx, db, schema, "sys_users", "id"))
 	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "users"))
 	var docUserID string
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT _id FROM `+quoted+`.users`).Scan(&docUserID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT _id FROM `+quoted+`.users`).Scan(&docUserID))
 	require.Equal(t, "u1", docUserID)
 }
 
@@ -168,7 +168,7 @@ func TestApply_CopyThenCutMovesRowsToFinalNames(t *testing.T) {
 
 	quoted := testutil.CatalogQuoted(projectID)
 	var version int64
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
 	require.Equal(t, int64(9), version)
 
@@ -178,11 +178,11 @@ func TestApply_CopyThenCutMovesRowsToFinalNames(t *testing.T) {
 	require.False(t, columnExists(t, ctx, db, schema, "users", "_id"))
 	require.False(t, columnExists(t, ctx, db, schema, "users", "_version"))
 	var sys any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, quoted+".sys_users").Scan(&sys))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regclass(?)`, quoted+".sys_users").Scan(&sys))
 	require.Nil(t, sys)
 
 	var id, email string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT id, email FROM `+quoted+`.users`).Scan(&id, &email))
 	require.Equal(t, "u-cut", id)
 	require.Equal(t, "cut@example.com", email)
@@ -253,19 +253,19 @@ func TestCopySystemDocuments_UsersAndSessions(t *testing.T) {
 	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_sessions"))
 
 	var id, email string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT id, email FROM `+quoted+`.sys_users`).Scan(&id, &email))
 	require.Equal(t, "u1", id)
 	require.Equal(t, "alice@example.com", email)
 
 	var userID, gotSecret string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT user_id, secret_hash FROM `+quoted+`.sys_sessions WHERE id = 's1'`).Scan(&userID, &gotSecret))
 	require.Equal(t, "u1", userID)
 	require.Equal(t, secret, gotSecret)
 
 	var fkHolds bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT EXISTS (
 			SELECT 1 FROM `+quoted+`.sys_sessions s
 			JOIN `+quoted+`.sys_users u ON u.id = s.user_id
@@ -325,12 +325,12 @@ func TestCopySystemDocuments_OrphanSession(t *testing.T) {
 
 	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_sessions"))
 	var sid string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT id FROM `+quoted+`.sys_sessions`).Scan(&sid))
 	require.Equal(t, "s-ok", sid)
 
 	var dirty bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COALESCE(bool_or(dirty), false) FROM `+quoted+`.schema_migrations`).Scan(&dirty))
 	require.False(t, dirty)
 }
@@ -350,7 +350,7 @@ func TestCopySystemDocuments_MissingStaging(t *testing.T) {
 	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	quoted := testutil.CatalogQuoted(projectID)
-	_, err := db.DB.ExecContext(ctx, `DROP TABLE `+quoted+`.sys_users CASCADE`)
+	_, err := db.ExecContext(ctx, `DROP TABLE `+quoted+`.sys_users CASCADE`)
 	require.NoError(t, err)
 
 	err = projectschema.CopySystemDocuments(ctx, db, projectID)
@@ -392,7 +392,7 @@ func TestCopySystemDocuments_InsertFailRollsBackStaging(t *testing.T) {
 
 	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_users"))
 	var id, status string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT id, status FROM `+quoted+`.sys_users`).Scan(&id, &status))
 	require.Equal(t, "u-old", id)
 	require.Equal(t, "active", status)
@@ -433,7 +433,7 @@ func TestCopySystemDocuments_FileOwnerMissingUserSetNull(t *testing.T) {
 
 	quoted := testutil.CatalogQuoted(projectID)
 	var createdBy string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT _created_by FROM `+quoted+`.files WHERE _id = 'f1'`).Scan(&createdBy))
 	require.Equal(t, "deleted-user", createdBy)
 
@@ -441,7 +441,7 @@ func TestCopySystemDocuments_FileOwnerMissingUserSetNull(t *testing.T) {
 
 	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_files"))
 	var ownerNull bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT owner_user_id IS NULL FROM `+quoted+`.sys_files WHERE id = 'f1'`).Scan(&ownerNull))
 	require.True(t, ownerNull)
 }
@@ -496,7 +496,7 @@ func TestCopySystemDocuments_OrphanFileBucket(t *testing.T) {
 	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_files"))
 	require.Equal(t, int64(1), countRows(t, ctx, db, quoted, "sys_buckets"))
 	var fid string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT id FROM `+quoted+`.sys_files`).Scan(&fid))
 	require.Equal(t, "f-ok", fid)
 }
@@ -555,14 +555,14 @@ func TestCopySystemDocuments_DuplicateMembership(t *testing.T) {
 func countRows(t *testing.T, ctx context.Context, db *clients.Database, quoted, table string) int64 {
 	t.Helper()
 	var n int64
-	require.NoError(t, db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+quoted+"."+table).Scan(&n))
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+quoted+"."+table).Scan(&n))
 	return n
 }
 
 func columnExists(t *testing.T, ctx context.Context, db *clients.Database, schema, table, column string) bool {
 	t.Helper()
 	var n int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?`,
 		schema, table, column).Scan(&n))
 	return n > 0
@@ -571,7 +571,7 @@ func columnExists(t *testing.T, ctx context.Context, db *clients.Database, schem
 func requireNotDirty(t *testing.T, ctx context.Context, db *clients.Database, quoted string) {
 	t.Helper()
 	var dirty bool
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COALESCE(bool_or(dirty), false) FROM `+quoted+`.schema_migrations`).Scan(&dirty))
 	require.False(t, dirty)
 }

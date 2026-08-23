@@ -790,6 +790,7 @@ func stringValue(v any) string {
 	return s
 }
 
+//nolint:unused
 func boolValue(v any) bool {
 	b, _ := v.(bool)
 	return b

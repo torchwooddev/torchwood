@@ -154,6 +154,7 @@ func grpcEndpointFromAddr(addr string) string {
 	return net.JoinHostPort(host, port)
 }
 
+//nolint:unused
 func portFromAddr(addr string) string {
 	_, port, err := net.SplitHostPort(addr)
 	if err != nil || port == "" {

@@ -266,7 +266,7 @@ func setupClientGRPC(t *testing.T) (context.Context, *AccountService, *fakeDocDB
 	require.NoError(t, err)
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = r_ = db.Close() })
+	t.Cleanup(func() { _ = rdb.Close() })
 
 	docDB := &fakeDocDB{}
 	projectID := "proj-grpc-1"

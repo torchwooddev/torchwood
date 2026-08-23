@@ -439,7 +439,7 @@ func signStripe(t *testing.T, secret string, body []byte) http.Header {
 	t.Helper()
 	ts := time.Now().Unix()
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	_, _ = fmt.Fprintf(mac, "%d.", ts)
 	mac.Write(body)
 	h := http.Header{}
 	h.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))

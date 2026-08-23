@@ -44,6 +44,7 @@ func newFakeDocDB() *fakeDocDB {
 	return &fakeDocDB{docs: map[string]map[string]databases.Document{}}
 }
 
+//nolint:unused
 func (f *fakeDocDB) seed(collectionID string, docs ...databases.Document) {
 	if f.docs[collectionID] == nil {
 		f.docs[collectionID] = map[string]databases.Document{}

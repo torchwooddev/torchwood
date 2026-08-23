@@ -80,7 +80,7 @@ func (s *Subscriber) Run(ctx context.Context) error {
 // subscribeLoop 单次订阅会话：SUBSCRIBE → 消费直至 ctx 取消或连接丢失。
 func (s *Subscriber) subscribeLoop(ctx context.Context) error {
 	pubsub := s.client.Subscribe(ctx, realtimeChannel)
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 	// 等待订阅确认。
 	if _, err := pubsub.Receive(ctx); err != nil {
 		return err

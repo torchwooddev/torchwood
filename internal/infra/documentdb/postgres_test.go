@@ -365,7 +365,7 @@ func TestCatalog_NoSentinelSystemCollections_MultipleProjects(t *testing.T) {
 func TestErrDuplicateKey_DomainAlias(t *testing.T) {
 	require.Equal(t, databases.ErrDuplicateKey, ErrDuplicateKey)
 	require.True(t, errors.Is(ErrDuplicateKey, databases.ErrDuplicateKey))
-	require.True(t, errors.Is(databases.ErrDuplicateKey, ErrDuplicateKey))
+	require.True(t, errors.Is(ErrDuplicateKey, databases.ErrDuplicateKey))
 }
 
 // TestDeleteCollection_CleansPerms (#3): deleting a collection must remove its
@@ -395,7 +395,7 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 		t.Helper()
 		var n int
 		sql := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(testSchema(t, projectID, "app")))
-		require.NoError(t, db.DB.QueryRowContext(ctx, sql, internalID, "notes").Scan(&n))
+		require.NoError(t, db.QueryRowContext(ctx, sql, internalID, "notes").Scan(&n))
 		return n
 	}
 
@@ -1201,7 +1201,7 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 	docDB := NewPostgresDocumentDB(db, nil)
 
 	// 预插同 (project_id, id) 元数据行，令 INSERT 撞复合主键。
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s.document_databases (id, project_id, name, created_at, updated_at) VALUES ('app', ?, 'preexisting', NOW(), NOW())`,
 		quoteIdent(testProjectSchema(t, projectID))),
 		projectID)
@@ -1213,7 +1213,7 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 
 	// 事务回滚后 schema 必须不存在（to_regnamespace 返回 NULL）。
 	var reg any
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT to_regnamespace(?)`, testSchema(t, projectID, "app")).Scan(&reg))
 	require.Nil(t, reg)
 
@@ -1329,7 +1329,7 @@ func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
 	}
 	// 拉平 _created_at：全部改为同一时间戳，使默认排序只能依赖 _id tiebreaker。
 	ts := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
-	_, err := db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
 		`UPDATE %s SET _created_at = ?`, tableName(testSchema(t, projectID, "app"), "docs")), ts)
 	require.NoError(t, err)
 
@@ -1407,7 +1407,7 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		schema := testProjectSchema(t, project.ID)
-		_, _ = db.DB.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema)))
+		_, _ = db.ExecContext(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema)))
 		_, _ = db.NewDelete().Model((*model.Project)(nil)).Where("id = ?", project.ID).Exec(ctx)
 	})
 
@@ -1431,7 +1431,7 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	require.Empty(t, listColl)
 
 	var reg any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&reg))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&reg))
 	require.Nil(t, reg, "catalog 读路径不得 Apply/CREATE SCHEMA")
 
 	require.NoError(t, docDB.EnsureCatalog(ctx, project.ID))
@@ -1444,12 +1444,12 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 	require.Nil(t, sentinel, "cut 后 catalog 无 database_id='_'")
 
 	var staticUsers any
-	require.NoError(t, db.DB.QueryRowContext(ctx, `SELECT to_regclass(?)`, schema+".users").Scan(&staticUsers))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regclass(?)`, schema+".users").Scan(&staticUsers))
 	require.NotNil(t, staticUsers)
 	var hasID, hasDocID int
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = 'id'`, schema).Scan(&hasID))
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_id'`, schema).Scan(&hasDocID))
 	require.Equal(t, 1, hasID)
 	require.Zero(t, hasDocID)
@@ -1515,7 +1515,7 @@ func TestCreateIndex_FulltextAlignment(t *testing.T) {
 	// 物理索引表达式必须与查询编译逐字对齐（to_tsvector('simple', body::text)），
 	// 否则 GIN 不命中、search 退化为全表逐行 to_tsvector。
 	var indexdef string
-	require.NoError(t, db.DB.QueryRowContext(ctx,
+	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_body_ft'`).Scan(&indexdef))
 	require.Contains(t, indexdef, "to_tsvector")
 	require.Contains(t, indexdef, "(body)::text",

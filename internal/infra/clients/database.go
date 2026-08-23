@@ -47,7 +47,7 @@ func NewDataClients(cfg *config.AppConfig, logger *slog.Logger) (*DataClients, f
 			RDB: rdb,
 		}, func() {
 			closeDb()
-			_ = r_ = db.Close()
+			_ = rdb.Close()
 		}, nil
 }
 

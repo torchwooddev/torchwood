@@ -159,7 +159,7 @@ func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox,
 		}
 		_, err := w.db.Conn(txCtx).NewUpdate().Model((*model.DocumentEventsOutbox)(nil)).
 			Set("dispatched_at = NOW()").
-			Where("event_id IN (?)", bun.In(ids)).
+			Where("event_id IN (?)", bun.List(ids)).
 			Exec(txCtx)
 		return err
 	})

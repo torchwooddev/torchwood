@@ -26,11 +26,10 @@ func TestAccount_SignUpSignInMe(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
 	defer cleanup()
 
-	cfg := &config.AppConfig{}
 	// Set a JWT secret via the generated struct. Because fields are unexported message
 	// types we use a JSON round-trip through Viper in production; for tests we just
 	// set the secret through the package-level default used by NewAccount.
-	cfg = buildTestConfig()
+	cfg := buildTestConfig()
 
 	projectRepo := bunrepo.NewProjectRepository(db)
 	account := NewTestAccount(cfg, projectRepo, db)

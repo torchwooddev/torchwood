@@ -296,7 +296,7 @@ type listableFileRepo struct {
 }
 
 func (r *listableFileRepo) Insert(_ context.Context, _ string, file *domainstorage.File) error {
-	_ = r.memFileRepo.Insert(nil, "", file)
+	_ = r.memFileRepo.Insert(context.TODO(), "", file)
 	if r.files == nil {
 		r.files = map[string]*domainstorage.File{}
 	}

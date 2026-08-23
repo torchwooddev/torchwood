@@ -204,7 +204,7 @@ func (s *Service) Consume(ctx context.Context, scope Scope, cmd ConsumeCommand) 
 		refType, refID := s.normalizeRef(cmd.RefType, cmd.RefID, string(KindConsume))
 		remain := cmd.Quantity
 		var entries []LedgerEntry
-		var remainingTotal int64 = avail - cmd.Quantity
+		remainingTotal := avail - cmd.Quantity
 		for i := range live {
 			if remain == 0 {
 				break

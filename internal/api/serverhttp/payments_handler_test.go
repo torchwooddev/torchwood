@@ -170,7 +170,7 @@ func TestPaymentsHandler_IndexMissReturns503FailBody(t *testing.T) {
 	body := `{"id":"evt_early","type":"checkout.session.completed","data":{"object":{"id":"cs_1","client_reference_id":"ord_1","payment_status":"paid","amount_total":100,"currency":"usd","metadata":{"order_id":"ord_1","project_id":"shop"}}}}`
 	ts := time.Now().Unix()
 	mac := hmac.New(sha256.New, []byte("whsec_handler_test"))
-	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	_, _ = fmt.Fprintf(mac, "%d.", ts)
 	mac.Write([]byte(body))
 	hdr := http.Header{}
 	hdr.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))
@@ -191,7 +191,7 @@ func TestPaymentsHandler_NoPlatformRefReturns200(t *testing.T) {
 	body := `{"id":"evt_noise","type":"checkout.session.completed","data":{"object":{"id":"cs_other","payment_intent":"pi_other","payment_status":"paid","amount_total":100,"currency":"usd"}}}`
 	ts := time.Now().Unix()
 	mac := hmac.New(sha256.New, []byte("whsec_handler_test"))
-	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	_, _ = fmt.Fprintf(mac, "%d.", ts)
 	mac.Write([]byte(body))
 	hdr := http.Header{}
 	hdr.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil))))

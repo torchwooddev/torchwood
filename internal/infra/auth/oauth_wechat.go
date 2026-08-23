@@ -206,6 +206,7 @@ func mergeWeChatProfile(info *domainauth.OAuthUserInfo, profile map[string]any) 
 	info.Raw["userinfo"] = profile
 }
 
+//nolint:unused
 func isWeChatOAuthProvider(provider string) bool {
 	switch provider {
 	case domainauth.ProviderWeChatWeb, domainauth.ProviderWeChatMP:

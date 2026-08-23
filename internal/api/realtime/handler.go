@@ -425,6 +425,8 @@ func realtimeSessionCookieHeaders(r *http.Request) []string {
 }
 
 // consoleSessionCookieHeaders 保留别名兼容旧测试桩（若有外部调用），内部已由 realtimeSessionCookieHeaders 接管。
+
+//nolint:unused
 func consoleSessionCookieHeaders(r *http.Request) []string {
 	return realtimeSessionCookieHeaders(r)
 }

@@ -78,7 +78,7 @@ func (m *MailerService) sendTLS(addr, to string, msg []byte) error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if m.smtpUser != "" {
 		if err := client.Auth(smtp.PlainAuth("", m.smtpUser, m.smtpPassword, m.smtpHost)); err != nil {

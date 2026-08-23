@@ -250,7 +250,7 @@ func applyUserListFilters(q *bun.SelectQuery, parsed *query.Query) *bun.SelectQu
 				for i, v := range f.Values {
 					args[i] = listFilterValue(f.Attribute, v)
 				}
-				q = q.Where(col+" IN (?)", bun.In(args))
+				q = q.Where(col+" IN (?)", bun.List(args))
 			}
 		case query.OpGreaterThan:
 			if len(f.Values) > 0 {

@@ -45,7 +45,9 @@ func specificationExists(id string) bool {
 	return false
 }
 
-// specification 返回 spec 的 CPU/Memory 值；不存在时返回零值。
+// specification 返回 spec 的 CPU/Memory 值；不存在时返回零值.
+
+//nolint:unused
 func specification(id string) domainfunctions.SpecificationInfo {
 	for _, s := range specifications {
 		if s.ID == id {

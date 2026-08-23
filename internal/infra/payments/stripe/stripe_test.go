@@ -32,7 +32,7 @@ func newTestAdapter(t *testing.T) *Adapter {
 func signedBody(t *testing.T, secret string, body []byte, ts int64) (http.Header, []byte) {
 	t.Helper()
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(fmt.Sprintf("%d.", ts)))
+	_, _ = fmt.Fprintf(mac, "%d.", ts)
 	mac.Write(body)
 	sig := hex.EncodeToString(mac.Sum(nil))
 	h := http.Header{}

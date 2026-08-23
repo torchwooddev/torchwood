@@ -37,7 +37,7 @@ func (p *postgresDocumentDB) getDocumentPermissions(ctx context.Context, schema,
 	if err != nil {
 		return nil, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var perms []databases.Permission
 	for rows.Next() {

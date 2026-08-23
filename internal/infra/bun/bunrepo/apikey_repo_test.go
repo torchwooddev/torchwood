@@ -64,7 +64,7 @@ func TestAPIKeyRepository_SecretHashIndexAndScope(t *testing.T) {
 
 	rows, err := db.QueryContext(ctx, `EXPLAIN SELECT id FROM api_keys WHERE secret_hash = ?`, key.SecretHash)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var plan strings.Builder
 	for rows.Next() {
 		var line string

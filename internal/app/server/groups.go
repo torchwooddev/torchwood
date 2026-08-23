@@ -340,7 +340,8 @@ func (t *Groups) UpdateMembershipStatus(ctx context.Context, projectID, groupID,
 		return nil, err
 	}
 	userID := m.UserID
-	if statusVal == groups.StatusAccepted {
+	switch statusVal {
+	case groups.StatusAccepted:
 		if userID == "" {
 			if m.Email == "" {
 				return nil, status.Error(codes.FailedPrecondition, "membership has no user to accept")
@@ -356,7 +357,7 @@ func (t *Groups) UpdateMembershipStatus(ctx context.Context, projectID, groupID,
 		if err := t.memberships.Accept(ctx, projectID, membershipID, userID, time.Now()); err != nil {
 			return nil, mapMembershipStatusError(err)
 		}
-	} else if statusVal == groups.StatusRejected {
+	case groups.StatusRejected:
 		if err := t.memberships.Reject(ctx, projectID, membershipID); err != nil {
 			return nil, mapMembershipStatusError(err)
 		}

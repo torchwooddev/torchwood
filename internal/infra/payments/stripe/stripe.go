@@ -65,7 +65,7 @@ func New(cfg Config) *Adapter {
 
 func (a *Adapter) Name() string { return providerName }
 
-// configured 报告渠道是否已配置凭据。
+//nolint:unused // configured 报告渠道是否已配置凭据（预留，未接入调用方）。
 func (a *Adapter) configured() bool {
 	return a.cfg.SecretKey != "" && a.cfg.WebhookSecret != ""
 }

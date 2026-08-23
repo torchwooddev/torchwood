@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -352,8 +351,8 @@ func TestProcessExecution_RebuildsWhenDeploymentNotReady(t *testing.T) {
 	}
 	require.NoError(t, repo.CreateExecution(context.Background(), rec))
 
-	err := uc.ProcessExecutionPayload(context.Background(), []byte(fmt.Sprintf(
-		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1","data":"{}"}`)))
+	err := uc.ProcessExecutionPayload(context.Background(), []byte(
+		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1","data":"{}"}`))
 	require.NoError(t, err)
 	require.Equal(t, 1, executor.builds, "deployment 非 ready 时补构建")
 	dep, _ := repo.GetDeployment(context.Background(), "p1", "fn_1", "dep_pending")

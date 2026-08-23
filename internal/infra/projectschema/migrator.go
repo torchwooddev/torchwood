@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS %s.schema_migrations (
 // dirty，使事务 ROLLBACK 后标记仍持久可见。best-effort：写入失败（如
 // CreateProject 回滚后 schema 已不存在）时静默，Apply 的原错误仍向上传播。
 func markDirtyStandalone(ctx context.Context, db *clients.Database, quotedSchema string, version int64) {
-	_, _ = db.DB.ExecContext(ctx, fmt.Sprintf(
+	_, _ = db.ExecContext(ctx, fmt.Sprintf(
 		`INSERT INTO %s.schema_migrations (version, dirty) VALUES (%d, true)
 ON CONFLICT (version) DO UPDATE SET dirty = true`, quotedSchema, version))
 }

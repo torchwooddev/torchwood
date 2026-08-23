@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -39,8 +38,8 @@ func TestRequeue_OldFormatWithoutAttemptStartsAtOne(t *testing.T) {
 // TestRequeue_RoundTripPreservesData 连续重抛（直到上限）每次往返均保留
 // data 字段与全部 ID。
 func TestRequeue_RoundTripPreservesData(t *testing.T) {
-	payload := []byte(fmt.Sprintf(
-		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1","data":"{\"nested\":{\"a\":1},\"s\":\"v\"}"}`))
+	payload := []byte(
+		`{"execution_id":"e1","function_id":"fn_1","project_id":"p1","data":"{\"nested\":{\"a\":1},\"s\":\"v\"}"}`)
 	for i := 1; i <= maxProcessAttempts; i++ {
 		next, ok := requeue(payload)
 		require.True(t, ok, "attempt=%d 未超限应可重试", i)

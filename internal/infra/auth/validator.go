@@ -345,6 +345,7 @@ func (v *Validator) checkAdminTokenRevoked(ctx context.Context, claims *jwtparse
 	return nil
 }
 
+//nolint:unused
 func parseTime(v any) (time.Time, error) {
 	switch t := v.(type) {
 	case time.Time:

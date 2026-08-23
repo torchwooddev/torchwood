@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -345,7 +346,7 @@ func (d *dockerExecutor) RemoveImage(ctx context.Context, functionID, deployment
 		return err
 	}
 	_, err = cli.ImageRemove(ctx, d.imageName(functionID, deploymentID), image.RemoveOptions{})
-	if client.IsErrNotFound(err) {
+	if errdefs.IsNotFound(err) {
 		return nil
 	}
 	return err
@@ -363,7 +364,7 @@ func extractZipWithLimits(zipPath, destDir string, limits zipExtractLimits) (str
 	if err != nil {
 		return "", status.Error(codes.InvalidArgument, "invalid zip file")
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	if len(zr.File) > limits.maxEntries {
 		return "", status.Errorf(codes.InvalidArgument, "zip contains too many entries (max %d)", limits.maxEntries)
@@ -411,7 +412,7 @@ func extractZipWithLimits(zipPath, destDir string, limits zipExtractLimits) (str
 		}
 		dst, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 		if err != nil {
-			src.Close()
+			_ = src.Close()
 			return "", fmt.Errorf("write zip entry %q: %w", f.Name, err)
 		}
 		// 写入侧按实际字节计数（不再仅信任 UncompressedSize64 声明值），
@@ -420,7 +421,7 @@ func extractZipWithLimits(zipPath, destDir string, limits zipExtractLimits) (str
 		// 位于其内），不会误删目录外内容，也不残留已解压的前序条目。
 		n, copyErr := io.Copy(&budgetWriter{dst: dst, limit: limits.maxEntryBytes}, src)
 		actualTotal += n
-		src.Close()
+		_ = src.Close()
 		closeErr := dst.Close()
 		if copyErr != nil {
 			_ = os.RemoveAll(destDir)
@@ -511,7 +512,7 @@ func tarDir(dir string) (io.Reader, error) {
 				return err
 			}
 			_, copyErr := io.Copy(tw, f)
-			f.Close()
+			_ = f.Close()
 			if copyErr != nil {
 				return copyErr
 			}
@@ -551,7 +552,7 @@ func readBuildOutput(r io.Reader) (string, error) {
 	scanner.Buffer(make([]byte, 0, 64*1024), maxBuildLogLine)
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		log.Write(append(line, '\n'))
+		_, _ = log.Write(append(line, '\n'))
 		var msg struct {
 			Error       string `json:"error"`
 			ErrorDetail struct {
