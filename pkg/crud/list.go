@@ -53,7 +53,9 @@ type ListParams struct {
 // It enforces:
 // - page_size between 1 and MaxPageSize (default: DefaultPageSize)
 // - Validates page_token format if provided
-// - Returns validated params that can be used for database queries
+// - page_token 签名验证（启用签名后伪造/跨环境 token 被拒）
+// - offset 上限 MaxQueryOffset（防伪造超深分页拖垮数据库）
+// - order_by/filter 与签发该 token 的请求一致（token 内记录 digest）
 func ParseListParams(pageSize int32, pageToken, filter, orderBy string) (ListParams, error) {
 	params := ListParams{
 		PageSize:  pageSize,
@@ -78,11 +80,23 @@ func ParseListParams(pageSize int32, pageToken, filter, orderBy string) (ListPar
 
 	// Decode page token to get offset
 	if params.PageToken != "" {
-		offset, err := DecodePageToken(params.PageToken)
+		data, err := DecodePageTokenFull(params.PageToken)
 		if err != nil {
 			return ListParams{}, fmt.Errorf("invalid page_token: %w", err)
 		}
-		params.Offset = offset
+		// R4-J2-4：order_by/filter 跨页一致性。仅当 token 记录了对应约束时校验，
+		// 兼容未记录约束的历史 token。
+		canonicalOrderBy := strings.TrimSpace(strings.ToLower(orderBy))
+		if data.OrderBy != "" && strings.TrimSpace(strings.ToLower(data.OrderBy)) != canonicalOrderBy {
+			return ListParams{}, fmt.Errorf("order_by must match the original request when using page_token")
+		}
+		if data.FilterDigest != "" && data.FilterDigest != FilterDigest(filter) {
+			return ListParams{}, fmt.Errorf("filter must match the original request when using page_token")
+		}
+		if data.Offset > MaxQueryOffset {
+			return ListParams{}, fmt.Errorf("page_token offset exceeds the maximum of %d", MaxQueryOffset)
+		}
+		params.Offset = data.Offset
 	}
 
 	return params, nil

@@ -100,7 +100,9 @@ func (s *UsersService) UpdateUser(ctx context.Context, req *serverv1.UpdateUserR
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	updates := map[string]any{}
-	if req.GetStatus() != "" {
+	// D-1 presence 语义：optional 字段以非 nil 判断（本仓生成物无 HasXxx），
+	// 「未设置=不修改、设置含空串=更新/清空」，范本 servergrpc/projects.go UpdateProject。
+	if req.Status != nil {
 		updates["status"] = req.GetStatus()
 	}
 	if req.GetLabels() != nil {
@@ -109,10 +111,10 @@ func (s *UsersService) UpdateUser(ctx context.Context, req *serverv1.UpdateUserR
 	if req.GetPrefs() != nil {
 		updates["prefs"] = req.GetPrefs().AsMap()
 	}
-	if req.GetName() != "" {
+	if req.Name != nil {
 		updates["name"] = req.GetName()
 	}
-	if req.GetEmail() != "" {
+	if req.Email != nil {
 		updates["email"] = req.GetEmail()
 	}
 	if req.EmailVerified != nil {

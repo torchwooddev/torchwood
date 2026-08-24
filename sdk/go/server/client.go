@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"time"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	"github.com/torchwooddev/torchwood/sdk/go/internal/conn"
@@ -18,6 +19,9 @@ type Config struct {
 	ProjectID string
 	// DatabaseID 是文档 API 使用的默认 database_id。
 	DatabaseID string
+
+	timeout       time.Duration // <=0 视为 conn.DefaultTimeout
+	retryDisabled bool
 	// dialOptions 透传给底层拨号。
 	dialOptions []grpc.DialOption
 }
@@ -35,6 +39,14 @@ func WithProjectID(projectID string) Option { return func(c *Config) { c.Project
 func WithDatabaseID(databaseID string) Option {
 	return func(c *Config) { c.DatabaseID = databaseID }
 }
+
+// WithTimeout 设置单次调用的默认超时（默认 30s，<=0 回落默认值）。仅对
+// 未携带 deadline 的 ctx 生效；调用方已有 deadline 时原样尊重。
+func WithTimeout(d time.Duration) Option { return func(c *Config) { c.timeout = d } }
+
+// WithRetryDisabled 关闭默认的 UNAVAILABLE 自动重试 service config
+// （默认开启；非幂等写敏感的调用方可显式关闭）。
+func WithRetryDisabled() Option { return func(c *Config) { c.retryDisabled = true } }
 
 // WithDialOptions 附加底层 gRPC 拨号选项。
 func WithDialOptions(opts ...grpc.DialOption) Option {
@@ -86,7 +98,13 @@ func New(target string, opts ...Option) (*Client, error) {
 		o(&cfg)
 	}
 	c := &Client{cfg: cfg}
-	dialOpts := append([]grpc.DialOption{grpc.WithChainUnaryInterceptor(c.authInterceptor())}, cfg.dialOptions...)
+	dialOpts := append([]grpc.DialOption{
+		// 超时兜底在最外层（含 auth 头注入的开销），auth 在内层。
+		grpc.WithChainUnaryInterceptor(conn.TimeoutUnaryInterceptor(cfg.timeout), c.authInterceptor()),
+	}, cfg.dialOptions...)
+	if !cfg.retryDisabled {
+		dialOpts = append(dialOpts, conn.RetryDialOption())
+	}
 	gc, err := conn.Dial(target, dialOpts...)
 	if err != nil {
 		return nil, err

@@ -22,7 +22,10 @@ type Config struct {
 	tokenStore      TokenStore
 	onTokensChanged func(*clientv1.TokenBundle)
 	initialTokens   *clientv1.TokenBundle
-	dialOptions     []grpc.DialOption
+
+	timeout       time.Duration // <=0 视为 conn.DefaultTimeout
+	retryDisabled bool
+	dialOptions   []grpc.DialOption
 }
 
 // Option 以函数选项模式修改 Config。
@@ -47,6 +50,14 @@ func WithOnTokensChanged(fn func(*clientv1.TokenBundle)) Option {
 func WithInitialTokens(t *clientv1.TokenBundle) Option {
 	return func(c *Config) { c.initialTokens = t }
 }
+
+// WithTimeout 设置单次调用的默认超时（默认 30s，<=0 回落默认值）。仅对
+// 未携带 deadline 的 ctx 生效；调用方已有 deadline 时原样尊重。
+func WithTimeout(d time.Duration) Option { return func(c *Config) { c.timeout = d } }
+
+// WithRetryDisabled 关闭默认的 UNAVAILABLE 自动重试 service config
+// （默认开启；非幂等写敏感的调用方可显式关闭）。
+func WithRetryDisabled() Option { return func(c *Config) { c.retryDisabled = true } }
 
 // WithDialOptions 附加底层 gRPC 拨号选项。
 func WithDialOptions(opts ...grpc.DialOption) Option {
@@ -99,7 +110,13 @@ func New(target string, opts ...Option) (*Client, error) {
 			return nil, err
 		}
 	}
-	dialOpts := append([]grpc.DialOption{grpc.WithChainUnaryInterceptor(c.authInterceptor())}, cfg.dialOptions...)
+	dialOpts := append([]grpc.DialOption{
+		// 超时兜底在最外层（含刷新/401 重试逻辑的整体预算），auth 在内层。
+		grpc.WithChainUnaryInterceptor(conn.TimeoutUnaryInterceptor(cfg.timeout), c.authInterceptor()),
+	}, cfg.dialOptions...)
+	if !cfg.retryDisabled {
+		dialOpts = append(dialOpts, conn.RetryDialOption())
+	}
 	gc, err := conn.Dial(target, dialOpts...)
 	if err != nil {
 		return nil, err

@@ -21,6 +21,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// strPtr 供 D-1 presence 语义下构造 *string 字段（nil=不修改）的测试用。
+func strPtr(s string) *string { return &s }
+
 // failableSessionService 包装真实 SessionService，DeleteSessionsByUser 可按
 // 标志注入故障（R05-P1-3 故障注入测试用）。
 type failableSessionService struct {
@@ -139,7 +142,7 @@ func TestAccount_EmailChangeNotifiesOldEmail(t *testing.T) {
 	})
 
 	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "new-mail@torchwood.local",
+		Email:       strPtr("new-mail@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -191,7 +194,7 @@ func TestAccount_UpdateAccount_SessionRevocationFailureLeavesCredentials(t *test
 	// 失败而报错；撤会话语义由 ConfirmEmailChange 的故障注入测试覆盖。
 	sessions.fail = true
 	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "staged@torchwood.local",
+		Email:       strPtr("staged@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -300,7 +303,7 @@ func TestAccount_EmailChangeStaging_OldEmailWorksUntilConfirm(t *testing.T) {
 	})
 
 	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "stage-new@torchwood.local",
+		Email:       strPtr("stage-new@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -362,7 +365,7 @@ func TestAccount_ConfirmEmailChange_TokenOneTime(t *testing.T) {
 	})
 
 	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "onetime-new@torchwood.local",
+		Email:       strPtr("onetime-new@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -400,7 +403,7 @@ func TestAccount_ConfirmEmailChange_NewEmailTaken(t *testing.T) {
 	})
 
 	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "taken@torchwood.local",
+		Email:       strPtr("taken@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -434,7 +437,7 @@ func TestAccount_ConfirmEmailChange_SessionRevocationFailureLeavesOldEmail(t *te
 	})
 
 	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "revoke-confirm-new@torchwood.local",
+		Email:       strPtr("revoke-confirm-new@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -476,7 +479,7 @@ func TestAccount_ConfirmEmailChange_PublicAccess(t *testing.T) {
 	})
 
 	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "own-check-new@torchwood.local",
+		Email:       strPtr("own-check-new@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -521,7 +524,7 @@ func TestAccount_UpdateAccount_EmailChangeRequiresURL(t *testing.T) {
 	})
 
 	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "need-url-new@torchwood.local",
+		Email:       strPtr("need-url-new@torchwood.local"),
 		OldPassword: "User@123",
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "改邮箱不带 url 必须拒绝")

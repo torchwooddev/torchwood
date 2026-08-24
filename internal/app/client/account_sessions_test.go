@@ -58,10 +58,21 @@ func TestAccount_SessionsUpdatePrefs(t *testing.T) {
 	require.GreaterOrEqual(t, len(sessions), 2)
 
 	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Name: "Updated Name",
+		Name: strPtr("Updated Name"),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Updated Name", updated.Name)
+
+	// D-1 presence 语义：未设置（nil）=不修改；设置空串=清空。
+	unchanged, err := account.UpdateAccount(authCtx, UpdateAccountCommand{})
+	require.NoError(t, err)
+	require.Equal(t, "Updated Name", unchanged.Name)
+
+	cleared, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
+		Name: strPtr(""),
+	})
+	require.NoError(t, err)
+	require.Empty(t, cleared.Name)
 
 	prefs, err := account.UpdatePrefs(authCtx, map[string]any{"theme": "dark"})
 	require.NoError(t, err)

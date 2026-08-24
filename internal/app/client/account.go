@@ -141,8 +141,9 @@ type Session struct {
 }
 
 type UpdateAccountCommand struct {
-	Name        string
-	Email       string
+	// Name/Email 为指针（D-1 presence 语义）：nil=不修改；非 nil（含空串）=更新/清空。
+	Name        *string
+	Email       *string
 	URL         string // 改邮箱时必填：新邮箱验证链接模板（语义同 CreateVerificationRequest.url）
 	Password    string
 	OldPassword string
@@ -407,37 +408,53 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	}
 
 	updates := map[string]any{}
-	if cmd.Name != "" {
-		updates["name"] = cmd.Name
+	if cmd.Name != nil {
+		updates["name"] = *cmd.Name
 	}
 	hash := found.PasswordHash
 	oldEmail := normalizeEmail(found.Email)
 	emailChanging := false
-	if email := normalizeEmail(cmd.Email); email != "" && email != oldEmail {
-		if err := validateEmail(email); err != nil {
-			return nil, err
+	clearingEmail := false
+	stagedEmail := ""
+	if cmd.Email != nil {
+		newEmail := normalizeEmail(*cmd.Email)
+		switch {
+		case newEmail == "":
+			// D-1：设置空串=清空。email 是登录凭据，清空属敏感变更（下方与改密
+			// 同门槛要求旧密码）；同时丢弃未确认的 pending_email，避免悬置 staging。
+			clearingEmail = true
+			updates["email"] = ""
+			if found.PendingEmail != "" {
+				updates["pending_email"] = ""
+			}
+		case newEmail != oldEmail:
+			if err := validateEmail(newEmail); err != nil {
+				return nil, err
+			}
+			// 邮箱变更走 staging（R05-P1-2，A 档）：新邮箱验证通过前 email 保持
+			// 旧值（旧邮箱仍可登录/找回），仅写入 pending_email + 签发 email_change
+			// token + 向新邮箱发验证邮件；验证通过（ConfirmEmailChange）才切换。
+			if cmd.URL == "" {
+				return nil, status.Error(codes.InvalidArgument, "url is required when changing email")
+			}
+			if err := validateRedirectURL(cmd.URL); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid url: %v", err)
+			}
+			if err := a.validateProjectOAuthRedirectURLs(ctx, p.ProjectID, cmd.URL, cmd.URL); err != nil {
+				return nil, err
+			}
+			taken, err := a.usersRepo.GetByEmail(ctx, p.ProjectID, newEmail)
+			if err != nil {
+				return nil, err
+			}
+			if taken != nil && taken.ID != p.UserID {
+				return nil, status.Error(codes.AlreadyExists, users.ErrEmailAlreadyRegistered.Error())
+			}
+			updates["pending_email"] = newEmail
+			emailChanging = true
+			stagedEmail = newEmail
+		default: // 设置了与当前相同的 email：幂等无操作。
 		}
-		// 邮箱变更走 staging（R05-P1-2，A 档）：新邮箱验证通过前 email 保持
-		// 旧值（旧邮箱仍可登录/找回），仅写入 pending_email + 签发 email_change
-		// token + 向新邮箱发验证邮件；验证通过（ConfirmEmailChange）才切换。
-		if cmd.URL == "" {
-			return nil, status.Error(codes.InvalidArgument, "url is required when changing email")
-		}
-		if err := validateRedirectURL(cmd.URL); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid url: %v", err)
-		}
-		if err := a.validateProjectOAuthRedirectURLs(ctx, p.ProjectID, cmd.URL, cmd.URL); err != nil {
-			return nil, err
-		}
-		taken, err := a.usersRepo.GetByEmail(ctx, p.ProjectID, email)
-		if err != nil {
-			return nil, err
-		}
-		if taken != nil && taken.ID != p.UserID {
-			return nil, status.Error(codes.AlreadyExists, users.ErrEmailAlreadyRegistered.Error())
-		}
-		updates["pending_email"] = email
-		emailChanging = true
 	}
 	if cmd.Password != "" {
 		if err := validatePasswordStrength(cmd.Password); err != nil {
@@ -449,9 +466,9 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		}
 		updates["password_hash"] = newHash
 	}
-	// 敏感变更（改邮箱/改密码）二次验证：非匿名用户（已有密码）必须提供旧密码；
+	// 敏感变更（改邮箱/清空邮箱/改密码）二次验证：非匿名用户（已有密码）必须提供旧密码；
 	// 匿名用户（password_hash 为空）升级为实名/设置密码时跳过。
-	if (emailChanging || updates["password_hash"] != nil) && hash != "" {
+	if (emailChanging || clearingEmail || updates["password_hash"] != nil) && hash != "" {
 		if cmd.OldPassword == "" {
 			return nil, status.Error(codes.InvalidArgument, "old_password is required")
 		}
@@ -482,17 +499,17 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 		// Round3 H6-3：与 verification/recovery/magic 对齐，签发前走发送频控
 		//（60s cooldown + IP 窗口），防改邮箱邮件轰炸。
 		clientInfo := contexts.ClientInfoFrom(ctx)
-		if err := a.tokens.CheckSendRateLimit(ctx, p.ProjectID, normalizeEmail(cmd.Email), clientInfo.IP); err != nil {
+		if err := a.tokens.CheckSendRateLimit(ctx, p.ProjectID, stagedEmail, clientInfo.IP); err != nil {
 			return nil, err
 		}
-		secret, expireAt, err := a.tokens.CreateEmailChangeToken(ctx, p.ProjectID, p.UserID, normalizeEmail(cmd.Email))
+		secret, expireAt, err := a.tokens.CreateEmailChangeToken(ctx, p.ProjectID, p.UserID, stagedEmail)
 		if err != nil {
 			return nil, err
 		}
 		link := buildAccountActionURL(cmd.URL, p.UserID, secret)
 		subject := "Confirm your Torchwood email change"
 		body := fmt.Sprintf("Click the link below to confirm your new email address:\n\n%s\n\nThis link expires at %s.", link, expireAt.Format("2006-01-02 15:04 MST"))
-		if err := a.mailer.Send(ctx, normalizeEmail(cmd.Email), subject, body); err != nil {
+		if err := a.mailer.Send(ctx, stagedEmail, subject, body); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to send email change confirmation: %v", err)
 		}
 	}
@@ -509,7 +526,7 @@ func (a *Account) UpdateAccount(ctx context.Context, cmd UpdateAccountCommand) (
 	}
 	if emailChanging && oldEmail != "" && a.mailer != nil {
 		subject := "Your Torchwood email address is being changed"
-		body := fmt.Sprintf("Your Torchwood account email is pending change to %s. The change takes effect only after confirmation from the new address.\n\nIf you did not make this change, sign in to your account and update your email or contact support immediately.", normalizeEmail(cmd.Email))
+		body := fmt.Sprintf("Your Torchwood account email is pending change to %s. The change takes effect only after confirmation from the new address.\n\nIf you did not make this change, sign in to your account and update your email or contact support immediately.", stagedEmail)
 		if err := a.mailer.Send(ctx, oldEmail, subject, body); err != nil {
 			slog.Warn("email change notification failed", "user_id", p.UserID, "error", err)
 		}

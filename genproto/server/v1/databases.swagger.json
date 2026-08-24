@@ -29,20 +29,20 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -54,7 +54,7 @@
             "type": "string"
           },
           {
-            "name": "orderBy",
+            "name": "order_by",
             "in": "query",
             "required": false,
             "type": "string"
@@ -86,7 +86,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -105,7 +105,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections": {
+    "/v1/server/databases/{database_id}/collections": {
       "get": {
         "operationId": "DatabasesService_ListCollections",
         "responses": {
@@ -118,13 +118,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -140,14 +140,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -169,13 +169,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -194,7 +194,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}": {
       "get": {
         "operationId": "DatabasesService_GetCollection",
         "responses": {
@@ -207,19 +207,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -241,19 +241,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -275,19 +275,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -306,7 +306,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/attributes": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/attributes": {
       "post": {
         "operationId": "DatabasesService_CreateAttribute",
         "responses": {
@@ -319,19 +319,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -350,7 +350,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/attributes/{key}": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}": {
       "delete": {
         "operationId": "DatabasesService_DeleteAttribute",
         "responses": {
@@ -363,19 +363,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -392,7 +392,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/documents": {
       "get": {
         "operationId": "DatabasesService_ListDocuments",
         "responses": {
@@ -405,19 +405,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -433,14 +433,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -574,13 +574,13 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "query.filter.startsWith.attribute",
+            "name": "query.filter.starts_with.attribute",
             "in": "query",
             "required": false,
             "type": "string"
           },
           {
-            "name": "query.filter.startsWith.values",
+            "name": "query.filter.starts_with.values",
             "in": "query",
             "required": false,
             "type": "array",
@@ -590,13 +590,13 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "query.filter.endsWith.attribute",
+            "name": "query.filter.ends_with.attribute",
             "in": "query",
             "required": false,
             "type": "string"
           },
           {
-            "name": "query.filter.endsWith.values",
+            "name": "query.filter.ends_with.values",
             "in": "query",
             "required": false,
             "type": "array",
@@ -622,14 +622,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "query.pageSize",
+            "name": "query.page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "query.pageToken",
+            "name": "query.page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -651,19 +651,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -682,7 +682,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents/{documentId}": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}": {
       "get": {
         "operationId": "DatabasesService_GetDocument",
         "responses": {
@@ -695,25 +695,25 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "documentId",
+            "name": "document_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -735,25 +735,25 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "documentId",
+            "name": "document_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -783,25 +783,25 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "documentId",
+            "name": "document_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -831,25 +831,25 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "documentId",
+            "name": "document_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -868,7 +868,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents:bulkDelete": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete": {
       "post": {
         "operationId": "DatabasesService_BulkDeleteDocuments",
         "responses": {
@@ -881,19 +881,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -912,7 +912,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents:bulkUpdate": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkUpdate": {
       "patch": {
         "operationId": "DatabasesService_BulkUpdateDocuments",
         "responses": {
@@ -925,19 +925,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -956,7 +956,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents:count": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/documents:count": {
       "get": {
         "operationId": "DatabasesService_CountDocuments",
         "responses": {
@@ -969,19 +969,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -997,14 +997,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -1138,13 +1138,13 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "query.filter.startsWith.attribute",
+            "name": "query.filter.starts_with.attribute",
             "in": "query",
             "required": false,
             "type": "string"
           },
           {
-            "name": "query.filter.startsWith.values",
+            "name": "query.filter.starts_with.values",
             "in": "query",
             "required": false,
             "type": "array",
@@ -1154,13 +1154,13 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "query.filter.endsWith.attribute",
+            "name": "query.filter.ends_with.attribute",
             "in": "query",
             "required": false,
             "type": "string"
           },
           {
-            "name": "query.filter.endsWith.values",
+            "name": "query.filter.ends_with.values",
             "in": "query",
             "required": false,
             "type": "array",
@@ -1186,14 +1186,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "query.pageSize",
+            "name": "query.page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "query.pageToken",
+            "name": "query.page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -1215,19 +1215,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -1252,14 +1252,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -1270,7 +1270,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/documents:list": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/documents:list": {
       "post": {
         "operationId": "DatabasesService_ListDocuments2",
         "responses": {
@@ -1283,19 +1283,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -1320,14 +1320,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -1338,7 +1338,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/indexes": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/indexes": {
       "post": {
         "operationId": "DatabasesService_CreateIndex",
         "responses": {
@@ -1351,19 +1351,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -1382,7 +1382,7 @@
         ]
       }
     },
-    "/v1/server/databases/{databaseId}/collections/{collectionId}/indexes/{indexId}": {
+    "/v1/server/databases/{database_id}/collections/{collection_id}/indexes/{index_id}": {
       "delete": {
         "operationId": "DatabasesService_DeleteIndex",
         "responses": {
@@ -1395,25 +1395,25 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "databaseId",
+            "name": "database_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "collectionId",
+            "name": "collection_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "indexId",
+            "name": "index_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -1437,7 +1437,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -1465,7 +1465,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -1487,7 +1487,7 @@
     "DatabasesServiceBulkDeleteDocumentsBody": {
       "type": "object",
       "properties": {
-        "documentIds": {
+        "document_ids": {
           "type": "array",
           "items": {
             "type": "string"
@@ -1498,7 +1498,7 @@
     "DatabasesServiceBulkUpdateDocumentsBody": {
       "type": "object",
       "properties": {
-        "documentIds": {
+        "document_ids": {
           "type": "array",
           "items": {
             "type": "string"
@@ -1534,7 +1534,7 @@
         "array": {
           "type": "boolean"
         },
-        "defaultValue": {
+        "default_value": {
           "type": "string"
         }
       }
@@ -1554,7 +1554,7 @@
             "type": "string"
           }
         },
-        "documentSecurity": {
+        "document_security": {
           "type": "boolean"
         }
       }
@@ -1592,7 +1592,7 @@
         "permissions": {
           "$ref": "#/definitions/v1PermissionsUpdate"
         },
-        "documentSecurity": {
+        "document_security": {
           "type": "boolean"
         },
         "disabled": {
@@ -1617,25 +1617,6 @@
       "default": "NULL_VALUE",
       "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
     },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
-          }
-        }
-      }
-    },
     "torchwoodserverv1CountDocumentsResponse": {
       "type": "object",
       "properties": {
@@ -1648,7 +1629,7 @@
     "torchwoodserverv1DatabasesServiceCreateDocumentBody": {
       "type": "object",
       "properties": {
-        "documentId": {
+        "document_id": {
           "type": "string",
           "title": "客户端自选 document_id；documents:count / documents:bulkUpdate /\r\ndocuments:bulkDelete 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间，可自由取任意合法值。"
         },
@@ -1701,7 +1682,7 @@
             "type": "string"
           }
         },
-        "conflictColumns": {
+        "conflict_columns": {
           "type": "array",
           "items": {
             "type": "string"
@@ -1746,7 +1727,7 @@
         "array": {
           "type": "boolean"
         },
-        "defaultValue": {
+        "default_value": {
           "type": "string"
         }
       }
@@ -1766,7 +1747,7 @@
         "id": {
           "type": "string"
         },
-        "databaseId": {
+        "database_id": {
           "type": "string"
         },
         "name": {
@@ -1792,21 +1773,21 @@
             "$ref": "#/definitions/v1Index"
           }
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         },
-        "documentSecurity": {
+        "document_security": {
           "type": "boolean"
         },
         "disabled": {
           "type": "boolean"
         },
-        "isSystem": {
+        "is_system": {
           "type": "boolean"
         }
       }
@@ -1846,11 +1827,11 @@
         "name": {
           "type": "string"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -1865,11 +1846,11 @@
         "data": {
           "type": "object"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         },
@@ -1917,10 +1898,10 @@
         "contains": {
           "$ref": "#/definitions/v1Comparison"
         },
-        "startsWith": {
+        "starts_with": {
           "$ref": "#/definitions/v1Comparison"
         },
-        "endsWith": {
+        "ends_with": {
           "$ref": "#/definitions/v1Comparison"
         },
         "search": {
@@ -2004,17 +1985,17 @@
     "v1ListResponseMeta": {
       "type": "object",
       "properties": {
-        "pageSize": {
+        "page_size": {
           "type": "integer",
           "format": "int32"
         },
-        "nextPageToken": {
+        "next_page_token": {
           "type": "string"
         },
-        "prevPageToken": {
+        "prev_page_token": {
           "type": "string"
         },
-        "totalCount": {
+        "total_count": {
           "type": "integer",
           "format": "int32"
         }
@@ -2056,15 +2037,63 @@
             "$ref": "#/definitions/v1Order"
           }
         },
-        "pageSize": {
+        "page_size": {
           "type": "integer",
           "format": "int32"
         },
-        "pageToken": {
+        "page_token": {
           "type": "string"
         }
       },
       "description": "Query is the typed document list/count model (filter tree + orders + page).\npage_token is the authoritative pager (K-20); page_size is the page bound."
+    },
+    "torchwoodsharedv1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED"
+    },
+    "torchwoodsharedv1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/torchwoodsharedv1Error"
+        }
+      }
     }
   },
   "securityDefinitions": {

@@ -17,7 +17,7 @@ func (h *HealthService) Check(ctx context.Context) (*serverv1.HealthCheckRespons
 	return h.api.Check(ctx, &serverv1.HealthCheckRequest{})
 }
 
-// Version 返回服务版本信息。
-func (h *HealthService) Version(ctx context.Context) (*serverv1.GetVersionResponse, error) {
+// GetVersion 返回服务版本信息（与 proto RPC 名一致）。
+func (h *HealthService) GetVersion(ctx context.Context) (*serverv1.GetVersionResponse, error) {
 	return h.api.GetVersion(ctx, &serverv1.GetVersionRequest{})
 }

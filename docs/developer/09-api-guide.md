@@ -117,7 +117,14 @@ func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.Creat
 
 `proto/shared/v1/common.proto:7`：`page_size/page_token/filter/order_by/queries`；响应 `ListResponseMeta{page_size,next_page_token,prev_page_token,total_count}`（AIP-132/158/160）。
 
-`pkg/crud/list.go:57` `ParseListParams(pageSize,pageToken,filter,orderBy)`：校验 `page_size∈[1,1000]`（默认 50）、`page_token` 解析得 `Offset`；`pagination.go:360` `BuildPaginationInfo(params,totalCount,hasMore)` 产出 `HasNext/NextOffset/HasPrevious/PreviousOffset`，`EncodePageToken(offset)`（`v1` base64 JSON，`DefaultTokenTTL=24h`，`FilterDigest`/`order_by` 校验）。
+`pkg/crud/list.go:57` `ParseListParams(pageSize,pageToken,filter,orderBy)`：校验 `page_size∈[1,1000]`（默认 50）、`page_token` 解码得 `Offset`；`pagination.go:360` `BuildPaginationInfo(params,totalCount,hasMore)` 产出 `HasNext/NextOffset/HasPrevious/PreviousOffset`，`EncodePageToken(offset)`（`v1` base64 JSON，`DefaultTokenTTL=24h`）。
+
+**页 token 安全（R4-J2-4）**：生产进程启动时经 `crud.InitPageTokenSigning(jwtSecret)` 启用 HMAC-SHA256 签名（purpose 派生密钥，与 JWT/OAuth 域隔离），此后：
+
+- 签发侧所有 `Encode*PageToken` 自动附加签名；解码侧伪造、篡改 offset 的 token 一律 `InvalidArgument`；
+- token 内记录 `order_by` 与 filter digest（经 `GeneratePageTokens`/`GeneratePreviousPageToken` 签发的 token 携带），翻页请求二者与签发时不一致即 `InvalidArgument`（`list.go:163` 语义由此真实生效）；
+- offset 上限 `MaxQueryOffset=10000`，超出拒绝（防伪造超深分页拖垮数据库）；
+- 未启用签名的进程保持历史行为（接受未签名 token），便于灰度。
 
 Handler：
 
@@ -128,14 +135,14 @@ if info.HasNext { meta.NextPageToken = crud.EncodePageToken(info.NextOffset) }
 if info.HasPrevious { meta.PrevPageToken = crud.EncodePageToken(info.PreviousOffset) }
 ```
 
-- `filter/order_by` 显性化：`ValidatePageTokenForRequest`（`list.go:163`）要求翻页时二者与首请求一致（digest 不一致→`InvalidArgument`）；勿手拼 SQL `filter/order`。
+- `filter/order_by` 显性化：token 携带 digest 时要求翻页二者与首请求一致（不一致→`InvalidArgument`）；勿手拼 SQL `filter/order`。
 - `pkg/crud/filter.go`/`order.go` 供静态表列表复用，动态文档优先 `pkg/query`（见 `06-databases.md` §6）。
 
-示例：
+示例（documents 支持 `queries`（Appwrite 风格 DSL，见 06-databases.md §6）；storage buckets 列表当前不支持 filter/order_by，传入会被 `InvalidArgument` 显式拒绝）：
 
 ```bash
-curl -H 'X-API-Key: <key>' 'http://127.0.0.1:9080/v1/server/storage/buckets?page_size=20&filter=name%20eq%20"a"&order_by=name%20asc'
-# 响应 {buckets:[...], meta:{page_size:20,next_page_token:"...",total_count:42}}
+curl -H 'X-API-Key: <key>' 'http://127.0.0.1:9080/v1/databases/default/collections/<collection_id>/documents?page_size=20&queries=name%20eq%20%22a%22'
+# 响应 {documents:[...], meta:{page_size:20,next_page_token:"...",total_count:42}}
 ```
 
 ## 8 步骤 7：Wire

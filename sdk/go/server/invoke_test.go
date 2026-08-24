@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,9 +44,20 @@ func TestInvokeJSONBadJSON(t *testing.T) {
 	require.Error(t, err) // 未知字段报错（DiscardUnknown=false）
 }
 
+// expectedServerMethodCount 是 torchwood.server.v1 包（排除 APIKeysService）
+// 的方法总数精确快照。更新流程：proto 新增/删除 RPC 后运行本文件测试——
+// TestInvokeJSONCompleteness 与 TestTypedWrappersCoverAllServerMethods 会
+// 同时失败并报出实际 count；先为新增方法补齐 Client 类型化 wrapper（见
+// client.go 的服务字段与各 service_*.go），再把本常量改为测试输出的实际值，
+// 并在此注明变更来源（日期 + proto 文件）。禁止只改数字不加 wrapper。
+//
+// 快照历史：v0.1.0 时点 = 112（2026-08-24，Round4 J3-4 收紧，此前为 >60 下限）。
+const expectedServerMethodCount = 112
+
 // TestInvokeJSONCompleteness 遍历 protoregistry.GlobalFiles 中 torchwood.server.v1
 // 包的全部方法（排除 APIKeysService），断言每个方法都能被解析并用空 JSON 构造
-// 请求——防包名白名单/新增 proto 文件回归。
+// 请求——防包名白名单/新增 proto 文件回归；同时用精确快照锁死方法总数，
+// 防止静默增删 RPC。
 func TestInvokeJSONCompleteness(t *testing.T) {
 	count := 0
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
@@ -70,5 +83,45 @@ func TestInvokeJSONCompleteness(t *testing.T) {
 		}
 		return true
 	})
-	require.Greater(t, count, 60) // 当前 80 个（除 APIKeysService），留余量防误删
+	require.Equal(t, expectedServerMethodCount, count,
+		"server 方法数与快照不符：若为新增 RPC 请同步补齐 Client wrapper 并更新 expectedServerMethodCount（见该常量注释）")
+}
+
+// TestTypedWrappersCoverAllServerMethods 反射断言：registry 中每个 server
+// 方法（排除 APIKeysService）在 Client 对应 Service wrapper 上都存在同名
+// 导出方法。wrapper 字段名 = proto 服务名去掉 Service 后缀（Health / Users /
+// Databases ...），方法名与 proto RPC 名一致——拦住类型化封装面静默滞后于
+// proto 演进（audit R4 §G-P2）。
+func TestTypedWrappersCoverAllServerMethods(t *testing.T) {
+	clientType := reflect.TypeOf(&Client{})
+	count := 0
+	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		if fd.Package() != "torchwood.server.v1" {
+			return true
+		}
+		svcs := fd.Services()
+		for i := 0; i < svcs.Len(); i++ {
+			svc := svcs.Get(i)
+			if svc.Name() == "APIKeysService" {
+				continue // 服务端禁调，SDK 有意不提供（见 findServerMethod）
+			}
+			wrapper, ok := clientType.Elem().FieldByName(strings.TrimSuffix(string(svc.Name()), "Service"))
+			require.True(t, ok, "Client 缺少 %s 的 wrapper 字段", svc.FullName())
+			require.Equal(t, reflect.Ptr, wrapper.Type.Kind(), "%s wrapper 应为指针类型", svc.FullName())
+
+			ms := svc.Methods()
+			for j := 0; j < ms.Len(); j++ {
+				name := string(ms.Get(j).Name())
+				// wrapper.Type 为 *Service（指针类型方法集含指针接收者方法）。
+				m, ok := wrapper.Type.MethodByName(name)
+				require.True(t, ok, "%s.%s 缺少同名词导出方法（新增 RPC 未补 wrapper？）",
+					svc.FullName(), name)
+				require.Empty(t, m.PkgPath, "%s.%s 必须是导出方法", svc.FullName(), name)
+				count++
+			}
+		}
+		return true
+	})
+	require.Equal(t, expectedServerMethodCount, count,
+		"wrapper 覆盖数应与方法快照一致")
 }

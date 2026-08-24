@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	methodOutboxListDead  = "/torchwood.server.v1.OutboxService/ListDeadLetters"
-	methodOutboxReplay    = "/torchwood.server.v1.OutboxService/ReplayDeadLetter"
+	methodOutboxListDead = "/torchwood.server.v1.OutboxService/ListDeadLetters"
+	methodOutboxReplay   = "/torchwood.server.v1.OutboxService/ReplayDeadLetter"
 )
 
 // NewOutboxCmd 提供 outbox 死信管理（admin）。
@@ -49,7 +49,7 @@ func newOutboxListDeadCmd(g *globalFlags) *cobra.Command {
 			return printJSON(os.Stdout, resp)
 		},
 	}
-	cmd.Flags().StringVar(&projectID, "project-id", "", "项目 ID（必填，与 API key 或 --project 绑定一致）")
+	cmd.Flags().StringVar(&projectID, "project-id", "", "项目 ID（必填）")
 	cmd.Flags().Int32Var(&pageSize, "page-size", 0, "每页条数")
 	cmd.Flags().StringVar(&pageToken, "page-token", "", "上一页 next_page_token")
 	return cmd

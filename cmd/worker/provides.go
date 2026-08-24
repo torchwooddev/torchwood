@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/wire"
@@ -28,6 +29,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/uow"
 )
 
@@ -110,6 +112,11 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	}
 	if c.GetData().GetDatabase().GetSource() == "" {
 		return nil, errors.New("data.database.source must be set (env TORCHWOOD_DATA_DATABASE_SOURCE)")
+	}
+	// R4-J2-4：与 server 同一主密钥派生页 token 验签密钥（worker 的 outbox
+	// dead-letter 列表消费 server 签发的 page_token）。缺主密钥拒绝启动。
+	if err := crud.InitPageTokenSigning(c.GetSecurity().GetJwt().GetSecret()); err != nil {
+		return nil, fmt.Errorf("init page token signing: %w", err)
 	}
 	return &c, nil
 }

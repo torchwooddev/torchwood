@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -23,6 +22,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/pkg/buildinfo"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 )
 
 //go:generate wire
@@ -57,13 +57,27 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	if err := config.UnmarshalConfig(app.Config(), &c); err != nil {
 		return nil, err
 	}
-	if _, fallback := config.EncryptionSecret(&c); fallback {
-		app.Logger().Warn("security.encryption_key is not set: static encryption (OAuth/TOTP secrets) falls back to security.jwt.secret; configure a dedicated key (env TORCHWOOD_SECURITY_ENCRYPTION_KEY)")
-	}
-	if err := validateJWTSecret(c.GetSecurity().GetJwt().GetSecret()); err != nil {
+	if err := validateAppConfig(app.Logger(), &c); err != nil {
 		return nil, err
 	}
+	// R4-J2-4：启用页 token 签名（HMAC，purpose 派生自 jwt.secret）。
+	// 未配置主密钥即拒绝启动，与 JWT 校验同一 fail-closed 口径。
+	if err := crud.InitPageTokenSigning(c.GetSecurity().GetJwt().GetSecret()); err != nil {
+		return nil, fmt.Errorf("init page token signing: %w", err)
+	}
 	return &c, nil
+}
+
+// validateAppConfig 校验安全相关配置并按需告警：显式 security.encryption_key
+// 套用与 jwt.secret 相同的强度规则（不合规拒绝启动）；未配置时回退
+// jwt.secret 仅告警（历史行为，W-I）。
+func validateAppConfig(logger *slog.Logger, c *config.AppConfig) error {
+	if key, fallback := config.EncryptionSecret(c); fallback {
+		logger.Warn("security.encryption_key is not set: static encryption (OAuth/TOTP secrets) falls back to security.jwt.secret; configure a dedicated key (env TORCHWOOD_SECURITY_ENCRYPTION_KEY)")
+	} else if err := validateSecret("security.encryption_key", "TORCHWOOD_SECURITY_ENCRYPTION_KEY", key); err != nil {
+		return err
+	}
+	return validateJWTSecret(c.GetSecurity().GetJwt().GetSecret())
 }
 
 // weakJWTSecretTokens 是已知弱默认值/常见占位密钥的子串黑名单。
@@ -76,27 +90,32 @@ var weakJWTSecretTokens = []string{
 	"torchwood",
 }
 
-// minJWTSecretLen 是 JWT 主密钥的最小长度（HS256 密钥熵下界）。
+// minJWTSecretLen 是主密钥的最小长度（HS256 / secretbox 密钥熵下界）。
 const minJWTSecretLen = 32
 
-// validateJWTSecret 拒绝空值、过短密钥与任何含已知弱子串的密钥：命中弱
+// validateSecret 拒绝空值、过短密钥与任何含已知弱子串的密钥：命中弱
 // 子串即整体拒绝（而不只是 Warn），否则 "change-me" 之类的占位默认值只要
 // 拼够长度就能绕过长度检查，弱密钥子串是实际绕过手法中最常见的一类。
-func validateJWTSecret(secret string) error {
+func validateSecret(fieldPath, envName, secret string) error {
 	s := strings.TrimSpace(secret)
 	if s == "" {
-		return errors.New("security.jwt.secret must be set (env TORCHWOOD_SECURITY_JWT_SECRET)")
+		return fmt.Errorf("%s must be set (env %s)", fieldPath, envName)
 	}
 	if len(s) < minJWTSecretLen {
-		return fmt.Errorf("security.jwt.secret is too short (%d chars): must be at least %d characters (env TORCHWOOD_SECURITY_JWT_SECRET)", len(s), minJWTSecretLen)
+		return fmt.Errorf("%s is too short (%d chars): must be at least %d characters (env %s)", fieldPath, len(s), minJWTSecretLen, envName)
 	}
 	lower := strings.ToLower(s)
 	for _, w := range weakJWTSecretTokens {
 		if strings.Contains(lower, w) {
-			return fmt.Errorf("security.jwt.secret contains known weak value %q; generate a strong random secret (env TORCHWOOD_SECURITY_JWT_SECRET)", w)
+			return fmt.Errorf("%s contains known weak value %q; generate a strong random secret (env %s)", fieldPath, w, envName)
 		}
 	}
 	return nil
+}
+
+// validateJWTSecret 按主密钥强度规则校验 JWT 主密钥。
+func validateJWTSecret(secret string) error {
+	return validateSecret("security.jwt.secret", "TORCHWOOD_SECURITY_JWT_SECRET", secret)
 }
 
 // NewBuildInfo 返回编译期注入的版本信息（package 级 var，由 ldflags 填充）。

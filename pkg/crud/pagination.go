@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,7 +27,57 @@ const (
 	TokenModeLegacy = "legacy"
 	// TokenModeCursor represents cursor-based token mode.
 	TokenModeCursor = "cursor"
+
+	// MaxQueryOffset 上限：拒绝客户端伪造超深分页 token 打爆数据库。
+	// 与 documentdb 的 maxQueryOffset 对齐（R4-J2-4）。
+	MaxQueryOffset = 10000
+
+	// pageTokenKeyPurpose 是密钥派生的 purpose 域，风格与
+	// pkg/jwtparser DeriveKey 一致但本地实现，避免 pkg 内反向依赖。
+	pageTokenKeyPurpose = "torchwood-page-token-v1"
 )
+
+// pageTokenSecret 进程级签名密钥（HMAC-SHA256，空串=未启用）。由组合根在
+// 启动期通过 InitPageTokenSigning 注入（server 与 worker 都必须调用）；未注入
+// 时编码退化为未签名 token、带签名的 token 解码被拒——保证灰度发布期间旧
+// token 兼容，同时新签发 token 在任何配置正确的进程中都可验证。
+var pageTokenSecret atomic.Value // string
+
+// InitPageTokenSigning 启用页 token 的 HMAC 签名与验签。master 为部署主密钥
+// （security.jwt.secret）；实际签名密钥经 purpose 派生，与 JWT/OAuth 等域隔离。
+func InitPageTokenSigning(master string) error {
+	if strings.TrimSpace(master) == "" {
+		return fmt.Errorf("page token signing requires a non-empty master secret")
+	}
+	mac := hmac.New(sha256.New, []byte(pageTokenKeyPurpose))
+	_, _ = mac.Write([]byte(master))
+	pageTokenSecret.Store(hex.EncodeToString(mac.Sum(nil)))
+	return nil
+}
+
+// PageTokenSigningEnabled 报告当前进程是否已启用签名（测试与启动断言用）。
+func PageTokenSigningEnabled() bool {
+	return pageTokenKey() != ""
+}
+
+func pageTokenKey() string {
+	if v, ok := pageTokenSecret.Load().(string); ok {
+		return v
+	}
+	return ""
+}
+
+// seal 为 token 附加 HMAC 签名（若已启用签名）。失败仅可能因内部状态异常，
+// 此时退化为未签名并在解码侧被拒（fail-closed），不影响可用性。
+func seal(data *PageTokenData) {
+	key := pageTokenKey()
+	if key == "" {
+		return
+	}
+	if sig, err := SignPageToken(data, key); err == nil {
+		data.Sig = sig
+	}
+}
 
 // PageTokenData represents the internal structure of a page token
 // Following AIP-158: https://google.aip.dev/158
@@ -44,7 +96,8 @@ type PageTokenData struct {
 }
 
 // EncodePageToken creates a page token from offset
-// This is a simplified version following AIP-158
+// This is a simplified version following AIP-158.
+// 已启用签名时（InitPageTokenSigning）token 附带 HMAC，客户端无法伪造偏移。
 func EncodePageToken(offset int) string {
 	data := PageTokenData{
 		Version: PageTokenVersion,
@@ -52,6 +105,7 @@ func EncodePageToken(offset int) string {
 		Offset:  offset,
 		Created: time.Now().UTC(),
 	}
+	seal(&data)
 
 	return encodeTokenData(data)
 }
@@ -65,6 +119,7 @@ func EncodePageTokenWithSize(offset int, pageSize int32) string {
 		Created:  time.Now().UTC(),
 		PageSize: pageSize,
 	}
+	seal(&data)
 
 	return encodeTokenData(data)
 }
@@ -79,6 +134,7 @@ func EncodePageTokenFull(offset int, pageSize int32, checksum string) string {
 		PageSize: pageSize,
 		Checksum: checksum,
 	}
+	seal(&data)
 
 	return encodeTokenData(data)
 }
@@ -172,7 +228,9 @@ func encodeTokenData(data PageTokenData) string {
 }
 
 // DecodePageToken decodes a page token and returns the offset
-// Following AIP-158 standard
+// Following AIP-158 standard.
+// 带 Sig 的 token 必须能被当前进程密钥验证（篡改/跨环境重放即拒绝）；
+// 未签名 token（灰度期存量或未启用签名的测试进程）按原语义接受。
 func DecodePageToken(token string) (int, error) {
 	if token == "" {
 		return 0, nil
@@ -181,6 +239,9 @@ func DecodePageToken(token string) (int, error) {
 	// Try to decode as base64 JSON first (new format)
 	data, err := decodeTokenData(token)
 	if err == nil {
+		if err := verifyTokenAuthenticity(&data); err != nil {
+			return 0, err
+		}
 		// Validate token version
 		if data.Version != PageTokenVersion {
 			return 0, fmt.Errorf("invalid page token version: %s", data.Version)
@@ -199,16 +260,37 @@ func DecodePageToken(token string) (int, error) {
 	}
 
 	// Fallback: try old simple format "version:offset"
-	parts := strings.Split(token, PageTokenSeparator)
-	if len(parts) == 2 {
-		var offset int
-		_, err := fmt.Sscanf(token, "%s:%d", &data.Version, &offset)
-		if err == nil && data.Version == PageTokenVersion {
-			return offset, nil
+	// （历史实现用 Sscanf("%s:%d") 因 %s 贪婪匹配从未成功过，这里按
+	// 分隔符真实解析，保持文档语义可用。该格式无法携带签名，仅在未启用
+	// 签名的进程中被接受。）
+	if pageTokenKey() == "" {
+		parts := strings.SplitN(token, PageTokenSeparator, 2)
+		if len(parts) == 2 && parts[0] == PageTokenVersion {
+			var offset int
+			if _, err := fmt.Sscanf(parts[1], "%d", &offset); err == nil {
+				slog.Warn("deprecated unsigned page_token format; clients should adopt the refreshed token from the previous response")
+				return offset, nil
+			}
 		}
 	}
 
 	return 0, fmt.Errorf("invalid page token format")
+}
+
+// verifyTokenAuthenticity 校验 token 来源可信：
+//   - 未启用签名（key 为空）：跳过校验，保持历史语义——显式密钥的
+//     DecodeSignedPageTokenFull 与既有测试不受影响；
+//   - 已启用签名：token 必须携带且通过当前进程密钥的 HMAC 验证，
+//     无签名 / 篡改 / 跨环境 token 一律拒绝（fail-closed）。
+func verifyTokenAuthenticity(data *PageTokenData) error {
+	key := pageTokenKey()
+	if key == "" {
+		return nil
+	}
+	if data.Sig == "" {
+		return fmt.Errorf("page token signature missing: token signing is enforced on this deployment")
+	}
+	return VerifyPageTokenSignature(data, key)
 }
 
 // decodeTokenData decodes token data from base64 string
@@ -238,6 +320,10 @@ func DecodePageTokenFull(token string) (*PageTokenData, error) {
 
 	data, err := decodeTokenData(token)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := verifyTokenAuthenticity(&data); err != nil {
 		return nil, err
 	}
 
@@ -401,26 +487,58 @@ func BuildPaginationInfoSimple(params ListParams, resultCount int, hasMore bool)
 	return info
 }
 
-// GeneratePreviousPageToken generates a page token for the previous page
+// GeneratePreviousPageToken generates a page token for the previous page.
+// token 内记录 order_by/filter digest，供解码侧做跨页一致性校验（R4-J2-4）。
 func GeneratePreviousPageToken(params ListParams) string {
 	if params.Offset <= 0 {
 		return ""
 	}
 
 	previousOffset := max(0, params.Offset-int(params.PageSize))
-	return EncodePageToken(previousOffset)
+	data := PageTokenData{
+		Version:      PageTokenVersion,
+		Mode:         TokenModeLegacy,
+		Offset:       previousOffset,
+		Created:      time.Now().UTC(),
+		PageSize:     params.PageSize,
+		OrderBy:      strings.TrimSpace(params.OrderBy),
+		FilterDigest: FilterDigest(params.Filter),
+	}
+	seal(&data)
+	return encodeTokenData(data)
 }
 
-// GeneratePageTokens generates both next and previous page tokens
+// GeneratePageTokens generates both next and previous page tokens.
+// token 内记录 order_by/filter digest，供解码侧做跨页一致性校验（R4-J2-4）。
 func GeneratePageTokens(params ListParams, resultCount int, totalCount int) (nextToken, previousToken string) {
 	// Next page token
 	if params.Offset+resultCount < totalCount {
-		nextToken = EncodePageToken(params.Offset + resultCount)
+		data := PageTokenData{
+			Version:      PageTokenVersion,
+			Mode:         TokenModeLegacy,
+			Offset:       params.Offset + resultCount,
+			Created:      time.Now().UTC(),
+			PageSize:     params.PageSize,
+			OrderBy:      strings.TrimSpace(params.OrderBy),
+			FilterDigest: FilterDigest(params.Filter),
+		}
+		seal(&data)
+		nextToken = encodeTokenData(data)
 	}
 
 	// Previous page token
 	if params.Offset > 0 {
-		previousToken = EncodePageToken(max(0, params.Offset-int(params.PageSize)))
+		data := PageTokenData{
+			Version:      PageTokenVersion,
+			Mode:         TokenModeLegacy,
+			Offset:       max(0, params.Offset-int(params.PageSize)),
+			Created:      time.Now().UTC(),
+			PageSize:     params.PageSize,
+			OrderBy:      strings.TrimSpace(params.OrderBy),
+			FilterDigest: FilterDigest(params.Filter),
+		}
+		seal(&data)
+		previousToken = encodeTokenData(data)
 	}
 
 	return nextToken, previousToken

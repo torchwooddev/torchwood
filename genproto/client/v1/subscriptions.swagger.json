@@ -29,7 +29,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -61,13 +61,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "planCode",
+            "name": "plan_code",
             "description": "可选：按计划 code 过滤；空则返回当前非终态（或最近一条）。",
             "in": "query",
             "required": false,
@@ -92,20 +92,20 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -116,7 +116,7 @@
         ]
       }
     },
-    "/v1/subscriptions/{subscriptionId}:cancel": {
+    "/v1/subscriptions/{subscription_id}:cancel": {
       "post": {
         "operationId": "SubscriptionsService_Cancel",
         "responses": {
@@ -129,13 +129,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "subscriptionId",
+            "name": "subscription_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -168,29 +168,10 @@
       },
       "additionalProperties": {}
     },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
-          }
-        }
-      }
-    },
     "torchwoodclientv1BenefitEntitlement": {
       "type": "object",
       "properties": {
-        "assetCode": {
+        "asset_code": {
           "type": "string"
         },
         "tier": {
@@ -202,14 +183,14 @@
     "torchwoodclientv1BenefitGrant": {
       "type": "object",
       "properties": {
-        "assetCode": {
+        "asset_code": {
           "type": "string"
         },
         "quantity": {
           "type": "string",
           "format": "int64"
         },
-        "expiresIn": {
+        "expires_in": {
           "type": "string",
           "format": "int64"
         }
@@ -255,10 +236,10 @@
         "id": {
           "type": "string"
         },
-        "planId": {
+        "plan_id": {
           "type": "string"
         },
-        "planCode": {
+        "plan_code": {
           "type": "string"
         },
         "mode": {
@@ -269,29 +250,29 @@
           "type": "string",
           "title": "trialing | active | past_due | canceled | expired"
         },
-        "currentPeriodStart": {
+        "current_period_start": {
           "type": "string",
           "format": "date-time"
         },
-        "currentPeriodEnd": {
+        "current_period_end": {
           "type": "string",
           "format": "date-time"
         },
-        "cancelAtPeriodEnd": {
+        "cancel_at_period_end": {
           "type": "boolean"
         },
-        "graceUntil": {
+        "grace_until": {
           "type": "string",
           "format": "date-time"
         },
         "benefits": {
           "$ref": "#/definitions/torchwoodclientv1Benefits"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "paymentUrl": {
+        "payment_url": {
           "type": "string",
           "title": "渠道收银台 / 一次性支付 URL；仅 Subscribe 响应可能填充。"
         }
@@ -320,15 +301,15 @@
           "type": "string",
           "title": "month | year | custom_days"
         },
-        "intervalDays": {
+        "interval_days": {
           "type": "string",
           "format": "int64"
         },
-        "graceDays": {
+        "grace_days": {
           "type": "integer",
           "format": "int32"
         },
-        "trialDays": {
+        "trial_days": {
           "type": "integer",
           "format": "int32"
         },
@@ -340,17 +321,17 @@
     "v1ListResponseMeta": {
       "type": "object",
       "properties": {
-        "pageSize": {
+        "page_size": {
           "type": "integer",
           "format": "int32"
         },
-        "nextPageToken": {
+        "next_page_token": {
           "type": "string"
         },
-        "prevPageToken": {
+        "prev_page_token": {
           "type": "string"
         },
-        "totalCount": {
+        "total_count": {
           "type": "integer",
           "format": "int32"
         }
@@ -359,17 +340,17 @@
     "v1SubscribeRequest": {
       "type": "object",
       "properties": {
-        "planCode": {
+        "plan_code": {
           "type": "string"
         },
         "mode": {
           "type": "string",
           "title": "hosted | platform"
         },
-        "idempotencyKey": {
+        "idempotency_key": {
           "type": "string"
         },
-        "billingAssetCode": {
+        "billing_asset_code": {
           "type": "string",
           "title": "platform：Consume 该资产 def code（currency/stack）；空则生成支付订单。"
         }
@@ -381,14 +362,62 @@
         "subscription": {
           "$ref": "#/definitions/torchwoodclientv1Subscription"
         },
-        "idempotentReplay": {
+        "idempotent_replay": {
           "type": "boolean"
         },
-        "paymentUrl": {
+        "payment_url": {
           "type": "string"
         },
-        "orderId": {
+        "order_id": {
           "type": "string"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED"
+    },
+    "torchwoodsharedv1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }

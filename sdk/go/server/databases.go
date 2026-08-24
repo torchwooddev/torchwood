@@ -33,6 +33,12 @@ func (d *DatabasesService) GetDatabase(ctx context.Context, id string) (*serverv
 	return d.c.databases.GetDatabase(ctx, &serverv1.GetDatabaseRequest{Id: id})
 }
 
+// DeleteDatabase 删除数据库（级联清理其下集合）。
+func (d *DatabasesService) DeleteDatabase(ctx context.Context, id string) error {
+	_, err := d.c.databases.DeleteDatabase(ctx, &serverv1.GetDatabaseRequest{Id: id})
+	return err
+}
+
 // ListDatabases 列出数据库。
 func (d *DatabasesService) ListDatabases(ctx context.Context, queries []string, pageSize int32, pageToken string) (*serverv1.ListDatabasesResponse, error) {
 	return d.c.databases.ListDatabases(ctx, &sharedv1.ListRequest{

@@ -9,9 +9,11 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // rateLimitCall 记录一次 Allow 调用的参数。
@@ -125,6 +127,43 @@ func TestRateLimitInterceptor_ResourceExhausted(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, handlerCalled)
 	require.Equal(t, codes.ResourceExhausted, status.Code(err))
+}
+
+// TestRateLimitInterceptor_RetryInfoFallback：端口返回的 ResourceExhausted
+// 未携带 RetryInfo detail 时，拦截器补上以维度窗口为建议退避的 detail
+// （Round4 J3-6）；非 ResourceExhausted 错误不加 detail。
+func TestRateLimitInterceptor_RetryInfoFallback(t *testing.T) {
+	rec := &rateLimitRecorder{err: status.Error(codes.ResourceExhausted, "rate limit exceeded")}
+	ic := NewRateLimitInterceptor(rec, rateLimitAppConfig(nil))
+	ctx := contexts.WithClientInfo(context.Background(), contexts.ClientInfo{IP: "203.0.113.7"})
+
+	_, err := runRateLimitMiddleware(ic, ctx, rateLimitMethod())
+	require.Error(t, err)
+
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	var ri *errdetails.RetryInfo
+	for _, d := range st.Details() {
+		if r, isRetry := d.(*errdetails.RetryInfo); isRetry {
+			ri = r
+		}
+	}
+	require.NotNil(t, ri, "ResourceExhausted 应携带 RetryInfo detail")
+	require.Equal(t, defaultRateLimitWindow, ri.GetRetryDelay().AsDuration())
+
+	// Internal（fail-closed）不附加限流 detail。
+	rec.err = status.Error(codes.Internal, "rate limit check failed")
+	_, err = runRateLimitMiddleware(ic, ctx, rateLimitMethod())
+	require.Error(t, err)
+	require.Empty(t, mustDetails(t, err))
+}
+
+// mustDetails 提取错误的 detail 列表（辅助断言）。
+func mustDetails(t *testing.T, err error) []*anypb.Any {
+	t.Helper()
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	return st.Proto().Details
 }
 
 // TestRateLimitInterceptor_InternalFailClosed：Redis 故障（Internal）沿用

@@ -29,20 +29,20 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -54,7 +54,7 @@
             "type": "string"
           },
           {
-            "name": "orderBy",
+            "name": "order_by",
             "in": "query",
             "required": false,
             "type": "string"
@@ -86,7 +86,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -105,7 +105,7 @@
         ]
       }
     },
-    "/v1/server/assets/defs/{defId}": {
+    "/v1/server/assets/defs/{def_id}": {
       "get": {
         "operationId": "AssetsService_GetAssetDef",
         "responses": {
@@ -118,13 +118,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "defId",
+            "name": "def_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -146,13 +146,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "defId",
+            "name": "def_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -174,13 +174,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "defId",
+            "name": "def_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -199,7 +199,7 @@
         ]
       }
     },
-    "/v1/server/assets/users/{ownerId}": {
+    "/v1/server/assets/users/{owner_id}": {
       "get": {
         "summary": "ListUserAssets / ListUserLedger：Console 用户资产查询（PR6，只读）。",
         "operationId": "AssetsService_ListUserAssets",
@@ -213,26 +213,26 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "ownerId",
+            "name": "owner_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -243,7 +243,7 @@
         ]
       }
     },
-    "/v1/server/assets/users/{ownerId}/ledger": {
+    "/v1/server/assets/users/{owner_id}/ledger": {
       "get": {
         "operationId": "AssetsService_ListUserLedger",
         "responses": {
@@ -256,32 +256,32 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "ownerId",
+            "name": "owner_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
           },
           {
-            "name": "defCode",
+            "name": "def_code",
             "in": "query",
             "required": false,
             "type": "string"
@@ -305,7 +305,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -337,7 +337,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -369,7 +369,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -401,7 +401,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -434,7 +434,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -466,7 +466,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -497,18 +497,18 @@
           "type": "integer",
           "format": "int32"
         },
-        "maxQuantity": {
+        "max_quantity": {
           "type": "string",
           "format": "int64"
         },
-        "expiresIn": {
+        "expires_in": {
           "type": "string",
           "format": "int64"
         },
         "tradable": {
           "type": "boolean"
         },
-        "uniquePerOwner": {
+        "unique_per_owner": {
           "type": "boolean"
         },
         "upgradeable": {
@@ -539,32 +539,13 @@
       "default": "NULL_VALUE",
       "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
     },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
-          }
-        }
-      }
-    },
     "torchwoodserverv1AssetDef": {
       "type": "object",
       "properties": {
         "id": {
           "type": "string"
         },
-        "projectId": {
+        "project_id": {
           "type": "string"
         },
         "code": {
@@ -581,18 +562,18 @@
           "type": "integer",
           "format": "int32"
         },
-        "maxQuantity": {
+        "max_quantity": {
           "type": "string",
           "format": "int64"
         },
-        "expiresIn": {
+        "expires_in": {
           "type": "string",
           "format": "int64"
         },
         "tradable": {
           "type": "boolean"
         },
-        "uniquePerOwner": {
+        "unique_per_owner": {
           "type": "boolean"
         },
         "upgradeable": {
@@ -605,11 +586,11 @@
           "type": "string",
           "title": "active | archived"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -621,13 +602,13 @@
         "id": {
           "type": "string"
         },
-        "ownerId": {
+        "owner_id": {
           "type": "string"
         },
-        "defId": {
+        "def_id": {
           "type": "string"
         },
-        "defCode": {
+        "def_code": {
           "type": "string"
         },
         "class": {
@@ -637,7 +618,7 @@
           "type": "string",
           "format": "int64"
         },
-        "expiresAt": {
+        "expires_at": {
           "type": "string",
           "format": "date-time"
         },
@@ -657,16 +638,16 @@
         "id": {
           "type": "string"
         },
-        "holdingId": {
+        "holding_id": {
           "type": "string"
         },
-        "ownerId": {
+        "owner_id": {
           "type": "string"
         },
-        "defId": {
+        "def_id": {
           "type": "string"
         },
-        "defCode": {
+        "def_code": {
           "type": "string"
         },
         "kind": {
@@ -676,24 +657,24 @@
           "type": "string",
           "format": "int64"
         },
-        "quantityAfter": {
+        "quantity_after": {
           "type": "string",
           "format": "int64"
         },
-        "expiresAt": {
+        "expires_at": {
           "type": "string",
           "format": "date-time"
         },
-        "refType": {
+        "ref_type": {
           "type": "string"
         },
-        "refId": {
+        "ref_id": {
           "type": "string"
         },
-        "idempotencyKey": {
+        "idempotency_key": {
           "type": "string"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -717,17 +698,17 @@
     "v1AssetDrift": {
       "type": "object",
       "properties": {
-        "ownerId": {
+        "owner_id": {
           "type": "string"
         },
-        "defId": {
+        "def_id": {
           "type": "string"
         },
-        "holdingQty": {
+        "holding_qty": {
           "type": "string",
           "format": "int64"
         },
-        "replayedQty": {
+        "replayed_qty": {
           "type": "string",
           "format": "int64"
         },
@@ -746,7 +727,7 @@
             "$ref": "#/definitions/torchwoodserverv1AssetLedgerEntry"
           }
         },
-        "idempotentReplay": {
+        "idempotent_replay": {
           "type": "boolean"
         }
       }
@@ -754,23 +735,23 @@
     "v1ConsumeRequest": {
       "type": "object",
       "properties": {
-        "ownerId": {
+        "owner_id": {
           "type": "string"
         },
-        "defCode": {
+        "def_code": {
           "type": "string"
         },
         "quantity": {
           "type": "string",
           "format": "int64"
         },
-        "idempotencyKey": {
+        "idempotency_key": {
           "type": "string"
         },
-        "refType": {
+        "ref_type": {
           "type": "string"
         },
-        "refId": {
+        "ref_id": {
           "type": "string"
         }
       }
@@ -791,18 +772,18 @@
           "type": "integer",
           "format": "int32"
         },
-        "maxQuantity": {
+        "max_quantity": {
           "type": "string",
           "format": "int64"
         },
-        "expiresIn": {
+        "expires_in": {
           "type": "string",
           "format": "int64"
         },
         "tradable": {
           "type": "boolean"
         },
-        "uniquePerOwner": {
+        "unique_per_owner": {
           "type": "boolean"
         },
         "upgradeable": {
@@ -819,10 +800,10 @@
     "v1ExpireRequest": {
       "type": "object",
       "properties": {
-        "holdingId": {
+        "holding_id": {
           "type": "string"
         },
-        "idempotencyKey": {
+        "idempotency_key": {
           "type": "string"
         }
       }
@@ -830,20 +811,20 @@
     "v1GrantRequest": {
       "type": "object",
       "properties": {
-        "ownerId": {
+        "owner_id": {
           "type": "string"
         },
-        "defCode": {
+        "def_code": {
           "type": "string"
         },
         "quantity": {
           "type": "string",
           "format": "int64"
         },
-        "idempotencyKey": {
+        "idempotency_key": {
           "type": "string"
         },
-        "expiresAt": {
+        "expires_at": {
           "type": "string",
           "format": "date-time"
         },
@@ -854,10 +835,10 @@
         "metadata": {
           "type": "object"
         },
-        "refType": {
+        "ref_type": {
           "type": "string"
         },
-        "refId": {
+        "ref_id": {
           "type": "string"
         }
       }
@@ -865,17 +846,17 @@
     "v1ListResponseMeta": {
       "type": "object",
       "properties": {
-        "pageSize": {
+        "page_size": {
           "type": "integer",
           "format": "int32"
         },
-        "nextPageToken": {
+        "next_page_token": {
           "type": "string"
         },
-        "prevPageToken": {
+        "prev_page_token": {
           "type": "string"
         },
-        "totalCount": {
+        "total_count": {
           "type": "integer",
           "format": "int32"
         }
@@ -914,27 +895,27 @@
     "v1MutateRequest": {
       "type": "object",
       "properties": {
-        "holdingId": {
+        "holding_id": {
           "type": "string"
         },
-        "idempotencyKey": {
+        "idempotency_key": {
           "type": "string"
         },
         "level": {
           "type": "integer",
           "format": "int32"
         },
-        "expiresAt": {
+        "expires_at": {
           "type": "string",
           "format": "date-time"
         },
         "metadata": {
           "type": "object"
         },
-        "refType": {
+        "ref_type": {
           "type": "string"
         },
-        "refId": {
+        "ref_id": {
           "type": "string"
         }
       }
@@ -945,7 +926,7 @@
     "v1ReconcileResponse": {
       "type": "object",
       "properties": {
-        "zeroDrift": {
+        "zero_drift": {
           "type": "boolean"
         },
         "holdings": {
@@ -956,7 +937,7 @@
           "type": "integer",
           "format": "int32"
         },
-        "driftCount": {
+        "drift_count": {
           "type": "integer",
           "format": "int32"
         },
@@ -972,27 +953,75 @@
     "v1TransferRequest": {
       "type": "object",
       "properties": {
-        "fromOwnerId": {
+        "from_owner_id": {
           "type": "string"
         },
-        "toOwnerId": {
+        "to_owner_id": {
           "type": "string"
         },
-        "defCode": {
+        "def_code": {
           "type": "string"
         },
         "quantity": {
           "type": "string",
           "format": "int64"
         },
-        "idempotencyKey": {
+        "idempotency_key": {
           "type": "string"
         },
-        "refType": {
+        "ref_type": {
           "type": "string"
         },
-        "refId": {
+        "ref_id": {
           "type": "string"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED"
+    },
+    "torchwoodsharedv1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }

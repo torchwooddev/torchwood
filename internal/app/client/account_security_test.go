@@ -71,21 +71,21 @@ func TestAccount_UpdateEmailRequiresOldPasswordAndStages(t *testing.T) {
 
 	// 改邮箱不带 url → 拒绝。
 	_, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "new-email@torchwood.local",
+		Email:       strPtr("new-email@torchwood.local"),
 		OldPassword: "User@123",
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 无旧密码 → 拒绝。
 	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email: "new-email@torchwood.local",
+		Email: strPtr("new-email@torchwood.local"),
 		URL:   "http://localhost/confirm-email",
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 旧密码错误 → 拒绝。
 	_, err = account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "new-email@torchwood.local",
+		Email:       strPtr("new-email@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "wrong",
 	})
@@ -93,7 +93,7 @@ func TestAccount_UpdateEmailRequiresOldPasswordAndStages(t *testing.T) {
 
 	// 旧密码正确 → staging：email 保持旧值、会话不撤销。
 	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:       "new-email@torchwood.local",
+		Email:       strPtr("new-email@torchwood.local"),
 		URL:         "http://localhost/confirm-email",
 		OldPassword: "User@123",
 	})
@@ -138,7 +138,7 @@ func TestAccount_AnonymousUpgradeSetsPasswordWithoutOldPassword(t *testing.T) {
 	})
 
 	updated, err := account.UpdateAccount(authCtx, UpdateAccountCommand{
-		Email:    "upgraded@example.com",
+		Email:    strPtr("upgraded@example.com"),
 		URL:      "http://localhost/confirm-email",
 		Password: "NewPass@123",
 	})

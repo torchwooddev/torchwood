@@ -29,20 +29,20 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -54,7 +54,7 @@
             "type": "string"
           },
           {
-            "name": "orderBy",
+            "name": "order_by",
             "in": "query",
             "required": false,
             "type": "string"
@@ -86,7 +86,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -105,7 +105,7 @@
         ]
       }
     },
-    "/v1/server/storage/buckets/{bucketId}/files": {
+    "/v1/server/storage/buckets/{bucket_id}/files": {
       "get": {
         "operationId": "StorageService_ListFiles",
         "responses": {
@@ -118,13 +118,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "bucketId",
+            "name": "bucket_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -140,14 +140,14 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -169,13 +169,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "bucketId",
+            "name": "bucket_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -194,7 +194,7 @@
         ]
       }
     },
-    "/v1/server/storage/buckets/{bucketId}/files/{fileId}": {
+    "/v1/server/storage/buckets/{bucket_id}/files/{file_id}": {
       "get": {
         "operationId": "StorageService_GetFile",
         "responses": {
@@ -207,19 +207,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "bucketId",
+            "name": "bucket_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "fileId",
+            "name": "file_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -241,19 +241,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "bucketId",
+            "name": "bucket_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "fileId",
+            "name": "file_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -275,19 +275,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "bucketId",
+            "name": "bucket_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "fileId",
+            "name": "file_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -306,7 +306,7 @@
         ]
       }
     },
-    "/v1/server/storage/buckets/{bucketId}/files/{fileId}/tokens": {
+    "/v1/server/storage/buckets/{bucket_id}/files/{file_id}/tokens": {
       "post": {
         "operationId": "StorageService_CreateFileToken",
         "responses": {
@@ -319,19 +319,19 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "bucketId",
+            "name": "bucket_id",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "fileId",
+            "name": "file_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -363,7 +363,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -391,7 +391,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -419,7 +419,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -457,7 +457,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -474,7 +474,7 @@
         "name": {
           "type": "string"
         },
-        "mimeType": {
+        "mime_type": {
           "type": "string"
         },
         "data": {
@@ -499,7 +499,7 @@
     "StorageServiceCreateFileTokenBody": {
       "type": "object",
       "properties": {
-        "expiresIn": {
+        "expires_in": {
           "type": "string",
           "format": "int64",
           "title": "有效期秒数，默认 3600（1 小时）。"
@@ -524,7 +524,7 @@
           "type": "string",
           "title": "以下字段为 optional（支持清空 name / mime_type）；metadata 为 map，\r\n空 map 表示不修改（清空语义未来 optional 化，属破坏性变更，需 SDK\r\n/Console 同步后落地）。"
         },
-        "mimeType": {
+        "mime_type": {
           "type": "string"
         },
         "metadata": {
@@ -544,25 +544,6 @@
       },
       "additionalProperties": {}
     },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
-          }
-        }
-      }
-    },
     "v1Bucket": {
       "type": "object",
       "properties": {
@@ -578,11 +559,11 @@
             "type": "string"
           }
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         },
@@ -617,13 +598,13 @@
         "id": {
           "type": "string"
         },
-        "bucketId": {
+        "bucket_id": {
           "type": "string"
         },
         "name": {
           "type": "string"
         },
-        "mimeType": {
+        "mime_type": {
           "type": "string"
         },
         "size": {
@@ -636,11 +617,11 @@
             "type": "string"
           }
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -653,7 +634,7 @@
           "type": "string",
           "title": "短期文件访问令牌（HMAC 签名）：仅创建响应返回一次，之后任何接口\r\n不回显；可拼接到下载 URL（?token=）匿名换取文件，过期/篡改返回 401。"
         },
-        "expiresAt": {
+        "expires_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -692,17 +673,17 @@
     "v1ListResponseMeta": {
       "type": "object",
       "properties": {
-        "pageSize": {
+        "page_size": {
           "type": "integer",
           "format": "int32"
         },
-        "nextPageToken": {
+        "next_page_token": {
           "type": "string"
         },
-        "prevPageToken": {
+        "prev_page_token": {
           "type": "string"
         },
-        "totalCount": {
+        "total_count": {
           "type": "integer",
           "format": "int32"
         }
@@ -719,9 +700,57 @@
           "type": "string",
           "format": "int64"
         },
-        "totalSize": {
+        "total_size": {
           "type": "string",
           "format": "int64"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED"
+    },
+    "torchwoodsharedv1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }

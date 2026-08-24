@@ -288,7 +288,7 @@ func TestHealthCheckAndVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "SERVING", check.Status)
 
-	version, err := c.Health.Version(ctx)
+	version, err := c.Health.GetVersion(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "v0.1.0", version.Version)
 	require.Equal(t, "abc123", version.Commit)

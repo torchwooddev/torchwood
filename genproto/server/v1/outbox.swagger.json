@@ -29,26 +29,26 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "projectId",
+            "name": "project_id",
             "in": "query",
             "required": false,
             "type": "string"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -59,7 +59,7 @@
         ]
       }
     },
-    "/v1/server/outbox/dead-letters/{eventId}:replay": {
+    "/v1/server/outbox/dead-letters/{event_id}:replay": {
       "post": {
         "operationId": "OutboxService_ReplayDeadLetter",
         "responses": {
@@ -72,13 +72,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "eventId",
+            "name": "event_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -102,7 +102,7 @@
     "OutboxServiceReplayDeadLetterBody": {
       "type": "object",
       "properties": {
-        "projectId": {
+        "project_id": {
           "type": "string"
         }
       }
@@ -116,32 +116,13 @@
       },
       "additionalProperties": {}
     },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
-          }
-        }
-      }
-    },
     "v1DeadLetter": {
       "type": "object",
       "properties": {
-        "eventId": {
+        "event_id": {
           "type": "string"
         },
-        "projectId": {
+        "project_id": {
           "type": "string"
         },
         "topic": {
@@ -158,10 +139,10 @@
           "type": "integer",
           "format": "int32"
         },
-        "lastError": {
+        "last_error": {
           "type": "string"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -170,7 +151,7 @@
     "v1ListDeadLettersResponse": {
       "type": "object",
       "properties": {
-        "deadLetters": {
+        "dead_letters": {
           "type": "array",
           "items": {
             "type": "object",
@@ -185,17 +166,17 @@
     "v1ListResponseMeta": {
       "type": "object",
       "properties": {
-        "pageSize": {
+        "page_size": {
           "type": "integer",
           "format": "int32"
         },
-        "nextPageToken": {
+        "next_page_token": {
           "type": "string"
         },
-        "prevPageToken": {
+        "prev_page_token": {
           "type": "string"
         },
-        "totalCount": {
+        "total_count": {
           "type": "integer",
           "format": "int32"
         }
@@ -204,12 +185,60 @@
     "v1ReplayDeadLetterResponse": {
       "type": "object",
       "properties": {
-        "eventId": {
+        "event_id": {
           "type": "string"
         },
-        "availableAt": {
+        "available_at": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED"
+    },
+    "torchwoodsharedv1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }

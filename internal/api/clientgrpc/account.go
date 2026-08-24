@@ -98,13 +98,20 @@ func (s *AccountService) RefreshToken(ctx context.Context, req *clientv1.Refresh
 }
 
 func (s *AccountService) UpdateAccount(ctx context.Context, req *clientv1.UpdateAccountRequest) (*clientv1.Account, error) {
-	user, err := s.account.UpdateAccount(ctx, client.UpdateAccountCommand{
-		Name:        req.GetName(),
-		Email:       req.GetEmail(),
+	// D-1 presence 语义（本仓生成物无 HasXxx，用非 nil 判断）：
+	// name/email 未设置=不修改；设置（含空串）=更新/清空。
+	cmd := client.UpdateAccountCommand{
 		URL:         req.GetUrl(),
 		Password:    req.GetPassword(),
 		OldPassword: req.GetOldPassword(),
-	})
+	}
+	if req.Name != nil {
+		cmd.Name = req.Name
+	}
+	if req.Email != nil {
+		cmd.Email = req.Email
+	}
+	user, err := s.account.UpdateAccount(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}

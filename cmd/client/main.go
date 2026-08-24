@@ -12,17 +12,30 @@ import (
 // version/commit/date 由 Taskfile build 的 ldflags 注入（与 cmd/server、cmd/worker 一致）。
 var version, commit, date string
 
-var (
-	_ = commit
-	_ = date
-)
-
 func main() {
 	// 与 cmd/server、cmd/worker 一致：加载仓库根 .env（可选）。
 	_ = godotenv.Load()
 
-	if err := cmd.NewRootCmd(version).Execute(); err != nil {
+	if err := cmd.NewRootCmd(buildVersion(version, commit, date)).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(cmd.ExitCode(err))
 	}
+}
+
+// buildVersion 把 ldflags 注入的 commit/date 拼进版本串，避免元数据被丢弃；
+// 未注入时保持原值（如 "dev"）。
+func buildVersion(v, commitHash, builtAt string) string {
+	if v == "" {
+		v = "dev"
+	}
+	if commitHash == "" && builtAt == "" {
+		return v
+	}
+	if builtAt == "" {
+		return fmt.Sprintf("%s (commit %s)", v, commitHash)
+	}
+	if commitHash == "" {
+		return fmt.Sprintf("%s (built %s)", v, builtAt)
+	}
+	return fmt.Sprintf("%s (commit %s, built %s)", v, commitHash, builtAt)
 }

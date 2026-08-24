@@ -15,7 +15,11 @@ plugins:
     opt:
       - paths=source_relative
 
+  # 字段名使用 proto 声明（snake_case），与运行时 marshaler（errors.go
+  # UseProtoNames:true）保持一致。注意：该 remote 插件默认即
+  # json_names_for_fields=true，必须显式置 false 才会输出 snake_case。
+  # 生成后由 tools/openapifix 统一改写 default 错误响应引用 shared.v1.ErrorResponse。
   - remote: buf.build/grpc-ecosystem/openapiv2:v2.27.3
     out: genproto
     opt:
-      - json_names_for_fields=true
+      - json_names_for_fields=false

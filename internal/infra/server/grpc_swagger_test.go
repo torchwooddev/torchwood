@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,6 +14,8 @@ import (
 	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
+	"google.golang.org/genproto/googleapis/api/annotations"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
@@ -59,10 +63,21 @@ func accessLevelString(l sharedv1.AccessLevel) (string, bool) {
 }
 
 // swaggerOp 是 swagger.json 中单个 HTTP operation 的最小结构。
+// 注意 default 响应位于 operation.responses.default（非 operation 顶层）。
 type swaggerOp struct {
 	OperationID string `json:"operationId"`
 	XAccess     string `json:"x-torchwood-access"`
+	Responses   struct {
+		Default struct {
+			Schema struct {
+				Ref string `json:"$ref"`
+			} `json:"schema"`
+		} `json:"default"`
+	} `json:"responses"`
 }
+
+// errorResponseRef 与 tools/openapifix 写入的 default 响应引用保持一致。
+const errorResponseRef = "#/definitions/torchwoodsharedv1ErrorResponse"
 
 // TestSwaggerAccessExtensionMatchesCollectMethodsByAccess 断言每个
 // genproto/**/*.swagger.json 中 operation 的有效 x-torchwood-access
@@ -104,6 +119,9 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 	}
 
 	genprotoDir := filepath.Join("..", "..", "..", "genproto")
+	seenMethods := make(map[string]int) // full method → 在 swagger 中出现的次数
+	defaultRefOK := 0                   // default 响应正确引用 ErrorResponse 的 operation 数
+	badDefaultRef := make([]string, 0, 4)
 	checkedOps := 0
 	checkedFiles := 0
 	for _, sub := range []string{"server", "client", "console"} {
@@ -144,6 +162,14 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 					if op.OperationID == "" {
 						continue
 					}
+					// R4-J2-2：default 响应必须引用运行时真实错误体 ErrorResponse，
+					// rpcStatus 属生成器默认值失真，回归即红。
+					if op.Responses.Default.Schema.Ref == errorResponseRef {
+						defaultRefOK++
+					} else {
+						badDefaultRef = append(badDefaultRef, name+"/"+op.OperationID+" → "+op.Responses.Default.Schema.Ref)
+					}
+
 					// operationId 格式为 "{Service}_{RPC}"；additional_bindings
 					// 生成 "{Service}_{RPC}{N}" 后缀（如 HealthService_Check2）。
 					sep := strings.LastIndex(op.OperationID, "_")
@@ -163,6 +189,7 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 					require.Equal(t, want, effective,
 						"%s %s 有效 x-torchwood-access=%q 与 method_auth %q 不一致",
 						name, op.OperationID, effective, want)
+					seenMethods[fullMethod]++
 					checkedOps++
 				}
 			}
@@ -170,10 +197,31 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, checkedFiles, 14, "genproto 业务 swagger 文件数量异常")
 	require.GreaterOrEqual(t, checkedOps, 140, "swagger operation 数量异常（当前 %d）", checkedOps)
+	// R4-J2-2：错误模型统一回归门禁。
+	require.Empty(t, badDefaultRef,
+		"以下 operation 的 default 响应未引用 %s（应重跑 task generate-proto）：\n%s",
+		errorResponseRef, strings.Join(badDefaultRef, "\n"))
+	require.GreaterOrEqual(t, defaultRefOK, checkedOps,
+		"default 响应引用计数异常：ok=%d ops=%d", defaultRefOK, checkedOps)
+
+	// R4-J2-5 反向覆盖率：collectMethodsByAccess 登记的每个方法都必须在
+	// swagger 出现 ≥1 次。缺失通常意味着该 RPC 漏配 google.api.http 注解，
+	// 会从 OpenAPI/机器可读面静默消失。
+	missing := make([]string, 0, 4)
+	for fm := range accessOf {
+		if seenMethods[fm] == 0 {
+			missing = append(missing, fm)
+		}
+	}
+	sort.Strings(missing)
+	require.Empty(t, missing,
+		"以下方法未出现在任何 swagger paths 中（漏配 http 注解？）：\n%s",
+		strings.Join(missing, "\n"))
 }
 
-// findMethodByOperationID 先按原名查找；additional_bindings 的 "{N}" 后缀
-// （如 Check2）按逐位截断回退查找。
+// findMethodByOperationID 先按原名精确查找；未命中时按 additional_bindings
+// 的 "{N}" 数字后缀解析（如 Check2），并校验 N 落在该方法真实声明过的
+// HTTP 绑定索引范围内（R4-J2-5：防数字截断把未知 RPC 误配到形似方法）。
 func findMethodByOperationID(service protoreflect.ServiceDescriptor, rpc string) protoreflect.MethodDescriptor {
 	methods := service.Methods()
 	for i := 0; i < methods.Len(); i++ {
@@ -181,14 +229,33 @@ func findMethodByOperationID(service protoreflect.ServiceDescriptor, rpc string)
 			return methods.Get(i)
 		}
 	}
-	trimmed := strings.TrimRight(rpc, "0123456789")
-	if trimmed == rpc || trimmed == "" {
-		return nil
-	}
-	for i := 0; i < methods.Len(); i++ {
-		if string(methods.Get(i).Name()) == trimmed {
-			return methods.Get(i)
+	// 仅当尾部是纯数字后缀时尝试绑定索引匹配：openapiv2 对
+	// additional_bindings 从 2 起编号（主规则走精确匹配），因此要求
+	// 2 <= N <= 该方法声明的绑定总数，基名必须真实存在（R4-J2-5：
+	// 防数字截断把未知 RPC 误配到形似方法）。
+	if idx := strings.LastIndexAny(rpc, "0123456789"); idx >= 0 && idx == len(rpc)-1 {
+		base, numStr := rpc[:idx], rpc[idx:]
+		if n, err := strconv.Atoi(numStr); err == nil && n >= 2 {
+			for i := 0; i < methods.Len(); i++ {
+				m := methods.Get(i)
+				if string(m.Name()) == base && n <= methodHTTPBindingCount(m) {
+					return m
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// methodHTTPBindingCount 返回方法声明的 google.api.http 绑定总数
+// （主规则 1 + additional_bindings）。未声明 http 规则返回 0。
+func methodHTTPBindingCount(m protoreflect.MethodDescriptor) int {
+	if m.Options() == nil {
+		return 0
+	}
+	rule, ok := proto.GetExtension(m.Options(), annotations.E_Http).(*annotations.HttpRule)
+	if !ok || rule == nil {
+		return 0
+	}
+	return 1 + len(rule.GetAdditionalBindings())
 }

@@ -184,7 +184,7 @@ respJSON, err := c.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/CreateUser
 ### 4.4 典型用法
 
 ```go
-import ("context"; "github.com/torchwooddev/torchwood/sdk/go/client"; "github.com/torchwooddev/torchwood/sdk/go/server")
+import ("context"; "github.com/torchwooddev/torchwood/sdk/go/client"; "github.com/torchwooddev/torchwood/sdk/go/server"; serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1")
 
 // Server API（管理面）
 srv, _ := server.New("127.0.0.1:9060", server.WithAPIKey(os.Getenv("TORCHWOOD_API_KEY")), server.WithDatabaseID("app"))
@@ -193,7 +193,7 @@ tok, _  := srv.Users.CreateUserToken(ctx, user.Id)
 doc, _  := srv.Databases.UpsertDocument(ctx, "members", "m1", map[string]any{"channel_id":"ch1"}, []string{"channel_id","user_id"}, nil)
 n, _    := srv.Databases.CountDocuments(ctx, "messages", []string{`equal("channel_id","ch1")`})
 raw, _  := srv.InvokeJSON(ctx, "/torchwood.server.v1.UsersService/ListUsers", []byte(`{"pageSize":10}`))
-letters,_ := srv.Outbox.ListDeadLetters(ctx, "default", 20, "")
+letters,_ := srv.Outbox.ListDeadLetters(ctx, &serverv1.ListDeadLettersRequest{ProjectId: "default", PageSize: 20})
 _ = tok; _ = doc; _ = n; _ = raw; _ = letters
 
 // Client API（自动刷新）
@@ -204,11 +204,12 @@ me, _ := c.Account.Me(ctx)
 _ = me
 ```
 
-- 错误：`status.Code(err)` 判 `codes.NotFound`/`PermissionDenied` 等；
+- 错误：`status.Code(err)` 判 `codes.NotFound`/`PermissionDenied` 等；限流响应可用 `server.ExtractRetryAfter(err)` 读出建议退避秒数；
+- 超时与重试：SDK 默认单次调用 30s 超时（`WithTimeout` 调整；调用方 ctx 已带 deadline 时尊重调用方），默认对 `Unavailable` 自动重试（最多 4 次指数退避），`WithRetryDisabled` 可关闭；
 - 文档：入参 `map[string]any` → `structpb`，读回数值多为 `float64`；
 - 查询：Appwrite DSL 字符串，与 `pkg/query` 一致；
 - `cmd/client`（`bin/torchwood`）**仅依赖 `sdk/go/server`** 的 `InvokeJSON`，源码不直连 `genproto/grpc`（`import_guard_test` 兜底），新增 RPC 无需 CLI 登记；
-- 测试：`bufconn` 内存 gRPC，无外部依赖，已纳入 `task test`（`test-sdk-go`）与 `task lint`（`lint-sdk-go`）。
+- 测试：`bufconn` 内存 gRPC，无外部依赖，已纳入 `task test`（`test-sdk-go`）与 `task lint`（`lint-sdk-go`）；文档示例可编译性由 `sdk/go/docexamples`（build tag `docexample`，`go vet -tags docexample ./sdk/...`）保证。
 
 ---
 

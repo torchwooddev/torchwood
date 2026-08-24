@@ -5,10 +5,15 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
-	"google.golang.org/grpc"
 )
 
 // 通用 API 限流默认值（roadmap §3.4）：固定窗口，60s 量级。
@@ -104,11 +109,37 @@ func (r *RateLimitInterceptor) UnaryRateLimitMiddleware(ctx context.Context, req
 		return handler(ctx, req)
 	}
 	// 超限返回 ResourceExhausted（grpc-gateway 映射 HTTP 429），Redis 故障
-	// 由端口实现返回 Internal（fail-closed），均原样透传。
+	// 由端口实现返回 Internal（fail-closed），均原样透传。ResourceExhausted
+	// 统一携带 google.rpc.RetryInfo detail：端口实现已附精确剩余窗口时尊重
+	// 原值，否则以本维度整窗口作为保守估计（Round4 J3-6）。
 	if err := r.limiter.Allow(ctx, key, dim.limit, dim.window); err != nil {
-		return nil, err
+		return nil, withRetryInfoFallback(err, dim.window)
 	}
 	return handler(ctx, req)
+}
+
+// withRetryInfoFallback 为无 RetryInfo detail 的 ResourceExhausted 错误补上
+// 以 window 为建议退避的 detail；其他 code 或已有 detail 时原样返回。
+func withRetryInfoFallback(err error, window time.Duration) error {
+	if status.Code(err) != codes.ResourceExhausted || window <= 0 {
+		return err
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+	for _, d := range st.Details() {
+		if _, has := d.(*errdetails.RetryInfo); has {
+			return err
+		}
+	}
+	enriched, derr := st.WithDetails(&errdetails.RetryInfo{
+		RetryDelay: durationpb.New(window),
+	})
+	if derr != nil {
+		return err
+	}
+	return enriched.Err()
 }
 
 // dimension 按优先级选择限流维度：API Key principal > user/session

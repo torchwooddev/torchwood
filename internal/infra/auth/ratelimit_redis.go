@@ -6,12 +6,27 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
+// rateLimitWindowScript 原子执行 INCR + 首次 EXPIRE 并返回 [count, ttl]：
+// 拒绝时 ttl 即当前窗口剩余秒数，供 RetryInfo 精确给出建议退避
+// （Round4 J3-6）。与 incrWithTTL 的崩溃安全性一致：不存在「计数已增但
+// TTL 未设」的中间态。
+const rateLimitWindowScript = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return {count, redis.call('TTL', KEYS[1])}
+`
+
 // RedisRateLimiter 基于 Redis 固定窗口计数（INCR + EXPIRE）的通用限流器，
-// 与 OTP/login throttle 的窗口实现保持一致。
+// 与 OTP/login throttle 的窗口实现保持一致。超限返回携带 google.rpc.RetryInfo
+// detail 的 ResourceExhausted（RetryDelay=窗口剩余秒数）。
 type RedisRateLimiter struct {
 	rdb *redis.Client
 }
@@ -25,15 +40,32 @@ func (l *RedisRateLimiter) Allow(ctx context.Context, key string, limit int, win
 		return nil
 	}
 	redisKey := "Torchwood:ratelimit:" + key
-	// Round3 H6-4：INCR + 首次 EXPIRE 原子化，崩溃不留下无 TTL 计数键。
-	count, err := incrWithTTL(ctx, l.rdb, redisKey, window)
+	res, err := l.rdb.Eval(ctx, rateLimitWindowScript, []string{redisKey}, int64(window.Seconds())).Slice()
 	if err != nil {
 		return status.Error(codes.Internal, "rate limit check failed")
 	}
+	count, _ := res[0].(int64)
+	ttl, _ := res[1].(int64)
 	if count > int64(limit) {
-		return status.Error(codes.ResourceExhausted, "rate limit exceeded")
+		return rateLimited(ttl)
 	}
 	return nil
+}
+
+// rateLimited 构造携带 RetryInfo 的 ResourceExhausted；ttl<=0（键已过期/
+// 无 TTL 的异常态）时退化为无 detail 的裸错误。
+func rateLimited(ttlSeconds int64) error {
+	if ttlSeconds <= 0 {
+		return status.Error(codes.ResourceExhausted, "rate limit exceeded")
+	}
+	st, err := status.New(codes.ResourceExhausted, "rate limit exceeded").
+		WithDetails(&errdetails.RetryInfo{
+			RetryDelay: durationpb.New(time.Duration(ttlSeconds) * time.Second),
+		})
+	if err != nil {
+		return status.Error(codes.ResourceExhausted, "rate limit exceeded")
+	}
+	return st.Err()
 }
 
 var _ domainauth.RateLimiter = (*RedisRateLimiter)(nil)

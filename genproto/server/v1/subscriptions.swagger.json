@@ -29,20 +29,20 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -54,7 +54,7 @@
             "type": "string"
           },
           {
-            "name": "orderBy",
+            "name": "order_by",
             "in": "query",
             "required": false,
             "type": "string"
@@ -88,20 +88,20 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -113,7 +113,7 @@
             "type": "string"
           },
           {
-            "name": "orderBy",
+            "name": "order_by",
             "in": "query",
             "required": false,
             "type": "string"
@@ -145,7 +145,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
@@ -164,7 +164,7 @@
         ]
       }
     },
-    "/v1/server/subscriptions/plans/{planId}": {
+    "/v1/server/subscriptions/plans/{plan_id}": {
       "get": {
         "operationId": "SubscriptionsService_GetPlan",
         "responses": {
@@ -177,13 +177,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "planId",
+            "name": "plan_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -205,13 +205,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "planId",
+            "name": "plan_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -233,13 +233,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "planId",
+            "name": "plan_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -258,7 +258,7 @@
         ]
       }
     },
-    "/v1/server/subscriptions/{subscriptionId}": {
+    "/v1/server/subscriptions/{subscription_id}": {
       "get": {
         "operationId": "SubscriptionsService_GetSubscription",
         "responses": {
@@ -271,13 +271,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "subscriptionId",
+            "name": "subscription_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -288,7 +288,7 @@
         ]
       }
     },
-    "/v1/server/subscriptions/{subscriptionId}:cancel": {
+    "/v1/server/subscriptions/{subscription_id}:cancel": {
       "post": {
         "operationId": "SubscriptionsService_CancelSubscription",
         "responses": {
@@ -301,13 +301,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "subscriptionId",
+            "name": "subscription_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -326,7 +326,7 @@
         ]
       }
     },
-    "/v1/server/subscriptions/{subscriptionId}:expire": {
+    "/v1/server/subscriptions/{subscription_id}:expire": {
       "post": {
         "operationId": "SubscriptionsService_ExpireSubscription",
         "responses": {
@@ -339,13 +339,13 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
             }
           }
         },
         "parameters": [
           {
-            "name": "subscriptionId",
+            "name": "subscription_id",
             "in": "path",
             "required": true,
             "type": "string"
@@ -398,22 +398,22 @@
         "interval": {
           "type": "string"
         },
-        "intervalDays": {
+        "interval_days": {
           "type": "string",
           "format": "int64"
         },
-        "graceDays": {
+        "grace_days": {
           "type": "integer",
           "format": "int32"
         },
-        "trialDays": {
+        "trial_days": {
           "type": "integer",
           "format": "int32"
         },
         "benefits": {
           "$ref": "#/definitions/torchwoodserverv1Benefits"
         },
-        "providerOverrides": {
+        "provider_overrides": {
           "$ref": "#/definitions/v1ProviderOverrides"
         },
         "status": {
@@ -430,29 +430,10 @@
       },
       "additionalProperties": {}
     },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "$ref": "#/definitions/protobufAny"
-          }
-        }
-      }
-    },
     "torchwoodserverv1BenefitEntitlement": {
       "type": "object",
       "properties": {
-        "assetCode": {
+        "asset_code": {
           "type": "string"
         },
         "tier": {
@@ -464,14 +445,14 @@
     "torchwoodserverv1BenefitGrant": {
       "type": "object",
       "properties": {
-        "assetCode": {
+        "asset_code": {
           "type": "string"
         },
         "quantity": {
           "type": "string",
           "format": "int64"
         },
-        "expiresIn": {
+        "expires_in": {
           "type": "string",
           "format": "int64"
         }
@@ -517,16 +498,16 @@
         "id": {
           "type": "string"
         },
-        "projectId": {
+        "project_id": {
           "type": "string"
         },
-        "userId": {
+        "user_id": {
           "type": "string"
         },
-        "planId": {
+        "plan_id": {
           "type": "string"
         },
-        "planCode": {
+        "plan_code": {
           "type": "string"
         },
         "mode": {
@@ -535,38 +516,38 @@
         "provider": {
           "type": "string"
         },
-        "providerSubId": {
+        "provider_sub_id": {
           "type": "string"
         },
         "status": {
           "type": "string"
         },
-        "currentPeriodStart": {
+        "current_period_start": {
           "type": "string",
           "format": "date-time"
         },
-        "currentPeriodEnd": {
+        "current_period_end": {
           "type": "string",
           "format": "date-time"
         },
-        "cancelAtPeriodEnd": {
+        "cancel_at_period_end": {
           "type": "boolean"
         },
-        "graceUntil": {
+        "grace_until": {
           "type": "string",
           "format": "date-time"
         },
-        "billingAssetCode": {
+        "billing_asset_code": {
           "type": "string"
         },
         "benefits": {
           "$ref": "#/definitions/torchwoodserverv1Benefits"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -578,7 +559,7 @@
         "id": {
           "type": "string"
         },
-        "projectId": {
+        "project_id": {
           "type": "string"
         },
         "code": {
@@ -597,33 +578,33 @@
         "interval": {
           "type": "string"
         },
-        "intervalDays": {
+        "interval_days": {
           "type": "string",
           "format": "int64"
         },
-        "graceDays": {
+        "grace_days": {
           "type": "integer",
           "format": "int32"
         },
-        "trialDays": {
+        "trial_days": {
           "type": "integer",
           "format": "int32"
         },
         "benefits": {
           "$ref": "#/definitions/torchwoodserverv1Benefits"
         },
-        "providerOverrides": {
+        "provider_overrides": {
           "$ref": "#/definitions/v1ProviderOverrides"
         },
         "status": {
           "type": "string",
           "title": "active | archived"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -648,22 +629,22 @@
         "interval": {
           "type": "string"
         },
-        "intervalDays": {
+        "interval_days": {
           "type": "string",
           "format": "int64"
         },
-        "graceDays": {
+        "grace_days": {
           "type": "integer",
           "format": "int32"
         },
-        "trialDays": {
+        "trial_days": {
           "type": "integer",
           "format": "int32"
         },
         "benefits": {
           "$ref": "#/definitions/torchwoodserverv1Benefits"
         },
-        "providerOverrides": {
+        "provider_overrides": {
           "$ref": "#/definitions/v1ProviderOverrides"
         }
       }
@@ -674,17 +655,17 @@
     "v1ListResponseMeta": {
       "type": "object",
       "properties": {
-        "pageSize": {
+        "page_size": {
           "type": "integer",
           "format": "int32"
         },
-        "nextPageToken": {
+        "next_page_token": {
           "type": "string"
         },
-        "prevPageToken": {
+        "prev_page_token": {
           "type": "string"
         },
-        "totalCount": {
+        "total_count": {
           "type": "integer",
           "format": "int32"
         }
@@ -708,8 +689,56 @@
     "v1ProviderOverrides": {
       "type": "object",
       "properties": {
-        "stripePriceId": {
+        "stripe_price_id": {
           "type": "string"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED"
+    },
+    "torchwoodsharedv1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
+        }
+      }
+    },
+    "torchwoodsharedv1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }
