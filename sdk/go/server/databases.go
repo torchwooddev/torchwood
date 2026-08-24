@@ -237,9 +237,69 @@ func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID strin
 	return resp.Documents, next, nil
 }
 
-// CountDocuments 按查询 DSL 统计文档数量。
+// DocumentsPager 是 ListDocuments 的 AIP-158 分页迭代器（P3-15）。
+// 自动处理 page_token 续拉，直至 next_page_token 为空。
+type DocumentsPager struct {
+	svc          *DatabasesService
+	collectionID string
+	queries      []string
+	pageSize     int32
+	nextToken    string
+	done         bool
+}
+
+// NewDocumentsPager 创建文档分页迭代器。pageSize<=0 时默认 50。
+func (d *DatabasesService) NewDocumentsPager(collectionID string, queries []string, pageSize int32) *DocumentsPager {
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	return &DocumentsPager{svc: d, collectionID: collectionID, queries: queries, pageSize: pageSize}
+}
+
+// Next 拉取下一页，返回文档列表；已到末尾返回 nil,nil。
+func (p *DocumentsPager) Next(ctx context.Context) ([]*sharedv1.Document, error) {
+	if p.done {
+		return nil, nil
+	}
+	docs, next, err := p.svc.ListDocuments(ctx, p.collectionID, p.queries, p.pageSize, p.nextToken)
+	if err != nil {
+		return nil, err
+	}
+	p.nextToken = next
+	if next == "" {
+		p.done = true
+	}
+	return docs, nil
+}
+
+// All 顺序拉取所有页并合并（注意大集合内存占用）。
+func (p *DocumentsPager) All(ctx context.Context) ([]*sharedv1.Document, error) {
+	var all []*sharedv1.Document
+	for {
+		docs, err := p.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(docs) == 0 {
+			break
+		}
+		all = append(all, docs...)
+		if p.done {
+			break
+		}
+	}
+	return all, nil
+}
+
+// HasMore 报告是否还有更多页。
+func (p *DocumentsPager) HasMore() bool { return !p.done }
+
+// CountDocuments 按查询 DSL 统计文档数量（P3-9：独立 Request，不含分页字段）。
 func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID string, queries []string) (int64, error) {
-	resp, err := d.c.databases.CountDocuments(ctx, &serverv1.ListDocumentsRequest{
+	resp, err := d.c.databases.CountDocuments(ctx, &serverv1.CountDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
 		Queries:      queries,

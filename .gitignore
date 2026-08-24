@@ -20,6 +20,8 @@ coverage.out
 # Console
 console/node_modules/
 console/dist/
+!console/dist/
+!console/dist/index.html
 
 # SDK
 sdk/typescript/node_modules/

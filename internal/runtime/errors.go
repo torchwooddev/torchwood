@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -14,10 +15,12 @@ import (
 )
 
 // HTTPErrorHandler converts gRPC errors to a consistent JSON error body.
+// P3-3：Internal/Unknown 对外统一文案，原文只进日志（fail-closed，不泄内部细节）。
 var HTTPErrorHandler runtime.ErrorHandlerFunc = func(ctx context.Context, mux *runtime.ServeMux, marshaler runtime.Marshaler, w http.ResponseWriter, r *http.Request, err error) {
 	st, ok := status.FromError(err)
 	if !ok {
-		st = status.New(codes.Internal, err.Error())
+		st = status.New(codes.Internal, "internal server error")
+		slog.ErrorContext(ctx, "http error: non-status error converted to internal", "error", err.Error(), "code", st.Code().String())
 	}
 
 	httpStatus := grpcCodeToHTTP(st.Code())
@@ -43,12 +46,20 @@ var HTTPErrorHandler runtime.ErrorHandlerFunc = func(ctx context.Context, mux *r
 		errorCode = sharedv1.ErrorCode_ERROR_CODE_TIMEOUT
 	}
 
+	// Internal/Unknown 统一对外文案，原始消息仅进日志。
+	message := st.Message()
+	errorID := uuid.NewString()
+	if st.Code() == codes.Internal || st.Code() == codes.Unknown {
+		slog.ErrorContext(ctx, "http response: internal error sanitized", "code", st.Code().String(), "original_message", st.Message(), "error_id", errorID, "method", r.URL.Path)
+		message = "internal server error"
+	}
+
 	resp := &sharedv1.ErrorResponse{
 		Error: &sharedv1.Error{
 			Type:      errorTypeForCode(st.Code()),
 			Code:      st.Code().String(),
-			Message:   st.Message(),
-			ErrorId:   uuid.NewString(),
+			Message:   message,
+			ErrorId:   errorID,
 			ErrorCode: errorCode,
 		},
 	}

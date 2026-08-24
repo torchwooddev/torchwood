@@ -16,6 +16,7 @@ message ListResponseMeta {
   int32 page_size = 1;
   string next_page_token = 2;
   string prev_page_token = 3;
+  // total_count ≤0 = unknown（keyset 分页下 0 与空集合不可区分，调用方应以 next_page_token 是否为空判定是否还有更多；≤0 表示总数未知）。
   int32 total_count = 4;
 }
 

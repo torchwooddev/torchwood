@@ -115,7 +115,7 @@ func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.Creat
 
 ### 7.1 列表分页（`shared.v1.ListRequest` + `pkg/crud`）
 
-`proto/shared/v1/common.proto:7`：`page_size/page_token/filter/order_by/queries`；响应 `ListResponseMeta{page_size,next_page_token,prev_page_token,total_count}`（AIP-132/158/160）。
+`proto/shared/v1/common.proto:7`：`page_size/page_token/filter/order_by/queries`；响应 `ListResponseMeta{page_size,next_page_token,prev_page_token,total_count}`（AIP-132/158/160），其中 `total_count ≤0` 表示总数未知（keyset 分页下 0 与空集合不可区分，需以 `next_page_token` 是否为空判定是否还有更多）。
 
 `pkg/crud/list.go:57` `ParseListParams(pageSize,pageToken,filter,orderBy)`：校验 `page_size∈[1,1000]`（默认 50）、`page_token` 解码得 `Offset`；`pagination.go:360` `BuildPaginationInfo(params,totalCount,hasMore)` 产出 `HasNext/NextOffset/HasPrevious/PreviousOffset`，`EncodePageToken(offset)`（`v1` base64 JSON，`DefaultTokenTTL=24h`）。
 

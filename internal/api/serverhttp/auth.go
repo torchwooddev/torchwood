@@ -49,8 +49,13 @@ func (a *httpAuth) authorize(r *http.Request, apiKeyScope func(*http.Request) st
 		}
 	}
 	if principal.ActorKind == shared.ActorKindAdmin {
-		if projectID := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); projectID != "" {
-			principal.ProjectID = projectID
+		// P3-4：X-Torchwood-Project 多值拒绝（fail-closed）。
+		if values := r.Header.Values("X-Torchwood-Project"); len(values) > 1 {
+			return nil, status.Error(codes.InvalidArgument, "multiple X-Torchwood-Project headers not allowed")
+		} else if len(values) == 1 {
+			if projectID := strings.TrimSpace(values[0]); projectID != "" {
+				principal.ProjectID = projectID
+			}
 		}
 		if err := a.validator.ValidateAdminProjectAccess(ctx, principal); err != nil {
 			return nil, err
@@ -60,6 +65,7 @@ func (a *httpAuth) authorize(r *http.Request, apiKeyScope func(*http.Request) st
 }
 
 // projectID 解析请求上下文中的项目 ID（admin 会话可经 X-Torchwood-Project 覆盖）。
+// P3-4：多值时调用方已在 authorize 阶段被拒绝，此处仅取首值保持一致。
 func (a *httpAuth) projectID(r *http.Request, p *shared.Principal) string {
 	if p == nil {
 		return ""
@@ -69,8 +75,10 @@ func (a *httpAuth) projectID(r *http.Request, p *shared.Principal) string {
 		return p.ProjectID
 	case shared.CredentialTypeToken, shared.CredentialTypeSession:
 		if p.ActorKind == shared.ActorKindAdmin {
-			if pid := strings.TrimSpace(r.Header.Get("X-Torchwood-Project")); pid != "" {
-				return pid
+			if values := r.Header.Values("X-Torchwood-Project"); len(values) == 1 {
+				if pid := strings.TrimSpace(values[0]); pid != "" {
+					return pid
+				}
 			}
 		}
 		return p.ProjectID

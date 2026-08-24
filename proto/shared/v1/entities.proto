@@ -59,6 +59,8 @@ message SubscriptionPlan {
   // 为避免与现有 Benefits 定义冲突，此处先保留空扩展点。
   // 实际迁移应将 BenefitGrant/BenefitEntitlement/Benefits 一并抽取。
   // 字段 11/12 预留给 benefits/provider_overrides，13 为 status，14/15 为 timestamps。
+  reserved 11, 12;
+  reserved "benefits", "provider_overrides";
   string status = 13;
   google.protobuf.Timestamp created_at = 14;
   google.protobuf.Timestamp updated_at = 15;
@@ -81,6 +83,8 @@ message Subscription {
   bool cancel_at_period_end = 12;
   google.protobuf.Timestamp grace_until = 13;
   string billing_asset_code = 14;
+  reserved 15;
+  reserved "reserved_15";
   google.protobuf.Timestamp created_at = 16;
   google.protobuf.Timestamp updated_at = 17;
 }

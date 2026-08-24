@@ -145,12 +145,12 @@ service DatabasesService {
     option (google.api.http) = { delete: "/v1/server/databases/{database_id}/collections/{collection_id}/documents/{document_id}" };
   }
 
-  rpc CountDocuments(ListDocumentsRequest) returns (CountDocumentsResponse) {
+  rpc CountDocuments(CountDocumentsRequest) returns (CountDocumentsResponse) {
     option (google.api.http) = {
       get: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:count"
       additional_bindings {
         post: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:count"
-        body: "query"
+        body: "*"
       }
     };
   }
@@ -347,6 +347,15 @@ message ListDocumentsRequest {
 message ListDocumentsResponse {
   repeated shared.v1.Document documents = 1;
   shared.v1.ListResponseMeta meta = 2;
+}
+
+// CountDocumentsRequest 独立于 ListDocumentsRequest（P3-9）：不暴露无效分页参数（page_size/page_token）。
+message CountDocumentsRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  repeated string queries = 3;
+  // Typed AST. Dual-stack with queries; both set and conflicting → InvalidArgument.
+  optional torchwood.shared.v1.Query query = 4;
 }
 
 message CountDocumentsResponse {

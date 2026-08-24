@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -45,19 +46,50 @@ func requireAdminActor(ctx context.Context) error {
 	return nil
 }
 
-func (s *AdminsService) ListAdmins(ctx context.Context, _ *consolev1.ListAdminsRequest) (*consolev1.ListAdminsResponse, error) {
+func (s *AdminsService) ListAdmins(ctx context.Context, req *consolev1.ListAdminsRequest) (*consolev1.ListAdminsResponse, error) {
 	if err := requireAdminActor(ctx); err != nil {
 		return nil, err
+	}
+	// P3-9：ListAdmins 分页（走 crud，内存分页，total_count 精确）
+	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	admins, err := s.admins.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*consolev1.Admin, len(admins))
-	for i := range admins {
-		out[i] = mapAdmin(&admins[i])
+	start := params.Offset
+	if start > len(admins) {
+		start = len(admins)
 	}
-	return &consolev1.ListAdminsResponse{Admins: out}, nil
+	end := start + int(params.PageSize)
+	if end > len(admins) {
+		end = len(admins)
+	}
+	page := admins[start:end]
+	hasMore := end < len(admins)
+	info := crud.BuildPaginationInfo(params, len(admins), hasMore)
+	var nextToken, prevToken string
+	if info.HasNext {
+		nextToken = crud.EncodePageToken(info.NextOffset)
+	}
+	if info.HasPrevious {
+		prevToken = crud.EncodePageToken(info.PreviousOffset)
+	}
+	out := make([]*consolev1.Admin, len(page))
+	for i := range page {
+		out[i] = mapAdmin(&page[i])
+	}
+	return &consolev1.ListAdminsResponse{
+		Admins: out,
+		Meta: &sharedv1.ListResponseMeta{
+			PageSize:      info.PageSize,
+			TotalCount:    int32(info.TotalCount),
+			NextPageToken: nextToken,
+			PrevPageToken: prevToken,
+		},
+	}, nil
 }
 
 func (s *AdminsService) CreateAdmin(ctx context.Context, req *consolev1.CreateAdminRequest) (*consolev1.Admin, error) {

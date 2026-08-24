@@ -9,6 +9,7 @@ import (
 )
 
 // NewConsoleHandler serves the embedded Admin Console SPA.
+// P3-10：index.html no-cache、assets/* immutable、资源 404 不回退 index.html。
 func NewConsoleHandler() (http.Handler, error) {
 	dist, err := fs.Sub(console.Dist, "dist")
 	if err != nil {
@@ -19,16 +20,63 @@ func NewConsoleHandler() (http.Handler, error) {
 		setConsoleSecurityHeaders(w)
 		path := strings.TrimPrefix(r.URL.Path, "/console")
 		path = strings.TrimPrefix(path, "/")
+		// 资源 404 不回退 index.html：带扩展名或 assets/* 的缺失直接 404
 		if path != "" {
 			if _, err := dist.Open(path); err != nil {
-				// SPA fallback: serve index.html for unknown routes.
+				if isConsoleAssetPath(path) {
+					http.NotFound(w, r)
+					return
+				}
+				// SPA fallback: 仅对无扩展名的前端路由回退 index.html
 				path = ""
 			}
+		}
+		// 缓存头策略
+		if path == "" || path == "index.html" {
+			w.Header().Set("Cache-Control", "no-cache")
+		} else if len(path) >= 7 && path[:7] == "assets/" {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		// Rewrite the URL path so FileServer resolves against the embedded FS root.
 		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)
 	}), nil
+}
+
+// isConsoleAssetPath 判定是否为静态资源路径：assets/* 或带文件扩展名的请求，缺失时应 404 而非回退 index.html。
+func isConsoleAssetPath(path string) bool {
+	if len(path) >= 7 && path[:7] == "assets/" {
+		return true
+	}
+	// 带点号的路径视作文件资源（如 favicon.ico、manifest.json）
+	if idx := lastDotIndex(path); idx >= 0 {
+		// 确保后缀在最后一段路径中（不跨目录）
+		if slash := lastSlashIndex(path); slash < idx {
+			return true
+		}
+	}
+	return false
+}
+
+func lastDotIndex(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '.' {
+			return i
+		}
+		if s[i] == '/' {
+			break
+		}
+	}
+	return -1
+}
+
+func lastSlashIndex(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '/' {
+			return i
+		}
+	}
+	return -1
 }
 
 // setConsoleSecurityHeaders hardens the Admin Console SPA responses. The Vite

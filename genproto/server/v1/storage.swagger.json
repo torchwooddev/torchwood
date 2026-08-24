@@ -486,13 +486,6 @@
           "additionalProperties": {
             "type": "string"
           }
-        },
-        "permissions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "title": "permissions 已废弃（A8）：文件权限仅由 owner_user_id + bucket.Public 决定，服务端忽略该字段；保留字段号 6 兼容旧 SDK，勿复用。"
         }
       }
     },
@@ -685,7 +678,8 @@
         },
         "total_count": {
           "type": "integer",
-          "format": "int32"
+          "format": "int32",
+          "title": "total_count ≤0 = unknown（keyset 分页下 0 与空集合不可区分，调用方应以 next_page_token 是否为空判定是否还有更多；≤0 表示总数未知）。"
         }
       }
     },

@@ -425,7 +425,7 @@ export function FunctionDetailPage() {
   const [variables, setVariablesState] = useState<Variable[]>([]);
 
   const { data: fn, isLoading } = useQuery({
-    queryKey: ["functions", functionId],
+    queryKey: ["functions", projectId, functionId],
     queryFn: () => getFunction(functionId!),
     enabled: !!functionId,
   });
@@ -477,7 +477,7 @@ export function FunctionDetailPage() {
     }) => updateFunction(functionId!, input),
     onSuccess: () => {
       toast.success("函数设置已更新");
-      queryClient.invalidateQueries({ queryKey: ["functions", functionId] });
+      queryClient.invalidateQueries({ queryKey: ["functions", projectId, functionId] });
     },
   });
 

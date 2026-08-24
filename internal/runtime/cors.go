@@ -30,11 +30,14 @@ func CORSMiddleware(cfg *config.Http_Cors, logger *slog.Logger) func(http.Handle
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if isOriginAllowed(allowed, origin) {
+			originAllowed := isOriginAllowed(allowed, origin)
+			if originAllowed {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
-				if credentials && origin != "" {
-					w.Header().Set("Vary", "Origin")
-				}
+				// P3-5：反射 origin 时必设 Vary: Origin，避免缓存污染。
+				w.Header().Set("Vary", "Origin")
+			} else if origin != "" {
+				// 即使 origin 不匹配也声明 Vary，确保中间缓存按 Origin 区分。
+				w.Header().Set("Vary", "Origin")
 			}
 			if len(cfg.GetAllowMethods()) > 0 {
 				w.Header().Set("Access-Control-Allow-Methods", strings.Join(cfg.GetAllowMethods(), ", "))
@@ -42,7 +45,8 @@ func CORSMiddleware(cfg *config.Http_Cors, logger *slog.Logger) func(http.Handle
 			if len(cfg.GetAllowHeaders()) > 0 {
 				w.Header().Set("Access-Control-Allow-Headers", strings.Join(cfg.GetAllowHeaders(), ", "))
 			}
-			if credentials {
+			// P3-5：Allow-Credentials 仅随匹配 origin 输出，避免未匹配时误授权。
+			if credentials && originAllowed {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 			if cfg.GetMaxAge() > 0 {

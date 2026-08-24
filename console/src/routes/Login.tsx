@@ -67,7 +67,7 @@ export function Login() {
       await login(email, password);
     } catch (err) {
       const msg = extractErrorMessage(err);
-      setError(msg || "Login failed");
+      setError(msg || "登录失败");
     } finally {
       setLoading(false);
     }
@@ -95,7 +95,7 @@ export function Login() {
       navigate("/console", { replace: true });
     } catch (err) {
       const msg = extractErrorMessage(err);
-      setError(msg || "Setup failed");
+      setError(msg || "初始化失败");
     } finally {
       setLoading(false);
     }
@@ -109,9 +109,7 @@ export function Login() {
         <CardHeader>
           <CardTitle>Torchwood Console</CardTitle>
           <CardDescription>
-            {isSetup
-              ? "首次部署：创建第一个管理员账户"
-              : "Sign in with your admin account"}
+            {isSetup ? "首次部署：创建第一个管理员账户" : "使用管理员账户登录"}
           </CardDescription>
         </CardHeader>
         <form onSubmit={isSetup ? handleSignUp : handleSubmit}>
@@ -217,13 +215,7 @@ export function Login() {
           </CardContent>
           <CardFooter>
             <Button type="submit" className="w-full" disabled={loading || setupState === "loading"}>
-              {loading
-                ? isSetup
-                  ? "Setting up..."
-                  : "Signing in..."
-                : isSetup
-                  ? "创建管理员并初始化"
-                  : "Sign in"}
+              {loading ? (isSetup ? "初始化中..." : "登录中...") : isSetup ? "创建管理员并初始化" : "登录"}
             </Button>
           </CardFooter>
         </form>

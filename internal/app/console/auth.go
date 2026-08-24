@@ -162,11 +162,18 @@ func (a *Auth) refreshTTL() time.Duration {
 }
 
 // AccessTTL returns the configured admin access token lifetime; used by the
-// transport layer for the session cookie Max-Age.
+// transport layer for the session cookie Max-Age. Defaults to 1h and is capped
+// at 1h (P3-1: console admin session TTL收紧≤1h，cookie Max-Age同步).
 func (a *Auth) AccessTTL() time.Duration {
-	accessTTL := 24 * time.Hour
+	accessTTL := time.Hour
 	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetAccessTtl()); err == nil {
 		accessTTL = d
+	}
+	if accessTTL > time.Hour {
+		accessTTL = time.Hour
+	}
+	if accessTTL <= 0 {
+		accessTTL = time.Hour
 	}
 	return accessTTL
 }
@@ -261,9 +268,15 @@ func (a *Auth) issueAdminTokens(ctx context.Context, adminID, email, role string
 }
 
 func (a *Auth) issueAdminTokensWithRefreshID(ctx context.Context, adminID, email, role, refreshTokenID string) (*TokenPair, error) {
-	accessTTL := 24 * time.Hour
+	accessTTL := time.Hour
 	if d, err := time.ParseDuration(a.cfg.GetSecurity().GetJwt().GetAccessTtl()); err == nil {
 		accessTTL = d
+	}
+	if accessTTL > time.Hour {
+		accessTTL = time.Hour
+	}
+	if accessTTL <= 0 {
+		accessTTL = time.Hour
 	}
 	refreshTTL := a.refreshTTL()
 	now := time.Now()

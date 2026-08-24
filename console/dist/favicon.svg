@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="tw-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#141A2C"/>
+      <stop offset="1" stop-color="#0C111F"/>
+    </linearGradient>
+    <radialGradient id="tw-glow" cx="0.5" cy="0.4" r="0.5">
+      <stop stop-color="#FFB020" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#FFB020" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#tw-bg)"/>
+  <ellipse cx="32" cy="22" rx="22" ry="20" fill="url(#tw-glow)"/>
+  <path fill="#FFE08A" d="M32 6 18 22h14z"/>
+  <path fill="#FFB020" d="M32 6l14 16H18z"/>
+  <path fill="#FF8A00" d="M18 22h28l-2 14H20z"/>
+  <path fill="#E05010" d="M20 36h24l-8 8-8-8z"/>
+  <path fill="#1E2740" d="M27 44h10l-1.5 12h-7z"/>
+  <path fill="#161E30" d="M37 44l2.5 1-2.5 11.5h-2.5L32 45z"/>
+  <path d="M28 47.5a3 1.5 0 0 1 8 0M29.5 50a1.5 1 0 0 1 5 0" stroke="#FFD166" stroke-opacity=".6" stroke-width=".8" fill="none"/>
+  <path fill="#FFD166" fill-opacity=".85" d="M25 7 26.5 8.4 25 9.8 23.5 8.4z"/>
+  <path fill="#FF9E00" fill-opacity=".7" d="M38 4.5 39.2 5.5 38 6.5 36.8 5.5z"/>
+  <path fill="#FFE08A" fill-opacity=".9" d="M32 1.5 33 2.5 31.5 3.5z"/>
+  <ellipse cx="32" cy="58.5" rx="10" ry="1.8" fill="#000" fill-opacity=".3"/>
+</svg>

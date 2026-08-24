@@ -543,13 +543,13 @@ func (s *DatabasesService) DeleteDocument(ctx context.Context, req *serverv1.Del
 	return &sharedv1.Empty{}, nil
 }
 
-func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.ListDocumentsRequest) (*serverv1.CountDocumentsResponse, error) {
+func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.CountDocumentsRequest) (*serverv1.CountDocumentsResponse, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	q, err := documents.BindListQuery(req.GetQueries(), 0, "", req.GetQuery())
 	if err != nil {
 		return nil, err
 	}

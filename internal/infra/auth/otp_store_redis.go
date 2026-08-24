@@ -14,6 +14,7 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
+	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -26,8 +27,8 @@ const (
 	otpMaxAttempts    = 5
 )
 
-// otpHMACKeyNamespace 为 OTP 哈希密钥加命名空间前缀，避免与其它 HMAC 用途混用同一密钥。
-const otpHMACKeyNamespace = "torchwood-otp:"
+// otpHMACKeyNamespace 已收敛至 jwtparser.PurposeOTP（P3-6），保留注释说明历史前缀。
+// 旧值 "torchwood-otp:" 现由 DeriveKey(HMAC-SHA256) 统一派生。
 
 // otpVerifyScript 原子完成"读取 challenge -> 校验归属 -> 校验尝试次数 -> 比对验证码 ->
 // 成功删除 / 失败递增尝试次数"，避免 GET-改-SET 竞态导致正确验证码被并发重放签发多个会话。
@@ -85,7 +86,7 @@ func newOTPChallengeStore(nonces domainauth.NonceStore, rdb *redis.Client, cfg *
 	return &RedisOTPChallengeStore{
 		nonces:  nonces,
 		rdb:     rdb,
-		hmacKey: []byte(otpHMACKeyNamespace + cfg.GetSecurity().GetJwt().GetSecret()),
+		hmacKey: jwtparser.DeriveKey(cfg.GetSecurity().GetJwt().GetSecret(), jwtparser.PurposeOTP),
 	}
 }
 

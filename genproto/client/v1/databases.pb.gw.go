@@ -568,7 +568,7 @@ var filter_DatabasesService_CountDocuments_0 = &utilities.DoubleArray{Encoding: 
 
 func request_DatabasesService_CountDocuments_0(ctx context.Context, marshaler runtime.Marshaler, client DatabasesServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListDocumentsRequest
+		protoReq CountDocumentsRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)
@@ -603,7 +603,7 @@ func request_DatabasesService_CountDocuments_0(ctx context.Context, marshaler ru
 
 func local_request_DatabasesService_CountDocuments_0(ctx context.Context, marshaler runtime.Marshaler, server DatabasesServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListDocumentsRequest
+		protoReq CountDocumentsRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)
@@ -633,15 +633,13 @@ func local_request_DatabasesService_CountDocuments_0(ctx context.Context, marsha
 	return msg, metadata, err
 }
 
-var filter_DatabasesService_CountDocuments_1 = &utilities.DoubleArray{Encoding: map[string]int{"query": 0, "database_id": 1, "collection_id": 2}, Base: []int{1, 1, 2, 3, 0, 0, 0}, Check: []int{0, 1, 1, 1, 2, 3, 4}}
-
 func request_DatabasesService_CountDocuments_1(ctx context.Context, marshaler runtime.Marshaler, client DatabasesServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListDocumentsRequest
+		protoReq CountDocumentsRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq.Query); err != nil && !errors.Is(err, io.EOF) {
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	if req.Body != nil {
@@ -663,23 +661,17 @@ func request_DatabasesService_CountDocuments_1(ctx context.Context, marshaler ru
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "collection_id", err)
 	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasesService_CountDocuments_1); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	msg, err := client.CountDocuments(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
 
 func local_request_DatabasesService_CountDocuments_1(ctx context.Context, marshaler runtime.Marshaler, server DatabasesServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListDocumentsRequest
+		protoReq CountDocumentsRequest
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq.Query); err != nil && !errors.Is(err, io.EOF) {
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	val, ok := pathParams["database_id"]
@@ -697,12 +689,6 @@ func local_request_DatabasesService_CountDocuments_1(ctx context.Context, marsha
 	protoReq.CollectionId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "collection_id", err)
-	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasesService_CountDocuments_1); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := server.CountDocuments(ctx, &protoReq)
 	return msg, metadata, err

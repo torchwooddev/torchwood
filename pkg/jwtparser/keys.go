@@ -12,6 +12,9 @@ const (
 	PurposeAdminJWT      = "admin-jwt"
 	PurposeSessionCookie = "session-cookie"
 	PurposeFileToken     = "file-token"
+	// P3-6：KDF 收敛——secretbox 与 OTP 复用同一入口，purpose 隔离。
+	PurposeSecretBox = "secretbox"
+	PurposeOTP       = "otp"
 )
 
 // DeriveKey derives a purpose-specific sub-key from the master secret using

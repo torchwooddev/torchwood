@@ -11,6 +11,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -20,8 +21,13 @@ const (
 	recoveryTokenTTL     = time.Hour
 	magicURLTokenTTL     = time.Hour
 	// AccountTokenMaxAttempts 是错误 secret 尝试次数上限（与 OTP 对齐，5 次）；
-	// 超过后删除并锁定记录（Round3 H6-3）。
+	// 超过后锁定记录至 TTL 过期（P3-2：不再 DEL，便于观测与防重放）。
 	AccountTokenMaxAttempts = 5
+
+	// accountTokenVerifyIPWindow / MaxPerWindow 是公开消费口 IP 维度频控
+	// （P3-2）：防止知道 project_id+user_id 的攻击者烧受害者待点击链接。
+	accountTokenVerifyIPWindow       = 15 * time.Minute
+	accountTokenVerifyIPMaxPerWindow = 30
 )
 
 type accountTokenRecord struct {
@@ -118,9 +124,10 @@ func (s *RedisAccountTokenStore) createToken(ctx context.Context, projectID, use
 }
 
 // accountTokenVerifyScript 原子完成「读取记录 -> 校验归属 -> 比对 secret ->
-// 成功删除 / 错 secret 计数（超限删除并锁定）」：GET-改-SET 竞态会导致并发
+// 成功删除 / 错 secret 计数（超限锁定保留至 TTL，不 DEL）」：GET-改-SET 竞态会导致并发
 // 双消费（recovery 双重置 / magic URL 双会话）与错 secret 作废链接（Round3
 // H6-3：先 GETDEL 再比 hash 会在错 secret 时烧掉一次性 token）。
+// P3-2：locked 保留至 TTL 供观测与防重放，不再 DEL。
 // 返回值：ok:<email> / badsecret / locked / notfound。
 const accountTokenVerifyScript = `
 local raw = redis.call('GET', KEYS[1])
@@ -134,7 +141,13 @@ end
 if record.secret_hash ~= ARGV[1] then
   local attempts = (record.attempts or 0) + 1
   if attempts >= tonumber(ARGV[2]) then
-    redis.call('DEL', KEYS[1])
+    record.attempts = attempts
+    local ttl = redis.call('PTTL', KEYS[1])
+    if ttl > 0 then
+      redis.call('SET', KEYS[1], cjson.encode(record), 'PX', ttl)
+    else
+      redis.call('SET', KEYS[1], cjson.encode(record))
+    end
     return 'locked'
   end
   record.attempts = attempts
@@ -159,9 +172,15 @@ func (s *RedisAccountTokenStore) verifyToken(ctx context.Context, projectID, use
 
 // verifyTokenWithEmail 同 verifyToken，额外返回 record 中携带的 email
 // （email_change 消费后需要新邮箱地址）。错误 secret 只计数不删除记录，
-// 超限（AccountTokenMaxAttempts）删除锁定；全部失败路径统一返回
-// Unauthenticated（防枚举，Round3 H6-3）。
+// 超限（AccountTokenMaxAttempts）锁定保留至 TTL；全部失败路径统一返回
+// Unauthenticated（防枚举，Round3 H6-3）。公开消费口按 IP 额外限流
+// （P3-2）。
 func (s *RedisAccountTokenStore) verifyTokenWithEmail(ctx context.Context, projectID, userID, secret, purpose string) (string, error) {
+	if ip := contexts.ClientInfoFrom(ctx).IP; ip != "" {
+		if err := s.checkVerifyIPLimit(ctx, ip); err != nil {
+			return "", err
+		}
+	}
 	key := accountTokenKey(purpose, projectID, userID)
 	result, err := s.rdb.Eval(ctx, accountTokenVerifyScript, []string{key},
 		HashOTP(secret), AccountTokenMaxAttempts, projectID, userID, purpose).Text()
@@ -178,6 +197,20 @@ func (s *RedisAccountTokenStore) verifyTokenWithEmail(ctx context.Context, proje
 
 func accountTokenKey(purpose, projectID, userID string) string {
 	return fmt.Sprintf("Torchwood:account:token:%s:%s:%s", purpose, projectID, userID)
+}
+
+// checkVerifyIPLimit 对公开消费口（Verify*）按 IP 做固定窗口限流，超过
+// accountTokenVerifyIPMaxPerWindow/15min 返回 ResourceExhausted（P3-2）。
+func (s *RedisAccountTokenStore) checkVerifyIPLimit(ctx context.Context, ip string) error {
+	key := fmt.Sprintf("Torchwood:account:token:verify:ip:%s", ip)
+	count, err := incrWithTTL(ctx, s.rdb, key, accountTokenVerifyIPWindow)
+	if err != nil {
+		return status.Error(codes.Internal, "account token verify rate limit check failed")
+	}
+	if count > accountTokenVerifyIPMaxPerWindow {
+		return status.Error(codes.ResourceExhausted, "account token verify rate limit exceeded")
+	}
+	return nil
 }
 
 func generateAccountTokenSecret() (string, error) {

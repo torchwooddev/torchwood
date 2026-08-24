@@ -13,6 +13,7 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"github.com/torchwooddev/torchwood/pkg/crud"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -487,15 +488,66 @@ func (s *AccountService) UpdateMagicURLSession(ctx context.Context, req *clientv
 }
 
 func (s *AccountService) ListLogs(ctx context.Context, req *clientv1.ListLogsRequest) (*clientv1.ListLogsResponse, error) {
-	entries, err := s.account.ListLogs(ctx, req.GetLimit())
+	// P3-9：ListLogs 补分页（page_size/page_token/meta），兼容旧 limit。
+	pageSize := req.GetPageSize()
+	if pageSize == 0 {
+		pageSize = req.GetLimit()
+	}
+	params, err := s.parseLogsListParams(pageSize, req.GetPageToken())
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*clientv1.LogEntry, 0, len(entries))
-	for i := range entries {
-		out = append(out, mapLogEntry(&entries[i]))
+	// 过度拉取以支持 offset（audit 仅支持 limit，不支持 offset，内存分页足够，limit≤100）。
+	fetchLimit := int32(params.Offset + int(params.PageSize))
+	if fetchLimit > 100 {
+		fetchLimit = 100
 	}
-	return &clientv1.ListLogsResponse{Logs: out}, nil
+	if fetchLimit <= 0 {
+		fetchLimit = params.PageSize
+	}
+	entries, err := s.account.ListLogs(ctx, fetchLimit)
+	if err != nil {
+		return nil, err
+	}
+	// 内存分页：offset + pageSize 切片
+	start := params.Offset
+	if start > len(entries) {
+		start = len(entries)
+	}
+	end := start + int(params.PageSize)
+	if end > len(entries) {
+		end = len(entries)
+	}
+	page := entries[start:end]
+	hasMore := end < len(entries)
+	info := crud.BuildPaginationInfo(params, 0, hasMore)
+	var nextToken, prevToken string
+	if info.HasNext {
+		nextToken = crud.EncodePageToken(info.NextOffset)
+	}
+	if info.HasPrevious {
+		prevToken = crud.EncodePageToken(info.PreviousOffset)
+	}
+	out := make([]*clientv1.LogEntry, 0, len(page))
+	for i := range page {
+		out = append(out, mapLogEntry(&page[i]))
+	}
+	meta := &sharedv1.ListResponseMeta{
+		PageSize:      info.PageSize,
+		NextPageToken: nextToken,
+		PrevPageToken: prevToken,
+		TotalCount:    0,
+	}
+	return &clientv1.ListLogsResponse{Logs: out, Meta: meta}, nil
+}
+
+func (s *AccountService) parseLogsListParams(pageSize int32, pageToken string) (crud.ListParams, error) {
+	// 复用 crud 分页能力，filter/order_by 为空（logs 不支持）。
+	p, err := crud.ParseListParams(pageSize, pageToken, "", "")
+	if err != nil {
+		return crud.ListParams{}, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return p, nil
 }
 
 func (s *AccountService) requirePrincipal(ctx context.Context) (*shared.Principal, error) {

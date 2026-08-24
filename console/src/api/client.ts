@@ -74,7 +74,7 @@ function forceReLogin() {
     return;
   }
   authRedirecting = true;
-  toast.error("Session expired. Please sign in again.");
+  toast.error("会话已过期，请重新登录");
   setProjectID(null);
   window.location.href = "/console/login";
 }
@@ -92,7 +92,7 @@ api.interceptors.response.use(
     const message =
       error?.response?.data?.error?.message ||
       error?.message ||
-      "Request failed";
+      "请求失败";
 
     if (status === 401) {
       const isLoginRequest = config?.url === "/console/auth/sign-in";

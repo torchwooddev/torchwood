@@ -41,7 +41,7 @@ type DatabasesServiceClient interface {
 	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*v1.Empty, error)
-	CountDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
+	CountDocuments(ctx context.Context, in *CountDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
 }
 
 type databasesServiceClient struct {
@@ -112,7 +112,7 @@ func (c *databasesServiceClient) DeleteDocument(ctx context.Context, in *DeleteD
 	return out, nil
 }
 
-func (c *databasesServiceClient) CountDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error) {
+func (c *databasesServiceClient) CountDocuments(ctx context.Context, in *CountDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CountDocumentsResponse)
 	err := c.cc.Invoke(ctx, DatabasesService_CountDocuments_FullMethodName, in, out, cOpts...)
@@ -134,7 +134,7 @@ type DatabasesServiceServer interface {
 	UpdateDocument(context.Context, *UpdateDocumentRequest) (*v1.Document, error)
 	UpsertDocument(context.Context, *UpsertDocumentRequest) (*v1.Document, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error)
-	CountDocuments(context.Context, *ListDocumentsRequest) (*CountDocumentsResponse, error)
+	CountDocuments(context.Context, *CountDocumentsRequest) (*CountDocumentsResponse, error)
 	mustEmbedUnimplementedDatabasesServiceServer()
 }
 
@@ -163,7 +163,7 @@ func (UnimplementedDatabasesServiceServer) UpsertDocument(context.Context, *Upse
 func (UnimplementedDatabasesServiceServer) DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteDocument not implemented")
 }
-func (UnimplementedDatabasesServiceServer) CountDocuments(context.Context, *ListDocumentsRequest) (*CountDocumentsResponse, error) {
+func (UnimplementedDatabasesServiceServer) CountDocuments(context.Context, *CountDocumentsRequest) (*CountDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CountDocuments not implemented")
 }
 func (UnimplementedDatabasesServiceServer) mustEmbedUnimplementedDatabasesServiceServer() {}
@@ -296,7 +296,7 @@ func _DatabasesService_DeleteDocument_Handler(srv interface{}, ctx context.Conte
 }
 
 func _DatabasesService_CountDocuments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListDocumentsRequest)
+	in := new(CountDocumentsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func _DatabasesService_CountDocuments_Handler(srv interface{}, ctx context.Conte
 		FullMethod: DatabasesService_CountDocuments_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatabasesServiceServer).CountDocuments(ctx, req.(*ListDocumentsRequest))
+		return srv.(DatabasesServiceServer).CountDocuments(ctx, req.(*CountDocumentsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

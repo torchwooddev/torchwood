@@ -136,7 +136,7 @@ func (s *StorageService) CreateFile(ctx context.Context, req *serverv1.CreateFil
 		Name:        req.GetName(),
 		MimeType:    req.GetMimeType(),
 		Metadata:    req.GetMetadata(),
-		Permissions: req.GetPermissions(), //nolint:staticcheck
+		Permissions: nil, // P3-7：proto 字段 6 已 reserved，不再透传
 	}, bytes.NewReader(data), int64(len(data)), dbPrincipal(ctx))
 	if err != nil {
 		return nil, err

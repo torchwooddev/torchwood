@@ -47,7 +47,7 @@
 ## 编辑时应遵循的模式
 - 保持端口在 domain、适配器在 infra。
 - gRPC 方法必须带 proto authz 注解，否则 `collectMethodsByAccess` 会报错。
-- **Proto 规范**：删除字段一律 `reserved`（字段号 + 字段名），禁止复用字段号；
+- **Proto 规范**：删除字段一律 `reserved`（字段号 + 字段名），禁止复用字段号；`deprecated = true` 保留为合法过渡态（兼容旧 SDK 一个版本周期后再迁 `reserved`，过渡期内服务端忽略该字段）；
   更新类请求的可选字段用 `proto3 optional` 表达 presence（未设置=不修改）；
   时间字段一律 `google.protobuf.Timestamp`（HTTP JSON 为 RFC3339）；
   OpenAPI 建模约定见 `docs/developer/09-api-guide.md` §1.4（swagger 扩展与
@@ -55,6 +55,10 @@
 - 列表查询复用 `pkg/crud` 或等价的 AIP-132/158/160 抽象，不要手拼 SQL filter/order；动态文档优先使用 `pkg/query`。
 - JWT claims 保持与 `pkg/jwtparser` 的映射兼容。
 - Console 前端组件放在 `console/src/components/ui/`，样式基于 Tailwind + shadcn/ui。
+
+## 已接受取舍（P3-18）
+- **app 层允许 `grpc/status`**：`internal/app/*` 直接使用 `google.golang.org/grpc/status` 与 `codes` 表达领域错误（56 文件），视为项目约定而非分层违规，不引入中间 AppError 类型；`domain` 层仍保持纯净，禁止依赖 gRPC。
+- **SDK 覆盖测试保证范围措辞收敛**：CLI 不直接 import `genproto`，方法覆盖完整性由 `sdk/go/server` 的反射测试保证（`invoke_test.go` 遍历 registry 断言每个 server 方法在 `findServerMethod` 可解析），措辞收敛为“覆盖测试保证范围”，新增 RPC 无需在 CLI 登记即自动可用。
 
 ## 特别约定
 - 对话和文档优先使用简体中文。

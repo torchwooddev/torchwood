@@ -9,13 +9,16 @@ import (
 	"errors"
 	"io"
 	"strings"
+
+	"github.com/torchwooddev/torchwood/pkg/jwtparser"
 )
 
 const prefix = "enc:v1:"
 
+// deriveKey 收敛至 jwtparser.DeriveKey（HMAC-SHA256 purpose 派生，P3-6），
+// 与 OTP 等其它 KDF 共用单一入口，便于审计与轮换。
 func deriveKey(secret string) []byte {
-	sum := sha256.Sum256([]byte("torchwood-secretbox:" + secret))
-	return sum[:]
+	return jwtparser.DeriveKey(secret, jwtparser.PurposeSecretBox)
 }
 
 // Encrypt seals plaintext with AES-256-GCM using secret as key material.
@@ -70,8 +73,17 @@ func Decrypt(stored, secret string) (string, error) {
 	}
 	nonce, ciphertext := raw[:gcm.NonceSize()], raw[gcm.NonceSize():]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return "", err
+	if err == nil {
+		return string(plaintext), nil
 	}
-	return string(plaintext), nil
+	// 兼容旧 KDF（sha256 单轮）：P3-6 迁移期存量数据仍可解密，解密后下次写会用新 KDF 重新加密。
+	legacyKey := sha256.Sum256([]byte("torchwood-secretbox:" + secret))
+	if block, lerr := aes.NewCipher(legacyKey[:]); lerr == nil {
+		if gcm2, lerr2 := cipher.NewGCM(block); lerr2 == nil && len(raw) >= gcm2.NonceSize() {
+			if pt, lerr3 := gcm2.Open(nil, raw[:gcm2.NonceSize()], raw[gcm2.NonceSize():], nil); lerr3 == nil {
+				return string(pt), nil
+			}
+		}
+	}
+	return "", err
 }

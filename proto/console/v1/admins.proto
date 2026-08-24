@@ -104,10 +104,14 @@ service AdminsService {
 
 message GetCurrentAdminRequest {}
 
-message ListAdminsRequest {}
+message ListAdminsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
 
 message ListAdminsResponse {
   repeated Admin admins = 1;
+  shared.v1.ListResponseMeta meta = 2;
 }
 
 message CreateAdminRequest {

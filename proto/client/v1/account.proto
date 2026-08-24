@@ -751,7 +751,10 @@ message UpdateMagicURLSessionRequest {
 
 // ---- Logs ----
 message ListLogsRequest {
-  int32 limit = 1;
+  // limit 已废弃：请用 page_size；保留兼容旧 SDK，服务端优先取 page_size。
+  int32 limit = 1 [deprecated = true];
+  int32 page_size = 2;
+  string page_token = 3;
 }
 
 message LogEntry {
@@ -766,4 +769,5 @@ message LogEntry {
 
 message ListLogsResponse {
   repeated LogEntry logs = 1;
+  shared.v1.ListResponseMeta meta = 2;
 }

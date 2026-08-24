@@ -132,8 +132,14 @@ func (i *AuthInterceptor) UnaryAuthMiddleware(ctx context.Context, req any, info
 			i.logAuthFailure(ctx, info.FullMethod, "admin_role_denied", credentialType)
 			return nil, status.Error(codes.PermissionDenied, "missing required admin role")
 		}
-		if projectID := firstMetadataValue(md, "X-Torchwood-Project"); projectID != "" {
-			principal.ProjectID = projectID
+		// P3-4：X-Torchwood-Project 多值拒绝（fail-closed，一致性缺口修复）。
+		if values := md.Get("x-torchwood-project"); len(values) > 1 {
+			i.logAuthFailure(ctx, info.FullMethod, "multi_project_header", credentialType)
+			return nil, status.Error(codes.InvalidArgument, "multiple X-Torchwood-Project headers not allowed")
+		} else if len(values) == 1 {
+			if projectID := strings.TrimSpace(values[0]); projectID != "" {
+				principal.ProjectID = projectID
+			}
 		}
 		if err := i.validator.ValidateAdminProjectAccess(ctx, principal); err != nil {
 			i.logAuthFailure(ctx, info.FullMethod, "admin_project_access_denied", credentialType)

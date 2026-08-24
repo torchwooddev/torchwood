@@ -156,13 +156,13 @@ func (s *DatabasesService) DeleteDocument(ctx context.Context, req *clientv1.Del
 	return &sharedv1.Empty{}, nil
 }
 
-func (s *DatabasesService) CountDocuments(ctx context.Context, req *clientv1.ListDocumentsRequest) (*clientv1.CountDocumentsResponse, error) {
+func (s *DatabasesService) CountDocuments(ctx context.Context, req *clientv1.CountDocumentsRequest) (*clientv1.CountDocumentsResponse, error) {
 	projectID, err := resolveProjectID(ctx, req.GetProjectId())
 	if err != nil {
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
-	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	q, err := documents.BindListQuery(req.GetQueries(), 0, "", req.GetQuery())
 	if err != nil {
 		return nil, err
 	}

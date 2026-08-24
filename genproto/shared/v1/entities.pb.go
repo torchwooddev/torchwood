@@ -271,22 +271,17 @@ func (x *Group) GetUpdatedAt() *timestamppb.Timestamp {
 // SubscriptionPlan 订阅计划的共享视图（W-K）。
 // 以 server 的 15 字段为全集，client 的 10 字段为子集（缺少 project_id/provider_overrides/status/timestamps 的扩展字段）。
 type SubscriptionPlan struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ProjectId    string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Code         string                 `protobuf:"bytes,3,opt,name=code,proto3" json:"code,omitempty"`
-	Name         string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	Amount       int64                  `protobuf:"varint,5,opt,name=amount,proto3" json:"amount,omitempty"`
-	Currency     string                 `protobuf:"bytes,6,opt,name=currency,proto3" json:"currency,omitempty"`
-	Interval     string                 `protobuf:"bytes,7,opt,name=interval,proto3" json:"interval,omitempty"`
-	IntervalDays int64                  `protobuf:"varint,8,opt,name=interval_days,json=intervalDays,proto3" json:"interval_days,omitempty"`
-	GraceDays    int32                  `protobuf:"varint,9,opt,name=grace_days,json=graceDays,proto3" json:"grace_days,omitempty"`
-	TrialDays    int32                  `protobuf:"varint,10,opt,name=trial_days,json=trialDays,proto3" json:"trial_days,omitempty"`
-	// Benefits 与 ProviderOverrides 在共享层暂保留为透传结构，
-	// 迁移时可进一步抽取为共享的 Benefits 消息（当前仅占位）。
-	// 为避免与现有 Benefits 定义冲突，此处先保留空扩展点。
-	// 实际迁移应将 BenefitGrant/BenefitEntitlement/Benefits 一并抽取。
-	// 字段 11/12 预留给 benefits/provider_overrides，13 为 status，14/15 为 timestamps。
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ProjectId     string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Code          string                 `protobuf:"bytes,3,opt,name=code,proto3" json:"code,omitempty"`
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	Amount        int64                  `protobuf:"varint,5,opt,name=amount,proto3" json:"amount,omitempty"`
+	Currency      string                 `protobuf:"bytes,6,opt,name=currency,proto3" json:"currency,omitempty"`
+	Interval      string                 `protobuf:"bytes,7,opt,name=interval,proto3" json:"interval,omitempty"`
+	IntervalDays  int64                  `protobuf:"varint,8,opt,name=interval_days,json=intervalDays,proto3" json:"interval_days,omitempty"`
+	GraceDays     int32                  `protobuf:"varint,9,opt,name=grace_days,json=graceDays,proto3" json:"grace_days,omitempty"`
+	TrialDays     int32                  `protobuf:"varint,10,opt,name=trial_days,json=trialDays,proto3" json:"trial_days,omitempty"`
 	Status        string                 `protobuf:"bytes,13,opt,name=status,proto3" json:"status,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
@@ -609,7 +604,7 @@ const file_shared_v1_entities_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xaa\x03\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xd4\x03\n" +
 	"\x10SubscriptionPlan\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -629,7 +624,7 @@ const file_shared_v1_entities_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa6\x05\n" +
+	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtJ\x04\b\v\x10\fJ\x04\b\f\x10\rR\bbenefitsR\x12provider_overrides\"\xb9\x05\n" +
 	"\fSubscription\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -651,7 +646,7 @@ const file_shared_v1_entities_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
+	"updated_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtJ\x04\b\x0f\x10\x10R\vreserved_15B?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_entities_proto_rawDescOnce sync.Once

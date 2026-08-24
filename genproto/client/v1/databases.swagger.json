@@ -550,25 +550,6 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "type": "integer",
-            "format": "int32"
-          },
-          {
-            "name": "page_token",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "project_id",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          },
-          {
             "name": "query.filter.eq.attribute",
             "in": "query",
             "required": false,
@@ -756,6 +737,12 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -794,42 +781,12 @@
             "type": "string"
           },
           {
-            "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\r\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "name": "body",
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/v1Query"
+              "$ref": "#/definitions/torchwoodclientv1DatabasesServiceCountDocumentsBody"
             }
-          },
-          {
-            "name": "queries",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "collectionFormat": "multi"
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "type": "integer",
-            "format": "int32"
-          },
-          {
-            "name": "page_token",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "project_id",
-            "in": "query",
-            "required": false,
-            "type": "string"
           }
         ],
         "tags": [
@@ -942,6 +899,24 @@
           "format": "int64"
         }
       }
+    },
+    "torchwoodclientv1DatabasesServiceCountDocumentsBody": {
+      "type": "object",
+      "properties": {
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "query": {
+          "$ref": "#/definitions/v1Query"
+        },
+        "project_id": {
+          "type": "string"
+        }
+      },
+      "title": "CountDocumentsRequest 独立于 ListDocumentsRequest（P3-9）：不暴露无效分页参数（page_size/page_token）。"
     },
     "torchwoodclientv1DatabasesServiceCreateDocumentBody": {
       "type": "object",
@@ -1144,7 +1119,8 @@
         },
         "total_count": {
           "type": "integer",
-          "format": "int32"
+          "format": "int32",
+          "title": "total_count ≤0 = unknown（keyset 分页下 0 与空集合不可区分，调用方应以 next_page_token 是否为空判定是否还有更多；≤0 表示总数未知）。"
         }
       }
     },

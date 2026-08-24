@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // Agent 默认工具名（E-7 overlay）。完整产品 API 仍是 185 个 RPC（Client 61 + Server 114 + Console 10）。
@@ -31,10 +33,12 @@ const (
 
 // Tool 将 Agent 工具名映射到已有 Server unary（不新增 gRPC 服务）。
 // 不含 API key 管理；InvokeJSON 仍排除 APIKeysService。
+// P3-16：InputSchema 由 descriptor 生成的 JSON Schema（type: object），供 Agent/自动化直接驱动。
 type Tool struct {
-	Name       string
-	FullMethod string
-	InputNotes string
+	Name        string
+	FullMethod  string
+	InputNotes  string
+	InputSchema string `json:"input_schema"`
 }
 
 // Tools 是锁定的 18 个默认工具，顺序与 docs/review/wave3-e7-tool-catalog.md 一致。
@@ -135,10 +139,78 @@ var Tools = []Tool{
 var toolsByName map[string]Tool
 
 func init() {
+	// P3-16：为每个 Tool 生成 InputSchema（descriptor → JSON Schema）
+	for i := range Tools {
+		Tools[i].InputSchema = buildInputSchema(Tools[i].FullMethod)
+	}
 	toolsByName = make(map[string]Tool, len(Tools))
 	for _, t := range Tools {
 		toolsByName[t.Name] = t
 	}
+}
+
+// buildInputSchema 由 FullMethod 的 input descriptor 生成简易 JSON Schema（type: object）。
+func buildInputSchema(fullMethod string) string {
+	md, err := findServerMethod(fullMethod)
+	if err != nil {
+		return `{"type":"object"}`
+	}
+	msg := md.Input()
+	schema := map[string]any{
+		"type":       "object",
+		"properties": buildProperties(msg),
+	}
+	b, _ := json.Marshal(schema)
+	return string(b)
+}
+
+func buildProperties(md protoreflect.MessageDescriptor) map[string]any {
+	props := make(map[string]any, md.Fields().Len())
+	for i := 0; i < md.Fields().Len(); i++ {
+		fd := md.Fields().Get(i)
+		jsonName := fd.JSONName()
+		prop := map[string]any{}
+		// 类型映射
+		switch fd.Kind() {
+		case protoreflect.StringKind:
+			prop["type"] = "string"
+		case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
+			protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind,
+			protoreflect.Uint32Kind, protoreflect.Fixed32Kind, protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+			prop["type"] = "integer"
+		case protoreflect.FloatKind, protoreflect.DoubleKind:
+			prop["type"] = "number"
+		case protoreflect.BoolKind:
+			prop["type"] = "boolean"
+		case protoreflect.BytesKind:
+			prop["type"] = "string"
+			prop["format"] = "byte"
+		case protoreflect.EnumKind:
+			prop["type"] = "string"
+		case protoreflect.MessageKind:
+			// google.protobuf.Struct / Timestamp 等按 object/string 处理
+			if fd.Message().FullName() == "google.protobuf.Struct" {
+				prop["type"] = "object"
+			} else if fd.Message().FullName() == "google.protobuf.Timestamp" {
+				prop["type"] = "string"
+				prop["format"] = "date-time"
+			} else {
+				prop["type"] = "object"
+				// 嵌套对象展开一层（避免无限递归）
+				if fd.Message().Fields().Len() > 0 && fd.Message().Fields().Len() <= 10 {
+					prop["properties"] = buildProperties(fd.Message())
+				}
+			}
+		default:
+			prop["type"] = "string"
+		}
+		if fd.IsList() {
+			prop = map[string]any{"type": "array", "items": prop}
+		}
+		// 兼容旧 SDK：字段描述来自 proto 注释，暂不填充 description
+		props[jsonName] = prop
+	}
+	return props
 }
 
 // LookupTool 按工具名查找 catalog 条目。

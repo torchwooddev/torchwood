@@ -63,6 +63,8 @@ func (*GetCurrentAdminRequest) Descriptor() ([]byte, []int) {
 
 type ListAdminsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -97,9 +99,24 @@ func (*ListAdminsRequest) Descriptor() ([]byte, []int) {
 	return file_console_v1_admins_proto_rawDescGZIP(), []int{1}
 }
 
+func (x *ListAdminsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListAdminsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListAdminsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Admins        []*Admin               `protobuf:"bytes,1,rep,name=admins,proto3" json:"admins,omitempty"`
+	Meta          *v1.ListResponseMeta   `protobuf:"bytes,2,opt,name=meta,proto3" json:"meta,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -137,6 +154,13 @@ func (*ListAdminsResponse) Descriptor() ([]byte, []int) {
 func (x *ListAdminsResponse) GetAdmins() []*Admin {
 	if x != nil {
 		return x.Admins
+	}
+	return nil
+}
+
+func (x *ListAdminsResponse) GetMeta() *v1.ListResponseMeta {
+	if x != nil {
+		return x.Meta
 	}
 	return nil
 }
@@ -387,10 +411,14 @@ var File_console_v1_admins_proto protoreflect.FileDescriptor
 const file_console_v1_admins_proto_rawDesc = "" +
 	"\n" +
 	"\x17console/v1/admins.proto\x12\x14torchwood.console.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\"\x18\n" +
-	"\x16GetCurrentAdminRequest\"\x13\n" +
-	"\x11ListAdminsRequest\"I\n" +
+	"\x16GetCurrentAdminRequest\"O\n" +
+	"\x11ListAdminsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x84\x01\n" +
 	"\x12ListAdminsResponse\x123\n" +
-	"\x06admins\x18\x01 \x03(\v2\x1b.torchwood.console.v1.AdminR\x06admins\"Z\n" +
+	"\x06admins\x18\x01 \x03(\v2\x1b.torchwood.console.v1.AdminR\x06admins\x129\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"Z\n" +
 	"\x12CreateAdminRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x12\n" +
@@ -450,28 +478,30 @@ var file_console_v1_admins_proto_goTypes = []any{
 	(*UpdateAdminRequest)(nil),     // 4: torchwood.console.v1.UpdateAdminRequest
 	(*DeleteAdminRequest)(nil),     // 5: torchwood.console.v1.DeleteAdminRequest
 	(*Admin)(nil),                  // 6: torchwood.console.v1.Admin
-	(*timestamppb.Timestamp)(nil),  // 7: google.protobuf.Timestamp
-	(*v1.Empty)(nil),               // 8: torchwood.shared.v1.Empty
+	(*v1.ListResponseMeta)(nil),    // 7: torchwood.shared.v1.ListResponseMeta
+	(*timestamppb.Timestamp)(nil),  // 8: google.protobuf.Timestamp
+	(*v1.Empty)(nil),               // 9: torchwood.shared.v1.Empty
 }
 var file_console_v1_admins_proto_depIdxs = []int32{
 	6, // 0: torchwood.console.v1.ListAdminsResponse.admins:type_name -> torchwood.console.v1.Admin
-	7, // 1: torchwood.console.v1.Admin.created_at:type_name -> google.protobuf.Timestamp
-	7, // 2: torchwood.console.v1.Admin.updated_at:type_name -> google.protobuf.Timestamp
-	0, // 3: torchwood.console.v1.AdminsService.GetCurrentAdmin:input_type -> torchwood.console.v1.GetCurrentAdminRequest
-	1, // 4: torchwood.console.v1.AdminsService.ListAdmins:input_type -> torchwood.console.v1.ListAdminsRequest
-	3, // 5: torchwood.console.v1.AdminsService.CreateAdmin:input_type -> torchwood.console.v1.CreateAdminRequest
-	4, // 6: torchwood.console.v1.AdminsService.UpdateAdmin:input_type -> torchwood.console.v1.UpdateAdminRequest
-	5, // 7: torchwood.console.v1.AdminsService.DeleteAdmin:input_type -> torchwood.console.v1.DeleteAdminRequest
-	6, // 8: torchwood.console.v1.AdminsService.GetCurrentAdmin:output_type -> torchwood.console.v1.Admin
-	2, // 9: torchwood.console.v1.AdminsService.ListAdmins:output_type -> torchwood.console.v1.ListAdminsResponse
-	6, // 10: torchwood.console.v1.AdminsService.CreateAdmin:output_type -> torchwood.console.v1.Admin
-	6, // 11: torchwood.console.v1.AdminsService.UpdateAdmin:output_type -> torchwood.console.v1.Admin
-	8, // 12: torchwood.console.v1.AdminsService.DeleteAdmin:output_type -> torchwood.shared.v1.Empty
-	8, // [8:13] is the sub-list for method output_type
-	3, // [3:8] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	7, // 1: torchwood.console.v1.ListAdminsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	8, // 2: torchwood.console.v1.Admin.created_at:type_name -> google.protobuf.Timestamp
+	8, // 3: torchwood.console.v1.Admin.updated_at:type_name -> google.protobuf.Timestamp
+	0, // 4: torchwood.console.v1.AdminsService.GetCurrentAdmin:input_type -> torchwood.console.v1.GetCurrentAdminRequest
+	1, // 5: torchwood.console.v1.AdminsService.ListAdmins:input_type -> torchwood.console.v1.ListAdminsRequest
+	3, // 6: torchwood.console.v1.AdminsService.CreateAdmin:input_type -> torchwood.console.v1.CreateAdminRequest
+	4, // 7: torchwood.console.v1.AdminsService.UpdateAdmin:input_type -> torchwood.console.v1.UpdateAdminRequest
+	5, // 8: torchwood.console.v1.AdminsService.DeleteAdmin:input_type -> torchwood.console.v1.DeleteAdminRequest
+	6, // 9: torchwood.console.v1.AdminsService.GetCurrentAdmin:output_type -> torchwood.console.v1.Admin
+	2, // 10: torchwood.console.v1.AdminsService.ListAdmins:output_type -> torchwood.console.v1.ListAdminsResponse
+	6, // 11: torchwood.console.v1.AdminsService.CreateAdmin:output_type -> torchwood.console.v1.Admin
+	6, // 12: torchwood.console.v1.AdminsService.UpdateAdmin:output_type -> torchwood.console.v1.Admin
+	9, // 13: torchwood.console.v1.AdminsService.DeleteAdmin:output_type -> torchwood.shared.v1.Empty
+	9, // [9:14] is the sub-list for method output_type
+	4, // [4:9] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_console_v1_admins_proto_init() }
