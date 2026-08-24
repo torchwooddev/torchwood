@@ -23,7 +23,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
-	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	_ "golang.org/x/image/bmp"
@@ -59,7 +58,7 @@ type FileHandler struct {
 // NewFileHandler creates a new file HTTP handler.
 func NewFileHandler(
 	cfg *config.AppConfig,
-	validator *auth.Validator,
+	validator AuthValidator,
 	storage *appstorage.Storage,
 	auditRepo audit.Repository,
 	logger *slog.Logger,

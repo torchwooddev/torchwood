@@ -31,29 +31,29 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	}
 	for _, attr := range attrs {
 		if err := rejectArrayAttribute(attr); err != nil {
-			return err
+			return p.mapError(err)
 		}
 	}
 	for _, idx := range idxs {
 		if err := validateIndexDefinition(idx); err != nil {
-			return err
+			return p.mapError(err)
 		}
 	}
 	if err := p.EnsureCatalog(ctx, projectID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	// R4-J5-3：_tenant 列默认值取实时 internal_id，防陈旧缓存烤进新表。
 	if internalID, err = p.resolveInternalIDFresh(ctx, projectID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 
 	// DDL 与 document_* 元数据包进同一事务（PG 支持事务内 DDL），
 	// 任一步失败整体回滚，避免"物理表建成而元数据缺失"。
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if err := p.ensureSchemaAndPerms(txCtx, schema); err != nil {
 			return err
 		}
@@ -71,13 +71,13 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 			}
 		}
 		return p.createCollectionMetadata(txCtx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
-	})
+	}))
 }
 
 func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	m := new(model.DocumentCollection)
 	err = p.conn(ctx).NewSelect().Model(m).
@@ -87,9 +87,13 @@ func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, datab
 		if p.catalogAbsent(ctx, projectID, err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, p.mapError(err)
 	}
-	return p.mapCollection(ctx, m)
+	coll, mapErr := p.mapCollection(ctx, m)
+	if mapErr != nil {
+		return nil, p.mapError(mapErr)
+	}
+	return coll, nil
 }
 
 func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, databaseID string, q databases.ListQuery) ([]databases.Collection, databases.ListMeta, error) {
@@ -104,14 +108,14 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 	if q.PageToken != "" {
 		off, err := crud.DecodePageToken(q.PageToken)
 		if err != nil {
-			return nil, databases.ListMeta{}, err
+			return nil, databases.ListMeta{}, p.mapError(err)
 		}
 		offset = off
 	}
 
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
-		return nil, databases.ListMeta{}, err
+		return nil, databases.ListMeta{}, p.mapError(err)
 	}
 
 	var total int64
@@ -122,7 +126,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Collection{}, databases.ListMeta{}, nil
 		}
-		return nil, databases.ListMeta{}, err
+		return nil, databases.ListMeta{}, p.mapError(err)
 	}
 	total = int64(count)
 
@@ -136,7 +140,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Collection{}, databases.ListMeta{}, nil
 		}
-		return nil, databases.ListMeta{}, err
+		return nil, databases.ListMeta{}, p.mapError(err)
 	}
 	if len(ms) == 0 {
 		return []databases.Collection{}, databases.ListMeta{TotalCount: total}, nil
@@ -156,7 +160,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Collection{}, databases.ListMeta{}, nil
 		}
-		return nil, databases.ListMeta{}, err
+		return nil, databases.ListMeta{}, p.mapError(err)
 	}
 	attrsByColl := make(map[string][]model.DocumentAttribute, len(ms))
 	for i := range allAttrs {
@@ -172,7 +176,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Collection{}, databases.ListMeta{}, nil
 		}
-		return nil, databases.ListMeta{}, err
+		return nil, databases.ListMeta{}, p.mapError(err)
 	}
 	idxsByColl := make(map[string][]model.DocumentIndex, len(ms))
 	for i := range allIdxs {
@@ -183,7 +187,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 	for i := range ms {
 		c, err := mapCollectionRow(&ms[i], attrsByColl[ms[i].ID], idxsByColl[ms[i].ID])
 		if err != nil {
-			return nil, databases.ListMeta{}, err
+			return nil, databases.ListMeta{}, p.mapError(err)
 		}
 		out[i] = *c
 	}
@@ -197,9 +201,9 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
 			return err
 		}
@@ -225,16 +229,16 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 			ModelTableExpr("?.document_collections AS dc", cat).
 			Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Exec(txCtx)
 		return err
-	})
+	}))
 }
 
 func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch databases.CollectionPatch) error {
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	if patch.Permissions != nil {
 		if err := p.setCollectionPermissions(ctx, projectID, databaseID, collectionID, *patch.Permissions); err != nil {
-			return err
+			return p.mapError(err)
 		}
 	}
 	var sets []string
@@ -258,18 +262,18 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 	args = append(args, time.Now(), projectID, databaseID, collectionID)
 	catSQL, err := p.catalogQuoted(projectID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	_, err = p.conn(ctx).ExecContext(ctx,
 		fmt.Sprintf(`UPDATE %s.document_collections SET `, catSQL)+strings.Join(sets, ", ")+` WHERE project_id = ? AND database_id = ? AND id = ?`,
 		args...,
 	)
-	return err
+	return p.mapError(err)
 }
 
 func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, databaseID, collectionID string, attr databases.Attribute) error {
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	// 第二道防线（app 层已校验）：直调 adapter 也不得把系统保留列（含 _version）
 	// 当作用户属性 ADD COLUMN——否则会与 OCC 列类型/语义冲突。
@@ -282,14 +286,14 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	colSQL, err := attributeColumnSQL(attr)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
 			return err
 		}
@@ -317,19 +321,19 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		_, err = p.conn(txCtx).NewInsert().Model(m).
 			ModelTableExpr("?.document_attributes AS da", cat).Exec(txCtx)
 		return err
-	})
+	}))
 }
 
 func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
 	if err := validateIndexDefinition(idx); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
 			return err
 		}
@@ -353,7 +357,7 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 		_, err = p.conn(txCtx).NewInsert().Model(m).
 			ModelTableExpr("?.document_indexes AS di", cat).Exec(txCtx)
 		return err
-	})
+	}))
 }
 
 func (p *postgresDocumentDB) ensureSchemaAndPerms(ctx context.Context, schema string) error {
@@ -856,7 +860,7 @@ func (p *postgresDocumentDB) setCollectionPermissions(ctx context.Context, proje
 	}
 	catSQL, err := p.catalogQuoted(projectID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	_, err = p.conn(ctx).ExecContext(ctx,
 		fmt.Sprintf(`UPDATE %s.document_collections SET permissions = ? WHERE project_id = ? AND database_id = ? AND id = ?`, catSQL),

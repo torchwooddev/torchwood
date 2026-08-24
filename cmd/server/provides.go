@@ -7,6 +7,8 @@ import (
 	lynxgrpc "github.com/lynx-go/lynx/server/grpc"
 	"github.com/torchwooddev/torchwood/internal/api"
 	apirealtime "github.com/torchwooddev/torchwood/internal/api/realtime"
+	"github.com/torchwooddev/torchwood/internal/api/servergrpc"
+	"github.com/torchwooddev/torchwood/internal/api/serverhttp"
 	"github.com/torchwooddev/torchwood/internal/app"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
@@ -18,6 +20,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/bootkit"
 	"github.com/torchwooddev/torchwood/internal/runtime"
@@ -53,6 +56,10 @@ var ProviderSet = wire.NewSet(
 	// Realtime 握手校验复用 auth.Validator（api.ProviderSet 与
 	// infra.ProviderSet 在此组合，Bind 放组合根）。
 	wire.Bind(new(apirealtime.CredentialValidator), new(*auth.Validator)),
+	// HTTP / gRPC handler 窄接口绑定（J4-5）：消费端仅依赖最小方法集，
+	// 具体类型 *auth.Validator / *health.Checkers 仅在组合根出现。
+	wire.Bind(new(serverhttp.AuthValidator), new(*auth.Validator)),
+	wire.Bind(new(servergrpc.HealthCheckers), new(*health.Checkers)),
 )
 
 func NewAppConfig(app lynx.App) (*config.AppConfig, error) {

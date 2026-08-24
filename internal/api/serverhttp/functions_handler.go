@@ -12,7 +12,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/audit"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
-	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
@@ -39,7 +38,7 @@ type FunctionsHandler struct {
 // NewFunctionsHandler creates a new functions HTTP handler.
 func NewFunctionsHandler(
 	cfg *config.AppConfig,
-	validator *auth.Validator,
+	validator AuthValidator,
 	functions *appfunctions.Functions,
 	auditRepo audit.Repository,
 	logger *slog.Logger,

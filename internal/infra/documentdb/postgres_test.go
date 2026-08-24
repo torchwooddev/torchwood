@@ -931,9 +931,9 @@ func TestBulkUpdateDocuments_RollbackOnFailure(t *testing.T) {
 	require.Equal(t, "original", got.Data["title"])
 }
 
-// TestListDocuments_SystemPathRawPGError (A6/A7): SystemPrincipal（信任路径，跳过
-// 白名单）查询未声明列 → adapter 直调返回原始 PG 错误（映射在 app 层生效），
-// 错误链可 errors.As 到 *pgdriver.Error。
+// TestListDocuments_SystemPathRawPGError (A6/A7 → J4-6): SystemPrincipal（信任路径，跳过
+// 白名单）查询未声明列 → adapter 已在 infra 层按 SQLSTATE 翻译为 status（J4-6 下沉），
+// 调用方看到的是 gRPC InvalidArgument 而非裸 pgdriver.Error。
 func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -952,10 +952,11 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 		Queries: []string{`equal("nonexistent_col","x")`},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
-	// pgdriver@v1.2.18 readError 返回 Error 值（非指针），与 isUniqueViolation 一致用值断言。
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, "document database error", status.Convert(err).Message())
+	// 裸 pgdriver.Error 不应上抛至调用方（J4-6）
 	var pgErr pgdriver.Error
-	require.True(t, errors.As(err, &pgErr), "error chain must reach pgdriver.Error: %v", err)
-	require.Equal(t, "42703", pgErr.Field('C'))
+	require.False(t, errors.As(err, &pgErr), "pgdriver.Error should be translated before returning: %v", err)
 }
 
 // TestListDocuments_QueryFieldWhitelist (A7): 非 System 路径查询字段白名单
@@ -1209,7 +1210,7 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 
 	err = docDB.CreateDatabase(ctx, projectID, "app", "Application DB")
 	require.Error(t, err)
-	require.True(t, isUniqueViolation(err), "expected unique violation, got: %v", err)
+	require.True(t, errors.Is(err, databases.ErrDuplicateKey) || isUniqueViolation(err), "expected duplicate key (ErrDuplicateKey or unique violation), got: %v", err)
 
 	// 事务回滚后 schema 必须不存在（to_regnamespace 返回 NULL）。
 	var reg any

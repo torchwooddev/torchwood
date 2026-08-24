@@ -18,11 +18,11 @@ import (
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	parsed, err := astFrom(q)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	tbl := tableName(schema, collectionID)
 
@@ -33,7 +33,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if !principal.BypassesDocumentACL() {
 		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
 		if err != nil {
-			return nil, err
+			return nil, p.mapError(err)
 		}
 		if coll == nil {
 			return nil, status.Error(codes.NotFound, "collection not found")
@@ -45,7 +45,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if !principal.BypassesDocumentACL() {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
-			return nil, err
+			return nil, p.mapError(err)
 		}
 		if permWhere != "" {
 			whereParts = append(whereParts, permWhere)
@@ -55,13 +55,13 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 
 	if coll != nil {
 		if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
-			return nil, err
+			return nil, p.mapError(err)
 		}
 	}
 
 	filterWhere, filterArgs, orderSQL, err := buildAppwriteQuery(parsed)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	if filterWhere != "" {
 		whereParts = append(whereParts, filterWhere)
@@ -99,7 +99,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		}
 	}
 	if offset > maxQueryOffset {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
+		return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset)))
 	}
 
 	cursor := ""
@@ -125,10 +125,10 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		}
 		// 排序字段必须显式校验（不能沿用 ORDER 路径的静默跳过）
 		if !safeNameRe.MatchString(sortField) {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", parsed.Orders[0].Attribute))
+			return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", parsed.Orders[0].Attribute)))
 		}
 		if err := validateDocID(cursor); err != nil {
-			return nil, err
+			return nil, p.mapError(err)
 		}
 		var cursorValue any
 		err := p.conn(ctx).QueryRowContext(ctx,
@@ -137,9 +137,9 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		).Scan(&cursorValue)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return nil, status.Error(codes.InvalidArgument, "cursor document not found")
+				return nil, p.mapError(status.Error(codes.InvalidArgument, "cursor document not found"))
 			}
-			return nil, err
+			return nil, p.mapError(err)
 		}
 		op := ">"
 		if (sortDir == "ASC" && cursorKind == "before") || (sortDir == "DESC" && cursorKind == "after") {
@@ -158,7 +158,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if cursor == "" {
 		countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
 		if err := p.conn(ctx).QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
-			return nil, err
+			return nil, p.mapError(err)
 		}
 	}
 
@@ -167,7 +167,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 
 	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, args...)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -175,16 +175,16 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	for rows.Next() {
 		doc, err := scanDocumentJSON(rows)
 		if err != nil {
-			return nil, err
+			return nil, p.mapError(err)
 		}
 		docs = append(docs, *doc)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	// B6：List 回传 permissions（与 Get 对齐）；W-D 改单条 IN 批量取回。
 	if err := p.attachDocumentPermissionsBatch(ctx, schema, collectionID, internalID, docs); err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 
 	if len(parsed.Selects) > 0 {
@@ -252,14 +252,14 @@ func decodeKeysetToken(token string) (id, kind string, ok bool) {
 func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	parsed, err := astFrom(q)
 	if err != nil {
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	if parsed.Offset > maxQueryOffset {
-		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset))
+		return 0, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset)))
 	}
 	tbl := tableName(schema, collectionID)
 
@@ -268,10 +268,10 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	if !principal.BypassesDocumentACL() {
 		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
 		if err != nil {
-			return 0, err
+			return 0, p.mapError(err)
 		}
 		if coll == nil {
-			return 0, status.Error(codes.NotFound, "collection not found")
+			return 0, p.mapError(status.Error(codes.NotFound, "collection not found"))
 		}
 	}
 
@@ -280,7 +280,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	if !principal.BypassesDocumentACL() {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
-			return 0, err
+			return 0, p.mapError(err)
 		}
 		if permWhere != "" {
 			whereParts = append(whereParts, permWhere)
@@ -289,12 +289,12 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	}
 	if coll != nil {
 		if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
-			return 0, err
+			return 0, p.mapError(err)
 		}
 	}
 	filterWhere, filterArgs, _, err := buildAppwriteQuery(parsed)
 	if err != nil {
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	if filterWhere != "" {
 		whereParts = append(whereParts, filterWhere)
@@ -304,18 +304,18 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	var total int64
 	sql := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
 	err = p.conn(ctx).QueryRowContext(ctx, sql, args...).Scan(&total)
-	return total, err
+	return total, p.mapError(err)
 }
 
 // SumDocumentField 对集合内某数值列求和（如 files.size 用于 storage usage），
 // 非 System 主体按 read 权限过滤（仅统计可见文档）。field 白名单校验防注入。
 func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal databases.Principal) (int64, error) {
 	if !validColumnName(field) {
-		return 0, status.Error(codes.InvalidArgument, "invalid field name")
+		return 0, p.mapError(status.Error(codes.InvalidArgument, "invalid field name"))
 	}
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	tbl := tableName(schema, collectionID)
 
@@ -323,10 +323,10 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 	// System 与普通主体一视同仁（防拼入任意列名）。
 	coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
 	if err != nil {
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	if coll == nil {
-		return 0, status.Error(codes.NotFound, "collection not found")
+		return 0, p.mapError(status.Error(codes.NotFound, "collection not found"))
 	}
 	allowed := false
 	for _, attr := range coll.Attributes {
@@ -340,7 +340,7 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 		break
 	}
 	if !allowed {
-		return 0, status.Error(codes.InvalidArgument, fmt.Sprintf("field %s is not a numeric attribute", field))
+		return 0, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("field %s is not a numeric attribute", field)))
 	}
 
 	whereParts := []string{"d._tenant = ?"}
@@ -348,7 +348,7 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 	if !principal.BypassesDocumentACL() {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
-			return 0, err
+			return 0, p.mapError(err)
 		}
 		if permWhere != "" {
 			whereParts = append(whereParts, permWhere)
@@ -359,7 +359,7 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 	var total int64
 	sql := fmt.Sprintf(`SELECT COALESCE(SUM(d.%s), 0) FROM %s d WHERE %s`, quoteIdent(field), tbl, strings.Join(whereParts, " AND "))
 	err = p.conn(ctx).QueryRowContext(ctx, sql, args...).Scan(&total)
-	return total, err
+	return total, p.mapError(err)
 }
 
 // validColumnName 限制字段名为安全的小写标识符（防 SQL 注入）。

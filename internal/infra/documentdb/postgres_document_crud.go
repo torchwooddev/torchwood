@@ -23,7 +23,8 @@ import (
 
 func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
 	if clients.InTx(ctx) {
-		return p.createDocument(ctx, projectID, databaseID, collectionID, doc, perms, principal)
+		docOut, err := p.createDocument(ctx, projectID, databaseID, collectionID, doc, perms, principal)
+		return docOut, p.mapError(err)
 	}
 	var out databases.Document
 	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
@@ -34,7 +35,7 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 		out = created
 		return nil
 	}); err != nil {
-		return out, err
+		return out, p.mapError(err)
 	}
 	return out, nil
 }
@@ -125,10 +126,10 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 // statement.
 func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, conflictColumns []string, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
 	if err := validateDocID(doc.ID); err != nil {
-		return doc, err
+		return doc, p.mapError(err)
 	}
 	if len(conflictColumns) == 0 {
-		return doc, status.Error(codes.InvalidArgument, "conflict columns are required")
+		return doc, p.mapError(status.Error(codes.InvalidArgument, "conflict columns are required"))
 	}
 	conflictCols := make([]string, 0, len(conflictColumns))
 	for _, col := range conflictColumns {
@@ -138,7 +139,8 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		conflictCols = append(conflictCols, quoteIdent(col))
 	}
 	if clients.InTx(ctx) {
-		return p.upsertDocument(ctx, projectID, databaseID, collectionID, doc, conflictCols, conflictColumns, perms, principal)
+		docOut, err := p.upsertDocument(ctx, projectID, databaseID, collectionID, doc, conflictCols, conflictColumns, perms, principal)
+		return docOut, p.mapError(err)
 	}
 	var out databases.Document
 	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
@@ -149,7 +151,7 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		out = upserted
 		return nil
 	}); err != nil {
-		return out, err
+		return out, p.mapError(err)
 	}
 	return out, nil
 }
@@ -318,32 +320,33 @@ func conflictLockKey(values []any) string {
 
 func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) (*databases.Document, error) {
 	if err := validateDocID(docID); err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, collectionID)), docID, internalID)
 	doc, err := scanDocumentJSON(row)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	if doc == nil {
 		return nil, nil
 	}
 	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, docID, internalID, "read", principal, nil); err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	if err := p.attachDocumentPermissions(ctx, schema, collectionID, internalID, doc); err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	return doc, nil
 }
 
 func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, databaseID, collectionID string, update databases.DocumentUpdate, principal databases.Principal) (databases.Document, error) {
 	if clients.InTx(ctx) {
-		return p.updateDocument(ctx, projectID, databaseID, collectionID, update, principal)
+		docOut, err := p.updateDocument(ctx, projectID, databaseID, collectionID, update, principal)
+		return docOut, p.mapError(err)
 	}
 	var out databases.Document
 	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
@@ -354,7 +357,7 @@ func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, data
 		out = updated
 		return nil
 	}); err != nil {
-		return out, err
+		return out, p.mapError(err)
 	}
 	return out, nil
 }
@@ -494,14 +497,14 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 
 func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
 	if err := validateDocID(docID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	if clients.InTx(ctx) {
-		return p.deleteDocument(ctx, projectID, databaseID, collectionID, docID, opts, principal)
+		return p.mapError(p.deleteDocument(ctx, projectID, databaseID, collectionID, docID, opts, principal))
 	}
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		return p.deleteDocument(txCtx, projectID, databaseID, collectionID, docID, opts, principal)
-	})
+	}))
 }
 
 // deleteDocument 是 DeleteDocument 的事务体：_perms 清理与数据行删除在同一

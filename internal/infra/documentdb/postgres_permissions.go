@@ -214,7 +214,7 @@ func (p *postgresDocumentDB) BulkUpdateDocuments(
 		affected = n
 		return err
 	}); err != nil {
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	return affected, nil
 }
@@ -261,7 +261,7 @@ func (p *postgresDocumentDB) BulkDeleteDocuments(
 		affected = n
 		return err
 	}); err != nil {
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	return affected, nil
 }
@@ -285,16 +285,16 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 
 func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	if !safeNameRe.MatchString(key) {
-		return fmt.Errorf("invalid attribute key: %s", key)
+		return p.mapError(fmt.Errorf("invalid attribute key: %s", key))
 	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		// B8：同事务清理依赖该属性的索引，避免幽灵索引指向已删列。
 		cat, err := p.catalogIdent(projectID)
 		if err != nil {
@@ -341,20 +341,20 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 			Where("project_id = ? AND database_id = ? AND collection_id = ? AND key = ?", projectID, databaseID, collectionID, key).
 			Exec(txCtx)
 		return err
-	})
+	}))
 }
 
 func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error {
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	// R02-P1-1：DROP INDEX 与 document_indexes 元数据删除包进同一事务，
 	// 任一步失败整体回滚，避免"物理索引已删而 catalog 仍记录"。
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, indexID))
 		if _, err := p.conn(txCtx).ExecContext(txCtx,
 			fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
@@ -370,5 +370,5 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 			Where("project_id = ? AND database_id = ? AND collection_id = ? AND id = ?", projectID, databaseID, collectionID, indexID).
 			Exec(txCtx)
 		return err
-	})
+	}))
 }

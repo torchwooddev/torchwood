@@ -9,7 +9,6 @@ import (
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
-	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -245,11 +244,24 @@ func mapSessionDoc(doc *databases.Document) *serverv1.Session {
 		CreatedAt: timestamppb.New(doc.CreatedAt),
 	}
 	if expireAtRaw, ok := doc.Data["expire_at"]; ok {
-		if expireAt, err := auth.ParseSessionTime(expireAtRaw); err == nil {
+		if expireAt, err := parseSessionTime(expireAtRaw); err == nil {
 			s.ExpireAt = timestamppb.New(expireAt)
 		}
 	}
 	return s
+}
+
+// parseSessionTime decodes session expire_at values from document storage
+// （原位于 infra/auth.ParseSessionTime，现下沉至消费端以消除 api→infra 依赖，
+// 逻辑保持一致：time.Time 直返，string 按 RFC3339Nano 解析）。
+func parseSessionTime(v any) (time.Time, error) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, nil
+	case string:
+		return time.Parse(time.RFC3339Nano, t)
+	}
+	return time.Time{}, fmt.Errorf("unsupported time type")
 }
 
 // structToStringSlice 将 Struct（数组值）转为 []any 字符串数组；Appwrite 的

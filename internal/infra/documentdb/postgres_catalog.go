@@ -23,18 +23,18 @@ import (
 func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, name string) error {
 	schema, err := p.businessSchema(projectID, id)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	if err := p.EnsureCatalog(ctx, projectID); err != nil {
-		return err
+		return p.mapError(err)
 	}
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	// R02-P1-2：schema / _perms 表与 document_databases 元数据包进同一事务，
 	// 任一步失败整体回滚，避免"schema 已建而元数据缺失"。
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
 			return fmt.Errorf("create schema: %w", err)
 		}
@@ -51,13 +51,13 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 		_, err := p.conn(txCtx).NewInsert().Model(m).
 			ModelTableExpr("?.document_databases AS ddb", cat).Exec(txCtx)
 		return err
-	})
+	}))
 }
 
 func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Database, error) {
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	m := new(model.DocumentDatabase)
 	err = p.conn(ctx).NewSelect().Model(m).
@@ -67,7 +67,7 @@ func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id stri
 		if p.catalogAbsent(ctx, projectID, err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	return mapDatabase(m), nil
 }
@@ -75,7 +75,7 @@ func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id stri
 func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Database, error) {
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	var ms []model.DocumentDatabase
 	err = p.conn(ctx).NewSelect().Model(&ms).
@@ -85,7 +85,7 @@ func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string
 		if p.catalogAbsent(ctx, projectID, err) {
 			return []databases.Database{}, nil
 		}
-		return nil, err
+		return nil, p.mapError(err)
 	}
 	out := make([]databases.Database, len(ms))
 	for i := range ms {
@@ -97,13 +97,13 @@ func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string
 func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id string) error {
 	schema, err := p.businessSchema(projectID, id)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	cat, err := p.catalogIdent(projectID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
-	return p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
 			return err
 		}
@@ -127,7 +127,7 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 			ModelTableExpr("?.document_databases AS ddb", cat).
 			Where("id = ? AND project_id = ?", id, projectID).Exec(txCtx)
 		return err
-	})
+	}))
 }
 
 // EnsureCatalog 对项目数据面执行 projectschema.Apply。Catalog 读路径不得调用。
@@ -135,12 +135,12 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string) error {
 	staging, err := p.systemTablesStaging(ctx, projectID)
 	if err != nil {
-		return err
+		return p.mapError(err)
 	}
 	if staging {
 		return nil
 	}
-	return mapIdentError(projectschema.Apply(ctx, p.db, projectID))
+	return p.mapError(mapIdentError(projectschema.Apply(ctx, p.db, projectID)))
 }
 
 // systemTablesStaging 探测 sys_users 仍在（000008 已应用、000009 未应用）。
@@ -148,7 +148,7 @@ func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string
 func (p *postgresDocumentDB) systemTablesStaging(ctx context.Context, projectID string) (bool, error) {
 	schema, err := ident.ProjectSchemaName(projectID)
 	if err != nil {
-		return false, mapIdentError(err)
+		return false, p.mapError(mapIdentError(err))
 	}
 	var has bool
 	err = p.conn(ctx).QueryRowContext(ctx, `
@@ -158,7 +158,7 @@ SELECT EXISTS (
 )
 `, schema).Scan(&has)
 	if err != nil {
-		return false, err
+		return false, p.mapError(err)
 	}
 	return has, nil
 }
@@ -255,7 +255,7 @@ func (p *postgresDocumentDB) resolveInternalID(ctx context.Context, projectID st
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, fmt.Errorf("project not found: %s", projectID)
 		}
-		return 0, err
+		return 0, p.mapError(err)
 	}
 	p.internalIDCache.Store(projectID, internalID)
 	return internalID, nil

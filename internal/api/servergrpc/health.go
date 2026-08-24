@@ -4,17 +4,22 @@ import (
 	"context"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
-	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/pkg/buildinfo"
 )
 
+// HealthCheckers 是健康检查所需的最小依赖探测面（infra/health.Checkers 满足；
+// 接口化消除 api→infra 直依赖，仿 realtime/handler.go 模式）。
+type HealthCheckers interface {
+	Details(ctx context.Context) []*serverv1.DependencyStatus
+}
+
 type HealthService struct {
 	serverv1.UnimplementedHealthServiceServer
-	checkers *health.Checkers
+	checkers HealthCheckers
 	info     buildinfo.BuildInfo
 }
 
-func NewHealthService(checkers *health.Checkers, info buildinfo.BuildInfo) *HealthService {
+func NewHealthService(checkers HealthCheckers, info buildinfo.BuildInfo) *HealthService {
 	return &HealthService{checkers: checkers, info: info}
 }
 

@@ -9,29 +9,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// pgErrorFielder 是 pgdriver.Error 的最小接口面（Field('C') = SQLSTATE）；
-// 仅做类型匹配，不做 SQLSTATE 字符串回退，普通错误保持原样透传。
-type pgErrorFielder interface {
-	Field(byte) string
-}
-
-// docDBErrorSQLStates 将常见 PG 客户端错误映射为 InvalidArgument，
-// 资源类错误映射为 ResourceExhausted（A6）。
-var docDBErrorSQLStates = map[string]codes.Code{
-	"22P02": codes.InvalidArgument,   // invalid_text_representation
-	"22001": codes.InvalidArgument,   // string_data_right_truncation
-	"23502": codes.InvalidArgument,   // not_null_violation
-	"42703": codes.InvalidArgument,   // undefined_column
-	"42601": codes.InvalidArgument,   // syntax_error
-	"23503": codes.InvalidArgument,   // foreign_key_violation
-	"42883": codes.InvalidArgument,   // undefined_function
-	"42P10": codes.InvalidArgument,   // invalid_column_reference (ON CONFLICT 无匹配唯一索引)
-	"23505": codes.AlreadyExists,     // unique_violation（元数据重复键兜底映射）
-	"53100": codes.ResourceExhausted, // disk_full
-	"53200": codes.ResourceExhausted, // out_of_memory
-	"54000": codes.ResourceExhausted, // program_limit_exceeded
-	"53400": codes.ResourceExhausted, // configuration_limit_exceeded
-}
+// pgErrorFielder 与 docDBErrorSQLStates 已下沉至 internal/infra/documentdb/errors.go（J4-6）。
+// app 层不再感知 pgdriver/SQLSTATE，仅做 domain→status 单向映射。
 
 // UpdateDocumentVersionRequired 校验用户集合 Update/Delete 的 OCC 版本参数：
 // 未设置或 ≤0 → FailedPrecondition version_required（Client/Server Databases
@@ -75,11 +54,12 @@ func MapDocumentDBError(err error) error {
 	if errors.Is(err, databases.ErrVersionColumnUnavailable) {
 		return status.Error(codes.InvalidArgument, databases.ErrVersionColumnUnavailable.Error())
 	}
-	var fielder pgErrorFielder
-	if errors.As(err, &fielder) {
-		if code, ok := docDBErrorSQLStates[fielder.Field('C')]; ok {
-			return status.Error(code, "document database error")
-		}
-	}
 	return err
+}
+
+// Deprecated: MapDocumentDBErrorSQLState 仅为兼容旧测试保留，SQLSTATE 翻译已下沉至
+// internal/infra/documentdb.MapError，app 层不再处理 pgdriver 错误。
+// 新代码请直接在 infra 层调用 MapError，或在 app 层仅处理领域哨兵。
+func MapDocumentDBErrorSQLState(err error) error {
+	return MapDocumentDBError(err)
 }
