@@ -1,1 +1,0 @@
-import{c as e}from"./button-4XqsQusH.js";async function t(){return(await e.get(`/server/api-keys`)).data.api_keys??[]}async function n(t){return(await e.get(`/server/api-keys/${t}`)).data}async function r(t){return(await e.post(`/server/api-keys`,t)).data}async function i(t,n){await e.delete(`/server/api-keys/${t}`,n)}export{t as i,i as n,n as r,r as t};
