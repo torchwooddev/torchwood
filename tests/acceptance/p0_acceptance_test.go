@@ -8,11 +8,14 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	infrAuth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
+	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"google.golang.org/grpc"
@@ -150,7 +153,7 @@ func TestP0_Section8_AccessPermission(t *testing.T) {
 	require.NoError(t, err)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := client.NewTestAccount(cfg, projectRepo, db)
+	account := newAcceptanceTestAccount(cfg, projectRepo, db)
 	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectID,
 		Email:     "access-perm@torchwood.local",
@@ -212,7 +215,7 @@ func TestP0_Section9_DynamicDocuments(t *testing.T) {
 
 	cfg := &config.AppConfig{}
 	projectRepo := bunrepo.NewProjectRepository(db)
-	account := client.NewTestAccount(cfg, projectRepo, db)
+	account := newAcceptanceTestAccount(cfg, projectRepo, db)
 	usersRepo := bunrepo.NewUserRepository(db)
 	sessionRepo := bunrepo.NewSessionRepository(db)
 	roles := client.NewUserRoles(usersRepo, bunrepo.NewMembershipRepository(db))
@@ -295,4 +298,18 @@ func (v *principalValidator) ValidateCredential(ctx context.Context, raw string,
 
 func (v *principalValidator) ValidateAdminProjectAccess(ctx context.Context, principal *shared.Principal) error {
 	return nil
+}
+
+// newAcceptanceTestAccount 以真实依赖装配 Account 用例（等价原
+// client.NewTestAccount；该符号已随 Round4 J4-2 收敛回包内测试文件，
+// 不再对包外可见）。
+func newAcceptanceTestAccount(cfg *config.AppConfig, projectRepo projects.Repository, db *clients.Database) *client.Account {
+	usersRepo := bunrepo.NewUserRepository(db)
+	sessionRepo := bunrepo.NewSessionRepository(db)
+	identities := bunrepo.NewIdentityRepository(db)
+	roles := client.NewUserRoles(usersRepo, bunrepo.NewMembershipRepository(db))
+	sessions := infrAuth.NewSessionService(cfg, sessionRepo, roles, nil)
+	mailer := inframessaging.NewMailer(cfg)
+	sms := inframessaging.NewSMSService(cfg)
+	return client.NewAccount(cfg, projectRepo, nil, sessions, nil, nil, nil, nil, nil, nil, mailer, sms, nil, roles, nil, nil, nil, nil, usersRepo, identities, sessionRepo, nil, nil, nil)
 }

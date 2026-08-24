@@ -44,3 +44,9 @@ type OAuthAuthenticator interface {
 	AuthorizeURL(stateID, pkceChallenge string) string
 	Exchange(ctx context.Context, code, pkceVerifier string) (*OAuthUserInfo, error)
 }
+
+// OAuthAuthenticatorFactory 构建各 provider 的 OAuthAuthenticator。
+// 引入工厂端口使 app 层无需依赖 infra 构造细节，可在测试中注入 fake。
+type OAuthAuthenticatorFactory interface {
+	NewAuthenticator(provider, clientID, clientSecret, redirectURL string, scopes []string) (OAuthAuthenticator, error)
+}

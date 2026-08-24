@@ -39,6 +39,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
+	"github.com/torchwooddev/torchwood/internal/pkg/bootkit"
 )
 
 // Injectors from wire.go:
@@ -48,15 +49,15 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger := NewLogger(app)
+	logger := bootkit.NewLogger(app)
 	dataClients, cleanup, err := clients.NewDataClients(appConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
 	database := clients.NewDatabase(dataClients)
 	repository := bunrepo.NewProjectRepository(database)
-	onStartHooks := NewOnStarts(repository, database, logger)
-	onStopHooks := NewOnStops()
+	onStartHooks := bootkit.NewOnStarts(repository, database, logger)
+	onStopHooks := bootkit.NewOnStops()
 	apiKeyRepository := bunrepo.NewAPIKeyRepository(database)
 	adminRepository := bunrepo.NewAdminRepository(database)
 	adminProjectRepository := bunrepo.NewAdminProjectRepository(database)
@@ -93,7 +94,10 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	mfaService := auth.NewTOTPService(appConfig, redisClient)
 	mfaChallengeStore := auth.NewRedisMFAChallengeStore(redisClient)
 	identityRepository := bunrepo.NewIdentityRepository(database)
-	account := client.NewAccount(appConfig, repository, oAuthProviderRepository, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter, userRoles, mfaService, mfaChallengeStore, redisOneTimeTokenStore, auditRepository, userRepository, identityRepository, sessionRepository)
+	oAuthAuthenticatorFactory := auth.NewOAuthAuthenticatorFactory()
+	weChatMiniProgramExchanger := auth.NewWeChatMiniProgramExchanger()
+	otpGenerator := auth.NewOTPGenerator()
+	account := client.NewAccount(appConfig, repository, oAuthProviderRepository, sessionService, redisOTPChallengeStore, redisOAuthStateStore, redisAccountTokenStore, redisLoginThrottle, redisRefreshRotationStore, service, mailerService, smsService, redisRateLimiter, userRoles, mfaService, mfaChallengeStore, redisOneTimeTokenStore, auditRepository, userRepository, identityRepository, sessionRepository, oAuthAuthenticatorFactory, weChatMiniProgramExchanger, otpGenerator)
 	accountService := clientgrpc.NewAccountService(account)
 	eventOutbox := events.NewEventOutbox(database)
 	documentDB := documentdb.NewPostgresDocumentDB(database, eventOutbox)
@@ -212,7 +216,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		return nil, nil, err
 	}
 	v3 := NewComponents(grpcServer, grpcGatewayServer, realtimeSubscriberService, metricsServer)
-	v4 := NewComponentBuilders()
+	v4 := bootkit.NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v3, v4)
 	return bootstrap, func() {
 		cleanup()

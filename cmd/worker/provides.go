@@ -1,10 +1,7 @@
 package main
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"log/slog"
 
 	"github.com/google/wire"
 	"github.com/lynx-go/lynx"
@@ -16,7 +13,6 @@ import (
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/app/subscriptions"
 	domainpayments "github.com/torchwooddev/torchwood/internal/domain/payments"
-	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	infrabilling "github.com/torchwooddev/torchwood/internal/infra/billing"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
@@ -24,12 +20,11 @@ import (
 	infraevents "github.com/torchwooddev/torchwood/internal/infra/events"
 	infrafunctions "github.com/torchwooddev/torchwood/internal/infra/functions"
 	infrapayments "github.com/torchwooddev/torchwood/internal/infra/payments"
-	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
+	"github.com/torchwooddev/torchwood/internal/pkg/bootkit"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
-	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/uow"
 )
 
@@ -51,12 +46,13 @@ var ProviderSet = wire.NewSet(
 	appstorage.NewStorage,
 	NewStorageOptions,
 
-	NewLogger,
-	NewComponents,
-	NewComponentBuilders,
-	NewOnStarts,
-	NewOnStops,
+	// 与 cmd/server 共享的装配样板收敛在 bootkit（Round4 J4-1）。
+	bootkit.NewLogger,
+	bootkit.NewComponentBuilders,
+	bootkit.NewOnStarts,
+	bootkit.NewOnStops,
 	NewAppConfig,
+	NewComponents,
 	NewWorker,
 	NewChunkCleaner,
 	NewStreamTrimmer,
@@ -98,64 +94,31 @@ var ProviderSet = wire.NewSet(
 	realtime.NewStreamTransport,
 )
 
-// NewLogger 暴露 app 装配的 *slog.Logger（zap 后端），供各层构造器注入。
-func NewLogger(app lynx.App) *slog.Logger {
-	return app.Logger()
-}
-
 func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	var c config.AppConfig
 	if err := config.UnmarshalConfig(app.Config(), &c); err != nil {
 		return nil, err
 	}
-	if _, fallback := config.EncryptionSecret(&c); fallback {
-		app.Logger().Warn("security.encryption_key is not set: static encryption (OAuth/TOTP secrets) falls back to security.jwt.secret; configure a dedicated key (env TORCHWOOD_SECURITY_ENCRYPTION_KEY)")
+	// R4-J4-1：与 server 同一安全校验口径（jwt.secret / encryption_key 强度）。
+	// worker 虽不签发用户 JWT，但会用主密钥派生页 token 验签密钥并消费
+	// server 签发的 page_token，弱主密钥属同一攻击面，故一并 fail-closed
+	// （此前仅 server 校验、worker 静默跳过，属装配分叉）。
+	if err := bootkit.ValidateAppConfig(app.Logger(), &c); err != nil {
+		return nil, err
 	}
 	if c.GetData().GetDatabase().GetSource() == "" {
 		return nil, errors.New("data.database.source must be set (env TORCHWOOD_DATA_DATABASE_SOURCE)")
 	}
 	// R4-J2-4：与 server 同一主密钥派生页 token 验签密钥（worker 的 outbox
 	// dead-letter 列表消费 server 签发的 page_token）。缺主密钥拒绝启动。
-	if err := crud.InitPageTokenSigning(c.GetSecurity().GetJwt().GetSecret()); err != nil {
-		return nil, fmt.Errorf("init page token signing: %w", err)
+	if err := bootkit.InitPageTokenSigning(&c); err != nil {
+		return nil, err
 	}
 	return &c, nil
 }
 
 func NewComponents(worker *Worker, cleaner *ChunkCleaner, trimmer *StreamTrimmer, outbox *OutboxWorkerService, paymentCloser *PaymentCloser, assetExpirer *AssetExpirer, subscriptionBiller *SubscriptionBiller, usageRollup *UsageRollupWorker) []lynx.Service {
 	return []lynx.Service{worker, cleaner, trimmer, outbox, paymentCloser, assetExpirer, subscriptionBiller, usageRollup}
-}
-
-func NewComponentBuilders() []lynx.ServiceFactory {
-	return nil
-}
-
-func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Logger) boot.OnStartHooks {
-	return boot.OnStartHooks{projectSchemaEnsureHook(repo, db, logger)}
-}
-
-func projectSchemaEnsureHook(repo projects.Repository, db *clients.Database, logger *slog.Logger) lynx.HookFunc {
-	return func(ctx context.Context) error {
-		if repo == nil || db == nil {
-			return nil
-		}
-		list, err := repo.ListProjects(ctx)
-		if err != nil {
-			if logger != nil {
-				logger.Error("list projects for schema ensure", "error", err)
-			}
-			return err
-		}
-		ids := make([]string, len(list))
-		for i := range list {
-			ids[i] = list[i].ID
-		}
-		return projectschema.EnsureAll(ctx, db, ids)
-	}
-}
-
-func NewOnStops() boot.OnStopHooks {
-	return boot.OnStopHooks{}
 }
 
 // NewStorageOptions 返回生产默认的空选项集（WithClock 等仅供测试注入）。

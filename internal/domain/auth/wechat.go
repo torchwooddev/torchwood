@@ -1,6 +1,9 @@
 package auth
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // IsWeChatProvider reports whether the provider id belongs to the WeChat family.
 func IsWeChatProvider(provider string) bool {
@@ -28,4 +31,9 @@ func WeChatIdentityUID(unionid, openid string) string {
 		return unionid
 	}
 	return openid
+}
+
+// WeChatMiniProgramExchanger 交换微信小程序登录凭证。
+type WeChatMiniProgramExchanger interface {
+	ExchangeWeChatMiniProgramCode(ctx context.Context, appID, appSecret, code string) (*OAuthUserInfo, error)
 }

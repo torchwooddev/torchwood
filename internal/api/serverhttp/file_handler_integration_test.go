@@ -24,6 +24,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/client"
 	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -297,7 +298,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	store := testutil.NewMemObjectStore()
 	projectRepo := bunrepo.NewProjectRepository(db)
 	storageUC := appstorage.NewStorage(cfg, projectRepo, store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
-	account := client.NewTestAccount(cfg, projectRepo, db)
+	account := newFileHandlerTestAccount(cfg, projectRepo, db)
 
 	_, tokens, _, _, err := account.SignUp(ctx, client.SignUpCommand{
 		ProjectID: projectA,
@@ -713,4 +714,13 @@ func (f *storageHTTPFixture) uploadTo(bucketID string, content []byte, headers m
 		require.NoError(f.t, json.NewDecoder(resp.Body).Decode(&payload))
 	}
 	return payload.ID, payload.MimeType, resp.StatusCode
+}
+
+func newFileHandlerTestAccount(cfg *config.AppConfig, projectRepo projects.Repository, db *clients.Database) *client.Account {
+	usersRepo := bunrepo.NewUserRepository(db)
+	sessionRepo := bunrepo.NewSessionRepository(db)
+	identities := bunrepo.NewIdentityRepository(db)
+	roles := client.NewUserRoles(usersRepo, bunrepo.NewMembershipRepository(db))
+	sessions := auth.NewSessionService(cfg, sessionRepo, roles, nil)
+	return client.NewAccount(cfg, projectRepo, nil, sessions, nil, nil, nil, nil, nil, nil, nil, nil, nil, roles, nil, nil, nil, nil, usersRepo, identities, sessionRepo, auth.NewOAuthAuthenticatorFactory(), auth.NewWeChatMiniProgramExchanger(), auth.NewOTPGenerator())
 }

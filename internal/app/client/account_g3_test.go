@@ -110,6 +110,9 @@ func setupG3Account(t *testing.T) (context.Context, *Account, string, *failableS
 		usersRepo,
 		identities,
 		sessionRepo,
+		auth.NewOAuthAuthenticatorFactory(),
+		auth.NewWeChatMiniProgramExchanger(),
+		auth.NewOTPGenerator(),
 	)
 	return ctx, account, projectID, sessions, mr, mailer
 }

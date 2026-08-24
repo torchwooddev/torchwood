@@ -1,5 +1,9 @@
 package client
 
+// 测试装配辅助（Round4 J4-2 自 test_helpers.go 改名隔离）：全部消费方均为
+// *_test.go，不再进入本包生产编译图。外部包的集成测试请自行以真实依赖
+// 装配（见 internal/api/serverhttp、tests/acceptance 的就地构造）。
+
 import (
 	"context"
 
@@ -69,7 +73,7 @@ func NewTestAccountWithDeps(
 	if sms == nil {
 		sms = inframessaging.NewSMSService(cfg)
 	}
-	return NewAccount(cfg, projectRepo, oauthProviders, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil, usersRepo, identities, sessionRepo)
+	return NewAccount(cfg, projectRepo, oauthProviders, sessions, otp, oauthState, tokens, loginThrottle, rotation, nil, mailer, sms, rateLimiter, roles, mfa, mfaChallenges, oneTimeTokens, nil, usersRepo, identities, sessionRepo, infraauth.NewOAuthAuthenticatorFactory(), infraauth.NewWeChatMiniProgramExchanger(), infraauth.NewOTPGenerator())
 }
 
 // CaptureMailer records sent messages for tests.

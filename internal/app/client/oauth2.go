@@ -9,7 +9,6 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
-	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc/codes"
@@ -165,7 +164,10 @@ func (a *Account) createOAuth2Session(ctx context.Context, params createOAuth2Se
 	}, 0); err != nil {
 		return "", err
 	}
-	authClient, err := infraauth.NewOAuthAuthenticator(provider, oauthCfg.ClientID, oauthCfg.ClientSecret, a.oauthCallbackURL(provider), oauthCfg.Scopes)
+	if a.oauthFactory == nil {
+		return "", status.Error(codes.Unimplemented, "oauth factory is not configured")
+	}
+	authClient, err := a.oauthFactory.NewAuthenticator(provider, oauthCfg.ClientID, oauthCfg.ClientSecret, a.oauthCallbackURL(provider), oauthCfg.Scopes)
 	if err != nil {
 		return "", status.Errorf(codes.InvalidArgument, "%v", err)
 	}
@@ -283,7 +285,10 @@ func (a *Account) completeOAuth2Code(ctx context.Context, cmd completeOAuth2Code
 		return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, err
 	}
 
-	authClient, err := infraauth.NewOAuthAuthenticator(provider, oauthCfg.ClientID, oauthCfg.ClientSecret, a.oauthCallbackURL(provider), oauthCfg.Scopes)
+	if a.oauthFactory == nil {
+		return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, status.Error(codes.Unimplemented, "oauth factory is not configured")
+	}
+	authClient, err := a.oauthFactory.NewAuthenticator(provider, oauthCfg.ClientID, oauthCfg.ClientSecret, a.oauthCallbackURL(provider), oauthCfg.Scopes)
 	if err != nil {
 		return &completeOAuth2CodeResult{SuccessURL: oauthState.SuccessURL, FailureURL: oauthState.FailureURL}, status.Errorf(codes.InvalidArgument, "%v", err)
 	}

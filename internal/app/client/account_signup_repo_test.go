@@ -123,6 +123,7 @@ func newAccountWithUserRepo(repo users.Repository, projectID string) *Account {
 		repo,
 		nil,
 		nil,
+		nil, nil, nil,
 	)
 }
 

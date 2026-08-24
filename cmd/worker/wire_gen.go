@@ -24,6 +24,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
+	"github.com/torchwooddev/torchwood/internal/pkg/bootkit"
 )
 
 // Injectors from wire.go:
@@ -33,15 +34,15 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger := NewLogger(app)
+	logger := bootkit.NewLogger(app)
 	dataClients, cleanup, err := clients.NewDataClients(appConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
 	database := clients.NewDatabase(dataClients)
 	repository := bunrepo.NewProjectRepository(database)
-	onStartHooks := NewOnStarts(repository, database, logger)
-	onStopHooks := NewOnStops()
+	onStartHooks := bootkit.NewOnStarts(repository, database, logger)
+	onStopHooks := bootkit.NewOnStops()
 	executor := functions.NewDockerExecutor(appConfig)
 	functionRepo := bunrepo.NewFunctionRepository(database)
 	client := clients.NewRedis(dataClients)
@@ -92,7 +93,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, fileRepository, logger)
 	usageRollupWorker := NewUsageRollupWorker(billingBilling, logger)
 	v2 := NewComponents(worker, mainChunkCleaner, streamTrimmer, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
-	v3 := NewComponentBuilders()
+	v3 := bootkit.NewComponentBuilders()
 	bootstrap := boot.New(onStartHooks, onStopHooks, v2, v3)
 	return bootstrap, func() {
 		cleanup()

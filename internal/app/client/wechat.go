@@ -7,7 +7,6 @@ import (
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
-	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -40,7 +39,10 @@ func (a *Account) CreateWeChatMiniProgramSession(ctx context.Context, cmd Create
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
-	profile, err := infraauth.ExchangeWeChatMiniProgramCode(ctx, oauthCfg.ClientID, oauthCfg.ClientSecret, code)
+	if a.weChatExchanger == nil {
+		return nil, nil, "", nil, status.Error(codes.Unimplemented, "wechat exchanger is not configured")
+	}
+	profile, err := a.weChatExchanger.ExchangeWeChatMiniProgramCode(ctx, oauthCfg.ClientID, oauthCfg.ClientSecret, code)
 	if err != nil {
 		return nil, nil, "", nil, status.Errorf(codes.Unauthenticated, "wechat code exchange failed: %v", err)
 	}

@@ -1,4 +1,4 @@
-package main
+package bootkit
 
 import (
 	"bytes"
@@ -37,7 +37,7 @@ func TestValidateJWTSecret(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateJWTSecret(tc.secret)
+			err := ValidateJWTSecret(tc.secret)
 			if tc.wantErr == "" {
 				require.NoError(t, err)
 				return
@@ -49,9 +49,9 @@ func TestValidateJWTSecret(t *testing.T) {
 
 func TestValidateJWTSecret_WeakSubstringNeverPasses(t *testing.T) {
 	t.Parallel()
-	for _, w := range weakJWTSecretTokens {
+	for _, w := range WeakSecretTokens {
 		secret := "K7pQ2xR9mW4tZ8vC3hN6jB1sL5dF0gY" + w + "H8uE2iA4oP6qS7rT9wX"
-		require.Error(t, validateJWTSecret(secret), "weak token %q must be rejected", w)
+		require.Error(t, ValidateJWTSecret(secret), "weak token %q must be rejected", w)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestValidateAppConfig_EncryptionKey(t *testing.T) {
 			EncryptionKey: strong[:20] + "changeme" + strong[28:],
 			Jwt:           &config.Security_Jwt{Secret: strong},
 		}}
-		err := validateAppConfig(logger, cfg)
+		err := ValidateAppConfig(logger, cfg)
 		require.ErrorContains(t, err, "security.encryption_key contains known weak value")
 		require.ErrorContains(t, err, "TORCHWOOD_SECURITY_ENCRYPTION_KEY")
 	})
@@ -85,7 +85,7 @@ func TestValidateAppConfig_EncryptionKey(t *testing.T) {
 			EncryptionKey: "too-short-key",
 			Jwt:           &config.Security_Jwt{Secret: strong},
 		}}
-		err := validateAppConfig(logger, cfg)
+		err := ValidateAppConfig(logger, cfg)
 		require.ErrorContains(t, err, "security.encryption_key is too short")
 		require.ErrorContains(t, err, "TORCHWOOD_SECURITY_ENCRYPTION_KEY")
 	})
@@ -97,7 +97,7 @@ func TestValidateAppConfig_EncryptionKey(t *testing.T) {
 			EncryptionKey: " " + strong + " ",
 			Jwt:           &config.Security_Jwt{Secret: strong},
 		}}
-		require.NoError(t, validateAppConfig(logger, cfg))
+		require.NoError(t, ValidateAppConfig(logger, cfg))
 		require.NotContains(t, buf.String(), "encryption_key is not set")
 	})
 
@@ -107,7 +107,7 @@ func TestValidateAppConfig_EncryptionKey(t *testing.T) {
 		cfg := &config.AppConfig{Security: &config.Security{
 			Jwt: &config.Security_Jwt{Secret: strong},
 		}}
-		require.NoError(t, validateAppConfig(logger, cfg))
+		require.NoError(t, ValidateAppConfig(logger, cfg))
 		logs := buf.String()
 		require.Contains(t, logs, "encryption_key is not set")
 		require.Contains(t, logs, "falls back to security.jwt.secret")

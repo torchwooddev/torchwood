@@ -2,10 +2,12 @@ package client
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -28,27 +30,30 @@ import (
 )
 
 type Account struct {
-	cfg            *config.AppConfig
-	projectRepo    projects.Repository
-	oauthProviders projects.OAuthProviderRepository
-	usersRepo      users.Repository
-	identities     domainauth.IdentityRepository
-	sessionRepo    domainauth.SessionRepository
-	sessions       domainauth.SessionService
-	otp            domainauth.OTPChallengeStore
-	oauthState     domainauth.OAuthStateStore
-	tokens         domainauth.AccountTokenStore
-	loginThrottle  domainauth.LoginThrottle
-	rotation       domainauth.RefreshRotationStore
-	idGen          domainidgen.Generator
-	mailer         messaging.Mailer
-	sms            messaging.SMSSender
-	rateLimiter    domainauth.RateLimiter
-	roles          domainauth.UserRoleResolver
-	mfa            domainauth.MFAService
-	mfaChallenges  domainauth.MFAChallengeStore
-	oneTimeTokens  domainauth.OneTimeTokenStore
-	auditRepo      audit.Repository
+	cfg                 *config.AppConfig
+	projectRepo         projects.Repository
+	oauthProviders      projects.OAuthProviderRepository
+	usersRepo           users.Repository
+	identities          domainauth.IdentityRepository
+	sessionRepo         domainauth.SessionRepository
+	sessions            domainauth.SessionService
+	otp                 domainauth.OTPChallengeStore
+	oauthState          domainauth.OAuthStateStore
+	tokens              domainauth.AccountTokenStore
+	loginThrottle       domainauth.LoginThrottle
+	rotation            domainauth.RefreshRotationStore
+	idGen               domainidgen.Generator
+	mailer              messaging.Mailer
+	sms                 messaging.SMSSender
+	rateLimiter         domainauth.RateLimiter
+	roles               domainauth.UserRoleResolver
+	mfa                 domainauth.MFAService
+	mfaChallenges       domainauth.MFAChallengeStore
+	oneTimeTokens       domainauth.OneTimeTokenStore
+	auditRepo           audit.Repository
+	oauthFactory        domainauth.OAuthAuthenticatorFactory
+	weChatExchanger     domainauth.WeChatMiniProgramExchanger
+	otpGenerator        domainauth.OTPGenerator
 }
 
 func NewAccount(
@@ -73,20 +78,26 @@ func NewAccount(
 	usersRepo users.Repository,
 	identities domainauth.IdentityRepository,
 	sessionRepo domainauth.SessionRepository,
+	oauthFactory domainauth.OAuthAuthenticatorFactory,
+	weChatExchanger domainauth.WeChatMiniProgramExchanger,
+	otpGenerator domainauth.OTPGenerator,
 ) *Account {
 	return &Account{
-		cfg:            cfg,
-		projectRepo:    projectRepo,
-		oauthProviders: oauthProviders,
-		usersRepo:      usersRepo,
-		identities:     identities,
-		sessionRepo:    sessionRepo,
-		sessions:       sessions,
-		otp:            otp,
-		oauthState:     oauthState,
-		tokens:         tokens,
-		loginThrottle:  normalizeLoginThrottle(loginThrottle),
-		rotation:       rotation,
+		cfg:             cfg,
+		projectRepo:     projectRepo,
+		oauthProviders:  oauthProviders,
+		usersRepo:       usersRepo,
+		identities:      identities,
+		sessionRepo:     sessionRepo,
+		sessions:        sessions,
+		otp:             otp,
+		oauthState:      oauthState,
+		tokens:          tokens,
+		loginThrottle:   normalizeLoginThrottle(loginThrottle),
+		rotation:        rotation,
+		oauthFactory:    oauthFactory,
+		weChatExchanger: weChatExchanger,
+		otpGenerator:    otpGenerator,
 		idGen:          idGen,
 		mailer:         mailer,
 		sms:            sms,
@@ -117,6 +128,24 @@ func normalizeMFAChallengeStore(s domainauth.MFAChallengeStore) domainauth.MFACh
 		return domainauth.NoopMFAChallengeStore{}
 	}
 	return s
+}
+
+// generateOTP 通过注入的 OTPGenerator 生成验证码；未注入时回退到
+// 纯随机生成（与 infra/auth.GenerateOTP 同逻辑，避免 app 层直接依赖 infra）。
+func (a *Account) generateOTP(digits int) (string, error) {
+	if a.otpGenerator != nil {
+		return a.otpGenerator.GenerateOTP(digits)
+	}
+	if digits <= 0 || digits > 10 {
+		return "", fmt.Errorf("invalid otp digits: %d", digits)
+	}
+	max := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(digits)), nil)
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	format := fmt.Sprintf("%%0%dd", digits)
+	return fmt.Sprintf(format, n), nil
 }
 
 type SignUpCommand struct {

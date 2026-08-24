@@ -8,7 +8,6 @@ import (
 
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
-	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -380,14 +379,28 @@ func factorFromMap(m map[string]any) (domainauth.Factor, bool) {
 		Status: stringValue(m["status"]),
 	}
 	if createdAt, ok := m["created_at"].(string); ok {
-		if t, err := auth.ParseSessionTime(createdAt); err == nil {
+		if t, err := parseSessionTime(createdAt); err == nil {
 			f.CreatedAt = t
 		}
+	} else if createdAtTime, ok := m["created_at"].(time.Time); ok {
+		f.CreatedAt = createdAtTime
 	}
 	if f.ID == "" || f.Type == "" {
 		return domainauth.Factor{}, false
 	}
 	return f, true
+}
+
+// parseSessionTime 本地拷贝自 infra/auth.ParseSessionTime，避免 app 层
+// 直接依赖 infra 适配器（Round4 J4-3）。
+func parseSessionTime(v any) (time.Time, error) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, nil
+	case string:
+		return time.Parse(time.RFC3339Nano, t)
+	}
+	return time.Time{}, fmt.Errorf("unsupported time type")
 }
 
 func parseFactors(raw any) []domainauth.Factor {

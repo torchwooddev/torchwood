@@ -10,7 +10,6 @@ import (
 	appshared "github.com/torchwooddev/torchwood/internal/app/shared"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	"github.com/torchwooddev/torchwood/internal/domain/users"
-	infraauth "github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -59,7 +58,7 @@ func (a *Account) CreatePhoneOTP(ctx context.Context, cmd CreatePhoneOTPCommand)
 		return nil, err
 	}
 
-	code, err := infraauth.GenerateOTP(6)
+	code, err := a.generateOTP(6)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "otp generation failed")
 	}
