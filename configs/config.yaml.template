@@ -88,7 +88,11 @@ functions:
   executor: "docker"
   docker:
     host: "unix:///var/run/docker.sock"
-    network: "torchwood-functions"   # 不存在时执行器启动自动 create
+    # 函数执行容器网络。默认（留空/删除本键）为 per-project 隔离网络
+    # tw-func-<project_id>：项目间函数容器互不可达（Round4 J5-4）。
+    # 显式配置全局网络为 opt-in：所有项目的函数容器同网互通、可互相解析
+    # IP，存在跨租户横向访问风险！仅在单租户/完全可信环境使用。
+    network: ""                       # env: TORCHWOOD_FUNCTIONS_DOCKER_NETWORK
     registry: "torchwood-funcs"      # 必须小写（docker build -t 校验）
 
 payments:

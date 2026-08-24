@@ -56,7 +56,7 @@ func TestDomainHasNoBunTx(t *testing.T) {
 		if d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		b, readErr := os.ReadFile(path)
+		b, readErr := os.ReadFile(path) // #nosec G304 -- 路径来自仓库内测试数据
 		if readErr != nil {
 			return readErr
 		}

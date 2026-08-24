@@ -506,7 +506,8 @@ func (h *Handler) writeLoop(ctx context.Context, c *websocket.Conn, st *connStat
 }
 
 // handleSubscribe 校验并登记订阅（v2 设计 §4.3 / §4.4）：
-// 集合频道：GetCollection 存在、!IsSystem、!Disabled（一律 NOT_FOUND）；
+// 集合频道：GetCollection 存在、!IsSystem、!Disabled（特权旁路）且以订阅者
+// 文档主体通过一次 REST List 语义的 read 探测（一律 NOT_FOUND，防枚举）；
 // 文档频道：GetDocument 存在且当前 principal 可 read（一律 NOT_FOUND）。
 // 超 32 订返回 RESOURCE_EXHAUSTED，连接保持。
 func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *connState, f *inboundFrame) {
@@ -579,7 +580,35 @@ func (h *Handler) databasesChannelAllowed(ctx context.Context, st *connState, db
 			"database_id", dbID, "collection_id", collID, "error", err)
 		return false
 	}
-	return coll != nil && !coll.IsSystem && !coll.Disabled
+	if coll == nil || coll.IsSystem {
+		return false
+	}
+	// Disabled 与 REST ensureReadableCollection 同口径：特权主体（system /
+	// platform admin）旁路，普通主体按无权限拒绝（ListAccessDenied 语义）。
+	if coll.Disabled && !st.docPrincipal.BypassesDocumentACL() {
+		return false
+	}
+	// Round4 J5-5：补 read 权限判定。以订阅者文档主体做一次 limit=1 的列表
+	// 探测——adapter 层的 listPermissionFilter 会施加与 REST List 完全相同的
+	// 集合级 read 门（ListAccessDenied：!documentSecurity 且无 read 权限 →
+	// PermissionDenied），堵住「仅凭存在性即可订频道」的存在性 oracle。
+	// 特权主体已旁路文档 ACL，无需探测。
+	if !st.docPrincipal.BypassesDocumentACL() {
+		list, lerr := h.docDB.ListDocuments(ctx, st.projectID, dbID, collID,
+			databases.Query{PageSize: 1}, st.docPrincipal)
+		if lerr != nil {
+			if isPermissionOrNotFound(lerr) {
+				return false
+			}
+			// fail-closed：非权限类错误同样拒绝订阅并留日志。
+			h.logger.Error("realtime subscribe collection read probe failed",
+				"connection_id", st.id, "project_id", st.projectID,
+				"database_id", dbID, "collection_id", collID, "error", lerr)
+			return false
+		}
+		_ = list // 探测只关心是否被拒；内容为空不代表不可读（与 REST List 一致）
+	}
+	return true
 }
 
 // handleUnsubscribe 移除订阅（未订阅则忽略）。

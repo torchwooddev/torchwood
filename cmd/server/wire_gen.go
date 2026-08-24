@@ -35,7 +35,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/idgen"
 	"github.com/torchwooddev/torchwood/internal/infra/messaging"
 	"github.com/torchwooddev/torchwood/internal/infra/payments"
-	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
 	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
@@ -127,13 +126,16 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	subscriptionsService := clientgrpc.NewSubscriptionsService(subscriptionsSubscriptions)
 	buildInfo := NewBuildInfo()
 	healthService := servergrpc.NewHealthService(checkers, buildInfo)
-	schemaManager := projectschema.NewSchemaManager(database)
-	projects := server.NewProjects(repository, documentDB, database, schemaManager, adminProjectRepository)
+	schemaManager := NewSchemaManager(database, documentDB)
+	purger := storage.NewObjectPurger(objectStore)
+	v := NewProjectsOptions(purger, appConfig)
+	projects := server.NewProjects(repository, documentDB, database, schemaManager, adminProjectRepository, v...)
 	projectsService := servergrpc.NewProjectsService(projects)
 	uploadSessionStore := storage.NewRedisUploadSessionStore(redisClient)
 	bucketRepository := bunrepo.NewBucketRepository(database)
 	fileRepository := bunrepo.NewFileRepository(database)
-	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository)
+	v2 := NewStorageOptions()
+	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository, v2...)
 	storageService := servergrpc.NewStorageService(storageStorage)
 	users := server.NewUsers(repository, sessionService, database, userRepository, sessionRepository, groupRepository, membershipRepository)
 	usersService := servergrpc.NewUsersService(users)
@@ -209,9 +211,9 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	v := NewComponents(grpcServer, grpcGatewayServer, realtimeSubscriberService, metricsServer)
-	v2 := NewComponentBuilders()
-	bootstrap := boot.New(onStartHooks, onStopHooks, v, v2)
+	v3 := NewComponents(grpcServer, grpcGatewayServer, realtimeSubscriberService, metricsServer)
+	v4 := NewComponentBuilders()
+	bootstrap := boot.New(onStartHooks, onStopHooks, v3, v4)
 	return bootstrap, func() {
 		cleanup()
 	}, nil

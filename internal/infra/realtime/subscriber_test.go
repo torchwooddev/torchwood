@@ -16,7 +16,7 @@ import (
 )
 
 // newSubscriberEnv 组装 subscriber 集成测试环境：真实 Postgres（迁移含 outbox）+ miniredis Pub/Sub。
-func newSubscriberEnv(t *testing.T) (*Subscriber, *Hub, *redis.Client, *clients.Database) {
+func newSubscriberEnv(t *testing.T) (*Subscriber, *Hub, *redis.Client, *clients.Database, *miniredis.Miniredis) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -28,7 +28,16 @@ func newSubscriberEnv(t *testing.T) (*Subscriber, *Hub, *redis.Client, *clients.
 
 	hub := NewHub(nil)
 	sub := NewRealtimeSubscriber(client, db, hub, nil)
-	return sub, hub, client, db
+	return sub, hub, client, db, mr
+}
+
+// waitSubscribed 等待 n 个 SUBSCRIBE 在 miniredis 上就位（替代固定 sleep，
+// J6-4：PUBLISH 前订阅必须已注册，否则消息丢失造成 flaky）。
+func waitSubscribed(t *testing.T, mr *miniredis.Miniredis, n int) {
+	t.Helper()
+	testutil.Eventually(t, 5*time.Second, func() bool {
+		return mr.PubSubNumSub(realtimeChannel)[realtimeChannel] >= n
+	})
 }
 
 // waitFrame 等待 Hub 扇出的帧（带超时）。
@@ -86,8 +95,8 @@ func TestSubscriber_BroadcastToMultipleHubs(t *testing.T) {
 		case <-time.After(2 * time.Second):
 		}
 	})
-	// 等订阅建立（PUBLISH 前已 SUBSCRIBE 的竞态由 Run 内的 Receive 保证；此处短睡确保两个 SUBSCRIBE 已完成）。
-	time.Sleep(200 * time.Millisecond)
+	// 等两个 SUBSCRIBE 在 miniredis 上就位后再 PUBLISH（替代固定 sleep 200ms，J6-4）。
+	waitSubscribed(t, mr, 2)
 
 	require.NoError(t, NewStreamTransport(client).Enqueue(ctx, ev))
 
@@ -106,7 +115,7 @@ func TestSubscriber_BroadcastToMultipleHubs(t *testing.T) {
 
 // TestSubscriber_NoSubscribersStillMarksPublished：无订阅者仍标 published_at（合法事件、此刻无人听；重连不补历史）。
 func TestSubscriber_NoSubscribersStillMarksPublished(t *testing.T) {
-	sub, _, client, db := newSubscriberEnv(t)
+	sub, _, client, db, mr := newSubscriberEnv(t)
 	ctx := context.Background()
 
 	ev := testEnvelope()
@@ -122,7 +131,7 @@ func TestSubscriber_NoSubscribersStillMarksPublished(t *testing.T) {
 		case <-time.After(5 * time.Second):
 		}
 	})
-	time.Sleep(200 * time.Millisecond)
+	waitSubscribed(t, mr, 1)
 	require.NoError(t, NewStreamTransport(client).Enqueue(ctx, ev))
 
 	require.Eventually(t, func() bool {
@@ -133,7 +142,7 @@ func TestSubscriber_NoSubscribersStillMarksPublished(t *testing.T) {
 
 // TestSubscriber_DispatchUsesFullEnvelopeACL：Hub.Dispatch 用完整信封的 acl 过滤：无 read 权限的订阅者收不到，平台 admin 旁路全收。
 func TestSubscriber_DispatchUsesFullEnvelopeACL(t *testing.T) {
-	sub, hub, client, db := newSubscriberEnv(t)
+	sub, hub, client, db, mr := newSubscriberEnv(t)
 	ctx := context.Background()
 
 	ev := testEnvelope()
@@ -155,7 +164,7 @@ func TestSubscriber_DispatchUsesFullEnvelopeACL(t *testing.T) {
 		case <-time.After(5 * time.Second):
 		}
 	})
-	time.Sleep(200 * time.Millisecond)
+	waitSubscribed(t, mr, 1)
 	require.NoError(t, NewStreamTransport(client).Enqueue(ctx, ev))
 
 	frame := waitFrame(t, admin)

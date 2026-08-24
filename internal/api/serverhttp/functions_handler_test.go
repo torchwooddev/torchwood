@@ -285,7 +285,7 @@ func TestFunctionsHandler_RejectsEndUserSessionCookie(t *testing.T) {
 	})
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
-	r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: token})
+	r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: token}) // #nosec G124 -- 客户端测试请求无需安全属性
 	rec := httptest.NewRecorder()
 	h.upload(rec, r, map[string]string{"functionId": "fn-1"})
 	require.Equal(t, http.StatusForbidden, rec.Code)

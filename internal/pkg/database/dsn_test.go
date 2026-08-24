@@ -13,7 +13,7 @@ func TestSourceFromEnv(t *testing.T) {
 	t.Setenv("POSTGRES_DB", "app")
 
 	got := SourceFromEnv()
-	want := "postgres://user:pass@db.local:5433/app?sslmode=require"
+	want := "postgres://user:pass@db.local:5433/app?sslmode=require" // #nosec G101 -- 测试断言字符串
 	if got != want {
 		t.Fatalf("SourceFromEnv() = %q, want %q", got, want)
 	}
@@ -24,7 +24,7 @@ func TestSourceFromEnvPrefersFleetDSN(t *testing.T) {
 	t.Setenv("POSTGRES_PORT", "9999")
 
 	got := SourceFromEnv()
-	want := "postgres://torchwood:torchwood@127.0.0.1 :5433/torchwood?sslmode=disable"
+	want := "postgres://torchwood:torchwood@127.0.0.1 :5433/torchwood?sslmode=disable" // #nosec G101 -- 测试断言字符串
 	if got != want {
 		t.Fatalf("SourceFromEnv() = %q, want %q", got, want)
 	}

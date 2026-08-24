@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -87,20 +88,39 @@ func TestStorage_Acceptance_ServerAPI(t *testing.T) {
 	require.Empty(t, files)
 }
 
-func newStorageUC(t *testing.T) (context.Context, *Storage, string, *config.AppConfig) {
+func newStorageUC(t *testing.T, opts ...StorageOption) (context.Context, *Storage, string, *config.AppConfig) {
 	t.Helper()
 	ctx := serverWriteCtx()
 	db := testutil.SetupTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 
-	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, cleanup := testutil.CreateTestProjectT(ctx, t, db)
 	t.Cleanup(cleanup)
 
 	cfg := &config.AppConfig{}
 	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
 	_, upStore := newTestUploadSessionStore(t)
-	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), testutil.NewMemObjectStore(), upStore, bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	uc := NewStorage(cfg, bunrepo.NewProjectRepository(db), testutil.NewMemObjectStore(), upStore, bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db), opts...)
 	return ctx, uc, projectID, cfg
+}
+
+// fakeClock 手动推进的假时钟：替代真实 sleep 验证 token 过期路径（J6-4）。
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+// Advance 将假时钟拨快 d。
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
 }
 
 // TestStorage_UpdateFile 覆盖元数据更新：改名/改 MIME/替换 metadata；
@@ -195,7 +215,8 @@ func TestStorage_FileToken(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	ctx, uc, projectID, _ := newStorageUC(t)
+	fc := &fakeClock{now: time.Now()}
+	ctx, uc, projectID, _ := newStorageUC(t, WithClock(fc))
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	bucket, err := uc.CreateBucket(ctx, CreateBucketCommand{ProjectID: projectID, Name: "tokens"})
@@ -224,12 +245,12 @@ func TestStorage_FileToken(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 
-	// 过期 token → 拒绝（构造短有效期并等待）
+	// 过期 token → 拒绝（假时钟拨快，替代真实 sleep 1.1s，J6-4）
 	short, err := uc.CreateFileToken(ctx, projectID, bucket.ID, file.ID, 1, principal)
 	require.NoError(t, err)
 	_, _, _, err = uc.ParseFileToken(short.Token)
 	require.NoError(t, err)
-	time.Sleep(1100 * time.Millisecond)
+	fc.Advance(2 * time.Second)
 	_, _, _, err = uc.ParseFileToken(short.Token)
 	require.Error(t, err)
 	require.Equal(t, codes.Unauthenticated, status.Code(err))

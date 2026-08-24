@@ -28,7 +28,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const unitWebhookSecret = "whsec_unit_test"
+const unitWebhookSecret = "whsec_unit_test" // #nosec G101 -- 测试固定值
 
 // memStore 是订单 / 回调 / 履约 / outbox 的内存库，uow.Run 失败整体回滚。
 type memStore struct {
@@ -791,7 +791,8 @@ func TestInsertCreatedOrder_IsSoleOrdersInsertCallSite(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		body, err := os.ReadFile(path)
+		// #nosec G304 -- 路径来自仓库内 WalkDir 白名单枚举，非外部输入。
+		body, err := os.ReadFile(path) // #nosec G122 -- 仓库内测试扫描，无符号链接攻击面
 		if err != nil {
 			return err
 		}

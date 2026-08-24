@@ -222,6 +222,29 @@ func permsTableName(schema string) string {
 	return quoteIdent(schema) + "." + quoteIdent("_perms")
 }
 
+// InternalIDCacheInvalidator 是 internalIDCache 的进程内失效面：组合根把
+// projectschema manager 的 Invalidate 桥接到此（结构化接口，避免
+// documentdb ↔ projectschema 反向依赖）。Round4 J5-3。
+type InternalIDCacheInvalidator interface {
+	InvalidateInternalIDCache(projectID string)
+}
+
+// InvalidateInternalIDCache 清除项目的 internal_id 进程内缓存。项目删除后
+// 同 ID 重建时，陈旧缓存的 internal_id 会以错误 _tenant 标签写入新实例，
+// 造成静默数据分裂（audit §B-P3）。
+func (p *postgresDocumentDB) InvalidateInternalIDCache(projectID string) {
+	p.internalIDCache.Delete(projectID)
+}
+
+// resolveInternalIDFresh 绕过缓存强制重解析并回填。DDL 会把 internal_id 烤进
+// collection 表的 _tenant 列默认值（createCollectionTable），若此刻缓存陈旧
+// （项目删除重建窗口），整张新表的默认租户都会错（R4-J5-3），建表路径必须
+// 取实时值。
+func (p *postgresDocumentDB) resolveInternalIDFresh(ctx context.Context, projectID string) (int64, error) {
+	p.internalIDCache.Delete(projectID)
+	return p.resolveInternalID(ctx, projectID)
+}
+
 func (p *postgresDocumentDB) resolveInternalID(ctx context.Context, projectID string) (int64, error) {
 	if cached, ok := p.internalIDCache.Load(projectID); ok {
 		return cached.(int64), nil

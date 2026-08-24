@@ -35,7 +35,7 @@ func (s *writeSpyCallbackRepo) InsertIfAbsent(context.Context, *domainpayments.C
 
 func newCallbackOnlyPayments(t *testing.T) (*apppayments.Payments, *writeSpyCallbackRepo) {
 	t.Helper()
-	adapter := stripe.New(stripe.Config{
+	adapter := stripe.New(stripe.Config{ // #nosec G101 -- 测试固定值
 		SecretKey:     "sk_test_x",
 		WebhookSecret: "whsec_handler_test",
 	})

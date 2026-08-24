@@ -105,9 +105,15 @@ func TestHubDispatchDocumentUnchangedWithEconomyFields(t *testing.T) {
 // TestHubDispatch_DedupWindowSlidesOnHit (P1-13)：去重窗口随命中滑动——
 // 同一 event 在窗口边缘被 redispatch 重发时不得重新扇出（此前窗口从首见
 // 起算，标记持续失败 >dedupWindow 后客户端会收到可见重复帧）。
+//
+// J6-4：用顺序定时器替代固定 sleep。Go 定时器只会迟到不会早到，且第二个
+// 定时器在第一个触发后才启动，因此两次派发的「间隔」精确成立、与负载无关。
+// 断言只依赖间隔关系（窗口 W=3s）：命中距首见 2s<W；再派发距上次命中
+// 2s<W（须仍去重）；距首见合计 4s>W（无滑动则早已过期）——两侧各留 ≥1s
+// 构造性余量。
 func TestHubDispatch_DedupWindowSlidesOnHit(t *testing.T) {
 	orig := dedupWindow
-	dedupWindow = 100 * time.Millisecond
+	dedupWindow = 3 * time.Second
 	defer func() { dedupWindow = orig }()
 
 	hub := NewHub(nil)
@@ -126,10 +132,15 @@ func TestHubDispatch_DedupWindowSlidesOnHit(t *testing.T) {
 		t.Fatal("首见事件必须扇出")
 	}
 
-	time.Sleep(60 * time.Millisecond)
-	hub.Dispatch(env) // t0+60ms 命中（刷新窗口）
-	time.Sleep(60 * time.Millisecond)
-	hub.Dispatch(env) // t0+120ms：距首见已超窗，但距上次命中仅 60ms——必须仍去重
+	hit := time.NewTimer(2 * time.Second)
+	defer hit.Stop()
+	<-hit.C
+	hub.Dispatch(env) // t0+2s 命中（刷新窗口）
+
+	slide := time.NewTimer(2 * time.Second)
+	defer slide.Stop()
+	<-slide.C
+	hub.Dispatch(env) // t0+4s：距首见已超窗，但距上次命中仅 2s——必须仍去重
 	select {
 	case frame := <-conn.Send:
 		t.Fatalf("窗口滑动后不得重复扇出, got %v", frame)

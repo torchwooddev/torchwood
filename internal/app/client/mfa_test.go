@@ -25,7 +25,7 @@ import (
 func mfaTestConfig() *config.AppConfig {
 	return &config.AppConfig{
 		Security: &config.Security{
-			Jwt: &config.Security_Jwt{Secret: "mfa-app-test-secret"},
+			Jwt: &config.Security_Jwt{Secret: "mfa-app-test-secret"}, // #nosec G101 -- 测试固定值
 		},
 	}
 }
@@ -516,7 +516,7 @@ func (stubMergeMFA) CreateTOTPFactor(context.Context, string, string, string) (*
 	return &auth.Factor{
 		ID:        "new-1",
 		Type:      auth.FactorTypeTOTP,
-		Secret:    "enc:v1:x",
+		Secret:    "enc:v1:x", // #nosec G101 -- 测试固定值
 		Status:    auth.FactorStatusPending,
 		CreatedAt: time.Now(),
 	}, "plain", "otpauth://totp/x", nil

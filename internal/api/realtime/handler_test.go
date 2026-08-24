@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -201,12 +202,22 @@ func wsURL(srv *httptest.Server) string {
 	return "ws" + strings.TrimPrefix(srv.URL, "http")
 }
 
+// closeHandshakeBody 排空并关闭 websocket 握手响应体（bodyclose）。
+func closeHandshakeBody(t *testing.T, resp *http.Response) {
+	t.Helper()
+	if resp != nil && resp.Body != nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}
+}
+
 func dial(t *testing.T, srv *httptest.Server) *websocket.Conn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), nil)
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), nil)
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	return c
 }
@@ -322,11 +333,11 @@ func TestHandshake_RejectsAPIKeyHeader(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, resp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"X-Api-Key": []string{"key-1"}},
 	})
 	require.NoError(t, err)
-	_ = resp
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("default", ""))
 	expectErrorFrame(t, c, errCodeUnauthenticated)
@@ -338,10 +349,11 @@ func TestHandshake_RejectsMultipleCredentials(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_console=abc"}},
 	})
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	// token + cookie 并存 → 关连接（错误帧后 close）。
 	sendJSON(t, c, hello("default", "jwt-token"))
@@ -355,10 +367,11 @@ func TestHandshake_RejectsEndUserSessionCookie(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_proj-x=abc"}},
 	})
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("proj-x", ""))
 	expectErrorFrame(t, c, errCodeUnauthenticated)
@@ -374,10 +387,11 @@ func TestHandshake_AcceptsEndUserSessionCookie(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_proj-x=valid-cookie"}},
 	})
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("proj-x", ""))
 	var resp struct {
@@ -399,10 +413,11 @@ func TestHandshake_AdminBindsProjectBeforeAccessCheck(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_console=console-session"}},
 	})
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 
 	sendJSON(t, c, hello("proj-x", ""))
@@ -426,10 +441,11 @@ func TestHandshake_AdminWithoutProjectAccessRejected(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_console=console-session"}},
 	})
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("proj-x", ""))
 	expectErrorFrame(t, c, errCodeUnauthenticated)
@@ -708,10 +724,11 @@ func TestEventDelivery_PlatformAdminBypass(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_console=console-session"}},
 	})
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("default", ""))
 	discardHelloOK(t, c)
@@ -774,7 +791,8 @@ func TestConnection_KeepAliveBeyond60Seconds(t *testing.T) {
 	_, _, srv := testHandler(t, validator, &fakeDocDB{collections: map[string]*databases.Collection{}})
 	handler := srv.Config.Handler
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	httpSrv := &http.Server{
 		Handler:           handler,
@@ -789,8 +807,9 @@ func TestConnection_KeepAliveBeyond60Seconds(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, "ws://"+ln.Addr().String(), nil)
+	c, hsResp, err := websocket.Dial(ctx, "ws://"+ln.Addr().String(), nil)
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("default", "jwt"))
 	discardHelloOK(t, c)
@@ -866,10 +885,11 @@ func TestSubscribe_AccountsChannelPlatformAdminOK(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
+	c, hsResp, err := websocket.Dial(ctx, wsURL(srv), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Cookie": []string{"TORCHWOOD_session_console=console-session"}},
 	})
 	require.NoError(t, err)
+	closeHandshakeBody(t, hsResp)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	sendJSON(t, c, hello("default", ""))
 	discardHelloOK(t, c)

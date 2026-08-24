@@ -13,11 +13,16 @@ import (
 	"github.com/torchwooddev/torchwood/internal/api"
 	apirealtime "github.com/torchwooddev/torchwood/internal/api/realtime"
 	"github.com/torchwooddev/torchwood/internal/app"
+	appserver "github.com/torchwooddev/torchwood/internal/app/server"
+	appstorage "github.com/torchwooddev/torchwood/internal/app/storage"
 	"github.com/torchwooddev/torchwood/internal/domain"
+	databases "github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
+	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	"github.com/torchwooddev/torchwood/internal/infra"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
+	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/pkg/buildinfo"
@@ -41,6 +46,12 @@ var ProviderSet = wire.NewSet(
 	NewOnStops,
 	NewAppConfig,
 	NewBuildInfo,
+	// SchemaManager 桥接 documentdb internalIDCache 失效回调（Round4 J5-3），
+	// 取代 infra.ProviderSet 内的裸 projectschema.NewSchemaManager。
+	NewSchemaManager,
+	wire.Bind(new(projects.SchemaManager), new(*projectschema.SchemaManager)),
+	NewProjectsOptions,
+	NewStorageOptions,
 	NewRealtimeSubscriberService,
 	// Realtime 握手校验复用 auth.Validator（api.ProviderSet 与
 	// infra.ProviderSet 在此组合，Bind 放组合根）。
@@ -182,3 +193,25 @@ func projectSchemaEnsureHook(repo projects.Repository, db *clients.Database, log
 func NewOnStops() boot.OnStopHooks {
 	return boot.OnStopHooks{}
 }
+
+// NewSchemaManager 构造桥接了 documentdb internalIDCache 失效回调的 schema
+// 管理器（Round4 J5-3）：项目删除（DROP SCHEMA）后 Invalidate 同时清除
+// documentdb 的 internal_id 进程内缓存，否则同 ID 重建项目时旧缓存会以陈旧
+// internal_id 打 _tenant 标签，造成静默数据分裂。经结构化接口断言完成桥接，
+// 避免 projectschema ↔ documentdb 反向依赖。
+func NewSchemaManager(db *clients.Database, docDB databases.DocumentDB) *projectschema.SchemaManager {
+	m := projectschema.NewSchemaManager(db)
+	if inv, ok := docDB.(documentdb.InternalIDCacheInvalidator); ok {
+		m.SetInvalidator(inv.InvalidateInternalIDCache)
+	}
+	return m
+}
+
+// NewProjectsOptions 装配项目用例的生产选项（Round4 J5-2）：注入对象存储
+// Purger 与配置，项目删除事务提交后异步清空共享桶 {projectID}/ 前缀。
+func NewProjectsOptions(purger domainstorage.Purger, cfg *config.AppConfig) []appserver.ProjectsOption {
+	return []appserver.ProjectsOption{appserver.WithObjectPurger(purger, cfg)}
+}
+
+// NewStorageOptions 返回生产默认的空选项集（WithClock 等仅供测试注入）。
+func NewStorageOptions() []appstorage.StorageOption { return nil }

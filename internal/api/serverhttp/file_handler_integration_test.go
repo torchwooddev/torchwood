@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"sync"
 	"testing"
 	"time"
 
@@ -64,19 +65,38 @@ type storageHTTPFixture struct {
 	bucketID  string
 }
 
-func setupStorageHTTPFixture(t *testing.T) *storageHTTPFixture {
+// fakeClock 手动推进的假时钟，实现 appstorage.Clock（J6-4）。
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+// Advance 将假时钟拨快 d。
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+func setupStorageHTTPFixture(t *testing.T, storageOpts ...appstorage.StorageOption) *storageHTTPFixture {
 	t.Helper()
 
 	ctx := context.Background()
 	db := testutil.SetupTestDB(t)
 
-	projectID, _, projectCleanup := testutil.CreateTestProject(ctx, db)
+	projectID, _, projectCleanup := testutil.CreateTestProjectT(ctx, t, db)
 	apiSecret, keyCleanup := testutil.CreateTestAPIKey(ctx, db, projectID, nil)
 
 	cfg := &config.AppConfig{}
 	cfg.Security = &config.Security{Jwt: &config.Security_Jwt{Secret: "test-file-token-secret"}}
 	store := testutil.NewMemObjectStore()
-	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db))
+	storageUC := appstorage.NewStorage(cfg, bunrepo.NewProjectRepository(db), store, newUploadSessionStoreForTest(t), bunrepo.NewBucketRepository(db), bunrepo.NewFileRepository(db), storageOpts...)
 	validator := auth.NewValidator(
 		cfg,
 		bunrepo.NewAPIKeyRepository(db),
@@ -140,7 +160,7 @@ func (f *storageHTTPFixture) upload(content []byte, headers map[string]string, c
 	}
 	require.NoError(f.t, writer.Close())
 
-	req, err := http.NewRequest(http.MethodPost, f.server.URL+"/v1/storage/buckets/"+f.bucketID+"/files", body)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, f.server.URL+"/v1/storage/buckets/"+f.bucketID+"/files", body)
 	require.NoError(f.t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	for k, v := range headers {
@@ -164,7 +184,7 @@ func (f *storageHTTPFixture) upload(content []byte, headers map[string]string, c
 func (f *storageHTTPFixture) download(path string, headers map[string]string) (int, []byte, http.Header) {
 	f.t.Helper()
 
-	req, err := http.NewRequest(http.MethodGet, f.server.URL+path, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, f.server.URL+path, nil)
 	require.NoError(f.t, err)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -333,7 +353,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, writer.Close())
 
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/storage/buckets/"+bucketA.ID+"/files", body)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL+"/v1/storage/buckets/"+bucketA.ID+"/files", body)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	for k, v := range userHeaders {
@@ -358,7 +378,7 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, writerB.Close())
 
-	reqB, err := http.NewRequest(http.MethodPost, server.URL+"/v1/storage/buckets/"+bucketB.ID+"/files", bodyB)
+	reqB, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL+"/v1/storage/buckets/"+bucketB.ID+"/files", bodyB)
 	require.NoError(t, err)
 	reqB.Header.Set("Content-Type", writerB.FormDataContentType())
 	reqB.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
@@ -368,7 +388,8 @@ func TestFileHandler_UserJWTProjectScope(t *testing.T) {
 	_ = respB.Body.Close()
 	require.NotEqual(t, http.StatusCreated, respB.StatusCode)
 
-	downloadReq, err := http.NewRequest(
+	downloadReq, err := http.NewRequestWithContext(
+		context.Background(),
 		http.MethodGet,
 		server.URL+"/v1/storage/buckets/"+bucketA.ID+"/files/"+created.ID+"/download",
 		nil,
@@ -499,7 +520,7 @@ func TestFileHandler_AdminRequiresProjectAccess(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, writer.Close())
 
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/storage/buckets/"+bucket.ID+"/files", body)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL+"/v1/storage/buckets/"+bucket.ID+"/files", body)
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -561,7 +582,8 @@ func TestFileHandler_FileTokenDownload(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	f := setupStorageHTTPFixture(t)
+	fc := &fakeClock{now: time.Now()}
+	f := setupStorageHTTPFixture(t, appstorage.WithClock(fc))
 
 	fileID, _, status := f.upload([]byte("token-protected"), map[string]string{"X-Api-Key": f.apiSecret}, "")
 	require.Equal(t, http.StatusCreated, status)
@@ -588,10 +610,10 @@ func TestFileHandler_FileTokenDownload(t *testing.T) {
 	)
 	require.Equal(t, http.StatusUnauthorized, code)
 
-	// 过期 token → 401。
+	// 过期 token → 401（假时钟拨快，替代真实 sleep 1.1s，J6-4）。
 	short, err := f.handler.storage.CreateFileToken(ctx, f.projectID, f.bucketID, fileID, 1, databases.Principal{Roles: []string{"keys"}})
 	require.NoError(t, err)
-	time.Sleep(1100 * time.Millisecond)
+	fc.Advance(2 * time.Second)
 	code, _, _ = f.download(
 		"/v1/storage/buckets/"+f.bucketID+"/files/"+fileID+"/download?token="+short.Token,
 		nil,
@@ -672,7 +694,7 @@ func (f *storageHTTPFixture) uploadTo(bucketID string, content []byte, headers m
 	}
 	require.NoError(f.t, writer.Close())
 
-	req, err := http.NewRequest(http.MethodPost, f.server.URL+"/v1/storage/buckets/"+bucketID+"/files", body)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, f.server.URL+"/v1/storage/buckets/"+bucketID+"/files", body)
 	require.NoError(f.t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	for k, v := range headers {

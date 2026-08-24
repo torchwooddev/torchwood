@@ -6,6 +6,7 @@ import "context"
 type Execution struct {
 	FunctionID   string
 	DeploymentID string // 构建产物镜像标识（{registry}/func-{functionID}-{deploymentID}）
+	ProjectID    string // 所属项目：决定执行容器网络（tw-func-<project.id>，Round4 J5-4）
 	Runtime      string // e.g. node-18.0, python-3.11
 	SourcePath   string // path or archive location of function source
 	Entrypoint   string // e.g. "index.main"

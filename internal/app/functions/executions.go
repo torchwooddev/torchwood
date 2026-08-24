@@ -471,6 +471,7 @@ func buildExecution(fn *domainfunctions.Function, rec *domainfunctions.Execution
 	return domainfunctions.Execution{
 		FunctionID:   fn.ID,
 		DeploymentID: rec.DeploymentID,
+		ProjectID:    fn.ProjectID, // per-project 执行网络寻址（Round4 J5-4）
 		Runtime:      fn.Runtime,
 		Spec:         fn.Spec,
 		Timeout:      int64(fn.TimeoutSeconds),

@@ -161,7 +161,8 @@ tasks:
       - test-sdk-ts
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
-      - go test -v ./... -cover
+      # -race 与 CI 对齐（J6-1）；集成测试依赖 .env 中的 TORCHWOOD_TEST_* 变量。
+      - go test -race -v ./... -cover
 
   lint-go:
     dir: '{{.USER_WORKING_DIR}}'
@@ -169,13 +170,11 @@ tasks:
       - go vet ./...
       - test -z "$(gofmt -l .)"
 
-  # golangci-lint 棘轮：只报相对 origin/main 的新增问题（存量遗留债见
-  # docs/review/arch-review-2026-08-fix-plan.md W-H；本地全量检查直接跑
-  # `golangci-lint run ./...`）。
+  # 全量门禁（J6-3 后无棘轮；存量暂挂项见 .golangci.yml 的 exclusions 注释）。
   lint-golangci:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
-      - golangci-lint run --new-from-rev=origin/main ./...
+      - golangci-lint run ./...
 
   lint-sdk-go:
     dir: '{{.USER_WORKING_DIR}}/sdk/go'

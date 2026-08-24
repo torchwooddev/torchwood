@@ -792,7 +792,7 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 
 	// 非法 PageToken → InvalidArgument（对齐 ListCollections）。
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		PageToken: "not-a-valid-token",
+		PageToken: "not-a-valid-token", // #nosec G101 -- 测试固定值
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))

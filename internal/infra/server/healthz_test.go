@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"testing"
@@ -17,7 +18,8 @@ import (
 // checkers 全 ok → 200；任一失败 → 503。gRPC gateway 与 lynx 的 HTTP
 // readiness 走同一 WithHealthCheckers 机制。
 func TestHealthz_Readiness(t *testing.T) {
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	lis, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := lis.Addr().String()
 	require.NoError(t, lis.Close())
@@ -43,51 +45,52 @@ func TestHealthz_Readiness(t *testing.T) {
 		return addr
 	}
 
-	waitReady := func(t *testing.T, base string) *http.Response {
-		t.Helper()
-		var resp *http.Response
-		var err error
-		deadline := time.Now().Add(5 * time.Second)
-		for time.Now().Before(deadline) {
-			resp, err = http.Get(base + "/healthz/liveness")
-			if err == nil {
-				_ = resp.Body.Close()
-				return resp
-			}
-			time.Sleep(20 * time.Millisecond)
+	// probe 发起 GET 并排空 body；网络未就绪时返回错误而非断言失败
+	// （require.Eventually 的条件函数中禁止 require.*——FailNow 会终止轮询
+	// 协程，导致首连失败后不再重试）。
+	probe := func(url string) (int, error) {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+		if err != nil {
+			return 0, err
 		}
-		t.Fatalf("server not ready: %v", err)
-		return nil
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode, nil
+	}
+
+	waitReady := func(t *testing.T, base string) {
+		t.Helper()
+		require.Eventually(t, func() bool {
+			code, err := probe(base + "/healthz/liveness")
+			return err == nil && code == http.StatusOK
+		}, 5*time.Second, 20*time.Millisecond, "server not ready")
+	}
+
+	getStatus := func(t *testing.T, url string) int {
+		t.Helper()
+		code, err := probe(url)
+		require.NoError(t, err)
+		return code
 	}
 
 	t.Run("all healthy -> 200", func(t *testing.T) {
 		start(t, func() []lynx.Checker { return []lynx.Checker{okChecker{ok}} })
 		waitReady(t, "http://"+addr)
 
-		resp, err := http.Get("http://" + addr + "/healthz/readiness")
-		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-
-		resp, err = http.Get("http://" + addr + "/healthz/liveness")
-		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, http.StatusOK, getStatus(t, "http://"+addr+"/healthz/readiness"))
+		require.Equal(t, http.StatusOK, getStatus(t, "http://"+addr+"/healthz/liveness"))
 	})
 
 	t.Run("one failed -> 503", func(t *testing.T) {
 		start(t, func() []lynx.Checker { return []lynx.Checker{okChecker{fail}} })
 		waitReady(t, "http://"+addr)
 
-		resp, err := http.Get("http://" + addr + "/healthz/readiness")
-		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
-
-		resp, err = http.Get("http://" + addr + "/healthz/liveness")
-		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, http.StatusServiceUnavailable, getStatus(t, "http://"+addr+"/healthz/readiness"))
+		require.Equal(t, http.StatusOK, getStatus(t, "http://"+addr+"/healthz/liveness"))
 	})
 }
 

@@ -32,9 +32,12 @@ const (
 )
 
 // mfaSignInChallenge 读取用户 verified 因子；存在时创建一次性挑战并返回，
-// 不存在（或 MFA 未装配）返回 nil，调用方按原逻辑签发会话。
+// 不存在返回 nil，调用方按原逻辑签发会话。mfaChallenges 不再判 nil
+// （Round4 J5-5）：构造期已显式落 Noop（仅供测试），旁路风险消除；此处
+// 保留的 a.mfa 判定是 MFA 能力开关（未装配 = 无需挑战，语义同
+// CompleteMFASession 的 Unimplemented）。
 func (a *Account) mfaSignInChallenge(ctx context.Context, projectID string, user *User) (*MFASignInChallenge, error) {
-	if a.mfaChallenges == nil || a.mfa == nil || user == nil {
+	if a.mfa == nil || user == nil {
 		return nil, nil
 	}
 	found, err := a.usersRepo.GetByID(ctx, projectID, user.ID)

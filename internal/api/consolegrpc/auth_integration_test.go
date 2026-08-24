@@ -42,7 +42,7 @@ func setupBootstrapFixture(t *testing.T) *bootstrapFixture {
 	db := testutil.SetupTestDB(t)
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	cfg := &config.AppConfig{Security: &config.Security{
-		Jwt:        &config.Security_Jwt{Secret: "bootstrap-integration-secret"},
+		Jwt:        &config.Security_Jwt{Secret: "bootstrap-integration-secret"}, // #nosec G101 -- 测试固定密钥
 		SetupToken: "bootstrap-setup-token",
 	}}
 
@@ -101,7 +101,10 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	// 1) 首次 sign-up：owner admin + 指定 project/database + 会话 cookie；
 	//    不生成 API Key。
 	body := bytes.NewBufferString(`{"email":"owner@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token","project_id":"shop","database_id":"app"}`)
-	resp, err := http.Post(fixture.url+"/v1/console/auth/sign-up", "application/json", body)
+	postReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fixture.url+"/v1/console/auth/sign-up", body)
+	require.NoError(t, err)
+	postReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(postReq)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var payload signUpPayload
@@ -137,7 +140,9 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 	require.True(t, foundRefresh, "refresh cookie missing: %v", resp.Header.Values("Set-Cookie"))
 
 	// 2) setup-status 返回 needs_setup=false。
-	resp, err = http.Get(fixture.url + "/v1/console/auth/setup-status")
+	statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fixture.url+"/v1/console/auth/setup-status", nil)
+	require.NoError(t, err)
+	resp, err = http.DefaultClient.Do(statusReq)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var statusResp struct {
@@ -149,7 +154,10 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 
 	// 3) 二次 sign-up → FailedPrecondition（grpc-gateway 映射为 HTTP 400）。
 	body = bytes.NewBufferString(`{"email":"second@torchwood.local","password":"Pass@1234","setup_token":"bootstrap-setup-token","project_id":"shop","database_id":"app"}`)
-	resp, err = http.Post(fixture.url+"/v1/console/auth/sign-up", "application/json", body)
+	retryReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fixture.url+"/v1/console/auth/sign-up", body)
+	require.NoError(t, err)
+	retryReq.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(retryReq)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	var errResp struct {
@@ -163,8 +171,11 @@ func TestBootstrap_SignUpEndToEnd(t *testing.T) {
 
 func TestBootstrap_SetupStatusBeforeSignUp(t *testing.T) {
 	fixture := setupBootstrapFixture(t)
+	ctx := context.Background()
 
-	resp, err := http.Get(fixture.url + "/v1/console/auth/setup-status")
+	statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fixture.url+"/v1/console/auth/setup-status", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(statusReq)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var statusResp struct {

@@ -138,6 +138,7 @@ func runMigrations(ctx context.Context, db *bun.DB) error {
 	}
 	sort.Strings(files)
 	for _, f := range files {
+		// #nosec G304 -- 路径来自仓库内 db/migrations 目录的白名单枚举，非外部输入。
 		sqlBytes, err := os.ReadFile(f)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", f, err)
@@ -147,6 +148,19 @@ func runMigrations(ctx context.Context, db *bun.DB) error {
 		}
 	}
 	return nil
+}
+
+// CreateTestProjectT 是 CreateTestProject 的 (*testing.T) 变体：失败走
+// t.Fatal（带用例位置）而非 panic，新代码一律使用本变体；旧签名保留兼容
+// 既有调用。
+func CreateTestProjectT(ctx context.Context, t *testing.T, db *clients.Database) (projectID string, internalID int64, cleanup func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("create test project: %v", r)
+		}
+	}()
+	return CreateTestProjectThrough(ctx, db, 0)
 }
 
 func repoRoot() (string, error) {

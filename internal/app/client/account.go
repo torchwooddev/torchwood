@@ -85,7 +85,7 @@ func NewAccount(
 		otp:            otp,
 		oauthState:     oauthState,
 		tokens:         tokens,
-		loginThrottle:  loginThrottle,
+		loginThrottle:  normalizeLoginThrottle(loginThrottle),
 		rotation:       rotation,
 		idGen:          idGen,
 		mailer:         mailer,
@@ -93,10 +93,30 @@ func NewAccount(
 		rateLimiter:    rateLimiter,
 		roles:          roles,
 		mfa:            mfa,
-		mfaChallenges:  mfaChallenges,
+		mfaChallenges:  normalizeMFAChallengeStore(mfaChallenges),
 		oneTimeTokens:  oneTimeTokens,
 		auditRepo:      auditRepo,
 	}
+}
+
+// normalizeLoginThrottle 把未注入的 loginThrottle 显式落为 Noop（仅供测试
+// 场景会出现）：用例层不再对 nil 分支静默旁路（Round4 J5-5），生产组合根
+// 恒注入 infra/auth 的 Redis 版本。
+func normalizeLoginThrottle(t domainauth.LoginThrottle) domainauth.LoginThrottle {
+	if t == nil {
+		return domainauth.NoopLoginThrottle{}
+	}
+	return t
+}
+
+// normalizeMFAChallengeStore 与 normalizeLoginThrottle 同理（Round4 J5-5）。
+// 注意：Noop 仅消除 nil 风险，不具备真实挑战语义；MFA 能力开关仍以 a.mfa
+// 是否注入为准。
+func normalizeMFAChallengeStore(s domainauth.MFAChallengeStore) domainauth.MFAChallengeStore {
+	if s == nil {
+		return domainauth.NoopMFAChallengeStore{}
+	}
+	return s
 }
 
 type SignUpCommand struct {
@@ -303,24 +323,18 @@ func (a *Account) SignIn(ctx context.Context, cmd SignInCommand) (*User, *TokenB
 	return a.finishSignIn(ctx, project.ID, accountUser(found))
 }
 
+// checkLoginThrottle / recordLoginFailure / resetLoginThrottle 不再判 nil
+// （Round4 J5-5）：构造期已把缺失依赖显式落为 NoopLoginThrottle（仅供测试），
+// 生产路径恒为 Redis 实现，频控不会因漏注入被静默关闭。
 func (a *Account) checkLoginThrottle(ctx context.Context, email, ip string) error {
-	if a.loginThrottle == nil {
-		return nil
-	}
 	return a.loginThrottle.Check(ctx, domainauth.LoginNamespaceEndUser, email, ip)
 }
 
 func (a *Account) recordLoginFailure(ctx context.Context, email, ip string) {
-	if a.loginThrottle == nil {
-		return
-	}
 	_ = a.loginThrottle.RecordFailure(ctx, domainauth.LoginNamespaceEndUser, email, ip)
 }
 
 func (a *Account) resetLoginThrottle(ctx context.Context, email, ip string) {
-	if a.loginThrottle == nil {
-		return
-	}
 	_ = a.loginThrottle.Reset(ctx, domainauth.LoginNamespaceEndUser, email, ip)
 }
 

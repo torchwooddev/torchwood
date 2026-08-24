@@ -33,12 +33,17 @@ func NewDataClients(cfg *config.AppConfig, logger *slog.Logger) (*DataClients, f
 		return nil, nil, err
 	}
 
-	rdb := newRedis(cfg.GetData().GetRedis())
+	rdb, err := newRedis(cfg.GetData().GetRedis())
+	if err != nil {
+		closeDb()
+		return nil, nil, err
+	}
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	err = rdb.Ping(pingCtx).Err()
 	cancel()
 	if err != nil {
 		closeDb()
+		_ = rdb.Close()
 		return nil, nil, fmt.Errorf("redis ping failed: %w", err)
 	}
 
@@ -96,9 +101,17 @@ func newDatabase(cfg *config.Database, logger *slog.Logger) (*Database, func(), 
 		sqldb.SetMaxIdleConns(maxIdle)
 		if d, err := time.ParseDuration(pool.GetConnMaxIdleTime()); err == nil {
 			sqldb.SetConnMaxIdleTime(d)
+		} else if pool.GetConnMaxIdleTime() != "" {
+			// 配错单位（如 "30" 缺 s）静默跳过会用 database/sql 默认无限寿命，
+			// 连接老化失效，必须显式告警（Round4 J5-5）。
+			logger.Warn("invalid data.database.pool.conn_max_idle_time; ignoring (default unlimited)",
+				slog.String("configured", pool.GetConnMaxIdleTime()))
 		}
 		if d, err := time.ParseDuration(pool.GetConnMaxLifetime()); err == nil {
 			sqldb.SetConnMaxLifetime(d)
+		} else if pool.GetConnMaxLifetime() != "" {
+			logger.Warn("invalid data.database.pool.conn_max_lifetime; ignoring (default unlimited)",
+				slog.String("configured", pool.GetConnMaxLifetime()))
 		}
 	} else {
 		maxOpen := 4 * runtime.GOMAXPROCS(0)
@@ -120,12 +133,25 @@ func newDatabase(cfg *config.Database, logger *slog.Logger) (*Database, func(), 
 	return &Database{db}, func() { _ = db.Close() }, nil
 }
 
-func newRedis(cfg *config.Redis) *redis.Client {
+// newRedis 构造 Redis 客户端（Round4 J5-5）：
+//   - addr 必填校验，缺失报错带 env 名（仿 data.database.source 范本），
+//     不再静默回退 localhost:6379 掩盖配置错误；
+//   - DialTimeout 显式 5s：go-redis 默认 5s 依赖库默认值，这里显式化并
+//     与 DB 建连超时对齐；Ping 已有独立 5s 上限兜底。
+func newRedis(cfg *config.Redis) (*redis.Client, error) {
+	addr := strings.TrimSpace(cfg.GetAddr())
+	if addr == "" {
+		return nil, fmt.Errorf("redis addr is empty: set data.redis.addr or TORCHWOOD_DATA_REDIS_ADDR")
+	}
 	return redis.NewClient(&redis.Options{
-		Addr:     cfg.GetAddr(),
-		Password: cfg.GetPassword(),
-		DB:       int(cfg.GetDb()),
-	})
+		Addr:        addr,
+		Password:    cfg.GetPassword(),
+		DB:          int(cfg.GetDb()),
+		DialTimeout: 5 * time.Second,
+		// PoolSize 保持 go-redis 默认（10*GOMAXPROCS）：限流/会话/频控等
+		// 热路径均为短命令，默认池足够且避免与 DB 池参数耦合。显式注释
+		// 防止后人误以为未配置是疏漏。
+	}), nil
 }
 
 // normalizePoolSizes 将 pool 配置的 ≤0 值落为安全默认并 Warn：

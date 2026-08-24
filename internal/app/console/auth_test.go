@@ -45,7 +45,7 @@ func testConfig() *config.AppConfig {
 	return &config.AppConfig{
 		Security: &config.Security{
 			Jwt: &config.Security_Jwt{
-				Secret:     "console-auth-test-secret",
+				Secret:     "console-auth-test-secret", // #nosec G101 -- 测试固定密钥
 				RefreshTtl: "168h",
 			},
 		},

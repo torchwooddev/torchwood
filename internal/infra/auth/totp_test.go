@@ -19,7 +19,7 @@ import (
 func totpTestConfig() *config.AppConfig {
 	return &config.AppConfig{
 		Security: &config.Security{
-			Jwt: &config.Security_Jwt{Secret: "test-mfa-jwt-secret"},
+			Jwt: &config.Security_Jwt{Secret: "test-mfa-jwt-secret"}, // #nosec G101 -- 测试固定值
 		},
 	}
 }

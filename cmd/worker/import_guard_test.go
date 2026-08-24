@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"go/parser"
 	"go/token"
 	"os"
@@ -72,7 +73,7 @@ func TestWorkerSourceImports(t *testing.T) {
 
 // TestWorkerDepsGraph 兜底：go list -deps 传递依赖也不得包含禁止包。
 func TestWorkerDepsGraph(t *testing.T) {
-	cmd := exec.Command("go", "list", "-deps", ".")
+	cmd := exec.CommandContext(context.Background(), "go", "list", "-deps", ".")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

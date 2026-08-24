@@ -148,7 +148,7 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 				XAccess string                          `json:"x-torchwood-access"`
 				Paths   map[string]map[string]swaggerOp `json:"paths"`
 			}
-			raw, err := os.ReadFile(filepath.Join(dir, name))
+			raw, err := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- 路径来自仓库内测试数据
 			require.NoError(t, err)
 			require.NoError(t, json.Unmarshal(raw, &doc))
 			checkedFiles++

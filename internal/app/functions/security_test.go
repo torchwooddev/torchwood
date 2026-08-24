@@ -101,7 +101,7 @@ func TestWriteZipRemoveZip_RoundTripInRoot(t *testing.T) {
 	path := zipPath("p1", "fn_1", "d1")
 	defer func() { _ = os.RemoveAll(filepath.Join(zipRoot(), "p1")) }()
 	require.NoError(t, writeZip(path, []byte("PK\x03\x04payload")))
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) // #nosec G304 -- 路径来自仓库内测试数据
 	require.NoError(t, err)
 	require.Equal(t, "PK\x03\x04payload", string(content))
 	require.NoError(t, removeZip("p1", "fn_1", "d1"))

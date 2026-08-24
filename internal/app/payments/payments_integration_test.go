@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	testWebhookSecret = "whsec_integration"
+	testWebhookSecret = "whsec_integration" // #nosec G101 -- 测试固定值
 	testSecretKey     = "sk_test_integration"
 )
 

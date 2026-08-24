@@ -258,7 +258,7 @@ func setupClientGRPC(t *testing.T) (context.Context, *AccountService, *fakeDocDB
 	ctx := context.Background()
 	cfg := &config.AppConfig{
 		Security: &config.Security{
-			Jwt: &config.Security_Jwt{Secret: "clientgrpc-test-secret"},
+			Jwt: &config.Security_Jwt{Secret: "clientgrpc-test-secret"}, // #nosec G101 -- 测试固定值
 		},
 	}
 

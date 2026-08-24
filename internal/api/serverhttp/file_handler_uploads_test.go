@@ -21,7 +21,7 @@ func (f *storageHTTPFixture) doJSON(method, path string, body any, headers map[s
 	if body != nil {
 		require.NoError(f.t, json.NewEncoder(&buf).Encode(body))
 	}
-	req, err := http.NewRequest(method, f.server.URL+path, &buf)
+	req, err := http.NewRequestWithContext(context.Background(), method, f.server.URL+path, &buf)
 	require.NoError(f.t, err)
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range headers {
@@ -49,7 +49,7 @@ func (f *storageHTTPFixture) uploadChunkViaHTTP(bucketID, uploadID string, partN
 	require.NoError(f.t, err)
 	require.NoError(f.t, writer.Close())
 
-	req, err := http.NewRequest(http.MethodPost,
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
 		fmt.Sprintf("%s/v1/storage/buckets/%s/uploads/%s/chunks/%d", f.server.URL, bucketID, uploadID, partNumber), body)
 	require.NoError(f.t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())

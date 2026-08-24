@@ -56,6 +56,10 @@ type RedisSemaphore struct {
 	ttl       time.Duration
 }
 
+// releaseEvalTimeout 是释放（Lua compare-and-del）的独立超时（Round4 J5-5）：
+// release 在 defer 路径执行，无超时会因 Redis 抖动阻塞调用方收尾。
+const releaseEvalTimeout = 2 * time.Second
+
 func NewRedis(client *redis.Client, keyPrefix string, max int, ttl time.Duration) *RedisSemaphore {
 	if client == nil {
 		return nil
@@ -84,8 +88,11 @@ func (s *RedisSemaphore) TryAcquire(ctx context.Context) (bool, func(), error) {
 		if ok {
 			release := func() {
 				// Lua compare-and-del：仅当值仍为本 token 时删除，防止误删过期后被他人占用的槽位。
-				// 使用 Background 避免因原 ctx 已取消而无法释放。
-				_, _ = s.client.Eval(context.Background(), `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end`, []string{key}, token).Result()
+				// 使用独立 Background ctx + 2s 超时：避免原 ctx 已取消导致无法释放，
+				// 也避免 Redis 抖动时 defer 路径无限期阻塞（失败仅浪费 TTL 兜底）。
+				ctx, cancel := context.WithTimeout(context.Background(), releaseEvalTimeout)
+				defer cancel()
+				_, _ = s.client.Eval(ctx, `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end`, []string{key}, token).Result()
 			}
 			return true, release, nil
 		}

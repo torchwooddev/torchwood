@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/torchwooddev/torchwood/internal/testutil"
 )
 
 func TestDetails_AllOK(t *testing.T) {
@@ -157,7 +158,11 @@ func TestDetails_CacheTTLExpiryRefreshes(t *testing.T) {
 		},
 	}
 	require.Len(t, c.Details(context.Background()), 1)
-	time.Sleep(60 * time.Millisecond)
+	// J6-4：轮询替代固定 sleep——TTL(30ms) 过期后的首次调用必然触发重新探测。
+	testutil.Eventually(t, 5*time.Second, func() bool {
+		_ = c.Details(context.Background())
+		return calls.Load() >= 2
+	})
 	require.Len(t, c.Details(context.Background()), 1)
 	require.Equal(t, int64(2), calls.Load(), "TTL 过期后应重新探测")
 }

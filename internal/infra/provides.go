@@ -5,7 +5,6 @@ import (
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
 	domaingroups "github.com/torchwooddev/torchwood/internal/domain/groups"
 	domainidgen "github.com/torchwooddev/torchwood/internal/domain/idgen"
-	domainprojects "github.com/torchwooddev/torchwood/internal/domain/projects"
 	domainstorage "github.com/torchwooddev/torchwood/internal/domain/storage"
 	domainusers "github.com/torchwooddev/torchwood/internal/domain/users"
 	"github.com/torchwooddev/torchwood/internal/infra/auth"
@@ -20,7 +19,6 @@ import (
 	infraidgen "github.com/torchwooddev/torchwood/internal/infra/idgen"
 	inframessaging "github.com/torchwooddev/torchwood/internal/infra/messaging"
 	infrapayments "github.com/torchwooddev/torchwood/internal/infra/payments"
-	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
 	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
 	"github.com/torchwooddev/torchwood/internal/infra/server"
@@ -34,8 +32,9 @@ var ProviderSet = wire.NewSet(
 	clients.NewRedis,
 	wire.Bind(new(uow.Runner), new(*clients.Database)),
 	wire.Bind(new(uow.Isolator), new(*clients.Database)),
-	projectschema.NewSchemaManager,
-	wire.Bind(new(domainprojects.SchemaManager), new(*projectschema.SchemaManager)),
+	// projectschema.SchemaManager 的提供与 domain 绑定已迁至 server 组合根
+	// （cmd/server/provides.go NewSchemaManager，Round4 J5-3：桥接 documentdb
+	// internalIDCache 失效回调）。
 	health.NewCheckers,
 
 	auth.NewValidatorWithOneTimeTokens,

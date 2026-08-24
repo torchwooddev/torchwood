@@ -49,6 +49,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(domainpayments.SubscriptionCallbackHandler), new(*subscriptions.Subscriptions)),
 	appbilling.NewBilling,
 	appstorage.NewStorage,
+	NewStorageOptions,
 
 	NewLogger,
 	NewComponents,
@@ -156,3 +157,6 @@ func projectSchemaEnsureHook(repo projects.Repository, db *clients.Database, log
 func NewOnStops() boot.OnStopHooks {
 	return boot.OnStopHooks{}
 }
+
+// NewStorageOptions 返回生产默认的空选项集（WithClock 等仅供测试注入）。
+func NewStorageOptions() []appstorage.StorageOption { return nil }

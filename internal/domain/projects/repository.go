@@ -26,6 +26,11 @@ type SchemaManager interface {
 	// Invalidate 清除本进程的 schema 就绪缓存（DropCascade 后自动调用；
 	// 迁移器之外带外改动 schema 状态时同样需要）。
 	Invalidate(projectID string)
+	// ReconcileOrphanSchemas 对账物理 schema 与 catalog 清单（Round4 J5-5）：
+	// 删除属于该项目命名空间（tw_<projectID>_<db> 两段式、db 合法且不在
+	// document_databases 目录中）的孤儿 schema（DROP CASCADE）。须在项目
+	// 删除事务之外执行；返回清理的 schema 数。失败仅告警，不阻断删除。
+	ReconcileOrphanSchemas(ctx context.Context, projectID string) (int, error)
 }
 
 type APIKeyRepository interface {

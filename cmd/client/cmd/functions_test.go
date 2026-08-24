@@ -156,7 +156,7 @@ func TestBuildUpdateFunctionReq(t *testing.T) {
 func TestBuildCreateDeploymentReq(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "code.zip")
-	if err := os.WriteFile(good, []byte("PK\x03\x04fakezip"), 0o644); err != nil {
+	if err := os.WriteFile(good, []byte("PK\x03\x04fakezip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	tests := []struct {

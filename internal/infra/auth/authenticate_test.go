@@ -72,7 +72,7 @@ func TestAuthnRequestFromHTTP_MatchesMetadataShape(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/x", nil)
 	r.Header.Set("Authorization", "Bearer tok")
 	r.Header.Set("X-Api-Key", "k")
-	r.AddCookie(&http.Cookie{Name: shared.ConsoleSessionCookieName, Value: "jwt"})
+	r.AddCookie(&http.Cookie{Name: shared.ConsoleSessionCookieName, Value: "jwt"}) // #nosec G124 -- 客户端测试请求无需安全属性
 	httpReq := auth.AuthnRequestFromHTTP(r)
 
 	md := metadata.Pairs(

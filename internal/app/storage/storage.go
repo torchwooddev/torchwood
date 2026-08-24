@@ -31,6 +31,29 @@ type Storage struct {
 	uploads     storage.UploadSessionStore
 	buckets     storage.BucketRepository
 	files       storage.FileRepository
+	clock       Clock
+}
+
+// Clock 提供当前时间；生产默认系统时钟，测试注入假时钟拨快以验证过期路径
+// （J6-4：替代真实 sleep 1.1s 的 token 过期测试）。
+type Clock interface {
+	Now() time.Time
+}
+
+// WithClock 返回注入自定义时钟的 StorageOption（测试专用）。
+func WithClock(c Clock) StorageOption {
+	return func(s *Storage) { s.clock = c }
+}
+
+// StorageOption 定制 Storage 可选依赖。
+type StorageOption func(*Storage)
+
+// now 返回当前时间；clock 未注入（零值/旧构造路径）时回退系统时钟。
+func (s *Storage) now() time.Time {
+	if s.clock == nil {
+		return time.Now()
+	}
+	return s.clock.Now()
 }
 
 func NewStorage(
@@ -40,8 +63,13 @@ func NewStorage(
 	uploads storage.UploadSessionStore,
 	buckets storage.BucketRepository,
 	files storage.FileRepository,
+	opts ...StorageOption,
 ) *Storage {
-	return &Storage{cfg: cfg, projectRepo: projectRepo, store: store, uploads: uploads, buckets: buckets, files: files}
+	s := &Storage{cfg: cfg, projectRepo: projectRepo, store: store, uploads: uploads, buckets: buckets, files: files}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 type CreateBucketCommand struct {
@@ -493,7 +521,7 @@ func (s *Storage) CreateFileToken(ctx context.Context, projectID, bucketID, file
 	if master == "" {
 		return nil, status.Error(codes.Internal, "file token secret is not configured")
 	}
-	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
+	expiresAt := s.now().Add(time.Duration(expiresIn) * time.Second)
 	token := signFileToken(fileTokenKey(master), project.ID, bucketID, fileID, expiresAt.Unix())
 	return &FileToken{Token: token, ExpiresAt: expiresAt}, nil
 }
@@ -514,7 +542,7 @@ func (s *Storage) ParseFileToken(token string) (projectID, bucketID, fileID stri
 	if parseErr != nil {
 		return "", "", "", status.Error(codes.Unauthenticated, "invalid file token")
 	}
-	if time.Now().Unix() >= expiresAt {
+	if s.now().Unix() >= expiresAt {
 		return "", "", "", status.Error(codes.Unauthenticated, "file token expired")
 	}
 	pid, bid, fid := parts[1], parts[2], parts[3]

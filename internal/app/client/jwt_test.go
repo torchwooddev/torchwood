@@ -22,7 +22,7 @@ import (
 func jwtTestConfig() *config.AppConfig {
 	return &config.AppConfig{
 		Security: &config.Security{
-			Jwt: &config.Security_Jwt{Secret: "jwt-app-test-secret"},
+			Jwt: &config.Security_Jwt{Secret: "jwt-app-test-secret"}, // #nosec G101 -- 测试固定值
 		},
 	}
 }

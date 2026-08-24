@@ -7,7 +7,7 @@ func TestReplaceDatabaseName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replaceDatabaseName: %v", err)
 	}
-	want := "postgres://torchwood:torchwood@127.0.0.1:5433/TORCHWOOD_test_1_1?sslmode=disable"
+	want := "postgres://torchwood:torchwood@127.0.0.1:5433/TORCHWOOD_test_1_1?sslmode=disable" // #nosec G101 -- 测试断言字符串
 	if got != want {
 		t.Fatalf("replaceDatabaseName() = %q, want %q", got, want)
 	}

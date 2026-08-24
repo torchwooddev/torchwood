@@ -46,6 +46,10 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	if err != nil {
 		return err
 	}
+	// R4-J5-3：_tenant 列默认值取实时 internal_id，防陈旧缓存烤进新表。
+	if internalID, err = p.resolveInternalIDFresh(ctx, projectID); err != nil {
+		return err
+	}
 
 	// DDL 与 document_* 元数据包进同一事务（PG 支持事务内 DDL），
 	// 任一步失败整体回滚，避免"物理表建成而元数据缺失"。

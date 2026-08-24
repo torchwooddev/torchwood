@@ -114,10 +114,13 @@ func TestBudgetWriter_EnforcesActualByteBudget(t *testing.T) {
 	require.Equal(t, int64(3), bw.written, "计数跟随底层实际写入")
 }
 
-// le16/le32 小端序列化（手工构造 zip 用）。
-func le16(v uint16) []byte { return []byte{byte(v), byte(v >> 8)} }
+// le16/le32 小端序列化（手工构造 zip 用）；掩码截断为有意为之。
+func le16(v uint16) []byte {
+	return []byte{byte(v & 0xFF), byte((v >> 8) & 0xFF)}
+}
+
 func le32(v uint32) []byte {
-	return []byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)}
+	return []byte{byte(v & 0xFF), byte((v >> 8) & 0xFF), byte((v >> 16) & 0xFF), byte((v >> 24) & 0xFF)}
 }
 
 // craftLyingZip 手工构造"声明 200 字节、实际数据区仅 10 字节"的伪造 zip
@@ -163,13 +166,13 @@ func craftLyingZip() []byte {
 	// end of central directory（22）。
 	cdSize := buf.Len() - cdOffset
 	buf.Write(le32(0x06054b50))
-	buf.Write(le16(0)) // disk number
-	buf.Write(le16(0)) // cd start disk
-	buf.Write(le16(1)) // entries on disk
-	buf.Write(le16(1)) // total entries
-	buf.Write(le32(uint32(cdSize)))
-	buf.Write(le32(uint32(cdOffset)))
-	buf.Write(le16(0)) // comment len
+	buf.Write(le16(0))                        // disk number
+	buf.Write(le16(0))                        // cd start disk
+	buf.Write(le16(1))                        // entries on disk
+	buf.Write(le16(1))                        // total entries
+	buf.Write(le32(uint32(uint64(cdSize))))   // #nosec G115 -- 测试构造值远小于 2^32
+	buf.Write(le32(uint32(uint64(cdOffset)))) // #nosec G115 -- 测试构造值远小于 2^32
+	buf.Write(le16(0))                        // comment len
 	return buf.Bytes()
 }
 

@@ -2,7 +2,9 @@ package interceptor
 
 import (
 	"context"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -24,6 +26,20 @@ const (
 	defaultAPIKeyRateLimit = 6000 // per-API-key：每分钟数千
 )
 
+// 熔断降级参数（Round4 J5-1，产品决策 E-1：熔断短窗放行 + 观测分离）。
+// 仅作用于通用 API 限流面；登录/MFA 等局部频控不经过本拦截器，
+// 维持 fail-closed（部署文档声明 Redis 为登录面强依赖、需 HA）。
+const (
+	// rateLimitBreakerFailThreshold 是触发熔断的连续基础设施错误次数。
+	rateLimitBreakerFailThreshold = 5
+	// rateLimitBreakerFailWindow 是失败计数的滑动窗口：仅当阈值次错误
+	// 全部落在该窗口内才熔断（零星抖动不熔断）。
+	rateLimitBreakerFailWindow = 10 * time.Second
+	// rateLimitBreakerOpenDuration 是熔断放行的短窗时长；窗口结束后进入
+	// 半开态，下一次真实探测成功即恢复 closed。
+	rateLimitBreakerOpenDuration = 30 * time.Second
+)
+
 // rateLimitExemptPrefixes 是限流豁免的 gRPC 框架内置服务（健康检查与
 // reflection），避免探活/服务发现被业务限流打挂；与 server 侧
 // authzExemptServicePrefixes 维持同一白名单。
@@ -43,6 +59,13 @@ type RateLimitInterceptor struct {
 	ip      rateLimitDimension
 	user    rateLimitDimension
 	apiKey  rateLimitDimension
+
+	// 熔断器状态（Round4 J5-1）。brMu 保护下列字段；进程级单实例
+	// （Redis 故障是全局的，不分维度熔断）。
+	brMu        sync.Mutex
+	brFails     int       // 当前滑动窗口内的连续基础设施错误次数
+	brFirstFail time.Time // 窗口内首次错误时间（用于滑动窗口判定）
+	brOpenUntil time.Time // 非零且在未来 = 熔断放行中；过期后进入半开探测
 }
 
 // rateLimitDimension 是单一维度的限流参数：key 前缀 + 窗口阈值。
@@ -109,13 +132,42 @@ func (r *RateLimitInterceptor) UnaryRateLimitMiddleware(ctx context.Context, req
 		return handler(ctx, req)
 	}
 	// 超限返回 ResourceExhausted（grpc-gateway 映射 HTTP 429），Redis 故障
-	// 由端口实现返回 Internal（fail-closed），均原样透传。ResourceExhausted
-	// 统一携带 google.rpc.RetryInfo detail：端口实现已附精确剩余窗口时尊重
-	// 原值，否则以本维度整窗口作为保守估计（Round4 J3-6）。
-	if err := r.limiter.Allow(ctx, key, dim.limit, dim.window); err != nil {
-		return nil, withRetryInfoFallback(err, dim.window)
+	// 由端口实现返回 Internal。ResourceExhausted 统一携带
+	// google.rpc.RetryInfo detail：端口实现已附精确剩余窗口时尊重原值，
+	// 否则以本维度整窗口作为保守估计（Round4 J3-6）。
+	//
+	// 熔断降级（Round4 J5-1）：limiter 基础设施错误先判熔断——熔断放行中
+	// 直接跳过 Redis 往返放行请求（fail-open），否则维持 fail-closed 透传
+	// Internal；半开探测成功后回到正常判定。
+	if r.breakerPassing() {
+		return handler(ctx, req)
 	}
+	if err := r.limiter.Allow(ctx, key, dim.limit, dim.window); err != nil {
+		return nil, r.onLimiterResult(ctx, err, dim.window)
+	}
+	r.onLimiterSuccess()
 	return handler(ctx, req)
+}
+
+// onLimiterResult 区分正常拒绝与基础设施错误并维护熔断器：
+//   - ResourceExhausted（窗口超限）：计 rejected 指标、透传，不影响熔断器
+//     （能给出精确计数说明 Redis 健康）；
+//   - 其他错误（Redis 故障等）：计 infra_error 指标并累计失败；未达熔断
+//     条件时 fail-closed 透传原错误。
+func (r *RateLimitInterceptor) onLimiterResult(ctx context.Context, err error, window time.Duration) error {
+	if status.Code(err) == codes.ResourceExhausted {
+		RateLimitRejectedTotal.Inc()
+		return withRetryInfoFallback(err, window)
+	}
+	RateLimitInfraErrorTotal.Inc()
+	if open := r.recordBreakerFailure(time.Now()); open {
+		slog.ErrorContext(ctx, "rate limiter circuit breaker opened; failing open for "+
+			"business RPCs (login/MFA throttles remain fail-closed)",
+			"threshold", rateLimitBreakerFailThreshold,
+			"window", rateLimitBreakerFailWindow.String(),
+			"open_for", rateLimitBreakerOpenDuration.String())
+	}
+	return err
 }
 
 // withRetryInfoFallback 为无 RetryInfo detail 的 ResourceExhausted 错误补上
@@ -140,6 +192,59 @@ func withRetryInfoFallback(err error, window time.Duration) error {
 		return err
 	}
 	return enriched.Err()
+}
+
+// breakerPassing 报告熔断器当前是否处于「放行」状态：open 短窗内返回 true
+// （调用方跳过 limiter 直接放行）；窗口过期后返回 false，让下一次请求以
+// 真实 limiter 调用充当半开探测（成功即恢复 closed，见 onLimiterSuccess）。
+func (r *RateLimitInterceptor) breakerPassing() bool {
+	r.brMu.Lock()
+	defer r.brMu.Unlock()
+	return r.brOpenUntil.After(time.Now())
+}
+
+// recordBreakerFailure 记录一次 limiter 基础设施错误。返回 true 表示本次
+// 调用开启了（或重新开启了）熔断放行短窗：
+//   - closed 态：滑动窗口（10s）内连续错误达到阈值才开启——零星抖动不熔断；
+//   - 半开态（短窗已过、探测请求真实调用了 limiter）：失败即重新开启，
+//     不必重新累计阈值（经典断路器语义，避免每次窗口过期都漏过 N 个失败）。
+//
+// 触发本次记录的请求本身始终由调用方 fail-closed 拒绝。
+func (r *RateLimitInterceptor) recordBreakerFailure(now time.Time) bool {
+	r.brMu.Lock()
+	defer r.brMu.Unlock()
+	halfOpen := !r.brOpenUntil.IsZero() && !r.brOpenUntil.After(now)
+	r.brFails++
+	if halfOpen {
+		r.brOpenUntil = now.Add(rateLimitBreakerOpenDuration)
+		r.brFails = 0
+		r.brFirstFail = time.Time{}
+		return true
+	}
+	if r.brFails == 1 {
+		r.brFirstFail = now
+	} else if now.Sub(r.brFirstFail) > rateLimitBreakerFailWindow {
+		// 错误未落在同一滑动窗口内：不足以判定「持续故障」，重新计数。
+		r.brFails = 1
+		r.brFirstFail = now
+	}
+	if r.brFails >= rateLimitBreakerFailThreshold {
+		r.brOpenUntil = now.Add(rateLimitBreakerOpenDuration)
+		r.brFails = 0
+		r.brFirstFail = time.Time{}
+		return true
+	}
+	return false
+}
+
+// onLimiterSuccess 在真实 limiter 调用成功后复位熔断器：清除失败计数并
+// 关闭放行窗（半开探测成功即宣告恢复 closed，回到正常限流判定）。
+func (r *RateLimitInterceptor) onLimiterSuccess() {
+	r.brMu.Lock()
+	defer r.brMu.Unlock()
+	r.brFails = 0
+	r.brFirstFail = time.Time{}
+	r.brOpenUntil = time.Time{}
 }
 
 // dimension 按优先级选择限流维度：API Key principal > user/session

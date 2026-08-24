@@ -35,14 +35,14 @@ func TestHTTPAuth_MultipleCredentialsRejected(t *testing.T) {
 			name: "x-api-key + session cookie",
 			apply: func(r *http.Request) {
 				r.Header.Set("X-Api-Key", "key")
-				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "token"})
+				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "token"}) // #nosec G124 -- 客户端测试请求无需安全属性
 			},
 		},
 		{
 			name: "authorization + session cookie",
 			apply: func(r *http.Request) {
 				r.Header.Set("Authorization", "Bearer token")
-				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "token"})
+				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "token"}) // #nosec G124 -- 客户端测试请求无需安全属性
 			},
 		},
 	}
@@ -85,8 +85,8 @@ func TestHTTPAuth_SameKeyMultipleValuesRejected(t *testing.T) {
 		{
 			name: "duplicate session cookies",
 			apply: func(r *http.Request) {
-				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "tok-1"})
-				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "tok-2"})
+				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "tok-1"}) // #nosec G124 -- 客户端测试请求无需安全属性
+				r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "tok-2"}) // #nosec G124 -- 客户端测试请求无需安全属性
 			},
 		},
 	}
@@ -125,7 +125,7 @@ func TestHTTPAuth_SingleCredentialAccepted(t *testing.T) {
 
 	// 非 session 前缀的普通 cookie 不算凭证，也不会误伤无凭证路径。
 	rNoCred := httptest.NewRequest(http.MethodGet, "/x", nil)
-	rNoCred.AddCookie(&http.Cookie{Name: "tracking", Value: "abc"})
+	rNoCred.AddCookie(&http.Cookie{Name: "tracking", Value: "abc"}) // #nosec G124 -- 客户端测试请求无需安全属性
 	_, err = a.authenticate(rNoCred)
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 }
@@ -153,7 +153,7 @@ func TestFunctionsHandler_MultipleCredentialsRejected(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/server/functions/fn-1/deployments/code", nil)
 	r.Header.Set("X-Api-Key", "key")
-	r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "token"})
+	r.AddCookie(&http.Cookie{Name: "TORCHWOOD_session_proj-1", Value: "token"}) // #nosec G124 -- 客户端测试请求无需安全属性
 	rec := httptest.NewRecorder()
 	h.upload(rec, r, map[string]string{"functionId": "fn-1"})
 	require.Equal(t, http.StatusUnauthorized, rec.Code)

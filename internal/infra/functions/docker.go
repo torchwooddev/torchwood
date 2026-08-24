@@ -26,6 +26,7 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/torchwooddev/torchwood/internal/domain/functions"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -95,14 +96,19 @@ type dockerExecutor struct {
 	// initErr 是 client 构造失败的错误（配置错误延迟到首次调用暴露）。
 	initErr error
 
-	// netMu/netReady 保护网络就绪状态：仅缓存成功，失败不缓存（可重试）。
+	// netMu/netReady 保护网络就绪状态：按网络名缓存成功，失败不缓存（可重试）。
 	netMu    sync.Mutex
-	netReady bool
+	netReady map[string]bool
 }
+
+// perProjectNetworkPrefix 是默认 per-project 函数执行网络的前缀
+// （Round4 J5-4）：完整网络名为 tw-func-<project.id>。project.id 已过
+// ident 白名单（^[a-z][a-z0-9]{0,27}$），可直接用作网络名后缀。
+const perProjectNetworkPrefix = "tw-func-"
 
 // NewDockerExecutor creates a Docker-based functions executor.
 func NewDockerExecutor(cfg *config.AppConfig) functions.Executor {
-	d := &dockerExecutor{cfg: cfg}
+	d := &dockerExecutor{cfg: cfg, netReady: map[string]bool{}}
 	host := cfg.GetFunctions().GetDocker().GetHost()
 	// WithAPIVersionNegotiation：与 daemon 协商 API 版本，避免客户端默认
 	// 版本高于 daemon（如 CI runner 上 daemon 1.48 vs 客户端 1.51）导致
@@ -133,34 +139,54 @@ func (d *dockerExecutor) imageName(functionID, deploymentID string) string {
 	return fmt.Sprintf("%s/func-%s-%s", registry, strings.ToLower(functionID), deploymentID)
 }
 
-// ensureNetwork 检查配置的 bridge 网络存在，不存在则创建（幂等；失败不缓存）。
-func (d *dockerExecutor) ensureNetwork(ctx context.Context) error {
+// resolveNetwork 解析执行容器所属网络（Round4 J5-4）：
+//   - 显式配置 functions.docker.network 时使用该全局网络（opt-in；跨项目
+//     函数容器同网互通，存在横向访问风险，见 config.yaml.template 警告）；
+//   - 未配置（默认）时使用 per-project 网络 tw-func-<project.id>，项目间
+//     容器互不可达，实现租户网络隔离。
+//
+// projectID 为空且未配置全局网络时返回错误（fail-closed，不回落共享网络）。
+func (d *dockerExecutor) resolveNetwork(projectID string) (string, error) {
+	if name := d.cfg.GetFunctions().GetDocker().GetNetwork(); name != "" {
+		return name, nil
+	}
+	if projectID == "" {
+		return "", status.Error(codes.InvalidArgument, "project id is required for function execution")
+	}
+	// 纵深防御：即便上游漏校验，也不让非法字符进入 docker 网络名。
+	if err := ident.ValidateSchemaResourceID(projectID); err != nil {
+		return "", status.Errorf(codes.InvalidArgument, "invalid project id for function execution: %v", err)
+	}
+	return perProjectNetworkPrefix + projectID, nil
+}
+
+// ensureNetwork 检查指定 bridge 网络存在，不存在则创建（幂等；失败不缓存）。
+// 网络创建后保留不删：函数容器按执行即起即毁，但并发/排队中的容器可能仍挂载
+// 在该网络上，删除会打断在途执行；docker 网络本身无状态、开销可忽略，
+// 生命周期随 daemon，无需清理任务。
+func (d *dockerExecutor) ensureNetwork(ctx context.Context, name string) error {
 	cli, err := d.client()
 	if err != nil {
 		return err
 	}
-	name := d.cfg.GetFunctions().GetDocker().GetNetwork()
-	if name == "" {
-		return nil
-	}
 	d.netMu.Lock()
 	defer d.netMu.Unlock()
-	if d.netReady {
+	if d.netReady[name] {
 		return nil
 	}
 	if _, err := cli.NetworkInspect(ctx, name, network.InspectOptions{}); err == nil {
-		d.netReady = true
+		d.netReady[name] = true
 		return nil
 	}
 	if _, createErr := cli.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge"}); createErr != nil {
 		// 创建失败但网络可能已被并发创建。
 		if _, inspectErr := cli.NetworkInspect(ctx, name, network.InspectOptions{}); inspectErr == nil {
-			d.netReady = true
+			d.netReady[name] = true
 			return nil
 		}
 		return fmt.Errorf("ensure network %q: %w", name, createErr)
 	}
-	d.netReady = true
+	d.netReady[name] = true
 	return nil
 }
 
@@ -222,7 +248,11 @@ func (d *dockerExecutor) Execute(ctx context.Context, exec functions.Execution) 
 	if err != nil {
 		return nil, err
 	}
-	if err := d.ensureNetwork(ctx); err != nil {
+	networkName, err := d.resolveNetwork(exec.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.ensureNetwork(ctx, networkName); err != nil {
 		return nil, err
 	}
 
@@ -241,10 +271,6 @@ func (d *dockerExecutor) Execute(ctx context.Context, exec functions.Execution) 
 	res := specResources[exec.Spec]
 	if res.cpu <= 0 {
 		res = specResources["shared-1x"]
-	}
-	networkName := d.cfg.GetFunctions().GetDocker().GetNetwork()
-	if networkName == "" {
-		networkName = "none"
 	}
 	stopTimeout := 5
 	env := []string{"TW_DATA=" + exec.Data}
