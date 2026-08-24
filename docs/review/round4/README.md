@@ -35,16 +35,17 @@
 |------|------|
 | [audit-report.md](audit-report.md) | 全部发现清单（P1/P2/P3 含位置、证据、建议、置信度与主代理复核标记） |
 | [fix-plan.md](fix-plan.md) | Round 4 完整修复方案（批次 J1–J7，实施的**唯一事实来源**） |
-| [fix-report.md](fix-report.md) | J1–J3 实施报告（已落地，2026-08-24） |
+| [fix-report.md](fix-report.md) | J1–J3 实施报告（2026-08-24） |
+| [fix-report-j4-j7.md](fix-report-j4-j7.md) | J4–J7 实施报告（2026-08-24） |
 
 批次速览：
 
 | 批次 | 名称 | 级别 | 状态 |
 |------|------|------|------|
-| J1 | 紧急修复（配置模板 / encryption_key / worker 关停 / roadmap） | P1 | ✅ 已落地 |
-| J2 | 契约与机器可读性（OpenAPI 三件套 / presence / signed token） | P1 | ✅ 已落地 |
-| J3 | SDK/CLI 交付链路（发布流水线 / 超时重试 / DX） | P1 | ✅ 已落地（发布流水线待真实触发验收） |
-| J4 | 架构收口（组装根 / 端口化 / 跨层解耦） | P1+P2 | ⏳ 待执行（串行） |
-| J5 | 可靠性与租户生命周期（限流降级 / 删除 purge / Functions 网络） | P1+P2 | ⏳ 待执行 |
-| J6 | 测试与门禁加固（coverage / down 迁移 / linter / race） | P1+P2 | ⏳ 待执行 |
-| J7 | P3 卫生批（低危打包，含 security 注解补齐） | P3 | ⏳ 最后 |
+| J1 | 紧急修复（配置模板 / encryption_key / worker 关停 / roadmap） | P1 | ✅ `f066f8d` |
+| J2 | 契约与机器可读性（OpenAPI 三件套 / presence / signed token） | P1 | ✅ `f066f8d` |
+| J3 | SDK/CLI 交付链路（发布流水线 / 超时重试 / DX） | P1 | ✅ `f066f8d` |
+| J4 | 架构收口（bootkit/端口化/runtime 迁出/scope 窄接口/SQLSTATE 下沉） | P1+P2 | ✅ `defbc6f` + `38d24c8` + `e4b6969` |
+| J5 | 可靠性与租户生命周期（限流熔断/删除 purge/缓存失效/网络隔离） | P1+P2 | ✅ `2051fe9` |
+| J6 | 测试与门禁加固（coverage/down 迁移/linter/flaky） | P1+P2 | ✅ `2051fe9` |
+| J7 | P3 卫生批（18 项全量） | P3 | ✅ `b38a5e4` + `a3458a0` |
