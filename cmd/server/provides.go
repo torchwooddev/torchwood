@@ -19,8 +19,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
-	"github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/pkg/bootkit"
+	"github.com/torchwooddev/torchwood/internal/runtime"
 	"github.com/torchwooddev/torchwood/internal/pkg/buildinfo"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
 )
@@ -33,6 +33,7 @@ var ProviderSet = wire.NewSet(
 	app.ProviderSet,
 	infra.ProviderSet,
 	domain.ProviderSet,
+	runtime.ProviderSet,
 
 	// 与 cmd/worker 共享的装配样板收敛在 bootkit（Round4 J4-1）。
 	bootkit.NewLogger,
@@ -90,9 +91,9 @@ func NewBuildInfo() buildinfo.BuildInfo {
 // 返回后由 main 统一执行。
 func NewComponents(
 	grpcServer *lynxgrpc.Server,
-	gatewayServer *server.GRPCGatewayServer,
+	gatewayServer *runtime.GRPCGatewayServer,
 	realtimeSubscriber *RealtimeSubscriberService,
-	metricsServer *server.MetricsServer,
+	metricsServer *runtime.MetricsServer,
 ) []lynx.Service {
 	return []lynx.Service{
 		grpcServer,

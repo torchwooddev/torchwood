@@ -37,9 +37,9 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/payments"
 	"github.com/torchwooddev/torchwood/internal/infra/queue"
 	"github.com/torchwooddev/torchwood/internal/infra/realtime"
-	server2 "github.com/torchwooddev/torchwood/internal/infra/server"
 	"github.com/torchwooddev/torchwood/internal/infra/storage"
 	"github.com/torchwooddev/torchwood/internal/pkg/bootkit"
+	"github.com/torchwooddev/torchwood/internal/runtime"
 )
 
 // Injectors from wire.go:
@@ -172,7 +172,7 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	outboxRepository := bunrepo.NewOutboxRepository(database)
 	outboxAdmin := events2.NewOutboxAdmin(outboxRepository, repository)
 	outboxService := servergrpc.NewOutboxService(outboxAdmin)
-	grpcServer, err := server2.NewGRPCServer(app, appConfig, validator, auditRepository, redisRateLimiter, checkers, accountService, databasesService, groupsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcGroupsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, billingService, redisCounter, authService, adminsService, outboxService)
+	grpcServer, err := runtime.NewGRPCServer(app, appConfig, validator, auditRepository, redisRateLimiter, checkers, accountService, databasesService, groupsService, paymentsService, assetsService, subscriptionsService, healthService, projectsService, storageService, usersService, apiKeysService, oAuthProvidersService, servergrpcGroupsService, servergrpcDatabasesService, functionsService, servergrpcPaymentsService, servergrpcAssetsService, servergrpcSubscriptionsService, billingService, redisCounter, authService, adminsService, outboxService)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -203,14 +203,14 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	grpcGatewayServer, err := server2.NewGRPCGatewayServer(app, appConfig, checkers, fileHandler, oAuthHandler, functionsHandler, paymentsHandler, handler)
+	grpcGatewayServer, err := runtime.NewGRPCGatewayServer(app, appConfig, checkers, fileHandler, oAuthHandler, functionsHandler, paymentsHandler, handler)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
 	subscriber := realtime.NewRealtimeSubscriber(redisClient, database, hub, logger)
 	realtimeSubscriberService := NewRealtimeSubscriberService(subscriber, logger)
-	metricsServer, err := server2.NewMetricsServer(appConfig)
+	metricsServer, err := runtime.NewMetricsServer(appConfig)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

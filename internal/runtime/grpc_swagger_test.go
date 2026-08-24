@@ -1,4 +1,4 @@
-package server
+package runtime
 
 import (
 	"encoding/json"
@@ -118,7 +118,7 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 		}
 	}
 
-	genprotoDir := filepath.Join("..", "..", "..", "genproto")
+	genprotoDir := filepath.Join("..", "..", "genproto")
 	seenMethods := make(map[string]int) // full method → 在 swagger 中出现的次数
 	defaultRefOK := 0                   // default 响应正确引用 ErrorResponse 的 operation 数
 	badDefaultRef := make([]string, 0, 4)

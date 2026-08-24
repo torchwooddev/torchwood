@@ -21,7 +21,6 @@ import (
 	infrapayments "github.com/torchwooddev/torchwood/internal/infra/payments"
 	infraqueue "github.com/torchwooddev/torchwood/internal/infra/queue"
 	infrarealtime "github.com/torchwooddev/torchwood/internal/infra/realtime"
-	"github.com/torchwooddev/torchwood/internal/infra/server"
 	infrastorage "github.com/torchwooddev/torchwood/internal/infra/storage"
 	"github.com/torchwooddev/torchwood/pkg/uow"
 )
@@ -83,8 +82,4 @@ var ProviderSet = wire.NewSet(
 	infrapayments.ProviderSet,
 	infrabilling.ProviderSet,
 	infraqueue.ProviderSet,
-
-	server.NewGRPCServer,
-	server.NewGRPCGatewayServer,
-	server.NewMetricsServer,
 )

@@ -1,4 +1,4 @@
-package server_test
+package runtime_test
 
 import (
 	"net/http"
@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/torchwooddev/torchwood/internal/infra/server"
+	"github.com/torchwooddev/torchwood/internal/runtime"
 )
 
 func TestConsoleHandler_SecurityHeaders(t *testing.T) {
 	t.Parallel()
-	h, err := server.NewConsoleHandler()
+	h, err := runtime.NewConsoleHandler()
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -29,7 +29,7 @@ func TestConsoleHandler_SecurityHeaders(t *testing.T) {
 
 func TestConsoleHandler_SPAFallbackAlsoHasHeaders(t *testing.T) {
 	t.Parallel()
-	h, err := server.NewConsoleHandler()
+	h, err := runtime.NewConsoleHandler()
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
