@@ -112,7 +112,7 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 	// create 事件：acl=写后（读回已含 _perms）；系统集合不发布。
 	if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, created.ID,
 		domainevents.EventDocumentsCreate, created.Version, created,
-		created.Permissions, len(created.Permissions) > 0); err != nil {
+		created.Permissions, len(created.Permissions) > 0, nil); err != nil {
 		return doc, err
 	}
 	return *created, nil
@@ -294,11 +294,11 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	if targetID == "" {
 		if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, upserted.ID,
 			domainevents.EventDocumentsCreate, upserted.Version, upserted,
-			upserted.Permissions, len(upserted.Permissions) > 0); err != nil {
+			upserted.Permissions, len(upserted.Permissions) > 0, nil); err != nil {
 			return doc, err
 		}
 	} else if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, upserted.ID,
-		domainevents.EventDocumentsUpdate, upserted.Version, upserted, prePerms, preHasPerms); err != nil {
+		domainevents.EventDocumentsUpdate, upserted.Version, upserted, prePerms, preHasPerms, nil); err != nil {
 		return doc, err
 	}
 	return *upserted, nil
@@ -489,7 +489,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	}
 	// update / increment 事件：acl=写前快照；系统集合不发布。
 	if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, updated.ID,
-		domainevents.EventDocumentsUpdate, updated.Version, updated, prePerms, preHasPerms); err != nil {
+		domainevents.EventDocumentsUpdate, updated.Version, updated, prePerms, preHasPerms, nil); err != nil {
 		return doc, err
 	}
 	return *updated, nil
@@ -562,7 +562,7 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 				return err
 			}
 			return p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, docID,
-				domainevents.EventDocumentsDelete, currentVersion, nil, prePerms, preHasPerms)
+				domainevents.EventDocumentsDelete, currentVersion, nil, prePerms, preHasPerms, nil)
 		}
 	}
 	if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
@@ -576,6 +576,8 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 // RunInTx 内）把事件写入 outbox，与文档行、_perms 同 COMMIT（v2 设计 §3.3）。
 // 未注入 EventPublisher（单测）或系统集合时为空操作；acl 快照取当时
 // collection ACL + 调用方提供的文档 _perms（create=写后 / update、delete=写前）。
+// coll 为调用方已获取的集合（R5-P2-8/P2-6：Bulk 批量路径取一次复用，消除
+// 每文档一次 GetCollection 的 N+1）；nil 时内部获取（单条路径行为不变）。
 func (p *postgresDocumentDB) publishDocumentEvent(
 	ctx context.Context,
 	projectID, databaseID, collectionID, docID, event string,
@@ -583,6 +585,7 @@ func (p *postgresDocumentDB) publishDocumentEvent(
 	data *databases.Document,
 	docPerms []databases.Permission,
 	docHasPerms bool,
+	coll *databases.Collection,
 ) error {
 	if p.pub == nil {
 		return nil
@@ -590,9 +593,12 @@ func (p *postgresDocumentDB) publishDocumentEvent(
 	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
 		return nil
 	}
-	coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
-	if err != nil {
-		return err
+	if coll == nil {
+		var err error
+		coll, err = p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			return err
+		}
 	}
 	if coll == nil || coll.IsSystem {
 		return nil
@@ -695,6 +701,12 @@ func scanDocumentJSON(scanner interface{ Scan(dest ...any) error }) (*databases.
 		}
 		return nil, err
 	}
+	return parseDocumentJSON(raw)
+}
+
+// parseDocumentJSON 解析 to_jsonb(d.*) 行载荷：GetDocument 点查与 Bulk
+// UPDATE ... RETURNING 写后快照共用同一扫描语义（R5-P2-6）。
+func parseDocumentJSON(raw []byte) (*databases.Document, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, err

@@ -76,10 +76,20 @@
 2. **console cookie Max-Age 断言未随 R4 J7-1 同步**（`internal/api/consolegrpc/auth_test.go:151`）：实现已收紧 1h，测试仍期望 86400。断言改 3600。
 3. **ListDocuments 续页 total 断言**（`internal/app/server/databases_integration_test.go:223`）：J3-2 语义变化（续页 total=0=unknown）的连带更新，按新语义改写并注明依据。
 
+## J7 Bulk Update/Delete 批量化（遗留专项，后续落地）
+
+原「记录不修」清单中改动面最大的一项，作为独立批次实施（语义清单先行、主代理逐项复核）：
+
+- **实现**（`internal/infra/documentdb/postgres_permissions.go`）：校验与权限判断全前置（批量预取 `_perms` + 内存 `AllowsDocumentAccess` 同函数，语义零漂移）→ 单条 `UPDATE ... WHERE _id IN (...) RETURNING to_jsonb(d.*)`（写入+写后快照一步）/ delete 走批量 `SELECT ... FOR UPDATE`（保行锁）+ IN DELETE；`_perms` 替换改 1 条 IN DELETE + 1 条多值 INSERT；outbox 事件保持 per-doc（实时订阅按 doc 过滤），`publishDocumentEvent` 增加 coll 参数消除每文档 GetCollection（顺带收敛 audit P2-8）。
+- **语句数**：N=100 实测 update 107 条 / delete 109 条（旧路径 ~8-14N），即 O(N)+常数；IN 列表按 900 分片、_perms INSERT 按 2000 行分片（PG 参数上限防御）。
+- **语义保持**：all-or-nothing（不存在/权限拒绝/任何错误整体回滚）、SkipVersion 仍 `_version+1`、仅权限变更刷审计列、`ErrNoFieldsToUpdate`、update 事件 acl=写前、delete 事件 version=写前、系统集合不发事件、事务边界不变——10 项清单逐项自查 + 测试锁定。
+- **可观察差异（有意）**：重复 docID 按唯一集合执行（旧路径重复执行 affected=2/version+2/2 事件 → 新 affected=1/+1/1 事件），`TestBulkDocuments_DuplicateIDsSingleEffect` 固化。
+- **测试**：新增 all-or-nothing 双向、事件 ACL/快照断言、语句数验证（AddQueryHook 断言 ≥N 且 <2N，锁定 per-doc 事件不被合并）；`go test ./internal/infra/documentdb/... -count=1` 与关联层回归全绿。
+
 ## 整体验证
 
 - `go build ./...` ✅ `go vet ./...` ✅ `gofmt -l` 干净 ✅
-- `go test -race ./... -count=1`（.env + PG/Redis/MinIO）全绿（66+ 包）。
+- `go test -race ./... -count=1`（.env + PG/Redis/MinIO）全绿（68 包）。
 - 新增迁移通过 `TestMigrations_UpDownUpCycle`（000023 up→down→up）与 projectschema 版本断言（9→10）。
 
 ## 未修（记录于 audit-report「记录不修」）

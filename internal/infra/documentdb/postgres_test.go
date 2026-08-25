@@ -17,6 +17,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
+	"github.com/torchwooddev/torchwood/internal/infra/events"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/query"
 )
@@ -1095,6 +1096,207 @@ func TestBulkUpdateDocuments_RollbackOnFailure(t *testing.T) {
 	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", doc1.ID, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Equal(t, "original", got.Data["title"])
+}
+
+// TestBulkDeleteDocuments_RollbackOnFailure (R5-P2-6)：BulkDelete 混入不存在
+// 文档 → ErrDocumentNotFound 整体回滚，存在文档保留（all-or-nothing 与
+// BulkUpdate 对称）。
+func TestBulkDeleteDocuments_RollbackOnFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	doc1, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+		Data: map[string]any{"title": "original"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	n, err := docDB.BulkDeleteDocuments(ctx, projectID, "app", "docs",
+		[]string{doc1.ID, "missing-id"}, databases.SystemPrincipal)
+	require.ErrorIs(t, err, databases.ErrDocumentNotFound)
+	require.Equal(t, int64(0), n)
+
+	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", doc1.ID, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.NotNil(t, got, "整体回滚：存在文档不得被删除")
+}
+
+// TestBulkDocuments_PermissionDeniedRollback (R5-P2-6)：批量化把权限校验前置
+// ——混入无 update/delete 权限的文档 → 整体 ErrPermissionDenied，任何文档
+// 不得被修改/删除（判定函数仍是 AllowsDocumentAccess，非 SQL 谓词）。
+func TestBulkDocuments_PermissionDeniedRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	// 集合无 update/delete 授权：文档级写权限完全由 _perms 决定（B1）。
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "users"},
+		{Type: "read", Role: "any"},
+	}, true))
+
+	// d1 持有 update/delete:user:u1（文档级），d2 仅 read（不可写）。
+	d1, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+		Data: map[string]any{"title": "one"},
+	}, []databases.Permission{
+		{Type: "read", Role: "user:u1"},
+		{Type: "update", Role: "user:u1"},
+		{Type: "delete", Role: "user:u1"},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	d2, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+		Data: map[string]any{"title": "two"},
+	}, []databases.Permission{{Type: "read", Role: "user:u1"}}, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	u1 := databases.Principal{Roles: []string{"users", "user:u1"}}
+	_, err = docDB.BulkUpdateDocuments(ctx, projectID, "app", "docs", []string{d1.ID, d2.ID},
+		map[string]any{"title": "changed"}, nil, u1)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	for id, want := range map[string]string{d1.ID: "one", d2.ID: "two"} {
+		got, err := docDB.GetDocument(ctx, projectID, "app", "docs", id, databases.SystemPrincipal)
+		require.NoError(t, err)
+		require.Equal(t, want, got.Data["title"], "%s 不得被修改（整体回滚）", id)
+	}
+
+	_, err = docDB.BulkDeleteDocuments(ctx, projectID, "app", "docs", []string{d1.ID, d2.ID}, u1)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+	for _, id := range []string{d1.ID, d2.ID} {
+		got, err := docDB.GetDocument(ctx, projectID, "app", "docs", id, databases.SystemPrincipal)
+		require.NoError(t, err)
+		require.NotNil(t, got, "整体回滚：文档不得被删除")
+	}
+}
+
+// TestBulkDocuments_DuplicateIDsSingleEffect (R5-P2-6)：批量化按唯一文档集合
+// 执行——重复 _id 只生效一次（affected=1、_version 恰好 +1），不再具有
+// 逐条循环的重复执行语义。
+func TestBulkDocuments_DuplicateIDsSingleEffect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	doc1, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+		Data: map[string]any{"title": "original"},
+	}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+
+	n, err := docDB.BulkUpdateDocuments(ctx, projectID, "app", "docs",
+		[]string{doc1.ID, doc1.ID},
+		map[string]any{"title": "changed"}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n, "重复 _id 按唯一文档计数")
+
+	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", doc1.ID, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, "changed", got.Data["title"])
+	require.Equal(t, int64(2), got.Version, "重复 _id 恰好一次 _version +1")
+}
+
+// bulkStatementHook 统计 bun 执行的全部语句条数（R5-P2-6 行为验证：批量化后
+// bulk 语句数为 O(N)——每文档 1 条 outbox + 常数条批量语句）。
+type bulkStatementHook struct {
+	count int
+}
+
+func (h *bulkStatementHook) BeforeQuery(ctx context.Context, _ *bun.QueryEvent) context.Context {
+	return ctx
+}
+
+func (h *bulkStatementHook) AfterQuery(_ context.Context, _ *bun.QueryEvent) {
+	h.count++
+}
+
+// TestBulkDocuments_StatementCount (R5-P2-6)：100 文档 BulkUpdate / BulkDelete
+// 的总语句数必须 < 2N——旧逐条路径每文档 ~8 条语句（权限点查、prePerms 点查、
+// UPDATE、_perms 清/写、尾随回读、事件内 GetCollection），~8N 长事务持锁；
+// 批量化后为 N 条 outbox + 常数条批量语句。下界 >= N 锁定 per-doc outbox
+// 不得被过度合并。
+func TestBulkDocuments_StatementCount(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, events.NewEventOutbox(db))
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "users"},
+		{Type: "read", Role: "any"},
+	}, true))
+
+	const n = 100
+	ids := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		created, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+			ID:   fmt.Sprintf("stmt-%03d", i),
+			Data: map[string]any{"title": "t"},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+		ids = append(ids, created.ID)
+	}
+
+	hook := &bulkStatementHook{}
+	db.AddQueryHook(hook)
+
+	affected, err := docDB.BulkUpdateDocuments(ctx, projectID, "app", "docs", ids,
+		map[string]any{"title": "bulk"}, nil, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.EqualValues(t, n, affected)
+	updateStmts := hook.count
+	t.Logf("bulk update %d docs -> %d statements (旧逐条路径 ~%d)", n, updateStmts, 8*n)
+	require.Less(t, updateStmts, 2*n, "100 文档 bulk update 语句数应 < 2N（R5-P2-6；旧逐条路径 ~8N）")
+	require.GreaterOrEqual(t, updateStmts, n, "每文档至少 1 条 outbox INSERT（per-doc 事件不得被合并）")
+
+	hook.count = 0
+	affected, err = docDB.BulkDeleteDocuments(ctx, projectID, "app", "docs", ids, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.EqualValues(t, n, affected)
+	t.Logf("bulk delete %d docs -> %d statements (旧逐条路径 ~%d)", n, hook.count, 8*n)
+	require.Less(t, hook.count, 2*n, "100 文档 bulk delete 语句数应 < 2N（R5-P2-6；旧逐条路径 ~8N）")
+	require.GreaterOrEqual(t, hook.count, n, "每文档至少 1 条 outbox INSERT（per-doc 事件不得被合并）")
 }
 
 // TestListDocuments_SystemPathRawPGError (A6/A7 → J4-6): SystemPrincipal（信任路径，跳过

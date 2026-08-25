@@ -270,6 +270,69 @@ func TestOutbox_BulkPublishesPerDocument(t *testing.T) {
 	}
 }
 
+// TestOutbox_BulkUpdatePermReplace_PreACL (R5-P2-6)：BulkUpdate 携带 perms
+// 替换时每文档一条 update 事件——version/data=写后（data.permissions=新
+// perms），acl=写前快照（owner ACE）；随后 BulkDelete 的 delete 事件
+// version/acl 均基于写前（替换后的 perms）、无 data。
+func TestOutbox_BulkUpdatePermReplace_PreACL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	docDB, db, projectID, cleanup := outboxTestProject(t, ctx)
+	defer cleanup()
+
+	b1 := outboxCreate(t, docDB, projectID, "b1")
+	b2 := outboxCreate(t, docDB, projectID, "b2")
+
+	newPerms := []databases.Permission{
+		{Type: "read", Role: "user:u2"},
+		{Type: "update", Role: "user:u2"},
+		{Type: "delete", Role: "user:u2"},
+	}
+	affected, err := docDB.BulkUpdateDocuments(ctx, projectID, "app", "docs",
+		[]string{b1.ID, b2.ID}, map[string]any{"title": "bulk2"}, newPerms, occPrincipal())
+	require.NoError(t, err)
+	require.Equal(t, int64(2), affected)
+
+	rows := outboxRows(t, db, ctx)
+	require.Len(t, rows, 4, "2×create + 2×update")
+	for _, row := range rows[2:] {
+		m := outboxPayload(t, row)
+		require.Equal(t, domainevents.EventDocumentsUpdate, m["event"])
+		outboxVersion(t, m, 2)
+		data, ok := m["data"].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "bulk2", data["data"].(map[string]any)["title"])
+		require.ElementsMatch(t, []string{"read:user:u2", "update:user:u2", "delete:user:u2"},
+			data["permissions"], "data.permissions=写后（新 perms）")
+		acl := m["acl"].(map[string]any)
+		require.Equal(t, true, acl["doc_has_perms"])
+		require.ElementsMatch(t, []string{"read:user:u1", "update:user:u1", "delete:user:u1"},
+			acl["document_permissions"], "acl=写前快照（owner ACE）")
+	}
+
+	// perms 已替换给 u2，u1 不再持有 delete → 以 SystemPrincipal 删除
+	// （旁路 ACL；事件照常发布，version/acl 取写前）。
+	affected, err = docDB.BulkDeleteDocuments(ctx, projectID, "app", "docs",
+		[]string{b1.ID, b2.ID}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), affected)
+
+	rows = outboxRows(t, db, ctx)
+	require.Len(t, rows, 6)
+	for _, row := range rows[4:] {
+		m := outboxPayload(t, row)
+		require.Equal(t, domainevents.EventDocumentsDelete, m["event"])
+		outboxVersion(t, m, 2)
+		_, hasData := m["data"]
+		require.False(t, hasData, "delete 事件无 data")
+		acl := m["acl"].(map[string]any)
+		require.ElementsMatch(t, []string{"read:user:u2", "update:user:u2", "delete:user:u2"},
+			acl["document_permissions"], "delete acl=写前（替换后的 perms）")
+	}
+}
+
 // TestOutbox_UpsertEvents：Upsert 插入支 → create（acl=写后）；
 // 更新支 → update（acl=写前）。
 func TestOutbox_UpsertEvents(t *testing.T) {

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 )
@@ -219,6 +221,194 @@ func (p *postgresDocumentDB) BulkUpdateDocuments(
 	return affected, nil
 }
 
+// bulkInChunk / bulkPermsRowChunk 是批量化语句的分片上限（PG 单语句 65535
+// 参数上限的防御；MaxBulkOperations=1000 之下 IN 列表通常单批完成，
+// _perms 多值 INSERT 以"行"为单位分片）。
+const (
+	bulkInChunk       = 900
+	bulkPermsRowChunk = 2000
+)
+
+// inPlaceholders 生成 n 个 ? 占位符（IN 列表用）。
+func inPlaceholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+
+// eachIDChunk 按上限分片遍历 docID 列表，fn 返回错误时短路。
+func eachIDChunk(ids []string, chunkSize int, fn func(chunk []string) error) error {
+	for start := 0; start < len(ids); start += chunkSize {
+		end := min(start+chunkSize, len(ids))
+		if err := fn(ids[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dedupeIDs 去重保序：批量化后同一 _id 在 IN 列表 / 多值 VALUES 中重复出现
+// 只会命中一行，bulk 语义按"唯一文档集合"执行（affected = 唯一文档数）。
+func dedupeIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+// getDocumentPermissionsBatch 单条 IN 查询批量取回多文档 _perms（R5-P2-6：
+// 取代逐文档 getDocumentPermissions 点查）；返回 docID -> perms 映射，
+// 未命中文档不在 map 中（docHasPerms=false，与单条路径空切片语义一致）。
+func (p *postgresDocumentDB) getDocumentPermissionsBatch(ctx context.Context, schema, collectionID string, tenant int64, docIDs []string) (map[string][]databases.Permission, error) {
+	byDoc := make(map[string][]databases.Permission, len(docIDs))
+	permsTable := permsTableName(schema)
+	err := eachIDChunk(docIDs, bulkInChunk, func(chunk []string) error {
+		args := make([]any, 0, len(chunk)+2)
+		args = append(args, tenant, collectionID)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		rows, err := p.conn(ctx).QueryContext(ctx,
+			fmt.Sprintf(`SELECT _document, _type, _permission FROM %s WHERE _tenant = ? AND _collection = ? AND _document IN (%s) ORDER BY _document`, permsTable, inPlaceholders(len(chunk))),
+			args...)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var docID, typ, role string
+			if err := rows.Scan(&docID, &typ, &role); err != nil {
+				return err
+			}
+			byDoc[docID] = append(byDoc[docID], databases.Permission{Type: typ, Role: role})
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return byDoc, nil
+}
+
+// clearPermissionsBatch 一条 IN DELETE 批量清除多文档 _perms（R5-P2-6）。
+func (p *postgresDocumentDB) clearPermissionsBatch(ctx context.Context, schema, collectionID string, documentIDs []string, tenant int64) error {
+	permsTable := permsTableName(schema)
+	return eachIDChunk(documentIDs, bulkInChunk, func(chunk []string) error {
+		args := make([]any, 0, len(chunk)+2)
+		args = append(args, tenant, collectionID)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		_, err := p.conn(ctx).ExecContext(ctx,
+			fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ? AND _document IN (%s)`, permsTable, inPlaceholders(len(chunk))),
+			args...)
+		return err
+	})
+}
+
+// setPermissionsBatch 一条多值 INSERT 批量写 N 文档 × M 权限（ON CONFLICT
+// DO NOTHING，与单文档 setPermissions 一致）；行数超上限按 bulkPermsRowChunk
+// 分片（每行 5 参数，分片后仍远小于逐文档 N 条语句）。
+func (p *postgresDocumentDB) setPermissionsBatch(ctx context.Context, schema, collectionID string, documentIDs []string, tenant int64, perms []databases.Permission) error {
+	if len(perms) == 0 || len(documentIDs) == 0 {
+		return nil
+	}
+	type permRow struct {
+		docID string
+		perm  databases.Permission
+	}
+	rows := make([]permRow, 0, len(documentIDs)*len(perms))
+	for _, docID := range documentIDs {
+		for _, perm := range perms {
+			rows = append(rows, permRow{docID: docID, perm: perm})
+		}
+	}
+	base := fmt.Sprintf(`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES `, permsTableName(schema))
+	for start := 0; start < len(rows); start += bulkPermsRowChunk {
+		end := min(start+bulkPermsRowChunk, len(rows))
+		chunk := rows[start:end]
+		vals := make([]string, len(chunk))
+		args := make([]any, 0, len(chunk)*5)
+		for i, r := range chunk {
+			vals[i] = "(?, ?, ?, ?, ?)"
+			args = append(args, tenant, collectionID, r.docID, r.perm.Type, r.perm.Role)
+		}
+		if _, err := p.conn(ctx).ExecContext(ctx, base+strings.Join(vals, ", ")+" ON CONFLICT DO NOTHING", args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bulkPrefetchContext 承载批量化路径的共享预取结果：集合（一次 GetCollection
+// 复用于逐文档权限判定与事件 ACL 快照）与 _perms 批量映射（既供权限判定也
+// 作事件写前 ACL 快照）。
+type bulkPrefetchContext struct {
+	coll       *databases.Collection
+	permsByDoc map[string][]databases.Permission
+}
+
+// prefetchBulkAccess 做批量化前置工作：集合可达性 + 逐文档 permType 权限
+// 全量校验（同一 databases.AllowsDocumentAccess 判定，非 SQL 谓词改写）+
+// 事件所需写前 ACL 批量预取。任一文档被拒 → ErrPermissionDenied（调用方
+// 整体回滚，all-or-nothing）。
+func (p *postgresDocumentDB) prefetchBulkAccess(
+	ctx context.Context,
+	projectID, databaseID, schema, collectionID string,
+	ids []string,
+	tenant int64,
+	permType string,
+	principal databases.Principal,
+	needEventACL bool,
+) (*bulkPrefetchContext, error) {
+	pc := &bulkPrefetchContext{permsByDoc: map[string][]databases.Permission{}}
+	if !principal.BypassesDocumentACL() {
+		coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			return nil, err
+		}
+		if err := p.ensureCollectionAccessible(coll, principal); err != nil {
+			return nil, err
+		}
+		pc.coll = coll
+		if pc.permsByDoc, err = p.getDocumentPermissionsBatch(ctx, schema, collectionID, tenant, ids); err != nil {
+			return nil, err
+		}
+		for _, docID := range ids {
+			docPerms := pc.permsByDoc[docID]
+			if !databases.AllowsDocumentAccess(coll, docPerms, len(docPerms) > 0, permType, principal.Roles) {
+				return nil, ErrPermissionDenied
+			}
+		}
+	} else if needEventACL {
+		var err error
+		if pc.permsByDoc, err = p.getDocumentPermissionsBatch(ctx, schema, collectionID, tenant, ids); err != nil {
+			return nil, err
+		}
+	}
+	return pc, nil
+}
+
+// collectionForEvents 取事件 ACL 快照所需的集合（Bulk 路径一次取回复用，
+// 权限校验已取时直接复用；principal 旁路 ACL 时此处才产生一次查询）。
+func (p *postgresDocumentDB) collectionForEvents(ctx context.Context, projectID, databaseID, collectionID string, pc *bulkPrefetchContext) (*databases.Collection, error) {
+	if pc.coll != nil {
+		return pc.coll, nil
+	}
+	return p.GetCollection(ctx, projectID, databaseID, collectionID)
+}
+
+// bulkUpdateDocuments 是 BulkUpdateDocuments 的事务体（R5-P2-6 批量化）：
+// 先全量校验（docID、写保护系统集合、逐文档 update 权限——批量预取 _perms
+// + 同一 AllowsDocumentAccess 判定），再单条 UPDATE ... IN ... RETURNING 取
+// 写后快照，随后 _perms 批量替换、每文档一条 outbox。任一文档不存在
+// （RETURNING 行数不足）或权限拒绝 → 整体回滚（all-or-nothing，与原
+// 逐条循环语义一致）。Bulk 是唯一 SkipVersion=true 的 Update 调用方（LWW）：
+// 无 ExpectedVersion 比对，但非系统集合仍 _version = _version + 1。
 func (p *postgresDocumentDB) bulkUpdateDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
@@ -227,20 +417,132 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 	perms []databases.Permission,
 	principal databases.Principal,
 ) (int64, error) {
-	var affected int64
 	for _, docID := range documentIDs {
-		update := databases.DocumentUpdate{
-			Document:    databases.Document{ID: docID, Data: data},
-			Permissions: perms,
-			// Bulk 是唯一允许跳过 OCC 的 Update 调用方（LWW 语义）；仍 _version + 1。
-			SkipVersion: true,
+		if err := validateDocID(docID); err != nil {
+			return 0, err
 		}
-		if _, err := p.UpdateDocument(ctx, projectID, databaseID, collectionID, update, principal); err != nil {
-			return affected, err
-		}
-		affected++
 	}
-	return affected, nil
+	ids := dedupeIDs(documentIDs)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	if err != nil {
+		return 0, err
+	}
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+		return 0, err
+	}
+	// 写保护系统集合防线与单条 updateDocument 一致：owner（user:<docID>）
+	// 例外，批量下要求每个文档都命中例外，否则整体拒绝。
+	if !principal.BypassesDocumentACL() && isWriteProtectedSystemCollection(databaseID, collectionID) {
+		for _, docID := range ids {
+			if !principal.HasRole(fmt.Sprintf("user:%s", docID)) {
+				return 0, ErrPermissionDenied
+			}
+		}
+	}
+	wantEvents := p.pub != nil && !isSystem
+	pc, err := p.prefetchBulkAccess(ctx, projectID, databaseID, schema, collectionID, ids, internalID, "update", principal, wantEvents)
+	if err != nil {
+		return 0, err
+	}
+	if wantEvents {
+		if pc.coll, err = p.collectionForEvents(ctx, projectID, databaseID, collectionID, pc); err != nil {
+			return 0, err
+		}
+	}
+	// 同一 data 组装 SET 子句（与 updateDocument 三分支一致：data 非空 →
+	// 字段 + 审计列；仅权限变更 → 只刷审计列；两者皆空 → ErrNoFieldsToUpdate）。
+	updatedBy := userIDFromPrincipal(principal)
+	setParts, args := buildUpdateParts(databases.Document{Data: data}, updatedBy)
+	if len(setParts) == 0 && len(perms) == 0 {
+		return 0, fmt.Errorf("%w", databases.ErrNoFieldsToUpdate)
+	}
+	if len(setParts) == 0 {
+		// R02-P1-4：仅权限变更时同样刷新审计列（_updated_at/_updated_by）。
+		setParts = append(setParts, "_updated_at = ?")
+		args = append(args, time.Now())
+		if updatedBy != "" {
+			setParts = append(setParts, quoteIdent("_updated_by")+" = ?")
+			args = append(args, updatedBy)
+		}
+	}
+	if !isSystem {
+		// 每次成功写 +1（含权限-only 更新；SkipVersion 同样 +1）。
+		setParts = append(setParts, "_version = _version + 1")
+	}
+	// 单条 UPDATE ... IN ... RETURNING to_jsonb(d.*)：写后快照一步取回（与
+	// GetDocument 的行→JSON 扫描同语义）；RETURNING 行数不足说明有文档不
+	// 存在（权限已全过）→ ErrDocumentNotFound 整体回滚。
+	tbl := tableName(schema, collectionID)
+	byID := make(map[string]*databases.Document, len(ids))
+	if err := eachIDChunk(ids, bulkInChunk, func(chunk []string) error {
+		sqlArgs := make([]any, 0, len(args)+len(chunk)+1)
+		sqlArgs = append(sqlArgs, args...)
+		for _, id := range chunk {
+			sqlArgs = append(sqlArgs, id)
+		}
+		sqlArgs = append(sqlArgs, internalID)
+		rows, err := p.conn(ctx).QueryContext(ctx, fmt.Sprintf(
+			`UPDATE %s AS d SET %s WHERE d._id IN (%s) AND d._tenant = ? RETURNING to_jsonb(d.*) AS doc`,
+			tbl, strings.Join(setParts, ", "), inPlaceholders(len(chunk))),
+			sqlArgs...)
+		if err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
+			}
+			return fmt.Errorf("bulk update documents: %w", err)
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var raw []byte
+			if err := rows.Scan(&raw); err != nil {
+				return err
+			}
+			doc, err := parseDocumentJSON(raw)
+			if err != nil {
+				return err
+			}
+			if doc != nil {
+				byID[doc.ID] = doc
+			}
+		}
+		return rows.Err()
+	}); err != nil {
+		return 0, err
+	}
+	for _, id := range ids {
+		if _, ok := byID[id]; !ok {
+			return 0, fmt.Errorf("%w", databases.ErrDocumentNotFound)
+		}
+	}
+	// _perms 替换：非空时先清后写（各一条批量语句，语义与单条路径一致）。
+	if len(perms) > 0 {
+		if err := p.clearPermissionsBatch(ctx, schema, collectionID, ids, internalID); err != nil {
+			return 0, err
+		}
+		if err := p.setPermissionsBatch(ctx, schema, collectionID, ids, internalID, perms); err != nil {
+			return 0, err
+		}
+	}
+	// 每文档一条 update 事件（实时订阅按 doc 过滤）：version/data=写后
+	// （RETURNING 快照），acl=写前（批量预取的 permsByDoc）。data.permissions
+	// 与单条路径尾随读回一致：替换时为新 perms，否则为写前 perms。
+	if wantEvents {
+		for _, docID := range ids {
+			updated := *byID[docID]
+			pre := pc.permsByDoc[docID]
+			if len(perms) > 0 {
+				updated.Permissions = perms
+			} else {
+				updated.Permissions = pre
+			}
+			if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, docID,
+				domainevents.EventDocumentsUpdate, updated.Version, &updated, pre, len(pre) > 0, pc.coll); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return int64(len(ids)), nil
 }
 
 func (p *postgresDocumentDB) BulkDeleteDocuments(
@@ -266,21 +568,126 @@ func (p *postgresDocumentDB) BulkDeleteDocuments(
 	return affected, nil
 }
 
+// bulkDeleteDocuments 是 BulkDeleteDocuments 的事务体（R5-P2-6 批量化）：
+// 先全量校验（docID、写保护系统集合、逐文档 delete 权限——批量预取 +
+// 同一 AllowsDocumentAccess 判定），非系统集合再 FOR UPDATE 批量锁行取写前
+// _version（行锁语义保留；缺失 → ErrDocumentNotFound 整体回滚），随后批量
+// 清 _perms、批量删行，最后每文档一条 delete outbox（version/acl 均写前）。
+// Bulk 是唯一 SkipVersion=true 的 Delete 调用方（LWW）；系统集合与单条
+// deleteDocument 一致：不做存在性检查、不发事件。
 func (p *postgresDocumentDB) bulkDeleteDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
 	documentIDs []string,
 	principal databases.Principal,
 ) (int64, error) {
-	var affected int64
 	for _, docID := range documentIDs {
-		// Bulk 是唯一允许跳过 OCC 的 Delete 调用方（LWW 语义）。
-		if err := p.DeleteDocument(ctx, projectID, databaseID, collectionID, docID, databases.DeleteOptions{SkipVersion: true}, principal); err != nil {
-			return affected, err
+		if err := validateDocID(docID); err != nil {
+			return 0, err
 		}
-		affected++
 	}
-	return affected, nil
+	ids := dedupeIDs(documentIDs)
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	if err != nil {
+		return 0, err
+	}
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+		return 0, err
+	}
+	// 写保护系统集合防线：delete 路径无 owner 例外（与 deleteDocument 一致）。
+	if !principal.BypassesDocumentACL() && isWriteProtectedSystemCollection(databaseID, collectionID) {
+		return 0, ErrPermissionDenied
+	}
+	wantEvents := p.pub != nil && !isSystem
+	pc, err := p.prefetchBulkAccess(ctx, projectID, databaseID, schema, collectionID, ids, internalID, "delete", principal, wantEvents)
+	if err != nil {
+		return 0, err
+	}
+	if wantEvents {
+		if pc.coll, err = p.collectionForEvents(ctx, projectID, databaseID, collectionID, pc); err != nil {
+			return 0, err
+		}
+	}
+	tbl := tableName(schema, collectionID)
+	// 写前 _version（FOR UPDATE 批量锁行，保留单条路径的行锁语义）：事件
+	// version 与 acl 都基于写前状态；有文档不存在 → 整体回滚。
+	versions := make(map[string]int64, len(ids))
+	if !isSystem {
+		if err := eachIDChunk(ids, bulkInChunk, func(chunk []string) error {
+			sqlArgs := make([]any, 0, len(chunk)+1)
+			for _, id := range chunk {
+				sqlArgs = append(sqlArgs, id)
+			}
+			sqlArgs = append(sqlArgs, internalID)
+			rows, err := p.conn(ctx).QueryContext(ctx, fmt.Sprintf(
+				`SELECT d._id, d._version FROM %s AS d WHERE d._id IN (%s) AND d._tenant = ? FOR UPDATE`,
+				tbl, inPlaceholders(len(chunk))),
+				sqlArgs...)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = rows.Close() }()
+			for rows.Next() {
+				var docID string
+				var version int64
+				if err := rows.Scan(&docID, &version); err != nil {
+					return err
+				}
+				versions[docID] = version
+			}
+			return rows.Err()
+		}); err != nil {
+			return 0, err
+		}
+		for _, id := range ids {
+			if _, ok := versions[id]; !ok {
+				return 0, fmt.Errorf("%w", databases.ErrDocumentNotFound)
+			}
+		}
+	}
+	// 批量清 _perms + 批量删行（与单条路径同事务序：先 _perms 后数据行）。
+	if err := p.clearPermissionsBatch(ctx, schema, collectionID, ids, internalID); err != nil {
+		return 0, err
+	}
+	var deleted int64
+	if err := eachIDChunk(ids, bulkInChunk, func(chunk []string) error {
+		sqlArgs := make([]any, 0, len(chunk)+1)
+		for _, id := range chunk {
+			sqlArgs = append(sqlArgs, id)
+		}
+		sqlArgs = append(sqlArgs, internalID)
+		res, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
+			`DELETE FROM %s WHERE _id IN (%s) AND _tenant = ?`, tbl, inPlaceholders(len(chunk))),
+			sqlArgs...)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		deleted += n
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	if !isSystem && deleted != int64(len(ids)) {
+		// FOR UPDATE 已锁全部行，行数缺失只可能来自违反不变量的并发路径；
+		// 防御性整体回滚（系统集合与单条路径一致：不做存在性检查）。
+		return 0, fmt.Errorf("%w", databases.ErrDocumentNotFound)
+	}
+	// 每文档一条 delete 事件：version=写前、acl=写前、data=nil。
+	if wantEvents {
+		for _, docID := range ids {
+			pre := pc.permsByDoc[docID]
+			if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, docID,
+				domainevents.EventDocumentsDelete, versions[docID], nil, pre, len(pre) > 0, pc.coll); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return int64(len(ids)), nil
 }
 
 func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
