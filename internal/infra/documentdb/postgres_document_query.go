@@ -152,18 +152,29 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 
 	// W-D：keyset 模式不产出精确 total——COUNT 与数据查询同价（含 EXISTS
-	// 权限子查询），对游标续页无意义且把翻页成本翻倍；offset 模式保持精确
-	// 计数（TotalCount 语义：keyset 分页下为 0=未知/不适用）。
+	// 权限子查询），对游标续页无意义且把翻页成本翻倍。
+	// R5-J3-2（D-P2-6）：offset 续页（offset>0 且无 cursor）同样跳过精确
+	// COUNT——每页全量 COUNT 与数据查询同价，深翻页成本随页数线性放大；
+	// proto 语义 total_count <= 0 = unknown。首页（offset==0）保持精确
+	// 计数（TotalCount 语义：total<=0 = 未知/不适用）。
 	var total int64
-	if cursor == "" {
+	if cursor == "" && offset == 0 {
 		countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
 		if err := p.conn(ctx).QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 			return nil, p.mapError(err)
 		}
 	}
 
+	// R5-J3-2：offset 续页跳过 COUNT 后无精确 total 可用，改取 limit+1 行
+	// 做满页探测（截断=has-more）；keyset（cursor）与首页保持 limit 行，
+	// 行为完全不变。
+	probing := cursor == "" && offset > 0
+	fetchLimit := limit
+	if probing {
+		fetchLimit = limit + 1
+	}
 	querySQL := fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE %s %s LIMIT ? OFFSET ?`, tbl, strings.Join(whereParts, " AND "), orderSQL)
-	args = append(args, limit, offset)
+	args = append(args, fetchLimit, offset)
 
 	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -181,6 +192,12 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 	if err := rows.Err(); err != nil {
 		return nil, p.mapError(err)
+	}
+	// R5-J3-2：满页探测多取的 1 行在此截断——先于 perms 回填，避免给被
+	// 丢弃的行发 IN 查询。截断即 has-more 信号。
+	truncated := probing && len(docs) > limit
+	if truncated {
+		docs = docs[:limit]
 	}
 	// B6：List 回传 permissions（与 Get 对齐）；W-D 改单条 IN 批量取回。
 	if err := p.attachDocumentPermissionsBatch(ctx, schema, collectionID, internalID, docs); err != nil {
@@ -213,6 +230,12 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 			} else {
 				next = encodeKeysetToken("after", docs[len(docs)-1].ID)
 			}
+		}
+	} else if probing {
+		// R5-J3-2：offset 续页无精确 total，has-more 由满页探测决定
+		//（fetch 到 limit+1 行并截断=还有下一页；不满页无 next）。
+		if truncated {
+			next = crud.EncodePageToken(offset + len(docs))
 		}
 	} else if len(docs) > 0 && int64(offset+len(docs)) < total {
 		next = crud.EncodePageToken(offset + len(docs))

@@ -436,6 +436,13 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 	if createdHere {
 		p.markVersionAlterTx(ctx, schema, collectionID)
 	}
+	// R5-J3-1（D-P1-3）：用户集合默认时间索引——新建即建，存量表经
+	// IF NOT EXISTS 幂等（系统表跳过，与 _version 列的处理一致）。
+	if !isSystem {
+		if err := p.ensureTenantCreatedIndex(ctx, schema, collectionID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -448,6 +455,9 @@ func (p *postgresDocumentDB) collectionTableExists(ctx context.Context, schema, 
 	return exists, err
 }
 
+// markVersionAlterTx 记录"本事务内新建 _version 列"的键。增长模型：每条
+// DDL 事务一条（txid|schema.collection），随 txid 单调累积、进程生命周期内
+// 不清理——量级为每集合创建/加列各一次（远小于业务写路径），可接受。
 func (p *postgresDocumentDB) markVersionAlterTx(ctx context.Context, schema, collectionID string) {
 	key := schema + "." + collectionID
 	alterKey := p.txid(ctx) + "|" + key
@@ -484,9 +494,17 @@ func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, c
 // 缓存：仅非事务内见到已提交的 int8 才写入 versionColumns。事务内 CREATE TABLE /
 // ALTER 新建的列只打 versionAlterTx，不写 versionColumns（回滚会撤销列）。
 // 文档写路径不得调用本函数：ADD COLUMN 是 AccessExclusiveLock。
+//
+// R5-J3-1：入口先幂等补建默认时间索引（ensureTenantCreatedIndex）——本函数
+// 是用户集合所有 DDL touch（CreateCollection/CreateAttribute/CreateIndex）
+// 的汇聚点，存量集合在下次任意 DDL touch 时自动获得该索引；放在 versionColumns
+// 缓存短路之前，保证每次 touch 都对账（IF NOT EXISTS 已存在时仅 catalog 查找）。
 func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
 	if isSystem {
 		return nil
+	}
+	if err := p.ensureTenantCreatedIndex(ctx, schema, collectionID); err != nil {
+		return err
 	}
 	key := schema + "." + collectionID
 	if _, ok := p.versionColumns.Load(key); ok {
@@ -623,6 +641,22 @@ func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, 
 	}
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
 	return err
+}
+
+// ensureTenantCreatedIndex 为用户集合幂等补建默认时间索引
+// `idx_<coll>_tenant_created ON <tbl>(_tenant, _created_at, _id)`（R5-J3-1，
+// D-P1-3）：列表默认排序 `ORDER BY _created_at DESC, _id DESC` 与 keyset 谓词
+// `(d._created_at, d._id) < (?, ?)` 均消费该序，缺索引时大集合每页全表扫描
+// +排序。PG b-tree 可反向扫描，服务 DESC 无需 DESC 关键字。索引命名与
+// createCollectionIndex 的 `idx_<coll>_<id>` 方案一致（63 字节截断风险同面，
+// 不单独处理）；IF NOT EXISTS 幂等，DDL 路径重复执行仅一次 catalog 查找。
+func (p *postgresDocumentDB) ensureTenantCreatedIndex(ctx context.Context, schema, collectionID string) error {
+	idxName := quoteIdent(fmt.Sprintf("idx_%s_tenant_created", collectionID))
+	sql := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (_tenant, _created_at, _id)`, idxName, tableName(schema, collectionID))
+	if _, err := p.conn(ctx).ExecContext(ctx, sql); err != nil {
+		return fmt.Errorf("create tenant_created index: %w", err)
+	}
+	return nil
 }
 
 // validateIndexDefinition 拒绝与查询编译器不相容的索引定义：fulltext 查询

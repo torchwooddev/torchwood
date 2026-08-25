@@ -220,7 +220,9 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 		PageToken: next,
 	}, principal)
 	require.NoError(t, err)
-	require.Equal(t, int64(total), total2)
+	// R5 J3-2：offset 续页不再执行精确 COUNT（total=0=unknown，proto 合法语义）；
+	// 精确 total 仅首页（offset==0）返回。
+	require.Equal(t, int64(0), total2)
 	require.Len(t, page2, 2)
 	require.Empty(t, next2)
 	ids2 := docIDsOf(page2)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/driver/pgdriver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -745,6 +746,8 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list2.Documents, 2)
+	// R5-J3-2：offset 续页跳过精确 COUNT，total=0（proto 语义 total<=0=unknown）。
+	require.Zero(t, list2.TotalCount)
 	require.Empty(t, list2.NextPageToken)
 
 	// page_size=-1 → 回退默认页大小 50，7 条全部返回。
@@ -796,6 +799,169 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// countQueryHook 统计经 bun 执行的 COUNT(*) 查询条数（R5-J3-2 行为验证：
+// offset 续页不得再产生 COUNT 查询）。
+type countQueryHook struct {
+	count int
+}
+
+func (h *countQueryHook) BeforeQuery(ctx context.Context, _ *bun.QueryEvent) context.Context {
+	return ctx
+}
+
+func (h *countQueryHook) AfterQuery(_ context.Context, event *bun.QueryEvent) {
+	if strings.Contains(event.Query, "COUNT(*)") {
+		h.count++
+	}
+}
+
+// TestListDocuments_OffsetContinuationSkipsCount (R5-J3-2，D-P2-6)：仅首页
+// （offset==0 且无 cursor）执行精确 COUNT；offset 续页跳过 COUNT（total=0=
+// unknown），改以 limit+1 满页探测决定 has-more（满页截断 → next token，
+// 不满页无 next）；keyset（cursor）模式行为不变（W-D：本就无 COUNT）。
+func TestListDocuments_OffsetContinuationSkipsCount(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "n", Key: "n", Type: "integer"},
+	}, nil, nil, true))
+
+	for i := 0; i < 7; i++ {
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+			Data: map[string]any{"n": i},
+		}, nil, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+
+	hook := &countQueryHook{}
+	db.AddQueryHook(hook)
+
+	// 首页（offset==0）：保持精确 COUNT，total=7。
+	page1, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize: 3,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, page1.Documents, 3)
+	require.Equal(t, int64(7), page1.TotalCount)
+	require.NotEmpty(t, page1.NextPageToken)
+	require.GreaterOrEqual(t, hook.count, 1, "首页应执行精确 COUNT")
+
+	// 续页（offset>0 且无 cursor）：跳过 COUNT（total=0），满页探测：3 行满页
+	// 截断后仍有 next token。
+	hook.count = 0
+	page2, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize:  3,
+		PageToken: page1.NextPageToken,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, page2.Documents, 3, "探测多取的 1 行必须截断回 limit")
+	require.Zero(t, page2.TotalCount, "R5-J3-2：offset 续页不再精确 COUNT（total=0=unknown）")
+	require.NotEmpty(t, page2.NextPageToken, "满页（limit+1 探测截断）应有续页 token")
+	require.Zero(t, hook.count, "R5-J3-2：offset 续页不得产生 COUNT 查询")
+
+	// 末页：不满页（1<3）→ 无 next，仍无 COUNT。
+	hook.count = 0
+	page3, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		PageSize:  3,
+		PageToken: page2.NextPageToken,
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Len(t, page3.Documents, 1)
+	require.Zero(t, page3.TotalCount)
+	require.Empty(t, page3.NextPageToken, "不满页无续页 token")
+	require.Zero(t, hook.count)
+
+	// keyset 模式（cursor 非空）行为完全不变：无 COUNT、total=0（W-D 语义）。
+	hook.count = 0
+	cursor := page1.Documents[len(page1.Documents)-1].ID
+	kPage, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		Queries: []string{`limit(3)`, fmt.Sprintf("cursorAfter(%q)", cursor)},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Zero(t, kPage.TotalCount)
+	require.Zero(t, hook.count, "keyset 模式无 COUNT（W-D，行为不变）")
+	require.NotEmpty(t, kPage.NextPageToken)
+}
+
+// TestCreateCollection_DefaultTimeIndex (R5-J3-1，D-P1-3)：新建用户集合默认
+// 获得 (_tenant,_created_at,_id) 时间索引（默认排序与 keyset 谓词的支撑）；
+// 系统集合跳过（与 _version 列处理一致）；存量集合（DROP INDEX 模拟旧版本
+// 建表）在下次 DDL touch 时经 reconcile 路径幂等补建，重复 touch 不报错。
+func TestCreateCollection_DefaultTimeIndex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "idxdocs", "Idx Docs", []databases.Attribute{
+		{ID: "n", Key: "n", Type: "integer"},
+	}, nil, nil, true))
+
+	schema := testSchema(t, projectID, "app")
+	defaultIndexExists := func(coll string) bool {
+		var n int
+		require.NoError(t, db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM pg_indexes WHERE schemaname = ? AND tablename = ? AND indexname = ?`,
+			schema, coll, fmt.Sprintf("idx_%s_tenant_created", coll)).Scan(&n))
+		return n == 1
+	}
+	dropDefaultIndex := func(coll string) {
+		_, err := db.ExecContext(ctx, fmt.Sprintf(`DROP INDEX %s`,
+			quoteIdent(schema)+"."+quoteIdent(fmt.Sprintf("idx_%s_tenant_created", coll))))
+		require.NoError(t, err)
+	}
+
+	// 新建用户集合：pg_indexes 中存在默认时间索引。
+	require.True(t, defaultIndexExists("idxdocs"), "新建用户集合应默认建 (_tenant,_created_at,_id) 索引")
+
+	// 存量补建：DROP 模拟旧版本建的集合，CreateIndex touch 后经 reconcile 路径自动补回。
+	dropDefaultIndex("idxdocs")
+	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", "idxdocs", databases.Index{
+		ID: "n_key", Type: "key", Attributes: []string{"n"},
+	}))
+	require.True(t, defaultIndexExists("idxdocs"), "存量集合在 DDL touch（CreateIndex）时幂等补建")
+
+	// 存量补建：CreateAttribute touch 同样补回；重复 touch 幂等不报错。
+	dropDefaultIndex("idxdocs")
+	require.NoError(t, docDB.CreateAttribute(ctx, projectID, "app", "idxdocs", databases.Attribute{ID: "m", Key: "m", Type: "integer"}))
+	require.True(t, defaultIndexExists("idxdocs"), "存量集合在 DDL touch（CreateAttribute）时幂等补建")
+	require.NoError(t, docDB.CreateAttribute(ctx, projectID, "app", "idxdocs", databases.Attribute{ID: "k", Key: "k", Type: "integer"}))
+	require.True(t, defaultIndexExists("idxdocs"), "重复 DDL touch 幂等，索引仍在")
+
+	// 系统集合（sentinel 名单）跳过默认时间索引：与 _version 列处理一致。
+	// sentinel 的 catalog 无 database_id='_' 行（06-databases），CreateCollection
+	// 元数据插入必撞 FK，故直接走 DDL 内部路径（与 CreateCollection 的 DDL 部分
+	// 同构，即"测试重建旧文档表"路径）验证 isSystem 分支。
+	projSchema := testProjectSchema(t, projectID)
+	impl := docDB.(*postgresDocumentDB)
+	internalID, err := impl.resolveInternalID(ctx, projectID)
+	require.NoError(t, err)
+	require.NoError(t, impl.createCollectionTable(ctx, projSchema, "users", internalID, nil, true))
+	require.NoError(t, impl.reconcileVersionColumn(ctx, projSchema, "users", true))
+	var n int
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pg_indexes WHERE schemaname = ? AND tablename = 'users' AND indexname = 'idx_users_tenant_created'`,
+		projSchema).Scan(&n))
+	require.Zero(t, n, "系统集合跳过默认时间索引（与 _version 列处理一致）")
 }
 
 // TestListDocuments_InputLimits (A2): queries 条数、单条长度、equal 多值个数
