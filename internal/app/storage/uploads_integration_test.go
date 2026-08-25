@@ -360,15 +360,15 @@ func TestUploads_CompleteMutex(t *testing.T) {
 	require.NoError(t, err)
 
 	// 先手动持有锁 → CompleteUpload 返回 FailedPrecondition。
-	_, locked, err := uc.uploads.LockComplete(ctx, session.ID)
+	holdToken, locked, err := uc.uploads.LockComplete(ctx, session.ID)
 	require.NoError(t, err)
 	require.True(t, locked)
 	_, err = uc.CompleteUpload(ctx, projectID, session.ID, "", principal)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Contains(t, err.Error(), "already being completed")
 
-	// 释放锁后 complete 成功。
-	require.NoError(t, uc.uploads.UnlockComplete(ctx, session.ID))
+	// 释放锁后 complete 成功（compare-and-del 需持锁 token）。
+	require.NoError(t, uc.uploads.UnlockComplete(ctx, session.ID, holdToken))
 	file, err := uc.CompleteUpload(ctx, projectID, session.ID, "", principal)
 	require.NoError(t, err)
 	require.Equal(t, session.FileID, file.ID)

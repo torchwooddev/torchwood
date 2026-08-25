@@ -184,8 +184,12 @@ func (s *redisUploadSessionStore) IsLockOwner(ctx context.Context, uploadID, tok
 	return v == token, nil
 }
 
-func (s *redisUploadSessionStore) UnlockComplete(ctx context.Context, uploadID string) error {
-	_, err := s.rdb.Del(ctx, uploadLockKey(uploadID)).Result()
+// unlockCompleteScript compare-and-del：仅当锁值仍为持有者 token 时才删除，
+// 防止误删 TTL 过期后已被其他 complete 重新持有的锁（写法同 pkg/semaphore）。
+const unlockCompleteScript = `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end`
+
+func (s *redisUploadSessionStore) UnlockComplete(ctx context.Context, uploadID, token string) error {
+	_, err := s.rdb.Eval(ctx, unlockCompleteScript, []string{uploadLockKey(uploadID)}, token).Result()
 	return err
 }
 

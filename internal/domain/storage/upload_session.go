@@ -40,8 +40,9 @@ type UploadSessionStore interface {
 	// IsLockOwner 校验 uploadID 的 complete 锁仍由 token 持有者持有（锁未过期且
 	// 未被其他 complete 重新获取）。
 	IsLockOwner(ctx context.Context, uploadID, token string) (bool, error)
-	// UnlockComplete 释放 complete 锁。
-	UnlockComplete(ctx context.Context, uploadID string) error
+	// UnlockComplete 释放 complete 锁（compare-and-del：仅当锁值等于 LockComplete
+	// 返回的 token 时才删除，防止误删 TTL 过期后已被其他 complete 重新持有的锁）。
+	UnlockComplete(ctx context.Context, uploadID, token string) error
 }
 
 const (

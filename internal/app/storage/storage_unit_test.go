@@ -35,12 +35,13 @@ func (r *stubProjectRepo) GetProject(_ context.Context, id string) (*projects.Pr
 	return r.p, nil
 }
 
-// failingStore 包装内存对象存储，可按需注入 EnsureBucket/Put 失败；
+// failingStore 包装内存对象存储，可按需注入 EnsureBucket/Put/Delete 失败；
 // 未注入错误时委托给底层实现。
 type failingStore struct {
 	*testutil.MemObjectStore
 	ensureErr error
 	putErr    error
+	deleteErr error
 }
 
 func (s *failingStore) EnsureBucket(ctx context.Context, name string) error {
@@ -55,6 +56,13 @@ func (s *failingStore) Put(ctx context.Context, bucket, key string, data io.Read
 		return s.putErr
 	}
 	return s.MemObjectStore.Put(ctx, bucket, key, data, size, contentType)
+}
+
+func (s *failingStore) Delete(ctx context.Context, bucket, key string) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	return s.MemObjectStore.Delete(ctx, bucket, key)
 }
 
 // newCreateFileUnitUC 组装纯内存 Storage（无 Postgres/MinIO），CreateFile
@@ -269,7 +277,8 @@ func TestUploads_AbortUpload_RejectedWhileCompleting(t *testing.T) {
 		uploads:     upStore,
 	}
 
-	_, locked, err := upStore.LockComplete(ctx, "up2")
+	// 先以其他持有者身份占用锁。
+	otherToken, locked, err := upStore.LockComplete(ctx, "up2")
 	require.NoError(t, err)
 	require.True(t, locked)
 
@@ -281,12 +290,139 @@ func TestUploads_AbortUpload_RejectedWhileCompleting(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got, "complete 进行中 abort 不得删除会话")
 
-	// 锁释放后重试成功。
-	require.NoError(t, upStore.UnlockComplete(ctx, "up2"))
+	// 锁释放后重试成功（compare-and-del 需持锁 token）。
+	require.NoError(t, upStore.UnlockComplete(ctx, "up2", otherToken))
 	require.NoError(t, uc.AbortUpload(ctx, "p1", "up2", "", keysPrincipal()))
 	got, err = upStore.Get(ctx, "up2")
 	require.NoError(t, err)
 	require.Nil(t, got, "锁释放后 abort 成功删除会话")
+}
+
+// deleteFailingSessionStore 包装 UploadSessionStore：Delete（删会话）恒失败，
+// 模拟 complete 主流程成功后清理会话失败（J2-2 best-effort 验证）。
+type deleteFailingSessionStore struct {
+	domainstorage.UploadSessionStore
+}
+
+func (m *deleteFailingSessionStore) Delete(context.Context, string) error {
+	return errors.New("redis down")
+}
+
+// cancelAfterLockStore 包装 UploadSessionStore：LockComplete 成功后立刻取消
+// 请求 ctx，模拟 grpc_gateway 的 60s TimeoutHandler 在 complete/abort 进行中
+// 触发超时取消（J2-1：defer 释锁必须不受请求 ctx 取消影响）。
+type cancelAfterLockStore struct {
+	domainstorage.UploadSessionStore
+	cancel context.CancelFunc
+}
+
+func (m *cancelAfterLockStore) LockComplete(ctx context.Context, uploadID string) (string, bool, error) {
+	token, ok, err := m.UploadSessionStore.LockComplete(ctx, uploadID)
+	if ok {
+		m.cancel()
+	}
+	return token, ok, err
+}
+
+// J2-2/E-P1-2：主流程（Compose + files.Insert）成功后的清理是 best-effort——
+// 删分片对象与删会话失败仅 Warn，CompleteUpload 仍成功返回。
+func TestUploads_CompleteUpload_CleanupBestEffort(t *testing.T) {
+	_, upStore := newTestUploadSessionStore(t)
+	ctx := context.Background()
+	session := &domainstorage.UploadSession{
+		ID: "up-be", ProjectID: "p1", BucketID: "b1", FileID: "f-be",
+		Name: "x.bin", Size: 1 << 20, ChunkSize: 1 << 20, PartCount: 1,
+		Received: map[int]bool{1: true}, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
+	}
+	require.NoError(t, upStore.Create(ctx, session))
+	// Redis Create 不落 Received（parts 由 MarkChunk 维护），需显式标记分片。
+	require.NoError(t, upStore.MarkChunk(ctx, session.ID, 1))
+
+	store := testutil.NewMemObjectStore()
+	require.NoError(t, store.Put(ctx, domainstorage.DefaultBucketName,
+		chunkKey("p1", "b1", "f-be", 1), bytes.NewReader(make([]byte, 1<<20)), 1<<20, ""))
+
+	files := &memFileRepo{}
+	uc := &Storage{
+		cfg:         &config.AppConfig{},
+		projectRepo: &stubProjectRepo{p: &projects.Project{ID: "p1", InternalID: 1}},
+		store:       &failingStore{MemObjectStore: store, deleteErr: errors.New("s3 down")},
+		buckets:     &memBucketRepo{},
+		files:       files,
+		uploads:     &deleteFailingSessionStore{UploadSessionStore: upStore},
+	}
+
+	file, err := uc.CompleteUpload(ctx, "p1", "up-be", "", keysPrincipal())
+	require.NoError(t, err, "清理失败不得影响 complete 成功返回")
+	require.Equal(t, "f-be", file.ID)
+	require.Len(t, files.created, 1)
+
+	// 会话删除失败 → 残留由 24h TTL 兜底；合并对象保留可下载。
+	got, err := upStore.Get(ctx, "up-be")
+	require.NoError(t, err)
+	require.NotNil(t, got, "会话删除失败时残留由 TTL 兜底")
+	composed, gerr := store.Get(ctx, domainstorage.DefaultBucketName, objectKey("p1", "b1", "f-be"))
+	require.NoError(t, gerr)
+	require.NoError(t, composed.Close())
+}
+
+// J2-1/E-P1-2：complete 的请求 ctx 在加锁后取消（网关 60s 超时）→
+// CompleteUpload 返回错误，但 defer 释锁用独立 ctx，锁不得残留 1h。
+func TestUploads_CompleteUpload_UnlockSurvivesContextCancel(t *testing.T) {
+	_, upStore := newTestUploadSessionStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	session := &domainstorage.UploadSession{
+		ID: "up-cancel", ProjectID: "p1", BucketID: "b1", FileID: "f-cancel",
+		Name: "x.bin", Size: 1 << 20, ChunkSize: 1 << 20, PartCount: 1,
+		Received: map[int]bool{}, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
+	}
+	require.NoError(t, upStore.Create(ctx, session))
+
+	uc := &Storage{
+		cfg:         &config.AppConfig{},
+		projectRepo: &stubProjectRepo{p: &projects.Project{ID: "p1", InternalID: 1}},
+		store:       testutil.NewMemObjectStore(),
+		buckets:     &memBucketRepo{},
+		files:       &memFileRepo{},
+		uploads:     &cancelAfterLockStore{UploadSessionStore: upStore, cancel: cancel},
+	}
+
+	_, err := uc.CompleteUpload(ctx, "p1", "up-cancel", "", keysPrincipal())
+	require.Error(t, err, "ctx 取消后锁内重读会话失败，complete 返回错误")
+
+	// 锁必须已释放：可立即重新加锁（而非残留 1h completeLockTTL）。
+	token, locked, lerr := upStore.LockComplete(context.Background(), "up-cancel")
+	require.NoError(t, lerr)
+	require.True(t, locked, "请求 ctx 取消不得导致 complete 锁残留")
+	require.NoError(t, upStore.UnlockComplete(context.Background(), "up-cancel", token))
+}
+
+// J2-1/E-P1-2：abort 同理——请求 ctx 取消后 abort 返回错误（会话删除是主语义），
+// 但锁释放走独立 ctx，不得残留。
+func TestUploads_AbortUpload_UnlockSurvivesContextCancel(t *testing.T) {
+	_, upStore := newTestUploadSessionStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	session := &domainstorage.UploadSession{
+		ID: "up-abort-cancel", ProjectID: "p1", BucketID: "b1", FileID: "f-abort",
+		Name: "x.bin", Size: 1 << 20, ChunkSize: 1 << 20, PartCount: 1,
+		Received: map[int]bool{1: true}, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
+	}
+	require.NoError(t, upStore.Create(ctx, session))
+
+	uc := &Storage{
+		cfg:         &config.AppConfig{},
+		projectRepo: &stubProjectRepo{p: &projects.Project{ID: "p1", InternalID: 1}},
+		store:       testutil.NewMemObjectStore(),
+		uploads:     &cancelAfterLockStore{UploadSessionStore: upStore, cancel: cancel},
+	}
+
+	err := uc.AbortUpload(ctx, "p1", "up-abort-cancel", "", keysPrincipal())
+	require.Error(t, err, "ctx 取消后删会话失败，abort 返回错误")
+
+	token, locked, lerr := upStore.LockComplete(context.Background(), "up-abort-cancel")
+	require.NoError(t, lerr)
+	require.True(t, locked, "请求 ctx 取消不得导致 abort 锁残留")
+	require.NoError(t, upStore.UnlockComplete(context.Background(), "up-abort-cancel", token))
 }
 
 // listableFileRepo 支持按 ID / 桶查询的内存 FileRepository（owner 隔离测试用）。

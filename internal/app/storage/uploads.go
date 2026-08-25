@@ -157,6 +157,12 @@ func (s *Storage) UploadChunk(ctx context.Context, projectID, uploadID string, p
 	return s.uploads.CountChunks(ctx, uploadID)
 }
 
+// unlockCompleteTimeout 是 complete 锁在 defer 释放路径的超时：释放必须用独立
+// ctx（WithoutCancel + 超时，见 CompleteUpload/AbortUpload 的 defer），既避免请求
+// ctx 已取消导致 Redis 释放失败、锁残留 1h（completeLockTTL），也避免 Redis 抖动
+// 阻塞函数收尾（样板 pkg/semaphore.TryAcquire 的 release）。
+const unlockCompleteTimeout = 2 * time.Second
+
 // CompleteUpload 合并分片并创建文件文档。时序：
 // Lock → 缺片校验 → Compose → 建文档 → 删分片 → 删会话 → Unlock（defer）。
 func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, ownerUserID string, principal databases.Principal) (*storage.File, error) {
@@ -186,7 +192,16 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 		return nil, status.Error(codes.FailedPrecondition, "upload is already being completed")
 	}
 	// 锁在会话删除之后释放（defer 在函数返回时执行）。
-	defer func() { _ = s.uploads.UnlockComplete(ctx, uploadID) }()
+	// J2-1/E-P1-2：释放用独立 ctx——complete 请求被 grpc_gateway 的 60s
+	// TimeoutHandler 包裹，大文件（最多 10000 片）的 Compose+逐片删除可能超时
+	// 取消请求 ctx；沿用已取消的 ctx 会让 Redis DEL 失败被吞 → 锁残留 1h，
+	// 期间重试 complete 一律被互斥拒绝。WithoutCancel 切断取消传播，2s 超时
+	// 防 Redis 抖动阻塞收尾（样板 pkg/semaphore）。
+	defer func() {
+		ulCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), unlockCompleteTimeout)
+		defer cancel()
+		_ = s.uploads.UnlockComplete(ulCtx, uploadID, token)
+	}()
 
 	// 竞态修复（G6-6/R07-P2-4）：加锁成功后重新读取会话——锁前快照可能已过期
 	// （并发 UploadChunk 在快照后补传了缺片，或并发 AbortUpload 已删除会话）。
@@ -260,14 +275,19 @@ func (s *Storage) CompleteUpload(ctx context.Context, projectID, uploadID, owner
 		return nil, fmt.Errorf("create file document: %w", err)
 	}
 
-	// 清理暂存分片（失败仅记日志，孤儿分片由未来后台清理任务覆盖）。
+	// J2-2/E-P1-2：主流程（Compose + files.Insert）已成功，文件对象与文档均已
+	// 落地，此后的清理全部 best-effort——任何失败仅 Warn，不影响成功返回。
+	// 原实现删会话失败会向上抛：请求 ctx 在删分片中段超时取消时会话残留而分片
+	// 已部分删除，重试 complete 将因分片对象缺失永远失败（大文件永久无法完成）。
+	// 兜底依据：孤儿分片由 48h 清理任务回收（CleanupOrphanChunks，见 cleanup.go）；
+	// 残留会话由 24h TTL（storage.UploadSessionTTL）自然过期。
 	for i := 1; i <= session.PartCount; i++ {
 		if derr := s.store.Delete(ctx, defaultBucketName(s.cfg), chunkKeys[i-1]); derr != nil {
-			slog.Warn("delete chunk object failed", "key", chunkKeys[i-1], "error", derr)
+			slog.Warn("delete chunk object failed", "upload_id", uploadID, "key", chunkKeys[i-1], "error", derr)
 		}
 	}
-	if err := s.uploads.Delete(ctx, uploadID); err != nil {
-		return nil, fmt.Errorf("delete upload session: %w", err)
+	if derr := s.uploads.Delete(ctx, uploadID); derr != nil {
+		slog.Warn("delete upload session failed", "upload_id", uploadID, "error", derr)
 	}
 
 	return &storage.File{
@@ -306,15 +326,20 @@ func (s *Storage) AbortUpload(ctx context.Context, projectID, uploadID, ownerUse
 	if err != nil {
 		return err
 	}
-	_, locked, err := s.uploads.LockComplete(ctx, uploadID)
+	token, locked, err := s.uploads.LockComplete(ctx, uploadID)
 	if err != nil {
 		return fmt.Errorf("lock complete: %w", err)
 	}
 	if !locked {
 		return status.Error(codes.FailedPrecondition, "upload is being completed, retry later")
 	}
-	// abort 删除会话时 Redis 实现会一并删除锁 key，defer 释放为幂等兜底。
-	defer func() { _ = s.uploads.UnlockComplete(ctx, uploadID) }()
+	// abort 删除会话时 Redis 实现会一并删除锁 key，defer 释放（compare-and-del
+	// 需持锁 token）为幂等兜底；释放用独立 ctx，理由同 CompleteUpload（J2-1/E-P1-2）。
+	defer func() {
+		ulCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), unlockCompleteTimeout)
+		defer cancel()
+		_ = s.uploads.UnlockComplete(ulCtx, uploadID, token)
+	}()
 
 	if err := s.uploads.Delete(ctx, uploadID); err != nil {
 		return fmt.Errorf("delete upload session: %w", err)

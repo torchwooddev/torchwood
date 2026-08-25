@@ -201,7 +201,7 @@ func TestRedisUploadSession_LockCompleteMutex(t *testing.T) {
 	require.False(t, owner)
 
 	// 释放后可再次加锁。
-	require.NoError(t, store.UnlockComplete(ctx, "upload-lock"))
+	require.NoError(t, store.UnlockComplete(ctx, "upload-lock", token))
 	owner, err = store.IsLockOwner(ctx, "upload-lock", token)
 	require.NoError(t, err)
 	require.False(t, owner, "锁释放后原 token 不再持有")
@@ -209,6 +209,63 @@ func TestRedisUploadSession_LockCompleteMutex(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, locked)
 	require.NotEqual(t, token, token2, "每次加锁生成新 token")
+}
+
+// J2-3/E-P1-2：UnlockComplete 是 Lua compare-and-del——非持有者 token 不得删除
+// 锁，仅持有者 token 释放生效（防止误删已被其他 complete 重新持有的锁）。
+func TestRedisUploadSession_UnlockCompleteCompareAndDel(t *testing.T) {
+	_, store := newRedisUploadSessionTestStore(t)
+	ctx := context.Background()
+
+	token, locked, err := store.LockComplete(ctx, "upload-cad")
+	require.NoError(t, err)
+	require.True(t, locked)
+
+	// 错误 token：锁保持持有、仍互斥。
+	require.NoError(t, store.UnlockComplete(ctx, "upload-cad", "wrong-token"))
+	owner, err := store.IsLockOwner(ctx, "upload-cad", token)
+	require.NoError(t, err)
+	require.True(t, owner, "非持有者 token 释放不得删除锁")
+	_, locked, err = store.LockComplete(ctx, "upload-cad")
+	require.NoError(t, err)
+	require.False(t, locked, "错误 token 释放后锁仍应互斥")
+
+	// 正确 token：释放生效，可重新加锁。
+	require.NoError(t, store.UnlockComplete(ctx, "upload-cad", token))
+	token2, locked, err := store.LockComplete(ctx, "upload-cad")
+	require.NoError(t, err)
+	require.True(t, locked)
+	require.NotEqual(t, token, token2)
+
+	// 锁 key 不存在时释放为幂等 no-op（GET 返回 nil ≠ token → 不删除）。
+	require.NoError(t, store.UnlockComplete(ctx, "upload-missing", token2))
+}
+
+// J2-1/E-P1-2：释放路径的 WithoutCancel 在调用方（internal/app/storage/uploads.go
+// 的 defer）构造；此处验证 compare-and-del 脚本在已取消 ctx 替换为独立 ctx 后
+// 正常生效（DEL 尊重 ctx，取消的 ctx 会失败——正是调用方 detach 的原因）。
+func TestRedisUploadSession_UnlockCompleteWithDetachedContext(t *testing.T) {
+	_, store := newRedisUploadSessionTestStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	token, locked, err := store.LockComplete(ctx, "upload-detach")
+	require.NoError(t, err)
+	require.True(t, locked)
+
+	// 已取消的请求 ctx：DEL/EVAL 失败，锁保留（复现事故路径）。
+	cancel()
+	require.Error(t, store.UnlockComplete(ctx, "upload-detach", token))
+	owner, err := store.IsLockOwner(context.Background(), "upload-detach", token)
+	require.NoError(t, err)
+	require.True(t, owner, "ctx 取消时释放失败，锁应保留")
+
+	// WithoutCancel 重建的独立 ctx（调用方 defer 的做法）：释放成功。
+	detached, dcancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer dcancel()
+	require.NoError(t, store.UnlockComplete(detached, "upload-detach", token))
+	owner, err = store.IsLockOwner(context.Background(), "upload-detach", token)
+	require.NoError(t, err)
+	require.False(t, owner, "独立 ctx 下 compare-and-del 应删除锁")
 }
 
 func TestRedisUploadSession_LockCompleteTTLExpiry(t *testing.T) {
