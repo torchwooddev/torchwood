@@ -3,6 +3,7 @@ package payments
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -217,11 +218,22 @@ func validateTopupAmount(purpose map[string]any, amount int64) error {
 	case int64:
 		pa = n
 	case float32:
+		// structpb 数值经 AsMap() 落到这里 / float64：非整数必须拒绝，
+		// 否则 int64 截断放行 10.5 绕过 pa != amount 校验（R5 J1-3 / E-P2-4）。
+		if n != float32(math.Trunc(float64(n))) {
+			return status.Error(codes.InvalidArgument, "topup purpose amount must be an integer")
+		}
 		pa = int64(n)
 	case float64:
+		if n != math.Trunc(n) {
+			return status.Error(codes.InvalidArgument, "topup purpose amount must be an integer")
+		}
 		pa = int64(n)
 	case json.Number:
-		i, _ := n.Int64()
+		i, err := n.Int64()
+		if err != nil {
+			return status.Error(codes.InvalidArgument, "topup purpose amount must be an integer")
+		}
 		pa = i
 	default:
 		return status.Error(codes.InvalidArgument, "purpose.amount must be an integer")

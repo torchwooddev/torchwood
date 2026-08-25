@@ -176,6 +176,14 @@ func (p *Payments) applyPaid(ctx context.Context, order *domainpayments.Order, e
 		return status.Errorf(codes.FailedPrecondition,
 			"callback amount mismatch: order %d, callback %d", order.Amount, event.Amount)
 	}
+	// fail-closed（R5 J1-1 / E-P1-1）：渠道未提供金额（Amount==0，iOS legacy
+	// verifyReceipt 与 ASN V2 Price=0 均恒 0）且订单金额 >0 时拒绝结算——
+	// 旧逻辑 0 值跳过上面的校验，客户端自报金额即可放大充值入账。
+	if event.Amount == 0 && order.Amount > 0 {
+		return status.Errorf(codes.FailedPrecondition,
+			"provider callback missing amount for paid order %s (order amount %d); refusing to settle without provider-side amount",
+			order.ID, order.Amount)
+	}
 	if event.Currency != "" && event.Currency != order.Currency {
 		return status.Errorf(codes.FailedPrecondition,
 			"callback currency mismatch: order %s, callback %s", order.Currency, event.Currency)
@@ -266,6 +274,16 @@ func (p *Payments) applyRefunded(ctx context.Context, order *domainpayments.Orde
 	default:
 		return nil // 未支付订单的退款事件：忽略。
 	}
+	// 金额校验（R5 J1-2 / E-P2-1）：一期仅支持全额退款，回调金额必须与订单
+	// 金额完全一致（含 0=渠道未提供金额）。不一致（如部分退款）不驱动状态机、
+	// 不 Reverse——事件行已通过 InsertIfAbsent 保留在 payment_callback_events
+	// 供人工对账，直接返回成功避免渠道重推风暴。
+	if event.Amount != order.Amount {
+		p.logger.Error("refund callback amount mismatch; keeping order state and retaining event for reconciliation",
+			"order_id", order.ID, "order_amount", order.Amount, "callback_amount", event.Amount,
+			"provider_event_id", event.ProviderEventID)
+		return nil
+	}
 	from := order.Status
 	if err := order.Transition(domainpayments.OrderStatusRefunded, now); err != nil {
 		return nil
@@ -274,7 +292,8 @@ func (p *Payments) applyRefunded(ctx context.Context, order *domainpayments.Orde
 		return err
 	}
 	if err := p.fulfiller.Reverse(ctx, order); err != nil {
-		p.logger.Error("reverse fulfillment on refund callback failed", "order_id", order.ID, "error", err)
+		p.logger.Error("reverse fulfillment on refund callback failed",
+			"order_id", order.ID, "provider_event_id", event.ProviderEventID, "error", err)
 	}
 	paymentOrdersTotal.WithLabelValues(order.Provider, string(order.Status)).Inc()
 	return p.events.Publish(ctx, orderEnvelope(order, domainpayments.EventOrderRefunded, now))

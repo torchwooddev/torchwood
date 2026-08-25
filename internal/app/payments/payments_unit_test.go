@@ -435,6 +435,33 @@ func paidCallbackJSON(t *testing.T, eventID, orderID string, amount int64) []byt
 	return body
 }
 
+func refundedCallbackJSON(t *testing.T, eventID, orderID string, amount int64) []byte {
+	t.Helper()
+	body, err := json.Marshal(domainpayments.CallbackEvent{
+		Provider:          domainpayments.ProviderStripe,
+		ProviderEventID:   eventID,
+		ProviderSessionID: "cs_" + orderID,
+		ProviderOrderID:   "pi_" + orderID,
+		Type:              domainpayments.CallbackRefunded,
+		Amount:            amount,
+		Currency:          "USD",
+		OrderID:           orderID,
+	})
+	require.NoError(t, err)
+	return body
+}
+
+// seedPaidOrder 直接落一张 paid 订单（退款回调用例前置）。
+func seedPaidOrder(t *testing.T, store *memStore, orderID string, amount int64) *domainpayments.Order {
+	t.Helper()
+	order := seedPayingOrder(t, store, orderID, amount)
+	order.Status = domainpayments.OrderStatusPaid
+	tnow := time.Now()
+	order.PaidAt = &tnow
+	store.orders[order.ID] = cloneOrder(order)
+	return order
+}
+
 func signStripe(t *testing.T, secret string, body []byte) http.Header {
 	t.Helper()
 	ts := time.Now().Unix()
@@ -557,6 +584,89 @@ func TestHandleCallback_FulfillerErrorRollsBack(t *testing.T) {
 	require.Empty(t, env.store.fulfillments, "不得留下 pending/done 履约行")
 	require.Empty(t, env.store.outbox, "不得 Publish")
 	require.Empty(t, env.store.callbacks, "回调行与翻转同事务，失败一并回滚")
+}
+
+// TestHandleCallback_PaidZeroAmountRefusedToSettle（R5 J1-1 / E-P1-1）：
+// 渠道未提供金额（Amount==0；iOS legacy verifyReceipt 与 ASN V2 Price=0
+// 均恒 0）且订单金额 >0 时 fail-closed 拒绝结算——旧逻辑 0 值直接跳过金额
+// 校验，客户端自报金额即可放大充值入账。整体回滚：订单不动、不履约、
+// 不发事件、不落回调行（等渠道重推或人工对账）。
+func TestHandleCallback_PaidZeroAmountRefusedToSettle(t *testing.T) {
+	fulfiller := &countingFulfiller{}
+	env := setupUnit(t, &fakeProvider{}, fulfiller)
+	order := seedPayingOrder(t, env.store, "ord-zero-amt", 1999)
+	body := paidCallbackJSON(t, "evt_zero_amt", order.ID, 0)
+
+	err := env.payments.HandleCallback(context.Background(), domainpayments.ProviderStripe, nil, body)
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+
+	got := env.store.orders[order.ID]
+	require.Equal(t, domainpayments.OrderStatusPaying, got.Status, "金额缺失不得翻单")
+	require.Nil(t, got.PaidAt)
+	require.Equal(t, 0, fulfiller.calls)
+	require.Empty(t, env.store.fulfillments)
+	require.Empty(t, env.store.outbox)
+	require.Empty(t, env.store.callbacks, "拒绝结算整体回滚，渠道可重推")
+}
+
+// TestHandleCallback_PaidZeroAmountFreeOrderSettles（R5 J1-1）：免费单
+// （order.Amount==0）配 Amount==0 回调属于「金额一致」，不受 fail-closed
+// 影响，正常翻 paid。
+func TestHandleCallback_PaidZeroAmountFreeOrderSettles(t *testing.T) {
+	fulfiller := &countingFulfiller{}
+	env := setupUnit(t, &fakeProvider{}, fulfiller)
+	order := seedPayingOrder(t, env.store, "ord-free", 0)
+	body := paidCallbackJSON(t, "evt_free", order.ID, 0)
+
+	require.NoError(t, env.payments.HandleCallback(context.Background(), domainpayments.ProviderStripe, nil, body))
+	require.Equal(t, domainpayments.OrderStatusPaid, env.store.orders[order.ID].Status)
+	require.Equal(t, 1, fulfiller.calls)
+	require.Equal(t, 1, len(env.store.outbox))
+}
+
+// TestHandleCallback_RefundedFullAmountFlipsOrder（R5 J1-2 语义收紧后的
+// 正路径）：退款回调金额与订单全额一致才翻 refunded + Reverse + 事件。
+func TestHandleCallback_RefundedFullAmountFlipsOrder(t *testing.T) {
+	fulfiller := &countingFulfiller{}
+	env := setupUnit(t, &fakeProvider{}, fulfiller)
+	order := seedPaidOrder(t, env.store, "ord-refund-full", 500)
+	body := refundedCallbackJSON(t, "evt_refund_full", order.ID, 500)
+
+	require.NoError(t, env.payments.HandleCallback(context.Background(), domainpayments.ProviderStripe, nil, body))
+	require.Equal(t, domainpayments.OrderStatusRefunded, env.store.orders[order.ID].Status)
+	require.Equal(t, 1, fulfiller.reverseCalls, "全额退款回调必须回收资产")
+	require.Equal(t, 1, len(env.store.outbox))
+	require.Equal(t, domainpayments.EventOrderRefunded, env.store.outbox[0].Event)
+	require.Contains(t, env.store.callbacks, cbKey(domainpayments.ProviderStripe, "evt_refund_full"))
+}
+
+// TestHandleCallback_RefundedAmountMismatchKeepsOrderState（R5 J1-2 /
+// E-P2-1）：部分退款（Amount < order.Amount）或渠道未提供金额（Amount==0）
+// 均不得驱动状态机 / Reverse；事件行保留在回调表供对账，订单保持 paid。
+func TestHandleCallback_RefundedAmountMismatchKeepsOrderState(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		eventID  string
+		cbAmount int64
+		orderAmt int64
+	}{
+		{"partial", "evt_refund_partial", 100, 500},
+		{"missing_amount", "evt_refund_zero", 0, 500},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fulfiller := &countingFulfiller{}
+			env := setupUnit(t, &fakeProvider{}, fulfiller)
+			order := seedPaidOrder(t, env.store, "ord-refund-"+tc.name, tc.orderAmt)
+			body := refundedCallbackJSON(t, tc.eventID, order.ID, tc.cbAmount)
+
+			require.NoError(t, env.payments.HandleCallback(context.Background(), domainpayments.ProviderStripe, nil, body))
+			require.Equal(t, domainpayments.OrderStatusPaid, env.store.orders[order.ID].Status, "金额不一致不得翻单")
+			require.Equal(t, 0, fulfiller.reverseCalls, "金额不一致不得回收资产")
+			require.Empty(t, env.store.outbox)
+			require.Contains(t, env.store.callbacks, cbKey(domainpayments.ProviderStripe, tc.eventID),
+				"事件行保留供人工对账")
+		})
+	}
 }
 
 func TestHandleCallback_ForgedSignatureWritesNothing(t *testing.T) {
@@ -721,6 +831,22 @@ func TestVerifyReceipt_CrossUserRejected(t *testing.T) {
 	require.Empty(t, env.store.fulfillments)
 }
 
+// TestVerifyReceipt_LegacyZeroAmountRefused（R5 J1-1 / E-P1-1）：iOS legacy
+// verifyReceipt 归一化 Amount 恒 0（iosiap.go 不填 Amount），订单金额 >0 时
+// applyPaid fail-closed 拒绝结算；订单保持 created，等价目映射根治方案。
+func TestVerifyReceipt_LegacyZeroAmountRefused(t *testing.T) {
+	ios := &fakeIOS{verify: &domainpayments.VerifiedPurchase{TransactionID: "txn-legacy"}}
+	env := setupUnit(t, ios, NewRecordOnlyFulfiller())
+	order := seedIOSOrder(t, env.store, "ord-ios-legacy", "u1", domainpayments.OrderStatusCreated, "")
+	ctx := unitUserCtx("proj-1", "u1")
+
+	_, err := env.payments.VerifyReceipt(ctx, order.ID, []byte("receipt-blob"))
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.Equal(t, domainpayments.OrderStatusCreated, env.store.orders[order.ID].Status)
+	require.Empty(t, env.store.fulfillments)
+	require.Empty(t, env.store.outbox)
+}
+
 func TestCreateOrder_RejectsPurposeSubscription(t *testing.T) {
 	env := setupUnit(t, &fakeProvider{}, NewRecordOnlyFulfiller())
 	_, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
@@ -845,6 +971,57 @@ func TestCreateOrder_AcceptsTopupAmountEqual(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(100), res.Order.Amount)
 	require.Equal(t, domainpayments.OrderStatusPaying, res.Order.Status)
+}
+
+// TestCreateOrder_RejectsTopupNonIntegerAmount（R5 J1-3 / E-P2-4）：
+// purpose.amount 非整数一律 InvalidArgument。structpb 数值经 AsMap() 变
+// float64，旧逻辑 int64 截断放行 10.5→10 绕过 pa != amount 校验；paid 履约
+// 侧 Amount 反序列化失败会永久回滚，用户已付款订单最终 closed。float32 /
+// json.Number 分支同步收紧。
+func TestCreateOrder_RejectsTopupNonIntegerAmount(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		amount any
+	}{
+		{"float64", 10.5},
+		{"float32", float32(10.5)},
+		{"json_number", json.Number("10.5")},
+		{"float64_fraction_like_int", 100.25},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := &fakeProvider{}
+			env := setupUnit(t, provider, NewRecordOnlyFulfiller())
+			_, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
+				Provider:       domainpayments.ProviderStripe,
+				Amount:         10,
+				Currency:       "USD",
+				PurposeKind:    domainpayments.PurposeTopup,
+				Purpose:        map[string]any{"currency_code": "gold", "amount": tc.amount},
+				IdempotencyKey: "idem-topup-frac-" + tc.name,
+			})
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.Equal(t, 0, provider.createCalls, "非整数金额不得触渠道")
+			require.Empty(t, env.store.orders)
+		})
+	}
+}
+
+// TestCreateOrder_AcceptsTopupIntegralFloatAmount（R5 J1-3 边界）：
+// float64 整数值（structpb AsMap 的真实形态）仍放行，不误伤整数充值。
+func TestCreateOrder_AcceptsTopupIntegralFloatAmount(t *testing.T) {
+	provider := &fakeProvider{}
+	env := setupUnit(t, provider, NewRecordOnlyFulfiller())
+	res, err := env.payments.CreateOrder(unitUserCtx("proj-1", "u1"), CreateOrderCommand{
+		Provider:       domainpayments.ProviderStripe,
+		Amount:         100,
+		Currency:       "USD",
+		PurposeKind:    domainpayments.PurposeTopup,
+		Purpose:        map[string]any{"currency_code": "gold", "amount": float64(100)},
+		IdempotencyKey: "idem-topup-int-float",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(100), res.Order.Amount)
+	require.Equal(t, 1, provider.createCalls)
 }
 
 // TestCreateOrder_RejectsPurposeItemPurchase（A2）：Client 面拒绝 item_purchase
