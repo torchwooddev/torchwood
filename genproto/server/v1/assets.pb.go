@@ -749,10 +749,12 @@ func (x *AssetOpResponse) GetIdempotentReplay() bool {
 }
 
 type GrantRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OwnerId        string                 `protobuf:"bytes,1,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
-	DefCode        string                 `protobuf:"bytes,2,opt,name=def_code,json=defCode,proto3" json:"def_code,omitempty"`
-	Quantity       int64                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	OwnerId  string                 `protobuf:"bytes,1,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
+	DefCode  string                 `protobuf:"bytes,2,opt,name=def_code,json=defCode,proto3" json:"def_code,omitempty"`
+	Quantity int64                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	// 项目级全局幂等键（与 Stripe 语义一致）：键空间不区分动词，不同动词
+	// 不可复用同一键——命中已有键将返回该键首次操作的重放结果。
 	IdempotencyKey string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	ExpiresAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3,oneof" json:"expires_at,omitempty"`
 	Level          *int32                 `protobuf:"varint,6,opt,name=level,proto3,oneof" json:"level,omitempty"`
@@ -857,13 +859,14 @@ func (x *GrantRequest) GetRefId() string {
 }
 
 type ConsumeRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OwnerId        string                 `protobuf:"bytes,1,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
-	DefCode        string                 `protobuf:"bytes,2,opt,name=def_code,json=defCode,proto3" json:"def_code,omitempty"`
-	Quantity       int64                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	IdempotencyKey string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	RefType        string                 `protobuf:"bytes,5,opt,name=ref_type,json=refType,proto3" json:"ref_type,omitempty"`
-	RefId          string                 `protobuf:"bytes,6,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	OwnerId  string                 `protobuf:"bytes,1,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
+	DefCode  string                 `protobuf:"bytes,2,opt,name=def_code,json=defCode,proto3" json:"def_code,omitempty"`
+	Quantity int64                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	// 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
+	IdempotencyKey string `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	RefType        string `protobuf:"bytes,5,opt,name=ref_type,json=refType,proto3" json:"ref_type,omitempty"`
+	RefId          string `protobuf:"bytes,6,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -941,14 +944,15 @@ func (x *ConsumeRequest) GetRefId() string {
 }
 
 type TransferRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	FromOwnerId    string                 `protobuf:"bytes,1,opt,name=from_owner_id,json=fromOwnerId,proto3" json:"from_owner_id,omitempty"`
-	ToOwnerId      string                 `protobuf:"bytes,2,opt,name=to_owner_id,json=toOwnerId,proto3" json:"to_owner_id,omitempty"`
-	DefCode        string                 `protobuf:"bytes,3,opt,name=def_code,json=defCode,proto3" json:"def_code,omitempty"`
-	Quantity       int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	IdempotencyKey string                 `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	RefType        string                 `protobuf:"bytes,6,opt,name=ref_type,json=refType,proto3" json:"ref_type,omitempty"`
-	RefId          string                 `protobuf:"bytes,7,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	FromOwnerId string                 `protobuf:"bytes,1,opt,name=from_owner_id,json=fromOwnerId,proto3" json:"from_owner_id,omitempty"`
+	ToOwnerId   string                 `protobuf:"bytes,2,opt,name=to_owner_id,json=toOwnerId,proto3" json:"to_owner_id,omitempty"`
+	DefCode     string                 `protobuf:"bytes,3,opt,name=def_code,json=defCode,proto3" json:"def_code,omitempty"`
+	Quantity    int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	// 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
+	IdempotencyKey string `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	RefType        string `protobuf:"bytes,6,opt,name=ref_type,json=refType,proto3" json:"ref_type,omitempty"`
+	RefId          string `protobuf:"bytes,7,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1033,8 +1037,9 @@ func (x *TransferRequest) GetRefId() string {
 }
 
 type MutateRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	HoldingId      string                 `protobuf:"bytes,1,opt,name=holding_id,json=holdingId,proto3" json:"holding_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	HoldingId string                 `protobuf:"bytes,1,opt,name=holding_id,json=holdingId,proto3" json:"holding_id,omitempty"`
+	// 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
 	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	Level          *int32                 `protobuf:"varint,3,opt,name=level,proto3,oneof" json:"level,omitempty"`
 	ExpiresAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3,oneof" json:"expires_at,omitempty"`
@@ -1125,9 +1130,10 @@ func (x *MutateRequest) GetRefId() string {
 }
 
 type ExpireRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	HoldingId      string                 `protobuf:"bytes,1,opt,name=holding_id,json=holdingId,proto3" json:"holding_id,omitempty"`
-	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	HoldingId string                 `protobuf:"bytes,1,opt,name=holding_id,json=holdingId,proto3" json:"holding_id,omitempty"`
+	// 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
+	IdempotencyKey string `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }

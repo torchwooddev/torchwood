@@ -13,6 +13,10 @@
 genproto 版本并移除本地相对路径 replace，下游 `go get
 github.com/torchwooddev/torchwood/sdk/go@v0.1.0` 可正常解析编译。
 
+> **警示**：上述「可正常解析编译」与实际不符——`sdk/go/v0.1.0` tag 落库的
+> go.mod 实际仍含本地 replace 与伪版本，下游无法解析。待按
+> `.github/workflows/release.yml` 重发 v0.1.1 后移除本警示。
+
 - Server API 客户端（`x-api-key` + `x-torchwood-project`）：Health / Users /
   Groups / Databases / Projects / Storage / Functions / OAuthProviders /
   Payments / Assets / Subscriptions / Billing / Outbox 13 个类型化服务封装；

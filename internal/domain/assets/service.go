@@ -114,6 +114,11 @@ func (s *Service) resolveGrantExpiry(def *Def, explicit *time.Time) (*time.Time,
 	return nil, nil
 }
 
+// loadReplay 按幂等键查重放流水。幂等键为项目级全局键空间（与 Stripe 语义
+// 一致）：命中即返回该键首笔流水，**不区分动词**——因此不同动词不可复用
+// 同一键，否则后到的动词会拿到另一动词的重放结果而非执行自身操作。内部
+// 受控例外：订阅 benefits 的 entitlement 键在同一 period 内有意以
+// Grant→Mutate 跨动词复用实现同周期幂等重放（app/subscriptions/benefits.go）。
 func (s *Service) loadReplay(ctx context.Context, projectID, key string) ([]LedgerEntry, bool, error) {
 	first, err := s.ledger.GetByIdempotencyKey(ctx, projectID, key)
 	if err != nil {

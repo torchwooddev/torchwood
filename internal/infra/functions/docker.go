@@ -41,6 +41,9 @@ const (
 	maxContainerOutSize = 1 << 20   // stdout/stderr 缓冲上限（结果在 app 层再截断 64KB）
 	// maxExecEnvBudgetBytes 是 data + env 合并预算（execve 32KiB 单参数硬限制）。
 	maxExecEnvBudgetBytes = 32 << 10
+	// dockerCleanupTimeout 是容器停止/删除等清理操作的独立超时：清理不继承
+	// 已超时的 runCtx，也不能用无超时的 Background（daemon 挂起会无限阻塞）。
+	dockerCleanupTimeout = 30 * time.Second
 )
 
 // zipExtractLimits 是 extractZip 的解压预算（防 zip 炸弹）。
@@ -301,8 +304,12 @@ func (d *dockerExecutor) Execute(ctx context.Context, exec functions.Execution) 
 		return nil, fmt.Errorf("create container: %w", err)
 	}
 	containerID := created.ID
+	// 独立超时 ctx：runCtx 此时可能已超时/取消，而 daemon 挂起时清理操作
+	// 若用无超时的 Background 会无限阻塞调用链（defer 路径同样适用）。
 	remove := func() {
-		_ = cli.ContainerRemove(context.Background(), containerID, container.RemoveOptions{Force: true})
+		ctx, cancel := context.WithTimeout(context.Background(), dockerCleanupTimeout)
+		defer cancel()
+		_ = cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 	}
 	defer remove()
 
@@ -331,8 +338,11 @@ func (d *dockerExecutor) Execute(ctx context.Context, exec functions.Execution) 
 		// 超时或调用方取消：停止并强制清理容器（无残留）。ContainerStop 使
 		// 容器退出后 docker client 内部 goroutine 会向无缓冲的结果通道发送，
 		// 此处必须异步排空 waitCh/errCh，否则该 goroutine（含 HTTP resp）
-		// 永久阻塞泄漏——每次超时执行泄漏一个。
-		_ = cli.ContainerStop(context.Background(), containerID, container.StopOptions{})
+		// 永久阻塞泄漏——每次超时执行泄漏一个。独立超时 ctx：daemon 挂起时
+		// 清理不无限阻塞调用链。
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), dockerCleanupTimeout)
+		_ = cli.ContainerStop(stopCtx, containerID, container.StopOptions{})
+		stopCancel()
 		go func() {
 			select {
 			case <-waitCh:

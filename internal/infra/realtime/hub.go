@@ -159,6 +159,13 @@ func (h *Hub) markSeen(eventID string) bool {
 				delete(h.dedup, id)
 			}
 		}
+		if len(h.dedup) >= dedupMax {
+			// 窗口内活跃事件超过上限时放弃登记新 ID（仍视为首次出现）：
+			// 查重仍由已登记条目保证，内存不再无界增长。代价是极端洪峰下
+			// 未登记的 event_id 重放时可能二次扇出，由客户端按 id 去重兜底
+			//（v2 设计 at-least-once 语义本就要求客户端去重）。
+			return true
+		}
 	}
 	h.dedup[eventID] = now
 	return true

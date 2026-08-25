@@ -148,7 +148,8 @@ func TestSignIn_IssuesSessionCookies(t *testing.T) {
 	require.Contains(t, access, "Path=/")
 	require.Contains(t, access, "HttpOnly")
 	require.Contains(t, access, "SameSite=Lax")
-	require.Contains(t, access, "Max-Age=86400")
+	// R4 J7-1：console access TTL 默认收紧为 1h（硬性封顶），cookie Max-Age 同步。
+	require.Contains(t, access, "Max-Age=3600")
 	require.NotContains(t, access, "Secure")
 
 	refresh := findCookie(t, stream, "TORCHWOOD_console_refresh")

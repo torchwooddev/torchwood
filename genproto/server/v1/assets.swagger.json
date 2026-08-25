@@ -746,7 +746,8 @@
           "format": "int64"
         },
         "idempotency_key": {
-          "type": "string"
+          "type": "string",
+          "title": "项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。"
         },
         "ref_type": {
           "type": "string"
@@ -804,7 +805,8 @@
           "type": "string"
         },
         "idempotency_key": {
-          "type": "string"
+          "type": "string",
+          "title": "项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。"
         }
       }
     },
@@ -822,7 +824,8 @@
           "format": "int64"
         },
         "idempotency_key": {
-          "type": "string"
+          "type": "string",
+          "title": "项目级全局幂等键（与 Stripe 语义一致）：键空间不区分动词，不同动词\r\n不可复用同一键——命中已有键将返回该键首次操作的重放结果。"
         },
         "expires_at": {
           "type": "string",
@@ -900,7 +903,8 @@
           "type": "string"
         },
         "idempotency_key": {
-          "type": "string"
+          "type": "string",
+          "title": "项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。"
         },
         "level": {
           "type": "integer",
@@ -968,7 +972,8 @@
           "format": "int64"
         },
         "idempotency_key": {
-          "type": "string"
+          "type": "string",
+          "title": "项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。"
         },
         "ref_type": {
           "type": "string"

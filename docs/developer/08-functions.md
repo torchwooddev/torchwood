@@ -56,7 +56,7 @@ CMD ["node","-e","const {main}=require('./index');Promise.resolve(main(JSON.pars
 - **异步**：`status=queued` → `LPUSH torchwood:queue:functions-executions`（`internal/infra/queue/redis_queue.go`）payload `{execution_id,function_id,project_id,data,attempt?}` → `Queued`，首次无 `attempt`，重试 +1 持久化于消息体。
 - 状态机 `queued→building(补构建)→running→completed|failed`；`failed` 聚合 `error`（stderr/`timed out`/`build failed`），`duration_ms`/`status_code` 落库；每函数保留最近 100 条（`PruneOldExecutions`）。
 
-安全基线（`docker.go:Execute`）：`CapDrop ALL`、`no-new-privileges`、只读根文件系统+`/tmp` tmpfs、`memory/cpu/pids(512)` 按 spec、`network none`（`functions.docker.network` 存在时建 bridge），`TW_DATA` 传参，超时强制删容器。
+安全基线（`docker.go:Execute`）：`CapDrop ALL`、`no-new-privileges`、只读根文件系统+`/tmp` tmpfs、`memory/cpu/pids(512)` 按 spec、网络默认 per-project 隔离 bridge `tw-func-<project.id>`（项目间函数容器互不可达；显式配置 `functions.docker.network` 时 opt-in 全局网络，跨项目容器同网互通有横向访问风险，见 `configs/config.yaml.template` 警告），`TW_DATA` 传参，超时强制删容器。
 
 ## 5 全局信号量（`pkg/semaphore`）
 
@@ -120,7 +120,7 @@ TORCHWOOD_RUN_DOCKER_TESTS=1 go test ./internal/infra/functions -run TestDockerB
 
 ## 8 配置
 
-`internal/pkg/config/config.proto`：`functions.executor=docker`、`functions.docker.host`（`TORCHWOOD_FUNCTIONS_DOCKER_HOST`，默认 `unix:///var/run/docker.sock`，构造失败延迟到首次调用）、`functions.docker.network`（空=`none`，不存在时执行器自动 `CreateNetwork`）、`functions.docker.registry`（小写，默认 `torchwood-funcs`）。`Taskfile.yml` `task worker` 跑 `go run ./cmd/worker`，`task build` 同时产出 `server/worker/torchwood`。
+`internal/pkg/config/config.proto`：`functions.executor=docker`、`functions.docker.host`（`TORCHWOOD_FUNCTIONS_DOCKER_HOST`，默认 `unix:///var/run/docker.sock`，构造失败延迟到首次调用）、`functions.docker.network`（默认留空 = per-project 网络 `tw-func-<project_id>`，执行器不存在时自动创建 bridge；显式配置为 opt-in 全局网络，见 §4 安全基线与 `configs/config.yaml.template` 警告）、`functions.docker.registry`（小写，默认 `torchwood-funcs`）。`Taskfile.yml` `task worker` 跑 `go run ./cmd/worker`，`task build` 同时产出 `server/worker/torchwood`。
 
 ## 9 变量与裁剪
 

@@ -200,6 +200,8 @@ message GrantRequest {
   string owner_id = 1;
   string def_code = 2;
   int64 quantity = 3;
+  // 项目级全局幂等键（与 Stripe 语义一致）：键空间不区分动词，不同动词
+  // 不可复用同一键——命中已有键将返回该键首次操作的重放结果。
   string idempotency_key = 4;
   optional google.protobuf.Timestamp expires_at = 5;
   optional int32 level = 6;
@@ -212,6 +214,7 @@ message ConsumeRequest {
   string owner_id = 1;
   string def_code = 2;
   int64 quantity = 3;
+  // 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
   string idempotency_key = 4;
   string ref_type = 5;
   string ref_id = 6;
@@ -222,6 +225,7 @@ message TransferRequest {
   string to_owner_id = 2;
   string def_code = 3;
   int64 quantity = 4;
+  // 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
   string idempotency_key = 5;
   string ref_type = 6;
   string ref_id = 7;
@@ -229,6 +233,7 @@ message TransferRequest {
 
 message MutateRequest {
   string holding_id = 1;
+  // 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
   string idempotency_key = 2;
   optional int32 level = 3;
   optional google.protobuf.Timestamp expires_at = 4;
@@ -239,6 +244,7 @@ message MutateRequest {
 
 message ExpireRequest {
   string holding_id = 1;
+  // 项目级全局幂等键（与 Stripe 语义一致）：不同动词不可复用同一键。
   string idempotency_key = 2;
 }
 

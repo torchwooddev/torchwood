@@ -9,7 +9,7 @@
 
 Torchwood 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定位：后端不仅服务人类用户，也原生支持 LLM Agent、自动化脚本与 MCP Tool Server 以可预测、可授权的方式调用。
 
-### 已具备（P0 / P1 部分）
+### 已具备（P0 / P1 及 P2 已交付部分）
 
 | 能力 | 说明 | 关键组件 |
 |------|------|----------|
@@ -20,6 +20,7 @@ Torchwood 将 **AI/Agent-Native** 作为与 BaaS 核心能力并列的产品定�
 | 动态文档层 | Agent 可运行时建库/集合/文档，无需手工迁移 | `internal/infra/documentdb/`、`pkg/query/` |
 | 文档级权限 | API Key 以 `keys` 角色参与 `_perms`，不默认 bypass | `internal/infra/documentdb/postgres_permissions.go` |
 | 轻量 Realtime | 内置 WebSocket 订阅用户 collection 文档变更；高压走 MessageLoop | `internal/api/realtime/` |
+| 事件脊柱 + Outbox | 写路径与事务同 `COMMIT` 落 outbox，经 worker 扇出 Realtime / 队列 | `internal/infra/events/`、`internal/infra/documentdb/`、`cmd/worker/` |
 
 ### 规划中
 
@@ -27,7 +28,6 @@ P2 先夯 BaaS 门面（Realtime + 事件 + 事务），Agent 表面后置。P1 
 
 | 任务 | 说明 | 目标阶段 |
 |------|------|----------|
-| 事件脊柱 + Outbox | 写路径与事务同 `COMMIT` 落 outbox，再扇出 Realtime | **P2** |
 | Webhooks 出站（用户面 CRUD） | 业务事件推送到 n8n / Temporal 等 | P3（P2 只做内部消费，不先做 Webhook 产品） |
 | MCP Server | 暴露 Server API 为 MCP Tools | P3 |
 | OpenAPI 聚合与 Tool Schema | 合并各服务 Swagger，导出 Agent 可用的 operation 清单 | P3 |
@@ -50,7 +50,7 @@ P2 先夯 BaaS 门面（Realtime + 事件 + 事务），Agent 表面后置。P1 
 | **P0 底座** | 可运行的工程骨架：动态文档层、Admin Console、基础认证、Storage/Functions 端口 | 已完成 | 完成 |
 | **P1 MVP** | Client/Server 核心业务闭环：Account、Users、Groups、Databases Documents、Storage 交付、Functions 真实执行、Health | 短期：1-2 个月 | **完成** |
 | **P2 / v2** | 轻量 Realtime、事件脊柱（outbox）；staged 事务已按 D-6 删除；按内测需要补生产底座 | 中期：3-6 个月 | **实施完成（PR1–PR5 已合入），owner 审查中** |
-| **P2.5 / v3 经济系统** | 支付（Stripe/微信/支付宝/iOS IAP）、订阅、统一资产系统（代币/物品/权益）、平台用量计费 | 中期 | **已实施**（迁移 000004–000007 payments/assets/subscriptions/billing；`proto/server/v1/{payments,subscriptions,assets,billing}.proto`；Console `console/src/routes/payments/` 等） |
+| **P2.5 / v3 经济系统** | 支付（Stripe/微信/支付宝/iOS IAP）、订阅、统一资产系统（代币/物品/权益）、平台用量计费 | 中期 | **已实施**（迁移 000013_payments / 000015_assets / 000016_usage_billing / 000017_subscriptions；`proto/server/v1/{payments,subscriptions,assets,billing}.proto`；Console `console/src/routes/payments/` 等） |
 | **P3 生态** | Agent 表面（MCP / Tool Schema / Key 模板）、完整 Messaging、关系/向量、Sites / Proxy / VCS / GraphQL、多区域 | 长期：6-12 个月 | 规划中 |
 
 ---
@@ -482,14 +482,14 @@ v2 **不是**「把 Appwrite 剩下的模块搬过来」。Agent 叙事（MCP、
 
 ### M2：P2 / v2 内测可用（中期结束）
 
-- [ ] 用户 collection 的文档写路径经 outbox 发布事件（与写同一 `COMMIT`）。
-- [ ] 轻量 Realtime：已鉴权客户端可订阅文档变更并收到提交后的事件。
+- [x] 用户 collection 的文档写路径经 outbox 发布事件（与写同一 `COMMIT`）。
+- [x] 轻量 Realtime：已鉴权客户端可订阅文档变更并收到提交后的事件。
 - [x] staged transaction API：**已删除（D-6，内测无兼容）**。
 - [ ] Bulk API 行为不变（立即、非原子）。
-- [ ] Worker 能消费 outbox（Functions 队列仍可用）；重试计数不因进程重启丢失。
-- [ ] 内测前上线按 IP / user / API Key 的速率限制。
+- [x] Worker 能消费 outbox（Functions 队列仍可用）；重试计数不因进程重启丢失。
+- [x] 内测前上线按 IP / user / API Key 的速率限制。
 - [ ] 官方 Client SDK 可按 §3.2 频道与握手建立订阅；Console 集合详情可试听。
-- [ ] 用户 collection 文档带 `_version`；Update / Delete / Increment 强制 OCC（Bulk / Upsert 除外）。
+- [x] 用户 collection 文档带 `_version`；Update / Delete / Increment 强制 OCC（Bulk / Upsert 除外）。
 
 **不计入 M2**：Webhook 用户面、Messaging 产品、MCP、关系/向量、Presence、负载与混沌测试（内测不卡这个）。
 

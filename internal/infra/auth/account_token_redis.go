@@ -159,6 +159,12 @@ if record.secret_hash ~= ARGV[1] then
   end
   return 'badsecret'
 end
+-- P3-2 把锁定改为保留记录后，成功路径必须显式检查锁定状态：否则超限后
+-- 正确 secret 仍会匹配 hash 并 DEL+成功，锁定形同虚设（Round3 H6-3 契约：
+-- 超限后正确 secret 也拒绝）。
+if (record.attempts or 0) >= tonumber(ARGV[2]) then
+  return 'locked'
+end
 redis.call('DEL', KEYS[1])
 return 'ok:' .. tostring(record.email)
 `
