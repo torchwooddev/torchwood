@@ -112,14 +112,11 @@ jobs:
             if err != nil {
               panic(err)
             }
-            _ = c.Health.Check(context.Background())
+            _, _ = c.Health.Check(context.Background())
           }
           EOF
-          # 默认 proxy（proxy.golang.org）拉取：仓库公开，genproto 新 tag 在
-          # proxy 未命中时自动回落 direct 到 GitHub；不要对全量依赖用
-          # GOPROXY=direct——vanity 站点（如 gonum.org）不稳定会导致 tidy 失败
-          # （v0.1.1 首次发布实测）。GOFLAGS=-mod=mod 容许 tidy 更新 go.mod。
+          # 验收同样只写纯版本号：module tag 前缀（sdk/go/）由 Go 解析。
           GOFLAGS=-mod=mod \
-            go get github.com/torchwooddev/torchwood/sdk/go@"$SDK_TAG"
+            go get github.com/torchwooddev/torchwood/sdk/go@"${SDK_TAG#sdk/go/}"
           go build ./...
           echo "downstream install OK: $SDK_TAG"
