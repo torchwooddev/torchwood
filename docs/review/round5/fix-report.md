@@ -90,7 +90,7 @@
 
 按 release.yml 首次成功发布 `sdk/go/v0.1.1` + `genproto/v0.1.1`（下游干净目录 `go get@v0.1.1` → tidy → build 验收通过）。发布过程暴露并修复了流水线自创建以来从未跑通的四项潜伏 bug：
 
-1. **require 版本格式**（`release.yml`）：sed 把完整 tag 名 `genproto/vX.Y.Z` 写进 require，Go 报 disallowed version string——改用 `${GENPROTO_TAG#genproto/}` 剥前缀。此 bug 解释了 v0.10 失败之谜的另一半（v0.1.0 为手动 tag，从未走过流水线）。
+1. **require 版本格式**（`release.yml`）：sed 把完整 tag 名 `genproto/vX.Y.Z` 写进 require，Go 报 disallowed version string——改用 `${GENPROTO_TAG#genproto/}` 剥前缀。此 bug 解释了 v0.1.0 失败之谜的另一半（v0.1.0 为手动 tag，从未走过流水线）。
 2. **验收命令同款问题**：`go get @sdk/go/vX.Y.Z` 同样需纯版本号。
 3. **GOPROXY=direct 对 vanity 站点的脆弱性**：tidy 解析 grpc 测试传递依赖需要 gonum.org 元数据，站点 connection reset 即发布失败；仓库公开，改走默认 proxy（未命中新 tag 时自动回落 direct 拉 GitHub）。
 4. **sdk/go nested module 编译缺口**：R4 J7 的 CountDocuments 独立 Request 漏改 client SDK（主模块 `go build ./...` 不覆盖 nested module）——流水线 `cd sdk/go && go build` 首次完整编译时暴露，已修复（含两个测试 fake 签名）。另修验收探针 `Health.Check` 双返回值。
