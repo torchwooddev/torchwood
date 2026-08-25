@@ -28,7 +28,7 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 	var version int64
 	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
-	require.Equal(t, int64(9), version)
+	require.Equal(t, int64(10), version)
 
 	var dirty bool
 	require.NoError(t, db.QueryRowContext(ctx,
@@ -109,7 +109,7 @@ func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
 	schema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
 
-	// 回退到「已应用 1–5」：删 6/7/8 版本行（否则 MAX 停在 8，Apply 会跳过 000006），
+	// 回退到「已应用 1–5」：删 6 及之后的版本行（否则 MAX 停在最新，Apply 会跳过 000006），
 	// 把 subscriptions 表替换为缺列残缺版（provider/provider_sub_id 不存在），
 	// 令 000006 的 subscriptions_provider_sub 建索引失败。
 	//
@@ -118,7 +118,7 @@ func TestApply_FailureMarksDirtyPersistently(t *testing.T) {
 	// 同一契约）。
 	projectschema.Invalidate(db, projectID)
 	_, err = db.ExecContext(ctx,
-		`DELETE FROM `+quoted+`.schema_migrations WHERE version IN (6, 7, 8, 9)`)
+		`DELETE FROM `+quoted+`.schema_migrations WHERE version >= 6`)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `DROP TABLE `+quoted+`.subscriptions CASCADE`)
 	require.NoError(t, err)

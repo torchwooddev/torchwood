@@ -203,7 +203,8 @@ func mapError(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, domainsubs.ErrPlanArchived),
 		errors.Is(err, domainsubs.ErrAlreadySubscribed),
-		errors.Is(err, domainsubs.ErrInvalidTransition):
+		errors.Is(err, domainsubs.ErrInvalidTransition),
+		errors.Is(err, domainsubs.ErrReplayTerminalSubscription):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, domainsubs.ErrDuplicateCode):
 		return status.Error(codes.AlreadyExists, err.Error())

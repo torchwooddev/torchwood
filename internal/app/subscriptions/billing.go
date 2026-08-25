@@ -114,7 +114,9 @@ func (s *Subscriptions) applyTerminal(ctx context.Context, sub *domainsubs.Subsc
 func (s *Subscriptions) billOrPastDue(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, now time.Time) error {
 	charged, err := s.tryCharge(ctx, sub, plan)
 	if err != nil {
-		if isInsufficient(err) {
+		// 换键重建耗尽（同 cycle 全部命中终态死单，E-P2-2）与余额不足同样
+		// 转入 past_due：订阅不再空转，宽限走完后按既有路径 expired。
+		if isInsufficient(err) || errors.Is(err, errBillingOrderExhausted) {
 			return s.markPastDue(ctx, sub, plan, now)
 		}
 		return err // 履约/系统错误：状态不前进，整单回滚

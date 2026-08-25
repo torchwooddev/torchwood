@@ -794,3 +794,178 @@ func TestProcessDue_SubscriptionOrderIdempotentByCycle(t *testing.T) {
 	require.Equal(t, 1, fp.createCalls, "同 cycle 幂等不得二次 CreatePayment")
 	require.Equal(t, 1, len(pay.orders))
 }
+
+// seedClosedPayOrder 预置一张同 cycle 幂等键的终态（closed）死单，
+// 模拟「CreatePayment 网络失败 → 订单留 created → 到期被关单」后的现场。
+func seedClosedPayOrder(pay *memPayStore, projectID, key string, seq int) {
+	o := &domainpayments.Order{
+		ID:             fmt.Sprintf("ord_dead_%d", seq),
+		ProjectID:      projectID,
+		UserID:         "user_1",
+		Provider:       domainpayments.ProviderStripe,
+		IdempotencyKey: key,
+		Amount:         1000,
+		Currency:       "USD",
+		Status:         domainpayments.OrderStatusClosed,
+	}
+	pay.orders[o.ID] = clonePayOrder(o)
+	pay.byIdem[payIdemKey(projectID, key)] = o.ID
+}
+
+// TestBilling_ClosedOrderRebuildsWithNewKey（E-P2-2 / J4-1）：同 cycle 幂等键
+// 命中 closed 死单时必须换 `#N` 新键重建订单，而不是永久返回死单空转；
+// 重建出的 paying 单再次命中时按既有幂等语义原样返回，不重复下单。
+func TestBilling_ClosedOrderRebuildsWithNewKey(t *testing.T) {
+	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	uc, store, pay, fp := setupSubPay(t, now, &stubAssets{})
+	plan := seedPlan(t, store, now)
+	sub := seedPlatformSub(t, store, plan, now, domainsubs.StatusActive)
+	sub.BillingAssetCode = ""
+	store.subs[sub.ID] = cloneSub(sub)
+
+	require.NoError(t, uc.processDue(context.Background(), store.subs[sub.ID], now))
+	require.Equal(t, 1, fp.createCalls)
+	cycle := strconv.FormatInt(sub.CurrentPeriodEnd.UTC().Unix(), 10)
+	base := "sub:" + sub.ID + ":" + cycle
+	for _, o := range pay.orders {
+		o.Status = domainpayments.OrderStatusClosed // 首单被到期 worker 关单
+	}
+
+	// 同 cycle 重扫：base 键命中 closed → 换 `#2` 键重建并继续下单。
+	require.NoError(t, uc.processDue(context.Background(), store.subs[sub.ID], now))
+	require.Equal(t, 2, fp.createCalls, "命中 closed 死单必须换键重建下单")
+	require.Equal(t, 2, len(pay.orders))
+	rebuilt, ok := pay.byIdem[payIdemKey("proj", base+"#2")]
+	require.True(t, ok, "重建订单应使用 base#2 幂等键")
+	require.Equal(t, domainpayments.OrderStatusPaying, pay.orders[rebuilt].Status)
+	require.Equal(t, domainsubs.StatusActive, store.subs[sub.ID].Status, "订单流本轮不动状态")
+
+	// 三次重扫：base 命中 closed、#2 命中 paying → 原样返回，不重复建单。
+	require.NoError(t, uc.processDue(context.Background(), store.subs[sub.ID], now))
+	require.Equal(t, 2, fp.createCalls, "paying 单不得再次 CreatePayment")
+	require.Equal(t, 2, len(pay.orders))
+}
+
+// TestBilling_OrderRebuildExhaustedMarksPastDue（E-P2-2 / J4-1）：base 与
+// `#2`…`#5` 全部命中终态死单时放弃本轮下单（errBillingOrderExhausted），
+// billOrPastDue 据此转 past_due，订阅不再空转卡死。
+func TestBilling_OrderRebuildExhaustedMarksPastDue(t *testing.T) {
+	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	uc, store, pay, fp := setupSubPay(t, now, &stubAssets{})
+	plan := seedPlan(t, store, now)
+	sub := seedPlatformSub(t, store, plan, now, domainsubs.StatusActive)
+	sub.BillingAssetCode = ""
+	store.subs[sub.ID] = cloneSub(sub)
+
+	cycle := strconv.FormatInt(sub.CurrentPeriodEnd.UTC().Unix(), 10)
+	base := "sub:" + sub.ID + ":" + cycle
+	seedClosedPayOrder(pay, "proj", base, 1)
+	for n := 2; n <= 5; n++ {
+		seedClosedPayOrder(pay, "proj", fmt.Sprintf("%s#%d", base, n), n)
+	}
+
+	require.NoError(t, uc.processDue(context.Background(), store.subs[sub.ID], now))
+	require.Equal(t, 0, fp.createCalls, "全部键耗尽后不得再向渠道下单")
+	got := store.subs[sub.ID]
+	require.Equal(t, domainsubs.StatusPastDue, got.Status, "耗尽后必须转 past_due 而非空转")
+	require.NotNil(t, got.GraceUntil)
+	require.Equal(t, domainsubs.EventPastDue, store.outbox[len(store.outbox)-1].Event)
+}
+
+// TestHostedCallback_TerminalSubscriptionIgnoresLateEvents（E-P2-3 / J4-2）：
+// canceled 订阅收到 past_due / expired / updated 迟到事件 → 不报错（事件行
+// 所在的调用方事务不回滚）、period / cancel_at_period_end / provider_sub_id
+// 字段不被旁路改写、不发事件。
+func TestHostedCallback_TerminalSubscriptionIgnoresLateEvents(t *testing.T) {
+	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	uc, store, _ := setupSub(t, now, &stubAssets{})
+	plan := seedPlan(t, store, now)
+	periodStart := now.Add(-30 * 24 * time.Hour)
+	periodEnd := now.Add(24 * time.Hour)
+	sub := &domainsubs.Subscription{
+		ID:                 "sub_term",
+		ProjectID:          "proj",
+		UserID:             "user_1",
+		PlanID:             plan.ID,
+		Mode:               domainsubs.ModeHosted,
+		Provider:           domainpayments.ProviderStripe,
+		Status:             domainsubs.StatusCanceled,
+		CurrentPeriodStart: periodStart,
+		CurrentPeriodEnd:   periodEnd,
+		Benefits:           plan.Benefits,
+		IdempotencyKey:     "hosted-term",
+		CreatedAt:          periodStart,
+		UpdatedAt:          now,
+	}
+	_, _, err := memSubs{store}.Insert(context.Background(), sub)
+	require.NoError(t, err)
+	eventsBefore := len(store.outbox)
+
+	mk := func(evType, hosted string) *domainpayments.CallbackEvent {
+		return &domainpayments.CallbackEvent{
+			Provider:            domainpayments.ProviderStripe,
+			ProviderEventID:     "evt_" + hosted + evType,
+			Type:                evType,
+			HostedStatus:        hosted,
+			LocalSubscriptionID: "sub_term",
+			ProviderSubID:       "sub_stripe_late",
+			MetadataProjectID:   "proj",
+			// 事件携带与订阅当前值不同的 period / cancel_at_period_end：
+			// 终态订阅不得被旁路改写。
+			PeriodStart:       now,
+			PeriodEnd:         now.Add(365 * 24 * time.Hour),
+			CancelAtPeriodEnd: true,
+			ReceivedAt:        now,
+		}
+	}
+	for _, ev := range []*domainpayments.CallbackEvent{
+		mk(domainpayments.CallbackSubscriptionPastDue, "past_due"),
+		mk(domainpayments.CallbackSubscriptionExpired, "canceled"),
+		mk(domainpayments.CallbackSubscriptionUpdated, "active"),
+	} {
+		require.NoError(t, store.Run(context.Background(), func(ctx context.Context) error {
+			return uc.HandleHostedCallback(ctx, ev)
+		}), "终态订阅迟到事件不得报错回滚事件登记")
+	}
+
+	got := store.subs["sub_term"]
+	require.Equal(t, domainsubs.StatusCanceled, got.Status)
+	require.Equal(t, periodStart, got.CurrentPeriodStart)
+	require.Equal(t, periodEnd, got.CurrentPeriodEnd)
+	require.False(t, got.CancelAtPeriodEnd)
+	require.Empty(t, got.ProviderSubID, "终态订阅不得回填 provider_sub_id")
+	require.Len(t, store.outbox, eventsBefore, "终态订阅不得再发订阅事件")
+}
+
+// TestSubscribe_ReplayTerminalReturnsError（E-P2-5 附带 / J4-3）：幂等重放
+// 命中终态订阅时不得返回 IdempotentReplay 成功（死合同）；应返回明确错误，
+// 且取消后换新幂等键可重新订阅（终态行不占位）。
+func TestSubscribe_ReplayTerminalReturnsError(t *testing.T) {
+	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
+	uc, store, _ := setupSub(t, now, &stubAssets{})
+	plan := seedPlan(t, store, now)
+	plan.Amount = 0
+	store.plans[plan.ID].Amount = 0
+
+	ctx := userCtx("proj", "user_1")
+	r1, err := uc.Subscribe(ctx, SubscribeCommand{PlanCode: "pro", Mode: domainsubs.ModePlatform, IdempotencyKey: "k-term"})
+	require.NoError(t, err)
+	require.False(t, r1.IdempotentReplay)
+
+	_, _, err = uc.ForceCancel(adminCtx("proj"), r1.Subscription.ID)
+	require.NoError(t, err)
+	require.Equal(t, domainsubs.StatusCanceled, store.subs[r1.Subscription.ID].Status)
+
+	_, err = uc.Subscribe(ctx, SubscribeCommand{PlanCode: "pro", Mode: domainsubs.ModePlatform, IdempotencyKey: "k-term"})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Contains(t, st.Message(), "terminated subscription")
+
+	// 换新幂等键：重新订阅成功（终态行不占 live 位）。
+	r2, err := uc.Subscribe(ctx, SubscribeCommand{PlanCode: "pro", Mode: domainsubs.ModePlatform, IdempotencyKey: "k-term-2"})
+	require.NoError(t, err)
+	require.False(t, r2.IdempotentReplay)
+	require.Equal(t, domainsubs.StatusActive, r2.Subscription.Status)
+}

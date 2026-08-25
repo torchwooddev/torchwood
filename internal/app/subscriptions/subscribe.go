@@ -2,6 +2,7 @@ package subscriptions
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,6 +105,12 @@ func (s *Subscriptions) Subscribe(ctx context.Context, cmd SubscribeCommand) (*S
 			return err
 		}
 		if !inserted {
+			// 幂等重放命中终态订阅（canceled/expired，E-P2-5）：原合同已死，
+			// 作为成功重放返回会让客户端拿到一张无效订阅；返回明确错误引导
+			// 换新幂等键重新订阅（终态行不占 live unique 位，新键可正常订阅）。
+			if existing.Status.IsTerminal() {
+				return domainsubs.ErrReplayTerminalSubscription
+			}
 			result.Subscription = existing
 			result.IdempotentReplay = true
 			return nil
@@ -229,6 +236,16 @@ func (s *Subscriptions) resolveCheckoutURLs(reqSuccess, reqCancel string) (strin
 	return success, cancel
 }
 
+// maxBillingOrderAttempts 是同 cycle 建单的总尝试次数：原键 + `#2`…`#5`
+// 共 5 把键。全部命中终态单后放弃本轮下单（E-P2-2）。
+const maxBillingOrderAttempts = 5
+
+// errBillingOrderExhausted：同 cycle 连续换键重建订单均命中终态单
+// （closed/failed/refunded）。billOrPastDue 据此哨兵转入 markPastDue，
+// 消灭「tryCharge 假成功、订阅永不推进也永不 past_due」的空转卡死。
+var errBillingOrderExhausted = status.Error(codes.FailedPrecondition,
+	"subscriptions: billing order rebuild attempts exhausted for this cycle")
+
 // createBillingOrder 生成订阅扣款订单（Stripe，两段式，对齐 payments.CreateOrder）：
 //
 //  1. 经 payments.InsertCreatedOrder 落单 + payment_session index，在**独立事务**
@@ -240,7 +257,14 @@ func (s *Subscriptions) resolveCheckoutURLs(reqSuccess, reqCancel string) (strin
 //
 // CreatePayment 失败时订单保持 created：外层按各自语义处理（Subscribe 回滚订阅、
 // processDue 记日志下轮重试），订单由到期 worker 关单；幂等键 sub:<id>:<cycle>
-// 保证重放不重复建单。
+// （及重建用的 `#N` 后缀键）保证重放不重复建单。
+//
+// 幂等命中检查状态（E-P2-2）：仍为 created 的原单继续走下单流程（对齐
+// payments.CreateOrder）；命中终态单（closed/failed/refunded）说明上一轮订单
+// 已死（如 CreatePayment 失败后被 CloseExpiredOrders 关单），同键重放只会永久
+// 拿回死单——换 `原键#N`（N 从 2 递增）重建，新键同样可被并发的两轮扫描幂等
+// 命中（N 递增探测直到 inserted）；连续 maxBillingOrderAttempts 次全为终态则
+// 返回 errBillingOrderExhausted 交由 billOrPastDue 走 markPastDue。
 func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.Subscription, plan *domainsubs.Plan, cycle string) (*domainpayments.Order, string, error) {
 	if s.orders == nil || s.providers == nil {
 		return nil, "", status.Error(codes.FailedPrecondition, "payments are required to bill this subscription")
@@ -251,31 +275,53 @@ func (s *Subscriptions) createBillingOrder(ctx context.Context, sub *domainsubs.
 		return nil, "", status.Errorf(codes.FailedPrecondition, "unsupported provider %q", providerName)
 	}
 	now := s.ts()
-	order, err := apppayments.NewCreatedOrder(apppayments.CreatedOrderSpec{
-		ProjectID:      sub.ProjectID,
-		UserID:         sub.UserID,
-		Provider:       provider.Name(),
-		Amount:         plan.Amount,
-		Currency:       plan.Currency,
-		PurposeKind:    domainpayments.PurposeSubscription,
-		Purpose:        purposeJSON(sub.ID, plan.Code, cycle),
-		IdempotencyKey: "sub:" + sub.ID + ":" + cycle,
-		Now:            now,
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	var existing *domainpayments.Order
-	var inserted bool
-	if err := s.db.RunInNewTx(ctx, func(txCtx context.Context) error {
-		var err error
-		existing, inserted, err = apppayments.InsertCreatedOrder(txCtx, s.orders, s.index, order)
-		return err
-	}); err != nil {
-		return nil, "", err
-	}
-	if !inserted {
+	baseKey := "sub:" + sub.ID + ":" + cycle
+	var order *domainpayments.Order
+	for attempt := 0; attempt < maxBillingOrderAttempts; attempt++ {
+		key := baseKey
+		if attempt > 0 {
+			key = baseKey + "#" + strconv.Itoa(attempt+1)
+		}
+		candidate, err := apppayments.NewCreatedOrder(apppayments.CreatedOrderSpec{
+			ProjectID:      sub.ProjectID,
+			UserID:         sub.UserID,
+			Provider:       provider.Name(),
+			Amount:         plan.Amount,
+			Currency:       plan.Currency,
+			PurposeKind:    domainpayments.PurposeSubscription,
+			Purpose:        purposeJSON(sub.ID, plan.Code, cycle),
+			IdempotencyKey: key,
+			Now:            now,
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		var existing *domainpayments.Order
+		var inserted bool
+		if err := s.db.RunInNewTx(ctx, func(txCtx context.Context) error {
+			var err error
+			existing, inserted, err = apppayments.InsertCreatedOrder(txCtx, s.orders, s.index, candidate)
+			return err
+		}); err != nil {
+			return nil, "", err
+		}
+		if inserted {
+			order = candidate
+			break
+		}
+		if existing.Status == domainpayments.OrderStatusCreated {
+			order = existing // created 原单：继续走下单流程（渠道侧以 order:<id> 幂等）。
+			break
+		}
+		if existing.Status.IsTerminal() {
+			continue // 终态死单：换 `#N` 键重建。
+		}
+		// paying/paid/refunding 等渠道侧未决或已成功的单：原样返回等待回调推进，
+		// 绝不重建（防止同一周期重复扣款）。
 		return existing, "", nil
+	}
+	if order == nil {
+		return nil, "", errBillingOrderExhausted
 	}
 	successURL, cancelURL := s.resolveCheckoutURLs("", "")
 	session, err := provider.CreatePayment(ctx, domainpayments.CreatePaymentInput{

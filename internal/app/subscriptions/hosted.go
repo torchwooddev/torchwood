@@ -31,6 +31,15 @@ func (s *Subscriptions) HandleHostedCallback(ctx context.Context, event *domainp
 	}
 	ctx = withSystemPrincipal(ctx, sub.ProjectID)
 
+	// 终态订阅迟到事件：保留事件登记、不再驱动状态机，避免 markPastDue /
+	// applyTerminal 从终态 Transition 必报错，事务回滚连事件登记一并吞掉，
+	// 渠道 3 天重推窗口耗尽后事件最终丢失、已付款订阅永久卡死（E-P2-3）。
+	// 同时终态订阅的字段（period / cancel_at_period_end / provider_sub_id）
+	// 不得被事件旁路改写——return nil 让调用方事务正常提交，仅留事件行。
+	if sub.Status.IsTerminal() {
+		return nil
+	}
+
 	if event.ProviderSubID != "" && sub.ProviderSubID == "" {
 		sub.ProviderSubID = event.ProviderSubID
 		sub.Provider = event.Provider
@@ -38,6 +47,7 @@ func (s *Subscriptions) HandleHostedCallback(ctx context.Context, event *domainp
 			return err
 		}
 	}
+	// period 字段镜像改写仅对非终态订阅生效（终态在上方已短路）。
 	if !event.PeriodStart.IsZero() {
 		sub.CurrentPeriodStart = event.PeriodStart
 	}

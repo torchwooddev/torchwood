@@ -144,6 +144,12 @@ func (r *subscriptionRepo) Insert(ctx context.Context, sub *subscriptions.Subscr
 		On("CONFLICT (project_id, idempotency_key) DO NOTHING").
 		Exec(ctx2)
 	if err != nil {
+		// 幂等键之外的唯一冲突只可能来自 subscriptions_live_unique
+		// （partial unique index，J4-3）：并发 Subscribe 双开同 (user, plan)
+		// 活跃订阅，DB 层兜底映射 ErrAlreadySubscribed。
+		if isSubscriptionsLiveUniqueViolation(err) {
+			return nil, false, subscriptions.ErrAlreadySubscribed
+		}
 		return nil, false, err
 	}
 	if n, _ := res.RowsAffected(); n == 1 {
@@ -498,4 +504,24 @@ func isSubUniqueViolation(err error) bool {
 	}
 	s := err.Error()
 	return strings.Contains(s, "SQLSTATE 23505") || strings.Contains(s, "unique constraint")
+}
+
+// subscriptionsLiveUniqueIndex 是 (project_id, user_id, plan_id) 活跃订阅
+// partial unique index 的名字（projectschema 000010 / 控制面 000023 迁移创建，
+// 各项目 schema 各一份）。状态串与 domain subscriptions 状态常量一致。
+const subscriptionsLiveUniqueIndex = "subscriptions_live_unique"
+
+// isSubscriptionsLiveUniqueViolation 识别 subscriptions_live_unique 的 23505
+// 冲突（ON CONFLICT 只吞幂等键约束，本索引冲突会以错误浮出）。
+// 约束名字段与错误文本一起比对（pgdriver 部分路径 Field('N') 为空）。
+func isSubscriptionsLiveUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	name := ""
+	var pgErr pgdriver.Error
+	if errors.As(err, &pgErr) && pgErr.Field('C') == "23505" {
+		name = pgErr.Field('N')
+	}
+	return strings.Contains(strings.ToLower(name+" "+err.Error()), subscriptionsLiveUniqueIndex)
 }

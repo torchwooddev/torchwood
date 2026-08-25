@@ -71,7 +71,7 @@ func TestApply_CutRenamesToFinalNames(t *testing.T) {
 	var version int64
 	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
-	require.Equal(t, int64(9), version)
+	require.Equal(t, int64(10), version)
 
 	schema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
@@ -170,7 +170,7 @@ func TestApply_CopyThenCutMovesRowsToFinalNames(t *testing.T) {
 	var version int64
 	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
-	require.Equal(t, int64(9), version)
+	require.Equal(t, int64(10), version)
 
 	schema, err := ident.ProjectSchemaName(projectID)
 	require.NoError(t, err)
