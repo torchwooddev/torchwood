@@ -26,7 +26,7 @@ type apiKeyScopeRule struct {
 }
 
 // apiKeyScopeRules 由 domainauth.APIKeyScopeRules 重建，保持与 domain 单一事实来源同步
-//（fail-closed 断言仍以 domain 为准）。
+// （fail-closed 断言仍以 domain 为准）。
 var apiKeyScopeRules = func() map[string]apiKeyScopeRule {
 	m := domainauth.APIKeyScopeRules()
 	out := make(map[string]apiKeyScopeRule, len(m))

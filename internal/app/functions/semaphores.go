@@ -29,7 +29,7 @@ func ProvideSemaphores(client *redis.Client, cfg *config.AppConfig) Semaphores {
 			Run:   semaphore.NewInMemory(maxConcurrentRuns),
 		}
 	}
-		// 允许通过 config 调整 TTL（若未来开放）；当前未进 config.proto，保持固定。
+	// 允许通过 config 调整 TTL（若未来开放）；当前未进 config.proto，保持固定。
 	_ = cfg
 	buildSem := semaphore.NewRedis(client, "torchwood:sem:build", maxConcurrentBuilds, buildTTL)
 	runSem := semaphore.NewRedis(client, "torchwood:sem:run", maxConcurrentRuns, runTTL)

@@ -36,7 +36,9 @@ type stubProjectRepo struct {
 	projects map[string]*domainprojects.Project
 }
 
-func (s *stubProjectRepo) CreateProject(ctx context.Context, p *domainprojects.Project) error { return nil }
+func (s *stubProjectRepo) CreateProject(ctx context.Context, p *domainprojects.Project) error {
+	return nil
+}
 func (s *stubProjectRepo) GetProject(ctx context.Context, id string) (*domainprojects.Project, error) {
 	if s == nil || s.projects == nil {
 		return &domainprojects.Project{ID: id, Status: "active"}, nil
@@ -49,8 +51,12 @@ func (s *stubProjectRepo) GetProject(ctx context.Context, id string) (*domainpro
 func (s *stubProjectRepo) GetProjectByName(ctx context.Context, name string) (*domainprojects.Project, error) {
 	return nil, nil
 }
-func (s *stubProjectRepo) ListProjects(ctx context.Context) ([]domainprojects.Project, error) { return nil, nil }
-func (s *stubProjectRepo) UpdateProject(ctx context.Context, p *domainprojects.Project) error { return nil }
+func (s *stubProjectRepo) ListProjects(ctx context.Context) ([]domainprojects.Project, error) {
+	return nil, nil
+}
+func (s *stubProjectRepo) UpdateProject(ctx context.Context, p *domainprojects.Project) error {
+	return nil
+}
 func (s *stubProjectRepo) DeleteProject(ctx context.Context, id string) error { return nil }
 func (s *stubProjectRepo) DeleteProjectControlPlaneRows(ctx context.Context, projectID string) error {
 	return nil

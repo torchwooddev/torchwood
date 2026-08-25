@@ -61,11 +61,15 @@ func TestOutboxRepo_ReplayDeadLetter(t *testing.T) {
 	require.NoError(t, repo.ReplayDeadLetter(ctx, "e1", "p1"))
 
 	// 死信应被删除，outbox 应有行
-	n, err := db.NewSelect().Model((*struct{ID string `bun:"event_id"`})(nil)).TableExpr("document_events_outbox_dead").Where("event_id = ?", "e1").Count(ctx)
+	n, err := db.NewSelect().Model((*struct {
+		ID string `bun:"event_id"`
+	})(nil)).TableExpr("document_events_outbox_dead").Where("event_id = ?", "e1").Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 0, n)
 
-	n, err = db.NewSelect().Model((*struct{ID string `bun:"event_id"`})(nil)).TableExpr("document_events_outbox").Where("event_id = ?", "e1").Count(ctx)
+	n, err = db.NewSelect().Model((*struct {
+		ID string `bun:"event_id"`
+	})(nil)).TableExpr("document_events_outbox").Where("event_id = ?", "e1").Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
 
