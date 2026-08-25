@@ -22,10 +22,10 @@ type realtimeTestServer struct {
 	mu         sync.Mutex
 	subscribes []string
 
-	url     string
-	hellos  chan string          // 每次握手的 access_token
-	frames  chan map[string]any  // 客户端控制帧（subscribe/unsubscribe/ping）
-	conns   chan *websocket.Conn // 每次握手成功后的服务端连接
+	url    string
+	hellos chan string          // 每次握手的 access_token
+	frames chan map[string]any  // 客户端控制帧（subscribe/unsubscribe/ping）
+	conns  chan *websocket.Conn // 每次握手成功后的服务端连接
 }
 
 func newRealtimeTestServer(t *testing.T) *realtimeTestServer {

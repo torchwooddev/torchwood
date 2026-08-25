@@ -32,8 +32,9 @@ const (
 	// 与 documentdb 的 maxQueryOffset 对齐（R4-J2-4）。
 	MaxQueryOffset = 10000
 
-	// pageTokenKeyPurpose 是密钥派生的 purpose 域，风格与
-	// pkg/jwtparser DeriveKey 一致但本地实现，避免 pkg 内反向依赖。
+	// pageTokenKeyPurpose 是密钥派生的 purpose 域，与 pkg/jwtparser
+	// DeriveKey(master, purpose) 同构（HMAC-SHA256(master, purpose)），
+	// 本地实现以避免 pkg 内反向依赖。
 	pageTokenKeyPurpose = "torchwood-page-token-v1"
 )
 
@@ -44,13 +45,14 @@ const (
 var pageTokenSecret atomic.Value // string
 
 // InitPageTokenSigning 启用页 token 的 HMAC 签名与验签。master 为部署主密钥
-// （security.jwt.secret）；实际签名密钥经 purpose 派生，与 JWT/OAuth 等域隔离。
+// （security.jwt.secret）；实际签名密钥经 HMAC-SHA256(master, purpose) 派生，
+// 与 JWT/OAuth 等域隔离。
 func InitPageTokenSigning(master string) error {
 	if strings.TrimSpace(master) == "" {
 		return fmt.Errorf("page token signing requires a non-empty master secret")
 	}
-	mac := hmac.New(sha256.New, []byte(pageTokenKeyPurpose))
-	_, _ = mac.Write([]byte(master))
+	mac := hmac.New(sha256.New, []byte(master))
+	_, _ = mac.Write([]byte(pageTokenKeyPurpose))
 	pageTokenSecret.Store(hex.EncodeToString(mac.Sum(nil)))
 	return nil
 }

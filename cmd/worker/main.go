@@ -42,6 +42,7 @@ func main() {
 			f.String("log-level", "info", "log level")
 		}),
 		lynx.WithBindConfigFunc(config.NewBindConfigFunc()),
+		// Worker 无需排水窗口（无 LB 摘流，仅消费队列与定时任务），仅需有界关停。
 		lynx.WithShutdownTimeout(30*time.Second),
 	)
 

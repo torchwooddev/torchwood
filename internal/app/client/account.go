@@ -30,30 +30,30 @@ import (
 )
 
 type Account struct {
-	cfg                 *config.AppConfig
-	projectRepo         projects.Repository
-	oauthProviders      projects.OAuthProviderRepository
-	usersRepo           users.Repository
-	identities          domainauth.IdentityRepository
-	sessionRepo         domainauth.SessionRepository
-	sessions            domainauth.SessionService
-	otp                 domainauth.OTPChallengeStore
-	oauthState          domainauth.OAuthStateStore
-	tokens              domainauth.AccountTokenStore
-	loginThrottle       domainauth.LoginThrottle
-	rotation            domainauth.RefreshRotationStore
-	idGen               domainidgen.Generator
-	mailer              messaging.Mailer
-	sms                 messaging.SMSSender
-	rateLimiter         domainauth.RateLimiter
-	roles               domainauth.UserRoleResolver
-	mfa                 domainauth.MFAService
-	mfaChallenges       domainauth.MFAChallengeStore
-	oneTimeTokens       domainauth.OneTimeTokenStore
-	auditRepo           audit.Repository
-	oauthFactory        domainauth.OAuthAuthenticatorFactory
-	weChatExchanger     domainauth.WeChatMiniProgramExchanger
-	otpGenerator        domainauth.OTPGenerator
+	cfg             *config.AppConfig
+	projectRepo     projects.Repository
+	oauthProviders  projects.OAuthProviderRepository
+	usersRepo       users.Repository
+	identities      domainauth.IdentityRepository
+	sessionRepo     domainauth.SessionRepository
+	sessions        domainauth.SessionService
+	otp             domainauth.OTPChallengeStore
+	oauthState      domainauth.OAuthStateStore
+	tokens          domainauth.AccountTokenStore
+	loginThrottle   domainauth.LoginThrottle
+	rotation        domainauth.RefreshRotationStore
+	idGen           domainidgen.Generator
+	mailer          messaging.Mailer
+	sms             messaging.SMSSender
+	rateLimiter     domainauth.RateLimiter
+	roles           domainauth.UserRoleResolver
+	mfa             domainauth.MFAService
+	mfaChallenges   domainauth.MFAChallengeStore
+	oneTimeTokens   domainauth.OneTimeTokenStore
+	auditRepo       audit.Repository
+	oauthFactory    domainauth.OAuthAuthenticatorFactory
+	weChatExchanger domainauth.WeChatMiniProgramExchanger
+	otpGenerator    domainauth.OTPGenerator
 }
 
 func NewAccount(
@@ -98,15 +98,15 @@ func NewAccount(
 		oauthFactory:    oauthFactory,
 		weChatExchanger: weChatExchanger,
 		otpGenerator:    otpGenerator,
-		idGen:          idGen,
-		mailer:         mailer,
-		sms:            sms,
-		rateLimiter:    rateLimiter,
-		roles:          roles,
-		mfa:            mfa,
-		mfaChallenges:  normalizeMFAChallengeStore(mfaChallenges),
-		oneTimeTokens:  oneTimeTokens,
-		auditRepo:      auditRepo,
+		idGen:           idGen,
+		mailer:          mailer,
+		sms:             sms,
+		rateLimiter:     rateLimiter,
+		roles:           roles,
+		mfa:             mfa,
+		mfaChallenges:   normalizeMFAChallengeStore(mfaChallenges),
+		oneTimeTokens:   oneTimeTokens,
+		auditRepo:       auditRepo,
 	}
 }
 
@@ -360,10 +360,12 @@ func (a *Account) checkLoginThrottle(ctx context.Context, email, ip string) erro
 }
 
 func (a *Account) recordLoginFailure(ctx context.Context, email, ip string) {
+	// intentionally ignored: throttle is best-effort, failure must not block login
 	_ = a.loginThrottle.RecordFailure(ctx, domainauth.LoginNamespaceEndUser, email, ip)
 }
 
 func (a *Account) resetLoginThrottle(ctx context.Context, email, ip string) {
+	// intentionally ignored: throttle reset is best-effort
 	_ = a.loginThrottle.Reset(ctx, domainauth.LoginNamespaceEndUser, email, ip)
 }
 

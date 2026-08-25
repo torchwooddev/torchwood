@@ -161,5 +161,3 @@ func TestClientSubscriptions_SubscribeAndCancel(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, canceled.CancelAtPeriodEnd)
 }
-
-

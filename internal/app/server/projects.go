@@ -26,7 +26,9 @@ import (
 const maxProjectDescriptionLen = 512
 
 // projectObjectPurgeTimeout 是删除项目后异步清空对象存储前缀的总预算
-// （含一次重试；Round4 J5-2）。purge 失败只留告警日志，不影响删除结果。
+// （含一次重试；Round4 J5-2）。purge 脱离请求与停机编排运行（60s > 30s drain），
+// 失败仅留可追踪日志（含 bucket/prefix 定位残留），由运维按日志前缀手工清理
+// 或重放删除；后续可演进为持久化 outbox/worker 任务以保障可重放。
 const projectObjectPurgeTimeout = 60 * time.Second
 
 type Projects struct {
@@ -212,8 +214,9 @@ func (s *Projects) DeleteProjectInternal(ctx context.Context, id string) error {
 }
 
 // purgeObjectsAsync 异步清空项目的对象存储前缀（60s 总预算 + 失败重试一次）。
-// goroutine 脱离请求生命周期运行；错误只留可追踪日志（含 bucket/prefix 定位
-// 残留），由运维按日志前缀手工清理或重放删除。
+// goroutine 脱离请求与停机编排运行（见 projectObjectPurgeTimeout 注释）；
+// 错误只留可追踪日志（含 bucket/prefix 定位残留），由运维按日志前缀手工清理
+// 或重放删除。
 func (s *Projects) purgeObjectsAsync(projectID string) {
 	if s.purger == nil {
 		return

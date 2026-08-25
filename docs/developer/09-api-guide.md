@@ -135,7 +135,7 @@ if info.HasNext { meta.NextPageToken = crud.EncodePageToken(info.NextOffset) }
 if info.HasPrevious { meta.PrevPageToken = crud.EncodePageToken(info.PreviousOffset) }
 ```
 
-- `filter/order_by` 显性化：token 携带 digest 时要求翻页二者与首请求一致（不一致→`InvalidArgument`）；勿手拼 SQL `filter/order`。
+- `filter/order_by` 显性化：token 携带 digest 时要求翻页二者与首请求一致（不一致→`InvalidArgument`）；勿手拼 SQL `filter/order`。**注意**：管理面部分列表（`ListProjects`/`ListCollections`/`ListFunctions` 等）当前经 `EncodePageToken` 直接签发，未写入 `order_by`/`filter` 绑定；此类端点换过滤条件不会被拒，绑定仅对经 `GeneratePageTokens` 签发且携带 digest 的 token 生效。
 - `pkg/crud/filter.go`/`order.go` 供静态表列表复用，动态文档优先 `pkg/query`（见 `06-databases.md` §6）。
 
 示例（documents 支持 `queries`（Appwrite 风格 DSL，见 06-databases.md §6）；storage buckets 列表当前不支持 filter/order_by，传入会被 `InvalidArgument` 显式拒绝）：

@@ -66,7 +66,9 @@ var HTTPErrorHandler runtime.ErrorHandlerFunc = func(ctx context.Context, mux *r
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus)
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		slog.ErrorContext(ctx, "failed to encode error response", "error", err, "error_id", errorID)
+	}
 }
 
 func errorTypeForCode(code codes.Code) string {

@@ -23,9 +23,9 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/health"
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/pkg/bootkit"
-	"github.com/torchwooddev/torchwood/internal/runtime"
 	"github.com/torchwooddev/torchwood/internal/pkg/buildinfo"
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/runtime"
 )
 
 //go:generate wire
@@ -85,7 +85,7 @@ func NewBuildInfo() buildinfo.BuildInfo {
 // NewComponents 返回服务注册顺序：grpc → gateway → realtime-subscriber
 // → metrics。
 //
-// 关停顺序说明（R09-P2-4）：Lynx v1.2.0 经 oklog/run 停止服务——正常关停
+// 关停顺序说明（R09-P2-4，更新至 Lynx v1.3.0）：Lynx v1.3.0 仍经 oklog/run 停止服务——正常关停
 // 路径按注册顺序（而非逆序）逐个有界停止，即 grpc → gateway →
 // realtime-subscriber → metrics；逆序停止仅用于框架内部 Init/OnStart
 // 失败路径的资源清理（stopServices）。依赖方向为 gateway → grpc，理想

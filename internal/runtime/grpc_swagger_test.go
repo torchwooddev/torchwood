@@ -219,6 +219,59 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 		strings.Join(missing, "\n"))
 }
 
+// TestSwaggerPropertyNamesAreSnakeCase 抽检 swagger definitions 的属性名
+// 必须为 snake_case（R4-J2-1 要求 json_names_for_fields=false）。
+func TestSwaggerPropertyNamesAreSnakeCase(t *testing.T) {
+	genprotoDir := filepath.Join("..", "..", "genproto")
+	snake := func(s string) bool {
+		if s == "" {
+			return true
+		}
+		for i, ch := range s {
+			if ch >= 'A' && ch <= 'Z' {
+				return false
+			}
+			if i == 0 && ch >= '0' && ch <= '9' {
+				return false
+			}
+			if !(ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) {
+				return false
+			}
+		}
+		return true
+	}
+	var bad []string
+	for _, sub := range []string{"server", "client", "console"} {
+		dir := filepath.Join(genprotoDir, sub, "v1")
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".swagger.json") {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			require.NoError(t, err)
+			var doc struct {
+				Definitions map[string]struct {
+					Properties map[string]json.RawMessage `json:"properties"`
+				} `json:"definitions"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &doc))
+			for defName, def := range doc.Definitions {
+				for prop := range def.Properties {
+					if prop == "@type" {
+						continue
+					}
+					if !snake(prop) {
+						bad = append(bad, e.Name()+"/"+defName+"."+prop)
+					}
+				}
+			}
+		}
+	}
+	require.Empty(t, bad, "以下 swagger 属性名非 snake_case（应重跑 task generate-proto 检查 json_names_for_fields）：\n%s", strings.Join(bad, "\n"))
+}
+
 // findMethodByOperationID 先按原名精确查找；未命中时按 additional_bindings
 // 的 "{N}" 数字后缀解析（如 Check2），并校验 N 落在该方法真实声明过的
 // HTTP 绑定索引范围内（R4-J2-5：防数字截断把未知 RPC 误配到形似方法）。
