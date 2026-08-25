@@ -245,7 +245,7 @@ func (s *fakeServices) ListDocuments(ctx context.Context, _ *serverv1.ListDocume
 	}, nil
 }
 
-func (s *fakeServices) CountDocuments(ctx context.Context, _ *serverv1.ListDocumentsRequest) (*serverv1.CountDocumentsResponse, error) {
+func (s *fakeServices) CountDocuments(ctx context.Context, _ *serverv1.CountDocumentsRequest) (*serverv1.CountDocumentsResponse, error) {
 	return &serverv1.CountDocumentsResponse{Count: 42}, nil
 }
 

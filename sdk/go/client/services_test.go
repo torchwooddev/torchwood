@@ -126,7 +126,7 @@ func (s *fakeDatabases) ListDocuments(ctx context.Context, _ *clientv1.ListDocum
 	return &clientv1.ListDocumentsResponse{Documents: []*sharedv1.Document{{Id: "d1"}}}, nil
 }
 
-func (s *fakeDatabases) CountDocuments(ctx context.Context, _ *clientv1.ListDocumentsRequest) (*clientv1.CountDocumentsResponse, error) {
+func (s *fakeDatabases) CountDocuments(ctx context.Context, _ *clientv1.CountDocumentsRequest) (*clientv1.CountDocumentsResponse, error) {
 	s.rec.record(ctx)
 	return &clientv1.CountDocumentsResponse{Count: 7}, nil
 }

@@ -111,7 +111,8 @@ func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID strin
 
 // CountDocuments 按查询 DSL 统计文档数量。
 func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID string, queries []string) (int64, error) {
-	resp, err := d.c.databases.CountDocuments(ctx, &clientv1.ListDocumentsRequest{
+	// P3-9：CountDocuments 独立 Request（不暴露无效分页参数）。
+	resp, err := d.c.databases.CountDocuments(ctx, &clientv1.CountDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
 		Queries:      queries,
