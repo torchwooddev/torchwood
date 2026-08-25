@@ -68,11 +68,14 @@ jobs:
       - name: Rewrite sdk/go/go.mod to real genproto version (drop local replace)
         run: |
           set -euo pipefail
+          # require 写纯版本号：nested module 的 tag 前缀（genproto/）由 Go 在
+          # 版本解析时剥离，go.mod 里写 "genproto/vX.Y.Z" 是 disallowed version。
+          GENPROTO_VERSION="${GENPROTO_TAG#genproto/}"
           sed -i \
-            "s#github.com/torchwooddev/torchwood/genproto v0\.0\.0-00010101000000-000000000000#github.com/torchwooddev/torchwood/genproto ${GENPROTO_TAG}#" \
+            "s#github.com/torchwooddev/torchwood/genproto v0\.0\.0-00010101000000-000000000000#github.com/torchwooddev/torchwood/genproto ${GENPROTO_VERSION}#" \
             sdk/go/go.mod
           sed -i '\#^replace github.com/torchwooddev/torchwood/genproto => \.\./\.\./genproto$#d' sdk/go/go.mod
-          grep -q "torchwood/genproto ${GENPROTO_TAG}\$" sdk/go/go.mod || {
+          grep -q "torchwood/genproto ${GENPROTO_VERSION}\$" sdk/go/go.mod || {
             echo "::error::require 改写失败"; exit 1; }
           ! grep -q '^replace github.com/torchwooddev/torchwood/genproto' sdk/go/go.mod || {
             echo "::error::replace 未删除干净"; exit 1; }
