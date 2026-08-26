@@ -97,7 +97,7 @@ torchwood/
 | 进程 | 入口 | 职责 | 配置校验 |
 |------|------|------|----------|
 | `server` | `cmd/server` | Lynx Runner：gRPC `127.0.0.1:9060` + gateway/Console SPA `:9080` + Metrics `127.0.0.1:9040` + 自定义 HTTP；注册顺序 `grpc→gateway→realtime→metrics` | `security.jwt.secret` 必填（`provides.go:63`） |
-| `worker` | `cmd/worker` | 后台任务消费者：Functions 队列、outbox 分发、chunk 清理、Stream 修剪、计费闭环等；与 server 共享 `app/domain/infra` 但独立 `ProviderSet`（无 `api` 层） | `data.database.source` 必填（`worker/provides.go:108`） |
+| `dev:worker` | `cmd/worker` | 后台任务消费者：Functions 队列、outbox 分发、chunk 清理、Stream 修剪、计费闭环等；与 server 共享 `app/domain/infra` 但独立 `ProviderSet`（无 `api` 层） | `data.database.source` 必填（`worker/provides.go:108`） |
 | `CLI` | `cmd/client` | `bin/torchwood`，cobra + `sdk/go/server.InvokeJSON` 按 `protoregistry.GlobalFiles` 动态分发；`rpc` 逃生舱覆盖全部 Server RPC，新增 RPC 无需登记 | `TORCHWOOD_CLI_*` 环境覆盖 |
 
 三者均 `godotenv.Load()` 加载 `.env`，配置绑定走 `config.NewBindConfigFunc()`（`internal/pkg/config/bind.go:21`），Wire 生成见 `04-codegen.md`。
@@ -154,7 +154,7 @@ HTTP 客户端 / Agent
 ## 8. 近期加固一句话点列
 
 - **W-J 事件脊柱**：`outbox` + `outbox_dead` 死信表，`OutboxService/ListDeadLetters:ReplayDeadLetter`（`outbox:read/write`，`proto/server/v1/outbox.proto:43`）+ gauge `torchwood_outbox_dead`，经济事件信封补 `version`（`updated_at` 纳秒）判序，防重发与乱序（`arch-review-2026-08-fix-plan.md:345`）。
-- **W-H 工程门禁**：`golangci-lint run --new-from-rev=origin/main` 棘轮 + 全量 0 warning、`buf breaking --against '.git#branch=origin/main'`、零漂移 `buf generate + config + wire-all + git diff --exit-code`、`go test -race` 全量（`Taskfile.yml:29,172`）。
+- **W-H 工程门禁**：`golangci-lint run --new-from-rev=origin/main` 棘轮 + 全量 0 warning、`buf breaking --against '.git#branch=origin/main'`、零漂移 `buf generate + config + wire:all + git diff --exit-code`、`go test -race` 全量（`Taskfile.yml:29,172`）。
 - **W-K 契约治理**：`ListRequest.filter/order_by` 未实现一律 `reserved` 消灭静默 no-op，client/server 重复 message 抽 `shared` 基底，新增 RPC 须同步 `method_auth` + `apiKeyScopeRules` + `adminRoleMethodRules`（启动期双断言 `grpc.go:94`）。
 - **W-I 独立加密密钥**：`security.encryption_key`（`TORCHWOOD_SECURITY_ENCRYPTION_KEY`）隔离静态字段加密（OAuth/TOTP），未配回退 `jwt.secret` 并告警（`internal/pkg/config/crypto.go:10`）。
 - **全局信号量**：`pkg/semaphore` Redis `SET NX + TTL` 分布式计数（`build 4` / `run 16`，TTL 5m，多槽 `slot:<idx>`），内存 `InMemory` 回退（`internal/app/functions/functions.go:31`）。

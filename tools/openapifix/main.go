@@ -15,7 +15,7 @@
 //     生成约定一致且当前无碰撞；若未来某 proto 直接引用了这些消息，重生成会
 //     出现原生命名定义并存，届时应改为以原生定义为准。
 //
-// 由 Taskfile generate-proto 在 buf generate 之后调用：go run ./tools/openapifix
+// 由 Taskfile generate:proto 在 buf generate 之后调用：go run ./tools/openapifix
 package main
 
 import (

@@ -127,17 +127,17 @@ api.interceptors.request.use((config) => {
 ## 5. 开发与构建
 
 ```bash
-task console-install   # pnpm install（锁定 pnpm@11.20.0）
-task console-dev       # pnpm run dev → vite dev server
-task console-build     # pnpm run build → tsc -b && vite build → dist/
-task build             # 依赖 console-build → go build ./cmd/server ./cmd/worker ./cmd/client
+task console:install   # pnpm install（锁定 pnpm@11.20.0）
+task console:dev       # pnpm run dev → vite dev server
+task console:build     # pnpm run build → tsc -b && vite build → dist/
+task build             # 依赖 console:build → go build ./cmd/server ./cmd/worker ./cmd/client
 ```
 
 - `vite.config.ts:8`：`base: '/console/'`，`@` → `./src`（tsconfig + vite 双别名）；
 - `vite.config.ts:20`：`server.proxy['/v1'] → http://localhost:9099`（与 `configs/config.yaml.template` 的 `server.http.addr` 对齐），保证 dev 下 `/v1` 同源，HttpOnly cookie 正常工作；
 - `console/embed.go:8`：`//go:embed dist` → `console.Dist`，由 `internal/infra/server/console.go:7` 的 `NewConsoleHandler` 挂载，SPA fallback（未知路径回 `index.html`）+ 安全头（`X-Frame-Options: DENY` / CSP / `X-Content-Type-Options`）。
 
-> **必做**：修改 Console 后先 `task console-build` 再 `task build`，否则 `go:embed` 打包旧 `dist/`。
+> **必做**：修改 Console 后先 `task console:build` 再 `task build`，否则 `go:embed` 打包旧 `dist/`。
 
 ---
 
@@ -194,8 +194,8 @@ import { AdminsListPage } from "@/routes/admins/pages";
 ### 6.5 验证
 
 ```bash
-task console-build && task build
-# 或 task console-dev 手工走查：登录 → 切换项目 → 列表/创建/删除 → 刷新鉴权
+task console:build && task build
+# 或 task console:dev 手工走查：登录 → 切换项目 → 列表/创建/删除 → 刷新鉴权
 ```
 
 ---

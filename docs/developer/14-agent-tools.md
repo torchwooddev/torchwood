@@ -122,7 +122,7 @@ TS 不提供 `InvokeJSON`；catalog 仅提供名字与 `fullMethod`，实际执�
 ## 5. 完整 API 权威来源
 
 - **Proto**：`proto/client/`、`proto/server/`、`proto/console/`、`proto/shared/`；
-- **OpenAPI**：`task generate-proto`（`buf generate`）后 `genproto/**/*.swagger.json`（`buf.gen.yaml:19` 的 `openapiv2` 插件，`json_names_for_fields=true`，时间一律 `google.protobuf.Timestamp` → RFC3339）；
+- **OpenAPI**：`task generate:proto`（`buf generate`）后 `genproto/**/*.swagger.json`（`buf.gen.yaml:19` 的 `openapiv2` 插件，`json_names_for_fields=true`，时间一律 `google.protobuf.Timestamp` → RFC3339）；
 - **Scope**：每个 Server RPC 在 `internal/grpc/interceptor/apikey_scope.go:25` 有显式 `databases:read/write` 等映射，`AssertAPIKeyScopeCoverage` 在 `internal/infra/server/grpc.go` 启动期 fail-closed 校验；
 - **计数**：187 = Client 61 + Server 116 + Console 10（以 `proto/**/*.proto` 的 `rpc` 计数为准；`genproto/**/*.swagger.json` 的 `operationId` 为 192（含 additional_bindings 复用），`buf breaking` 保障不兼容变更必经 `reserved`）。
 > 计数脚本：`go run ./tools/rpc_count.go`（或 `grep -r "^\s*rpc " proto | wc -l`）可复现。
@@ -150,14 +150,14 @@ TS 属 `fetch` 层，`HttpTransport.request` 已支持 `auth:"apiKey"` 的任意
 - Proto 层：按 `docs/developer/09-api-guide.md §1.4` 加 `method_auth` 与 `google.api.http`，字段删除必 `reserved`；
 - 拦截器层：`apikey_scope.go:25` 登记 scope，否则 `AssertAPIKeyScopeCoverage` panic；
 - 工具层（可选）：仅当产品决定收录为默认动词时，才在 `tools.go:42` / `tools.ts:34` 追加 `TOOL_*`；
-- 生成物：`task generate-proto` 后提交 `genproto/**/*.swagger.json`，`buf breaking` 会拦住不兼容变更。
+- 生成物：`task generate:proto` 后提交 `genproto/**/*.swagger.json`，`buf breaking` 会拦住不兼容变更。
 
 ---
 
 ## 7. 本地验证
 
 ```bash
-task generate-proto                          # 生成 genproto/**/*.pb.go + *.swagger.json
+task generate:proto                          # 生成 genproto/**/*.pb.go + *.swagger.json
 buf breaking --against '.git#branch=origin/main'  # 无 breaking change
 golangci-lint run --new-from-rev=origin/main ./... # 棘轮 0 新增
 go test ./sdk/go/server -run TestTools -v    # 校验 18 条 catalog 与 FullMethod 存在性

@@ -53,7 +53,7 @@ service ProjectsService {
 ## 3 步骤 2：生成
 
 ```bash
-task generate-proto # buf lint + buf generate（buf.gen.yaml v2：go/gateway/grpc/openapiv2 → genproto，paths=source_relative）
+task generate:proto # buf lint + buf generate（buf.gen.yaml v2：go/gateway/grpc/openapiv2 → genproto，paths=source_relative）
 ```
 
 产物：`*_grpc.pb.go`（`XxxServiceServer` + `Register`）、`*.pb.gw.go`（`RegisterXxxHandlerFromEndpoint`）、`*.swagger.json`（`json_names_for_fields`）、`* .pb.go` 描述符（供 `collectMethodsByAccess` 聚合鉴权）。
@@ -158,7 +158,7 @@ wire.NewSet(server.NewProjects)
 wire.Bind(new(projects.Repository), new(*bunrepo.ProjectRepo))
 ```
 
-改构造器签名后 `task wire-all`（含 `wire-server` + `wire-worker`）重生成 `cmd/server/wire_gen.go`。
+改构造器签名后 `task wire:all`（含 `wire:server` + `wire:worker`）重生成 `cmd/server/wire_gen.go`。
 
 ### 注册
 
@@ -199,13 +199,13 @@ service OutboxService {
 }
 ```
 
-步骤复盘：`proto` 定义→`task generate-proto`→`internal/domain/shared/ports.go:OutboxRepository` 扩展→`internal/app/events/outbox_admin.go` 用例（`5s` per-statement 超时）→`internal/infra/events/outbox.go` 适配（`document_events_outbox_dead`）→`internal/api/servergrpc/outbox.go` handler（`ListRequest→crud.ParseListParams`）→`grpc.go`/`grpc_gateway.go` 注册→`task wire-all`。
+步骤复盘：`proto` 定义→`task generate:proto`→`internal/domain/shared/ports.go:OutboxRepository` 扩展→`internal/app/events/outbox_admin.go` 用例（`5s` per-statement 超时）→`internal/infra/events/outbox.go` 适配（`document_events_outbox_dead`）→`internal/api/servergrpc/outbox.go` handler（`ListRequest→crud.ParseListParams`）→`grpc.go`/`grpc_gateway.go` 注册→`task wire:all`。
 
 CLI 调用：`torchwood outbox list-dead --project <id>` / `torchwood rpc /torchwood.server.v1.OutboxService/ListDeadLetters --data '{"project_id":"shop","pageSize":20}'`。
 
 ## 12 自检清单
 
-1. `task generate-proto && go build ./...` 通过，`genproto/` 无手改；2. `task wire-all` 已重生成；3. `go vet` + `gofmt -l` 空；4. 错误码/分页符合 §7/§9；5. `TestSwaggerAccessExtensionMatches...` 通过；6. 集成测试参照 `internal/api/servergrpc/projects_test.go`（`stub repo + contexts.WithPrincipal`）与 `internal/testutil` 真库。
+1. `task generate:proto && go build ./...` 通过，`genproto/` 无手改；2. `task wire:all` 已重生成；3. `go vet` + `gofmt -l` 空；4. 错误码/分页符合 §7/§9；5. `TestSwaggerAccessExtensionMatches...` 通过；6. 集成测试参照 `internal/api/servergrpc/projects_test.go`（`stub repo + contexts.WithPrincipal`）与 `internal/testutil` 真库。
 
 ## 13 参考
 

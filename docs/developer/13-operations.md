@@ -2,7 +2,7 @@
 
 > 基于当前实现编写（以 `cmd/server/main.go`、`Taskfile.yml`、`docker/local/docker-compose.yml`、`internal/pkg/config/config.proto`、`internal/infra/health/checks.go` 为准）。
 > 关联：`docs/developer/11-testing.md`（测试与门禁）、`AGENTS.md`。
-> 修订记录：2026-08-23 重写（核对 Lynx 三进程、compose 三件套、`task build` 含 `console-build`、`TORCHWOOD_SECURITY_*`、`TORCHWOOD_ENV` 排水、`/healthz`/`/metrics`/`migrate`/`backup`）。
+> 修订记录：2026-08-23 重写（核对 Lynx 三进程、compose 三件套、`task build` 含 `console:build`、`TORCHWOOD_SECURITY_*`、`TORCHWOOD_ENV` 排水、`/healthz`/`/metrics`/`migrate`/`backup`）。
 
 ---
 
@@ -17,8 +17,8 @@
 本地开发：
 
 ```bash
-task dev-server   # go run ./cmd/server
-task worker       # go run ./cmd/worker
+task dev:server   # go run ./cmd/server
+task dev:worker       # go run ./cmd/worker
 ```
 
 > 仅使用数据库/存储时 `server` 单进程即可；启用 Functions 才需 `worker`。
@@ -37,7 +37,7 @@ task worker       # go run ./cmd/worker
 
 ## 2. 外部依赖（`docker/local/docker-compose.yml`）
 
-`task up` / `task down` / `task clean`（`-v` 删卷）一键启停。
+`task docker:up` / `task docker:down` / `task docker:purge`（`-v` 删卷）一键启停。
 
 | 依赖 | 镜像 | 端口 | 用途 | 健康检查 |
 |------|------|------|------|----------|
@@ -57,24 +57,25 @@ task worker       # go run ./cmd/worker
 
 ```yaml
 build:
-  deps: [console-build]
+  deps:
+    - task: console:build
   cmds:
     - go build -ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o ./bin/ ./cmd/server
     - go build -ldflags "..." -o ./bin/ ./cmd/worker
     - go build -ldflags "..." -o ./bin/torchwood{{if eq .OS "Windows_NT"}}.exe{{end}} ./cmd/client
 ```
 
-- `console-build`（`Taskfile.yml:81`）为 `pnpm run build`（`tsc -b && vite build`），产物 `console/dist/` 再被 `console/embed.go:8` 的 `//go:embed dist` 打进二进制，由 `internal/infra/server/console.go:7` 的 `NewConsoleHandler` 在 `/console/` 下 serve（含 SPA fallback 与 `X-Frame-Options: DENY`/CSP 等安全头）；
+- `console:build`（`Taskfile.yml:81`）为 `pnpm run build`（`tsc -b && vite build`），产物 `console/dist/` 再被 `console/embed.go:8` 的 `//go:embed dist` 打进二进制，由 `internal/infra/server/console.go:7` 的 `NewConsoleHandler` 在 `/console/` 下 serve（含 SPA fallback 与 `X-Frame-Options: DENY`/CSP 等安全头）；
 - 版本：`VERSION=$(git describe --tags --always)`、`COMMIT=$(git rev-parse --short HEAD)`、`DATE=$(date +%Y%m%d%H%M%S)`，注入 `main.version`/`main.commit`/`main.date`（全小写），由 `GET /v1/server/health/version` 暴露；
 - Windows 产物为 `bin/server.exe` / `bin/worker.exe` / `bin/torchwood.exe`；
-- **修改 Console 后必先 `task console-build` 再 `task build`**，否则 embed 旧 `dist/`。
+- **修改 Console 后必先 `task console:build` 再 `task build`**，否则 embed 旧 `dist/`。
 
-### 3.2 Docker 镜像（`task build-docker`）
+### 3.2 Docker 镜像（`task docker:build`）
 
 `Taskfile.yml:195` 已定义：`DOCKER_IMAGE='torchwood:1.0.0-{{GIT_VERSION}}-{{TIMESTAMP}}'`，命令为 `docker build -t {{.DOCKER_IMAGE}} .`。仓库根已提供多阶段 `Dockerfile`（builder 构 console + 三二进制，runner 含最小运行时），可直接：
 
 ```bash
-task build-docker
+task docker:build
 docker run --env-file .env -p 9099:9099 -p 9060:9060 torchwood:1.0.0-xxx-yyy
 ```
 
@@ -90,7 +91,7 @@ docker run --env-file .env -p 9099:9099 -p 9060:9060 torchwood:1.0.0-xxx-yyy
 |------|----------|------|
 | JWT secret | `TORCHWOOD_SECURITY_JWT_SECRET` | ≥32 字符，含弱子串（`change-me`/`secret`/`torchwood`/`minioadmin`）拒绝启动；`access_ttl` 默认 `15m`、`refresh_ttl` 默认 `7d` |
 | Setup token | `TORCHWOOD_SECURITY_SETUP_TOKEN` | 未设置时首次 `SignUp` 被拒（`internal/app/console/setup.go`），生成：`openssl rand -hex 32` |
-| DB 连接串 | `TORCHWOOD_DATA_DATABASE_SOURCE` | Postgres DSN；`task migrate` 优先读同一变量 |
+| DB 连接串 | `TORCHWOOD_DATA_DATABASE_SOURCE` | Postgres DSN；`task db:migrate` 优先读同一变量 |
 | S3 凭据 | `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` / `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY` | 生产务必覆盖本地 `minioadmin` |
 | API Key 头 | `security.api_key.header` | 默认 `x-api-key` |
 
@@ -159,7 +160,7 @@ security:
 ### 6.1 迁移
 
 ```bash
-task migrate
+task db:migrate
 ```
 
 DSN 优先级：`TORCHWOOD_DATA_DATABASE_SOURCE` → `postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable`（可用 `POSTGRES_USER/PASSWORD/HOST/PORT/DB` 覆盖，`Taskfile.yml:48`）。发布前先迁移再启动新进程。
@@ -178,12 +179,12 @@ DSN 优先级：`TORCHWOOD_DATA_DATABASE_SOURCE` → `postgres://torchwood:torch
 
 ### 6.4 升级
 
-1. 备份 PG + MinIO → 2. `task migrate` → 3. 滚动 `server`（校验 `/healthz/readiness` 200 与 `/v1/server/health/version`）→ 4. 重启 `worker` → 5. 灰度验证 Client/Server API → 6. 摘旧实例。
+1. 备份 PG + MinIO → 2. `task db:migrate` → 3. 滚动 `server`（校验 `/healthz/readiness` 200 与 `/v1/server/health/version`）→ 4. 重启 `worker` → 5. 灰度验证 Client/Server API → 6. 摘旧实例。
 
 ### 6.5 排障
 
 - 健康 `unavailable`：看 `dependencies[].name/error` 定位 PG/Redis/MinIO；
 - 代理后登录异常：检查 `trusted_proxies` 是否含代理网段；
-- Console 旧页面：`task console-build && task build`；
+- Console 旧页面：`task console:build && task build`；
 - 慢查询无日志：确认阈值非 `"0"` 且级别 ≥ Warn；
 - 首次引导被拒：确认 `TORCHWOOD_SECURITY_SETUP_TOKEN` 已设且进程已重启。

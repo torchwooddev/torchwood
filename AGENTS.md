@@ -18,16 +18,16 @@
 
 ## 开发流程
 - 以 Task 作为主要工作流执行器（`Taskfile.yml`）。常用任务：
-  - 基础：`task install-tools`、`task up`、`task down`、`task clean`、`task migrate`
-  - 生成：`task generate-proto`、`task generate-config`、`task wire-all`、`task generate-all`
-  - 前端：`task console-install`、`task console-build`、`task console-dev`
-  - 开发：`task dev-server`
+  - 基础：`task tools:install`、`task docker:up`、`task docker:down`、`task docker:purge`、`task db:migrate`
+  - 生成：`task generate:proto`、`task generate:config`、`task wire:all`、`task generate:all`
+  - 前端：`task console:install`、`task console:build`、`task console:dev`
+  - 开发：`task dev:server`、`task dev:worker`
   - 质量与构建：`task test`、`task build`
 - Proto 生成由 Buf 驱动（`buf.yaml`、`buf.gen.yaml`），输出到 `genproto/`；不要手工编辑生成的 `*.pb.go` 文件。
-- 依赖注入由 Wire 驱动；provider 变更后请执行 `task wire-all`。
-- 配置 proto 生成由 `task generate-config` 负责；API protobuf 生成由 `task generate-proto` 负责。
+- 依赖注入由 Wire 驱动；provider 变更后请执行 `task wire:all`。
+- 配置 proto 生成由 `task generate:config` 负责；API protobuf 生成由 `task generate:proto` 负责。
 - 本地基础设施来自 `docker/local/docker-compose.yml`（Postgres + Redis + MinIO）。
-- 修改 Console 代码后需先 `task console-build` 再 `task build`，否则 Go embed 会打包旧版本。
+- 修改 Console 代码后需先 `task console:build` 再 `task build`，否则 Go embed 会打包旧版本。
 
 ## 配置与环境约定
 - 配置 schema 由 `internal/pkg/config/config.proto` 定义，运行时绑定位于 `internal/pkg/config/bind.go`。

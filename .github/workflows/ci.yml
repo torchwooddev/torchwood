@@ -131,7 +131,7 @@ jobs:
           go build -o "$(go env GOPATH)/bin/protoc-gen-go" google.golang.org/protobuf/cmd/protoc-gen-go
           buf generate
           (cd internal/pkg/config && protoc -I. --go_out=. --go_opt=paths=source_relative ./config.proto)
-          task wire-all
+          task wire:all
           git diff --exit-code -- genproto internal/pkg/config cmd go.mod go.sum
 
       - uses: pnpm/action-setup@v4
@@ -147,7 +147,7 @@ jobs:
         run: npm ci && npm run test
 
       - name: SDK demo build
-        run: task sdk-demo-build
+        run: task sdk:demo-build
 
       - name: Build (console + server embed)
         run: task build

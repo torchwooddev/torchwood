@@ -35,7 +35,7 @@ Go 1.26.5+、Node.js 22+ + pnpm、Docker + Compose、[Task](https://taskfile.dev
 ### 1. 启动基础设施
 
 ```bash
-task up
+task docker:up
 ```
 
 启动 PostgreSQL（5432）、Redis（6379）与 MinIO（9000/9001）。端口可通过 `.env` 中的 `POSTGRES_PORT`/`REDIS_PORT`/`MINIO_API_PORT`/`MINIO_CONSOLE_PORT` 覆盖。
@@ -62,27 +62,27 @@ TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 ### 3. 数据库迁移
 
 ```bash
-task migrate
+task db:migrate
 ```
 
 ### 4. 工具链与代码生成
 
 ```bash
-task install-tools   # buf、wire、migrate、protoc-gen-go、golangci-lint（首次）
-task generate-all    # buf generate + config proto + wire-all
-task console-install # pnpm install（首次）
+task tools:install   # buf、wire、migrate、protoc-gen-go、golangci-lint（首次）
+task generate:all    # buf generate + config proto + wire:all
+task console:install # pnpm install（首次）
 ```
 
 ### 5. 构建并运行
 
 ```bash
-task build        # 先 console-build，再编译 server + worker + CLI 到 ./bin/
+task build        # 先 console:build，再编译 server + worker + CLI 到 ./bin/
 ./bin/server.exe  # Windows；Linux/macOS 为 ./bin/server
 # 开发模式：
-task dev-server   # go run ./cmd/server
+task dev:server   # go run ./cmd/server
 ```
 
-修改 Console 后需先 `task console-build` 再 `task build`，否则 `//go:embed` 打包的是旧 `dist`。
+修改 Console 后需先 `task console:build` 再 `task build`，否则 `//go:embed` 打包的是旧 `dist`。
 
 ### 6. 首次引导（bootstrap）
 
@@ -107,11 +107,11 @@ API Key 不在注册时生成，登录后在 Console **API Keys** 页面创建�
 
 | 任务 | 说明 |
 |------|------|
-| `task up` / `down` / `clean` | 启动 / 停止 / 清空本地基础设施 |
-| `task migrate` | 执行 `db/migrations` |
-| `task generate-proto` / `generate-config` / `wire-all` / `generate-all` | buf / config proto / Wire |
-| `task console-install` / `console-build` / `console-dev` | 前端 pnpm 工作流 |
-| `task dev-server` / `task worker` | 直接运行 server/worker |
+| `task docker:up` / `down` / `clean` | 启动 / 停止 / 清空本地基础设施 |
+| `task db:migrate` | 执行 `db/migrations` |
+| `task generate:proto` / `generate:config` / `wire:all` / `generate:all` | buf / config proto / Wire |
+| `task console:install` / `console:build` / `console:dev` | 前端 pnpm 工作流 |
+| `task dev:server` / `task dev:worker` | 直接运行 server/worker |
 | `task build` | 构建前端 + server + worker + `bin/torchwood` CLI |
 | `task test` | SDK Go/TS 测试 + `go test -v ./... -cover` |
 | `task lint` | `go vet` + `golangci-lint` + console lint |
@@ -146,7 +146,7 @@ API Key 不在注册时生成，登录后在 Console **API Keys** 页面创建�
 ## 架构说明
 
 - **Clean Architecture 四层**：`internal/api`（传输层）→ `internal/app`（用例层）→ `internal/domain`（领域模型与端口）→ `internal/infra`（适配器层）。`domain` 定义接口，`infra` 实现。
-- **Wire 注入**：`cmd/server/provides.go` 声明 provider 集合，`cmd/server/wire_gen.go`（`cmd/worker` 同理）由 `task wire-all` 生成；provider 变更后需重新生成。
+- **Wire 注入**：`cmd/server/provides.go` 声明 provider 集合，`cmd/server/wire_gen.go`（`cmd/worker` 同理）由 `task wire:all` 生成；provider 变更后需重新生成。
 - **三进程**：`server`（gRPC + gateway + 自定义 HTTP handler + metrics + 嵌入式 Console）、`worker`（函数执行队列消费者，独立 Wire 装配）、`CLI`（`bin/torchwood`，cobra + `sdk/go/server` 的 `InvokeJSON`，不直接 import `genproto`/gRPC，`rpc` 逃生舱自动覆盖新增 RPC）。
 - **三类数据库**：`public` 控制面与事件脊柱（`projects`、`admins`、`api_keys`、`audit_logs`、`outbox`/`outbox_dead`，bun + golang-migrate）；`tw_<project.id>` 项目数据面——系统静态表（`users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files`）+ 账本/Functions/OAuth/文档目录（`internal/infra/projectschema/`）；`tw_<project.id>_<database.id>` 业务文档面——仅放用户 collection（真实表，`_tenant` + `_perms`）。
 - **API 形态**：Protobuf 为单一事实来源（`proto/` → `genproto/`），REST 由 grpc-gateway 暴露，文件 multipart 与 OAuth 回调走 `internal/api/serverhttp`；gRPC 方法须带 `method_auth` 注解。
@@ -156,7 +156,7 @@ API Key 不在注册时生成，登录后在 Console **API Keys** 页面创建�
 ## 测试
 
 ```bash
-task test   # lint-go + sdk/go + sdk/typescript + go test -v ./... -cover
+task test   # lint:go + sdk/go + sdk/typescript + go test -v ./... -cover
 ```
 
 集成测试（`internal/infra/documentdb/postgres_test.go`、`internal/app/client/account_test.go` 等）自动创建/销毁 `TORCHWOOD_test` 库。DSN 来自 `TORCHWOOD_TEST_DATABASE_SOURCE` / `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE`（见 `.env.example`），`task test` 自动从 `.env` 加载。
@@ -169,8 +169,8 @@ task test   # lint-go + sdk/go + sdk/typescript + go test -v ./... -cover
 - **Go**（`sdk/go`，`github.com/torchwooddev/torchwood/sdk/go`）—— gRPC 直连薄封装：`client`（终端用户认证，自动刷新 token）与 `server`（API Key + `InvokeJSON` 动态分发，CLI 即基于此）。
 
 ```bash
-task sdk-install && task sdk-build
-task sdk-demo   # http://localhost:5174
+task sdk:install && task sdk:build
+task sdk:demo   # http://localhost:5174
 ```
 
 ## 开发者文档

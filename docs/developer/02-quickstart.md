@@ -14,7 +14,7 @@
 | Docker + Compose | 新版 | PG/Redis/MinIO |
 | Task | 最新 | `go install github.com/go-task/task/v3/cmd/task@latest` |
 
-代码生成工具（`protoc-gen-go`/`migrate`/`buf@v1.65.0`/`wire`/`golangci-lint@v2.12.2`）由 `task install-tools` 统一安装。
+代码生成工具（`protoc-gen-go`/`migrate`/`buf@v1.65.0`/`wire`/`golangci-lint@v2.12.2`）由 `task tools:install` 统一安装。
 
 ---
 
@@ -60,14 +60,14 @@ cp .env.example .env
 ### 步骤 1 — 启动基础设施
 
 ```bash
-task up          # docker compose up -d（docker/local）
+task docker:up          # docker compose up -d（docker/local）
 docker ps        # 三容器 healthy
 ```
 
 ### 步骤 2 — 数据库迁移
 
 ```bash
-task migrate     # migrate -path ./db/migrations -database <DSN> up
+task db:migrate     # migrate -path ./db/migrations -database <DSN> up
 ```
 
 DSN 优先 `TORCHWOOD_DATA_DATABASE_SOURCE`，否则由 `POSTGRES_*` 拼接（`Taskfile.yml:49`）。跨 `Taskfile` 的 `.env` 自动加载（`dotenv: ['.env']`）。
@@ -75,35 +75,35 @@ DSN 优先 `TORCHWOOD_DATA_DATABASE_SOURCE`，否则由 `POSTGRES_*` 拼接（`T
 ### 步骤 3 — 安装工具与依赖
 
 ```bash
-task install-tools    # protoc-gen-go / migrate / buf@v1.65.0 / wire / golangci-lint
-task console-install  # pnpm install（console/）
+task tools:install    # protoc-gen-go / migrate / buf@v1.65.0 / wire / golangci-lint
+task console:install  # pnpm install（console/）
 ```
 
 ### 步骤 4 — 生成代码
 
 ```bash
-task generate-all  # generate-proto → generate-config → wire-all
+task generate:all  # generate:proto → generate:config → wire:all
 ```
 
 | 任务 | 产物 |
 |------|------|
-| `generate-proto` | `buf lint` + `buf generate` → `genproto/` |
-| `generate-config` | `protoc -I. --go_out=.` 在 `internal/pkg/config` 内产出 `config.pb.go` |
-| `wire-all` | `cmd/server/wire_gen.go` + `cmd/worker/wire_gen.go` |
+| `generate:proto` | `buf lint` + `buf generate` → `genproto/` |
+| `generate:config` | `protoc -I. --go_out=.` 在 `internal/pkg/config` 内产出 `config.pb.go` |
+| `wire:all` | `cmd/server/wire_gen.go` + `cmd/worker/wire_gen.go` |
 
 全量零漂移校验见 `04-codegen.md §5`。
 
 ### 步骤 5 — 构建并启动
 
 ```bash
-task build          # console-build → go build server/worker/CLI → ./bin/
+task build          # console:build → go build server/worker/CLI → ./bin/
 ./bin/server        # Windows 为 ./bin/server.exe
 # 或开发态：
-task dev-server     # go run ./cmd/server
-task worker         # go run ./cmd/worker（独立进程）
+task dev:server     # go run ./cmd/server
+task dev:worker         # go run ./cmd/worker（独立进程）
 ```
 
-修改 `console/src/` 后须 `task console-build && task build`（`console/embed.go:go:embed dist`）。
+修改 `console/src/` 后须 `task console:build && task build`（`console/embed.go:go:embed dist`）。
 
 ### 步骤 6 — 首次引导（bootstrap）
 
@@ -126,7 +126,7 @@ task worker         # go run ./cmd/worker（独立进程）
 | Metrics | `http://127.0.0.1:9040/metrics`（`server.metrics.addr` 为空回退同值，`internal/infra/server/metrics.go:18`） |
 | 健康检查 | `http://127.0.0.1:9080/healthz/liveness`、`/healthz/readiness` |
 
-HTTP/Metrics 端口由 `server.http.addr` / `server.metrics.addr` 决定，非硬编码；`task console-dev` 的 Vite 代理指向同源 `/v1`。
+HTTP/Metrics 端口由 `server.http.addr` / `server.metrics.addr` 决定，非硬编码；`task console:dev` 的 Vite 代理指向同源 `/v1`。
 
 ---
 
@@ -134,27 +134,27 @@ HTTP/Metrics 端口由 `server.http.addr` / `server.metrics.addr` 决定，非�
 
 | 任务 | 用途 |
 |------|------|
-| `install-tools` | 安装 buf/wire/migrate 等 |
+| `tools:install` | 安装 buf/wire/migrate 等 |
 | `up`/`down`/`clean` | 启动/停止/删卷（`docker compose down -v`） |
-| `migrate` | 执行 `db/migrations` |
-| `generate-proto`/`generate-config`/`wire-all`/`generate-all` | Buf / config proto / Wire |
-| `lint-proto` | `buf lint` + `buf breaking --against '.git#branch=origin/main'` |
-| `console-install`/`console-build`/`console-dev` | 前端 pnpm |
-| `dev-server`/`worker` | 直跑 server/worker |
-| `build` | `console-build` + 三二进制 |
-| `test` | `lint-go` + `test-sdk-go` + `test-sdk-ts` + `go test -v ./... -cover` |
-| `lint` | `lint-go` + `lint-golangci` + `lint-sdk-go` + `lint-console` |
-| `build-docker` | `docker build -t torchwood:<ver>` |
+| `db:migrate` | 执行 `db/migrations` |
+| `generate:proto`/`generate:config`/`wire:all`/`generate:all` | Buf / config proto / Wire |
+| `lint:proto` | `buf lint` + `buf breaking --against '.git#branch=origin/main'` |
+| `console:install`/`console:build`/`console:dev` | 前端 pnpm |
+| `dev:server`/`worker` | 直跑 server/worker |
+| `build` | `console:build` + 三二进制 |
+| `test` | `lint:go` + `test:sdk-go` + `test:sdk-ts` + `go test -v ./... -cover` |
+| `lint` | `lint:go` + `lint:golangci` + `lint:sdk-go` + `lint:console` |
+| `docker:build` | `docker build -t torchwood:<ver>` |
 
-`task test` 自动从 `.env` 加载 `TORCHWOOD_TEST_*`；`lint-golangci` 为 `--new-from-rev=origin/main` 棘轮（`Taskfile.yml:172`）。
+`task test` 自动从 `.env` 加载 `TORCHWOOD_TEST_*`；`lint:golangci` 为 `--new-from-rev=origin/main` 棘轮（`Taskfile.yml:172`）。
 
 ---
 
 ## 6. 常见问题
 
-- **端口占用**：改 `.env` 中 `POSTGRES_PORT`/`REDIS_PORT`/`MINIO_*_PORT` 后重 `task up`；应用端口改 `configs/config.yaml`。
-- **`task migrate` 失败**：确认 `docker ps` healthy；检查 DSN 与 `POSTGRES_*` 一致；需重置用 `task clean`。
-- **Console 未更新**：`embed dist` 需重 `console-build` 再 `build`；调试用 `task console-dev`。
+- **端口占用**：改 `.env` 中 `POSTGRES_PORT`/`REDIS_PORT`/`MINIO_*_PORT` 后重 `task docker:up`；应用端口改 `configs/config.yaml`。
+- **`task db:migrate` 失败**：确认 `docker ps` healthy；检查 DSN 与 `POSTGRES_*` 一致；需重置用 `task docker:purge`。
+- **Console 未更新**：`embed dist` 需重 `console:build` 再 `build`；调试用 `task console:dev`。
 - **鉴权失败**：检查 `JWT_SECRET` 长度/弱子串；`SETUP_TOKEN` 是否配置；API Key 用 `x-api-key`，多项目需 `X-Torchwood-Project`。
 - **反代后 IP 不准**：默认不信 `X-Forwarded-For`，需配 `security.trusted_proxies`（`TORCHWOOD_SECURITY_TRUSTED_PROXIES=127.0.0.1/32`）。
 - **直接 `go test` 报错**：需导出 `TORCHWOOD_TEST_*`，或用 `task test`。

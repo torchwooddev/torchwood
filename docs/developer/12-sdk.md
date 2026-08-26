@@ -32,14 +32,14 @@
 | `sdk/go/client/` | end-user 客户端（Bearer JWT + 自动刷新） |
 | `sdk/go/server/` | 管理面客户端（`x-api-key` + `InvokeJSON` + `Tools`） |
 | `sdk/go/internal/conn/` | 拨号封装 |
-| `sdk/demo/` | Vite 演示站（`task sdk-demo`，端口 5174） |
+| `sdk/demo/` | Vite 演示站（`task sdk:demo`，端口 5174） |
 
 ### 2.2 构建
 
 ```bash
-task sdk-install   # sdk/typescript + sdk/demo 各 npm install
-task sdk-build     # sdk/typescript: tsc -p tsconfig.json → dist/
-task sdk-demo      # 依赖 sdk-build 后 vite dev（http://localhost:5174）
+task sdk:install   # sdk/typescript + sdk/demo 各 npm install
+task sdk:build     # sdk/typescript: tsc -p tsconfig.json → dist/
+task sdk:demo      # 依赖 sdk:build 后 vite dev（http://localhost:5174）
 ```
 
 - TS SDK 零运行时依赖，仅 `typescript`（dev），HTTP 走全局 `fetch`（`TorchwoodConfig.fetch` 可注入）；
@@ -209,7 +209,7 @@ _ = me
 - 文档：入参 `map[string]any` → `structpb`，读回数值多为 `float64`；
 - 查询：Appwrite DSL 字符串，与 `pkg/query` 一致；
 - `cmd/client`（`bin/torchwood`）**仅依赖 `sdk/go/server`** 的 `InvokeJSON`，源码不直连 `genproto/grpc`（`import_guard_test` 兜底），新增 RPC 无需 CLI 登记；
-- 测试：`bufconn` 内存 gRPC，无外部依赖，已纳入 `task test`（`test-sdk-go`）与 `task lint`（`lint-sdk-go`）；文档示例可编译性由 `sdk/go/docexamples`（build tag `docexample`，`go vet -tags docexample ./sdk/...`）保证。
+- 测试：`bufconn` 内存 gRPC，无外部依赖，已纳入 `task test`（`test:sdk-go`）与 `task lint`（`lint:sdk-go`）；文档示例可编译性由 `sdk/go/docexamples`（build tag `docexample`，`go vet -tags docexample ./sdk/...`）保证。
 
 ---
 

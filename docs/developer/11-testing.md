@@ -30,20 +30,24 @@
 
 ```yaml
 test:
-  deps: [lint-go, test-sdk-go, test-sdk-ts]
-  cmds: [go test -v ./... -cover]
+  deps:
+    - task: lint:go
+    - task: test:sdk-go
+    - task: test:sdk-ts
+  cmds:
+    - go test -race -v ./... -cover
 ```
 
 | 子任务 | 位置 | 命令 |
 |--------|------|------|
-| `lint-go` | `Taskfile.yml:163` | `go vet ./...` + `gofmt -l .` 零差异 |
-| `test-sdk-go` | `sdk/go` | `go test -v ./... -cover` |
-| `test-sdk-ts` | `sdk/typescript` | `npm ci && npm run test`（见 `sdk/typescript/package.json:18`） |
+| `lint:go` | `Taskfile.yml:163` | `go vet ./...` + `gofmt -l .` 零差异 |
+| `test:sdk-go` | `sdk/go` | `go test -v ./... -cover` |
+| `test:sdk-ts` | `sdk/typescript` | `npm ci && npm run test`（见 `sdk/typescript/package.json:18`） |
 | 主测 | 根 module | `go test -v ./... -cover`（含集成测试） |
 
 - `dotenv: ['.env']` 使所有 task 自动加载根 `.env`，因此集成测试所需环境变量由 `task test` 注入；**直接 `go test ./...` 会 `t.Fatal`**（见 §3）；
 - 手工等价：`export TORCHWOOD_TEST_DATABASE_SOURCE=... TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE=... && go test ./...`；
-- 前置：`task up` 启动本地三件套（`docker/local/docker-compose.yml`）。
+- 前置：`task docker:up` 启动本地三件套（`docker/local/docker-compose.yml`）。
 
 覆盖率：`go test -cover` 输出各包语句覆盖率；CI 另以 `-race` 跑全量（见 §5）。
 
@@ -113,7 +117,7 @@ golangci-lint run --new-from-rev=origin/main ./...
 - **含义**：仅报告相对 `origin/main` 新增的问题，存量遗留债不阻塞 PR；
 - **目标**：棘轮式收敛——新代码 0 问题，存量逐步消化，最终过渡到全量 0（本地 `golangci-lint run ./...` 即全量检查，当前已无新增）；
 - **CI 配置**：`ci.yml:88` 用 `args: --new-from-rev=origin/main`，`fetch-depth: 0` 保证基线可解析；
-- **本地自检**：`task lint` 依次执行 `lint-go` + `lint-golangci` + `lint-sdk-go` + `lint-console`（`Taskfile.yml:188`）。
+- **本地自检**：`task lint` 依次执行 `lint:go` + `lint:golangci` + `lint:sdk-go` + `lint:console`（`Taskfile.yml:188`）。
 
 提交前：`task lint && task test`（或至少 `task lint` + `go test -short ./...`）。
 
@@ -136,8 +140,8 @@ Services：`postgres:18-alpine`（`torchwood:torchwood`）与 `minio:RELEASE.202
 5. `test -z "$(gofmt -l .)"` → `mkdir -p console/dist && touch console/dist/index.html`（保证 `console/embed.go` 可编译）；
 6. `go vet ./...` → `golangci-lint run --new-from-rev=origin/main`；
 7. `go test -race ./...`（单元+集成）→ `sdk/go: go test -race ./...`；
-8. **Codegen 漂移门禁**（`ci.yml:101`）：`buf generate` + `protoc config.proto` + `task wire-all` 后 `git diff --exit-code -- genproto internal/pkg/config cmd go.mod go.sum`，任何生成物漂移直接失败；
-9. `pnpm@11.20.0` + `node@22` → `sdk/typescript: npm ci && npm run test` → `task sdk-demo-build` → `task build`（含 `console-build` 的 embed 链路验证）。
+8. **Codegen 漂移门禁**（`ci.yml:101`）：`buf generate` + `protoc config.proto` + `task wire:all` 后 `git diff --exit-code -- genproto internal/pkg/config cmd go.mod go.sum`，任何生成物漂移直接失败；
+9. `pnpm@11.20.0` + `node@22` → `sdk/typescript: npm ci && npm run test` → `task sdk:demo-build` → `task build`（含 `console:build` 的 embed 链路验证）。
 
 ### 5.2 `frontend`（`working-directory: console`）
 
@@ -151,14 +155,14 @@ Services：`postgres:18-alpine`（`torchwood:torchwood`）与 `minio:RELEASE.202
 |------|------|----------|
 | Proto 兼容性 | `buf breaking --against '.git#branch=origin/main'`（`buf.yaml` 规则） | 删除/改类型字段未 `reserved`、改字段号等破坏性变更 |
 | Lint 棘轮 | `golangci-lint run --new-from-rev=origin/main` | 相对基线新增 lint 问题 |
-| 生成物一致性 | `buf generate` + `protoc` + `task wire-all` 后 `git diff --exit-code` | `genproto/`、`internal/pkg/config/*.pb.go`、`cmd/*/wire_gen.go` 未提交或手改生成物 |
+| 生成物一致性 | `buf generate` + `protoc` + `task wire:all` 后 `git diff --exit-code` | `genproto/`、`internal/pkg/config/*.pb.go`、`cmd/*/wire_gen.go` 未提交或手改生成物 |
 
 本地复现：
 
 ```bash
 buf breaking --against '.git#branch=origin/main'
 golangci-lint run --new-from-rev=origin/main ./...
-task generate-all && git diff --exit-code -- genproto internal/pkg/config cmd
+task generate:all && git diff --exit-code -- genproto internal/pkg/config cmd
 ```
 
 ---
@@ -174,9 +178,9 @@ task generate-all && git diff --exit-code -- genproto internal/pkg/config cmd
 ## 8. 本地验证清单
 
 ```bash
-task up                  # Postgres/Redis/MinIO
+task docker:up                  # Postgres/Redis/MinIO
 task lint                # go vet + gofmt + golangci-lint(棘轮) + sdk vet + eslint
 task test                # sdk-go + sdk-ts + go test -v -cover（自动加载 .env）
-task build               # console-build + go build（ldflags 注入 version/commit/date）
+task build               # console:build + go build（ldflags 注入 version/commit/date）
 # 手工：curl /v1/health  /v1/server/health/version  /healthz/readiness
 ```

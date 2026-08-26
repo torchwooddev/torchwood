@@ -84,7 +84,7 @@ const errorResponseRef = "#/definitions/torchwoodsharedv1ErrorResponse"
 // （operation 级扩展，未声明时继承 swagger 顶层值）与 collectMethodsByAccess
 // 从 proto method_auth/service_auth 推导出的 access 完全一致（R10-P1-4）：
 // 顶层扩展必须等于服务默认 access；operation 扩展与 method_auth 必须一致。
-// 前提：仓库根执行过 task generate-proto（genproto 已入库，本测试直接可用）。
+// 前提：仓库根执行过 task generate:proto（genproto 已入库，本测试直接可用）。
 func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 	descs := businessFileDescriptors()
 	_, _, _, err := collectMethodsByAccess(descs...)
@@ -199,7 +199,7 @@ func TestSwaggerAccessExtensionMatchesCollectMethodsByAccess(t *testing.T) {
 	require.GreaterOrEqual(t, checkedOps, 140, "swagger operation 数量异常（当前 %d）", checkedOps)
 	// R4-J2-2：错误模型统一回归门禁。
 	require.Empty(t, badDefaultRef,
-		"以下 operation 的 default 响应未引用 %s（应重跑 task generate-proto）：\n%s",
+		"以下 operation 的 default 响应未引用 %s（应重跑 task generate:proto）：\n%s",
 		errorResponseRef, strings.Join(badDefaultRef, "\n"))
 	require.GreaterOrEqual(t, defaultRefOK, checkedOps,
 		"default 响应引用计数异常：ok=%d ops=%d", defaultRefOK, checkedOps)
@@ -269,7 +269,7 @@ func TestSwaggerPropertyNamesAreSnakeCase(t *testing.T) {
 			}
 		}
 	}
-	require.Empty(t, bad, "以下 swagger 属性名非 snake_case（应重跑 task generate-proto 检查 json_names_for_fields）：\n%s", strings.Join(bad, "\n"))
+	require.Empty(t, bad, "以下 swagger 属性名非 snake_case（应重跑 task generate:proto 检查 json_names_for_fields）：\n%s", strings.Join(bad, "\n"))
 }
 
 // findMethodByOperationID 先按原名精确查找；未命中时按 additional_bindings

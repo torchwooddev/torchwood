@@ -120,7 +120,7 @@ TORCHWOOD_RUN_DOCKER_TESTS=1 go test ./internal/infra/functions -run TestDockerB
 
 ## 8 配置
 
-`internal/pkg/config/config.proto`：`functions.executor=docker`、`functions.docker.host`（`TORCHWOOD_FUNCTIONS_DOCKER_HOST`，默认 `unix:///var/run/docker.sock`，构造失败延迟到首次调用）、`functions.docker.network`（默认留空 = per-project 网络 `tw-func-<project_id>`，执行器不存在时自动创建 bridge；显式配置为 opt-in 全局网络，见 §4 安全基线与 `configs/config.yaml.template` 警告）、`functions.docker.registry`（小写，默认 `torchwood-funcs`）。`Taskfile.yml` `task worker` 跑 `go run ./cmd/worker`，`task build` 同时产出 `server/worker/torchwood`。
+`internal/pkg/config/config.proto`：`functions.executor=docker`、`functions.docker.host`（`TORCHWOOD_FUNCTIONS_DOCKER_HOST`，默认 `unix:///var/run/docker.sock`，构造失败延迟到首次调用）、`functions.docker.network`（默认留空 = per-project 网络 `tw-func-<project_id>`，执行器不存在时自动创建 bridge；显式配置为 opt-in 全局网络，见 §4 安全基线与 `configs/config.yaml.template` 警告）、`functions.docker.registry`（小写，默认 `torchwood-funcs`）。`Taskfile.yml` `task dev:worker` 跑 `go run ./cmd/worker`，`task build` 同时产出 `server/worker/torchwood`。
 
 ## 9 变量与裁剪
 
@@ -145,7 +145,7 @@ TORCHWOOD_RUN_DOCKER_TESTS=1 go test ./internal/infra/functions -run TestDockerB
 
 - `proto/server/v1/functions.proto:61` 服务与 `shared.v1.Empty` 复用；`internal/app/functions/semaphores.go:21` 信号量提供方；`internal/domain/functions/repo.go` 端口契约。
 - `internal/infra/functions/docker.go:238` `timeoutFromExec` 与容器 `Remove` 兜底；`internal/infra/queue/redis_queue.go:44` 队列 `5s` 超时；`internal/app/functions/runtimes.go` 运行时/规格清单。
-- `AGENTS.md` §开发流程（`task generate-proto/wire-all`）与 `docs/roadmap.md` §0 Agent-Native API 定位；`docs/developer/09-api-guide.md` §1 新增 RPC 全流程。
+- `AGENTS.md` §开发流程（`task generate:proto/wire:all`）与 `docs/roadmap.md` §0 Agent-Native API 定位；`docs/developer/09-api-guide.md` §1 新增 RPC 全流程。
 - 关联：`07-storage.md` 的分片锁 `SETNX EX 300` 与本章信号量同属 Redis 原子语义，可对照实现；进阶可读 `internal/app/functions/management.go` 的幂等清理。
 - 另见 `docs/developer/05-authentication.md` 的 `RequireServerWriteActor` 在 Storage/Functions 的一致应用。
 - 关联 `docs/developer/09-api-guide.md` §11 的 `OutboxService` 可作为新增 Functions RPC 的端到端参照。

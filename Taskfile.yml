@@ -2,7 +2,7 @@ version: '3'
 dotenv: ['.env']
 
 tasks:
-  install-tools:
+  tools:install:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
@@ -11,12 +11,12 @@ tasks:
       - go install github.com/google/wire/cmd/wire@latest
       - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
-  generate-config:
+  generate:config:
     dir: '{{.USER_WORKING_DIR}}/internal/pkg/config'
     cmds:
       - protoc -I. --go_out=. --go_opt=paths=source_relative ./config.proto
 
-  generate-proto:
+  generate:proto:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - buf lint
@@ -25,104 +25,104 @@ tasks:
       # shared.v1.ErrorResponse 并移除 rpcStatus（见 tools/openapifix/main.go）。
       - go run ./tools/openapifix
 
-  lint-proto:
+  lint:proto:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - buf lint
       - buf breaking --against '.git#branch=origin/main'
 
-  up:
+  docker:up:
     dir: '{{.USER_WORKING_DIR}}/docker/local'
     cmds:
       - docker compose up -d
 
-  down:
+  docker:down:
     dir: '{{.USER_WORKING_DIR}}/docker/local'
     cmds:
       - docker compose down
 
-  clean:
+  docker:purge:
     dir: '{{.USER_WORKING_DIR}}/docker/local'
     cmds:
       - docker compose down -v
 
-  migrate:
+  db:migrate:
     dir: '{{.USER_WORKING_DIR}}'
     vars:
       MIGRATE_DSN: '{{if .TORCHWOOD_DATA_DATABASE_SOURCE}}{{.TORCHWOOD_DATA_DATABASE_SOURCE}}{{else}}postgres://{{default "torchwood" .POSTGRES_USER}}:{{default "torchwood" .POSTGRES_PASSWORD}}@{{default "127.0.0.1" .POSTGRES_HOST}}:{{default "5432" .POSTGRES_PORT}}/{{default "torchwood" .POSTGRES_DB}}?sslmode=disable{{end}}'
     cmds:
       - migrate -path ./db/migrations -database "{{.MIGRATE_DSN}}" up
 
-  wire-server:
+  wire:server:
     dir: '{{.USER_WORKING_DIR}}/cmd/server'
     cmds:
       - go mod tidy
       - go run -mod=mod github.com/google/wire/cmd/wire
 
-  wire-worker:
+  wire:worker:
     dir: '{{.USER_WORKING_DIR}}/cmd/worker'
     cmds:
       - go mod tidy
       - go run -mod=mod github.com/google/wire/cmd/wire
 
-  wire-all:
+  wire:all:
     cmds:
-      - task: wire-server
-      - task: wire-worker
+      - task: wire:server
+      - task: wire:worker
 
-  generate-all:
+  generate:all:
     cmds:
-      - task: generate-proto
-      - task: generate-config
-      - task: wire-all
+      - task: generate:proto
+      - task: generate:config
+      - task: wire:all
 
-  console-install:
+  console:install:
     dir: '{{.USER_WORKING_DIR}}/console'
     cmds:
       - pnpm install
 
-  console-build:
+  console:build:
     dir: '{{.USER_WORKING_DIR}}/console'
     cmds:
       - pnpm run build
 
-  console-dev:
+  console:dev:
     dir: '{{.USER_WORKING_DIR}}/console'
     cmds:
       - pnpm run dev
 
-  sdk-install:
+  sdk:install:
     dir: '{{.USER_WORKING_DIR}}/sdk/typescript'
     cmds:
       - npm install
       - npm --prefix ../demo install
 
-  sdk-build:
+  sdk:build:
     dir: '{{.USER_WORKING_DIR}}/sdk/typescript'
     cmds:
       - npm run build
 
-  sdk-demo:
+  sdk:demo:
     dir: '{{.USER_WORKING_DIR}}/sdk/demo'
     deps:
-      - sdk-build
+      - task: sdk:build
     cmds:
       - npm run dev
 
-  sdk-demo-build:
+  sdk:demo-build:
     dir: '{{.USER_WORKING_DIR}}/sdk/demo'
     deps:
-      - sdk-build
+      - task: sdk:build
     cmds:
       - npm ci
       - npm run build
 
-  dev-server:
+  dev:server:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - go run ./cmd/server
 
-  worker:
+  dev:worker:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - go run ./cmd/worker
@@ -130,7 +130,7 @@ tasks:
   build:
     dir: '{{.USER_WORKING_DIR}}'
     deps:
-      - console-build
+      - task: console:build
     cmds:
       - go build -ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o ./bin/ ./cmd/server
       - go build -ldflags "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o ./bin/ ./cmd/worker
@@ -143,12 +143,12 @@ tasks:
       DATE:
         sh: '{{if eq .OS "Windows_NT"}}powershell -NoProfile -Command Get-Date -Format "yyyyMMddHHmmss"{{else}}date +%Y%m%d%H%M%S{{end}}'
 
-  test-sdk-go:
+  test:sdk-go:
     dir: '{{.USER_WORKING_DIR}}/sdk/go'
     cmds:
       - go test -v ./... -cover
 
-  test-sdk-ts:
+  test:sdk-ts:
     dir: '{{.USER_WORKING_DIR}}/sdk/typescript'
     cmds:
       - npm ci
@@ -156,45 +156,45 @@ tasks:
 
   test:
     deps:
-      - lint-go
-      - test-sdk-go
-      - test-sdk-ts
+      - task: lint:go
+      - task: test:sdk-go
+      - task: test:sdk-ts
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       # -race 与 CI 对齐（J6-1）；集成测试依赖 .env 中的 TORCHWOOD_TEST_* 变量。
       - go test -race -v ./... -cover
 
-  lint-go:
+  lint:go:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - go vet ./...
       - test -z "$(gofmt -l .)"
 
   # 全量门禁（J6-3 后无棘轮；存量暂挂项见 .golangci.yml 的 exclusions 注释）。
-  lint-golangci:
+  lint:golangci:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - golangci-lint run ./...
 
-  lint-sdk-go:
+  lint:sdk-go:
     dir: '{{.USER_WORKING_DIR}}/sdk/go'
     cmds:
       - go vet ./...
       - test -z "$(gofmt -l .)"
 
-  lint-console:
+  lint:console:
     dir: '{{.USER_WORKING_DIR}}/console'
     cmds:
       - pnpm lint
 
   lint:
     deps:
-      - lint-go
-      - lint-golangci
-      - lint-sdk-go
-      - lint-console
+      - task: lint:go
+      - task: lint:golangci
+      - task: lint:sdk-go
+      - task: lint:console
 
-  build-docker:
+  docker:build:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - docker build -t {{.DOCKER_IMAGE}} .

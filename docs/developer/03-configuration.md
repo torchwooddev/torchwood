@@ -7,7 +7,7 @@
 
 ## 1. config.proto 单一事实源
 
-`internal/pkg/config/config.proto:7` 定义顶层 `AppConfig`，proto 生成 `config.pb.go`（`task generate-config`，见 `04-codegen.md §3`），避免 YAML 与结构体两处维护。
+`internal/pkg/config/config.proto:7` 定义顶层 `AppConfig`，proto 生成 `config.pb.go`（`task generate:config`，见 `04-codegen.md §3`），避免 YAML 与结构体两处维护。
 
 | 分组 | message | 说明 |
 |------|---------|------|

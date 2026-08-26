@@ -26,7 +26,7 @@ import (
 // 并断言 down 全量后 public schema 无业务表残留——任何 down SQL 损坏在此红。
 //
 // 环境快失败模式与 SetupTestDB 一致：TORCHWOOD_TEST_* 未设置时跳过
-// （CI backend job 与本地 `task up` + .env 均提供）。
+// （CI backend job 与本地 `task docker:up` + .env 均提供）。
 func TestMigrations_UpDownUpCycle(t *testing.T) {
 	adminDSN := AdminDSN()
 	baseDSN := TestDSN()
