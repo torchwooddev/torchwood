@@ -116,7 +116,10 @@ jobs:
           }
           EOF
           # 验收同样只写纯版本号：module tag 前缀（sdk/go/）由 Go 解析。
+          # tidy 补全传递依赖的 go.sum 条目（go get pkg@ver 只写根模块条目，
+          # 直接 build 会因缺 sum 失败——v0.1.2 首次发布实测）。
           GOFLAGS=-mod=mod \
             go get github.com/torchwooddev/torchwood/sdk/go@"${SDK_TAG#sdk/go/}"
+          go mod tidy
           go build ./...
           echo "downstream install OK: $SDK_TAG"
