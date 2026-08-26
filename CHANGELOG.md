@@ -7,6 +7,14 @@
 
 ## sdk/go
 
+### v0.1.2 — 2026-08-26
+
+流水线端到端验证发布（tag `sdk/go/v0.1.2`，genproto @ `genproto/v0.1.2`）：
+release.yml 修复后**首次全程绿灯**（rewrite → tidy → build → tag → CI 内
+干净目录下游验收）。模块内容与 v0.1.1 一致（其间无 sdk/go 变更），无功能
+差异；随附流水线验收脚本补 `go mod tidy`（`go get pkg@ver` 只写根模块
+go.sum 条目，直接 build 缺传递 sum）。下游可按需停留在 v0.1.1。
+
 ### v0.1.1 — 2026-08-26
 
 首次经 `.github/workflows/release.yml` 成功发布的版本（tag `sdk/go/v0.1.1`，
@@ -39,6 +47,10 @@ genproto @ `genproto/v0.1.1`）：require 改写为真实 genproto 版本并移�
   APIKeysService），proto 新增方法零登记自动可用。
 
 ## genproto
+
+### v0.1.2 — 2026-08-26
+
+跟随 sdk/go v0.1.2 发布；内容与 v0.1.1 一致（流水线验证）。
 
 ### v0.1.1 — 2026-08-26
 
