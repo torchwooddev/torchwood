@@ -1,34 +1,28 @@
-import { useCallback, useRef, useState, useEffect } from "react";
-import { Link, useNavigate, useParams, useOutletContext } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useCallback,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useOutletContext,
+} from "react-router-dom";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Settings2, Shield, Hash, ListTree, Fingerprint, Calendar } from "lucide-react";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Plus,
+  Settings2,
+} from "lucide-react";
+import { type CollectionOutletContext } from "@/routes/databases/CollectionLayout";
 import {
-  CollectionStatCard,
-  type CollectionOutletContext,
-} from "@/routes/databases/CollectionLayout";
-import {
-  listDatabases,
-  getDatabase,
-  createDatabase,
-  deleteDatabase,
-  listCollections,
   getCollection,
-  createCollection,
-  deleteCollection,
-  updateCollection,
-  createAttribute,
-  createIndex,
-  deleteAttribute,
-  deleteIndex,
   listDocuments,
   getDocument,
   createDocument,
@@ -36,26 +30,17 @@ import {
   deleteDocument,
   bulkUpdateDocuments,
   bulkDeleteDocuments,
-  type Database,
-  type Collection,
   type Attribute,
   type Document,
 } from "@/api/databases";
-import { useAuth } from "@/hooks/useAuth";
-import { useAdminRole, canWrite, isPlatformAdmin } from "@/hooks/useAdminRole";
+import {
+  useAdminRole,
+  canWrite,
+} from "@/hooks/useAdminRole";
 import { ResourceListPage } from "@/components/list/ResourceListPage";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -64,7 +49,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
 import type { ColumnDef } from "@/components/list/DataTable";
 import {
   FormPageWrapper,
@@ -79,7 +67,10 @@ import {
 } from "@/components/resource/shared";
 import { PermissionEditor } from "@/components/resource/PermissionEditor";
 
-import { documentToValues, MAX_BULK_OPERATIONS } from "./components";
+import {
+  documentToValues,
+  MAX_BULK_OPERATIONS,
+} from "./components";
 
 const documentColumns: ColumnDef<Document>[] = [
   {

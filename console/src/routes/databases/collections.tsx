@@ -1,85 +1,67 @@
-import { useCallback, useRef, useState, useEffect } from "react";
-import { Link, useNavigate, useParams, useOutletContext } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { Plus, Settings2, Shield, Hash, ListTree, Fingerprint, Calendar } from "lucide-react";
+import { useState } from "react";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  useNavigate,
+  useParams,
+  useOutletContext,
+} from "react-router-dom";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  Settings2,
+  Shield,
+  Hash,
+  ListTree,
+  Fingerprint,
+  Calendar,
+} from "lucide-react";
 import {
   CollectionStatCard,
   type CollectionOutletContext,
 } from "@/routes/databases/CollectionLayout";
 import {
-  listDatabases,
   getDatabase,
-  createDatabase,
-  deleteDatabase,
-  listCollections,
   getCollection,
   createCollection,
-  deleteCollection,
   updateCollection,
   createAttribute,
   createIndex,
   deleteAttribute,
   deleteIndex,
-  listDocuments,
-  getDocument,
-  createDocument,
-  updateDocument,
-  deleteDocument,
-  bulkUpdateDocuments,
-  bulkDeleteDocuments,
-  type Database,
   type Collection,
   type Attribute,
-  type Document,
 } from "@/api/databases";
-import { useAuth } from "@/hooks/useAuth";
-import { useAdminRole, canWrite, isPlatformAdmin } from "@/hooks/useAdminRole";
-import { ResourceListPage } from "@/components/list/ResourceListPage";
+import {
+  useAdminRole,
+  isPlatformAdmin,
+} from "@/hooks/useAdminRole";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { ColumnDef } from "@/components/list/DataTable";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   FormPageWrapper,
   FormField,
-  DetailPageWrapper,
-  DetailGrid,
   DetailSkeleton,
   NotFound,
-  BulkDeleteButton,
-  RowDeleteButton,
-  DeleteButton,
 } from "@/components/resource/shared";
 import { PermissionEditor } from "@/components/resource/PermissionEditor";
 
-import { AttributeList, IndexList, AddAttributeDialog, AddIndexDialog, EditPermissionsDialog, EditCollectionDialog } from "./components";
+import {
+  AttributeList,
+  IndexList,
+  AddAttributeDialog,
+  AddIndexDialog,
+  EditPermissionsDialog,
+  EditCollectionDialog,
+} from "./components";
 
 export function CollectionNewPage() {
   const { dbId } = useParams<{ dbId: string }>();
