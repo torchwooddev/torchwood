@@ -1,0 +1,131 @@
+# Torchwood 全栈开发环境（基础设施 + 数据库迁移 + server，一条命令拉起）
+#
+#   docker compose -f docker/dev/docker-compose.yml up -d --build
+#
+# 与 docker/local/docker-compose.yml（官方“仅基础设施 + 本地 go run”工作流）互不干扰；
+# 但端口相同（5432/6379/9000/9001/9080），两者不要同时启动。
+# worker（异步函数执行器）按需启动：
+#   docker compose -f docker/dev/docker-compose.yml --profile worker up -d worker
+#
+# 凭据与密钥读取仓库根目录 .env（env_file），CORS 已放行本地前端 origin。
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: torchwood-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-torchwood}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-torchwood}
+      POSTGRES_DB: ${POSTGRES_DB:-torchwood}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-torchwood} -d ${POSTGRES_DB:-torchwood}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: torchwood-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    container_name: torchwood-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 一次性迁移任务：跑完 db/migrations 即退出
+  migrate:
+    image: migrate/migrate:v4.18.1
+    container_name: torchwood-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../../db/migrations:/migrations:ro
+    command:
+      - "-path=/migrations/"
+      - "-database=postgres://${POSTGRES_USER:-torchwood}:${POSTGRES_PASSWORD:-torchwood}@postgres:5432/${POSTGRES_DB:-torchwood}?sslmode=disable&x-migrations-table=schema_migrations"
+      - "up"
+    restart: "no"
+
+  server:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: torchwood-server:dev
+    container_name: torchwood-server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    environment:
+      TORCHWOOD_ENV: development
+      # 容器内指向服务名（覆盖 .env 里的 127.0.0.1）
+      TORCHWOOD_DATA_DATABASE_SOURCE: postgres://${POSTGRES_USER:-torchwood}:${POSTGRES_PASSWORD:-torchwood}@postgres:5432/${POSTGRES_DB:-torchwood}?sslmode=disable
+      TORCHWOOD_DATA_REDIS_ADDR: redis:6379
+      TORCHWOOD_STORAGE_S3_ENDPOINT: http://minio:9000
+      # 放行本地前端 / torchwood SDK demo / console 默认域名
+      TORCHWOOD_SERVER_HTTP_CORS_ALLOW_ORIGINS: ${TORCHWOOD_CORS_ALLOW_ORIGINS:-http://localhost:5173,http://localhost:5174,http://torchwood.local:9099}
+      TORCHWOOD_SERVER_HTTP_PUBLIC_URL: http://localhost:9080
+    ports:
+      - "${TORCHWOOD_HTTP_PORT:-9080}:9080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9080/v1/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  # 可选：异步函数执行 worker（--profile worker 启用）
+  worker:
+    profiles: ["worker"]
+    image: torchwood-server:dev
+    container_name: torchwood-worker
+    depends_on:
+      server:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/worker"]
+    env_file:
+      - ../../.env
+    environment:
+      TORCHWOOD_ENV: development
+      TORCHWOOD_DATA_DATABASE_SOURCE: postgres://${POSTGRES_USER:-torchwood}:${POSTGRES_PASSWORD:-torchwood}@postgres:5432/${POSTGRES_DB:-torchwood}?sslmode=disable
+      TORCHWOOD_DATA_REDIS_ADDR: redis:6379
+      TORCHWOOD_STORAGE_S3_ENDPOINT: http://minio:9000
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
