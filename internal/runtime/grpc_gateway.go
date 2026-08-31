@@ -165,7 +165,13 @@ func portFromAddr(addr string) string {
 
 func authIncomingHeaderMatcher(key string) (string, bool) {
 	switch strings.ToLower(key) {
-	case "authorization", "cookie", "x-api-key", "x-torchwood-project", "x-request-id":
+	case "authorization":
+		// grpc-gateway annotateContext 对 Authorization 头有内置向后兼容透传
+		// （无前缀 metadata "authorization"）；matcher 再放行会导致同值被
+		// append 两次，服务端 ParseAuthnRequest 判定 ErrMultipleCredentials，
+		// 所有 Bearer 认证请求都会 401。
+		return "", false
+	case "cookie", "x-api-key", "x-torchwood-project", "x-request-id":
 		return strings.ToLower(key), true
 	default:
 		return runtime.DefaultHeaderMatcher(key)
