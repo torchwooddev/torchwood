@@ -77,10 +77,6 @@ linters:
       - path: pkg/query/query\.go
         linters: [gosec]
         text: "G109"
-      # 代码生成后处理器：root 为构建产物目录常量，无外部输入。
-      - path: tools/openapifix/main\.go
-        linters: [gosec]
-        text: "G(304|306|703)"
       # CLI `functions code` 按用户指定路径读取函数代码包——功能本身即读取本地文件。
       - path: cmd/client/cmd/functions\.go
         linters: [gosec]

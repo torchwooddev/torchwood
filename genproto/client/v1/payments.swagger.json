@@ -18,7 +18,7 @@
   "paths": {
     "/v1/payments/ios/verify-receipt": {
       "post": {
-        "summary": "VerifyReceipt 校验 iOS IAP receipt / StoreKit 2 JWS 并履约对应订单\r\n（设计 §1.2：iOS 无服务端下单，走验票路径）。",
+        "summary": "VerifyReceipt 校验 iOS IAP receipt / StoreKit 2 JWS 并履约对应订单\n（设计 §1.2：iOS 无服务端下单，走验票路径）。",
         "operationId": "PaymentsService_VerifyReceipt",
         "responses": {
           "200": {
@@ -30,7 +30,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -62,7 +62,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -98,7 +98,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -130,7 +130,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -149,15 +149,6 @@
     }
   },
   "definitions": {
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": {}
-    },
     "protobufNullValue": {
       "type": "string",
       "enum": [
@@ -210,10 +201,10 @@
         },
         "payment_url": {
           "type": "string",
-          "title": "渠道收银台地址（Stripe Checkout URL 等）；仅 CreateOrder 响应填充，\r\n查询接口不返回。"
+          "title": "渠道收银台地址（Stripe Checkout URL 等）；仅 CreateOrder 响应填充，\n查询接口不返回。"
         }
       },
-      "title": "PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的\r\nint64（禁止 float）；status 状态机：\r\ncreated → paying → paid | failed | closed → refunding → refunded。"
+      "title": "PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的\nint64（禁止 float）；status 状态机：\ncreated → paying → paid | failed | closed → refunding → refunded。"
     },
     "v1CreateOrderRequest": {
       "type": "object",
@@ -263,6 +254,55 @@
         }
       }
     },
+    "v1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/v1ErrorCode"
+        }
+      }
+    },
+    "v1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED",
+      "title": "ErrorCode 与 gRPC code 的映射（HTTPErrorHandler 单一事实来源，\n见 internal/infra/server/errors.go）：\n  - InvalidArgument → ERROR_CODE_INVALID_REQUEST\n  - FailedPrecondition → ERROR_CODE_PRECONDITION_FAILED\n  - NotFound → ERROR_CODE_RESOURCE_NOT_FOUND\n  - AlreadyExists → ERROR_CODE_RESOURCE_CONFLICT\n  - Aborted → ERROR_CODE_CONCURRENT_MODIFICATION\n  - Unauthenticated → ERROR_CODE_INVALID_CREDENTIALS\n  - PermissionDenied → ERROR_CODE_PERMISSION_DENIED\n  - ResourceExhausted → ERROR_CODE_QUOTA_EXCEEDED\n  - DeadlineExceeded → ERROR_CODE_TIMEOUT\n  - 其余 → ERROR_CODE_INTERNAL_ERROR"
+    },
+    "v1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/v1Error"
+        }
+      }
+    },
     "v1ListMyOrdersResponse": {
       "type": "object",
       "properties": {
@@ -308,7 +348,7 @@
           "type": "string"
         }
       },
-      "title": "VerifyReceiptRequest 是 iOS 验票请求：receipt 为 StoreKit base64 PKCS7\r\n或 StoreKit 2 signed transaction JWS；order_id 指向本人 ios_iap 订单。"
+      "title": "VerifyReceiptRequest 是 iOS 验票请求：receipt 为 StoreKit base64 PKCS7\n或 StoreKit 2 signed transaction JWS；order_id 指向本人 ios_iap 订单。"
     },
     "v1VerifyReceiptResponse": {
       "type": "object",
@@ -322,54 +362,6 @@
         "idempotent_replay": {
           "type": "boolean",
           "title": "true = 同 transactionId 重放（已履约，不重复发货）。"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorCode": {
-      "type": "string",
-      "enum": [
-        "ERROR_CODE_UNSPECIFIED",
-        "ERROR_CODE_INVALID_REQUEST",
-        "ERROR_CODE_RESOURCE_NOT_FOUND",
-        "ERROR_CODE_INVALID_CREDENTIALS",
-        "ERROR_CODE_PERMISSION_DENIED",
-        "ERROR_CODE_RESOURCE_CONFLICT",
-        "ERROR_CODE_QUOTA_EXCEEDED",
-        "ERROR_CODE_PRECONDITION_FAILED",
-        "ERROR_CODE_CONCURRENT_MODIFICATION",
-        "ERROR_CODE_VALUE_OUT_OF_RANGE",
-        "ERROR_CODE_OPERATION_NOT_ALLOWED",
-        "ERROR_CODE_INTERNAL_ERROR",
-        "ERROR_CODE_SERVICE_UNAVAILABLE",
-        "ERROR_CODE_TIMEOUT"
-      ],
-      "default": "ERROR_CODE_UNSPECIFIED"
-    },
-    "torchwoodsharedv1Error": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "error_id": {
-          "type": "string"
-        },
-        "error_code": {
-          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorResponse": {
-      "type": "object",
-      "properties": {
-        "error": {
-          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }

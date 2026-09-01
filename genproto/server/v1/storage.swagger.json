@@ -29,7 +29,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -86,7 +86,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -118,7 +118,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -169,7 +169,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -207,7 +207,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -241,7 +241,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -275,7 +275,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -319,7 +319,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -363,7 +363,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -391,7 +391,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -419,7 +419,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -457,7 +457,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -515,7 +515,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "title": "以下字段为 optional（支持清空 name / mime_type）；metadata 为 map，\r\n空 map 表示不修改（清空语义未来 optional 化，属破坏性变更，需 SDK\r\n/Console 同步后落地）。"
+          "title": "以下字段为 optional（支持清空 name / mime_type）；metadata 为 map，\n空 map 表示不修改（清空语义未来 optional 化，属破坏性变更，需 SDK\n/Console 同步后落地）。"
         },
         "mime_type": {
           "type": "string"
@@ -527,15 +527,6 @@
           }
         }
       }
-    },
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": {}
     },
     "v1Bucket": {
       "type": "object",
@@ -585,6 +576,55 @@
     "v1Empty": {
       "type": "object"
     },
+    "v1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/v1ErrorCode"
+        }
+      }
+    },
+    "v1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED",
+      "title": "ErrorCode 与 gRPC code 的映射（HTTPErrorHandler 单一事实来源，\n见 internal/infra/server/errors.go）：\n  - InvalidArgument → ERROR_CODE_INVALID_REQUEST\n  - FailedPrecondition → ERROR_CODE_PRECONDITION_FAILED\n  - NotFound → ERROR_CODE_RESOURCE_NOT_FOUND\n  - AlreadyExists → ERROR_CODE_RESOURCE_CONFLICT\n  - Aborted → ERROR_CODE_CONCURRENT_MODIFICATION\n  - Unauthenticated → ERROR_CODE_INVALID_CREDENTIALS\n  - PermissionDenied → ERROR_CODE_PERMISSION_DENIED\n  - ResourceExhausted → ERROR_CODE_QUOTA_EXCEEDED\n  - DeadlineExceeded → ERROR_CODE_TIMEOUT\n  - 其余 → ERROR_CODE_INTERNAL_ERROR"
+    },
+    "v1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/v1Error"
+        }
+      }
+    },
     "v1File": {
       "type": "object",
       "properties": {
@@ -625,7 +665,7 @@
       "properties": {
         "token": {
           "type": "string",
-          "title": "短期文件访问令牌（HMAC 签名）：仅创建响应返回一次，之后任何接口\r\n不回显；可拼接到下载 URL（?token=）匿名换取文件，过期/篡改返回 401。"
+          "title": "短期文件访问令牌（HMAC 签名）：仅创建响应返回一次，之后任何接口\n不回显；可拼接到下载 URL（?token=）匿名换取文件，过期/篡改返回 401。"
         },
         "expires_at": {
           "type": "string",
@@ -697,54 +737,6 @@
         "total_size": {
           "type": "string",
           "format": "int64"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorCode": {
-      "type": "string",
-      "enum": [
-        "ERROR_CODE_UNSPECIFIED",
-        "ERROR_CODE_INVALID_REQUEST",
-        "ERROR_CODE_RESOURCE_NOT_FOUND",
-        "ERROR_CODE_INVALID_CREDENTIALS",
-        "ERROR_CODE_PERMISSION_DENIED",
-        "ERROR_CODE_RESOURCE_CONFLICT",
-        "ERROR_CODE_QUOTA_EXCEEDED",
-        "ERROR_CODE_PRECONDITION_FAILED",
-        "ERROR_CODE_CONCURRENT_MODIFICATION",
-        "ERROR_CODE_VALUE_OUT_OF_RANGE",
-        "ERROR_CODE_OPERATION_NOT_ALLOWED",
-        "ERROR_CODE_INTERNAL_ERROR",
-        "ERROR_CODE_SERVICE_UNAVAILABLE",
-        "ERROR_CODE_TIMEOUT"
-      ],
-      "default": "ERROR_CODE_UNSPECIFIED"
-    },
-    "torchwoodsharedv1Error": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "error_id": {
-          "type": "string"
-        },
-        "error_code": {
-          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorResponse": {
-      "type": "object",
-      "properties": {
-        "error": {
-          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }

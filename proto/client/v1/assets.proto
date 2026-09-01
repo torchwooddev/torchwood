@@ -53,6 +53,15 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
     key: "x-torchwood-access"
     value: { string_value: "authenticated" }
   }
+  // 统一 default 错误响应（运行时错误体即 shared.v1.ErrorResponse），
+  // 文件级声明自动填充到本文件全部 operation。
+  responses: {
+    key: "default"
+    value: {
+      description: "An unexpected error response."
+      schema: { json_schema: { ref: ".torchwood.shared.v1.ErrorResponse" } }
+    }
+  }
 };
 
 // AssetsService 是终端用户资产面（v3 设计 §2.7 / §6）：只读三个方法。

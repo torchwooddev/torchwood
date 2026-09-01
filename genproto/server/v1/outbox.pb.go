@@ -377,7 +377,10 @@ const file_server_v1_outbox_proto_rawDesc = "" +
 	"\favailable_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\vavailableAt2\xdd\x02\n" +
 	"\rOutboxService\x12\x94\x01\n" +
 	"\x0fListDeadLetters\x12+.torchwood.server.v1.ListDeadLettersRequest\x1a,.torchwood.server.v1.ListDeadLettersResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/server/outbox/dead-letters\x12\xac\x01\n" +
-	"\x10ReplayDeadLetter\x12,.torchwood.server.v1.ReplayDeadLetterRequest\x1a-.torchwood.server.v1.ReplayDeadLetterResponse\";\x82\xd3\xe4\x93\x025:\x01*\"0/v1/server/outbox/dead-letters/{event_id}:replay\x1a\x06\x92\xb2\x19\x02\b\x04B\xff\x01\x92A\xbc\x01Z\x8a\x01\n" +
+	"\x10ReplayDeadLetter\x12,.torchwood.server.v1.ReplayDeadLetterRequest\x1a-.torchwood.server.v1.ReplayDeadLetterResponse\";\x82\xd3\xe4\x93\x025:\x01*\"0/v1/server/outbox/dead-letters/{event_id}:replay\x1a\x06\x92\xb2\x19\x02\b\x04B\xd3\x02\x92A\x90\x02RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x8a\x01\n" +
 	"+\n" +
 	"\x06Bearer\x12!\b\x02\x12\fBearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\"\n" +

@@ -3335,7 +3335,10 @@ const file_client_v1_account_proto_rawDesc = "" +
 	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02#:\x01*\x1a\x1e/v1/account/sessions/magic-url\x12\xa5\x01\n" +
 	"\bListLogs\x12$.torchwood.client.v1.ListLogsRequest\x1a%.torchwood.client.v1.ListLogsResponse\"L\x92A$j\"\n" +
 	"\x12x-torchwood-access\x12\f\x1a\n" +
-	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/account/logs\x1a\x06\x92\xb2\x19\x02\b\x02B\xa6\x03\x92A\xe3\x02Z\xab\x02\n" +
+	"permission\x8a\xb2\x19\t\b\x03\x12\x05users\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/account/logs\x1a\x06\x92\xb2\x19\x02\b\x02B\xfa\x03\x92A\xb7\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\xab\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

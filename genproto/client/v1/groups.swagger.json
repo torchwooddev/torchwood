@@ -29,7 +29,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -86,7 +86,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -118,7 +118,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -146,7 +146,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -184,7 +184,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -220,7 +220,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -264,7 +264,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -292,7 +292,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -311,15 +311,6 @@
     }
   },
   "definitions": {
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": {}
-    },
     "torchwoodclientv1CreateGroupRequest": {
       "type": "object",
       "properties": {
@@ -451,27 +442,27 @@
     "v1Empty": {
       "type": "object"
     },
-    "v1ListResponseMeta": {
+    "v1Error": {
       "type": "object",
       "properties": {
-        "page_size": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "next_page_token": {
+        "type": {
           "type": "string"
         },
-        "prev_page_token": {
+        "code": {
           "type": "string"
         },
-        "total_count": {
-          "type": "integer",
-          "format": "int32",
-          "title": "total_count ≤0 = unknown（keyset 分页下 0 与空集合不可区分，调用方应以 next_page_token 是否为空判定是否还有更多；≤0 表示总数未知）。"
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/v1ErrorCode"
         }
       }
     },
-    "torchwoodsharedv1ErrorCode": {
+    "v1ErrorCode": {
       "type": "string",
       "enum": [
         "ERROR_CODE_UNSPECIFIED",
@@ -489,33 +480,34 @@
         "ERROR_CODE_SERVICE_UNAVAILABLE",
         "ERROR_CODE_TIMEOUT"
       ],
-      "default": "ERROR_CODE_UNSPECIFIED"
+      "default": "ERROR_CODE_UNSPECIFIED",
+      "title": "ErrorCode 与 gRPC code 的映射（HTTPErrorHandler 单一事实来源，\n见 internal/infra/server/errors.go）：\n  - InvalidArgument → ERROR_CODE_INVALID_REQUEST\n  - FailedPrecondition → ERROR_CODE_PRECONDITION_FAILED\n  - NotFound → ERROR_CODE_RESOURCE_NOT_FOUND\n  - AlreadyExists → ERROR_CODE_RESOURCE_CONFLICT\n  - Aborted → ERROR_CODE_CONCURRENT_MODIFICATION\n  - Unauthenticated → ERROR_CODE_INVALID_CREDENTIALS\n  - PermissionDenied → ERROR_CODE_PERMISSION_DENIED\n  - ResourceExhausted → ERROR_CODE_QUOTA_EXCEEDED\n  - DeadlineExceeded → ERROR_CODE_TIMEOUT\n  - 其余 → ERROR_CODE_INTERNAL_ERROR"
     },
-    "torchwoodsharedv1Error": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "error_id": {
-          "type": "string"
-        },
-        "error_code": {
-          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorResponse": {
+    "v1ErrorResponse": {
       "type": "object",
       "properties": {
         "error": {
-          "$ref": "#/definitions/torchwoodsharedv1Error"
+          "$ref": "#/definitions/v1Error"
+        }
+      }
+    },
+    "v1ListResponseMeta": {
+      "type": "object",
+      "properties": {
+        "page_size": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "next_page_token": {
+          "type": "string"
+        },
+        "prev_page_token": {
+          "type": "string"
+        },
+        "total_count": {
+          "type": "integer",
+          "format": "int32",
+          "title": "total_count ≤0 = unknown（keyset 分页下 0 与空集合不可区分，调用方应以 next_page_token 是否为空判定是否还有更多；≤0 表示总数未知）。"
         }
       }
     }

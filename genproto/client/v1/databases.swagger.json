@@ -29,7 +29,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -272,7 +272,7 @@
         "x-torchwood-access": "public"
       },
       "post": {
-        "summary": "自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间；document_id 可自由取任意合法值。",
+        "summary": "自定义方法说明：documents:count 为自定义方法段（REST 自定义动词），不再占用\ndocument_id 命名空间；document_id 可自由取任意合法值。",
         "operationId": "DatabasesService_CreateDocument",
         "responses": {
           "200": {
@@ -284,7 +284,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -328,7 +328,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -376,7 +376,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -424,7 +424,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -472,7 +472,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -522,7 +522,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -763,7 +763,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -809,7 +809,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -828,7 +828,7 @@
           },
           {
             "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\r\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
             "in": "body",
             "required": true,
             "schema": {
@@ -874,15 +874,6 @@
     }
   },
   "definitions": {
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": {}
-    },
     "protobufNullValue": {
       "type": "string",
       "enum": [
@@ -923,7 +914,7 @@
       "properties": {
         "document_id": {
           "type": "string",
-          "title": "客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），\r\n不再占用 document_id 命名空间，可自由取任意合法值。"
+          "title": "客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），\n不再占用 document_id 命名空间，可自由取任意合法值。"
         },
         "data": {
           "type": "object"
@@ -1046,6 +1037,55 @@
     "v1Empty": {
       "type": "object"
     },
+    "v1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/v1ErrorCode"
+        }
+      }
+    },
+    "v1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED",
+      "title": "ErrorCode 与 gRPC code 的映射（HTTPErrorHandler 单一事实来源，\n见 internal/infra/server/errors.go）：\n  - InvalidArgument → ERROR_CODE_INVALID_REQUEST\n  - FailedPrecondition → ERROR_CODE_PRECONDITION_FAILED\n  - NotFound → ERROR_CODE_RESOURCE_NOT_FOUND\n  - AlreadyExists → ERROR_CODE_RESOURCE_CONFLICT\n  - Aborted → ERROR_CODE_CONCURRENT_MODIFICATION\n  - Unauthenticated → ERROR_CODE_INVALID_CREDENTIALS\n  - PermissionDenied → ERROR_CODE_PERMISSION_DENIED\n  - ResourceExhausted → ERROR_CODE_QUOTA_EXCEEDED\n  - DeadlineExceeded → ERROR_CODE_TIMEOUT\n  - 其余 → ERROR_CODE_INTERNAL_ERROR"
+    },
+    "v1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/v1Error"
+        }
+      }
+    },
     "v1Filter": {
       "type": "object",
       "properties": {
@@ -1158,54 +1198,6 @@
         }
       },
       "description": "Query is the typed document list/count model (filter tree + orders + page).\npage_token is the authoritative pager (K-20); page_size is the page bound."
-    },
-    "torchwoodsharedv1ErrorCode": {
-      "type": "string",
-      "enum": [
-        "ERROR_CODE_UNSPECIFIED",
-        "ERROR_CODE_INVALID_REQUEST",
-        "ERROR_CODE_RESOURCE_NOT_FOUND",
-        "ERROR_CODE_INVALID_CREDENTIALS",
-        "ERROR_CODE_PERMISSION_DENIED",
-        "ERROR_CODE_RESOURCE_CONFLICT",
-        "ERROR_CODE_QUOTA_EXCEEDED",
-        "ERROR_CODE_PRECONDITION_FAILED",
-        "ERROR_CODE_CONCURRENT_MODIFICATION",
-        "ERROR_CODE_VALUE_OUT_OF_RANGE",
-        "ERROR_CODE_OPERATION_NOT_ALLOWED",
-        "ERROR_CODE_INTERNAL_ERROR",
-        "ERROR_CODE_SERVICE_UNAVAILABLE",
-        "ERROR_CODE_TIMEOUT"
-      ],
-      "default": "ERROR_CODE_UNSPECIFIED"
-    },
-    "torchwoodsharedv1Error": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "error_id": {
-          "type": "string"
-        },
-        "error_code": {
-          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorResponse": {
-      "type": "object",
-      "properties": {
-        "error": {
-          "$ref": "#/definitions/torchwoodsharedv1Error"
-        }
-      }
     }
   },
   "securityDefinitions": {

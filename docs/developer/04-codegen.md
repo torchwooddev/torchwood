@@ -52,7 +52,7 @@ breaking: {use: [FILE]}
 | `protocolbuffers/go` | v1.36.10 | `*.pb.go` |
 | `grpc/go` | v1.6.0 | `*_grpc.pb.go` |
 | `grpc-ecosystem/gateway` | v2.27.4 | `*.pb.gw.go` |
-| `grpc-ecosystem/openapiv2` | v2.27.3 | `*.swagger.json`（`json_names_for_fields=true`） |
+| `grpc-ecosystem/openapiv2` | v2.27.3 | `*.swagger.json`（`json_names_for_fields=false` 输出 snake_case；`disable_default_errors=true` 关闭 rpcStatus 注入，default 错误响应由各 service proto 文件级声明） |
 
 ### 2.3 proto → genproto 四组
 
@@ -125,7 +125,7 @@ generate:all
 4. 在对应 `app/shared/authz.go` 选择 `RequireServerWriteActor`（业务写，API Key 可做）或 `RequirePlatformAdmin`（平台级）做纵深防御；
 5. 运行 `task generate:all && task build && go vet ./...` 验证零漂移。
 
-`proto/shared/v1/authz.proto:18` 的 `AccessLevel` 与 `method_auth` 为鉴权唯一事实源，OpenAPI `x-torchwood-access` 扩展一致性由 `internal/infra/server/grpc_swagger_test.go` 断言。
+`proto/shared/v1/authz.proto:18` 的 `AccessLevel` 与 `method_auth` 为鉴权唯一事实源，OpenAPI `x-torchwood-access` 扩展一致性由 `internal/runtime/grpc_swagger_test.go` 断言。
 
 > 生成产物一律可重放：同一 commit 下重复 `task generate:all` 应零 diff；CI 以此为门禁，本地提交前必跑。
 
@@ -149,4 +149,4 @@ generate:all
 - `cmd/server|worker/provides.go` / `wire.go` / `wire_gen.go`
 - `internal/pkg/config/config.proto`
 - `AGENTS.md` 生成约定
-- `internal/infra/server/grpc_swagger_test.go` swagger/`method_auth` 一致性断言
+- `internal/runtime/grpc_swagger_test.go` swagger/`method_auth` 一致性断言

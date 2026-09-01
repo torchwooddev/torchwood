@@ -361,7 +361,10 @@ const file_server_v1_apikeys_proto_rawDesc = "" +
 	"\fCreateAPIKey\x12(.torchwood.server.v1.CreateAPIKeyRequest\x1a%.torchwood.server.v1.APIKeyWithSecret\"$\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/server/api-keys\x12|\n" +
 	"\vListAPIKeys\x12 .torchwood.shared.v1.ListRequest\x1a(.torchwood.server.v1.ListAPIKeysResponse\"!\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/server/api-keys\x12w\n" +
 	"\tGetAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1b.torchwood.server.v1.APIKey\"&\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/api-keys/{id}\x12y\n" +
-	"\fDeleteAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1a.torchwood.shared.v1.Empty\"&\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/api-keys/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
+	"\fDeleteAPIKey\x12%.torchwood.server.v1.GetAPIKeyRequest\x1a\x1a.torchwood.shared.v1.Empty\"&\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x1a*\x18/v1/server/api-keys/{id}\x1a\x06\x92\xb2\x19\x02\b\x04B\xda\x03\x92A\x97\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

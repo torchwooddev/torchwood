@@ -290,7 +290,10 @@ const file_server_v1_health_proto_rawDesc = "" +
 	"\x05Check\x12'.torchwood.server.v1.HealthCheckRequest\x1a(.torchwood.server.v1.HealthCheckResponse\"'\x82\xd3\xe4\x93\x02!Z\x13\x12\x11/v1/server/health\x12\n" +
 	"/v1/health\x12\x80\x01\n" +
 	"\n" +
-	"GetVersion\x12&.torchwood.server.v1.GetVersionRequest\x1a'.torchwood.server.v1.GetVersionResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/server/health/version\x1a\x06\x92\xb2\x19\x02\b\x01B\xf7\x02\x92A\xb4\x02Z\x91\x02\n" +
+	"GetVersion\x12&.torchwood.server.v1.GetVersionRequest\x1a'.torchwood.server.v1.GetVersionResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/server/health/version\x1a\x06\x92\xb2\x19\x02\b\x01B\xcb\x03\x92A\x88\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

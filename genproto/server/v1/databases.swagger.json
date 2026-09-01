@@ -29,7 +29,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -86,7 +86,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -118,7 +118,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -169,7 +169,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -207,7 +207,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -241,7 +241,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -275,7 +275,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -319,7 +319,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -363,7 +363,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -405,7 +405,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -651,7 +651,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -695,7 +695,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -735,7 +735,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -783,7 +783,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -831,7 +831,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -881,7 +881,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -925,7 +925,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -969,7 +969,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -1202,7 +1202,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -1246,7 +1246,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -1265,7 +1265,7 @@
           },
           {
             "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\r\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
             "in": "body",
             "required": true,
             "schema": {
@@ -1314,7 +1314,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -1358,7 +1358,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -1400,7 +1400,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -1428,7 +1428,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -1550,7 +1550,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "title": "optional：未设置（或空串）= 不修改；设置非空串 = 更新（R10-P1-6；\r\nadapter 对空串同样按不修改处理，清空 name 的语义暂不支持）。"
+          "title": "optional：未设置（或空串）= 不修改；设置非空串 = 更新（R10-P1-6；\nadapter 对空串同样按不修改处理，清空 name 的语义暂不支持）。"
         },
         "permissions": {
           "$ref": "#/definitions/v1PermissionsUpdate"
@@ -1562,15 +1562,6 @@
           "type": "boolean"
         }
       }
-    },
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": {}
     },
     "protobufNullValue": {
       "type": "string",
@@ -1610,7 +1601,7 @@
       "properties": {
         "document_id": {
           "type": "string",
-          "title": "客户端自选 document_id；documents:count / documents:bulkUpdate /\r\ndocuments:bulkDelete 为自定义方法段（REST 自定义动词），不再占用\r\ndocument_id 命名空间，可自由取任意合法值。"
+          "title": "客户端自选 document_id；documents:count / documents:bulkUpdate /\ndocuments:bulkDelete 为自定义方法段（REST 自定义动词），不再占用\ndocument_id 命名空间，可自由取任意合法值。"
         },
         "data": {
           "type": "object"
@@ -1850,6 +1841,55 @@
     "v1Empty": {
       "type": "object"
     },
+    "v1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/v1ErrorCode"
+        }
+      }
+    },
+    "v1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED",
+      "title": "ErrorCode 与 gRPC code 的映射（HTTPErrorHandler 单一事实来源，\n见 internal/infra/server/errors.go）：\n  - InvalidArgument → ERROR_CODE_INVALID_REQUEST\n  - FailedPrecondition → ERROR_CODE_PRECONDITION_FAILED\n  - NotFound → ERROR_CODE_RESOURCE_NOT_FOUND\n  - AlreadyExists → ERROR_CODE_RESOURCE_CONFLICT\n  - Aborted → ERROR_CODE_CONCURRENT_MODIFICATION\n  - Unauthenticated → ERROR_CODE_INVALID_CREDENTIALS\n  - PermissionDenied → ERROR_CODE_PERMISSION_DENIED\n  - ResourceExhausted → ERROR_CODE_QUOTA_EXCEEDED\n  - DeadlineExceeded → ERROR_CODE_TIMEOUT\n  - 其余 → ERROR_CODE_INTERNAL_ERROR"
+    },
+    "v1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/v1Error"
+        }
+      }
+    },
     "v1Filter": {
       "type": "object",
       "properties": {
@@ -2026,54 +2066,6 @@
         }
       },
       "description": "Query is the typed document list/count model (filter tree + orders + page).\npage_token is the authoritative pager (K-20); page_size is the page bound."
-    },
-    "torchwoodsharedv1ErrorCode": {
-      "type": "string",
-      "enum": [
-        "ERROR_CODE_UNSPECIFIED",
-        "ERROR_CODE_INVALID_REQUEST",
-        "ERROR_CODE_RESOURCE_NOT_FOUND",
-        "ERROR_CODE_INVALID_CREDENTIALS",
-        "ERROR_CODE_PERMISSION_DENIED",
-        "ERROR_CODE_RESOURCE_CONFLICT",
-        "ERROR_CODE_QUOTA_EXCEEDED",
-        "ERROR_CODE_PRECONDITION_FAILED",
-        "ERROR_CODE_CONCURRENT_MODIFICATION",
-        "ERROR_CODE_VALUE_OUT_OF_RANGE",
-        "ERROR_CODE_OPERATION_NOT_ALLOWED",
-        "ERROR_CODE_INTERNAL_ERROR",
-        "ERROR_CODE_SERVICE_UNAVAILABLE",
-        "ERROR_CODE_TIMEOUT"
-      ],
-      "default": "ERROR_CODE_UNSPECIFIED"
-    },
-    "torchwoodsharedv1Error": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "error_id": {
-          "type": "string"
-        },
-        "error_code": {
-          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorResponse": {
-      "type": "object",
-      "properties": {
-        "error": {
-          "$ref": "#/definitions/torchwoodsharedv1Error"
-        }
-      }
     }
   },
   "securityDefinitions": {

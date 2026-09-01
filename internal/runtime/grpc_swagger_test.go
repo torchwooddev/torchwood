@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -76,8 +77,10 @@ type swaggerOp struct {
 	} `json:"responses"`
 }
 
-// errorResponseRef 与 tools/openapifix 写入的 default 响应引用保持一致。
-const errorResponseRef = "#/definitions/torchwoodsharedv1ErrorResponse"
+// errorResponseRef 与各 service proto 文件级 openapiv2_swagger.responses.default
+// 声明的引用经生成器解析后的定义名保持一致（legacy 命名：最短唯一后缀+1，
+// Error/ErrorResponse/ErrorCode 消息名当前全局唯一，落在 v1 前缀下）。
+const errorResponseRef = "#/definitions/v1ErrorResponse"
 
 // TestSwaggerAccessExtensionMatchesCollectMethodsByAccess 断言每个
 // genproto/**/*.swagger.json 中 operation 的有效 x-torchwood-access
@@ -270,6 +273,38 @@ func TestSwaggerPropertyNamesAreSnakeCase(t *testing.T) {
 		}
 	}
 	require.Empty(t, bad, "以下 swagger 属性名非 snake_case（应重跑 task generate:proto 检查 json_names_for_fields）：\n%s", strings.Join(bad, "\n"))
+}
+
+// TestSwaggerNoRpcStatus 断言全部 genproto/**/*.swagger.json 不含 rpcStatus
+// 定义或引用：生成器默认注入的 rpcStatus 与运行时错误体不符，buf.gen.yaml
+// 已用 disable_default_errors=true 关闭注入（早期由 tools/openapifix 后处理
+// 移除，工具删除后此断言接任守卫）。该名字再现通常意味着 buf 配置回退。
+func TestSwaggerNoRpcStatus(t *testing.T) {
+	genprotoDir := filepath.Join("..", "..", "genproto")
+	files := 0
+	var offenders []string
+	err := filepath.WalkDir(genprotoDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".swagger.json") {
+			return nil
+		}
+		files++
+		raw, err := os.ReadFile(path) // #nosec G304 -- 路径来自仓库内测试数据
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(raw), "rpcStatus") {
+			offenders = append(offenders, filepath.ToSlash(path))
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, files, 28, "genproto swagger 文件数量异常（当前 %d）", files)
+	require.Empty(t, offenders,
+		"以下 swagger 仍含 rpcStatus（buf.gen.yaml 的 disable_default_errors 被回退？）：\n%s",
+		strings.Join(offenders, "\n"))
 }
 
 // findMethodByOperationID 先按原名精确查找；未命中时按 additional_bindings

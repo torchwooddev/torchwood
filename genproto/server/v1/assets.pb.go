@@ -1905,7 +1905,10 @@ const file_server_v1_assets_proto_rawDesc = "" +
 	"\x06Expire\x12\".torchwood.server.v1.ExpireRequest\x1a$.torchwood.server.v1.AssetOpResponse\")\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/server/assets:expire\x12\x88\x01\n" +
 	"\tReconcile\x12%.torchwood.server.v1.ReconcileRequest\x1a&.torchwood.server.v1.ReconcileResponse\",\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/server/assets:reconcile\x12\x95\x01\n" +
 	"\x0eListUserAssets\x12*.torchwood.server.v1.ListUserAssetsRequest\x1a+.torchwood.server.v1.ListUserAssetsResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/server/assets/users/{owner_id}\x12\x9c\x01\n" +
-	"\x0eListUserLedger\x12*.torchwood.server.v1.ListUserLedgerRequest\x1a+.torchwood.server.v1.ListUserLedgerResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/server/assets/users/{owner_id}/ledger\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
+	"\x0eListUserLedger\x12*.torchwood.server.v1.ListUserLedgerRequest\x1a+.torchwood.server.v1.ListUserLedgerResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/server/assets/users/{owner_id}/ledger\x1a\x06\x92\xb2\x19\x02\b\x04B\xda\x03\x92A\x97\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

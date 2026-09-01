@@ -29,7 +29,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -88,7 +88,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -118,7 +118,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -156,7 +156,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/torchwoodsharedv1ErrorResponse"
+              "$ref": "#/definitions/v1ErrorResponse"
             }
           }
         },
@@ -205,16 +205,7 @@
           "title": "备注（审计用途，可选）。"
         }
       },
-      "title": "RefundRequest 对已支付订单发起退款（D12：一期只翻订单状态 + 事件，\r\n不回收已发放资产）。"
-    },
-    "protobufAny": {
-      "type": "object",
-      "properties": {
-        "@type": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": {}
+      "title": "RefundRequest 对已支付订单发起退款（D12：一期只翻订单状态 + 事件，\n不回收已发放资产）。"
     },
     "protobufNullValue": {
       "type": "string",
@@ -279,7 +270,56 @@
           "format": "date-time"
         }
       },
-      "title": "PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的\r\nint64（禁止 float）；status 状态机：\r\ncreated → paying → paid | failed | closed → refunding → refunded。"
+      "title": "PaymentOrder 是支付订单（v3 设计 §1.3）。amount 一律最小货币单位的\nint64（禁止 float）；status 状态机：\ncreated → paying → paid | failed | closed → refunding → refunded。"
+    },
+    "v1Error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "error_id": {
+          "type": "string"
+        },
+        "error_code": {
+          "$ref": "#/definitions/v1ErrorCode"
+        }
+      }
+    },
+    "v1ErrorCode": {
+      "type": "string",
+      "enum": [
+        "ERROR_CODE_UNSPECIFIED",
+        "ERROR_CODE_INVALID_REQUEST",
+        "ERROR_CODE_RESOURCE_NOT_FOUND",
+        "ERROR_CODE_INVALID_CREDENTIALS",
+        "ERROR_CODE_PERMISSION_DENIED",
+        "ERROR_CODE_RESOURCE_CONFLICT",
+        "ERROR_CODE_QUOTA_EXCEEDED",
+        "ERROR_CODE_PRECONDITION_FAILED",
+        "ERROR_CODE_CONCURRENT_MODIFICATION",
+        "ERROR_CODE_VALUE_OUT_OF_RANGE",
+        "ERROR_CODE_OPERATION_NOT_ALLOWED",
+        "ERROR_CODE_INTERNAL_ERROR",
+        "ERROR_CODE_SERVICE_UNAVAILABLE",
+        "ERROR_CODE_TIMEOUT"
+      ],
+      "default": "ERROR_CODE_UNSPECIFIED",
+      "title": "ErrorCode 与 gRPC code 的映射（HTTPErrorHandler 单一事实来源，\n见 internal/infra/server/errors.go）：\n  - InvalidArgument → ERROR_CODE_INVALID_REQUEST\n  - FailedPrecondition → ERROR_CODE_PRECONDITION_FAILED\n  - NotFound → ERROR_CODE_RESOURCE_NOT_FOUND\n  - AlreadyExists → ERROR_CODE_RESOURCE_CONFLICT\n  - Aborted → ERROR_CODE_CONCURRENT_MODIFICATION\n  - Unauthenticated → ERROR_CODE_INVALID_CREDENTIALS\n  - PermissionDenied → ERROR_CODE_PERMISSION_DENIED\n  - ResourceExhausted → ERROR_CODE_QUOTA_EXCEEDED\n  - DeadlineExceeded → ERROR_CODE_TIMEOUT\n  - 其余 → ERROR_CODE_INTERNAL_ERROR"
+    },
+    "v1ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/v1Error"
+        }
+      }
     },
     "v1Fulfillment": {
       "type": "object",
@@ -358,54 +398,6 @@
         },
         "fulfillment": {
           "$ref": "#/definitions/v1Fulfillment"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorCode": {
-      "type": "string",
-      "enum": [
-        "ERROR_CODE_UNSPECIFIED",
-        "ERROR_CODE_INVALID_REQUEST",
-        "ERROR_CODE_RESOURCE_NOT_FOUND",
-        "ERROR_CODE_INVALID_CREDENTIALS",
-        "ERROR_CODE_PERMISSION_DENIED",
-        "ERROR_CODE_RESOURCE_CONFLICT",
-        "ERROR_CODE_QUOTA_EXCEEDED",
-        "ERROR_CODE_PRECONDITION_FAILED",
-        "ERROR_CODE_CONCURRENT_MODIFICATION",
-        "ERROR_CODE_VALUE_OUT_OF_RANGE",
-        "ERROR_CODE_OPERATION_NOT_ALLOWED",
-        "ERROR_CODE_INTERNAL_ERROR",
-        "ERROR_CODE_SERVICE_UNAVAILABLE",
-        "ERROR_CODE_TIMEOUT"
-      ],
-      "default": "ERROR_CODE_UNSPECIFIED"
-    },
-    "torchwoodsharedv1Error": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "error_id": {
-          "type": "string"
-        },
-        "error_code": {
-          "$ref": "#/definitions/torchwoodsharedv1ErrorCode"
-        }
-      }
-    },
-    "torchwoodsharedv1ErrorResponse": {
-      "type": "object",
-      "properties": {
-        "error": {
-          "$ref": "#/definitions/torchwoodsharedv1Error"
         }
       }
     }

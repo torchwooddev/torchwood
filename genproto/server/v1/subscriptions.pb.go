@@ -1276,7 +1276,10 @@ const file_server_v1_subscriptions_proto_rawDesc = "" +
 	"\x11ListSubscriptions\x12 .torchwood.shared.v1.ListRequest\x1a..torchwood.server.v1.ListSubscriptionsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/server/subscriptions\x12\x95\x01\n" +
 	"\x0fGetSubscription\x12+.torchwood.server.v1.GetSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"2\x82\xd3\xe4\x93\x02,\x12*/v1/server/subscriptions/{subscription_id}\x12\xab\x01\n" +
 	"\x12CancelSubscription\x12..torchwood.server.v1.CancelSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"B\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x026:\x01*\"1/v1/server/subscriptions/{subscription_id}:cancel\x12\xab\x01\n" +
-	"\x12ExpireSubscription\x12..torchwood.server.v1.ExpireSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"B\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x026:\x01*\"1/v1/server/subscriptions/{subscription_id}:expire\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
+	"\x12ExpireSubscription\x12..torchwood.server.v1.ExpireSubscriptionRequest\x1a!.torchwood.server.v1.Subscription\"B\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x026:\x01*\"1/v1/server/subscriptions/{subscription_id}:expire\x1a\x06\x92\xb2\x19\x02\b\x04B\xda\x03\x92A\x97\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

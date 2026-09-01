@@ -612,7 +612,10 @@ const file_server_v1_payments_proto_rawDesc = "" +
 	"ListOrders\x12 .torchwood.shared.v1.ListRequest\x1a'.torchwood.server.v1.ListOrdersResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/server/payments/orders\x12\x82\x01\n" +
 	"\bGetOrder\x12$.torchwood.server.v1.GetOrderRequest\x1a!.torchwood.server.v1.PaymentOrder\"-\x82\xd3\xe4\x93\x02'\x12%/v1/server/payments/orders/{order_id}\x12\x8e\x01\n" +
 	"\x06Refund\x12\".torchwood.server.v1.RefundRequest\x1a!.torchwood.server.v1.PaymentOrder\"=\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x021:\x01*\",/v1/server/payments/orders/{order_id}:refund\x12\xa6\x01\n" +
-	"\rManualFulfill\x12).torchwood.server.v1.ManualFulfillRequest\x1a*.torchwood.server.v1.ManualFulfillResponse\">\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x022:\x01*\"-/v1/server/payments/orders/{order_id}:fulfill\x1a\x06\x92\xb2\x19\x02\b\x04B\x86\x03\x92A\xc3\x02Z\x91\x02\n" +
+	"\rManualFulfill\x12).torchwood.server.v1.ManualFulfillRequest\x1a*.torchwood.server.v1.ManualFulfillResponse\">\x8a\xb2\x19\x02\b\x04\x82\xd3\xe4\x93\x022:\x01*\"-/v1/server/payments/orders/{order_id}:fulfill\x1a\x06\x92\xb2\x19\x02\b\x04B\xda\x03\x92A\x97\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

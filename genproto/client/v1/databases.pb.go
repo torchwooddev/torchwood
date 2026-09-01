@@ -774,7 +774,10 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\x0eUpsertDocument\x12*.torchwood.client.v1.UpsertDocumentRequest\x1a\x1d.torchwood.shared.v1.Document\"Z\x82\xd3\xe4\x93\x02T:\x01*\x1aO/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb1\x01\n" +
 	"\x0eDeleteDocument\x12*.torchwood.client.v1.DeleteDocumentRequest\x1a\x1a.torchwood.shared.v1.Empty\"W\x82\xd3\xe4\x93\x02Q*O/v1/databases/{database_id}/collections/{collection_id}/documents/{document_id}\x12\xb5\x02\n" +
 	"\x0eCountDocuments\x12*.torchwood.client.v1.CountDocumentsRequest\x1a+.torchwood.client.v1.CountDocumentsResponse\"\xc9\x01\x92A\"b\x00j\x1e\n" +
-	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x97\x01ZL:\x01*\"G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x12G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x1a\x06\x92\xb2\x19\x02\b\x02B\xa6\x03\x92A\xe3\x02Z\xab\x02\n" +
+	"\x12x-torchwood-access\x12\b\x1a\x06public\x8a\xb2\x19\x02\b\x01\x82\xd3\xe4\x93\x02\x97\x01ZL:\x01*\"G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x12G/v1/databases/{database_id}/collections/{collection_id}/documents:count\x1a\x06\x92\xb2\x19\x02\b\x02B\xfa\x03\x92A\xb7\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\xab\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

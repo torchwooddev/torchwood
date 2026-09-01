@@ -486,7 +486,10 @@ const file_console_v1_auth_proto_rawDesc = "" +
 	"\fRefreshToken\x12).torchwood.console.v1.RefreshTokenRequest\x1a$.torchwood.console.v1.SignInResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/refresh\x12q\n" +
 	"\aSignOut\x12$.torchwood.console.v1.SignOutRequest\x1a\x1a.torchwood.shared.v1.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/console/auth/sign-out\x12\x92\x01\n" +
 	"\x0eGetSetupStatus\x12+.torchwood.console.v1.GetSetupStatusRequest\x1a,.torchwood.console.v1.GetSetupStatusResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/console/auth/setup-status\x12x\n" +
-	"\x06SignUp\x12#.torchwood.console.v1.SignUpRequest\x1a$.torchwood.console.v1.SignUpResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-up\x1a\x06\x92\xb2\x19\x02\b\x01B\xf9\x02\x92A\xb4\x02Z\x91\x02\n" +
+	"\x06SignUp\x12#.torchwood.console.v1.SignUpRequest\x1a$.torchwood.console.v1.SignUpResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/console/auth/sign-up\x1a\x06\x92\xb2\x19\x02\b\x01B\xcd\x03\x92A\x88\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

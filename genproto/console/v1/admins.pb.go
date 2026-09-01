@@ -444,7 +444,10 @@ const file_console_v1_admins_proto_rawDesc = "" +
 	"ListAdmins\x12'.torchwood.console.v1.ListAdminsRequest\x1a(.torchwood.console.v1.ListAdminsResponse\".\x8a\xb2\x19\x10\b\x03\x12\x05owner\x12\x05admin\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/console/admins\x12\x80\x01\n" +
 	"\vCreateAdmin\x12(.torchwood.console.v1.CreateAdminRequest\x1a\x1b.torchwood.console.v1.Admin\"*\x8a\xb2\x19\t\b\x03\x12\x05owner\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/console/admins\x12\x85\x01\n" +
 	"\vUpdateAdmin\x12(.torchwood.console.v1.UpdateAdminRequest\x1a\x1b.torchwood.console.v1.Admin\"/\x8a\xb2\x19\t\b\x03\x12\x05owner\x82\xd3\xe4\x93\x02\x1c:\x01*2\x17/v1/console/admins/{id}\x12\x81\x01\n" +
-	"\vDeleteAdmin\x12(.torchwood.console.v1.DeleteAdminRequest\x1a\x1a.torchwood.shared.v1.Empty\",\x8a\xb2\x19\t\b\x03\x12\x05owner\x82\xd3\xe4\x93\x02\x19*\x17/v1/console/admins/{id}\x1a\x06\x92\xb2\x19\x02\b\x03B\x8b\x03\x92A\xc6\x02Z\x91\x02\n" +
+	"\vDeleteAdmin\x12(.torchwood.console.v1.DeleteAdminRequest\x1a\x1a.torchwood.shared.v1.Empty\",\x8a\xb2\x19\t\b\x03\x12\x05owner\x82\xd3\xe4\x93\x02\x19*\x17/v1/console/admins/{id}\x1a\x06\x92\xb2\x19\x02\b\x03B\xdf\x03\x92A\x9a\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\x91\x02\n" +
 	"3\n" +
 	"\x06Bearer\x12)\b\x02\x12\x14格式: Bearer <jwt>\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

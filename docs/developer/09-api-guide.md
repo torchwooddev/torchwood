@@ -1,7 +1,7 @@
 # 09 后端 API 开发指南
 
 > 面向后端开发者：以 `ProjectsService` 为范例，走完 `proto→genproto→domain→app→infra→api→Wire` 全流程，并约定分页、错误与 OpenAPI 一致性。
-> 源码：`proto/server/v1/projects.proto`、`internal/api/servergrpc/`、`internal/app/server/`、`pkg/crud/`、`internal/infra/server/grpc_swagger_test.go`。
+> 源码：`proto/server/v1/projects.proto`、`internal/api/servergrpc/`、`internal/app/server/`、`pkg/crud/`、`internal/runtime/grpc_swagger_test.go`。
 
 ## 1 调用链总览
 
@@ -178,11 +178,13 @@ wire.Bind(new(projects.Repository), new(*bunrepo.ProjectRepo))
 
 ## 10 OpenAPI 与一致性断言
 
-每服务文件声明 `openapiv2_swagger`：`security_definitions{apiKey(X-API-Key),Bearer(Authorization: Bearer),cookie(Cookie: TORCHWOOD_session_console)}` + `security{apiKey}` + `extensions{x-torchwood-access: api_key/public/authenticated/permission}`。
+每服务文件声明 `openapiv2_swagger`：`security_definitions{apiKey(X-API-Key),Bearer(Authorization: Bearer),cookie(Cookie: TORCHWOOD_session_console)}` + `security{apiKey}` + `extensions{x-torchwood-access: api_key/public/authenticated/permission}` + `responses{default → .torchwood.shared.v1.ErrorResponse}`。
 
 `method_auth` 与 `x-torchwood-access` 必须一致：未显式声明的 operation 继承 swagger 顶层（服务默认），`ACCESS_PUBLIC` 需 `security:[]`。
 
-`internal/infra/server/grpc_swagger_test.go:73` `TestSwaggerAccessExtensionMatchesCollectMethodsByAccess` 逐 `genproto/**/*.swagger.json` 断言：`businessFileDescriptors()`（与 `grpc.go` 同步）→ `collectMethodsByAccess` 推导 access → 比对 `doc.XAccess`（顶层=服务默认）与每 `operation.x-torchwood-access`（继承或显式）完全一致；新增服务后两处 file 列表同步更新，否则测试失败（≥14 文件、≥140 operation）。
+default 错误响应建模为声明式：`buf.gen.yaml` 对 openapiv2 插件设置 `disable_default_errors=true` 关闭生成器自带的 `rpcStatus` 注入（该结构与运行时错误体不符）；每个 service proto 文件级声明的 `responses.default` 会自动填充到该文件全部 operation，并使 `Error/ErrorResponse/ErrorCode` 定义经 customRefs 原生产出（legacy 命名，当前为 `v1Error/v1ErrorCode/v1ErrorResponse`）。新增 service 文件必须携带同一段 `responses.default`，否则该文件的 operation 将缺失错误契约，测试即红。
+
+`internal/runtime/grpc_swagger_test.go` `TestSwaggerAccessExtensionMatchesCollectMethodsByAccess` 逐 `genproto/**/*.swagger.json` 断言：`businessFileDescriptors()`（与 `grpc.go` 同步）→ `collectMethodsByAccess` 推导 access → 比对 `doc.XAccess`（顶层=服务默认）与每 `operation.x-torchwood-access`（继承或显式）完全一致，同时断言每个 operation 的 default 响应引用 `v1ErrorResponse`；`TestSwaggerNoRpcStatus` 断言全部 swagger 无 `rpcStatus` 残留（`disable_default_errors` 回退即红）。新增服务后两处 file 列表同步更新，否则测试失败（≥14 文件、≥140 operation）。
 
 ## 11 OutboxService 示例（新增服务的完整参照）
 

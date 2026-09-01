@@ -697,7 +697,10 @@ const file_client_v1_groups_proto_rawDesc = "" +
 	"\x10CreateMembership\x12,.torchwood.client.v1.CreateMembershipRequest\x1a\x1f.torchwood.client.v1.Membership\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/groups/{group_id}/memberships\x12\x97\x01\n" +
 	"\x0fListMemberships\x12+.torchwood.client.v1.ListMembershipsRequest\x1a,.torchwood.client.v1.ListMembershipsResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/groups/{group_id}/memberships\x12\xb2\x01\n" +
 	"\x16UpdateMembershipStatus\x122.torchwood.client.v1.UpdateMembershipStatusRequest\x1a\x1f.torchwood.client.v1.Membership\"C\x82\xd3\xe4\x93\x02=:\x01*28/v1/groups/{group_id}/memberships/{membership_id}/status\x12\x94\x01\n" +
-	"\x10DeleteMembership\x12).torchwood.client.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\"9\x82\xd3\xe4\x93\x023*1/v1/groups/{group_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x02B\xa6\x03\x92A\xe3\x02Z\xab\x02\n" +
+	"\x10DeleteMembership\x12).torchwood.client.v1.GetMembershipRequest\x1a\x1a.torchwood.shared.v1.Empty\"9\x82\xd3\xe4\x93\x023*1/v1/groups/{group_id}/memberships/{membership_id}\x1a\x06\x92\xb2\x19\x02\b\x02B\xfa\x03\x92A\xb7\x03RR\n" +
+	"\adefault\x12G\n" +
+	"\x1dAn unexpected error response.\x12&\n" +
+	"$\x1a\".torchwood.shared.v1.ErrorResponseZ\xab\x02\n" +
 	"M\n" +
 	"\x06Bearer\x12C\b\x02\x12.格式: Bearer <jwt>（Client API 登录态）\x1a\rAuthorization \x02\n" +
 	"\x86\x01\n" +

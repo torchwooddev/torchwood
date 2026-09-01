@@ -27,9 +27,6 @@ tasks:
     cmds:
       - buf lint
       - buf generate
-      # openapiv2 插件不支持全局 default 响应覆盖：生成后统一改写为
-      # shared.v1.ErrorResponse 并移除 rpcStatus（见 tools/openapifix/main.go）。
-      - go run ./tools/openapifix
 
   lint:proto:
     dir: '{{.USER_WORKING_DIR}}'
