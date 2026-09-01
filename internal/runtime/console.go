@@ -15,6 +15,11 @@ func NewConsoleHandler() (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	// dist 未构建（embed 里只有 .gitkeep 占位，见 console/embed.go）时返回
+	// 提示页，避免 FileServer 退化成 embed FS 的目录列表。
+	if _, err := dist.Open("index.html"); err != nil {
+		return consoleNotBuiltHandler(), nil
+	}
 	fileServer := http.FileServer(http.FS(dist))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setConsoleSecurityHeaders(w)
@@ -41,6 +46,18 @@ func NewConsoleHandler() (http.Handler, error) {
 		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)
 	}), nil
+}
+
+// consoleNotBuiltHandler 在 console/dist 未构建时返回提示页（保留原入库
+// 占位 index.html 的 UX，R4 #13；占位文件已改为不入库的 .gitkeep）。
+func consoleNotBuiltHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		setConsoleSecurityHeaders(w)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Torchwood Console</title></head>` +
+			`<body><p>Console 未构建 — 执行 <code>task console:build</code> 后重新 <code>task build</code>。</p></body></html>`))
+	})
 }
 
 // isConsoleAssetPath 判定是否为静态资源路径：assets/* 或带文件扩展名的请求，缺失时应 404 而非回退 index.html。

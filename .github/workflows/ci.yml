@@ -77,9 +77,6 @@ jobs:
       - name: Format check (gofmt)
         run: test -z "$(gofmt -l .)"
 
-      - name: Prepare console embed stub
-        run: mkdir -p console/dist && touch console/dist/index.html
-
       - name: go vet
         run: go vet ./...
 

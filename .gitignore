@@ -17,7 +17,8 @@ data/files/
 coverage.html
 coverage.out
 
-# Console
+# Console（构建产物全部忽略；dist/.gitkeep 经 git add -f 入库作 go:embed
+# 占位，见 console/embed.go，vite 构建后由插件自动补回）
 console/node_modules/
 console/dist/
 
