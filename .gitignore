@@ -27,3 +27,5 @@ sdk/typescript/dist/
 sdk/demo/node_modules/
 sdk/demo/dist/
 *.tsbuildinfo
+
+.zcode/
