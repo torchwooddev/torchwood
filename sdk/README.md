@@ -73,6 +73,14 @@ me, err := c.Account.Me(ctx)
 
 ## 快速开始
 
+对外用户安装已发布的 npm 包：
+
+```bash
+npm install @torchwood/sdk
+```
+
+仓库内开发（含 Web 演示站点）：
+
 ```bash
 # 安装依赖并编译 SDK
 task sdk:install
@@ -123,6 +131,6 @@ await client.databases.createDocument("app", "notes", { data: { title: "Hi" } })
 
 ## 已实现 API surface
 
-**Client：** Account（注册/登录/会话/偏好）、Databases（文档 CRUD + count）、Groups 与 Memberships。
+**Client：** Account（注册/登录/会话/偏好）、Databases（文档 CRUD + count）、Groups 与 Memberships、Realtime（WebSocket 订阅）、Assets、Payments、Subscriptions。
 
-**Server：** Health、Projects、Users、Groups、Databases（库/集合/属性/索引/文档/Bulk）、API Keys、Storage（Bucket/File）。
+**Server：** Health、Projects、Users、Groups、Databases（库/集合/属性/索引/文档/Bulk）、API Keys、OAuthProviders、Storage（Bucket/File）、Functions、Payments、Assets、Subscriptions、Billing、Outbox，以及 18 个 Agent 默认工具目录（`agentTools` / `lookupAgentTool`）。

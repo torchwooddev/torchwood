@@ -3,7 +3,27 @@
 本文件记录独立分发的子模块版本。模块遵循 Go nested-module tagging：
 `genproto/vX.Y.Z` tag 承载 `github.com/torchwooddev/torchwood/genproto`，
 `sdk/go/vX.Y.Z` tag 承载 `github.com/torchwooddev/torchwood/sdk/go`。
+TypeScript SDK 以 npm 包 `@torchwood/sdk` 分发（`sdk/typescript/`，`task sdk:publish` 发布）。
 发布流程见 `.github/workflows/release.yml`（workflow_dispatch）。
+
+## @torchwood/sdk
+
+### v0.1.0 — 2026-09-01
+
+首个 npm 发布版本。ESM-only（Node >= 18），零运行时依赖，`tsc` 直出 `dist/`
+（发布产物不含 `__tests__`，`prepublishOnly` 自动跑测试与干净构建）。
+
+- Client API 客户端（Bearer JWT，token 自动持久化/刷新）：account（注册/
+  登录/会话/偏好）、databases（文档 CRUD + count）、groups / memberships、
+  realtime（WebSocket 订阅）、assets、payments、subscriptions；
+- Server API 客户端（API Key + `X-Torchwood-Project`）：health / projects /
+  users / groups / databases（库/集合/属性/索引/文档/Bulk）/ apiKeys /
+  oauthProviders / storage / functions / payments / assets / subscriptions /
+  billing / outbox；
+- Agent 默认工具目录：18 个动词 → Server RPC 的映射（`agentTools` /
+  `lookupAgentTool` / `TOOL_*` 常量），供 LLM Agent 与 MCP Tool Server 使用；
+- 门面 `Torchwood.withApiKey()` / `Torchwood.withAccessToken()` /
+  `Torchwood.create()` 三种实例化方式。
 
 ## sdk/go
 

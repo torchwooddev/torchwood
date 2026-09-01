@@ -38,10 +38,11 @@
 
 ```bash
 task sdk:install   # sdk/typescript + sdk/demo 各 npm install
-task sdk:build     # sdk/typescript: tsc -p tsconfig.json → dist/
+task sdk:build     # sdk/typescript: tsc -p tsconfig.build.json → dist/（不含 __tests__）
 task sdk:demo      # 依赖 sdk:build 后 vite dev（http://localhost:5174）
 ```
 
+- 对外用户直接安装已发布包：`npm install @torchwood/sdk`（npm 公共 registry，发布走 `task sdk:publish`）；
 - TS SDK 零运行时依赖，仅 `typescript`（dev），HTTP 走全局 `fetch`（`TorchwoodConfig.fetch` 可注入）；
 - Go SDK 为独立 module：`github.com/torchwooddev/torchwood/sdk/go`（`require` + `replace` 本地开发）。
 

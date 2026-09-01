@@ -108,6 +108,11 @@ tasks:
     cmds:
       - npm run build
 
+  sdk:publish:
+    dir: '{{.USER_WORKING_DIR}}/sdk/typescript'
+    cmds:
+      - npm publish
+
   sdk:demo:
     dir: '{{.USER_WORKING_DIR}}/sdk/demo'
     deps:

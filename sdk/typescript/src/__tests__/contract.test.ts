@@ -17,6 +17,7 @@ import {
   FunctionsService,
   HealthService,
   OAuthProvidersService,
+  OutboxService,
   ProjectsService,
   BillingService,
   ServerAssetsService,
@@ -54,6 +55,7 @@ const SDK_SERVICES: Record<string, ClassLike> = {
   AssetsService: ServerAssetsService,
   SubscriptionsService: ServerSubscriptionsService,
   BillingService: BillingService,
+  OutboxService: OutboxService,
   // Client API（swagger 服务名与 Server API 重名，加 client. 前缀区分）
   "client.AccountService": AccountService,
   "client.DatabasesService": ClientDatabasesService,
@@ -64,6 +66,14 @@ const SDK_SERVICES: Record<string, ClassLike> = {
 };
 
 // RPC 名 → TS SDK 方法名（SDK 使用简短命名，与 proto 非一一对应，显式登记）。
+// grpc-gateway 对同一 RPC 的额外 HTTP 绑定会在 operationId 追加数字后缀
+// （如 documents:count 的 GET/POST 双绑定产生 DatabasesService_CountDocuments2），
+// 契约检查按剥离后缀后的 RPC 名进行。
+function parseOperationId(operationId: string): [service: string, rpc: string] {
+  const [service, rpc] = operationId.split("_");
+  return [service, rpc.replace(/\d+$/, "")];
+}
+
 const RPC_TO_METHOD: Record<string, Record<string, string>> = {
   DatabasesService: {
     CreateDatabase: "createDatabase",
@@ -264,6 +274,10 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     ListRollups: "listRollups",
     ListStatements: "listStatements",
   },
+  OutboxService: {
+    ListDeadLetters: "listDeadLetters",
+    ReplayDeadLetter: "replayDeadLetter",
+  },
   "client.PaymentsService": {
     CreateOrder: "createOrder",
     GetMyOrder: "getMyOrder",
@@ -388,7 +402,7 @@ describe("contract: swagger ↔ TS SDK", () => {
         for (const op of Object.values(path)) {
           const operationId = op?.operationId;
           if (!operationId) continue;
-          const [service, rpc] = operationId.split("_");
+          const [service, rpc] = parseOperationId(operationId);
           const key = isClient ? `client.${service}` : service;
           const cls = SDK_SERVICES[key];
           assert.ok(cls, `${f.name} 未登记服务 ${service} 的 SDK 映射`);
@@ -423,6 +437,7 @@ const FACADE_SERVICES: Record<string, string> = {
   AssetsService: "assets",
   SubscriptionsService: "subscriptions",
   BillingService: "billing",
+  OutboxService: "outbox",
 };
 
 // Round3 H4-1：Server swagger 的每个服务都必须经 `Torchwood.server.<svc>`
@@ -439,7 +454,7 @@ it("Torchwood.server 门面可达全部 Server swagger 服务（含 functions）
       for (const op of Object.values(path)) {
         const operationId = op?.operationId;
         if (!operationId) continue;
-        const [service, rpc] = operationId.split("_");
+        const [service, rpc] = parseOperationId(operationId);
         const facadeKey = FACADE_SERVICES[service];
         assert.ok(facadeKey, `${f.name}: 未登记服务 ${service} 的门面映射`);
         const svc = facade[facadeKey];
