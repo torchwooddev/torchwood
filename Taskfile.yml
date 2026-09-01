@@ -2,6 +2,12 @@ version: '3'
 dotenv: ['.env']
 
 tasks:
+  list:
+    desc: List all tasks (alias for task --list-all)
+    cmds:
+      - task --list-all
+    silent: true
+
   tools:install:
     dir: '{{.USER_WORKING_DIR}}'
     cmds:

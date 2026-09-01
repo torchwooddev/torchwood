@@ -18,6 +18,7 @@
 
 ## 开发流程
 - 以 Task 作为主要工作流执行器（`Taskfile.yml`）。常用任务：
+  - 一览：`task list`（等价于 `task --list-all`）
   - 基础：`task tools:install`、`task docker:up`、`task docker:down`、`task docker:purge`、`task db:migrate`
   - 生成：`task generate:proto`、`task generate:config`、`task wire:all`、`task generate:all`
   - 前端：`task console:install`、`task console:build`、`task console:dev`

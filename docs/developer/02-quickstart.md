@@ -134,6 +134,7 @@ HTTP/Metrics 端口由 `server.http.addr` / `server.metrics.addr` 决定，非�
 
 | 任务 | 用途 |
 |------|------|
+| `list` | 列出全部任务（`task --list-all`） |
 | `tools:install` | 安装 buf/wire/migrate 等 |
 | `up`/`down`/`clean` | 启动/停止/删卷（`docker compose down -v`） |
 | `db:migrate` | 执行 `db/migrations` |
