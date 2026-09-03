@@ -125,7 +125,7 @@ CREATE TABLE tw_shop_app._perms (
 |  | `isNull`/`isNotNull` | `isNull("deleted_at")` | `IS NULL` |
 | 排序 | `orderAsc`/`orderDesc` | `orderDesc("$createdAt")` | `ORDER BY d."field" ASC/DESC, d._id <dir>`（与 cursor 续页路径同构的 `_id` tiebreaker） |
 | 分页 | `limit`/`offset` | `limit(25)` | `LIMIT/OFFSET` |
-|  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（与 `offset` 互斥） |
+|  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（与 `offset` 互斥；**多自定义排序键 + cursor → InvalidArgument**——游标只取首个排序键，完整多键游标属重设计阶段① C2） |
 | 投影 | `select` | `select(["name","age"])` | 返回后裁剪 `Data` |
 
 别名 ` $id→_id`、`$createdAt→_created_at`、`$updatedAt→_updated_at`、`$version→_version`（`mapQueryField`）。程序化拼串用 `BuildFilter`/`BuildEqual`/`BuildLimit`（自动转义 `"`/`\`）。
@@ -152,7 +152,7 @@ CREATE TABLE tw_shop_app._perms (
 
 ## 8 OCC（`_version`）
 
-用户集合 `BIGINT NOT NULL DEFAULT 1`，`Create/Upsert/Bulk` 盲写但 `_version+1`（`Bulk` `SkipVersion=true` LWW），`Update/Delete` 必填且等于当前值（行锁下比较，`versionColumnReady` 校验 `bigint`），成功 `+1`。错误 `version_required`/`version_mismatch`/`version_column_conflict`（`FailedPrecondition`），`version_column_unavailable`（`InvalidArgument`）。`_version` 可作过滤/排序/投影；系统表无此列。`Upsert` 的 `conflictColumns` 必须无序命中集合一个 unique 索引（非 Bypass 主体前置校验 `validateConflictColumns`，否则 InvalidArgument；Bypass 主体靠 PG 42P10 兜底）。
+用户集合 `BIGINT NOT NULL DEFAULT 1`，`Create/Upsert/Bulk` 盲写但 `_version+1`（`Bulk` `SkipVersion=true` LWW），`Update/Delete` 必填且等于当前值（行锁下比较，`versionColumnReady` 校验 `bigint`），成功 `+1`。错误 `version_required`（缺省）/`version_mismatch`/`version_column_conflict`（`FailedPrecondition`），`version_invalid`（**显式 ≤0**，`InvalidArgument`——与缺省态不同码，Phase 1 裁决②），`version_column_unavailable`（`InvalidArgument`）。`_version` 可作过滤/排序/投影；系统表无此列。`Upsert` 的 `conflictColumns` 必须无序命中集合一个 unique 索引（非 Bypass 主体前置校验 `validateConflictColumns`，否则 InvalidArgument；Bypass 主体靠 PG 42P10 兜底）。
 
 ## 8.1 事务内核 execute-tx（redesign §4.8 Phase 1）
 
