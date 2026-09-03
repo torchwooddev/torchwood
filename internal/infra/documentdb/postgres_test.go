@@ -412,8 +412,9 @@ func TestPostgresDocumentDatabase_UpsertConflictColumnsPrecheck(t *testing.T) {
 }
 
 // TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys：多自定义排序键
-// + cursor → InvalidArgument（游标只取 Orders[0]，与首页全键序不同构会静默
-// 丢/重；完整多键游标属重设计阶段① C2）。单键 cursor 路径不受影响。
+// → InvalidArgument（keyset-only 下 token 只编码单键，多键首页与续页不同构
+// 会静默丢/重——C2 阶段①把 R3 的 cursor 拒多键扩展到首页即拒；完整多键
+// 游标属单 AST 专属会话）。单键 cursor 路径不受影响。
 func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -443,15 +444,11 @@ func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	page1, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+	// keyset-only（C2 阶段①）：多排序键无法构造同构 keyset 续页（token 只
+	// 编码单键），首页即拒——R3 的"cursor 拒多键"扩展到全路径（首页与
+	// cursor 页同构要求）。
+	_, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
 		Queries: []string{`orderDesc("priority")`, `orderAsc("title")`, `limit(2)`},
-	}, anyReader)
-	require.NoError(t, err)
-	require.Len(t, page1.Documents, 2)
-	last := page1.Documents[len(page1.Documents)-1].ID
-
-	_, err = docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-		Queries: []string{`orderDesc("priority")`, `orderAsc("title")`, `limit(2)`, `cursorAfter("` + last + `")`},
 	}, anyReader)
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -650,16 +647,26 @@ func TestPostgresDocumentDocuments_TiebreakerPagination(t *testing.T) {
 	}
 	assertNoLossNoDup(t, collect(keysetPages))
 
-	// offset 续页（修复的直接受益路径）：ORDER BY 必须全序确定。
-	var offsetPages [][]databases.Document
-	for offset := 0; offset < n; offset += 2 {
-		page, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-			Queries: []string{`orderDesc("priority")`, `limit(2)`, fmt.Sprintf(`offset(%d)`, offset)},
+	// keyset token 续页（C2 阶段①收敛后的唯一续页形态）：首页满页发 ka:
+	// token，token 翻完全集；不再有 offset 续页路径。
+	var tokenPages [][]databases.Document
+	tp, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		Queries: []string{`orderDesc("priority")`, `limit(2)`},
+	}, anyReader)
+	require.NoError(t, err)
+	require.Len(t, tp.Documents, 2)
+	require.NotEmpty(t, tp.NextPageToken, "满页必须发续页 token")
+	require.Contains(t, tp.NextPageToken, "ka:", "keyset-only：只发 ka:/kb: token")
+	tokenPages = append(tokenPages, tp.Documents)
+	for tp.NextPageToken != "" {
+		tp, err = docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+			Queries:   []string{`orderDesc("priority")`, `limit(2)`},
+			PageToken: tp.NextPageToken,
 		}, anyReader)
 		require.NoError(t, err)
-		offsetPages = append(offsetPages, page.Documents)
+		tokenPages = append(tokenPages, tp.Documents)
 	}
-	assertNoLossNoDup(t, collect(offsetPages))
+	assertNoLossNoDup(t, collect(tokenPages))
 }
 
 // TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected
@@ -1285,23 +1292,31 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 
-	// offset 超上限 → InvalidArgument（List 与 Count 一致）。
+	// keyset-only（C2 阶段①收敛）：offset() 在 List/Count 一律拒绝
+	//（"use cursor pagination" / count 全集语义）。
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		Queries: []string{`offset(10001)`},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "cursor pagination")
 
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", databases.Query{Queries: []string{`offset(10001)`}}, databases.SystemPrincipal)
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		Queries: []string{`offset(0)`, `limit(2)`},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err, "offset(0) 与缺省不可区分，等价无操作")
+
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", databases.Query{Queries: []string{`offset(1)`}}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	// 非法 PageToken → InvalidArgument（对齐 ListCollections）。
+	// 非 keyset token（旧 offset 族 / 任意垃圾）→ InvalidArgument。
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		PageToken: "not-a-valid-token", // #nosec G101 -- 测试固定值
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "keyset token required")
 }
 
 // countQueryHook 统计经 bun 执行的 COUNT(*) 查询条数（R5-J3-2 行为验证：
@@ -1320,11 +1335,11 @@ func (h *countQueryHook) AfterQuery(_ context.Context, event *bun.QueryEvent) {
 	}
 }
 
-// TestListDocuments_OffsetContinuationSkipsCount (R5-J3-2，D-P2-6)：仅首页
-// （offset==0 且无 cursor）执行精确 COUNT；offset 续页跳过 COUNT（total=0=
-// unknown），改以 limit+1 满页探测决定 has-more（满页截断 → next token，
-// 不满页无 next）；keyset（cursor）模式行为不变（W-D：本就无 COUNT）。
-func TestListDocuments_OffsetContinuationSkipsCount(t *testing.T) {
+// TestListDocuments_KeysetContinuationSkipsCount（C2 阶段①收敛后的续页行为；
+// 承接 R5-J3-2 的成本纪律）：仅首页（无 cursor）执行精确 COUNT；token 续页
+// （keyset-only：首页满页发 ka: token）跳过 COUNT（total=0=unknown），满页
+// 判定 has-more（满页 → next token，不满页无 next）；cursorAfter DSL 行为不变。
+func TestListDocuments_KeysetContinuationSkipsCount(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -1351,7 +1366,8 @@ func TestListDocuments_OffsetContinuationSkipsCount(t *testing.T) {
 	hook := &countQueryHook{}
 	db.AddQueryHook(hook)
 
-	// 首页（offset==0）：保持精确 COUNT，total=7。
+	// 首页：保持精确 COUNT，total=7；满页发 keyset token（keyset-only：
+	// 不再发 offset 族 token）。
 	page1, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		PageSize: 3,
 	}, databases.SystemPrincipal)
@@ -1359,20 +1375,20 @@ func TestListDocuments_OffsetContinuationSkipsCount(t *testing.T) {
 	require.Len(t, page1.Documents, 3)
 	require.Equal(t, int64(7), page1.TotalCount)
 	require.NotEmpty(t, page1.NextPageToken)
+	require.Contains(t, page1.NextPageToken, "ka:")
 	require.GreaterOrEqual(t, hook.count, 1, "首页应执行精确 COUNT")
 
-	// 续页（offset>0 且无 cursor）：跳过 COUNT（total=0），满页探测：3 行满页
-	// 截断后仍有 next token。
+	// keyset 续页：跳过 COUNT（total=0）；满页 → 续页 token。
 	hook.count = 0
 	page2, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		PageSize:  3,
 		PageToken: page1.NextPageToken,
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
-	require.Len(t, page2.Documents, 3, "探测多取的 1 行必须截断回 limit")
-	require.Zero(t, page2.TotalCount, "R5-J3-2：offset 续页不再精确 COUNT（total=0=unknown）")
-	require.NotEmpty(t, page2.NextPageToken, "满页（limit+1 探测截断）应有续页 token")
-	require.Zero(t, hook.count, "R5-J3-2：offset 续页不得产生 COUNT 查询")
+	require.Len(t, page2.Documents, 3)
+	require.Zero(t, page2.TotalCount, "续页不再精确 COUNT（total=0=unknown）")
+	require.NotEmpty(t, page2.NextPageToken, "满页应有续页 token")
+	require.Zero(t, hook.count, "续页不得产生 COUNT 查询")
 
 	// 末页：不满页（1<3）→ 无 next，仍无 COUNT。
 	hook.count = 0

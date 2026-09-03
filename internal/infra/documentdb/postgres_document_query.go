@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
-	"github.com/torchwooddev/torchwood/pkg/crud"
 )
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
@@ -80,10 +79,13 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if limit > maxQueryLimit {
 		limit = maxQueryLimit
 	}
-	offset := parsed.Offset
+	// keyset-only（redesign C2 阶段①收敛）：offset() 算子与非 keyset token
+	// 一律拒绝——offset 族 token 已停发（本方法只发 ka:/kb:），旧 token 到此
+	// 显式失败，不再静默切回 OFFSET 语义。
+	if parsed.Offset != 0 {
+		return nil, p.mapError(status.Error(codes.InvalidArgument, "offset() is not supported on ListDocuments; use cursor pagination"))
+	}
 	if q.PageToken != "" {
-		// keyset token（cursor 模式回传，W-D）：映射回 cursorAfter/Before，
-		// 客户端在同请求中重发排序/过滤 queries 即可同构续页。
 		if id, kind, ok := decodeKeysetToken(q.PageToken); ok {
 			if kind == "before" {
 				parsed.CursorBefore = id
@@ -91,15 +93,8 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 				parsed.CursorAfter = id
 			}
 		} else {
-			off, err := crud.DecodePageToken(q.PageToken)
-			if err != nil {
-				return nil, status.Error(codes.InvalidArgument, "invalid page token")
-			}
-			offset = int(off)
+			return nil, p.mapError(status.Error(codes.InvalidArgument, "invalid page token: keyset token required, offset tokens are no longer accepted"))
 		}
-	}
-	if offset > maxQueryOffset {
-		return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset)))
 	}
 
 	cursor := ""
@@ -109,30 +104,30 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	} else if parsed.CursorBefore != "" {
 		cursor, cursorKind = parsed.CursorBefore, "before"
 	}
+	// 排序键：仅取 Orders[0]，无显式排序默认 _created_at DESC；全程追加
+	// _id tiebreaker（首页与 cursor 页同构，keyset token 的跨页稳定性保证）。
+	// 多排序键在 keyset-only 下无法构造同构续页（token 只编码单键），首页
+	// 即拒——R3 的"cursor 拒多键"校验扩展到全路径。
+	if len(parsed.Orders) > 1 {
+		return nil, p.mapError(status.Error(codes.InvalidArgument, "cursor pagination requires a single order key"))
+	}
+	sortField := "_created_at"
+	sortDir := "DESC"
+	if len(parsed.Orders) == 1 {
+		sortField = mapQueryField(parsed.Orders[0].Attribute)
+		if parsed.Orders[0].Desc {
+			sortDir = "DESC"
+		} else {
+			sortDir = "ASC"
+		}
+	}
+	// 排序字段必须显式校验（不能沿用 ORDER 路径的静默跳过）。
+	if !safeNameRe.MatchString(sortField) {
+		return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", parsed.Orders[0].Attribute)))
+	}
+	orderSQL = fmt.Sprintf(`ORDER BY d.%s %s, d._id %s`, quoteIdent(sortField), sortDir, sortDir)
+
 	if cursor != "" {
-		// cursor 与 offset 同时传时 cursor 优先，offset 恒 0
-		offset = 0
-		// 多自定义排序键只取 Orders[0] 做游标：首页（全键序）与 cursor 页
-		//（单键序）不同构会静默跨页丢/重——显式拒绝。完整多键游标（编码全部
-		// 排序键）属重设计阶段① C2，不做。
-		if len(parsed.Orders) > 1 {
-			return nil, p.mapError(status.Error(codes.InvalidArgument, "cursor pagination requires a single order key"))
-		}
-		// 排序键与方向：仅取 Orders[0]，无显式排序则默认 _created_at DESC
-		sortField := "_created_at"
-		sortDir := "DESC"
-		if len(parsed.Orders) > 0 {
-			sortField = mapQueryField(parsed.Orders[0].Attribute)
-			if parsed.Orders[0].Desc {
-				sortDir = "DESC"
-			} else {
-				sortDir = "ASC"
-			}
-		}
-		// 排序字段必须显式校验（不能沿用 ORDER 路径的静默跳过）
-		if !safeNameRe.MatchString(sortField) {
-			return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", parsed.Orders[0].Attribute)))
-		}
 		if err := validateDocID(cursor); err != nil {
 			return nil, p.mapError(err)
 		}
@@ -153,34 +148,21 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		}
 		whereParts = append(whereParts, fmt.Sprintf(`(d.%s, d._id) %s (?, ?)`, quoteIdent(sortField), op))
 		args = append(args, cursorValue, cursor)
-		// cursor 模式下 ORDER BY 必须与谓词同构
-		orderSQL = fmt.Sprintf(`ORDER BY d.%s %s, d._id %s`, quoteIdent(sortField), sortDir, sortDir)
 	}
 
-	// W-D：keyset 模式不产出精确 total——COUNT 与数据查询同价（含 EXISTS
-	// 权限子查询），对游标续页无意义且把翻页成本翻倍。
-	// R5-J3-2（D-P2-6）：offset 续页（offset>0 且无 cursor）同样跳过精确
-	// COUNT——每页全量 COUNT 与数据查询同价，深翻页成本随页数线性放大；
-	// proto 语义 total_count <= 0 = unknown。首页（offset==0）保持精确
-	// 计数（TotalCount 语义：total<=0 = 未知/不适用）。
+	// W-D：keyset 续页不产出精确 total——COUNT 与数据查询同价（含 EXISTS
+	// 权限子查询），对游标续页无意义且把翻页成本翻倍；首页保持精确计数
+	//（proto 语义 total_count <= 0 = unknown）。
 	var total int64
-	if cursor == "" && offset == 0 {
+	if cursor == "" {
 		countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM %s d WHERE %s`, tbl, strings.Join(whereParts, " AND "))
 		if err := p.conn(ctx).QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 			return nil, p.mapError(err)
 		}
 	}
 
-	// R5-J3-2：offset 续页跳过 COUNT 后无精确 total 可用，改取 limit+1 行
-	// 做满页探测（截断=has-more）；keyset（cursor）与首页保持 limit 行，
-	// 行为完全不变。
-	probing := cursor == "" && offset > 0
-	fetchLimit := limit
-	if probing {
-		fetchLimit = limit + 1
-	}
-	querySQL := fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE %s %s LIMIT ? OFFSET ?`, tbl, strings.Join(whereParts, " AND "), orderSQL)
-	args = append(args, fetchLimit, offset)
+	querySQL := fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE %s %s LIMIT ?`, tbl, strings.Join(whereParts, " AND "), orderSQL)
+	args = append(args, limit)
 
 	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -198,12 +180,6 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 	if err := rows.Err(); err != nil {
 		return nil, p.mapError(err)
-	}
-	// R5-J3-2：满页探测多取的 1 行在此截断——先于 perms 回填，避免给被
-	// 丢弃的行发 IN 查询。截断即 has-more 信号。
-	truncated := probing && len(docs) > limit
-	if truncated {
-		docs = docs[:limit]
 	}
 	// B6：List 回传 permissions（与 Get 对齐）；W-D 改单条 IN 批量取回。
 	if err := p.attachDocumentPermissionsBatch(ctx, schema, collectionID, internalID, docs); err != nil {
@@ -224,27 +200,15 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		}
 	}
 
+	// 满页即发 keyset 续页 token（编码边界行 id，方向沿用本次请求）；不满页
+	// 无 next=尾页。has-more 以满页判定（续页无精确 total）。
 	next := ""
-	if cursor != "" {
-		// W-D：keyset 模式的续页 token 编码边界行 id（方向沿用本次请求），
-		// 不再编码 offset——此前第二页会静默切回 OFFSET 语义（并发写入下
-		// 跳/重行，且受 maxQueryOffset 上限约束）。has-more 以满页判定
-		// （无精确 total 可用）。
-		if len(docs) == limit {
-			if cursorKind == "before" {
-				next = encodeKeysetToken("before", docs[0].ID)
-			} else {
-				next = encodeKeysetToken("after", docs[len(docs)-1].ID)
-			}
+	if len(docs) == limit {
+		if cursorKind == "before" {
+			next = encodeKeysetToken("before", docs[0].ID)
+		} else {
+			next = encodeKeysetToken("after", docs[len(docs)-1].ID)
 		}
-	} else if probing {
-		// R5-J3-2：offset 续页无精确 total，has-more 由满页探测决定
-		//（fetch 到 limit+1 行并截断=还有下一页；不满页无 next）。
-		if truncated {
-			next = crud.EncodePageToken(offset + len(docs))
-		}
-	} else if len(docs) > 0 && int64(offset+len(docs)) < total {
-		next = crud.EncodePageToken(offset + len(docs))
 	}
 	return &databases.DocumentList{
 		Documents:     docs,
@@ -287,8 +251,10 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	if err != nil {
 		return 0, p.mapError(err)
 	}
-	if parsed.Offset > maxQueryOffset {
-		return 0, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("offset exceeds maximum of %d", maxQueryOffset)))
+	// keyset-only（C2 收敛）：count 是过滤全集语义，offset() 无意义且原先
+	// 仅作深翻页上限校验——显式拒绝（不再静默忽略）。
+	if parsed.Offset != 0 {
+		return 0, p.mapError(status.Error(codes.InvalidArgument, "offset() is not supported; count is over the full filtered set"))
 	}
 	tbl := tableName(schema, collectionID)
 

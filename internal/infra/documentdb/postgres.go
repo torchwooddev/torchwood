@@ -45,9 +45,6 @@ func isWriteProtectedSystemCollection(databaseID, collectionID string) bool {
 
 const maxQueryLimit = 100
 
-// maxQueryOffset 是 offset 深翻页上限，超过则拒绝（防 10^9 量级 offset 拖慢查询）。
-const maxQueryOffset = 10000
-
 // A2 输入上限：queries 条数 / 单条查询串长度 / equal 多值个数。
 const maxQueryCount = 100
 const maxQueryStringLen = 4096

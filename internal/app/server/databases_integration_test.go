@@ -220,8 +220,8 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 		PageToken: next,
 	}, principal)
 	require.NoError(t, err)
-	// R5 J3-2：offset 续页不再执行精确 COUNT（total=0=unknown，proto 合法语义）；
-	// 精确 total 仅首页（offset==0）返回。
+	// R5 J3-2（C2 阶段①收敛后对 keyset 续页生效）：续页不再执行精确 COUNT
+	//（total=0=unknown，proto 合法语义）；精确 total 仅首页返回。
 	require.Equal(t, int64(0), total2)
 	require.Len(t, page2, 2)
 	require.Empty(t, next2)
@@ -230,11 +230,14 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 		require.NotContains(t, ids1, id, "page 2 must not overlap page 1")
 	}
 
-	offsetPage, _, _, err := uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+	// keyset-only（C2 阶段①）：首页 token 必为 ka:/kb: 形态；offset() 算子
+	// 与旧 offset 族 token 一律拒绝。
+	require.Contains(t, next, "ka:")
+	_, _, _, err = uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		Queries: []string{`orderAsc("$id")`, `limit(10)`, `offset(10)`},
 	}, principal)
-	require.NoError(t, err)
-	require.Equal(t, ids2, docIDsOf(offsetPage), "token page must match offset page")
+	require.Error(t, err)
+	require.Contains(t, status.Convert(err).Message(), "cursor pagination")
 }
 
 // TestDatabases_ListCollections_Pagination (#10): page_size/page_token 生效，
