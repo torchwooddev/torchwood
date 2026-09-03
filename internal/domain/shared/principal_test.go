@@ -80,3 +80,21 @@ func TestPrincipal_DocPrincipal_DropsConsoleTag(t *testing.T) {
 	require.Contains(t, got.Roles, "user:a1")
 	require.True(t, p.HasAnyRole([]string{RoleConsole}))
 }
+
+// TestPrincipal_DocPrincipal_KeyAttribution：API key 主体投影携带 KeyID
+//（写入归因链路：_created_by/_updated_by 落 key:<id>）；非 key 主体不携带。
+func TestPrincipal_DocPrincipal_KeyAttribution(t *testing.T) {
+	t.Parallel()
+
+	svc := &Principal{ActorKind: ActorKindService, APIKeyID: "k123", Roles: []string{"keys"}}
+	got := svc.DocPrincipal()
+	require.Equal(t, "k123", got.KeyID)
+
+	user := &Principal{ActorKind: ActorKindEndUser, UserID: "u1", Roles: []string{"users"}}
+	require.Empty(t, user.DocPrincipal().KeyID)
+
+	// key 角色与 APIKeyID 分属两层：Roles 携带 keys（ACL 匹配），KeyID 携带
+	// 具体实例（归因）。
+	admin := &Principal{ActorKind: ActorKindAdmin, AdminID: "a1"}
+	require.Empty(t, admin.DocPrincipal().KeyID)
+}

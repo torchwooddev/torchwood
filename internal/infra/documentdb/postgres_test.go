@@ -284,6 +284,71 @@ func requireInvalidArg(t *testing.T, err error) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 }
 
+// TestPostgresDocumentDocuments_KeyAttribution：API key 主体的写入归因——
+// _created_by/_updated_by 落 "key:<id>"（redesign §10.2-1；原实现 keys-only
+// 主体审计列为空，Agent 行为不可追责）。user 主体语义不变（裸 id）。
+func TestPostgresDocumentDocuments_KeyAttribution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "notes", "Notes", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 64},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "keys"},
+		{Type: "read", Role: "keys"},
+		{Type: "update", Role: "keys"},
+		{Type: "create", Role: "any"},
+	}, true))
+
+	keys := databases.Principal{Roles: []string{"keys"}, KeyID: "k123"}
+	created, err := docDB.CreateDocument(ctx, projectID, "app", "notes", databases.Document{
+		Data: map[string]any{"title": "by agent"},
+	}, nil, keys)
+	require.NoError(t, err)
+	require.Equal(t, "key:k123", created.CreatedBy)
+	require.Equal(t, "key:k123", created.UpdatedBy)
+
+	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "notes", databases.DocumentUpdate{
+		Document:        databases.Document{ID: created.ID, Data: map[string]any{"title": "by agent v2"}},
+		ExpectedVersion: created.Version,
+	}, keys)
+	require.NoError(t, err)
+	require.Equal(t, "key:k123", updated.CreatedBy)
+	require.Equal(t, "key:k123", updated.UpdatedBy)
+
+	// user 主体语义不变：存裸 user id（Create 同时落 _created_by/_updated_by）。
+	user := databases.Principal{Roles: []string{"user:u1"}}
+	createdUser, err := docDB.CreateDocument(ctx, projectID, "app", "notes", databases.Document{
+		Data: map[string]any{"title": "by user"},
+	}, []databases.Permission{
+		{Type: "read", Role: "user:u1"},
+		{Type: "update", Role: "user:u1"},
+	}, user)
+	require.NoError(t, err)
+	require.Equal(t, "u1", createdUser.CreatedBy)
+	require.Equal(t, "u1", createdUser.UpdatedBy)
+}
+
+// 单元：归因优先级——user: 角色优先于 KeyID。
+func TestUserIDFromPrincipal_Priority(t *testing.T) {
+	require.Equal(t, "u1", userIDFromPrincipal(databases.Principal{
+		Roles: []string{"keys", "user:u1"}, KeyID: "k9",
+	}))
+	require.Equal(t, "key:k9", userIDFromPrincipal(databases.Principal{
+		Roles: []string{"keys"}, KeyID: "k9",
+	}))
+	require.Empty(t, userIDFromPrincipal(databases.Principal{Roles: []string{"keys"}}))
+}
+
 // TestPostgresDocumentDatabase_AttributeDefaultValueCatalog：default 与 DDL 同源
 // 落 catalog 且 GetCollection/ListCollections 读回（回归：物理列 DEFAULT 生效但
 // catalog 不落库、读不回，契约断裂）。

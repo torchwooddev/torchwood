@@ -150,7 +150,8 @@ func (p *Principal) HasAnyRole(roles []string) bool {
 }
 
 // DocPrincipal 投影到文档 ACL 视图。System 走 databases.SystemPrincipal。
-// 剔除拦截器标签 RoleConsole；admin 带上 user:<AdminID> 以便按属主匹配 ACE。
+// 剔除拦截器标签 RoleConsole；admin 带上 user:<AdminID> 以便按属主匹配 ACE；
+// API key 主体带 KeyID 供写入归因（_created_by/_updated_by 落 key:<id>）。
 func (p *Principal) DocPrincipal() databases.Principal {
 	if p == nil {
 		return databases.GuestPrincipal
@@ -178,5 +179,9 @@ func (p *Principal) DocPrincipal() databases.Principal {
 			roles = append(roles, owner)
 		}
 	}
-	return databases.Principal{Roles: roles, PlatformAdmin: p.IsPlatformAdmin}
+	keyID := ""
+	if p.ActorKind == ActorKindService {
+		keyID = p.APIKeyID
+	}
+	return databases.Principal{Roles: roles, PlatformAdmin: p.IsPlatformAdmin, KeyID: keyID}
 }

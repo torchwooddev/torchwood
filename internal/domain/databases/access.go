@@ -13,6 +13,11 @@ type Principal struct {
 	// PlatformAdmin indicates the caller is a console admin with full
 	// access (bypasses document-level permission checks). 这不是 System actor.
 	PlatformAdmin bool
+
+	// KeyID 是 API key 主体（ActorKind=Service）的 key ID，用于写入归因：
+	// _created_by/_updated_by 落 "key:<id>"（redesign §10.2-1——一等 Agent
+	// 的最低要求是行为可归因）。非 key 主体为空。
+	KeyID string
 }
 
 // GuestPrincipal is used for unauthenticated Client API read requests.
