@@ -3,6 +3,41 @@
 > 面向后端开发者：围绕 Postgres 三层 schema、标识规则、DDL 约束、静态/动态表分工与查询/权限实现。
 > 源码锚点：`pkg/ident/ident.go`、`internal/infra/documentdb/`、`pkg/query/query.go`、`pkg/crud/`、`internal/domain/databases/`。
 
+## 0 子系统定义与边界
+
+**DocumentDB 子系统 = torchwood 的文档数据存储整体方案**：以 `Databases → Collections → Documents` 三级资源模型为核心，端到端覆盖**元数据目录（catalog）、物理表管理（DDL 与项目数据面迁移）、文档 CRUD 与查询编译、权限集成（集合/文档两级 ACL + 认证期角色注入）、事件集成（事务性 outbox → realtime 按可见性扇出）**。七张系统静态表（`users/sessions/identities/groups/memberships/buckets/files`）是它的边界邻居而非组成部分——共用项目数据面 schema 与 `Principal`/角色语义，但不走动态文档路径（`IsSystemCollection` 名单仅用于 sentinel 写保护与测试重建）。
+
+### 模块地图（范围内）
+
+| 层 | 模块 | 职责 |
+|---|---|---|
+| 领域 | `internal/domain/databases/` | Document/Collection/Attribute/Index/Permission/Principal 模型，权限判定（`AllowsDocumentAccess`/`CollectionAllows` 等），`DocumentDB` 三端口（`repository.go`：Catalog / SchemaApplier / Documents） |
+| 查询 | `pkg/query/` + `pkg/query/proto/` | Appwrite DSL 解析与 typed AST 编解码（双栈，同请求冲突即 `InvalidArgument`） |
+| 适配器 | `internal/infra/documentdb/`（同包 7 文件） | catalog 寻址、collection DDL、文档 CRUD（OCC/Upsert/Bulk/advisor lock）、查询编译与执行、权限 SQL 下推、SQLSTATE 翻译 |
+| 应用 | `internal/app/documents/`（Client/Server 共用核）+ `internal/app/server|client` 的 Databases 用例 | 用例守卫（sentinel 拒绝/标识校验/系统集合拦截/disabled）、空 ACE 种子、grant 展开/校验、错误映射 |
+| 数据面 | `internal/infra/projectschema/` + `pkg/ident/` | 项目 schema 生命周期（Apply/迁移/孤儿对账/缓存失效桥接）、两段式寻址与标识规则（≤28 字符） |
+| 迁移 | `db/migrations/`（public 控制面）+ `internal/infra/projectschema/migrations/`（项目数据面模板） | catalog/outbox 控制面演进；新项目一次性建面 + 存量 `EnsureAll` 自愈 |
+| 事件 | `internal/infra/events/`（outbox + worker）→ `internal/infra/realtime/`（subscriber/hub/stream） | 写路径同事务落 `document_events_outbox` → Redis Pub/Sub → hub 按快照 ACL 过滤扇出（`VisibleTo`），出站帧剥 ACL |
+| 分页 | `pkg/crud/pagination.go`（HMAC 签名 offset token）+ documentdb `ka:/kb:` keyset token | 两族 token：结构化 offset 续页与 keyset 游标续页 |
+| 传输 | `internal/api/servergrpc|clientgrpc/databases.go` + `proto/server|client/v1/databases.proto` | 请求校验、authz 注解（`method_auth` + scope 表）、双栈参数绑定、OpenAPI 契约 |
+
+### 范围外
+
+Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Functions 执行、账本/OAuth 目录（同在 `tw_<project>` 但独立演进）、billing 用量统计（消费 `files.SumSize`，不经过文档端口——`SumDocumentField` 目前无生产调用方）。
+
+### 关键不变量（变更评审锚点）
+
+1. **租户隔离**：所有文档行访问强制 `d._tenant = ?`（`_tenant = projects.internal_id`，进程内缓存 + 删除失效桥接）。
+2. **DDL 只走两段式**：`businessSchema` 显式拒绝 sentinel `_` 与一段式；`DROP SCHEMA` 永不指向 `tw_<project>`。
+3. **同事务原子性**：文档数据行、`_perms` 替换、outbox 事件三者同事务提交，任一失败整体回滚。
+4. **OCC**：用户集合强制 `_version`，`Update/Delete` 必填且匹配；列缺失/类型冲突 fail-closed（不落 PG 42703）。
+5. **注入防御**：标识符 `safeNameRe` + `quoteIdent` 双重转义；查询值全程参数绑定；LIKE 走 `escapeLikePattern` + `ESCAPE`。
+6. **权限语义对齐**：SQL 过滤谓词（`listPermissionFilter`）与内存判定（`AllowsDocumentAccess`）必须逐语义一致，改动需同步两侧与测试（`permissions_test.go`）。
+7. **事件语义**：at-least-once、不保证顺序；客户端按 `event_id` 去重、按 `version` 判序；出站帧永不含 ACL 快照。
+8. **默认私有**：`DefaultCollectionPermissions` 不含 `read:any`；空 ACE 文档按种子规则私有化（owner/创建者角色/`__private__`）。
+9. **标识长度**：`project.id/database.id ≤ 28`（schema 名 ≤60 字节，`pkg/ident`）；`collectionID`/属性 key/索引 ID 当前**无长度上限**（PG 63 字节截断风险为已知未修问题，索引命名 `idx_<coll>_<id>` 同面）。
+10. **查询双栈互斥**：`queries`（DSL 字符串）与 `query`（typed AST）携带冲突语义即 `InvalidArgument`；两栈算子集尚不对齐（DSL 无 `in`/`or`，AST 无 `between`/`isNull` 等）。
+
 ## 1 三类库
 
 | 层 | Schema 形态 | 技术 | 关键表 |

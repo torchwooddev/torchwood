@@ -41,6 +41,7 @@
 - Console admin 会话走 `TORCHWOOD_session_console` HttpOnly cookie（SameSite=Lax，refresh cookie 限 `/v1/console/auth` 路径），前端不再用 localStorage 存 token。
 
 ## 数据库约定
+- **DocumentDB 子系统边界**：指以 Databases → Collections → Documents 为核心的端到端数据存储方案（元数据 catalog、物理表管理、CRUD 与查询编译、权限集成、事件集成）；模块地图与十条关键不变量见 `docs/developer/06-databases.md` §0。系统静态表（users/sessions/…）是其边界邻居而非组成部分。从零重设计方案见 `docs/design/documentdb-redesign.md`（**设计提案、未实施**，勿当作当前态）。
 - 三层物理模型（当前态以本文与 `docs/developer/06-databases.md` 为准；`docs/design/project-data-plane-schema.md` 已落地但部分被 E-5/D-7 supersede，文首有过期横幅）：`public` 控制面+事件脊柱（projects、admins、admin_projects、api_keys、audit_logs、provider_resource_index、outbox）用 bun + golang-migrate；项目数据面 `tw_<project.id>` 容纳 **系统静态表**（users / sessions / identities / groups / memberships / buckets / files，bun，无 `_id`/`_perms`/`_version`）+ 项目账本 / Functions / OAuth / 文档目录（`internal/infra/projectschema/`）；业务文档面 `tw_<project.id>_<database.id>` 只放用户 collection。
 - sentinel `_`（`ident.ProjectDataPlaneID`）仅内部寻址 / 对外 `RejectExternalDatabaseID` 拒绝；系统资源不再是文档集合。`default` 是普通第一库（可删可重建）。DDL 只走两段式 `businessSchema`，永不解析一段式。`project.id` / `database.id` 规则见 `docs/developer/06-databases.md`。
 - 动态文档查询使用 Appwrite 风格 DSL（`pkg/query`），支持 `equal`、`greaterThan`、`contains`、`orderDesc`、`limit` 等。

@@ -1,0 +1,496 @@
+# DocumentDB 子系统重设计（从零方案）
+
+> 状态：**设计提案，未实施**。当前架构以 `docs/developer/06-databases.md`（含 §0 子系统定义与边界）为准，勿将本文当作现状描述。
+> 来源：2026-09 两轮深度评审（documentdb 适配器 + 全方案外围）得出的问题清单作为设计输入，三路独立设计（正确性/一致性、开发者体验/API 面、规模/性能/运维）交叉验证后裁决成文；2026-09-03 按维护者决策修订 §3.1（Typed 真实列）并补 §3.2（RLS 语义等价性验证）、§9（竞品路线调研）。
+> 相关：`docs/developer/06-databases.md`、`docs/design/schema-naming.md`、`docs/design/v2-events-and-realtime.md`。
+
+---
+
+## 1. 方法与输入
+
+三路设计互相独立完成（各自先读代码校准地面真值），再交叉验证：三方**独立收敛**的决策视为高置信度直接采纳；实质分歧由交叉验证裁决（§3）；各方案中被证伪/过度的部分在裁决中修正。2026-09-03 追加三路外部调研（竞品路线、PG 技术栈、RLS 等价性，见 §9）校准裁决。
+
+设计输入（两轮评审结论摘要，问题锚点见 `docs/developer/06-databases.md` §0 不变量 9/10 与历轮 review）：
+
+1. 标识符 63 字节截断：`collectionID`/属性 key/索引 ID 无长度上限，两个仅 64+ 字节不同的集合映射同一物理表；索引名 `idx_<coll>_<id>` 同面碰撞。
+2. 权限 SQL 谓词（`listPermissionFilter`）与内存判定（`AllowsDocumentAccess`）双实现靠纪律对齐；update 路径 check-then-write 无行锁（已接受 TOCTOU）。
+3. `_perms` 独立表：列表查询每条带 EXISTS 子查询；权限行与数据行跨表原子性靠应用层事务。
+4. OCC 语义混乱：`version_required`/`version_mismatch` 错误码错位（version=0 报 FailedPrecondition）；Upsert 空 ACE 种子与 Create 不一致会锁死文档。
+5. 分页：自定义排序缺 `_id` tiebreaker → 重复键跨页丢行；cursor 只取 `Orders[0]`；offset 与 keyset 双 token 族语义漂移。
+6. 契约断裂：`default_value` 物理生效但 catalog 不落库；CreateCollection/CreateAttribute 响应是请求回显；`queries` 在部分 List 接口被静默忽略。
+7. DDL 全在事务内持 AccessExclusiveLock（CREATE INDEX 非 CONCURRENTLY）。
+8. 事件：at-least-once 但慢消费者静默丢帧与"已发布"并存、无顺序保证、PUBLISH 0 订阅者算成功。
+9. 规模：schema-per-project 扇出（数千项目 = 数千 schema × catalog 四表），`EnsureAll` 启动风暴、pg_dump/迁移重放压力；每项目 catalog 无全局视图。
+10. 查询双栈（DSL 字符串 vs typed AST）算子集不对齐、互斥校验复杂。
+
+## 2. 三方收敛点（高置信度决策）
+
+| # | 决策 | 要点 |
+|---|---|---|
+| C1 | **catalog 全局化** | 单套全局 catalog（含 default/数组/size 全量属性契约），消灭"每项目四表"的漂移与无全局视图；属性定义 JSONB 落库为唯一契约源 |
+| C2 | **keyset-only 分页** | 废弃 offset 双 token 族；cursor 编码完整排序键 + `$id`；ORDER BY 编译器强制追加 `$id` tiebreaker（现状缺陷的机制化修复）；`total` 移出 list，count 独立 API 且带 statement_timeout |
+| C3 | **权限 ACE 内嵌文档行** | `_perms` 独立表退役：文档行内嵌 `_acl text[]` + GIN 索引；与数据行同表同事务天然原子；空数组=无文档级 ACE 回退集合级（B1 语义不变） |
+| C4 | **OCC 显式三态** | `expected_version` 为 optional：设置 → CAS（进同一条 DML 的 WHERE）；缺省 → 盲写 +1；0 → InvalidArgument。消灭 check-then-write 与错误码错位 |
+| C5 | **在线 DDL（expand-contract）** | 一律 CONCURRENTLY + 独立事务 + `lock_timeout` 重试；catalog 侧索引/迁移两阶段状态机（building→active）；后台 reconcile 对账（缺列/INVALID 索引/幽灵表） |
+| C6 | **事件顺序化 + 补偿** | 事务性 outbox 保留；事件携带单调 `seq`（全局分配、按 collection 过滤重放）；断线带 `last_seq` 重放保留窗口 + `:changes` 补偿拉取；慢消费者超水位主动断开下发 RESYNC，不再静默丢帧 |
+| C7 | **查询单栈** | 规范模型只有一个 typed AST；Appwrite DSL 降级为 SDK/URL 层语法糖（构造器内部序列化为 AST）；双栈互斥校验消失 |
+| C8 | **写响应一律读回** | 一切写操作返回服务端完整读回（含 created_at、default 生效后的值），禁止请求回显 |
+
+## 3. 冲突裁决
+
+### 3.1 存储模型：Typed 真实列为唯一形态（2026-09-03 维护者决策）
+
+- **分歧**：正确性路线主张每集合一张 typed 真实列表（约束下推为 DB NOT NULL/UNIQUE/CHECK）；规模路线主张默认 JSONB 共享分区表 + 大集合晋升 typed 专表（relation 数量是单 PG 死亡线）。
+- **裁决**：**Typed 真实列**。依据：① 类型化集合是产品契约本身（Appwrite TablesDB 同型卖点，且竞品调研证实 Appwrite 生产环境就是 table-per-collection，见 §9）；② NOT NULL/UNIQUE/CHECK/DEFAULT 约束下推、查询性能、索引表达力都是 JSONB 给不了的；③ pgvector 等 PG 扩展列与 typed 列同域管辖，直接强化 AI/Agent-Native 定位；④ FerretDB（"协议 shim + 通用翻译层"）的失败反证：文档 API 的正确外壳是"typed 专属 schema + 自有契约"，不是通用文档堆。
+- **规模代价的替代缓解**（不再引入 JSONB 长尾/晋升双路径，避免双形态复杂度）：
+  1. **全局 catalog** 消灭每项目 4 张固定表（relation 膨胀的最大常数项：项目数 × 4）；
+  2. **标识符治理**：逻辑 ID 限长（collectionID ≤36 `[a-z0-9-]`）+ 物理名服务端分配（`c_<base32>`），63 字节截断类缺陷机制性不可达；
+  3. **量化预警线**：`pg_class` 计数、pg_dump 时长、迁移重放耗时纳入 SLO 指标——社区阈值：几百 schema 舒适、逼近 1–2 千 schema 或表数上万后 pg_dump/relcache/autovacuum/迁移先后劣化（§9 引证）；
+  4. **超限演进 = 多集群分片**（project → cluster 路由抽象，横向复制现有模型），不改存储形态、不动产品语义；
+  5. 每项目集合数/索引数配额下推。
+- **类型系统补全**：数组落地为 PG 原生 `T[]` 列（现状被拒的 array 属性补齐）；`vector` 列（pgvector + HNSW）作为可选类型；`relation(target, onDelete)` 远期（物理 FK 列，仅 eq/in 按目标 id，无服务端 join）。
+
+### 3.2 RLS 能否等价表达 `_perms` 语义——核心判定完全可下沉；唯一语义冲突已由产品决策消解，RLS 为**判定执行点**
+
+外部调研（PG 官方文档 + Supabase/PostgREST 实践，引证见 §9）逐语义验证结果：
+
+| # | 现有语义 | RLS 机制 | 等价性 |
+|---|---|---|---|
+| 1 | read/update/delete 分离 | `FOR SELECT/UPDATE/DELETE` 独立 policy（USING=可见行静默过滤；WITH CHECK=新行校验报错） | ✓ 完全同构 |
+| 2 | create 只看集合级 | `FOR INSERT ... WITH CHECK (集合级子查询)` | ✓ |
+| 3 | 文档级覆盖 + 集合级回退（B1） | `_acl && read_aces OR (无 read ACE AND 集合级命中)` | ✓ |
+| 4 | documentSecurity 开关 | policy 内条件分支（catalog 子查询） | ✓ |
+| 5 | 角色注入（any/users/user:/group:…） | 应用层计算 → `SET LOCAL app.roles`（`\x1f` 分隔）→ STABLE 函数 + `(SELECT ...)` InitPlan 化 + `GIN(_acl)` 索引条件 | ✓（需性能纪律） |
+| 6 | 列表 = 单条同一语义 | 同一 policy 服务一切查询路径 | ✓（单源化的机制保证） |
+| 7 | Upsert 冲突行按 update 检查 | ON CONFLICT 同时受 INSERT WITH CHECK 与 UPDATE USING 约束，失败**报错**不静默跳过 | ≈ 略收紧（拟插入行也须过 create 检查，语义从"分叉"变"交集"） |
+| 8 | 系统/平台管理员旁路 | 独立 `tw_system BYPASSRLS` 连接角色（绝不编码进 GUC 或 policy 白名单） | ✓ |
+| 9 | 元数据列保护（防伪造 `_acl`/`_version`） | 列级 GRANT（只授数据列；表级与列级权限是并集，必须从一开始就只按列授予） | ✓ |
+| 10 | ~~"可 update 不可 read"（现状 D3 决策）~~ | PG 规定 UPDATE/DELETE 的行必须**同时**通过 SELECT policy（AND 叠加） | **已消解**（2026-09-03 维护者决策：接受"可 update/delete 就能 read"），见下 |
+| 11 | Get 不可见 → 404（防枚举） | RLS 静默过滤天然产出"不可见=不存在"，与现状一致 | ✓ |
+| 12 | 授予治理（不可授未持有角色/any 写） | 不属 RLS 职责（RLS 管 ACL 上的数据访问，不管 ACL 变更权；`_acl` 列已被列级 GRANT 锁死） | 留应用层 |
+| 13 | 存在性侧信道 | 唯一键冲突/FK/ON CONFLICT arbiter 报错会泄露不可见行存在（官方 "covert channel"）；TRUNCATE 不受 RLS（须 REVOKE 挡）；COPY FROM 对 RLS 表直接不支持 | 已知豁免面，写进威胁模型 |
+
+**对 #10 的落地（2026-09-03 决策："可 update 就能 read"）**：产品语义变更为**写权蕴含可见**，以"可见谓词"形式在两层同时生效：
+
+```
+tw_visible = tw_can('read') ∨ tw_can('update') ∨ tw_can('delete')   -- 能读、能改、能删 → 可见
+```
+
+- **SELECT policy = `tw_visible`**（而非仅 read），UPDATE/DELETE policy 分别查各自 op——持 update-only ACE 者可见且可改，持 read-only 者可见不可改。这不是 DB 层妥协，而是**产品语义本身**：应用层的 Get/List 可见性判定使用同一 `tw_visible`（现状 D3"仅查 update 不预检 read"被有意取代）。
+- **RLS 升级为判定执行点**：应用查询构造器不再手工拼权限 WHERE——policy 的 securityQuals 隐式过滤即判定（列表、count、单条、bulk 全部同源）；`tw_can`/`tw_visible` 仍单源，宿主是 policy 与测试基准。
+- **错误映射**：读路径 0 行 → `NOT_FOUND`（防枚举，与现状一致）；写路径 policy 违例（SQLSTATE 42501 "violates row-level security policy"）→ `PERMISSION_DENIED`。
+- **两个连带的语义变化，随契约层显式声明**：
+  1. **写权=可见**（本决策）：授予 `update/delete` 隐含授予读可见性；存量 update-only ACE 自然获得可见性（良性放宽，无数据迁移）；
+  2. **Upsert 收紧**（#7 的既成后果）：ON CONFLICT 路径下拟插入行须过 INSERT WITH CHECK（create）、冲突行须过 UPDATE USING（update），即 **upsert 需同时持有 create 与 update 权限**（现状是"命中行只查 update"的分叉语义）。
+
+**工程纪律**（违反则性能崩塌，均有实测数字背书，见 §9）：
+- **事务模型（A1，2026-09-03 接受）**：所有读写一律经显式事务（autocommit 退役），事务首条 `set_config('app.roles',…,true)` 注入身份——漏注入=空结果（fail-closed），事务结束自动失效零残留；否决会话级 GUC（错配路径静默继承上一用户角色）。
+- 所有跨表取值（catalog、角色函数）一律 `(SELECT ...)` 标量子查询包裹强制 InitPlan（每语句一次）——裸写是逐行 SubPlan：实测 100 万行 8100ms vs InitPlan 93.7ms；Supabase 官方基准裸 policy 1840ms vs initplan+索引 0.21ms；
+- 身份函数 `STABLE`（`current_setting` 本身 STABLE，但不包裹仍退化逐行）；
+- `_acl` 建 GIN（`&&` 可作索引条件）；
+- 每 policy 上线前 EXPLAIN 验证。
+- **GUC 伪造面**：自定义 `app.*` GUC 任何能执行 SQL 的会话都能 SET（Supabase 的 `request.jwt.claims` 同样如此，其防线是通道隔离）。缓解：应用独占连接通道（直连 SQL 通道永不信任 `app.*`）+ 可选 HMAC 签名 `app.roles_sig`（SECURITY DEFINER 函数内验签）+ `tw_app` 非 owner + 全表 `FORCE ROW LEVEL SECURITY` + 池事务级 `SET LOCAL`。
+- **DB 角色分层**：`tw_owner`（DDL/迁移专用，不跑业务查询）、`tw_app`（运行时，非 owner 无 BYPASSRLS）、`tw_system`（BYPASSRLS，内部调用）。
+
+### 3.3 权限判定单源：SQL 函数 vs 掩码预计算缓存
+
+- **裁决**：**两层叠加**。存储与查询层判定唯一源 = `tw_can` SQL 函数（应用查询构造器与 RLS policy 共用同一函数；配 SQL golden 测试矩阵锁语义，禁止 Go 侧重写等价逻辑）；realtime 扇出侧叠加短 TTL 掩码缓存作纯性能优化，不参与正确性。
+
+## 4. 综合设计（五层）
+
+### 4.1 契约层（DX）
+
+- **查询**：单 typed AST，算子全集 `eq ne lt lte gt gte in between isNull isNotNull contains startsWith endsWith search + and or not`（深度 ≤8）；`select[]` 投影在 SQL 层裁剪（杜绝 `to_jsonb(d.*)` 全列取回）；`orderAsc/Desc` 服务端强制追加 `$id`；cursor 服务端校验排序一致性，不一致即拒；`limit 1..200 默认 25`（0 = InvalidArgument，不再当"未指定"）。
+- **并发**：`$version` 兼作弱 ETag；Update/Delete 必须 `if_match`（HTTP）/`expected_version`（gRPC），缺省即拒、0 即参数错误。
+- **幂等**：写统一 `request_id`（HTTP 头 `Idempotency-Key`），24h 去重，重放返回原响应 + `replayed=true`——Agent 重试安全的关键。
+- **错误**：`{code, retryable, violations[], doc_url}`，域码稳定 snake_case（如 `DOCUMENT.VERSION_CONFLICT`）静态映射 gRPC code；infra 错误必须带 `error_id`，禁止裸 "document database error"。
+- **Agent 面**：`GET …/collections/{c}?as=jsonschema` 导出 JSON Schema 2020-12；`GET /.well-known/torchwood` 资源/算子/错误码目录。
+- **类型系统**：标量（string/int64/float64/bool/datetime/email/url/uuid/enum）+ `array<T>`（PG 原生数组）+ `vector`（pgvector，可选）+ `object`（jsonb + JSON Schema 子集校验，首期不建内部索引）；`relation` 远期。
+
+```json
+POST …/documents:query
+{ "and":[{"in":{"attr":"status","values":["open","todo"]}},
+         {"gte":{"attr":"priority","value":2}}],
+  "orders":[{"attr":"$createdAt","desc":true}],
+  "select":["$id","title"], "limit":25, "cursor":"b64(排序键+$id)" }
+→ { "documents":[…], "next_cursor":"…" }   // next_cursor 省略=尾页
+```
+
+### 4.2 存储与隔离层（Typed 真实列 + 全局 catalog）
+
+```sql
+-- public：全局 catalog（版本化迁移，唯一 DDL 事实源）
+-- G1（2026-09-03）：catalog 为 cluster 内全局——多集群时随 project 所在 cluster 分布，
+-- project→cluster 路由表在控制面，项目迁移 = schema + catalog 行 + 路由成套搬
+CREATE TABLE catalog_collections (
+  project_id BIGINT, database_id TEXT, collection_id TEXT,  -- 逻辑 ID ≤36 [a-z0-9-]
+  physical_name TEXT UNIQUE CHECK (char_length(physical_name) <= 63),  -- c_<base32> 服务端分配
+  attrs JSONB NOT NULL,        -- [{key,type,size,required,array,default}] 全量契约（default 读写一致）
+  indexes JSONB, perms JSONB, doc_security BOOL, schema_version BIGINT, ddl_seq BIGINT,  -- 乐观锁
+  PRIMARY KEY (project_id, database_id, collection_id));
+
+-- 业务文档面保留 tw_<project>_<database>.<物理名>（每集合一张 typed 表）
+CREATE TABLE tw_shop_app.c_ab12cd34 (
+  _id TEXT NOT NULL, _tenant BIGINT NOT NULL,
+  _created_at TIMESTAMPTZ NOT NULL DEFAULT now(), _updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  _created_by TEXT, _updated_by TEXT,
+  _version BIGINT NOT NULL DEFAULT 1,
+  _acl TEXT[] NOT NULL DEFAULT '{}',          -- 内嵌 ACE + GIN
+  title VARCHAR(255) NOT NULL DEFAULT 'untitled',
+  tags TEXT[],                                 -- array<T> 原生列
+  embedding VECTOR(768),                       -- pgvector 可选
+  PRIMARY KEY (_tenant, _id));
+CREATE INDEX … ON tw_shop_app.c_ab12cd34 USING gin (_acl);
+ALTER TABLE tw_shop_app.c_ab12cd34 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tw_shop_app.c_ab12cd34 FORCE ROW LEVEL SECURITY;
+-- policy 四条（模板见 4.3）；列级 GRANT 只授数据列（_acl/_version/_tenant 锁死）
+```
+
+- **标识符治理**：逻辑 ID 与物理名解耦——collectionID ≤36 `[a-z0-9-]`、属性 key ≤63 `^[a-zA-Z_]\w*$`、索引 ID ≤36，入口拒绝；物理名服务端分配，截断/碰撞类缺陷机制性不可达。
+- **隔离**：应用谓词由单一查询构建器强制生成（`_tenant = ?`）+ 跨租户探针集成测试常驻；RLS policy 为判定执行点（见 4.3）；schema-per-project 布局保留（`tw_<p>_<db>`），配量化预警线与多集群分片出口（§3.1）。
+- **DDL**：加列 `ADD COLUMN ... DEFAULT`（PG11+ 元数据级）；索引一律 CONCURRENTLY + 独立事务 + `lock_timeout=2s` 重试 + catalog 两阶段状态机（building→active）+ reconcile 对账。
+
+### 4.3 权限层（单源函数 + RLS 判定执行点 + 列级 GRANT + 角色分层）
+
+- **存储**：`_acl text[]` 内嵌 + GIN；空数组回退集合级（B1 语义）；集合级权限与 doc_security 存 catalog（policy 经子查询**实时读取**——集合级权限变更即时生效，无需改 policy DDL）。
+- **判定唯一源** = `tw_can` SQL 函数（示意）：
+
+```sql
+CREATE FUNCTION tw_can(acl text[], roles text[], typ text, coll_allows bool)
+RETURNS bool LANGUAGE sql STABLE AS $$
+  SELECT acl && (SELECT array_agg(typ || ':' || r) FROM unnest(roles) r)
+      OR (NOT EXISTS (SELECT 1 FROM unnest(acl) a WHERE a LIKE typ || ':%')
+          AND coll_allows) $$;
+```
+
+应用查询**不再手工拼权限 WHERE**——RLS policy 的 securityQuals 隐式过滤即判定（列表/count/单条/bulk 全部同源）；`tw_can`/`tw_visible` 的宿主是 policy 与测试基准：SQL golden 矩阵（角色 × ACE 型 × 空 ACE 回退 × update-only 可见性）随 CI 锁语义，lint 禁止 Go 侧等价实现。读路径 0 行 → `NOT_FOUND`；写路径 42501 policy 违例 → `PERMISSION_DENIED`（§3.2）。
+
+- **RLS 判定 policy 模板**（每集合表生成一次；SELECT = `tw_visible` 可见谓词，见 §3.2）：
+
+```sql
+CREATE POLICY p_read ON tw_shop_app.c_ab12cd34 FOR SELECT
+USING ( tw_can(_acl, (SELECT tw_ctx.roles()), 'read',  (SELECT tw_ctx.coll_allows('c_ab12cd34','read')))
+     OR tw_can(_acl, (SELECT tw_ctx.roles()), 'update', ...)
+     OR tw_can(_acl, (SELECT tw_ctx.roles()), 'delete', ...) );   -- tw_visible：可写即可读（产品语义，应用层同谓词）
+CREATE POLICY p_create ON ... FOR INSERT WITH CHECK (集合级 create);
+CREATE POLICY p_update ON ... FOR UPDATE USING (tw_can update) WITH CHECK (同);
+CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
+-- 所有跨表取值 (SELECT ...) InitPlan 化；身份函数 STABLE；tw_ctx.roles() 可校验 roles_sig HMAC
+```
+
+- **角色分层**：`tw_owner`（DDL）/ `tw_app`（运行时，列级 GRANT 只授数据列）/ `tw_system`（BYPASSRLS，系统旁路）。
+- **授予治理**（`ValidateGrantablePermissions` 语义）与应用层 404/403 策略保留在用例层。
+- **realtime 扇出**：预计算"频道×角色集→放行"缓存（短 TTL），ACL 评估 O(1)，不参与正确性。
+
+### 4.4 正确性与一致性层
+
+- **OCC**：CAS 进 WHERE 的单语句三态（见 C4）；bulk/upsert 盲写 +1 显式化为 LWW 契约；Upsert 保留 advisory_xact_lock + 锁内 `FOR UPDATE` 分支，判定换用 `tw_can`。
+- **原子性**：ACE 与数据同表同行（`_perms` 跨表对账删除）；catalog 行与 DDL 同事务（CONCURRENTLY 除外，走两阶段状态机）；写响应一律读回（见 C8）。
+- **漂移防护**：`ddl_seq` 乐观锁防并发 schema 变更；后台 reconcile 对账 catalog ↔ pg_catalog（缺列/INVALID 索引/幽灵表）自动修复 + 告警；`torchwood admin schema repair` CLI。
+- **参数上限**：filter 绑定参数**跨 filter 累计**上限（封死 65535 风险）。
+
+### 4.5 事件层
+
+- 写事务内 outbox INSERT（全局 `seq bigserial`）+ `pg_notify` 唤醒（替代 200ms 轮询，5s 兜底轮询；NOTIFY 仅作信号——无持久化、每消费者占一条连接，不承担投递）。
+- 投递：dispatcher 批拉（SKIP LOCKED）→ Redis **Stream**（XADD/XREADGROUP/XACK 位点）→ 各 server 消费扇出——回到 Stream 是有意决策：当年改 Pub/Sub 为解决多副本可见性，消费组模式同样解决且换来不丢帧与位点回放；注释与实现必须同步（现状 6 处 XADD 注释腐化即前车之鉴）。
+- 顺序承诺（B1，2026-09-03 定稿）：**单文档全序**（行锁保证 seq 随提交序）；**集合内为分配序**——跨文档不保证与提交序一致，且 seq 有空洞（回滚事务消耗 seq 但无事件，不表示丢事件）；seq 仅作续传游标与去重 ID；不承诺跨集合因果。写入一致性契约文档。
+- 补偿：断线重连带 `last_seq`，服务端重放保留窗口（默认 1h）；窗口外返回 `EVENTS.RESUME_EXPIRED` 并指引 `GET :changes?since_seq=…`；大载荷不再截断，改带 `data_ref`（按版本拉取）。
+
+### 4.6 Schema 演进契约
+
+| 操作 | API 契约 | 物理 |
+|---|---|---|
+| 加列 nullable/带 default | 即时生效，响应读回新 schema | `ADD COLUMN DEFAULT`（元数据级） |
+| 加列 required | 必须带 default，否则走迁移 | backfill 后 SET NOT NULL |
+| 放宽（required→optional、扩宽） | 即时 | ALTER |
+| 收紧/改类型 | 创建迁移（validate→rewrite→commit），期间 `schema_status=migrating`，写按目标 schema 校验 | 异步任务限速回填 |
+| 删列 | 两段：`deprecated`（读屏蔽写拒收，可回滚）→ `retired`（归档后物理删，不可逆） | 软删列 |
+| 重命名 | 不提供（= 新列 + copy 迁移 + 旧列 deprecated） | — |
+
+### 4.7 运维
+
+- `torchwood export --project` / 导入：COPY 流式 NDJSON + catalog 快照；schema-per-project 形态下 `pg_dump -n tw_<project>` 即项目级备份（现模型红利，写成 runbook）。
+- 规模预警线：`pg_class` 计数、pg_dump 时长、迁移耗时纳入 SLO 指标；超限（数百→低千 schema）触发多集群分片规划（project → cluster 路由抽象）。
+- 配额：全局 catalog 维护 per-project 行数/字节（增量 + 周期精确化），写入前置令牌桶。
+- 可观测：全局视图表（项目×集合×行数/字节/索引数/末次写入）、outbox lag / 扇出延迟指标、auto_explain 按 project 打标。
+
+### 4.8 事务内核与多文档原子性（2026-09-03 接受，细化见 §11-E1）
+
+- **内核 = op 模型 + 单事务执行器**：可序列化异构 op 列表（复用旧 `document_transaction_ops` 字段族：type/database/collection/document_id/data/permissions/increment/expected_version/conflict_columns）在一个 `RunInTx` 内顺序执行——RLS/GUC 一次注入、逐 op 判定（提交时权限）、按 `(_tenant,_id)` 排序加锁防批内死锁、OCC 逐 op、outbox 事件同事务（可共带 transaction_id）、all-or-nothing、失败返回带 op index 的 violations。
+- **三种消费形态**（按消费者执行位置选）：A `documents:execute-tx`（远程客户端一次性原子 op 批，Bulk 的泛化，无暂存表）；B Functions 事务上下文（服务端真事务，`InTx` 管道 + GUC 注入 + 生命周期，**不走 staged**——命令式代码无法 replay）；C staged session（跨请求暂存，复用旧 D-6 表设计与教训，等 A 的需求证据再启用）。
+- **分期**：Phase 1 = A，Phase 2 = B，Phase 3 = C 视需求。Agent 联动：op[] 即工具参数（结构化、整体幂等、可 dry_run）；批内事件顺序 = op 顺序（B1 的分配序问题在批内不存在）。
+
+## 5. 与当前架构对照
+
+- **保留（两轮评审验证为正确的设计）**：**每集合一张 typed 真实表**（维护者决策定案）；`tw_<p>_<db>` schema-per-database 布局与删除原子性（DROP SCHEMA CASCADE）；事务性 outbox 模式；OCC fail-closed 意识与 `_version` 概念；权限 SQL 下推思想（升级为单源 `tw_can`）；标识符白名单 + 全程参数绑定的注入防御；`DocumentDB` 三端口分层；角色认证期实时解析注入（不信任 JWT claims）；Upsert advisory lock；系统静态表与文档路径解耦的现状布局；Appwrite 式 `type:role` 权限模型（**D3 语义被有意取代：可 update/delete 即可读**，2026-09-03 决策，见 §3.2）。
+- **替换**：每项目 catalog 四表 → 全局 catalog（attrs JSONB 全量契约含 default）；`_perms` 独立表 → `_acl` 内嵌；双判定实现 → 唯一 `tw_can` 函数（应用构造器与 RLS policy 共用）；offset+keyset 双 token → keyset-only；DSL/AST 双栈 → 单 AST（DSL 为 SDK 糖）；check-then-write OCC → WHERE 内 CAS；事务内 DDL → CONCURRENTLY + 状态机；Pub/Sub 扇出 → Stream 位点 + seq + 补偿；表/索引名=逻辑 ID → 物理名服务端分配；应用层唯一判定 → RLS policy 判定执行点（`tw_visible` 单源）+ 列级 GRANT + DB 角色分层。
+- **新增**：`request_id` 幂等、`if_match`、机器可读错误码体系、JSON Schema 导出、`:changes` 补偿、schema_version + 迁移 RPC、`:aggregate`（首期 count）、`array<T>`/`vector` 列、流式导出/导入、配额下推、schema repair CLI、DB 角色分层（tw_owner/tw_app/tw_system）、**事务内核与三形态消费**（§4.8：`execute-tx` / Functions 事务上下文 / 按需 staged session）。
+
+## 6. 演进路径（四阶段，每阶段可独立发布）
+
+| 阶段 | 内容 | 物理层变动 |
+|---|---|---|
+| ① 契约收敛 | 单 AST（DSL 降级为糖）、keyset 统一 + tiebreaker、错误码体系、default 落 catalog、写响应读回、幂等 `request_id`、**`documents:execute-tx`（事务内核 Phase 1，Bulk 泛化）** | 无 |
+| ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
+| ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
+| ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
+
+每阶段附回退方案；阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
+
+## 7. 风险与缓解
+
+| 风险 | 缓解 |
+|---|---|
+| schema-per-project 的 relation 数量劣化（pg_dump/relcache/autovacuum/迁移重放） | 量化预警线（pg_class 计数、pg_dump 时长、迁移耗时 SLO 化）+ 集合数配额 + 超限走多集群分片（不改存储形态）；全局 catalog 已削掉最大常数项 |
+| RLS policy 性能劣化（SubPlan 逐行） | InitPlan 化纪律 + STABLE 函数 + GIN 索引 + 上线前 EXPLAIN 门禁 + 基准 CI（实测差距可达 100 倍量级，见 §9 引证） |
+| 语义变更迁移面（"可写即可读"取代 D3；upsert 收紧为 create ∪ update 双检查） | 变更写入 API 文档/changelog 与 SDK 说明；存量 update-only ACE 自然获得可见性（良性放宽，无数据迁移）；upsert 双权限要求在契约层显式声明；SQL golden 矩阵覆盖 update-only 可见与 upsert 越权两个用例 |
+| policy 生命周期漂移（collection 增删需同步 policy DDL） | policy 由 catalog 派生统一生成（RLS-as-code）+ CI 漂移检查；集合级权限存 catalog 被 policy 实时读取，权限变更不需要 DDL |
+| GUC 伪造（`app.*` 可被任意会话 SET） | 应用独占通道 + 可选 HMAC `roles_sig` 验签 + `tw_app` 非 owner + FORCE RLS + 威胁模型明示直连通道不信任 `app.*` |
+
+## 8. 附录：评审痛点 → 设计决策映射
+
+| 评审痛点（§1） | 消解它的决策 |
+|---|---|
+| 1 标识符截断 | 4.2 标识符治理（逻辑/物理名解耦） |
+| 2 权限双实现 + TOCTOU | C3 + 3.2/4.3（`tw_can`/`tw_visible` 单源，policy 即判定） |
+| 3 `_perms` EXISTS 热点 | C3（内嵌 + GIN） |
+| 4 OCC 语义混乱 / 种子锁死 | C4（三态 CAS）+ 4.4（upsert 同谓词） |
+| 5 分页丢行/双 token | C2（keyset-only + 强制 tiebreaker + cursor 排序校验） |
+| 6 契约断裂/静默忽略 | C8 + 4.1（显式拒绝 + 读回 + 全量 catalog 契约） |
+| 7 DDL 锁 | C5（CONCURRENTLY + 状态机） |
+| 8 事件丢帧/无序 | C6（seq + Stream 位点 + RESYNC/`:changes`） |
+| 9 schema 扇出 | 3.1（全局 catalog + 量化预警线 + 多集群分片出口） |
+| 10 双栈漂移 | C7（单 AST） |
+
+## 9. 技术路线定位与 PG 候选（2026-09 竞品调研结论）
+
+### 9.1 路线定位：不是"走向 Supabase"，是第三条路
+
+**"Appwrite 的产品契约 × Supabase 的执行面 × 用户永不手写 SQL/RLS 的编译层"**。两条路线不是二元对立（外部证据）：
+
+- **Appwrite 2.0（2026-09-02）自己拆成三轨**：TablesDB（typed 列，即 torchwood 现形态）+ DocumentsDB（schemaless）+ 原生裸库（直卖 PG/MySQL）——头部玩家公开承认单一存储路线覆盖不了所有负载。
+- **Supabase 的 Realtime（WALRUS）走了反方向**：最初应用层逐订阅者判定，变更数×订阅者数不可控，最终把安全判定**移回数据库内**（回库按主键逐订阅者校验，1k 订阅者 64.7ms、10k 303.8ms 近似线性）——"授权下推到 DB"是规模化平台的共同归宿，不是 Supabase 专利。
+- **正面先例**：EdgeDB/Gel（PG 之上的图-关系语言 + access policy 在内核执行 + globals 承载会话上下文）；PocketBase（规则 DSL 编译为 SQLite 表达式随查询执行——与本设计 `type:role` → RLS policy 编译同构的微缩版）。
+- **反例**：FerretDB（Mongo 协议 shim + PG 后端）证明"通用协议翻译层"此路不通；Hasura/Nhost 没有文档层产品——"文档 API + PG 内核 + DB 层授权"这格**没有大厂占位**。
+- **torchwood 与 Supabase 的本质差异保持不变**：集合/DSL 是唯一对外契约（不暴露表、不暴露 SQL）；schema/索引演进由平台 API 承接（用户零迁移——Supabase 用户必须自己管 migrations）；RLS policy 由平台的 role 模型编译生成，用户永不手写。守住这三条红线，RLS 下推是"Appwrite 路线的规模化补完"而非路线切换（红线之二"不暴露 SQL"的复核论证见 §10.4）。
+
+### 9.2 PG 候选方案采纳表
+
+| 候选 | 结论 | 要点 |
+|---|---|---|
+| RLS per-command policy | **采用（判定执行点）** | 语义映射见 §3.2（唯一冲突已由"可写即可读"决策消解）；性能纪律：InitPlan 化 + STABLE + GIN + EXPLAIN 门禁（实测裸 policy 100 万行 1840ms → 0.21ms） |
+| `SET LOCAL` GUC 身份注入 | **采用** | PostgREST/Supabase 同款管道（每请求一事务 + `set_config(..., true)` fail-closed）；直连通道永不信任 `app.*` |
+| 列级 GRANT | **采用** | 锁死 `_acl`/`_version`/`_tenant`；必须从一开始只按列授予（表级+列级是并集，无法事后挖洞） |
+| pgvector | **采用（尽快）** | typed 列模型的独占加分项：向量检索与文档同事务、同 RLS/GRANT 管辖，直接强化 AI/Agent-Native |
+| PostgREST / Hasura（整体） | **不采用** | 双真相源 + 把 schema 管理权让渡给反射层；抄走其鉴权管道与"单请求编译为单 SQL + prepared statement" |
+| schema-per-project（现状布局） | **维持 + 量化预警线** | 社区阈值：几百 schema 舒适、1–2 千起劣化（pg_dump 24h+、relcache、autovacuum XID 风险）；超限走多集群分片而非改共享表 |
+| 共享表 + tenant_id + RLS | **不采用** | Citus 官方推荐路线但与 typed 表冲突；记为备选 |
+| Citus / 原生分区 per-tenant | **不采用 / 观察** | LIST-per-tenant 几千分区即 planner 舒适区上限；Citus 仅在超大集群时评估 |
+| LISTEN/NOTIFY | **辅助采用** | 仅作 outbox 唤醒信号（无持久化、每消费者占连接、payload<8KB） |
+| Logical decoding | **观察** | 流上无会话上下文（RLS 不可用）；适合未来"增量索引/pgvector 嵌入"等无 ACL 需求场景 |
+| Debezium+Kafka / FDW / pglogical | **不采用** | 运维重负（Kafka 全家桶）/ 语义坑（无跨 server join）/ PG15+ 原生行过滤已够 |
+| Neon 分支 | **观察** | 秒级项目沙箱/预览副本，绑定存储引擎，托管版再评估 |
+| `pg_dump -n tw_<project>` | **采用（runbook）** | schema-per-project 的项目级备份红利 |
+
+主要来源（一手）：PostgreSQL 官方（CREATE POLICY / §5.9 Row Security / GRANT / COPY / GUC）；Supabase（RLS 指南、WALRUS 博客、Discussion #9311、Supavisor）；PostgREST（db_authz、errors）；Appwrite（Native vs Appwrite databases、DocumentsDB 公告、Permissions、Discussion #4838）；Firebase（rules-query、queries 限制）；Convex / PocketBase / Gel 文档；Citus / Crunchy 多租户指南；PlanetScale《RLS sounds great until it isn't》；nmfay / DevriQ RLS 性能实测。
+
+### 9.3 Appwrite 五轨制的经验教训（2026-09-03 二次核验修正口径）
+
+口径修正：Appwrite 2.0 官方是 "**five database types**"——TablesDB（typed）、DocumentsDB（schemaless）、**VectorsDB**（固定 dimension + HNSW + cosine/dot/euclidean + 内置 embedding 模型）、原生 PostgreSQL（默认 18）、原生 MySQL（8.4）。此前"三轨"的说法遗漏了 VectorsDB。
+
+| # | 教训 | 对 torchwood 的落点 |
+|---|---|---|
+| 1 | **"不收抽象税"的意识形态转向**（官方原话 "no abstraction tax" / "Give the raw engine when the abstraction is wrong"）；Appwrite 数据库新增 shared/dedicated 二态 | §10.4 红线不变，但吸收 **dedicated 供给档位**：同一 API 面下提供独享库（可 resize/replicate），把规模问题变成计费问题而不是接口问题——比导向裸库平滑 |
+| 2 | **VectorsDB 是独立产品线**而非某库的列类型 | 对 AI-Native 定位是直接竞品信号。我们的差异化：vector 列与文档同事务、同 RLS/GRANT 管辖（VectorsDB 无文档级权限）。但必须在 DSL 层给 KNN **一等算子**（§10.5 P0），否则 vector 列是死列 |
+| 3 | **DocumentsDB 不是新引擎**：GitHub 源码确认与 TablesDB 共用同一 Utopia\Database 层——"双轨"是 API/产品层分轨，非存储层分叉 | 若未来补 schemaless，正确形态是**同一 typed 基座上的 schemaless API 视图**（未声明字段进受控 overflow），不是第二套存储——与 §3.1 拒绝"默认存储双形态"不冲突（拒的是存储分裂，不是 API 分层） |
+| 4 | **五轨之间无官方互迁工具**，DocumentsDB 靠 JSON 导入导出兜底 | import/export 的 NDJSON 面要先行（§4.7 已有 export，**补 import**），否则多形态之日就是迁移骂声之日 |
+| 5 | **规模问题被产品化绕行**：TablesDB 无硬数字承诺，用 dedicated 档 + native 导流；#6968（连接打满 DDL 卡死）无官方回应即关闭 | 反面教训：规模化问题市场化绕行会积累社区信任债——§3.1 的多集群分片出口要有排期承诺，不能永远停在预警线 |
+| 6 | **权限/事务/批量/原子计数跨轨全保留**；DocumentsDB 加了带 max/min clamp 的 increment 专用端点 | 验证 type:role + RLS 编译层是跨形态资产；**原子更新算子家族值得整包吸收**（写侧 DSL 缺口的主要参照，见 §10.5） |
+| 7 | **自托管后端演进 MariaDB → MongoDB(1.9) → PostgreSQL(2.0 默认)**，API 面稳定 | 互证 §3.1 的核心主张：底座可换的前提是物理布局不出现在契约里 |
+| 8 | **native = 裸引擎 + 托管运维**（备份/PITR/Branches/HA/池化/监控，$10/mo 起步），零互操作、零 Appwrite 权限层（引擎自管凭据） | 若远期做 native 产品，卖的是运维能力；权限/审计/配额故事（裸库上没有我们的 ACL）要提前想清楚 |
+
+DocumentsDB 的量化限制参照：每请求 100 条 query、每条 4096 字符（与 torchwood 现状上限一致）；批量/事务 Free 100 / Pro 1,000 每请求（torchwood MaxBulkOperations=1000 同量级）。
+
+## 10. Agent 与真人双一等用户的设计影响（2026-09-03 补充）
+
+前提：产品定位（`docs/roadmap.md` §0）本就把 Agent 当一等消费者，重设计已落地的 agent 面向能力——单 typed AST（C7）、`request_id` 幂等、机器可读错误码（code/retryable/violations/doc_url）、JSON Schema 导出、`:changes` 补偿、事件 seq、`vector` 列。本节回答"**双一等**"额外要求什么。核心判据：**真人靠直觉与 UI 容错，Agent 靠契约与归因；差异必须显式建模，不让 Agent 将就人类的接口，也不为 Agent 降级真人的体验。**
+
+### 10.1 六维差异 → 设计决策
+
+| 维度 | Agent 的使用特征 | 设计影响 | 状态 |
+|---|---|---|---|
+| **身份与归因** | 以 API key 认证；行为必须可追责 | `key:{keyID}` 成为一等可授予角色（`_acl text[]` 机制上零改动支持）；主体支持 **on-behalf-of 委托**（agent 代表某 user 行动：roles = key 自身角色 ∪ 被委托者角色，**带来源标记**，事件/审计记录双身份）；`_created_by/_updated_by` 落 keyID | 新增；**现架构即刻缺口**：keys-only 主体的审计列为空（见 10.2） |
+| **信任边界** | 多 agent 共项目；误操作有放大器 | per-key ACL 沙箱（`key:{id}` ACE 隔离 agent 间数据）；**默认权限收敛**：空 ACE 种子从"全体 keys 可写"改为"创建者 key 私有"（`read/update/delete:key:<id>`——与 creatorSeedRole 同构，随 §3.1 的 keys 默认写权定调一并决策）；key scope 从 service 级细化到 database/collection/operation | 修订默认权限与 scope 表 |
+| **消费方式** | LLM 生成查询；无法可靠手拼 DSL 字符串（引号/转义/算子名） | **AST 是唯一 wire 形态**——这是 C7 的根本理由，DSL 只服务真人 URL 手写；SDK 类型安全构造器 + JSON Schema 即 Agent 工具参数；新增 **`:query?dry_run=true` explain 模式**（返回命中索引、预估扫描量、复杂度预算余量）供 Agent 自校正、保护平台防全表扫描 | dry_run 新增 |
+| **重试与一致性** | 自动重试；需要机器可判定的恢复路径 | 已有：`request_id` 幂等、`retryable` 标志、OCC 三态、seq。补：**429 带机器可读 `retry_after`/配额余量**；**OCC 冲突错误体带 `current_version`**（Agent 可直接取新版本合并重试）；read-your-writes（写响应读回已保证）与"写 → 事件 → `:changes`"因果链写入一致性契约文档 | 部分新增 |
+| **批量与同步** | RAG/摄取/全量爬取；增量维护本地副本 | 已有：keyset 爬取（C2）、流式 export（§4.7）、`:changes`。补：**snapshot+changes 闭合**——export 返回 `snapshot_seq`，`:changes?since_seq=snapshot_seq` 无缝续接（一致性窗口闭合的关键）；**tombstone 语义显式化**（delete 事件带 document_id，`:changes` 返回删除标记，本地副本可精确收敛） | snapshot_seq 新增 |
+| **配额与成本** | 高频、突发、按 key 可计费 | per-key 令牌桶（§4.7 的 per-project 配额下钻一层）；usage metering per key（计费/成本归因）；realtime 连接配额从 per-user 扩展到 per-principal（Agent 长连接订阅） | 新增 |
+
+### 10.2 现架构即刻受影响的两个点（登记为评审遗留，不必等重设计落地）
+
+1. **Agent 写入无归因**：`userIDFromPrincipal` 只认 `user:` 前缀角色，仅含 `keys` 的主体 `_created_by/_updated_by` 为空（`docs/developer/06-databases.md` §10 明载）——一等 Agent 的最低要求是"行为可归因"，建议现架构就把审计列落 keyID。
+2. **Agent 间零隔离**：全体 key 共享 `keys` 角色 + `DefaultCollectionPermissions` 含 keys 全写（本轮评审 P2-1 未定调项）——任一 key 可改其他 key 创建的一切文档。per-key 角色落地前，至少应把默认种子收敛为创建者 key 私有。
+
+### 10.3 人机分工（共享表面不降级）
+
+- **错误体双语**：`message`（人）与 `code/violations/retryable`（Agent）并存——已在 §4.1 契约中定案。
+- **DSL 保留为真人语法糖**：URL 手写查询是人类的便利，不是 Agent 的通道。
+- **Console（真人）增 Agent 视图**：按 key 的活动审计、权限/配额管理；ACL 编辑器预设增加 `key:{id}`（现仅 any/users/keys/admin）。
+- **工具目录对齐**：`docs/developer/14-agent-tools.md` 的工具与 DocumentDB 操作一一对应，每个工具的参数面即 typed AST 的子集（结构化参数，非字符串拼装）。
+
+### 10.4 红线复核：为什么不暴露 SQL 仍然成立（2026-09-03）
+
+背景：当初"不暴露 SQL"的动机之一是限制与规范 Agent 能力。在 Agent 一等化 + 判定下沉 RLS 之后复核该决定——**结论：成立，且比当时更成立，但性质从"限制 Agent 的产品禁令"升级为两项结构性依赖 + 一份有对价的承诺**。
+
+四条论据（前两条是复核后新增的结构性依赖，分量重于原始动机）：
+
+1. **物理独立性是重设计的根基**：§3.1 的全部演进自由——物理名服务端分配（`c_<base32>`）、全局 catalog、多集群分片出口、schema 演进状态机——都建立在"无人能依赖物理布局"之上。暴露 SQL 即永久冻结物理 schema，分片出口与演进契约同时报废。
+2. **RLS 信任模型依赖通道隔离**：§3.2 已定"直连通道永不信任 `app.*` GUC"——开放 SQL 直连等于让调用方可以 `SET app.roles` 伪造身份，判定执行点的信任根坍塌。此外 RLS 的豁免面（唯一键/FK 检查的 covert channel、TRUNCATE 不受 RLS、COPY FROM 不支持）在任意 SQL 下全部变成可达攻击面。"RLS 让裸 SQL 变安全"不成立——RLS 只是让它没那么危险。
+3. **Prompt injection 的爆炸半径控制**：Agent 是可被注入指令的执行器。SQL 是图灵完备的查询语言——注入载荷获得任意数据塑形能力；AST 是有限状态的动作空间（算子白名单、深度/参数上限、`dry_run` 可预检）。对 Agent 自身的可靠性同样如此：bounded tool schema 的执行成功率高于自由 text-to-SQL（幻觉、schema 漂移）。
+4. **配额与审计的归因粒度**：§10.1 的 per-key 令牌桶与 usage metering 以"操作可枚举"为前提；任意 SQL 下一条 join 的成本无法归因、资源形态不可治理（planning 成本、锁、笛卡尔积），statement_timeout 只能兜底不能预防。
+
+**承诺的对价（决定成立的条件）**：不暴露 SQL 的压力与 AST 表达力缺口成正比——DSL 表达不了的真实需求每多一个，"开口子"的诱惑就大一格。因此该红线必须捆绑一项纪律：**AST 表达力持续还债**（C7 算子全集、`array<T>`/`vector`、`:aggregate` 扩展面、`dry_run` 预检）。泄压阀的优先序：分析型需求 → 先扩 `:aggregate`；重度 SQL 用户 → 远期评估"原生数据库"**独立产品**（资源池隔离、不共用文档面信任模型——Appwrite 2.0 的三轨已验证该形态）；**永不**在文档面上开 SQL 口子。触发器：当高级用户索取 SQL 的诉求成为规模化声音时，按上述优先序评估，而非直接开口。
+
+### 10.5 AST 表达力缺口清单（§10.4 的还债 backlog，2026-09-03，以 Appwrite 算子全集为参照系）
+
+| 优先级 | 缺口 | 现状（torchwood） | 参照（Appwrite） | 说明 |
+|---|---|---|---|---|
+| **P0** | **向量近邻查询** | 重设计采纳 `vector` 列但 §4.1 算子集**无 KNN 算子**——列落地即死列 | VectorsDB 独立产品线（HNSW + 内置 embedding） | 需 `knn(attr, query_vec, k, metric)` 算子 + HNSW 索引联动 + 距离排序/阈值过滤；AI-Native 定位下第一优先 |
+| **P0** | **数组查询/写侧算子** | `array<T>` 已定但无配套算子；写侧只有 increment | `containsAny/containsAll`、`arrayAppend/Prepend/Insert/Remove/Unique/Intersect/Diff/Filter` | 查询侧对应 PG `&&/@>`；写侧原子更新家族整包吸收（Appwrite 全有） |
+| **P0** | **`_created_by/_updated_by` 不可查询** | 系统字段白名单只有 `_id/_created_at/_updated_at/_version` | 系统字段可查 | "查我创建的文档"不可表达；**现架构即刻可修**（`systemQueryFields` 加两列） |
+| **P1** | `not*` 取反变体家族 | 无 notBetween/notContains 等（重设计 AST 有通用 `not`） | 全套 not* 变体，**无通用 NOT** | 算子级取反可走索引、通用 NOT 难优化——建议跟随 not* 变体路线，通用 `not` 仅留布尔树内 |
+| **P1** | 聚合家族 | count 独立 RPC，无 sum/avg/min/max/group_by | （无 group_by；靠 native 库承接） | `:aggregate` 扩展面是分析需求的泄压阀（§10.4）；group_by 的权限/语义要单独设计 |
+| **P1** | object 字段访问 | `object`(jsonb) 类型无路径查询/投影 | `exists/notExists`、`elemMatch`（DocumentsDB） | 路径访问 `a.b.c`、存在性、`elemMatch`（数组内对象元素匹配）；select 子字段投影 |
+| **P1** | increment clamp | increment 无上下界保护 | increment/decrement 带 `max/min` 硬上限（越界报错）；另有 multiply/divide/modulo/power、toggle | clamp 对 Agent 场景价值高（计数器防溢出/竞态）；数值算子家族按需扩展 |
+| **P2** | 关系查询/加载 | relation 列为远期 | 按对端字段过滤（`reviews.author`）、`select "rel.*"`（默认不加载）、双边 read 权限、关系深度 ≤3 | 产品决策后再排；Appwrite 验证了形态与边界（权限双边检查、深度限制） |
+| **P2** | regex 匹配 | 无 | `regex`（DocumentsDB） | 需防 ReDoS/全表扫描：仅锚定语法 + statement_timeout + 索引引导 |
+| **P2** | 全文增强 | 单列 search + 需显式 fulltext 索引 | search 同构（需索引） | 多列联合、`ts_rank` 排序、短语/前缀控制 |
+| **P3** | 时间助手算子 | greaterThan("$createdAt") 冗长但可表达 | `createdBefore/After`、`updatedBefore/After`、`createdBetween/updatedBetween` | DX 债非能力债（AST 编译层加糖即可） |
+| **P3** | orderRandom / TTL 缓存 / geo | 无 | orderRandom（两库均有）；DocumentsDB list 支持 1~86400s TTL 响应缓存；TablesDB 空间算子全家（仅 TablesDB） | orderRandom 有 TABLESAMPLE 性能陷阱需限流；TTL 缓存对 Agent 重复查询有成本价值；geo 待 PostGIS 决策 |
+
+现状双栈不对称（DSL 缺 `in/or/and`，proto AST 缺 `between/isNull/isNotNull/select/cursor`）已由 C7 单 AST 消解，不列入 backlog。
+
+## 11. 未决设计问题登记册（2026-09-03）
+
+重设计目前定的是方向（决策层）；以下是需要进一步深化细化讨论的机制/语义级开放问题，按"阻塞程度"排序。**标注⚠的项会反过来影响已定决策**——⚠ 已全部于 2026-09-03 收敛（三项架构级 A1/B1/G1 + D1/H1/E2，连同默认值整包），决议记录见 §11-J。
+
+### A. RLS 落地机制（阻塞阶段③）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| A1 ~~⚠~~ | **GUC 注入与连接池的集成形态** | **已接受（2026-09-03）：每请求一事务（含读，autocommit 退役）+ 事务首条 `set_config(...,true)`**——漏注入=空结果（fail-closed），事务结束自动失效零残留；否决会话级 GUC（错配路径静默继承上一用户角色，结构性不可防）。遗留原型任务：验证 pgdriver 流水线把额外往返压到 ≤1 |
+| A2 | roles_sig HMAC 细节 | 密钥派生与轮换、签名覆盖面（roles+tenant+时间戳防重放？）、SECURITY DEFINER 函数加固（search_path、LEAKPROOF） |
+| A3 | policy × 集合规模 | 每集合 4 policy × 千集合 = 4000 policy 对 plan cache/relcache 的影响；EXPLAIN 门禁怎么进 CI（基准集见 I） |
+| A4 | 双读迁移期的 policy 数据源 | `_perms` → `_acl` 灰度期间 policy 读哪个源：过渡 policy 读 `_perms`（复杂）vs 先全量回填 `_acl` 再开 policy（简单但窗口长）——影响阶段③的切分 |
+| A5 | realtime 掩码缓存失效 | 集合级 perms 变更后 TTL 5s 内的可见性延迟窗口是否接受；要不要主动失效（权限变更发内部事件） |
+| A6 | `tw_owner` 的 DDL/运维通道 | FORCE RLS 下 owner 的排查查询被自己 policy 挡（DDL 本身不受 RLS，但 SELECT 验证会）——运维走 `tw_system`，需 runbook 化 |
+
+### B. 事件顺序语义（阶段④的隐藏深坑）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| B1 ~~⚠~~ | **事件顺序承诺与 seq 分配序** | **已接受（2026-09-03）：放宽为分配序**——承诺定稿为「**单文档全序**（行锁保证 seq 随提交序，免费且稳固）；集合内为分配序（跨文档不保证与提交序一致）；seq 仅作续传游标与去重」。seq 空洞=回滚事务（不表示丢事件），客户端缓冲重排因此天然不可行，一并否决；不引入排序器组件（事后可收紧、反向不可） |
+| B2 | outbox 单表写热点 | 全局 seq 的 `nextval` + 单表 INSERT 是全部文档写的串行点；要不要按 project 分区 outbox + 项目内 seq（与 B1 联动） |
+| B3 | Redis Stream 拓扑 | 消费组 per-server 还是共享组；XACK 位点与 `published_at` 回写的对应关系；MAXLEN trimming 与 1h 重放窗口的耦合 |
+| B4 | RESYNC/data_ref 契约 | RESYNC 帧格式与客户端 SDK 重放指引；`data_ref` 按版本拉取的 API 形态 |
+
+### C. Schema 演进状态机（阶段②③配套）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| C1 | migrating 期间的读写矩阵 | 新列可见性（读旧还是新）、写按目标 schema 校验的具体行为、DSL 对新旧列的白名单切换时机 |
+| C2 | backfill 与并发写竞态 | 版本号守卫 vs 触发器 vs 锁窗口；限速与失败恢复 |
+| C3 | unique 索引上线遇存量重复 | validate 阶段的报告形态（冲突行清单？）与阻断语义 |
+| C4 | vector 维度变更流程 | 列维度不可变 → 必然是"新列+回填+切流"——作为迁移状态机的标准模板固化 |
+| C5 | deprecated 的兼容窗口 | 与 Proto 规范的 `deprecated=true` 一个版本周期约定对齐；sunset 日期进 JSON Schema（§10.1 已提，格式未定） |
+
+### D. 聚合与 KNN 的语义
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| D1 ~~⚠~~ | group_by 的键泄露 | **已定（2026-09-03，降级为规范澄清）**：聚合一律在 policy 过滤后的行集上执行（securityQuals 先于 GROUP BY，不可见行的键不会出现）——写成显式规范 + golden 测试防实现走样；最小桶/k-匿名记为可选产品功能（默认关）；权限变更前后聚合不可比属固有属性，文档化 |
+| D2 | KNN + filter 的召回语义 | HNSW 先近邻后过滤会漏召回——需 pgvector ≥0.8 的 iterative index scan（先过滤后迭代）；ef_search 暴露面与默认值 |
+| D3 | dry_run 输出契约 | 成本估算来源（EXPLAIN 解析 vs pg_statistic）、复杂度预算的计量单位与扣减规则 |
+
+### E. 事务与批量 API 面（需重审的历史决策）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| E1 ~~⚠~~ | ~~跨文档事务是否重开~~ **已接受（2026-09-03 维护者决策）：共享事务内核 + 三形态消费**，方案见下方；主设计正文见 §4.8 | 旧 D-6 设计（v2 §5）资产可复用：op 表结构（seq/op_type/document/data/permissions/increment/version/conflict_columns）、锁行追加、60s TTL、单 pending——删除理由是"内测无消费者"，非设计错误 |
+| E2 ~~⚠~~ | execute-tx 的 per-item results | **已接受（2026-09-03）**：`mode: ATOMIC（默认）| PARTIAL`——PARTIAL 逐 op 独立执行、已成功不回滚、返回 per-op `{status, error}`；`request_id` 覆盖整批（重放返回首次结果）；现有 Bulk API 保持纯原子不变 |
+
+**E1 收敛方案：抽象层级 = 事务内核，不是 Staged Session**
+
+```
+内核（共享）：
+  ① op 模型       —— 可序列化异构 op 列表（复用旧 document_transaction_ops 字段族）
+                     {type, database, collection, document_id, data, permissions,
+                      increment, expected_version, conflict_columns}
+  ② 单事务执行器  —— op[] 在一个 RunInTx 内顺序执行：
+                     RLS/GUC 一次注入、逐 op 判定（commit 时权限，与"写权即可读"一致）；
+                     按 (_tenant,_id) 排序加锁防批内死锁；OCC 逐 op（expected_version）；
+                     outbox 事件同事务（可共带 transaction_id）；all-or-nothing；
+                     失败返回带 op index 的 violations
+消费形态（三个，按消费者位置选）：
+  A. documents:execute-tx  —— 一次性原子 op 批（客户端组装，单请求提交）。
+     本质是 Bulk 的泛化（现 Bulk 只支持同构 update/delete），无暂存表/无 TTL/无会话。
+     覆盖大多数跨文档原子性需求；op 上限对齐 MaxBulkOperations=1000。
+  B. Functions 事务上下文  —— 函数代码在服务端执行，可持有真实事务：执行上下文
+     注入 txCtx（InTx/RunInTx 管道已有，缺 GUC 注入 + 生命周期），SDK 的每次文档
+     写自动 JoinTx；成功 commit、panic/超时 rollback。**不走 staged**——命令式代码
+     依赖中间读结果，replay 语义无法表达。
+  C. staged session（按需）—— 跨请求暂存 + 服务端中间态才需要：复用旧 D-6 表设计
+     （锁行追加/60s TTL/单 pending/100 ops 上限），Commit 重放走同一执行器。
+     等 A 的需求证据（"多轮交互且需要服务端中间态"）出现再启用。
+```
+
+分期：Phase 1 = A（增量最小，Bulk 已验证单事务异构锁与回滚）；Phase 2 = B（补 GUC 注入与函数生命周期）；Phase 3 = C（等证据）。Agent 联动：op[] 是天然的工具参数——结构化、可整体幂等（request_id）、可 dry_run 校验；旧设计的 `created_by = key:{APIKeyID}` 与 §10.1 per-key 归因天然对齐。事件联动：批内 N 事件同一次 COMMIT，事件间顺序 = op 顺序（B1 的分配序问题在批内不存在）。
+
+### F. key:{id}/scope/delegation 实体设计（阶段③前置）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| F1 | scope 表达式扩展 | collection 级 scope 的语法与语义；API 层 scope 与 DB 层 RLS 两道检查的对齐与错误码 |
+| F2 | on-behalf-of 令牌形态 | key 认证 + 用户委托的组合载体（JWT 结构）、roles 并集的来源标记、审计双身份的落库字段 |
+| F3 | per-key 配额维度 | QPS/日配额/并发连接；429 载荷与 Retry-After 规范 |
+| F4 | ACL 批量管理 API | "给 N 篇文档加 reader"的原子性与上限 |
+
+### G. 全局 catalog 与多集群的张力（阶段②内嵌未决）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| G1 ~~⚠~~ | catalog 全局化 vs 多集群分片 | **已接受（2026-09-03）：catalog 定位 cluster 内全局**——project→cluster 路由表存控制面；项目迁移 = schema + catalog 行 + 路由重指的成套迁移协议；跨集群视图降级为控制面聚合指标（不提供跨集群实时 SQL）；否决 catalog 独立服务（文档操作热路径多一次跨库查询） |
+| G2 | 存量四表迁移任务 | 幂等/断点续跑/EnsureCatalog 语义切换点的具体设计；projectschema migrator 的退役路径（现有 schema_migrations 记录处置） |
+| G3 | ddl_seq 冲突的 API 语义 | 409 + 重读模式还是版本化 PATCH |
+
+### H. 数据边界与限制（现状即有缺口）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| H1 ~~⚠~~ | 文档大小上限 | **已接受（2026-09-03）**：文档总编码大小默认 **1 MiB**（可配置，对齐 Firestore 锚点）、object/jsonb 单属性 ≤256 KiB（与事件截断阈值对齐）；app 层写入前校验 + `DOCUMENT.TOO_LARGE`；**现架构即刻可修** |
+| H2 | 上限族 | `_acl` ACE 数、数组长度、每集合列数（PG 1600 硬限的软预算）、object 嵌套深度 |
+| H3 | list 响应 TTL 缓存 | Appwrite DocumentsDB 有 1~86400s TTL——对 Agent 重复查询是成本杠杆，要不要做（与配额联动） |
+
+### I. 验收基准（阶段③④的门禁前置）
+
+| # | 开放问题 | 说明 |
+|---|---|---|
+| I1 | RLS 性能基准集 | CI 基准（百万行集合 × policy 查询 P99 门禁），EXPLAIN 计划断言（InitPlan 化验证）自动化 |
+| I2 | 语义等价测试 | `tw_can`/`tw_visible` 的 SQL golden 矩阵构建方式；双读迁移期 `_perms` vs `_acl` 判定一致性 fuzz |
+| I3 | 事件顺序性测试 | B1 定案后：重放窗口内乱序注入的回归用例 |
+
+### J. 决议记录（2026-09-03）
+
+**架构级三项（按推荐接受）**：
+
+| 项 | 决议 | 正文落点 |
+|---|---|---|
+| A1 | 每请求一事务（含读，autocommit 退役）+ 事务级 `set_config` 注入身份，fail-closed；否决会话级 GUC。遗留原型：pgdriver 流水线压缩往返 | §3.2 工程纪律首条 |
+| B1 | 顺序承诺定稿：单文档全序（行锁保证）+ 集合内分配序 + seq 仅作续传/去重；seq 空洞=回滚事务；不引入排序器 | §4.5 |
+| G1 | catalog 定位 **cluster 内全局**：project→cluster 路由在控制面，项目迁移成套搬；跨集群视图=控制面聚合指标；否决 catalog 独立服务 | §4.2 DDL 注释 |
+
+**决策项（按推荐接受）**：D1 降级为规范澄清（聚合在 policy 过滤后执行 + golden 测试；最小桶为可选功能默认关）；H1 文档 ≤1 MiB（可配置）+ object ≤256 KiB + `DOCUMENT.TOO_LARGE`（现架构即刻可修）；E2 `execute-tx` 增加 `mode: ATOMIC（默认）| PARTIAL`（per-op 结果、已成功不回滚、request_id 覆盖整批）。
+
+**默认值整包采纳**：A2（roles_sig 派生复用 page-token 模式 + 双密钥轮换窗口 + 短时效签名）、A4（先全量回填 `_acl` 再开 policy）、A5（接受掩码缓存 5s TTL 窗口并文档化）、A6（运维查询走 `tw_system`，runbook 化）、B2（outbox 先不分区，吞吐超阈值再按 project HASH）、B3（Stream 每副本一消费组；XACK 为主位点，保留 published_at 回写统一清理与重放）、B4（RESYNC 帧格式与 `data_ref=GET documents/{id}?version=N` 后置到阶段④设计稿）、C4（vector 维度变更"新列+回填+切流"为标准模板）、D2（锁定 pgvector ≥0.8 iterative scan，ef_search 首期不暴露）、G4（表内分区=最后治理手段，默认 none，阈值告警触发建议）、H2（`_acl` ≤64 ACE；数组 ≤1000 元素；每集合列数软限 200；object 嵌套 ≤8 层）、H3（list TTL 缓存不做）。
+
+**维持"随对应阶段设计稿细化"**：A3、B4 细节、C1-C3/C5、D3、F1-F4、G2-G3、I1-I3。
