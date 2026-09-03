@@ -39,9 +39,11 @@ type Documents interface {
 	DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts DeleteOptions, principal Principal) error
 	ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q Query, principal Principal) (*DocumentList, error)
 	CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q Query, principal Principal) (int64, error)
-	// SumDocumentField sums a numeric column across a collection (e.g. file sizes
-	// for storage usage), scoped by the caller's read permissions.
-	SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal Principal) (int64, error)
+	// AggregateDocuments 在权限过滤后的可见行集上执行聚合（redesign §4.1 +
+	// §11-J D1：过滤链先于 GROUP BY，不可见行不进聚合、键不泄露）。
+	// 聚合目标必须是声明的数值属性（integer/float）；groupBy 为可选单键，
+	// 须为已声明属性。空集：sum=0，avg/min/max 无值（Value=nil）。
+	AggregateDocuments(ctx context.Context, projectID, databaseID, collectionID string, q Query, aggs []AggregateSpec, groupBy string, principal Principal) ([]AggregateGroup, error)
 	BulkUpdateDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, data map[string]any, perms []Permission, principal Principal) (int64, error)
 	BulkDeleteDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, principal Principal) (int64, error)
 	// ExecuteTransactions 在单事务内顺序执行异构 op 批（事务内核 Phase 1，

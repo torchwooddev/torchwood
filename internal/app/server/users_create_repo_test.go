@@ -184,8 +184,8 @@ func (usersCollectionGuardDocDB) DeleteDocument(context.Context, string, string,
 func (usersCollectionGuardDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (usersCollectionGuardDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {
-	return 0, nil
+func (usersCollectionGuardDocDB) AggregateDocuments(context.Context, string, string, string, databases.Query, []databases.AggregateSpec, string, databases.Principal) ([]databases.AggregateGroup, error) {
+	return nil, nil
 }
 func (usersCollectionGuardDocDB) BulkUpdateDocuments(context.Context, string, string, string, []string, map[string]any, []databases.Permission, databases.Principal) (int64, error) {
 	return 0, nil

@@ -233,8 +233,8 @@ func (m *memDocDB) CreateIndex(context.Context, string, string, string, database
 	return nil
 }
 func (m *memDocDB) DeleteIndex(context.Context, string, string, string, string) error { return nil }
-func (m *memDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {
-	return 0, nil
+func (m *memDocDB) AggregateDocuments(context.Context, string, string, string, databases.Query, []databases.AggregateSpec, string, databases.Principal) ([]databases.AggregateGroup, error) {
+	return nil, nil
 }
 func (m *memDocDB) EnsureCatalog(context.Context, string) error { return nil }
 

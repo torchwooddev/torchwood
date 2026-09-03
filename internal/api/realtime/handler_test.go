@@ -171,8 +171,8 @@ func (f *fakeDocDB) ListDocuments(ctx context.Context, projectID, databaseID, co
 func (f *fakeDocDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (f *fakeDocDB) SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal databases.Principal) (int64, error) {
-	return 0, nil
+func (f *fakeDocDB) AggregateDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, aggs []databases.AggregateSpec, groupBy string, principal databases.Principal) ([]databases.AggregateGroup, error) {
+	return nil, nil
 }
 func (f *fakeDocDB) BulkUpdateDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, data map[string]any, perms []databases.Permission, principal databases.Principal) (int64, error) {
 	return 0, nil

@@ -686,6 +686,90 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.Cou
 	return &serverv1.CountDocumentsResponse{Count: count}, nil
 }
 
+// AggregateDocuments 在权限过滤后的可见行集上聚合（redesign §4.1；D1）。
+func (s *DatabasesService) AggregateDocuments(ctx context.Context, req *serverv1.AggregateDocumentsRequest) (*serverv1.AggregateDocumentsResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
+	q, err := documents.BindListQuery(req.GetQueries(), 0, "", req.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+	if len(req.GetAggregations()) == 0 {
+		return nil, shared.DomainStatusWithViolations(databases.ErrCodeInvalidArgument,
+			shared.FieldViolation{Field: "aggregations", Description: "at least one aggregation is required"})
+	}
+	aggs := make([]databases.AggregateSpec, 0, len(req.GetAggregations()))
+	for i, spec := range req.GetAggregations() {
+		fn, ok := aggregateFunctionFromProto(spec.GetFunction())
+		if !ok {
+			return nil, shared.DomainStatusWithViolations(databases.ErrCodeInvalidArgument,
+				shared.FieldViolation{Field: fmt.Sprintf("aggregations[%d].function", i), Description: fmt.Sprintf("invalid aggregate function %v", spec.GetFunction())})
+		}
+		if spec.GetField() == "" {
+			return nil, shared.DomainStatusWithViolations(databases.ErrCodeInvalidArgument,
+				shared.FieldViolation{Field: fmt.Sprintf("aggregations[%d].field", i), Description: "field is required"})
+		}
+		aggs = append(aggs, databases.AggregateSpec{Function: fn, Field: spec.GetField()})
+	}
+	groups, err := s.databases.AggregateDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q, aggs, req.GetGroupBy(), dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out := &serverv1.AggregateDocumentsResponse{}
+	for _, g := range groups {
+		pg := &serverv1.AggregateGroup{}
+		if g.GroupKey != nil {
+			pg.GroupKey = g.GroupKey
+		}
+		for _, v := range g.Values {
+			pv := &serverv1.AggregateValue{
+				Function: aggregateFunctionToProto(v.Function),
+				Field:    v.Field,
+			}
+			if v.Value != nil {
+				fv := *v.Value
+				pv.Value = &fv
+			}
+			pg.Values = append(pg.Values, pv)
+		}
+		out.Groups = append(out.Groups, pg)
+	}
+	return out, nil
+}
+
+func aggregateFunctionFromProto(fn serverv1.AggregateFunction) (databases.AggregateFunction, bool) {
+	switch fn {
+	case serverv1.AggregateFunction_AGGREGATE_FUNCTION_SUM:
+		return databases.AggregateSum, true
+	case serverv1.AggregateFunction_AGGREGATE_FUNCTION_AVG:
+		return databases.AggregateAvg, true
+	case serverv1.AggregateFunction_AGGREGATE_FUNCTION_MIN:
+		return databases.AggregateMin, true
+	case serverv1.AggregateFunction_AGGREGATE_FUNCTION_MAX:
+		return databases.AggregateMax, true
+	default:
+		return "", false
+	}
+}
+
+func aggregateFunctionToProto(fn databases.AggregateFunction) serverv1.AggregateFunction {
+	switch fn {
+	case databases.AggregateSum:
+		return serverv1.AggregateFunction_AGGREGATE_FUNCTION_SUM
+	case databases.AggregateAvg:
+		return serverv1.AggregateFunction_AGGREGATE_FUNCTION_AVG
+	case databases.AggregateMin:
+		return serverv1.AggregateFunction_AGGREGATE_FUNCTION_MIN
+	case databases.AggregateMax:
+		return serverv1.AggregateFunction_AGGREGATE_FUNCTION_MAX
+	default:
+		return serverv1.AggregateFunction_AGGREGATE_FUNCTION_UNSPECIFIED
+	}
+}
+
 func mapDatabase(c *databases.Database) *serverv1.Database {
 	if c == nil {
 		return nil

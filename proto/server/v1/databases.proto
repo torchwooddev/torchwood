@@ -164,6 +164,15 @@ service DatabasesService {
     };
   }
 
+  // AggregateDocuments 在权限过滤后的可见行集上执行聚合（redesign §4.1 +
+  // §10.5 P1；§11-J D1：不可见行不进聚合、group 键不泄露）。count 已有独立
+  // RPC（:count），不并入。聚合目标须为声明的数值属性（integer/float）；
+  // 空集语义 sum=0、avg/min/max 无值；过滤算子与 ListDocuments 同语法，
+  // 排序/分页算子无意义（整集聚合）。
+  rpc AggregateDocuments(AggregateDocumentsRequest) returns (AggregateDocumentsResponse) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:aggregate", body: "*" };
+  }
+
   rpc BulkUpdateDocuments(BulkUpdateDocumentsRequest) returns (BulkDocumentsResponse) {
     option (google.api.http) = { patch: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkUpdate", body: "*" };
   }
@@ -391,6 +400,55 @@ message CountDocumentsRequest {
 
 message CountDocumentsResponse {
   int64 count = 1;
+}
+
+// AggregateDocuments：sum/avg/min/max + 可选单键 group_by（redesign §4.1 +
+// §11-J D1；count 已有独立 RPC 不并入）。
+
+enum AggregateFunction {
+  AGGREGATE_FUNCTION_UNSPECIFIED = 0;
+  AGGREGATE_FUNCTION_SUM = 1;
+  AGGREGATE_FUNCTION_AVG = 2;
+  AGGREGATE_FUNCTION_MIN = 3;
+  AGGREGATE_FUNCTION_MAX = 4;
+}
+
+// 单个聚合项：field 须为集合声明的数值属性（integer/float）。
+message AggregateSpec {
+  AggregateFunction function = 1;
+  string field = 2;
+}
+
+message AggregateDocumentsRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  // 过滤（与 ListDocuments 同语法）；排序/分页算子无意义（整集聚合）。
+  repeated string queries = 3;
+  // 至少一项；UNSPECIFIED → InvalidArgument。
+  repeated AggregateSpec aggregations = 4;
+  // 可选单键 group_by：须为已声明属性；键按 text 序列化且只来自可见行
+  //（D1：不可见行的键不会出现）。
+  optional string group_by = 5;
+  // Typed AST filter. Dual-stack with queries; both set and conflicting → InvalidArgument.
+  optional torchwood.shared.v1.Query query = 6;
+}
+
+// 单个聚合值：value 未设置 = 空集下的 avg/min/max（无值；sum 空集恒 0）。
+message AggregateValue {
+  AggregateFunction function = 1;
+  string field = 2;
+  optional double value = 3;
+}
+
+// 一个聚合组：无 group_by 时恰一组且 group_key 未设置；group_by 属性未设置
+// 的行归入 group_key 未设置的组。
+message AggregateGroup {
+  optional string group_key = 1;
+  repeated AggregateValue values = 2;
+}
+
+message AggregateDocumentsResponse {
+  repeated AggregateGroup groups = 1;
 }
 
 message BulkUpdateDocumentsRequest {

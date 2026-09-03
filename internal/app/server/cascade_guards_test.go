@@ -201,8 +201,8 @@ func (f *fakeDocDB) UpsertDocument(context.Context, string, string, string, data
 func (f *fakeDocDB) CountDocuments(context.Context, string, string, string, databases.Query, databases.Principal) (int64, error) {
 	return 0, nil
 }
-func (f *fakeDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {
-	return 0, nil
+func (f *fakeDocDB) AggregateDocuments(context.Context, string, string, string, databases.Query, []databases.AggregateSpec, string, databases.Principal) ([]databases.AggregateGroup, error) {
+	return nil, nil
 }
 func (f *fakeDocDB) BulkUpdateDocuments(context.Context, string, string, string, []string, map[string]any, []databases.Permission, databases.Principal) (int64, error) {
 	return 0, nil

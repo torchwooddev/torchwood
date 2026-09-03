@@ -240,8 +240,8 @@ func (s *stubDocDB) CreateIndex(context.Context, string, string, string, databas
 	return nil
 }
 func (s *stubDocDB) DeleteIndex(context.Context, string, string, string, string) error { return nil }
-func (s *stubDocDB) SumDocumentField(context.Context, string, string, string, string, databases.Principal) (int64, error) {
-	return 0, nil
+func (s *stubDocDB) AggregateDocuments(context.Context, string, string, string, databases.Query, []databases.AggregateSpec, string, databases.Principal) ([]databases.AggregateGroup, error) {
+	return nil, nil
 }
 func (s *stubDocDB) BulkUpdateDocuments(context.Context, string, string, string, []string, map[string]any, []databases.Permission, databases.Principal) (int64, error) {
 	return 0, nil

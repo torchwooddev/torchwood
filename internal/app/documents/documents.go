@@ -292,6 +292,25 @@ func (d *Documents) CountDocuments(
 	return count, shared.MapDocumentDBError(err)
 }
 
+// AggregateDocuments 聚合透传（redesign §4.1 + §10.5 P1）：权限过滤在
+// infra 的 listPermissionFilter 链内完成（D1：聚合一律在可见行集上执行）；
+// 数值/group_by 校验与空集语义见端口注释。
+func (d *Documents) AggregateDocuments(
+	ctx context.Context,
+	projectID, databaseID, collectionID string,
+	q databases.Query,
+	aggs []databases.AggregateSpec,
+	groupBy string,
+	principal databases.Principal,
+) ([]databases.AggregateGroup, error) {
+	ast, err := ResolveQuery(q)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := d.docDB.AggregateDocuments(ctx, projectID, databaseID, collectionID, databases.Query{AST: ast}, aggs, groupBy, principal)
+	return groups, shared.MapDocumentDBError(err)
+}
+
 func (d *Documents) BulkUpdateDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,

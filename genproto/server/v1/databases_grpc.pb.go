@@ -40,6 +40,7 @@ const (
 	DatabasesService_UpsertDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/UpsertDocument"
 	DatabasesService_DeleteDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/DeleteDocument"
 	DatabasesService_CountDocuments_FullMethodName      = "/torchwood.server.v1.DatabasesService/CountDocuments"
+	DatabasesService_AggregateDocuments_FullMethodName  = "/torchwood.server.v1.DatabasesService/AggregateDocuments"
 	DatabasesService_BulkUpdateDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
 	DatabasesService_BulkDeleteDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
 	DatabasesService_ExecuteTransactions_FullMethodName = "/torchwood.server.v1.DatabasesService/ExecuteTransactions"
@@ -69,6 +70,12 @@ type DatabasesServiceClient interface {
 	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	CountDocuments(ctx context.Context, in *CountDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
+	// AggregateDocuments 在权限过滤后的可见行集上执行聚合（redesign §4.1 +
+	// §10.5 P1；§11-J D1：不可见行不进聚合、group 键不泄露）。count 已有独立
+	// RPC（:count），不并入。聚合目标须为声明的数值属性（integer/float）；
+	// 空集语义 sum=0、avg/min/max 无值；过滤算子与 ListDocuments 同语法，
+	// 排序/分页算子无意义（整集聚合）。
+	AggregateDocuments(ctx context.Context, in *AggregateDocumentsRequest, opts ...grpc.CallOption) (*AggregateDocumentsResponse, error)
 	BulkUpdateDocuments(ctx context.Context, in *BulkUpdateDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error)
 	BulkDeleteDocuments(ctx context.Context, in *BulkDeleteDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error)
 	// ExecuteTransactions 在单事务内执行异构 op 批（redesign §4.8 事务内核
@@ -286,6 +293,16 @@ func (c *databasesServiceClient) CountDocuments(ctx context.Context, in *CountDo
 	return out, nil
 }
 
+func (c *databasesServiceClient) AggregateDocuments(ctx context.Context, in *AggregateDocumentsRequest, opts ...grpc.CallOption) (*AggregateDocumentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AggregateDocumentsResponse)
+	err := c.cc.Invoke(ctx, DatabasesService_AggregateDocuments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *databasesServiceClient) BulkUpdateDocuments(ctx context.Context, in *BulkUpdateDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BulkDocumentsResponse)
@@ -340,6 +357,12 @@ type DatabasesServiceServer interface {
 	UpsertDocument(context.Context, *UpsertDocumentRequest) (*v1.Document, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error)
 	CountDocuments(context.Context, *CountDocumentsRequest) (*CountDocumentsResponse, error)
+	// AggregateDocuments 在权限过滤后的可见行集上执行聚合（redesign §4.1 +
+	// §10.5 P1；§11-J D1：不可见行不进聚合、group 键不泄露）。count 已有独立
+	// RPC（:count），不并入。聚合目标须为声明的数值属性（integer/float）；
+	// 空集语义 sum=0、avg/min/max 无值；过滤算子与 ListDocuments 同语法，
+	// 排序/分页算子无意义（整集聚合）。
+	AggregateDocuments(context.Context, *AggregateDocumentsRequest) (*AggregateDocumentsResponse, error)
 	BulkUpdateDocuments(context.Context, *BulkUpdateDocumentsRequest) (*BulkDocumentsResponse, error)
 	BulkDeleteDocuments(context.Context, *BulkDeleteDocumentsRequest) (*BulkDocumentsResponse, error)
 	// ExecuteTransactions 在单事务内执行异构 op 批（redesign §4.8 事务内核
@@ -416,6 +439,9 @@ func (UnimplementedDatabasesServiceServer) DeleteDocument(context.Context, *Dele
 }
 func (UnimplementedDatabasesServiceServer) CountDocuments(context.Context, *CountDocumentsRequest) (*CountDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CountDocuments not implemented")
+}
+func (UnimplementedDatabasesServiceServer) AggregateDocuments(context.Context, *AggregateDocumentsRequest) (*AggregateDocumentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AggregateDocuments not implemented")
 }
 func (UnimplementedDatabasesServiceServer) BulkUpdateDocuments(context.Context, *BulkUpdateDocumentsRequest) (*BulkDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BulkUpdateDocuments not implemented")
@@ -807,6 +833,24 @@ func _DatabasesService_CountDocuments_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabasesService_AggregateDocuments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AggregateDocumentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).AggregateDocuments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_AggregateDocuments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).AggregateDocuments(ctx, req.(*AggregateDocumentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DatabasesService_BulkUpdateDocuments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BulkUpdateDocumentsRequest)
 	if err := dec(in); err != nil {
@@ -947,6 +991,10 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CountDocuments",
 			Handler:    _DatabasesService_CountDocuments_Handler,
+		},
+		{
+			MethodName: "AggregateDocuments",
+			Handler:    _DatabasesService_AggregateDocuments_Handler,
 		},
 		{
 			MethodName: "BulkUpdateDocuments",

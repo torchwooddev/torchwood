@@ -336,40 +336,64 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	return total, p.mapError(err)
 }
 
-// SumDocumentField 对集合内某数值列求和（如 files.size 用于 storage usage），
-// 非 System 主体按 read 权限过滤（仅统计可见文档）。field 白名单校验防注入。
-func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal databases.Principal) (int64, error) {
-	if !validColumnName(field) {
-		return 0, p.mapError(status.Error(codes.InvalidArgument, "invalid field name"))
+// AggregateDocuments 在权限过滤后的可见行集上执行 sum/avg/min/max（可选
+// 单键 group_by）。D1（§11-J 已裁决）：listPermissionFilter 的过滤链先于
+// GROUP BY——不可见行的值不进聚合、group 键不泄露。聚合目标必须为声明的
+// 数值属性（integer/float，System 主体一视同仁，防拼入任意列名）；group_by
+// 须为已声明属性。空集语义：sum=0（COALESCE）、avg/min/max 无值（Value=nil）。
+func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, aggs []databases.AggregateSpec, groupBy string, principal databases.Principal) ([]databases.AggregateGroup, error) {
+	if len(aggs) == 0 {
+		return nil, p.mapError(status.Error(codes.InvalidArgument, "aggregations is required"))
 	}
+	for _, agg := range aggs {
+		switch agg.Function {
+		case databases.AggregateSum, databases.AggregateAvg, databases.AggregateMin, databases.AggregateMax:
+		default:
+			return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("invalid aggregate function %q", agg.Function)))
+		}
+		if !validColumnName(agg.Field) {
+			return nil, p.mapError(status.Error(codes.InvalidArgument, "invalid aggregate field name"))
+		}
+	}
+	if groupBy != "" && !validColumnName(groupBy) {
+		return nil, p.mapError(status.Error(codes.InvalidArgument, "invalid group_by field name"))
+	}
+
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
-		return 0, p.mapError(err)
+		return nil, p.mapError(err)
 	}
 	tbl := tableName(schema, collectionID)
 
-	// 白名单校验：字段必须 ∈ 集合声明属性且为数值类型（integer/float），
-	// System 与普通主体一视同仁（防拼入任意列名）。
+	// 白名单校验（与旧 SumDocumentField 同纪律）：聚合目标 ∈ 声明属性且为
+	// integer/float；group_by ∈ 声明属性（任意类型，键按 text 序列化）。
 	coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
 	if err != nil {
-		return 0, p.mapError(err)
+		return nil, p.mapError(err)
 	}
 	if coll == nil {
-		return 0, p.mapError(status.Error(codes.NotFound, "collection not found"))
+		return nil, p.mapError(status.Error(codes.NotFound, "collection not found"))
 	}
-	allowed := false
+	attrs := map[string]string{}
 	for _, attr := range coll.Attributes {
-		if attr.Key != field {
-			continue
-		}
-		switch strings.ToLower(attr.Type) {
-		case "integer", "float":
-			allowed = true
-		}
-		break
+		attrs[attr.Key] = strings.ToLower(attr.Type)
 	}
-	if !allowed {
-		return 0, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("field %s is not a numeric attribute", field)))
+	for _, agg := range aggs {
+		switch attrs[agg.Field] {
+		case "integer", "float":
+		default:
+			return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("field %s is not a numeric attribute", agg.Field)))
+		}
+	}
+	if groupBy != "" {
+		if _, ok := attrs[groupBy]; !ok {
+			return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("group_by field %s is not a declared attribute", groupBy)))
+		}
+	}
+
+	parsed, err := astFrom(q)
+	if err != nil {
+		return nil, p.mapError(err)
 	}
 
 	whereParts := []string{"d._tenant = ?"}
@@ -377,18 +401,97 @@ func (p *postgresDocumentDB) SumDocumentField(ctx context.Context, projectID, da
 	if !principal.BypassesDocumentACL() {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
 		if err != nil {
-			return 0, p.mapError(err)
+			return nil, p.mapError(err)
 		}
 		if permWhere != "" {
 			whereParts = append(whereParts, permWhere)
 			args = append(args, permArgs...)
 		}
 	}
+	// 聚合只消费过滤算子；排序/分页算子无意义（与 CountDocuments 同纪律，
+	// 排序在 buildAppwriteQuery 出口校验后丢弃）。
+	filterWhere, filterArgs, _, err := buildAppwriteQuery(parsed)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+	if filterWhere != "" {
+		whereParts = append(whereParts, filterWhere)
+		args = append(args, filterArgs...)
+	}
 
-	var total int64
-	sql := fmt.Sprintf(`SELECT COALESCE(SUM(d.%s), 0) FROM %s d WHERE %s`, quoteIdent(field), tbl, strings.Join(whereParts, " AND "))
-	err = p.conn(ctx).QueryRowContext(ctx, sql, args...).Scan(&total)
-	return total, p.mapError(err)
+	selects := make([]string, 0, len(aggs)+1)
+	if groupBy != "" {
+		selects = append(selects, fmt.Sprintf(`d.%s::text AS __group_key`, quoteIdent(groupBy)))
+	}
+	for _, agg := range aggs {
+		fn := strings.ToUpper(string(agg.Function))
+		// sum 空集（全 NULL）定义为 0；avg/min/max 空集保持 NULL（Value=nil）。
+		expr := fmt.Sprintf(`%s(d.%s)::float8`, fn, quoteIdent(agg.Field))
+		if agg.Function == databases.AggregateSum {
+			expr = fmt.Sprintf(`COALESCE(%s(d.%s), 0)::float8`, fn, quoteIdent(agg.Field))
+		}
+		selects = append(selects, expr)
+	}
+	querySQL := fmt.Sprintf(`SELECT %s FROM %s d WHERE %s`, strings.Join(selects, ", "), tbl, strings.Join(whereParts, " AND "))
+	if groupBy != "" {
+		querySQL += fmt.Sprintf(` GROUP BY d.%s ORDER BY d.%s`, quoteIdent(groupBy), quoteIdent(groupBy))
+	}
+
+	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	scanVals := make([]any, 0, len(aggs)+1)
+	var groupKey sql.NullString
+	if groupBy != "" {
+		scanVals = append(scanVals, &groupKey)
+	}
+	values := make([]sql.NullFloat64, len(aggs))
+	for i := range values {
+		scanVals = append(scanVals, &values[i])
+	}
+
+	var groups []databases.AggregateGroup
+	for rows.Next() {
+		if err := rows.Scan(scanVals...); err != nil {
+			return nil, p.mapError(err)
+		}
+		g := databases.AggregateGroup{Values: make([]databases.AggregateValue, 0, len(aggs))}
+		if groupBy != "" {
+			if groupKey.Valid {
+				key := groupKey.String
+				g.GroupKey = &key
+			}
+		}
+		for i, agg := range aggs {
+			v := databases.AggregateValue{Function: agg.Function, Field: agg.Field}
+			if values[i].Valid {
+				fv := values[i].Float64
+				v.Value = &fv
+			}
+			g.Values = append(g.Values, v)
+		}
+		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, p.mapError(err)
+	}
+	if groups == nil && groupBy == "" {
+		// 无 group_by 时空集也返回一组（sum=0 / avg=min=max=nil）。
+		g := databases.AggregateGroup{Values: make([]databases.AggregateValue, 0, len(aggs))}
+		for _, agg := range aggs {
+			v := databases.AggregateValue{Function: agg.Function, Field: agg.Field}
+			if agg.Function == databases.AggregateSum {
+				zero := 0.0
+				v.Value = &zero
+			}
+			g.Values = append(g.Values, v)
+		}
+		groups = append(groups, g)
+	}
+	return groups, nil
 }
 
 // validColumnName 限制字段名为安全的小写标识符（防 SQL 注入）。

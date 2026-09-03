@@ -875,6 +875,51 @@
         ]
       }
     },
+    "/v1/server/databases/{database_id}/collections/{collection_id}/documents:aggregate": {
+      "post": {
+        "summary": "AggregateDocuments 在权限过滤后的可见行集上执行聚合（redesign §4.1 +\n§10.5 P1；§11-J D1：不可见行不进聚合、group 键不泄露）。count 已有独立\nRPC（:count），不并入。聚合目标须为声明的数值属性（integer/float）；\n空集语义 sum=0、avg/min/max 无值；过滤算子与 ListDocuments 同语法，\n排序/分页算子无意义（整集聚合）。",
+        "operationId": "DatabasesService_AggregateDocuments",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AggregateDocumentsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/v1ErrorResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "database_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DatabasesServiceAggregateDocumentsBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
     "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete": {
       "post": {
         "operationId": "DatabasesService_BulkDeleteDocuments",
@@ -1493,6 +1538,34 @@
     }
   },
   "definitions": {
+    "DatabasesServiceAggregateDocumentsBody": {
+      "type": "object",
+      "properties": {
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "过滤（与 ListDocuments 同语法）；排序/分页算子无意义（整集聚合）。"
+        },
+        "aggregations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1AggregateSpec"
+          },
+          "title": "至少一项；UNSPECIFIED → InvalidArgument。"
+        },
+        "group_by": {
+          "type": "string",
+          "title": "可选单键 group_by：须为已声明属性；键按 text 序列化且只来自可见行\n（D1：不可见行的键不会出现）。"
+        },
+        "query": {
+          "$ref": "#/definitions/v1Query",
+          "description": "Typed AST filter. Dual-stack with queries; both set and conflicting → InvalidArgument."
+        }
+      }
+    },
     "DatabasesServiceBulkDeleteDocumentsBody": {
       "type": "object",
       "properties": {
@@ -1759,6 +1832,73 @@
           "$ref": "#/definitions/v1ListResponseMeta"
         }
       }
+    },
+    "v1AggregateDocumentsResponse": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1AggregateGroup"
+          }
+        }
+      }
+    },
+    "v1AggregateFunction": {
+      "type": "string",
+      "enum": [
+        "AGGREGATE_FUNCTION_UNSPECIFIED",
+        "AGGREGATE_FUNCTION_SUM",
+        "AGGREGATE_FUNCTION_AVG",
+        "AGGREGATE_FUNCTION_MIN",
+        "AGGREGATE_FUNCTION_MAX"
+      ],
+      "default": "AGGREGATE_FUNCTION_UNSPECIFIED"
+    },
+    "v1AggregateGroup": {
+      "type": "object",
+      "properties": {
+        "group_key": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1AggregateValue"
+          }
+        }
+      },
+      "title": "一个聚合组：无 group_by 时恰一组且 group_key 未设置；group_by 属性未设置\n的行归入 group_key 未设置的组。"
+    },
+    "v1AggregateSpec": {
+      "type": "object",
+      "properties": {
+        "function": {
+          "$ref": "#/definitions/v1AggregateFunction"
+        },
+        "field": {
+          "type": "string"
+        }
+      },
+      "title": "单个聚合项：field 须为集合声明的数值属性（integer/float）。"
+    },
+    "v1AggregateValue": {
+      "type": "object",
+      "properties": {
+        "function": {
+          "$ref": "#/definitions/v1AggregateFunction"
+        },
+        "field": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "title": "单个聚合值：value 未设置 = 空集下的 avg/min/max（无值；sum 空集恒 0）。"
     },
     "v1Attribute": {
       "type": "object",

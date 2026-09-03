@@ -573,6 +573,22 @@ func (d *Databases) CountDocuments(
 	return d.documentsCore().CountDocuments(ctx, projectID, databaseID, collectionID, q, principal)
 }
 
+// AggregateDocuments 聚合入口（redesign §4.1 + §10.5 P1）：读语义守卫与
+// CountDocuments 同链；权限过滤聚合见 infra（D1）。
+func (d *Databases) AggregateDocuments(
+	ctx context.Context,
+	projectID, databaseID, collectionID string,
+	q databases.Query,
+	aggs []databases.AggregateSpec,
+	groupBy string,
+	principal databases.Principal,
+) ([]databases.AggregateGroup, error) {
+	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
+		return nil, err
+	}
+	return d.documentsCore().AggregateDocuments(ctx, projectID, databaseID, collectionID, q, aggs, groupBy, principal)
+}
+
 func (d *Databases) MapAttributeType(t string) string {
 	return strings.ToLower(t)
 }

@@ -310,6 +310,22 @@ func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID stri
 	return resp.Count, nil
 }
 
+// AggregateDocuments 在权限过滤后的可见行集上聚合（sum/avg/min/max +
+// 可选单键 groupBy；groupBy 空 = 不分组）。queries 为查询 DSL 过滤
+// （与 ListDocuments 同语法；排序/分页算子无意义）。
+func (d *DatabasesService) AggregateDocuments(ctx context.Context, collectionID string, queries []string, aggregations []*serverv1.AggregateSpec, groupBy string) (*serverv1.AggregateDocumentsResponse, error) {
+	req := &serverv1.AggregateDocumentsRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		Queries:      queries,
+		Aggregations: aggregations,
+	}
+	if groupBy != "" {
+		req.GroupBy = &groupBy
+	}
+	return d.c.databases.AggregateDocuments(ctx, req)
+}
+
 // BulkUpdateDocuments 批量更新文档，返回受影响数量。
 func (d *DatabasesService) BulkUpdateDocuments(ctx context.Context, collectionID string, documentIDs []string, data map[string]any, permissions []string) (*serverv1.BulkDocumentsResponse, error) {
 	st, err := toStruct(data)
