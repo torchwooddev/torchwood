@@ -35,8 +35,8 @@ Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Func
 6. **权限语义对齐**：SQL 过滤谓词（`listPermissionFilter`）与内存判定（`AllowsDocumentAccess`）必须逐语义一致，改动需同步两侧与测试（`permissions_test.go`）。
 7. **事件语义**：at-least-once、不保证顺序；客户端按 `event_id` 去重、按 `version` 判序；出站帧永不含 ACL 快照。
 8. **默认私有**：`DefaultCollectionPermissions` 不含 `read:any`；空 ACE 文档按种子规则私有化（owner/创建者角色/`__private__`）。
-9. **标识长度**：`project.id/database.id ≤ 28`（schema 名 ≤60 字节，`pkg/ident`）；`collectionID`/属性 key/索引 ID 当前**无长度上限**（PG 63 字节截断风险为已知未修问题，索引命名 `idx_<coll>_<id>` 同面）。
-10. **查询双栈互斥**：`queries`（DSL 字符串）与 `query`（typed AST）携带冲突语义即 `InvalidArgument`；两栈算子集尚不对齐（DSL 无 `in`/`or`，AST 无 `between`/`isNull` 等）。
+9. **标识长度**：`project.id/database.id ≤ 28`（schema 名 ≤60 字节，`pkg/ident`）；`collectionID ≤40`、属性 key ≤63、索引 ID ≤40（app 层入口），叠加索引名拼接校验 `idx_<coll>_<id>` ≤63（infra 二道防线：表/列名 ≤63 + 组合校验——静态段上限封不死组合长度）。PG 63 字节截断类缺陷已机制性封死；redesign 阶段②逻辑/物理名解耦后上限将收紧（collectionID ≤36）并随物理名分配退役。
+10. **查询双栈互斥**：`queries`（DSL 字符串）与 `query`（typed AST）携带冲突语义即 `InvalidArgument`；两栈算子集尚不对齐（DSL 无 `or`/`and`，AST 无 `between`/`isNull` 等；`in` 两栈均已支持）。跨 filter 绑定参数累计 ≤2000（封死 PG 65535 语句参数上限）。
 
 ## 1 三类库
 
@@ -76,7 +76,7 @@ conn.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(s
 
 ## 4 静态表 vs 动态表
 
-**静态表**（`tw_<project>`，`internal/infra/bun/model/*.go`）：`users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files`，`bun` 模型，无 `_id`/`_perms`/`_version`，经 Account / Groups / Storage 专用 RPC 读写。`SystemCollectionIDs` 仍在 `internal/domain/databases/system_collections.go` 仅用于 DocumentDB 跳过 `_version`/写保护与测试重建。
+**静态表**（`tw_<project>`，`internal/infra/bun/model/*.go`）：`users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files`，`bun` 模型，无 `_id`/`_perms`/`_version`，经 Account / Groups / Storage 专用 RPC 读写。`SystemCollectionIDs` 仍在 `internal/domain/databases/system_collections.go` 仅用于 DocumentDB 跳过 `_version`/写保护与测试重建。`users.DocumentData()` 投影**不含 `password_hash`**（密码校验走 `usersRepo` 的 `User.PasswordHash`）。
 
 **动态表**（`tw_<project>_<db>.<collection>`，每集合一张真实表）：
 
@@ -104,10 +104,11 @@ CREATE TABLE tw_shop_app._perms (
 
 | 操作 | SQL |
 |---|---|
-| `CreateAttribute` | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + 写 `document_attributes`，`required→NOT NULL`、`default→DEFAULT` |
+| `CreateAttribute` | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + 写 `document_attributes`（含 `default_value`），`required→NOT NULL`、`default→DEFAULT` |
 | `DeleteAttribute` | `ALTER TABLE ... DROP COLUMN IF EXISTS` + 同事务清理依赖该列的索引（`postgres_permissions.go:DeleteAttribute`） |
-| `CreateIndex` | `CREATE INDEX idx_<coll>_<idx> ON <tbl>(cols)` / `UNIQUE` / `USING gin(to_tsvector('simple', col))` + 写 `document_indexes` |
+| `CreateIndex` | `CREATE INDEX idx_<coll>_<idx> ON <tbl>(cols)` / `UNIQUE` / `USING gin(to_tsvector('simple', col))` + 写 `document_indexes`；索引名拼接 ≤63 校验（`validateIndexNameLen`） |
 | `DeleteIndex` | `DROP INDEX IF EXISTS` + 删目录（`RunInTx` 原子，`DeleteIndex`） |
+| `UpdateCollection` | 权限替换与字段更新同一事务，统一刷 `updated_at`（空 patch no-op） |
 
 类型映射（`pgTypeFor`）：`string/email/url→VARCHAR(n)/TEXT`、`integer→BIGINT`、`float→DOUBLE PRECISION`、`boolean→BOOLEAN`、`datetime→TIMESTAMPTZ`、`json→JSONB`。
 
@@ -117,19 +118,19 @@ CREATE TABLE tw_shop_app._perms (
 
 | 类 | 算子 | 示例 | SQL |
 |---|---|---|---|
-| 过滤 | `equal`/`notEqual` | `equal("status","a")` / `equal("tag",["a","b"])` | `=` / `IN` / `NOT IN` |
+| 过滤 | `equal`/`notEqual`/`in` | `equal("status","a")` / `in("status",["a","b"])` | `=` / `IN` / `NOT IN` |
 |  | `lessThan`/`greaterThan`/`between` | `between("age",18,60)` | `<`/`>`/`BETWEEN ? AND ?` |
 |  | `contains`/`startsWith`/`endsWith` | `contains("name","jo")` | `ILIKE '%v%' ESCAPE '\'`（`escapeLikePattern` 转义 `%_\'） |
 |  | `search` | `search("title","hello")` | `to_tsvector('simple',col::text) @@ plainto_tsquery('simple',?)` |
 |  | `isNull`/`isNotNull` | `isNull("deleted_at")` | `IS NULL` |
-| 排序 | `orderAsc`/`orderDesc` | `orderDesc("$createdAt")` | `ORDER BY d."field" ASC/DESC, d._created_at DESC`（`_id` tiebreaker） |
+| 排序 | `orderAsc`/`orderDesc` | `orderDesc("$createdAt")` | `ORDER BY d."field" ASC/DESC, d._id <dir>`（与 cursor 续页路径同构的 `_id` tiebreaker） |
 | 分页 | `limit`/`offset` | `limit(25)` | `LIMIT/OFFSET` |
 |  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（与 `offset` 互斥） |
 | 投影 | `select` | `select(["name","age"])` | 返回后裁剪 `Data` |
 
 别名 ` $id→_id`、`$createdAt→_created_at`、`$updatedAt→_updated_at`、`$version→_version`（`mapQueryField`）。程序化拼串用 `BuildFilter`/`BuildEqual`/`BuildLimit`（自动转义 `"`/`\`）。
 
-**输入上限**（`internal/infra/documentdb/postgres.go:46`）：`queries≤100`、`单串≤4096`、`equal 多值≤1000`、`maxQueryLimit=100`、`maxQueryOffset=10000`（`validateQueryInput`）。
+**输入上限**（`internal/infra/documentdb/postgres.go:46`）：`queries≤100`、`单串≤4096`、`equal 多值≤1000`、**跨 filter 绑定参数累计 ≤2000**（`maxTotalFilterParams`，封死 PG 65535 语句参数上限）、`maxQueryLimit=100`、`maxQueryOffset=10000`（`validateQueryInput` + `buildAppwriteQuery` 出口）。**写入载荷上限**（`internal/app/documents`）：总量 ≤1 MiB、单属性值 ≤256 KiB，超限 `DOCUMENT.TOO_LARGE`（InvalidArgument）。
 
 **编译与校验**（`postgres_query_compile.go`）：`astFrom` 优先 `Query.AST`（`shared.v1.Query` typed 形态，与 `queries` 互斥），否则 `ParseMany`；`validateQueryFields` 白名单=系统列+已声明 attribute，`search` 需命中 `fulltext` 索引，`_version` 缺列返回 `version_column_unavailable`（`InvalidArgument`），系统集合敏感列（`users.password_hash/prefs/labels` 等）黑名单仅按 `IsSystemCollection` 生效（`pkg/query/proto` 双栈见 `docs/review/wave2-e4-query-ast.md`）。
 
@@ -151,7 +152,7 @@ CREATE TABLE tw_shop_app._perms (
 
 ## 8 OCC（`_version`）
 
-用户集合 `BIGINT NOT NULL DEFAULT 1`，`Create/Upsert/Bulk` 盲写但 `_version+1`（`Bulk` `SkipVersion=true` LWW），`Update/Delete` 必填且等于当前值（行锁下比较，`versionColumnReady` 校验 `bigint`），成功 `+1`。错误 `version_required`/`version_mismatch`/`version_column_conflict`（`FailedPrecondition`），`version_column_unavailable`（`InvalidArgument`）。`_version` 可作过滤/排序/投影；系统表无此列。
+用户集合 `BIGINT NOT NULL DEFAULT 1`，`Create/Upsert/Bulk` 盲写但 `_version+1`（`Bulk` `SkipVersion=true` LWW），`Update/Delete` 必填且等于当前值（行锁下比较，`versionColumnReady` 校验 `bigint`），成功 `+1`。错误 `version_required`/`version_mismatch`/`version_column_conflict`（`FailedPrecondition`），`version_column_unavailable`（`InvalidArgument`）。`_version` 可作过滤/排序/投影；系统表无此列。`Upsert` 的 `conflictColumns` 必须无序命中集合一个 unique 索引（非 Bypass 主体前置校验 `validateConflictColumns`，否则 InvalidArgument；Bypass 主体靠 PG 42P10 兜底）。
 
 ## 9 事务与分页一致性
 
@@ -163,7 +164,7 @@ CREATE TABLE tw_shop_app._perms (
 |---|---|
 | `_id` | 文档主键，`idgen.UUID()` 默认，`^[a-zA-Z0-9_.:-]{1,64}$`（`docIDRe`） |
 | `_created_at/_updated_at` | 自动维护（`NOW()`） |
-| `_created_by/_updated_by` | 取 `principal` 首个 `user:<id>`，仅含 `keys` 的主体留空（`buildInsertParts/buildUpdateParts`） |
+| `_created_by/_updated_by` | 归因主体：`user:<id>` 角色存裸 id；API key 主体存 `key:<keyID>`（`databases.Principal.KeyID` 由 `DocPrincipal` 投影，`userIDFromPrincipal`）；其余留空 |
 | 用户输入 `_` 前缀字段 | `buildInsertParts`/`buildUpdateParts` 直接过滤，防伪造系统列 |
 | `documentSecurity/disabled` | 目录层控制：`disabled=true` 时非 `BypassesDocumentACL` 一律 `PermissionDenied`（`ensureCollectionAccessible`） |
 
