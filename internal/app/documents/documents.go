@@ -26,7 +26,8 @@ const (
 
 // ValidateDocumentPayload 校验写入载荷大小（Create/Update/Upsert/Bulk 共用）。
 // Update 是部分更新，总量按本次提交的载荷计（合并后全量在 infra 读回后自然
-// 受单属性与列宽约束）。
+// 受单属性与列宽约束）。超限/不可序列化 → InvalidArgument，违规属性定位走
+// BadRequest violations（redesign §4.1，域码 TOO_LARGE/ATTRIBUTE_UNSERIALIZABLE）。
 func ValidateDocumentPayload(data map[string]any) error {
 	if len(data) == 0 {
 		return nil
@@ -35,17 +36,18 @@ func ValidateDocumentPayload(data map[string]any) error {
 	for k, v := range data {
 		b, err := json.Marshal(v)
 		if err != nil {
-			return status.Errorf(codes.InvalidArgument, "DOCUMENT.ATTRIBUTE_UNSERIALIZABLE: attribute %q: %v", k, err)
+			return shared.DomainStatusWithViolations(databases.ErrCodeAttributeUnserializable,
+				shared.FieldViolation{Field: "data." + k, Description: err.Error()})
 		}
 		if len(b) > MaxAttributePayloadBytes {
-			return status.Errorf(codes.InvalidArgument,
-				"DOCUMENT.TOO_LARGE: attribute %q is %d bytes, exceeds the %d-byte per-attribute limit", k, len(b), MaxAttributePayloadBytes)
+			return shared.DomainStatusWithViolations(databases.ErrCodeTooLarge,
+				shared.FieldViolation{Field: "data." + k, Description: fmt.Sprintf("attribute %q is %d bytes, exceeds the %d-byte per-attribute limit", k, len(b), MaxAttributePayloadBytes)})
 		}
 		total += len(b)
 	}
 	if total > MaxDocumentPayloadBytes {
-		return status.Errorf(codes.InvalidArgument,
-			"DOCUMENT.TOO_LARGE: document payload is %d bytes, exceeds the %d-byte limit", total, MaxDocumentPayloadBytes)
+		return shared.DomainStatusWithViolations(databases.ErrCodeTooLarge,
+			shared.FieldViolation{Field: "data", Description: fmt.Sprintf("document payload is %d bytes, exceeds the %d-byte limit", total, MaxDocumentPayloadBytes)})
 	}
 	return nil
 }

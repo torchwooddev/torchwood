@@ -19,7 +19,9 @@ const (
 	ErrCodeVersionColumnUnavailable = "DOCUMENT.VERSION_COLUMN_UNAVAILABLE"
 	ErrCodeInvalidArgument          = "DOCUMENT.INVALID_ARGUMENT"
 	ErrCodeTooLarge                 = "DOCUMENT.TOO_LARGE"
-	ErrCodeExhausted                = "DOCUMENT.EXHAUSTED"
+	// ATTRIBUTE_UNSERIALIZABLE：载荷属性值不可 JSON 序列化（如通道/函数值）。
+	ErrCodeAttributeUnserializable = "DOCUMENT.ATTRIBUTE_UNSERIALIZABLE"
+	ErrCodeExhausted               = "DOCUMENT.EXHAUSTED"
 	// 写幂等（redesign §4.1/§10.1）：KEY_CONFLICT = 同 key 复用给不同请求
 	//（InvalidArgument）；IN_PROGRESS = 同 key 请求仍在执行、等待超时
 	//（Aborted，可重试）。

@@ -8,6 +8,7 @@ import (
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/torchwooddev/torchwood/internal/app/documents"
 	appserver "github.com/torchwooddev/torchwood/internal/app/server"
+	"github.com/torchwooddev/torchwood/internal/app/shared"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
@@ -555,7 +556,8 @@ func (s *DatabasesService) ExecuteTransactions(ctx context.Context, req *serverv
 	for i, protoOp := range req.GetOps() {
 		op, err := transactionOpFromProto(protoOp)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+			return nil, shared.DomainStatusWithViolations(databases.ErrCodeInvalidArgument,
+				shared.FieldViolation{Field: fmt.Sprintf("ops[%d]", i), Description: err.Error()})
 		}
 		ops = append(ops, op)
 	}

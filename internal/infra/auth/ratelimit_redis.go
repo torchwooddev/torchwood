@@ -6,6 +6,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	domainauth "github.com/torchwooddev/torchwood/internal/domain/auth"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -52,16 +53,28 @@ func (l *RedisRateLimiter) Allow(ctx context.Context, key string, limit int, win
 	return nil
 }
 
-// rateLimited 构造携带 RetryInfo 的 ResourceExhausted；ttl<=0（键已过期/
-// 无 TTL 的异常态）时退化为无 detail 的裸错误。
+// rateLimited 构造携带 RetryInfo + error_id 的 ResourceExhausted；ttl<=0
+// （键已过期/无 TTL 的异常态）时退化为无 detail 的裸错误。error_id 与域码
+// 体系对齐（redesign §4.1）：限流拒绝同样可引用、可归因。
 func rateLimited(ttlSeconds int64) error {
 	if ttlSeconds <= 0 {
-		return status.Error(codes.ResourceExhausted, "rate limit exceeded")
+		return rateLimitedStatus(0)
 	}
-	st, err := status.New(codes.ResourceExhausted, "rate limit exceeded").
-		WithDetails(&errdetails.RetryInfo{
+	return rateLimitedStatus(ttlSeconds)
+}
+
+func rateLimitedStatus(ttlSeconds int64) error {
+	st := status.New(codes.ResourceExhausted, "rate limit exceeded")
+	st, err := st.WithDetails(&errdetails.ErrorInfo{
+		Reason:   "RATE_LIMIT.EXCEEDED",
+		Domain:   "torchwood.platform",
+		Metadata: map[string]string{"retryable": "true", "error_id": idgen.UUID().String()},
+	})
+	if err == nil && ttlSeconds > 0 {
+		st, err = st.WithDetails(&errdetails.RetryInfo{
 			RetryDelay: durationpb.New(time.Duration(ttlSeconds) * time.Second),
 		})
+	}
 	if err != nil {
 		return status.Error(codes.ResourceExhausted, "rate limit exceeded")
 	}

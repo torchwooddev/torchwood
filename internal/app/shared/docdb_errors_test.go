@@ -154,3 +154,99 @@ func TestDomainStatus_RetryableMetadata(t *testing.T) {
 		}
 	}
 }
+
+// TestDomainStatus_ErrorID：DomainStatus 生成处统一注入 error_id（与 infra
+// SQLSTATE 路径对齐），双语并存——message（人读）+ reason/domain_code/
+// retryable/error_id（机器读）。
+func TestDomainStatus_ErrorID(t *testing.T) {
+	for _, code := range []string{
+		databases.ErrCodePermissionDenied,
+		databases.ErrCodeVersionConflict,
+		databases.ErrCodeTooLarge,
+		databases.ErrCodeIdempotencyKeyConflict,
+	} {
+		st := status.Convert(DomainStatus(code))
+		require.Equal(t, code, st.Message()[:len(code)], "消息以域码前缀")
+		var info *errdetails.ErrorInfo
+		for _, d := range st.Details() {
+			if i, ok := d.(*errdetails.ErrorInfo); ok {
+				info = i
+			}
+		}
+		require.NotNil(t, info, code)
+		require.Equal(t, code, info.Reason)
+		require.NotEmpty(t, info.Metadata["error_id"], "%s 应携带 error_id", code)
+		require.Contains(t, info.Metadata, "retryable")
+	}
+
+	// 每次生成独立实例（错误实例唯一标识）。
+	a := status.Convert(DomainStatus(databases.ErrCodeNotFound))
+	b := status.Convert(DomainStatus(databases.ErrCodeNotFound))
+	var idA, idB string
+	for _, d := range a.Details() {
+		if i, ok := d.(*errdetails.ErrorInfo); ok {
+			idA = i.Metadata["error_id"]
+		}
+	}
+	for _, d := range b.Details() {
+		if i, ok := d.(*errdetails.ErrorInfo); ok {
+			idB = i.Metadata["error_id"]
+		}
+	}
+	require.NotEqual(t, idA, idB)
+}
+
+// TestDomainStatusWithViolations：机器可读定位走 BadRequest 标准 detail
+// （field_violations），消息附人类可读描述；ErrorInfo 不再携带 op_index。
+func TestDomainStatusWithViolations(t *testing.T) {
+	err := DomainStatusWithViolations(databases.ErrCodeTooLarge,
+		FieldViolation{Field: "data.blob", Description: "attribute is 300000 bytes"})
+	st := status.Convert(err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+	require.Contains(t, st.Message(), "DOCUMENT.TOO_LARGE")
+	require.Contains(t, st.Message(), "data.blob")
+
+	var br *errdetails.BadRequest
+	var info *errdetails.ErrorInfo
+	for _, d := range st.Details() {
+		switch v := d.(type) {
+		case *errdetails.BadRequest:
+			br = v
+		case *errdetails.ErrorInfo:
+			info = v
+		}
+	}
+	require.NotNil(t, br)
+	require.Len(t, br.FieldViolations, 1)
+	require.Equal(t, "data.blob", br.FieldViolations[0].Field)
+	require.NotNil(t, info)
+	require.Empty(t, info.Metadata["op_index"], "violations 定位不走 ErrorInfo metadata")
+	require.NotEmpty(t, info.Metadata["error_id"])
+}
+
+// TestDomainStatusWithOp：execute-tx 失败 op 定位迁移到 BadRequest 字段路径
+// 形态（ops[3].expected_version），消息保留 "CODE: op[N]: msg" 人类定位。
+func TestDomainStatusWithOp(t *testing.T) {
+	err := DomainStatusWithOp(databases.ErrCodeVersionConflict, 3)
+	st := status.Convert(err)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	require.Contains(t, st.Message(), "op[3]")
+
+	var br *errdetails.BadRequest
+	for _, d := range st.Details() {
+		if v, ok := d.(*errdetails.BadRequest); ok {
+			br = v
+		}
+	}
+	require.NotNil(t, br)
+	require.Len(t, br.FieldViolations, 1)
+	require.Equal(t, "ops[3].expected_version", br.FieldViolations[0].Field)
+
+	// 无子字段映射的域码退化为 "ops[N]" 整体定位。
+	err = DomainStatusWithOp(databases.ErrCodeExhausted, 1)
+	for _, d := range status.Convert(err).Details() {
+		if v, ok := d.(*errdetails.BadRequest); ok {
+			require.Equal(t, "ops[1]", v.FieldViolations[0].Field)
+		}
+	}
+}

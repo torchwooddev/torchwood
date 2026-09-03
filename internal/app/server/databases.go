@@ -606,19 +606,25 @@ func (d *Databases) ExecuteTransactions(
 	callerAllowed := allowPrivilegedGrant(principal)
 	for i := range ops {
 		op := &ops[i]
+		// 守卫失败 → InvalidArgument + BadRequest violations（字段路径
+		// ops[i].<sub>，redesign §4.1 机器可读定位）。
+		violation := func(field, format string, args ...any) error {
+			return shared.DomainStatusWithViolations(databases.ErrCodeInvalidArgument,
+				shared.FieldViolation{Field: fmt.Sprintf("ops[%d].%s", i, field), Description: fmt.Sprintf(format, args...)})
+		}
 		switch op.Type {
 		case databases.TransactionOpCreate, databases.TransactionOpUpdate, databases.TransactionOpUpsert, databases.TransactionOpDelete:
 		default:
-			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid op type %q", i, op.Type)
+			return nil, false, violation("type", "invalid op type %q", op.Type)
 		}
 		if err := d.validateCollectionID(op.CollectionID); err != nil {
-			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid collection id %q", i, op.CollectionID)
+			return nil, false, violation("collection_id", "invalid collection id %q", op.CollectionID)
 		}
 		if databases.IsSystemCollection(projectID, databaseID, op.CollectionID) {
-			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: system collection %q is not writable via transactions", i, op.CollectionID)
+			return nil, false, violation("collection_id", "system collection %q is not writable via transactions", op.CollectionID)
 		}
 		if err := documents.ValidateDocumentPayload(op.Data); err != nil {
-			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+			return nil, false, violation("data", "%v", err)
 		}
 		// create/upsert 空 ACE 种子与单文档 API 同语义（防锁死；update/delete 的
 		// 空 permissions 语义是"不变更文档 ACL"，不种子）。
@@ -631,7 +637,7 @@ func (d *Databases) ExecuteTransactions(
 		}
 		perms, err := applyTxGrant(principal, op.Permissions, opAllowed)
 		if err != nil {
-			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+			return nil, false, violation("permissions", "%v", err)
 		}
 		op.Permissions = perms
 	}

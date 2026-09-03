@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/ident"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 // 域错误码体系（redesign §4.1）：域码稳定 snake_case 静态映射 gRPC code，
@@ -30,6 +32,7 @@ var domainCodeGRPC = map[string]codes.Code{
 	databases.ErrCodeVersionColumnUnavailable: codes.InvalidArgument,
 	databases.ErrCodeInvalidArgument:          codes.InvalidArgument,
 	databases.ErrCodeTooLarge:                 codes.InvalidArgument,
+	databases.ErrCodeAttributeUnserializable:  codes.InvalidArgument,
 	databases.ErrCodeExhausted:                codes.ResourceExhausted,
 	databases.ErrCodeIdempotencyKeyConflict:   codes.InvalidArgument,
 	databases.ErrCodeIdempotencyInProgress:    codes.Aborted,
@@ -48,6 +51,7 @@ var domainCodeMessage = map[string]string{
 	databases.ErrCodeVersionColumnUnavailable: databases.ErrVersionColumnUnavailable.Error(),
 	databases.ErrCodeInvalidArgument:          "invalid argument",
 	databases.ErrCodeTooLarge:                 "document payload too large",
+	databases.ErrCodeAttributeUnserializable:  "attribute is not serializable",
 	databases.ErrCodeExhausted:                "resource exhausted",
 	databases.ErrCodeIdempotencyKeyConflict:   databases.ErrIdempotencyKeyConflict.Error(),
 	databases.ErrCodeIdempotencyInProgress:    "request with the same idempotency key is still in progress",
@@ -55,34 +59,94 @@ var domainCodeMessage = map[string]string{
 
 const errorInfoDomain = "torchwood.document"
 
+// withErrorInfo 为 status 附 ErrorInfo detail（reason / retryable / error_id）。
+// error_id 由 idgen 现场生成，与 infra SQLSTATE 路径（documentdb/errors.go）
+// 对齐——每个错误实例都有可上报的唯一标识（redesign §4.1）。
+func withErrorInfo(st *status.Status, domainCode string, extra map[string]string) *status.Status {
+	md := map[string]string{
+		"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
+		"error_id":  idgen.UUID().String(),
+	}
+	for k, v := range extra {
+		md[k] = v
+	}
+	st, _ = st.WithDetails(&errdetails.ErrorInfo{
+		Reason:   domainCode,
+		Domain:   errorInfoDomain,
+		Metadata: md,
+	})
+	return st
+}
+
 // DomainStatus 构造携带稳定域码的 gRPC status：消息 "CODE: message"，
-// ErrorInfo detail（reason/retryable）。
+// ErrorInfo detail（reason / retryable / error_id）。
 func DomainStatus(domainCode string) error {
 	st := status.New(domainCodeGRPC[domainCode], domainCode+": "+domainCodeMessage[domainCode])
-	st, _ = st.WithDetails(&errdetails.ErrorInfo{
-		Reason: domainCode,
-		Domain: errorInfoDomain,
-		Metadata: map[string]string{
-			"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
-		},
-	})
+	return withErrorInfo(st, domainCode, nil).Err()
+}
+
+// FieldViolation 描述一个违规字段（google.rpc.BadRequest.FieldViolation 的
+// 薄包装；field 为请求字段路径，如 "ops[3].expected_version"、"data.blob"）。
+type FieldViolation struct {
+	Field       string
+	Description string
+}
+
+// DomainStatusWithViolations 构造带 violations 的域码错误：机器可读定位走
+// google.rpc.BadRequest 标准 detail（field_violations），替代散落的 metadata；
+// 人类可读消息附各 violation 的 "field: description"。
+func DomainStatusWithViolations(domainCode string, violations ...FieldViolation) error {
+	msg := domainCode + ": " + domainCodeMessage[domainCode]
+	var fvs []*errdetails.BadRequest_FieldViolation
+	parts := make([]string, 0, len(violations))
+	for _, v := range violations {
+		fvs = append(fvs, &errdetails.BadRequest_FieldViolation{
+			Field:       v.Field,
+			Description: v.Description,
+		})
+		parts = append(parts, v.Field+": "+v.Description)
+	}
+	if len(parts) > 0 {
+		msg += "; " + strings.Join(parts, "; ")
+	}
+	st := status.New(domainCodeGRPC[domainCode], msg)
+	st = withErrorInfo(st, domainCode, nil)
+	if len(fvs) > 0 {
+		st, _ = st.WithDetails(&errdetails.BadRequest{FieldViolations: fvs})
+	}
 	return st.Err()
 }
 
-// DomainStatusWithOp 是 DomainStatus 的批事务变体：消息与 ErrorInfo
-// metadata 均携带失败 op index（ATOMIC 模式 violations 定位）。
+// opViolationField 把失败 op 的域码映射到 violations 字段路径
+// （redesign §4.1：op 定位的机器可读形态，如 "ops[3].expected_version"）。
+func opViolationField(domainCode string, opIndex int) string {
+	sub := ""
+	switch domainCode {
+	case databases.ErrCodeVersionRequired, databases.ErrCodeVersionInvalid,
+		databases.ErrCodeVersionConflict:
+		sub = "expected_version"
+	case databases.ErrCodePermissionDenied:
+		sub = "permissions"
+	case databases.ErrCodeNotFound, databases.ErrCodeAlreadyExists:
+		sub = "document_id"
+	case databases.ErrCodeNoFieldsToUpdate:
+		sub = "data"
+	}
+	if sub == "" {
+		return fmt.Sprintf("ops[%d]", opIndex)
+	}
+	return fmt.Sprintf("ops[%d].%s", opIndex, sub)
+}
+
+// DomainStatusWithOp 是 DomainStatus 的批事务变体：消息保留 "CODE: op[N]: msg"
+// 人类定位；机器可读 op 定位迁移到 BadRequest detail 的字段路径形态
+// （opViolationField，如 ops[3].expected_version），不再走 ErrorInfo metadata。
 func DomainStatusWithOp(domainCode string, opIndex int) error {
-	code := domainCodeGRPC[domainCode]
-	st := status.New(code, fmt.Sprintf("%s: op[%d]: %s", domainCode, opIndex, domainCodeMessage[domainCode]))
-	st, _ = st.WithDetails(&errdetails.ErrorInfo{
-		Reason: domainCode,
-		Domain: errorInfoDomain,
-		Metadata: map[string]string{
-			"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
-			"op_index":  strconv.Itoa(opIndex),
-		},
+	desc := fmt.Sprintf("op[%d]: %s", opIndex, domainCodeMessage[domainCode])
+	return DomainStatusWithViolations(domainCode, FieldViolation{
+		Field:       opViolationField(domainCode, opIndex),
+		Description: desc,
 	})
-	return st.Err()
 }
 
 // UpdateDocumentVersionRequired 校验用户集合 Update/Delete 的 OCC 版本参数
