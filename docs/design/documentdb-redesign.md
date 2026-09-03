@@ -2,7 +2,7 @@
 
 > 状态：**设计提案，未实施；当前为 POC 阶段，无向后兼容义务**。当前架构以 `docs/developer/06-databases.md`（含 §0 子系统定义与边界）为准，勿将本文当作现状描述。
 > POC 含义：proto/API 可直接做破坏性修改（删除字段仍用 `reserved` 登记字段号——字段号卫生习惯而非兼容义务，跳过 `deprecated` 过渡态）；错误码与语义直接替换、不留旧文案映射；无灰度双读、无特性开关；本地/测试数据可随时重建（`docker:purge` + `db:migrate`），不做存量数据迁移。转出 POC（对外发布/有真实存量用户）前需重审本文所有"直接切换"类表述并补迁移方案。
-> 来源：2026-09 两轮深度评审（documentdb 适配器 + 全方案外围）得出的问题清单作为设计输入，三路独立设计（正确性/一致性、开发者体验/API 面、规模/性能/运维）交叉验证后裁决成文；2026-09-03 按维护者决策修订 §3.1（Typed 真实列）并补 §3.2（RLS 语义等价性验证）、§9（竞品路线调研）。
+> 来源：2026-09 两轮深度评审（documentdb 适配器 + 全方案外围）得出的问题清单作为设计输入，三路独立设计（正确性/一致性、开发者体验/API 面、规模/性能/运维）交叉验证后裁决成文；2026-09-03 按维护者决策修订 §3.1（Typed 真实列）并补 §3.2（RLS 语义等价性验证）、§9（竞品路线调研）；同日实施前评审修订 §2-C4（缺省语义分层表述，消除与 §4.1 的矛盾）、§4.8（现状 Bulk 锁纪律注意）、§6（标识符组合校验与错误码格式登记）、§11-A4（POC 空问题注记），包 0 锚点经代码逐项核验全部成立。
 > 相关：`docs/developer/06-databases.md`、`docs/design/schema-naming.md`、`docs/design/v2-events-and-realtime.md`。
 
 ---
@@ -31,7 +31,7 @@
 | C1 | **catalog 全局化** | 单套全局 catalog（含 default/数组/size 全量属性契约），消灭"每项目四表"的漂移与无全局视图；属性定义 JSONB 落库为唯一契约源 |
 | C2 | **keyset-only 分页** | 废弃 offset 双 token 族；cursor 编码完整排序键 + `$id`；ORDER BY 编译器强制追加 `$id` tiebreaker（现状缺陷的机制化修复）；`total` 移出 list，count 独立 API 且带 statement_timeout |
 | C3 | **权限 ACE 内嵌文档行** | `_perms` 独立表退役：文档行内嵌 `_acl text[]` + GIN 索引；与数据行同表同事务天然原子；空数组=无文档级 ACE 回退集合级（B1 语义不变） |
-| C4 | **OCC 显式三态** | `expected_version` 为 optional：设置 → CAS（进同一条 DML 的 WHERE）；缺省 → 盲写 +1；0 → InvalidArgument。消灭 check-then-write 与错误码错位 |
+| C4 | **OCC 显式三态** | `expected_version` **原语语义**三态：设置 → CAS（进同一条 DML 的 WHERE）；缺省 → 盲写 +1；0 → InvalidArgument。消灭 check-then-write 与错误码错位。各 API 面对"缺省态"的暴露由 §4.1/§4.4 分别定夺：单文档 Update/Delete 缺省即拒（强制乐观锁，与现状一致），Upsert/Bulk 与 §4.8 op 模型把缺省显式契约化为 LWW 盲写 +1（评审修订：2026-09-03，消除原"一律缺省盲写"表述与 §4.1 的矛盾） |
 | C5 | **在线 DDL（expand-contract）** | 一律 CONCURRENTLY + 独立事务 + `lock_timeout` 重试；catalog 侧索引/迁移两阶段状态机（building→active）；后台 reconcile 对账（缺列/INVALID 索引/幽灵表） |
 | C6 | **事件顺序化 + 补偿** | 事务性 outbox 保留；事件携带单调 `seq`（全局分配、按 collection 过滤重放）；断线带 `last_seq` 重放保留窗口 + `:changes` 补偿拉取；慢消费者超水位主动断开下发 RESYNC，不再静默丢帧 |
 | C7 | **查询单栈** | 规范模型只有一个 typed AST；Appwrite DSL 降级为 SDK/URL 层语法糖（构造器内部序列化为 AST）；双栈互斥校验消失 |
@@ -217,7 +217,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 
 ### 4.8 事务内核与多文档原子性（2026-09-03 接受，细化见 §11-E1）
 
-- **内核 = op 模型 + 单事务执行器**：可序列化异构 op 列表（复用旧 `document_transaction_ops` 字段族：type/database/collection/document_id/data/permissions/increment/expected_version/conflict_columns）在一个 `RunInTx` 内顺序执行——RLS/GUC 一次注入、逐 op 判定（提交时权限）、按 `(_tenant,_id)` 排序加锁防批内死锁、OCC 逐 op、outbox 事件同事务（可共带 transaction_id）、all-or-nothing、失败返回带 op index 的 violations。
+- **内核 = op 模型 + 单事务执行器**：可序列化异构 op 列表（复用旧 `document_transaction_ops` 字段族：type/database/collection/document_id/data/permissions/increment/expected_version/conflict_columns）在一个 `RunInTx` 内顺序执行——RLS/GUC 一次注入、逐 op 判定（提交时权限）、按 `(_tenant,_id)` 排序加锁防批内死锁、OCC 逐 op、outbox 事件同事务（可共带 transaction_id）、all-or-nothing、失败返回带 op index 的 violations。**实现注意（2026-09-03 评审登记）**：排序加锁是执行器的目标态纪律，现状 Bulk 并不具备——`BulkUpdateDocuments` 无行锁、`BulkDeleteDocuments` 按输入顺序 `FOR UPDATE`；"Bulk 的泛化"指复用其单事务/事件/outbox 骨架，锁纪律须按本节新建，不得照抄现状 Bulk。
 - **三种消费形态**（按消费者执行位置选）：A `documents:execute-tx`（远程客户端一次性原子 op 批，Bulk 的泛化，无暂存表）；B Functions 事务上下文（服务端真事务，`InTx` 管道 + GUC 注入 + 生命周期，**不走 staged**——命令式代码无法 replay）；C staged session（跨请求暂存，复用旧 D-6 表设计与教训，等 A 的需求证据再启用）。
 - **分期**：Phase 1 = A，Phase 2 = B，Phase 3 = C 视需求。Agent 联动：op[] 即工具参数（结构化、整体幂等、可 dry_run）；批内事件顺序 = op 顺序（B1 的分配序问题在批内不存在）。
 
@@ -237,6 +237,8 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
 
 POC 阶段各阶段**直接切换、不留兼容回退**：阶段③的 `_perms → _acl` 无需双读灰度（直接重建），阶段②无需存量四表迁移任务；"每阶段附回退方案"的要求在转出 POC 时再引入。阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
+
+**实施前评审登记（2026-09-03，对照代码全量核验后）**：包 0 修复清单的全部代码锚点经逐项核实成立。两点实施补充：① 标识符静态上限（POC 期 collectionID ≤40 / attr key ≤63 / 索引 ID ≤40）**不能单独封死索引名截断**——`idx_<coll>_<id>` 拼接最长 85 字节仍超 PG 63，须叠加组合校验 `4 + len(collID) + 1 + len(idxID) ≤ 63`（阶段②逻辑/物理名解耦后该组合约束随物理名分配自然消失）；② 域错误码一律点分格式 `NAMESPACE.SNAKE_CODE`（如 `DOCUMENT.TOO_LARGE`），单下划线写法为笔误。
 
 ## 7. 风险与缓解
 
@@ -382,7 +384,7 @@ DocumentsDB 的量化限制参照：每请求 100 条 query、每条 4096 字符
 | A1 ~~⚠~~ | **GUC 注入与连接池的集成形态** | **已接受（2026-09-03）：每请求一事务（含读，autocommit 退役）+ 事务首条 `set_config(...,true)`**——漏注入=空结果（fail-closed），事务结束自动失效零残留；否决会话级 GUC（错配路径静默继承上一用户角色，结构性不可防）。遗留原型任务：验证 pgdriver 流水线把额外往返压到 ≤1 |
 | A2 | roles_sig HMAC 细节 | 密钥派生与轮换、签名覆盖面（roles+tenant+时间戳防重放？）、SECURITY DEFINER 函数加固（search_path、LEAKPROOF） |
 | A3 | policy × 集合规模 | 每集合 4 policy × 千集合 = 4000 policy 对 plan cache/relcache 的影响；EXPLAIN 门禁怎么进 CI（基准集见 I） |
-| A4 | 双读迁移期的 policy 数据源 | `_perms` → `_acl` 灰度期间 policy 读哪个源：过渡 policy 读 `_perms`（复杂）vs 先全量回填 `_acl` 再开 policy（简单但窗口长）——影响阶段③的切分 |
+| A4 | 双读迁移期的 policy 数据源 | `_perms` → `_acl` 灰度期间 policy 读哪个源：过渡 policy 读 `_perms`（复杂）vs 先全量回填 `_acl` 再开 policy（简单但窗口长）——影响阶段③的切分。**POC 阶段本项为空**（无存量数据，直接重建不双读），决议预置于转出 POC 后的阶段③方案 |
 | A5 | realtime 掩码缓存失效 | 集合级 perms 变更后 TTL 5s 内的可见性延迟窗口是否接受；要不要主动失效（权限变更发内部事件） |
 | A6 | `tw_owner` 的 DDL/运维通道 | FORCE RLS 下 owner 的排查查询被自己 policy 挡（DDL 本身不受 RLS，但 SELECT 验证会）——运维走 `tw_system`，需 runbook 化 |
 
