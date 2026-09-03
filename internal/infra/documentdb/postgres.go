@@ -53,6 +53,31 @@ const maxQueryCount = 100
 const maxQueryStringLen = 4096
 const maxFilterValues = 1000
 
+// maxIdentifierBytes 对齐 PG NAMEDATALEN-1：超长标识符被 PG 静默截断，两个仅
+// 超长部分不同的名字会映射到同一物理对象。app 层已按 collectionID ≤40 /
+// attr key ≤63 / 索引 ID ≤40 校验；此处是直调 adapter 的第二道防线。
+const maxIdentifierBytes = 63
+
+// validatePhysicalNameLen 拒绝超长物理标识符（表名/列名）。第二道防线，见
+// maxIdentifierBytes。
+func validatePhysicalNameLen(kind, name string) error {
+	if len(name) > maxIdentifierBytes {
+		return status.Errorf(codes.InvalidArgument, "%s %q exceeds %d-byte identifier limit", kind, name, maxIdentifierBytes)
+	}
+	return nil
+}
+
+// validateIndexNameLen 拒绝拼接超长的物理索引名 idx_<coll>_<suffix>（suffix 为
+// 索引 ID 或固定后缀 tenant_created）。静态段上限封不死组合长度，必须在有
+// collectionID 上下文的 DDL 入口叠加本校验。
+func validateIndexNameLen(collectionID, suffix string) error {
+	if n := 4 + len(collectionID) + 1 + len(suffix); n > maxIdentifierBytes {
+		return status.Errorf(codes.InvalidArgument,
+			"index name idx_%s_%s is %d bytes, exceeds %d-byte identifier limit", collectionID, suffix, n, maxIdentifierBytes)
+	}
+	return nil
+}
+
 type postgresDocumentDB struct {
 	db  *clients.Database
 	pub shared.EventPublisher // nil 视为 nop（单测）；写路径同事务写入 outbox

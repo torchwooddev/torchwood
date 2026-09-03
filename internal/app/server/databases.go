@@ -17,6 +17,19 @@ import (
 
 var identifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
+// 标识符长度上限（POC 期入口治理，封死 PG 63 字节截断把两个仅超长部分不同
+// 的名字映射到同一物理对象的问题；redesign 阶段②逻辑/物理名解耦后收紧为
+// collectionID ≤36 [a-z0-9-] 并服务端分配物理名，本组上限随之退役）。
+const (
+	// maxCollectionIDLen 约束物理表名（= collectionID），并为索引名
+	// idx_<coll>_<id> / idx_<coll>_tenant_created 的前缀段留出预算。
+	maxCollectionIDLen = 40
+	// maxAttributeKeyLen 对齐物理列名 63 字节上限。
+	maxAttributeKeyLen = 63
+	// maxIndexIDLen 约束索引名后缀段（组合长度另见 validateIndexNameLen）。
+	maxIndexIDLen = 40
+)
+
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
@@ -113,7 +126,7 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(collectionID); err != nil {
+	if err := d.validateCollectionID(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "id is required")
 	}
 	if name == "" {
@@ -127,6 +140,14 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	}
 	for _, attr := range attrs {
 		if err := d.validateAttribute(attr); err != nil {
+			return err
+		}
+	}
+	for _, idx := range idxs {
+		if err := d.ValidateIndex(idx); err != nil {
+			return err
+		}
+		if err := validateIndexNameLen(collectionID, idx.ID); err != nil {
 			return err
 		}
 	}
@@ -195,7 +216,7 @@ func (d *Databases) UpdateCollection(ctx context.Context, projectID, databaseID,
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(collectionID); err != nil {
+	if err := d.validateCollectionID(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
@@ -219,7 +240,7 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(collectionID); err != nil {
+	if err := d.validateCollectionID(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
 	}
 	if err := d.ValidateIdentifier(attr.Key); err != nil {
@@ -248,10 +269,13 @@ func (d *Databases) CreateIndex(ctx context.Context, projectID, databaseID, coll
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(collectionID); err != nil {
+	if err := d.validateCollectionID(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
 	}
 	if err := d.ValidateIndex(idx); err != nil {
+		return err
+	}
+	if err := validateIndexNameLen(collectionID, idx.ID); err != nil {
 		return err
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
@@ -270,7 +294,7 @@ func (d *Databases) DeleteAttribute(ctx context.Context, projectID, databaseID, 
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(collectionID); err != nil {
+	if err := d.validateCollectionID(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
@@ -289,7 +313,7 @@ func (d *Databases) DeleteIndex(ctx context.Context, projectID, databaseID, coll
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err
 	}
-	if err := d.ValidateIdentifier(collectionID); err != nil {
+	if err := d.validateCollectionID(collectionID); err != nil {
 		return status.Error(codes.InvalidArgument, "collection_id is required")
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
@@ -550,8 +574,31 @@ func (d *Databases) ValidateIdentifier(id string) error {
 	if id == "" {
 		return status.Error(codes.InvalidArgument, "identifier is required")
 	}
+	if len(id) > maxAttributeKeyLen {
+		return status.Errorf(codes.InvalidArgument, "identifier %q exceeds maximum length of %d", id, maxAttributeKeyLen)
+	}
 	if !identifierRe.MatchString(id) {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("identifier %q must match %s", id, identifierRe.String()))
+	}
+	return nil
+}
+
+// validateCollectionID 在通用标识符校验之上叠加集合 ID 专用上限
+//（物理表名 + 索引名前缀段预算）。
+func (d *Databases) validateCollectionID(id string) error {
+	if len(id) > maxCollectionIDLen {
+		return status.Errorf(codes.InvalidArgument, "collection id %q exceeds maximum length of %d", id, maxCollectionIDLen)
+	}
+	return d.ValidateIdentifier(id)
+}
+
+// validateIndexNameLen 校验物理索引名 idx_<coll>_<id> 的拼接长度：静态上限
+//（coll ≤40 + id ≤40）封不死组合（最长 85 字节 > PG 63），必须叠加本校验。
+func validateIndexNameLen(collectionID, indexID string) error {
+	if n := 4 + len(collectionID) + 1 + len(indexID); n > maxAttributeKeyLen {
+		return status.Errorf(codes.InvalidArgument,
+			"index name idx_%s_%s is %d bytes, exceeds the %d-byte identifier limit (shorten collection id or index id)",
+			collectionID, indexID, n, maxAttributeKeyLen)
 	}
 	return nil
 }
@@ -572,6 +619,9 @@ func (d *Databases) ValidateAttributeType(t string) error {
 func (d *Databases) ValidateIndex(idx databases.Index) error {
 	if err := d.ValidateIdentifier(idx.ID); err != nil {
 		return status.Error(codes.InvalidArgument, "id is required")
+	}
+	if len(idx.ID) > maxIndexIDLen {
+		return status.Errorf(codes.InvalidArgument, "index id %q exceeds maximum length of %d", idx.ID, maxIndexIDLen)
 	}
 	if idx.Type == "" {
 		return status.Error(codes.InvalidArgument, "type is required")

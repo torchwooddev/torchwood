@@ -233,6 +233,57 @@ func TestPostgresDocumentDatabase_UpsertDocument_KeyseedPermsReadable(t *testing
 	require.NoError(t, err)
 }
 
+// TestPostgresDocumentDatabase_IdentifierLengthGuard：infra 层长度二道防线——
+// 直调 adapter（绕过 app 层校验）也不得让超长标识符到达 PG（63 字节静默截断
+// 会让两个仅超长部分不同的名字映射同一物理对象）。
+func TestPostgresDocumentDatabase_IdentifierLengthGuard(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	// 64 字节集合 ID（超 PG 63）。
+	err := docDB.CreateCollection(ctx, projectID, "app", strings.Repeat("c", 64), "Too long", nil, nil, nil, true)
+	requireInvalidArg(t, err)
+
+	// 64 字节属性 key。
+	err = docDB.CreateAttribute(ctx, projectID, "app", "posts", databases.Attribute{
+		ID: strings.Repeat("k", 64), Key: strings.Repeat("k", 64), Type: "string", Size: 64,
+	})
+	requireInvalidArg(t, err)
+
+	// 索引名拼接超限：coll=posts（5）+ idx=58 → idx_posts_<58> = 68 > 63。
+	err = docDB.CreateIndex(ctx, projectID, "app", "posts", databases.Index{
+		ID: strings.Repeat("i", 58), Type: "key", Attributes: []string{"title"},
+	})
+	requireInvalidArg(t, err)
+
+	// CreateCollection 内联索引的组合校验（各段 ≤63 但拼接 >63）。
+	err = docDB.CreateCollection(ctx, projectID, "app", strings.Repeat("c", 40), "Combo", nil, []databases.Index{
+		{ID: strings.Repeat("i", 40), Type: "key", Attributes: []string{"x"}},
+	}, nil, true)
+	requireInvalidArg(t, err)
+}
+
+func requireInvalidArg(t *testing.T, err error) {
+	t.Helper()
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error should carry gRPC status, got %v", err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+}
+
 // TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected
 // (P0-1): a principal holding only collection-level create must not be able to
 // update another user's row by submitting a new _id whose conflict columns

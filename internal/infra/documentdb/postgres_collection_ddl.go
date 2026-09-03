@@ -29,8 +29,16 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	if databaseID == ident.ProjectDataPlaneID && !databases.IsSystemCollectionID(collectionID) {
 		return status.Error(codes.InvalidArgument, "only system collections may be created in the project data plane")
 	}
+	// 长度二道防线（app 层已校验）：表名/列名 ≤63；索引名拼接 idx_<coll>_<id>
+	// 与默认时间索引 idx_<coll>_tenant_created 均不得超 63（PG 截断防护）。
+	if err := validatePhysicalNameLen("collection id", collectionID); err != nil {
+		return p.mapError(err)
+	}
 	for _, attr := range attrs {
 		if err := rejectArrayAttribute(attr); err != nil {
+			return p.mapError(err)
+		}
+		if err := validatePhysicalNameLen("attribute key", attr.Key); err != nil {
 			return p.mapError(err)
 		}
 	}
@@ -38,6 +46,12 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		if err := validateIndexDefinition(idx); err != nil {
 			return p.mapError(err)
 		}
+		if err := validateIndexNameLen(collectionID, idx.ID); err != nil {
+			return p.mapError(err)
+		}
+	}
+	if err := validateIndexNameLen(collectionID, "tenant_created"); err != nil {
+		return p.mapError(err)
 	}
 	if err := p.EnsureCatalog(ctx, projectID); err != nil {
 		return p.mapError(err)
@@ -284,6 +298,10 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if err := rejectArrayAttribute(attr); err != nil {
 		return err
 	}
+	// 长度二道防线（app 层已校验）：物理列名 ≤63（PG 截断防护）。
+	if err := validatePhysicalNameLen("attribute key", attr.Key); err != nil {
+		return err
+	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
 		return p.mapError(err)
@@ -326,6 +344,10 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 
 func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
 	if err := validateIndexDefinition(idx); err != nil {
+		return p.mapError(err)
+	}
+	// 长度二道防线（app 层已校验）：索引名拼接 idx_<coll>_<id> ≤63。
+	if err := validateIndexNameLen(collectionID, idx.ID); err != nil {
 		return p.mapError(err)
 	}
 	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
