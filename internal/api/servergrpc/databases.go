@@ -507,6 +507,90 @@ func (s *DatabasesService) BulkUpdateDocuments(ctx context.Context, req *serverv
 	return &serverv1.BulkDocumentsResponse{Affected: n}, nil
 }
 
+// ExecuteTransactions 在单事务内执行异构 op 批（事务内核 Phase 1）。
+func (s *DatabasesService) ExecuteTransactions(ctx context.Context, req *serverv1.ExecuteTransactionsRequest) (*serverv1.ExecuteTransactionsResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditDatabaseResource(req.GetDatabaseId()))
+	if len(req.GetOps()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ops is required")
+	}
+	ops := make([]databases.TransactionOp, 0, len(req.GetOps()))
+	for i, protoOp := range req.GetOps() {
+		op, err := transactionOpFromProto(protoOp)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+		}
+		ops = append(ops, op)
+	}
+	var mode databases.TransactionMode
+	switch req.GetMode() {
+	case serverv1.TransactionMode_TRANSACTION_MODE_UNSPECIFIED, serverv1.TransactionMode_TRANSACTION_MODE_ATOMIC:
+		mode = databases.TransactionModeAtomic
+	case serverv1.TransactionMode_TRANSACTION_MODE_PARTIAL:
+		mode = databases.TransactionModePartial
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "invalid transaction mode %v", req.GetMode())
+	}
+	results, err := s.databases.ExecuteTransactions(ctx, projectID, req.GetDatabaseId(), ops, mode, dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out := &serverv1.ExecuteTransactionsResponse{}
+	for _, r := range results {
+		res := &serverv1.TransactionOpResult{
+			Index:      int32(r.Index),
+			DocumentId: r.DocumentID,
+			Version:    r.Version,
+			ErrorCode:  r.ErrCode,
+			ErrorMessage: r.ErrMessage,
+		}
+		if r.OK {
+			res.Status = serverv1.TransactionOpStatus_TRANSACTION_OP_STATUS_OK
+		} else {
+			res.Status = serverv1.TransactionOpStatus_TRANSACTION_OP_STATUS_ERROR
+		}
+		out.Results = append(out.Results, res)
+	}
+	return out, nil
+}
+
+func transactionOpFromProto(in *serverv1.TransactionOp) (databases.TransactionOp, error) {
+	var typ databases.TransactionOpType
+	switch in.GetType() {
+	case serverv1.TransactionOpType_TRANSACTION_OP_TYPE_CREATE:
+		typ = databases.TransactionOpCreate
+	case serverv1.TransactionOpType_TRANSACTION_OP_TYPE_UPDATE:
+		typ = databases.TransactionOpUpdate
+	case serverv1.TransactionOpType_TRANSACTION_OP_TYPE_UPSERT:
+		typ = databases.TransactionOpUpsert
+	case serverv1.TransactionOpType_TRANSACTION_OP_TYPE_DELETE:
+		typ = databases.TransactionOpDelete
+	default:
+		return databases.TransactionOp{}, fmt.Errorf("invalid op type %v", in.GetType())
+	}
+	perms, err := parseOptionalPermissions(in.GetPermissions())
+	if err != nil {
+		return databases.TransactionOp{}, err
+	}
+	op := databases.TransactionOp{
+		Type:            typ,
+		CollectionID:    in.GetCollectionId(),
+		DocumentID:      in.GetDocumentId(),
+		Data:            updateData(in.GetData()),
+		Permissions:     perms,
+		Increment:       in.GetIncrement(),
+		ConflictColumns: in.GetConflictColumns(),
+	}
+	if in.ExpectedVersion != nil {
+		v := *in.ExpectedVersion
+		op.ExpectedVersion = &v
+	}
+	return op, nil
+}
+
 func (s *DatabasesService) BulkDeleteDocuments(ctx context.Context, req *serverv1.BulkDeleteDocumentsRequest) (*serverv1.BulkDocumentsResponse, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {

@@ -194,4 +194,8 @@ func (usersCollectionGuardDocDB) BulkDeleteDocuments(context.Context, string, st
 	return 0, nil
 }
 
+func (usersCollectionGuardDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = usersCollectionGuardDocDB{}

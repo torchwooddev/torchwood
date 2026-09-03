@@ -31,6 +31,10 @@ func (f *aclProbeDocDB) ListDocuments(_ context.Context, _, _, _ string, _ datab
 	return &databases.DocumentList{}, nil
 }
 
+func (*aclProbeDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*aclProbeDocDB)(nil)
 
 // TestSubscribe_CollectionChannelRequiresRead：Round4 J5-5——集合频道订阅

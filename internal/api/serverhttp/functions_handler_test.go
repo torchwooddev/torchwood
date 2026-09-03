@@ -159,6 +159,10 @@ func (d *functionsDocDB) BulkDeleteDocuments(context.Context, string, string, st
 }
 func (d *functionsDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
+func (*functionsDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*functionsDocDB)(nil)
 
 func functionsHashSecret(raw string) string {

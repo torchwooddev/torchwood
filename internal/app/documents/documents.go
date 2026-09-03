@@ -23,10 +23,10 @@ const (
 	MaxAttributePayloadBytes = 256 << 10
 )
 
-// validateDocumentPayload 校验写入载荷大小（Create/Update/Upsert/Bulk 共用）。
+// ValidateDocumentPayload 校验写入载荷大小（Create/Update/Upsert/Bulk 共用）。
 // Update 是部分更新，总量按本次提交的载荷计（合并后全量在 infra 读回后自然
 // 受单属性与列宽约束）。
-func validateDocumentPayload(data map[string]any) error {
+func ValidateDocumentPayload(data map[string]any) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -81,7 +81,7 @@ func (d *Documents) CreateDocument(
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")
 	}
-	if err := validateDocumentPayload(data); err != nil {
+	if err := ValidateDocumentPayload(data); err != nil {
 		return nil, err
 	}
 	perms, err := applyGrant(principal, perms, opts.AllowPrivilegedGrant)
@@ -150,7 +150,7 @@ func (d *Documents) UpdateDocument(
 	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
 	}
-	if err := validateDocumentPayload(data); err != nil {
+	if err := ValidateDocumentPayload(data); err != nil {
 		return nil, err
 	}
 	if len(perms) > 0 {
@@ -187,7 +187,7 @@ func (d *Documents) UpsertDocument(
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")
 	}
-	if err := validateDocumentPayload(data); err != nil {
+	if err := ValidateDocumentPayload(data); err != nil {
 		return nil, err
 	}
 	if len(conflictColumns) == 0 {
@@ -245,7 +245,7 @@ func (d *Documents) BulkUpdateDocuments(
 	if err := validateBulkIDs(documentIDs); err != nil {
 		return 0, err
 	}
-	if err := validateDocumentPayload(data); err != nil {
+	if err := ValidateDocumentPayload(data); err != nil {
 		return 0, err
 	}
 	if len(perms) > 0 {
@@ -282,10 +282,38 @@ func validateBulkIDs(documentIDs []string) error {
 	return nil
 }
 
+// ApplyGrant 展开/校验授予（Server 事务 op 等包装层复用）。
+func ApplyGrant(principal databases.Principal, perms []databases.Permission, allowPrivileged bool) ([]databases.Permission, error) {
+	return applyGrant(principal, perms, allowPrivileged)
+}
+
 func applyGrant(principal databases.Principal, perms []databases.Permission, allowPrivileged bool) ([]databases.Permission, error) {
 	perms = databases.ExpandPermissionTemplates(perms, principal.Roles)
 	if err := databases.ValidateGrantablePermissions(principal, perms, allowPrivileged); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return perms, nil
+}
+
+// ExecuteTransactions 透传事务内核（redesign §4.8 Phase 1）。守卫、种子与
+// grant 展开由包装层（app/server）完成；infra 单事务执行器保证原子性、
+// 锁纪律与事件同事务。ATOMIC 失败映射域码错误。
+func (d *Documents) ExecuteTransactions(
+	ctx context.Context,
+	projectID, databaseID string,
+	ops []databases.TransactionOp,
+	mode databases.TransactionMode,
+	principal databases.Principal,
+) ([]databases.TransactionOpResult, error) {
+	results, err := d.docDB.ExecuteTransactions(ctx, projectID, databaseID, ops, mode, principal)
+	if err != nil {
+		// ATOMIC 失败：OpError 携带 index + 哨兵，映射为带 op 定位的域码错误。
+		if oe := databases.AsOpError(err); oe != nil {
+			if code := databases.ErrorDomainCode(oe.Err); code != "" {
+				return nil, shared.DomainStatusWithOp(code, oe.Index)
+			}
+		}
+		return nil, shared.MapDocumentDBError(fmt.Errorf("execute transactions: %w", err))
+	}
+	return results, nil
 }

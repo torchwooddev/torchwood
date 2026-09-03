@@ -22,20 +22,20 @@ func TestCreateDocument_DataRequired(t *testing.T) {
 // DOCUMENT.TOO_LARGE 域码；四个写路径共用同一校验。
 func TestValidateDocumentPayload(t *testing.T) {
 	big := strings.Repeat("a", 256*1024+1)
-	err := validateDocumentPayload(map[string]any{"blob": big})
+	err := ValidateDocumentPayload(map[string]any{"blob": big})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, err.Error(), "DOCUMENT.TOO_LARGE")
 
 	mid := strings.Repeat("a", 200*1024)
-	err = validateDocumentPayload(map[string]any{
+	err = ValidateDocumentPayload(map[string]any{
 		"a": mid, "b": mid, "c": mid, "d": mid, "e": mid, "f": mid,
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, err.Error(), "DOCUMENT.TOO_LARGE")
 
-	require.NoError(t, validateDocumentPayload(map[string]any{"ok": "small"}))
-	require.NoError(t, validateDocumentPayload(nil))
-	require.NoError(t, validateDocumentPayload(map[string]any{
+	require.NoError(t, ValidateDocumentPayload(map[string]any{"ok": "small"}))
+	require.NoError(t, ValidateDocumentPayload(nil))
+	require.NoError(t, ValidateDocumentPayload(map[string]any{
 		"a": strings.Repeat("a", 256*1024-2), // 编码后恰好 256 KiB（含 JSON 引号）：合法
 	}))
 
@@ -232,5 +232,9 @@ func (m *memDocDB) SumDocumentField(context.Context, string, string, string, str
 	return 0, nil
 }
 func (m *memDocDB) EnsureCatalog(context.Context, string) error { return nil }
+
+func (m *memDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
 
 var _ databases.DocumentDB = (*memDocDB)(nil)

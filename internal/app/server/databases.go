@@ -570,6 +570,75 @@ func (d *Databases) MapAttributeType(t string) string {
 	return strings.ToLower(t)
 }
 
+// ExecuteTransactions 是 Server 面的事务内核入口（redesign §4.8 Phase 1）：
+// 逐 op 集合守卫、create/upsert 空 ACE 种子（与单文档 API 同语义）、grant
+// 展开校验，随后交 infra 单事务执行器。
+func (d *Databases) ExecuteTransactions(
+	ctx context.Context,
+	projectID, databaseID string,
+	ops []databases.TransactionOp,
+	mode databases.TransactionMode,
+	principal databases.Principal,
+) ([]databases.TransactionOpResult, error) {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
+		return nil, err
+	}
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, err
+	}
+	if len(ops) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ops is required")
+	}
+	if len(ops) > documents.MaxBulkOperations {
+		return nil, status.Errorf(codes.InvalidArgument, "ops count %d exceeds maximum of %d", len(ops), documents.MaxBulkOperations)
+	}
+	if _, err := d.resolveProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	allowed := allowPrivilegedGrant(principal)
+	for i := range ops {
+		op := &ops[i]
+		switch op.Type {
+		case databases.TransactionOpCreate, databases.TransactionOpUpdate, databases.TransactionOpUpsert, databases.TransactionOpDelete:
+		default:
+			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid op type %q", i, op.Type)
+		}
+		if err := d.validateCollectionID(op.CollectionID); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid collection id %q", i, op.CollectionID)
+		}
+		if databases.IsSystemCollection(projectID, databaseID, op.CollectionID) {
+			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: system collection %q is not writable via transactions", i, op.CollectionID)
+		}
+		if err := documents.ValidateDocumentPayload(op.Data); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+		}
+		// create/upsert 空 ACE 种子与单文档 API 同语义（防锁死；update/delete 的
+		// 空 permissions 语义是"不变更文档 ACL"，不种子）。
+		if len(op.Permissions) == 0 && (op.Type == databases.TransactionOpCreate || op.Type == databases.TransactionOpUpsert) {
+			op.Permissions = seedDocumentPermissions(principal)
+			allowed = true
+		}
+		perms, err := applyTxGrant(principal, op.Permissions, allowed)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+		}
+		op.Permissions = perms
+	}
+	return d.documentsCore().ExecuteTransactions(ctx, projectID, databaseID, ops, mode, principal)
+}
+
+// applyTxGrant 是 op 级 grant 展开（空列表跳过校验，与 update 语义一致）。
+func applyTxGrant(principal databases.Principal, perms []databases.Permission, allowPrivileged bool) ([]databases.Permission, error) {
+	if len(perms) == 0 {
+		return nil, nil
+	}
+	perms, err := documents.ApplyGrant(principal, perms, allowPrivileged)
+	if err != nil {
+		return nil, err
+	}
+	return perms, nil
+}
+
 func (d *Databases) ValidateIdentifier(id string) error {
 	if id == "" {
 		return status.Error(codes.InvalidArgument, "identifier is required")

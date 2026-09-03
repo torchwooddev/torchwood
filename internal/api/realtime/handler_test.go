@@ -182,6 +182,10 @@ func (f *fakeDocDB) BulkDeleteDocuments(ctx context.Context, projectID, database
 }
 func (f *fakeDocDB) EnsureCatalog(ctx context.Context, projectID string) error { return nil }
 
+func (*fakeDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*fakeDocDB)(nil)
 
 // ---- helpers ----

@@ -303,6 +303,10 @@ func (d *stubDocDB) BulkUpdateDocuments(context.Context, string, string, string,
 }
 func (d *stubDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
+func (*stubDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*stubDocDB)(nil)
 
 func hashSecret(raw string) string {

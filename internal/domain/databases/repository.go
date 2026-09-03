@@ -44,6 +44,11 @@ type Documents interface {
 	SumDocumentField(ctx context.Context, projectID, databaseID, collectionID, field string, principal Principal) (int64, error)
 	BulkUpdateDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, data map[string]any, perms []Permission, principal Principal) (int64, error)
 	BulkDeleteDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, principal Principal) (int64, error)
+	// ExecuteTransactions 在单事务内顺序执行异构 op 批（事务内核 Phase 1，
+	// redesign §4.8）：按 (_tenant, doc) 排序预加 advisory 锁防批间死锁，
+	// 事件同事务且顺序 = op 序；ATOMIC 任一失败整批回滚（返回带 op index
+	// 的错误），PARTIAL 逐 op savepoint 容错、已成功不回滚。
+	ExecuteTransactions(ctx context.Context, projectID, databaseID string, ops []TransactionOp, mode TransactionMode, principal Principal) ([]TransactionOpResult, error)
 }
 
 // DocumentDB 嵌入三端口，现有注入点多数不用改签名。

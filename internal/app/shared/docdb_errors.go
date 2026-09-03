@@ -2,6 +2,7 @@ package shared
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -57,6 +58,22 @@ func DomainStatus(domainCode string) error {
 		Domain:   errorInfoDomain,
 		Metadata: map[string]string{
 			"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
+		},
+	})
+	return st.Err()
+}
+
+// DomainStatusWithOp 是 DomainStatus 的批事务变体：消息与 ErrorInfo
+// metadata 均携带失败 op index（ATOMIC 模式 violations 定位）。
+func DomainStatusWithOp(domainCode string, opIndex int) error {
+	code := domainCodeGRPC[domainCode]
+	st := status.New(code, fmt.Sprintf("%s: op[%d]: %s", domainCode, opIndex, domainCodeMessage[domainCode]))
+	st, _ = st.WithDetails(&errdetails.ErrorInfo{
+		Reason:   domainCode,
+		Domain:   errorInfoDomain,
+		Metadata: map[string]string{
+			"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
+			"op_index":  strconv.Itoa(opIndex),
 		},
 	})
 	return st.Err()

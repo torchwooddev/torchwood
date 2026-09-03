@@ -171,6 +171,14 @@ service DatabasesService {
   rpc BulkDeleteDocuments(BulkDeleteDocumentsRequest) returns (BulkDocumentsResponse) {
     option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/documents:bulkDelete", body: "*" };
   }
+
+  // ExecuteTransactions 在单事务内执行异构 op 批（redesign §4.8 事务内核
+  // Phase 1，Bulk 的泛化）。op 数上限 1000（对齐 MaxBulkOperations）；
+  // ATOMIC（默认）任一 op 失败整批回滚；PARTIAL 逐 op 独立执行（savepoint），
+  // 已成功不回滚，返回 per-op 结果。
+  rpc ExecuteTransactions(ExecuteTransactionsRequest) returns (ExecuteTransactionsResponse) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/documents:execute-tx", body: "*" };
+  }
 }
 
 message CreateDatabaseRequest {
@@ -387,4 +395,66 @@ message BulkDeleteDocumentsRequest {
 
 message BulkDocumentsResponse {
   int64 affected = 1;
+}
+
+// ExecuteTransactions：op 模型与结果（redesign §4.8/E1——复用旧
+// document_transaction_ops 字段族；单 database 批，跨库批量等需求证据）。
+
+enum TransactionOpType {
+  TRANSACTION_OP_TYPE_UNSPECIFIED = 0;
+  TRANSACTION_OP_TYPE_CREATE = 1;
+  TRANSACTION_OP_TYPE_UPDATE = 2;
+  TRANSACTION_OP_TYPE_UPSERT = 3;
+  TRANSACTION_OP_TYPE_DELETE = 4;
+}
+
+enum TransactionMode {
+  // 缺省等价 ATOMIC（proto3 零值不可依赖，服务端对 UNSPECIFIED 按 ATOMIC 处理）。
+  TRANSACTION_MODE_UNSPECIFIED = 0;
+  TRANSACTION_MODE_ATOMIC = 1;
+  TRANSACTION_MODE_PARTIAL = 2;
+}
+
+message TransactionOp {
+  TransactionOpType type = 1;
+  string collection_id = 2;
+  string document_id = 3;
+  google.protobuf.Struct data = 4;
+  repeated string permissions = 5;
+  map<string, int64> increment = 6;
+  // OCC 原语三态（redesign §2-C4）：设置 → CAS；未设置 → 盲写 +1（LWW 契约，
+  // 仅 update 类）；0 → InvalidArgument。
+  optional int64 expected_version = 7;
+  // upsert 专用：必须无序命中集合一个 unique 索引。
+  repeated string conflict_columns = 8;
+}
+
+message ExecuteTransactionsRequest {
+  string database_id = 1;
+  repeated TransactionOp ops = 2;
+  TransactionMode mode = 3;
+}
+
+enum TransactionOpStatus {
+  TRANSACTION_OP_STATUS_UNSPECIFIED = 0;
+  TRANSACTION_OP_STATUS_OK = 1;
+  TRANSACTION_OP_STATUS_ERROR = 2;
+}
+
+message TransactionOpResult {
+  int32 index = 1;
+  TransactionOpStatus status = 2;
+  // upsert 冲突命中已有行时为实际目标行 ID。
+  string document_id = 3;
+  // 写后版本（delete 类为 0）。
+  int64 version = 4;
+  // status=ERROR 时（仅 PARTIAL）：稳定域码（如 DOCUMENT.VERSION_CONFLICT）。
+  string error_code = 5;
+  string error_message = 6;
+}
+
+message ExecuteTransactionsResponse {
+  // ATOMIC：整体成功才返回（失败为带 op index 的 gRPC 错误，整批已回滚）；
+  // PARTIAL：逐 op 结果（含失败项），已成功不回滚。
+  repeated TransactionOpResult results = 1;
 }

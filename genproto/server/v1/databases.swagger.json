@@ -1387,6 +1387,45 @@
         ]
       }
     },
+    "/v1/server/databases/{database_id}/documents:execute-tx": {
+      "post": {
+        "summary": "ExecuteTransactions 在单事务内执行异构 op 批（redesign §4.8 事务内核\nPhase 1，Bulk 的泛化）。op 数上限 1000（对齐 MaxBulkOperations）；\nATOMIC（默认）任一 op 失败整批回滚；PARTIAL 逐 op 独立执行（savepoint），\n已成功不回滚，返回 per-op 结果。",
+        "operationId": "DatabasesService_ExecuteTransactions",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ExecuteTransactionsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/v1ErrorResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "database_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DatabasesServiceExecuteTransactionsBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
     "/v1/server/databases/{id}": {
       "get": {
         "operationId": "DatabasesService_GetDatabase",
@@ -1542,6 +1581,21 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "DatabasesServiceExecuteTransactionsBody": {
+      "type": "object",
+      "properties": {
+        "ops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TransactionOp"
+          }
+        },
+        "mode": {
+          "$ref": "#/definitions/v1TransactionMode"
         }
       }
     },
@@ -1890,6 +1944,19 @@
         }
       }
     },
+    "v1ExecuteTransactionsResponse": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TransactionOpResult"
+          },
+          "title": "ATOMIC：整体成功才返回（失败为带 op index 的 gRPC 错误，整批已回滚）；\nPARTIAL：逐 op 结果（含失败项），已成功不回滚。"
+        }
+      }
+    },
     "v1Filter": {
       "type": "object",
       "properties": {
@@ -2066,6 +2133,106 @@
         }
       },
       "description": "Query is the typed document list/count model (filter tree + orders + page).\npage_token is the authoritative pager (K-20); page_size is the page bound."
+    },
+    "v1TransactionMode": {
+      "type": "string",
+      "enum": [
+        "TRANSACTION_MODE_UNSPECIFIED",
+        "TRANSACTION_MODE_ATOMIC",
+        "TRANSACTION_MODE_PARTIAL"
+      ],
+      "default": "TRANSACTION_MODE_UNSPECIFIED",
+      "title": "- TRANSACTION_MODE_UNSPECIFIED: 缺省等价 ATOMIC（proto3 零值不可依赖，服务端对 UNSPECIFIED 按 ATOMIC 处理）。"
+    },
+    "v1TransactionOp": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/definitions/v1TransactionOpType"
+        },
+        "collection_id": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "increment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "format": "int64"
+          }
+        },
+        "expected_version": {
+          "type": "string",
+          "format": "int64",
+          "title": "OCC 原语三态（redesign §2-C4）：设置 → CAS；未设置 → 盲写 +1（LWW 契约，\n仅 update 类）；0 → InvalidArgument。"
+        },
+        "conflict_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "upsert 专用：必须无序命中集合一个 unique 索引。"
+        }
+      }
+    },
+    "v1TransactionOpResult": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "status": {
+          "$ref": "#/definitions/v1TransactionOpStatus"
+        },
+        "document_id": {
+          "type": "string",
+          "title": "upsert 冲突命中已有行时为实际目标行 ID。"
+        },
+        "version": {
+          "type": "string",
+          "format": "int64",
+          "title": "写后版本（delete 类为 0）。"
+        },
+        "error_code": {
+          "type": "string",
+          "title": "status=ERROR 时（仅 PARTIAL）：稳定域码（如 DOCUMENT.VERSION_CONFLICT）。"
+        },
+        "error_message": {
+          "type": "string"
+        }
+      }
+    },
+    "v1TransactionOpStatus": {
+      "type": "string",
+      "enum": [
+        "TRANSACTION_OP_STATUS_UNSPECIFIED",
+        "TRANSACTION_OP_STATUS_OK",
+        "TRANSACTION_OP_STATUS_ERROR"
+      ],
+      "default": "TRANSACTION_OP_STATUS_UNSPECIFIED"
+    },
+    "v1TransactionOpType": {
+      "type": "string",
+      "enum": [
+        "TRANSACTION_OP_TYPE_UNSPECIFIED",
+        "TRANSACTION_OP_TYPE_CREATE",
+        "TRANSACTION_OP_TYPE_UPDATE",
+        "TRANSACTION_OP_TYPE_UPSERT",
+        "TRANSACTION_OP_TYPE_DELETE"
+      ],
+      "default": "TRANSACTION_OP_TYPE_UNSPECIFIED"
     }
   },
   "securityDefinitions": {

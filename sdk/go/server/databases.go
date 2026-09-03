@@ -334,6 +334,17 @@ func (d *DatabasesService) BulkDeleteDocuments(ctx context.Context, collectionID
 	})
 }
 
+// ExecuteTransactions 在单事务内执行异构 op 批（事务内核 Phase 1）：
+// ATOMIC（mode 为空/ATOMIC）任一 op 失败整批回滚；PARTIAL 逐 op 独立执行，
+// 已成功不回滚，返回 per-op 结果。op 数上限 1000。
+func (d *DatabasesService) ExecuteTransactions(ctx context.Context, ops []*serverv1.TransactionOp, mode serverv1.TransactionMode) (*serverv1.ExecuteTransactionsResponse, error) {
+	return d.c.databases.ExecuteTransactions(ctx, &serverv1.ExecuteTransactionsRequest{
+		DatabaseId: d.db,
+		Ops:        ops,
+		Mode:       mode,
+	})
+}
+
 // UseDatabase 返回绑定指定 databaseID 的文档服务副本。
 func (c *Client) UseDatabase(databaseID string) *DatabasesService {
 	return newDatabasesService(c, databaseID)

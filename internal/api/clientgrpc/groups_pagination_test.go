@@ -142,6 +142,10 @@ func (d *clientGroupsDocDB) DeleteIndex(context.Context, string, string, string,
 	return nil
 }
 
+func (*clientGroupsDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*clientGroupsDocDB)(nil)
 
 func TestClientGRPC_ListGroups_EchoesNextPageToken(t *testing.T) {

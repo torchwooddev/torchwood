@@ -42,6 +42,7 @@ const (
 	DatabasesService_CountDocuments_FullMethodName      = "/torchwood.server.v1.DatabasesService/CountDocuments"
 	DatabasesService_BulkUpdateDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
 	DatabasesService_BulkDeleteDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
+	DatabasesService_ExecuteTransactions_FullMethodName = "/torchwood.server.v1.DatabasesService/ExecuteTransactions"
 )
 
 // DatabasesServiceClient is the client API for DatabasesService service.
@@ -70,6 +71,11 @@ type DatabasesServiceClient interface {
 	CountDocuments(ctx context.Context, in *CountDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
 	BulkUpdateDocuments(ctx context.Context, in *BulkUpdateDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error)
 	BulkDeleteDocuments(ctx context.Context, in *BulkDeleteDocumentsRequest, opts ...grpc.CallOption) (*BulkDocumentsResponse, error)
+	// ExecuteTransactions 在单事务内执行异构 op 批（redesign §4.8 事务内核
+	// Phase 1，Bulk 的泛化）。op 数上限 1000（对齐 MaxBulkOperations）；
+	// ATOMIC（默认）任一 op 失败整批回滚；PARTIAL 逐 op 独立执行（savepoint），
+	// 已成功不回滚，返回 per-op 结果。
+	ExecuteTransactions(ctx context.Context, in *ExecuteTransactionsRequest, opts ...grpc.CallOption) (*ExecuteTransactionsResponse, error)
 }
 
 type databasesServiceClient struct {
@@ -300,6 +306,16 @@ func (c *databasesServiceClient) BulkDeleteDocuments(ctx context.Context, in *Bu
 	return out, nil
 }
 
+func (c *databasesServiceClient) ExecuteTransactions(ctx context.Context, in *ExecuteTransactionsRequest, opts ...grpc.CallOption) (*ExecuteTransactionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExecuteTransactionsResponse)
+	err := c.cc.Invoke(ctx, DatabasesService_ExecuteTransactions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabasesServiceServer is the server API for DatabasesService service.
 // All implementations must embed UnimplementedDatabasesServiceServer
 // for forward compatibility.
@@ -326,6 +342,11 @@ type DatabasesServiceServer interface {
 	CountDocuments(context.Context, *CountDocumentsRequest) (*CountDocumentsResponse, error)
 	BulkUpdateDocuments(context.Context, *BulkUpdateDocumentsRequest) (*BulkDocumentsResponse, error)
 	BulkDeleteDocuments(context.Context, *BulkDeleteDocumentsRequest) (*BulkDocumentsResponse, error)
+	// ExecuteTransactions 在单事务内执行异构 op 批（redesign §4.8 事务内核
+	// Phase 1，Bulk 的泛化）。op 数上限 1000（对齐 MaxBulkOperations）；
+	// ATOMIC（默认）任一 op 失败整批回滚；PARTIAL 逐 op 独立执行（savepoint），
+	// 已成功不回滚，返回 per-op 结果。
+	ExecuteTransactions(context.Context, *ExecuteTransactionsRequest) (*ExecuteTransactionsResponse, error)
 	mustEmbedUnimplementedDatabasesServiceServer()
 }
 
@@ -401,6 +422,9 @@ func (UnimplementedDatabasesServiceServer) BulkUpdateDocuments(context.Context, 
 }
 func (UnimplementedDatabasesServiceServer) BulkDeleteDocuments(context.Context, *BulkDeleteDocumentsRequest) (*BulkDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BulkDeleteDocuments not implemented")
+}
+func (UnimplementedDatabasesServiceServer) ExecuteTransactions(context.Context, *ExecuteTransactionsRequest) (*ExecuteTransactionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExecuteTransactions not implemented")
 }
 func (UnimplementedDatabasesServiceServer) mustEmbedUnimplementedDatabasesServiceServer() {}
 func (UnimplementedDatabasesServiceServer) testEmbeddedByValue()                          {}
@@ -819,6 +843,24 @@ func _DatabasesService_BulkDeleteDocuments_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabasesService_ExecuteTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExecuteTransactionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).ExecuteTransactions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_ExecuteTransactions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).ExecuteTransactions(ctx, req.(*ExecuteTransactionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DatabasesService_ServiceDesc is the grpc.ServiceDesc for DatabasesService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -913,6 +955,10 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BulkDeleteDocuments",
 			Handler:    _DatabasesService_BulkDeleteDocuments_Handler,
+		},
+		{
+			MethodName: "ExecuteTransactions",
+			Handler:    _DatabasesService_ExecuteTransactions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -197,6 +197,10 @@ func (d *fakeDocDB) BulkUpdateDocuments(context.Context, string, string, string,
 }
 func (d *fakeDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
+func (*fakeDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*fakeDocDB)(nil)
 
 // fakeProjectRepo 返回单个固定 project。

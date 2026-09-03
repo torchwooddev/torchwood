@@ -44,8 +44,9 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.DatabasesService/UpsertDocument":      {"databases", "write"},
 	"/torchwood.server.v1.DatabasesService/DeleteDocument":      {"databases", "write"},
 	"/torchwood.server.v1.DatabasesService/CountDocuments":      {"databases", "read"},
-	"/torchwood.server.v1.DatabasesService/BulkUpdateDocuments": {"databases", "write"},
-	"/torchwood.server.v1.DatabasesService/BulkDeleteDocuments": {"databases", "write"},
+	"/torchwood.server.v1.DatabasesService/BulkUpdateDocuments":  {"databases", "write"},
+	"/torchwood.server.v1.DatabasesService/BulkDeleteDocuments":  {"databases", "write"},
+	"/torchwood.server.v1.DatabasesService/ExecuteTransactions":  {"databases", "write"},
 	// UsersService
 	"/torchwood.server.v1.UsersService/CreateUser":         {"users", "write"},
 	"/torchwood.server.v1.UsersService/ListUsers":          {"users", "read"},

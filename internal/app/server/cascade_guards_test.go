@@ -211,6 +211,10 @@ func (f *fakeDocDB) BulkDeleteDocuments(context.Context, string, string, string,
 	return 0, nil
 }
 
+func (*fakeDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*fakeDocDB)(nil)
 
 func fakeMem(id, groupID, userID, statusVal string, roles []string) *groups.Membership {

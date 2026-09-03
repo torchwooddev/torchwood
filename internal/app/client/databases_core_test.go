@@ -250,6 +250,10 @@ func (s *stubDocDB) BulkDeleteDocuments(context.Context, string, string, string,
 	return 0, nil
 }
 
+func (*stubDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
+	panic("ExecuteTransactions: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*stubDocDB)(nil)
 
 func (s stubProjects) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }

@@ -52,7 +52,7 @@ func TestInvokeJSONBadJSON(t *testing.T) {
 // 并在此注明变更来源（日期 + proto 文件）。禁止只改数字不加 wrapper。
 //
 // 快照历史：v0.1.0 时点 = 112（2026-08-24，Round4 J3-4 收紧，此前为 >60 下限）。
-const expectedServerMethodCount = 112
+const expectedServerMethodCount = 113
 
 // TestInvokeJSONCompleteness 遍历 protoregistry.GlobalFiles 中 torchwood.server.v1
 // 包的全部方法（排除 APIKeysService），断言每个方法都能被解析并用空 JSON 构造
