@@ -336,6 +336,57 @@ func TestPostgresDocumentDatabase_AttributeDefaultValueCatalog(t *testing.T) {
 	require.Equal(t, "untitled", findAttr(&list[0], "title").Default)
 }
 
+// TestPostgresDocumentDatabase_UpdateCollection_AtomicityAndAudit：权限替换与
+// 字段更新同事务生效；权限-only 变更同样刷 updated_at（原实现两条 UPDATE 非
+// 同事务、权限-only 不刷审计列）。
+func TestPostgresDocumentDatabase_UpdateCollection_AtomicityAndAudit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", nil, nil, []databases.Permission{
+		{Type: "read", Role: "any"},
+	}, true))
+
+	before, err := docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+
+	// 权限 + 字段一次提交：两者都生效。
+	require.NoError(t, docDB.UpdateCollection(ctx, projectID, "app", "posts", databases.CollectionPatch{
+		Name:        "Renamed",
+		Permissions: &[]databases.Permission{{Type: "read", Role: "keys"}},
+	}))
+	got, err := docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Equal(t, "Renamed", got.Name)
+	require.Equal(t, []databases.Permission{{Type: "read", Role: "keys"}}, got.Permissions)
+	require.True(t, got.UpdatedAt.After(before.UpdatedAt), "field update must bump updated_at")
+
+	// 权限-only：同样刷 updated_at。
+	time.Sleep(10 * time.Millisecond)
+	require.NoError(t, docDB.UpdateCollection(ctx, projectID, "app", "posts", databases.CollectionPatch{
+		Permissions: &[]databases.Permission{{Type: "read", Role: "users"}},
+	}))
+	got2, err := docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Equal(t, []databases.Permission{{Type: "read", Role: "users"}}, got2.Permissions)
+	require.True(t, got2.UpdatedAt.After(got.UpdatedAt), "permission-only update must bump updated_at")
+
+	// 空 patch：no-op，不刷审计列。
+	require.NoError(t, docDB.UpdateCollection(ctx, projectID, "app", "posts", databases.CollectionPatch{}))
+	got3, err := docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Equal(t, got2.UpdatedAt, got3.UpdatedAt)
+}
+
 // TestPostgresDocumentDocuments_TiebreakerPagination：自定义排序键全部相同的多行，
 // offset 续页与 keyset cursor 续页都必须不丢不重（重复排序键的全序由 _id
 // tiebreaker 保证；offset 路径曾缺 _id 导致跨页丢行）。

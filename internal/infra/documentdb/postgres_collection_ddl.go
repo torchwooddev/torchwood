@@ -250,39 +250,44 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
 		return p.mapError(err)
 	}
-	if patch.Permissions != nil {
-		if err := p.setCollectionPermissions(ctx, projectID, databaseID, collectionID, *patch.Permissions); err != nil {
-			return p.mapError(err)
+	// 权限替换与字段更新同一事务（任一失败整体回滚，避免"权限已换、
+	// 元数据未更"的半更新）；权限-only 变更同样刷 updated_at（审计列统一）。
+	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		if patch.Permissions != nil {
+			if err := p.setCollectionPermissions(txCtx, projectID, databaseID, collectionID, *patch.Permissions); err != nil {
+				return err
+			}
 		}
-	}
-	var sets []string
-	var args []any
-	if patch.Name != "" {
-		sets = append(sets, "name = ?")
-		args = append(args, patch.Name)
-	}
-	if patch.DocumentSecurity != nil {
-		sets = append(sets, "document_security = ?")
-		args = append(args, *patch.DocumentSecurity)
-	}
-	if patch.Disabled != nil {
-		sets = append(sets, "disabled = ?")
-		args = append(args, *patch.Disabled)
-	}
-	if len(sets) == 0 {
-		return nil
-	}
-	sets = append(sets, "updated_at = ?")
-	args = append(args, time.Now(), projectID, databaseID, collectionID)
-	catSQL, err := p.catalogQuoted(projectID)
-	if err != nil {
-		return p.mapError(err)
-	}
-	_, err = p.conn(ctx).ExecContext(ctx,
-		fmt.Sprintf(`UPDATE %s.document_collections SET `, catSQL)+strings.Join(sets, ", ")+` WHERE project_id = ? AND database_id = ? AND id = ?`,
-		args...,
-	)
-	return p.mapError(err)
+		var sets []string
+		var args []any
+		if patch.Name != "" {
+			sets = append(sets, "name = ?")
+			args = append(args, patch.Name)
+		}
+		if patch.DocumentSecurity != nil {
+			sets = append(sets, "document_security = ?")
+			args = append(args, *patch.DocumentSecurity)
+		}
+		if patch.Disabled != nil {
+			sets = append(sets, "disabled = ?")
+			args = append(args, *patch.Disabled)
+		}
+		// 空 patch（无权限、无字段）保持 no-op，不刷审计列。
+		if patch.Permissions == nil && len(sets) == 0 {
+			return nil
+		}
+		sets = append(sets, "updated_at = ?")
+		args = append(args, time.Now(), projectID, databaseID, collectionID)
+		catSQL, err := p.catalogQuoted(projectID)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).ExecContext(txCtx,
+			fmt.Sprintf(`UPDATE %s.document_collections SET `, catSQL)+strings.Join(sets, ", ")+` WHERE project_id = ? AND database_id = ? AND id = ?`,
+			args...,
+		)
+		return err
+	}))
 }
 
 func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, databaseID, collectionID string, attr databases.Attribute) error {
