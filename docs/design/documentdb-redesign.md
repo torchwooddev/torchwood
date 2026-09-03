@@ -219,6 +219,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 
 - **内核 = op 模型 + 单事务执行器**：可序列化异构 op 列表（复用旧 `document_transaction_ops` 字段族：type/database/collection/document_id/data/permissions/increment/expected_version/conflict_columns）在一个 `RunInTx` 内顺序执行——RLS/GUC 一次注入、逐 op 判定（提交时权限）、按 `(_tenant,_id)` 排序加锁防批内死锁、OCC 逐 op、outbox 事件同事务（可共带 transaction_id）、all-or-nothing、失败返回带 op index 的 violations。**实现注意（2026-09-03 评审登记）**：排序加锁是执行器的目标态纪律，现状 Bulk 并不具备——`BulkUpdateDocuments` 无行锁、`BulkDeleteDocuments` 按输入顺序 `FOR UPDATE`；"Bulk 的泛化"指复用其单事务/事件/outbox 骨架，锁纪律须按本节新建，不得照抄现状 Bulk。
 - **三种消费形态**（按消费者执行位置选）：A `documents:execute-tx`（远程客户端一次性原子 op 批，Bulk 的泛化，无暂存表）；B Functions 事务上下文（服务端真事务，`InTx` 管道 + GUC 注入 + 生命周期，**不走 staged**——命令式代码无法 replay）；C staged session（跨请求暂存，复用旧 D-6 表设计与教训，等 A 的需求证据再启用）。
+- **Phase 1 实施裁决（2026-09-03 方案作者复审实施报告后）**：① op 模型收敛为**请求级单 database**（database 为 RPC 路径参数而非 per-op 字段——与旧 D-6"事务级单库"一致，跨库批无需求证据，上文字段族中的 per-op database 撤回）；② `expected_version=0` 一律 **InvalidArgument**（新代码不得继承旧错位；单文档 `UpdateDocumentVersionRequired` 同步拆分 nil→FailedPrecondition(version_required) vs ≤0→InvalidArgument——这正是 C4"消灭错误码错位"的本意）；③ grant 校验**严格 per-op**：种子 op 仅豁免自身，不得提升同批其他 op 的授予校验（批级提升是越权面）；④ upsert 不参与预排序锁（冲突目标预查前未知），死锁窗口由 PG 死锁检测（中止一方）+ request_id 幂等重试兜底——接受，可选改进（预锁冲突值键）挂账。
 - **分期**：Phase 1 = A，Phase 2 = B，Phase 3 = C 视需求。Agent 联动：op[] 即工具参数（结构化、整体幂等、可 dry_run）；批内事件顺序 = op 顺序（B1 的分配序问题在批内不存在）。
 
 ## 5. 与当前架构对照
