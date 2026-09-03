@@ -2,6 +2,7 @@ package documents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/torchwooddev/torchwood/internal/app/shared"
@@ -12,6 +13,41 @@ import (
 
 // MaxBulkOperations 是 Bulk 写入单次条数上限（A4）。
 const MaxBulkOperations = 1000
+
+// 文档载荷上限（redesign §11-J H1）：请求载荷总量 1 MiB（对齐 Firestore 锚点）；
+// 单属性值 256 KiB（与事件信封截断阈值 maxEnvelopeBytes 对齐——超限载荷即使
+// 落库也会在 outbox 被截断，从源头拒绝）。域码 DOCUMENT.TOO_LARGE 随错误码
+// 体系（redesign §4.1）正式化，现阶段以消息前缀承载。
+const (
+	MaxDocumentPayloadBytes  = 1 << 20
+	MaxAttributePayloadBytes = 256 << 10
+)
+
+// validateDocumentPayload 校验写入载荷大小（Create/Update/Upsert/Bulk 共用）。
+// Update 是部分更新，总量按本次提交的载荷计（合并后全量在 infra 读回后自然
+// 受单属性与列宽约束）。
+func validateDocumentPayload(data map[string]any) error {
+	if len(data) == 0 {
+		return nil
+	}
+	total := 0
+	for k, v := range data {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return status.Errorf(codes.InvalidArgument, "DOCUMENT.ATTRIBUTE_UNSERIALIZABLE: attribute %q: %v", k, err)
+		}
+		if len(b) > MaxAttributePayloadBytes {
+			return status.Errorf(codes.InvalidArgument,
+				"DOCUMENT.TOO_LARGE: attribute %q is %d bytes, exceeds the %d-byte per-attribute limit", k, len(b), MaxAttributePayloadBytes)
+		}
+		total += len(b)
+	}
+	if total > MaxDocumentPayloadBytes {
+		return status.Errorf(codes.InvalidArgument,
+			"DOCUMENT.TOO_LARGE: document payload is %d bytes, exceeds the %d-byte limit", total, MaxDocumentPayloadBytes)
+	}
+	return nil
+}
 
 // WriteOptions 是 Client/Server 策略投影传给文档核的授权差异。
 type WriteOptions struct {
@@ -44,6 +80,9 @@ func (d *Documents) CreateDocument(
 ) (*databases.Document, error) {
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")
+	}
+	if err := validateDocumentPayload(data); err != nil {
+		return nil, err
 	}
 	perms, err := applyGrant(principal, perms, opts.AllowPrivilegedGrant)
 	if err != nil {
@@ -111,6 +150,9 @@ func (d *Documents) UpdateDocument(
 	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
 	}
+	if err := validateDocumentPayload(data); err != nil {
+		return nil, err
+	}
 	if len(perms) > 0 {
 		var err error
 		perms, err = applyGrant(principal, perms, opts.AllowPrivilegedGrant)
@@ -144,6 +186,9 @@ func (d *Documents) UpsertDocument(
 ) (*databases.Document, error) {
 	if len(data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "data is required")
+	}
+	if err := validateDocumentPayload(data); err != nil {
+		return nil, err
 	}
 	if len(conflictColumns) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "conflict_columns is required")
@@ -198,6 +243,9 @@ func (d *Documents) BulkUpdateDocuments(
 	opts WriteOptions,
 ) (int64, error) {
 	if err := validateBulkIDs(documentIDs); err != nil {
+		return 0, err
+	}
+	if err := validateDocumentPayload(data); err != nil {
 		return 0, err
 	}
 	if len(perms) > 0 {

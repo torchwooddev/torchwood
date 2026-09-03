@@ -2,6 +2,7 @@ package documents
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,39 @@ func TestCreateDocument_DataRequired(t *testing.T) {
 	core := New(newMemDocDB())
 	_, err := core.CreateDocument(context.Background(), "p", "app", "notes", "d1", nil, nil, databases.Principal{}, WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// TestValidateDocumentPayload（redesign §11-J H1）：载荷总量 ≤1 MiB、单属性值
+// ≤256 KiB（与事件信封截断阈值对齐），超限 InvalidArgument 且消息带
+// DOCUMENT.TOO_LARGE 域码；四个写路径共用同一校验。
+func TestValidateDocumentPayload(t *testing.T) {
+	big := strings.Repeat("a", 256*1024+1)
+	err := validateDocumentPayload(map[string]any{"blob": big})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, err.Error(), "DOCUMENT.TOO_LARGE")
+
+	mid := strings.Repeat("a", 200*1024)
+	err = validateDocumentPayload(map[string]any{
+		"a": mid, "b": mid, "c": mid, "d": mid, "e": mid, "f": mid,
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, err.Error(), "DOCUMENT.TOO_LARGE")
+
+	require.NoError(t, validateDocumentPayload(map[string]any{"ok": "small"}))
+	require.NoError(t, validateDocumentPayload(nil))
+	require.NoError(t, validateDocumentPayload(map[string]any{
+		"a": strings.Repeat("a", 256*1024-2), // 编码后恰好 256 KiB（含 JSON 引号）：合法
+	}))
+
+	// 写路径接入：Create 与 Upsert 超限在进 adapter 前被拒。
+	rec := newMemDocDB()
+	core := New(rec)
+	_, err = core.CreateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"blob": big}, nil, databases.Principal{}, WriteOptions{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Zero(t, rec.creates)
+	_, err = core.UpsertDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"blob": big}, []string{"x"}, nil, databases.Principal{}, WriteOptions{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Zero(t, rec.upserts)
 }
 
 func TestCreateDocument_GrantRequiresHeldRole(t *testing.T) {
@@ -76,6 +110,7 @@ func TestBulkUpdateDocuments_MaxOperations(t *testing.T) {
 type memDocDB struct {
 	docs        map[string]databases.Document
 	creates     int
+	upserts     int
 	bulkUpdates int
 }
 
@@ -132,6 +167,7 @@ func (m *memDocDB) UpdateDocument(_ context.Context, _, _, collectionID string, 
 }
 
 func (m *memDocDB) UpsertDocument(_ context.Context, _, _, collectionID string, doc databases.Document, _ []string, _ []databases.Permission, _ databases.Principal) (databases.Document, error) {
+	m.upserts++
 	if existing, ok := m.docs[m.key(collectionID, doc.ID)]; ok {
 		existing.Data = doc.Data
 		existing.Version++
