@@ -595,7 +595,7 @@ func (d *Databases) ExecuteTransactions(
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
 		return nil, err
 	}
-	allowed := allowPrivilegedGrant(principal)
+	callerAllowed := allowPrivilegedGrant(principal)
 	for i := range ops {
 		op := &ops[i]
 		switch op.Type {
@@ -614,11 +614,14 @@ func (d *Databases) ExecuteTransactions(
 		}
 		// create/upsert 空 ACE 种子与单文档 API 同语义（防锁死；update/delete 的
 		// 空 permissions 语义是"不变更文档 ACL"，不种子）。
+		// grant 豁免严格 per-op（Phase 1 裁决③）：种子 op 仅豁免自身——种子是
+		// 系统推导、非调用方授予意图；豁免外溢到其他 op 会放行显式越权授予。
+		opAllowed := callerAllowed
 		if len(op.Permissions) == 0 && (op.Type == databases.TransactionOpCreate || op.Type == databases.TransactionOpUpsert) {
 			op.Permissions = seedDocumentPermissions(principal)
-			allowed = true
+			opAllowed = true
 		}
-		perms, err := applyTxGrant(principal, op.Permissions, allowed)
+		perms, err := applyTxGrant(principal, op.Permissions, opAllowed)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
 		}
