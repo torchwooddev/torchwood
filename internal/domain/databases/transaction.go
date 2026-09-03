@@ -27,6 +27,11 @@ func AsOpError(err error) *OpError {
 // 事务内核 op 模型（redesign §4.8/E1）：可序列化异构 op 列表在单事务内
 // 顺序执行——Bulk 的泛化。op 数上限对齐 MaxBulkOperations（app 层校验）。
 
+// MaxTransactionOps 是单事务 op 批的条数上限（与 Bulk 写入上限同值同源；
+// app/documents.MaxBulkOperations 与 infra 执行器共同引用本常量——infra
+// 不得 import app，共享上限只能放端口层）。
+const MaxTransactionOps = 1000
+
 // TransactionOpType 是 op 的操作类型。
 type TransactionOpType string
 

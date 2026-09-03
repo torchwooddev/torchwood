@@ -2183,6 +2183,15 @@ func (x *BulkDocumentsResponse) GetAffected() int64 {
 	return 0
 }
 
+// TransactionOp 是单批中的一个操作。字段族是各 op 类型的并集，消费不对称
+// （按 type）：
+//   - data：create/update/upsert 写入；delete 忽略；
+//   - permissions：create/upsert 非空时作为文档 ACL（空则种子创建者私有，
+//     与单文档 API 同语义）；update/delete 非空时替换、空则不变更；
+//   - increment：仅 update 消费（原子增量）；其余类型忽略；
+//   - expected_version：仅 update/delete 消费（见下方三态注释；upsert 忽略
+//     ——upsert 恒为盲写 +1 的 LWW 契约）；
+//   - conflict_columns：仅 upsert 消费，必须无序命中集合一个 unique 索引。
 type TransactionOp struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	Type         TransactionOpType      `protobuf:"varint,1,opt,name=type,proto3,enum=torchwood.server.v1.TransactionOpType" json:"type,omitempty"`
@@ -2191,12 +2200,13 @@ type TransactionOp struct {
 	Data         *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	Permissions  []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	Increment    map[string]int64       `protobuf:"bytes,6,rep,name=increment,proto3" json:"increment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	// OCC 原语三态（redesign §2-C4 + §4.8 Phase 1 裁决②）：设置 → CAS；
-	// 未设置 → 盲写 +1（LWW 契约，仅 update 类；delete 缺省为 version_required）；
-	// 显式 0 → InvalidArgument（DOCUMENT.VERSION_INVALID，缺省是
-	// FailedPrecondition/DOCUMENT.VERSION_REQUIRED，两者不同）。
+	// OCC 原语三态（redesign §2-C4 + §4.8 Phase 1 裁决②；仅 update/delete 消费）：
+	// 设置 → CAS；未设置 → update 盲写 +1（LWW 契约；delete 缺省为
+	// version_required，不支持盲删）；显式 0 → InvalidArgument
+	// （DOCUMENT.VERSION_INVALID，缺省是 FailedPrecondition/
+	// DOCUMENT.VERSION_REQUIRED，两者不同）。
 	ExpectedVersion *int64 `protobuf:"varint,7,opt,name=expected_version,json=expectedVersion,proto3,oneof" json:"expected_version,omitempty"`
-	// upsert 专用：必须无序命中集合一个 unique 索引。
+	// upsert 专用：必须无序命中集合一个 unique 索引（其余 op 类型忽略）。
 	ConflictColumns []string `protobuf:"bytes,8,rep,name=conflict_columns,json=conflictColumns,proto3" json:"conflict_columns,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache

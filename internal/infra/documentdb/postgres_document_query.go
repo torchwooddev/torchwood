@@ -112,6 +112,12 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if cursor != "" {
 		// cursor 与 offset 同时传时 cursor 优先，offset 恒 0
 		offset = 0
+		// 多自定义排序键只取 Orders[0] 做游标：首页（全键序）与 cursor 页
+		//（单键序）不同构会静默跨页丢/重——显式拒绝。完整多键游标（编码全部
+		// 排序键）属重设计阶段① C2，不做。
+		if len(parsed.Orders) > 1 {
+			return nil, p.mapError(status.Error(codes.InvalidArgument, "cursor pagination requires a single order key"))
+		}
 		// 排序键与方向：仅取 Orders[0]，无显式排序则默认 _created_at DESC
 		sortField := "_created_at"
 		sortDir := "DESC"

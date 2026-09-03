@@ -11,8 +11,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// MaxBulkOperations 是 Bulk 写入单次条数上限（A4）。
-const MaxBulkOperations = 1000
+// MaxBulkOperations 是 Bulk 写入单次条数上限（A4），与 execute-tx op 批
+// 上限同值同源（databases.MaxTransactionOps，端口层唯一常量）。
+const MaxBulkOperations = databases.MaxTransactionOps
 
 // 文档载荷上限（redesign §11-J H1）：请求载荷总量 1 MiB（对齐 Firestore 锚点）；
 // 单属性值 256 KiB（与事件信封截断阈值 maxEnvelopeBytes 对齐——超限载荷即使

@@ -411,6 +411,67 @@ func TestPostgresDocumentDatabase_UpsertConflictColumnsPrecheck(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys：多自定义排序键
+// + cursor → InvalidArgument（游标只取 Orders[0]，与首页全键序不同构会静默
+// 丢/重；完整多键游标属重设计阶段① C2）。单键 cursor 路径不受影响。
+func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "items", "Items", []databases.Attribute{
+		{ID: "priority", Key: "priority", Type: "integer"},
+		{ID: "title", Key: "title", Type: "string", Size: 64},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "any"},
+		{Type: "read", Role: "any"},
+	}, true))
+
+	anyReader := databases.Principal{Roles: []string{"any"}}
+	for i := 0; i < 3; i++ {
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "items", databases.Document{
+			Data: map[string]any{"priority": 7, "title": fmt.Sprintf("t%d", i)},
+		}, nil, anyReader)
+		require.NoError(t, err)
+	}
+
+	page1, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		Queries: []string{`orderDesc("priority")`, `orderAsc("title")`, `limit(2)`},
+	}, anyReader)
+	require.NoError(t, err)
+	require.Len(t, page1.Documents, 2)
+	last := page1.Documents[len(page1.Documents)-1].ID
+
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		Queries: []string{`orderDesc("priority")`, `orderAsc("title")`, `limit(2)`, `cursorAfter("` + last + `")`},
+	}, anyReader)
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+	require.Contains(t, st.Message(), "single order key")
+
+	// 单键 cursor 不受影响（独立单键链路：单键首页 + 单键续页）。
+	singlePage1, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		Queries: []string{`orderDesc("priority")`, `limit(2)`},
+	}, anyReader)
+	require.NoError(t, err)
+	require.Len(t, singlePage1.Documents, 2)
+	singleLast := singlePage1.Documents[len(singlePage1.Documents)-1].ID
+	single, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		Queries: []string{`orderDesc("priority")`, `limit(2)`, `cursorAfter("` + singleLast + `")`},
+	}, anyReader)
+	require.NoError(t, err)
+	require.Len(t, single.Documents, 1)
+}
+
 // TestPostgresDocumentDatabase_AttributeDefaultValueCatalog：default 与 DDL 同源
 // 落 catalog 且 GetCollection/ListCollections 读回（回归：物理列 DEFAULT 生效但
 // catalog 不落库、读不回，契约断裂）。

@@ -22,9 +22,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 )
 
-const maxTransactionOps = 1000
-
-// ExecuteTransactions 是事务内核的单事务执行器入口。
 func (p *postgresDocumentDB) ExecuteTransactions(
 	ctx context.Context, projectID, databaseID string,
 	ops []databases.TransactionOp, mode databases.TransactionMode,
@@ -33,8 +30,8 @@ func (p *postgresDocumentDB) ExecuteTransactions(
 	if len(ops) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "ops is required")
 	}
-	if len(ops) > maxTransactionOps {
-		return nil, status.Errorf(codes.InvalidArgument, "ops count %d exceeds maximum of %d", len(ops), maxTransactionOps)
+	if len(ops) > databases.MaxTransactionOps {
+		return nil, status.Errorf(codes.InvalidArgument, "ops count %d exceeds maximum of %d", len(ops), databases.MaxTransactionOps)
 	}
 	if mode == "" {
 		mode = databases.TransactionModeAtomic

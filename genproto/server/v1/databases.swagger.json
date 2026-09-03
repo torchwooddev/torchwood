@@ -2175,16 +2175,17 @@
         "expected_version": {
           "type": "string",
           "format": "int64",
-          "title": "OCC 原语三态（redesign §2-C4 + §4.8 Phase 1 裁决②）：设置 → CAS；\n未设置 → 盲写 +1（LWW 契约，仅 update 类；delete 缺省为 version_required）；\n显式 0 → InvalidArgument（DOCUMENT.VERSION_INVALID，缺省是\nFailedPrecondition/DOCUMENT.VERSION_REQUIRED，两者不同）。"
+          "title": "OCC 原语三态（redesign §2-C4 + §4.8 Phase 1 裁决②；仅 update/delete 消费）：\n设置 → CAS；未设置 → update 盲写 +1（LWW 契约；delete 缺省为\nversion_required，不支持盲删）；显式 0 → InvalidArgument\n（DOCUMENT.VERSION_INVALID，缺省是 FailedPrecondition/\nDOCUMENT.VERSION_REQUIRED，两者不同）。"
         },
         "conflict_columns": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "title": "upsert 专用：必须无序命中集合一个 unique 索引。"
+          "title": "upsert 专用：必须无序命中集合一个 unique 索引（其余 op 类型忽略）。"
         }
-      }
+      },
+      "title": "TransactionOp 是单批中的一个操作。字段族是各 op 类型的并集，消费不对称\n（按 type）：\n  - data：create/update/upsert 写入；delete 忽略；\n  - permissions：create/upsert 非空时作为文档 ACL（空则种子创建者私有，\n    与单文档 API 同语义）；update/delete 非空时替换、空则不变更；\n  - increment：仅 update 消费（原子增量）；其余类型忽略；\n  - expected_version：仅 update/delete 消费（见下方三态注释；upsert 忽略\n    ——upsert 恒为盲写 +1 的 LWW 契约）；\n  - conflict_columns：仅 upsert 消费，必须无序命中集合一个 unique 索引。"
     },
     "v1TransactionOpResult": {
       "type": "object",
