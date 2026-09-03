@@ -284,6 +284,58 @@ func requireInvalidArg(t *testing.T, err error) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 }
 
+// TestPostgresDocumentDatabase_AttributeDefaultValueCatalog：default 与 DDL 同源
+// 落 catalog 且 GetCollection/ListCollections 读回（回归：物理列 DEFAULT 生效但
+// catalog 不落库、读不回，契约断裂）。
+func TestPostgresDocumentDatabase_AttributeDefaultValueCatalog(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 128, Default: "untitled"},
+		{ID: "views", Key: "views", Type: "integer", Default: 42},
+	}, nil, nil, true))
+
+	findAttr := func(coll *databases.Collection, key string) databases.Attribute {
+		for _, a := range coll.Attributes {
+			if a.Key == key {
+				return a
+			}
+		}
+		t.Fatalf("attribute %q not found", key)
+		return databases.Attribute{}
+	}
+
+	got, err := docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	// catalog 的 default_value 列为 TEXT：读回统一字符串形态（写入可传标量）。
+	require.Equal(t, "untitled", findAttr(got, "title").Default)
+	require.Equal(t, "42", findAttr(got, "views").Default)
+
+	// CreateAttribute 路径同样落库并读回。
+	require.NoError(t, docDB.CreateAttribute(ctx, projectID, "app", "posts", databases.Attribute{
+		ID: "pinned", Key: "pinned", Type: "boolean", Default: true,
+	}))
+	got, err = docDB.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Equal(t, "true", findAttr(got, "pinned").Default)
+
+	// ListCollections 路径读回。
+	list, _, err := docDB.ListCollections(ctx, projectID, "app", databases.ListQuery{})
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, "untitled", findAttr(&list[0], "title").Default)
+}
+
 // TestPostgresDocumentDocuments_TiebreakerPagination：自定义排序键全部相同的多行，
 // offset 续页与 keyset cursor 续页都必须不丢不重（重复排序键的全序由 _id
 // tiebreaker 保证；offset 路径曾缺 _id 导致跨页丢行）。

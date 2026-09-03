@@ -2,6 +2,7 @@ package servergrpc
 
 import (
 	"context"
+	"fmt"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
@@ -590,14 +591,18 @@ func mapCollection(c *databases.Collection) *serverv1.Collection {
 		out.Permissions = append(out.Permissions, p.Type+":"+p.Role)
 	}
 	for _, a := range c.Attributes {
-		out.Attributes = append(out.Attributes, &serverv1.Attribute{
+		attr := &serverv1.Attribute{
 			Id:       a.ID,
 			Key:      a.Key,
 			Type:     a.Type,
 			Size:     int32(a.Size),
 			Required: a.Required,
 			Array:    a.Array,
-		})
+		}
+		if a.Default != nil {
+			attr.DefaultValue = fmt.Sprint(a.Default)
+		}
+		out.Attributes = append(out.Attributes, attr)
 	}
 	for _, i := range c.Indexes {
 		out.Indexes = append(out.Indexes, &serverv1.Index{

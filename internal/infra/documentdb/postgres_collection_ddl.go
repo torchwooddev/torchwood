@@ -332,6 +332,12 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		if attr.Size > 0 {
 			m.Size = &attr.Size
 		}
+		// default 与 DDL（attributeColumnSQL 的 DEFAULT）同源落 catalog：物理列
+		// 生效但元数据缺失曾是契约断裂（GetCollection 读不回 default）。
+		if attr.Default != nil {
+			def := fmt.Sprint(attr.Default)
+			m.DefaultValue = &def
+		}
 		cat, err := p.catalogIdent(projectID)
 		if err != nil {
 			return err
@@ -827,6 +833,10 @@ func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, proje
 		if attr.Size > 0 {
 			m.Size = &attr.Size
 		}
+		if attr.Default != nil {
+			def := fmt.Sprint(attr.Default)
+			m.DefaultValue = &def
+		}
 		if _, err := p.conn(ctx).NewInsert().Model(m).
 			ModelTableExpr("?.document_attributes AS da", cat).Exec(ctx); err != nil {
 			return err
@@ -892,6 +902,9 @@ func mapCollectionRow(m *model.DocumentCollection, attrs []model.DocumentAttribu
 		attr := databases.Attribute{ID: a.ID, Key: a.Key, Type: a.Type, Required: a.Required, Array: a.IsArray}
 		if a.Size != nil {
 			attr.Size = *a.Size
+		}
+		if a.DefaultValue != nil {
+			attr.Default = *a.DefaultValue
 		}
 		c.Attributes = append(c.Attributes, attr)
 	}
