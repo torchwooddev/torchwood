@@ -51,6 +51,30 @@ func TestBuildAppwriteQuery_OrCompilesToSQLOr(t *testing.T) {
 	require.NotContains(t, where, " AND ")
 }
 
+// TestBuildAppwriteQuery_CustomOrderHasIDTiebreaker：自定义排序必须以
+// _id 收尾且与 cursor 续页路径同构（重复排序键的全序确定性 + keyset 各页
+// 同序；offset 翻页跨页不丢不重的机制保证）。
+func TestBuildAppwriteQuery_CustomOrderHasIDTiebreaker(t *testing.T) {
+	parsed, err := query.ParseMany([]string{`orderAsc("status")`})
+	require.NoError(t, err)
+	_, _, orderSQL, err := buildAppwriteQuery(parsed)
+	require.NoError(t, err)
+	require.Equal(t, `ORDER BY d."status" ASC, d._id ASC`, orderSQL)
+
+	parsed, err = query.ParseMany([]string{`orderDesc("priority")`})
+	require.NoError(t, err)
+	_, _, orderSQL, err = buildAppwriteQuery(parsed)
+	require.NoError(t, err)
+	require.Equal(t, `ORDER BY d."priority" DESC, d._id DESC`, orderSQL)
+
+	// 默认排序（无显式 orders）同样带 _id。
+	parsed, err = query.ParseMany([]string{`equal("status","open")`})
+	require.NoError(t, err)
+	_, _, orderSQL, err = buildAppwriteQuery(parsed)
+	require.NoError(t, err)
+	require.Equal(t, `ORDER BY d._created_at DESC, d._id DESC`, orderSQL)
+}
+
 func TestBuildAppwriteQuery_CodecAndStillAnd(t *testing.T) {
 	parsed, err := query.ParseMany([]string{`equal("a","1")`, `equal("b","2")`})
 	require.NoError(t, err)

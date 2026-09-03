@@ -214,7 +214,15 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 			parts = append(parts, fmt.Sprintf("d.%s %s", quoteIdent(field), dir))
 		}
 		if len(parts) > 0 {
-			orderSQL = "ORDER BY " + strings.Join(parts, ", ") + ", d._created_at DESC"
+			// 与 cursor 续页路径（postgres_document_query.go 的 ORDER BY / keyset
+			// 谓词 `<field>, d._id` 二元组）同构：分页各页必须同一全序，否则同键
+			// 多行跨页丢/重。不补 _created_at 中段——那会使首页与 cursor 页序不同
+			// 构（R08-P2-4 的遗留缺陷）。_id 方向跟随首个排序键（与 cursor 路径一致）。
+			dir := "ASC"
+			if parsed.Orders[0].Desc {
+				dir = "DESC"
+			}
+			orderSQL = "ORDER BY " + strings.Join(parts, ", ") + ", d._id " + dir
 		}
 	}
 	return where, args, orderSQL, nil

@@ -284,6 +284,93 @@ func requireInvalidArg(t *testing.T, err error) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 }
 
+// TestPostgresDocumentDocuments_TiebreakerPagination：自定义排序键全部相同的多行，
+// offset 续页与 keyset cursor 续页都必须不丢不重（重复排序键的全序由 _id
+// tiebreaker 保证；offset 路径曾缺 _id 导致跨页丢行）。
+func TestPostgresDocumentDocuments_TiebreakerPagination(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "items", "Items", []databases.Attribute{
+		{ID: "priority", Key: "priority", Type: "integer"},
+		{ID: "title", Key: "title", Type: "string", Size: 64},
+	}, nil, []databases.Permission{
+		{Type: "read", Role: "any"},
+		{Type: "create", Role: "any"},
+	}, true))
+
+	anyReader := databases.Principal{Roles: []string{"any"}}
+	const n = 5
+	inserted := map[string]bool{}
+	for i := 0; i < n; i++ {
+		created, err := docDB.CreateDocument(ctx, projectID, "app", "items", databases.Document{
+			Data: map[string]any{"priority": 7, "title": fmt.Sprintf("t%d", i)},
+		}, nil, anyReader)
+		require.NoError(t, err)
+		inserted[created.ID] = true
+	}
+
+	collect := func(pages [][]databases.Document) map[string]int {
+		seen := map[string]int{}
+		for _, docs := range pages {
+			for _, d := range docs {
+				seen[d.ID]++
+			}
+		}
+		return seen
+	}
+	assertNoLossNoDup := func(t *testing.T, seen map[string]int) {
+		t.Helper()
+		require.Len(t, seen, n, "pagination must return every document exactly once")
+		for id, c := range seen {
+			require.Equalf(t, 1, c, "document %s appeared %d times across pages", id, c)
+		}
+	}
+
+	// keyset cursor 续页：首页 + cursorAfter 翻完。
+	var keysetPages [][]databases.Document
+	page1, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		Queries: []string{`orderDesc("priority")`, `limit(2)`},
+	}, anyReader)
+	require.NoError(t, err)
+	require.Len(t, page1.Documents, 2)
+	keysetPages = append(keysetPages, page1.Documents)
+
+	last := page1.Documents[len(page1.Documents)-1].ID
+	for i := 0; i < 3; i++ {
+		page, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+			Queries: []string{`orderDesc("priority")`, `limit(2)`, `cursorAfter("` + last + `")`},
+		}, anyReader)
+		require.NoError(t, err)
+		if len(page.Documents) == 0 {
+			break
+		}
+		keysetPages = append(keysetPages, page.Documents)
+		last = page.Documents[len(page.Documents)-1].ID
+	}
+	assertNoLossNoDup(t, collect(keysetPages))
+
+	// offset 续页（修复的直接受益路径）：ORDER BY 必须全序确定。
+	var offsetPages [][]databases.Document
+	for offset := 0; offset < n; offset += 2 {
+		page, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+			Queries: []string{`orderDesc("priority")`, `limit(2)`, fmt.Sprintf(`offset(%d)`, offset)},
+		}, anyReader)
+		require.NoError(t, err)
+		offsetPages = append(offsetPages, page.Documents)
+	}
+	assertNoLossNoDup(t, collect(offsetPages))
+}
+
 // TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected
 // (P0-1): a principal holding only collection-level create must not be able to
 // update another user's row by submitting a new _id whose conflict columns
