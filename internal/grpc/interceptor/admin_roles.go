@@ -39,8 +39,9 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.DatabasesService/UpdateDocument":      {"member", "owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/UpsertDocument":      {"member", "owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/DeleteDocument":      {"member", "owner", "admin"},
-	"/torchwood.server.v1.DatabasesService/BulkUpdateDocuments": {"member", "owner", "admin"},
-	"/torchwood.server.v1.DatabasesService/BulkDeleteDocuments": {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/BulkUpdateDocuments":  {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/BulkDeleteDocuments":  {"member", "owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/ExecuteTransactions":  {"member", "owner", "admin"},
 	// FunctionsService 全部写方法（对照 proto/server/v1/functions.proto RPC
 	// 清单逐一登记；GetVariables 返回掩码值安全可放行，其余读方法 viewer 可读）
 	"/torchwood.server.v1.FunctionsService/CreateFunction":   {"owner", "admin"},
