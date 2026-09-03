@@ -17,18 +17,19 @@ import (
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
+	idem        databases.IdempotencyStore
 	docs        *documents.Documents
 }
 
-func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB) *Databases {
-	return &Databases{projectRepo: projectRepo, docDB: docDB, docs: documents.New(docDB)}
+func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB, idem databases.IdempotencyStore) *Databases {
+	return &Databases{projectRepo: projectRepo, docDB: docDB, idem: idem, docs: documents.New(docDB, idem)}
 }
 
 func (d *Databases) documentsCore() *documents.Documents {
 	if d.docs != nil {
 		return d.docs
 	}
-	return documents.New(d.docDB)
+	return documents.New(d.docDB, d.idem)
 }
 
 func (d *Databases) loadProject(ctx context.Context, projectID string) (*projects.Project, error) {
@@ -142,16 +143,17 @@ func (d *Databases) CreateDocument(
 	databaseID, collectionID, documentID string,
 	data map[string]any,
 	perms []databases.Permission,
-) (*databases.Document, error) {
+	requestID string,
+) (*databases.Document, bool, error) {
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	p, _ := contexts.Principal(ctx)
 	if len(perms) == 0 {
 		perms = ownerDocumentPermissions(p.OwnerID())
 	}
-	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{})
+	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, requestID, documents.WriteOptions{})
 }
 
 func (d *Databases) ListDocuments(
@@ -181,15 +183,16 @@ func (d *Databases) UpdateDocument(
 	perms []databases.Permission,
 	increment map[string]int64,
 	version *int64,
-) (*databases.Document, error) {
+	requestID string,
+) (*databases.Document, bool, error) {
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, documents.WriteOptions{})
+	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, requestID, documents.WriteOptions{})
 }
 
 func (d *Databases) UpsertDocument(
@@ -198,27 +201,28 @@ func (d *Databases) UpsertDocument(
 	data map[string]any,
 	conflictColumns []string,
 	perms []databases.Permission,
-) (*databases.Document, error) {
+	requestID string,
+) (*databases.Document, bool, error) {
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	p, _ := contexts.Principal(ctx)
 	if len(perms) == 0 {
 		perms = ownerDocumentPermissions(p.OwnerID())
 	}
 	if len(data) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data is required")
+		return nil, false, status.Error(codes.InvalidArgument, "data is required")
 	}
-	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, documents.WriteOptions{})
+	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, requestID, documents.WriteOptions{})
 }
 
-func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID, documentID string, version *int64) error {
+func (d *Databases) DeleteDocument(ctx context.Context, databaseID, collectionID, documentID string, version *int64, requestID string) (bool, error) {
 	projectID, principal, err := d.ensureCollection(ctx, databaseID, collectionID)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return d.documentsCore().DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal, version)
+	return d.documentsCore().DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal, version, requestID)
 }
 
 func (d *Databases) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query) (int64, error) {

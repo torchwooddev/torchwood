@@ -12,8 +12,8 @@ import (
 )
 
 func TestCreateDocument_DataRequired(t *testing.T) {
-	core := New(newMemDocDB())
-	_, err := core.CreateDocument(context.Background(), "p", "app", "notes", "d1", nil, nil, databases.Principal{}, WriteOptions{})
+	core := New(newMemDocDB(), nil)
+	_, _, err := core.CreateDocument(context.Background(), "p", "app", "notes", "d1", nil, nil, databases.Principal{}, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
@@ -41,45 +41,45 @@ func TestValidateDocumentPayload(t *testing.T) {
 
 	// 写路径接入：Create 与 Upsert 超限在进 adapter 前被拒。
 	rec := newMemDocDB()
-	core := New(rec)
-	_, err = core.CreateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"blob": big}, nil, databases.Principal{}, WriteOptions{})
+	core := New(rec, nil)
+	_, _, err = core.CreateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"blob": big}, nil, databases.Principal{}, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Zero(t, rec.creates)
-	_, err = core.UpsertDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"blob": big}, []string{"x"}, nil, databases.Principal{}, WriteOptions{})
+	_, _, err = core.UpsertDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"blob": big}, []string{"x"}, nil, databases.Principal{}, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Zero(t, rec.upserts)
 }
 
 func TestCreateDocument_GrantRequiresHeldRole(t *testing.T) {
 	rec := newMemDocDB()
-	core := New(rec)
+	core := New(rec, nil)
 	user := databases.Principal{Roles: []string{"users", "user:u1"}}
-	_, err := core.CreateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, []databases.Permission{
+	_, _, err := core.CreateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, []databases.Permission{
 		{Type: "update", Role: "user:other"},
-	}, user, WriteOptions{})
+	}, user, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Zero(t, rec.creates)
 
-	_, err = core.CreateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, []databases.Permission{
+	_, _, err = core.CreateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, []databases.Permission{
 		{Type: "update", Role: "user:other"},
-	}, user, WriteOptions{AllowPrivilegedGrant: true})
+	}, user, "", WriteOptions{AllowPrivilegedGrant: true})
 	require.NoError(t, err)
 	require.Equal(t, 1, rec.creates)
 }
 
 func TestUpdateDocument_VersionRequired(t *testing.T) {
-	core := New(newMemDocDB())
-	_, err := core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, nil, WriteOptions{})
+	core := New(newMemDocDB(), nil)
+	_, _, err := core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, nil, "", WriteOptions{})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	// Phase 1 裁决②：显式 0 与缺省不同码——InvalidArgument / version_invalid。
 	zero := int64(0)
-	_, err = core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, &zero, WriteOptions{})
+	_, _, err = core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, &zero, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "version_invalid")
 }
 
 func TestGetDocument_NotFound(t *testing.T) {
-	core := New(newMemDocDB())
+	core := New(newMemDocDB(), nil)
 	_, err := core.GetDocument(context.Background(), "p", "app", "notes", "missing", databases.Principal{})
 	require.Equal(t, codes.NotFound, status.Code(err))
 }
@@ -87,7 +87,7 @@ func TestGetDocument_NotFound(t *testing.T) {
 func TestListDocuments_KeepsDocumentVersion(t *testing.T) {
 	rec := newMemDocDB()
 	rec.docs["users/u1"] = databases.Document{ID: "u1", Version: 7, Data: map[string]any{"email": "a@b.c"}}
-	core := New(rec)
+	core := New(rec, nil)
 	list, total, _, err := core.ListDocuments(context.Background(), "p", "app", "users", databases.Query{}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
@@ -95,19 +95,19 @@ func TestListDocuments_KeepsDocumentVersion(t *testing.T) {
 }
 
 func TestUpsertDocument_ConflictColumnsRequired(t *testing.T) {
-	core := New(newMemDocDB())
-	_, err := core.UpsertDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, WriteOptions{})
+	core := New(newMemDocDB(), nil)
+	_, _, err := core.UpsertDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 func TestBulkUpdateDocuments_MaxOperations(t *testing.T) {
 	rec := newMemDocDB()
-	core := New(rec)
+	core := New(rec, nil)
 	ids := make([]string, MaxBulkOperations+1)
 	for i := range ids {
 		ids[i] = "x"
 	}
-	_, err := core.BulkUpdateDocuments(context.Background(), "p", "app", "notes", ids, map[string]any{"t": 1}, nil, databases.Principal{}, WriteOptions{})
+	_, _, err := core.BulkUpdateDocuments(context.Background(), "p", "app", "notes", ids, map[string]any{"t": 1}, nil, databases.Principal{}, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Zero(t, rec.bulkUpdates)
 }
@@ -238,8 +238,19 @@ func (m *memDocDB) SumDocumentField(context.Context, string, string, string, str
 }
 func (m *memDocDB) EnsureCatalog(context.Context, string) error { return nil }
 
-func (m *memDocDB) ExecuteTransactions(context.Context, string, string, []databases.TransactionOp, databases.TransactionMode, databases.Principal) ([]databases.TransactionOpResult, error) {
-	panic("ExecuteTransactions: not implemented in test fake")
+func (m *memDocDB) ExecuteTransactions(_ context.Context, _, _ string, ops []databases.TransactionOp, _ databases.TransactionMode, _ databases.Principal) ([]databases.TransactionOpResult, error) {
+	out := make([]databases.TransactionOpResult, 0, len(ops))
+	for i, op := range ops {
+		switch op.Type {
+		case databases.TransactionOpCreate, databases.TransactionOpUpsert:
+			doc := databases.Document{ID: op.DocumentID, Data: op.Data, Version: 1}
+			m.docs[m.key(op.CollectionID, doc.ID)] = doc
+			out = append(out, databases.TransactionOpResult{Index: i, OK: true, DocumentID: doc.ID, Version: doc.Version})
+		default:
+			out = append(out, databases.TransactionOpResult{Index: i, OK: true, DocumentID: op.DocumentID})
+		}
+	}
+	return out, nil
 }
 
 var _ databases.DocumentDB = (*memDocDB)(nil)

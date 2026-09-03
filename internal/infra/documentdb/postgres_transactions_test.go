@@ -152,8 +152,8 @@ func TestExecuteTransactions_PartialPermissionDenied(t *testing.T) {
 }
 
 // expected_version 三态（Phase 1 裁决②）：缺省（nil）→ update 盲写 +1
-//（LWW）/ delete 报 version_required；显式 0 → InvalidArgument
-//（DOCUMENT.VERSION_INVALID，不再与缺省混同）。
+// （LWW）/ delete 报 version_required；显式 0 → InvalidArgument
+// （DOCUMENT.VERSION_INVALID，不再与缺省混同）。
 func TestExecuteTransactions_ExpectedVersionStates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

@@ -31,7 +31,7 @@ func TestDatabases_ExecuteTransactions_PerOpGrant(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	// 普通用户主体（非 keys、非 PlatformAdmin）：allowPrivilegedGrant=false，
 	// ValidateGrantablePermissions 生效——精确复现越权面。
 	user := databases.Principal{Roles: []string{"users", "user:u1"}}
@@ -47,11 +47,11 @@ func TestDatabases_ExecuteTransactions_PerOpGrant(t *testing.T) {
 
 	// 批 1：种子 create（空 ACE）+ 显式越权 update（授予未持有的 user:other）
 	// → 整批 InvalidArgument，且先于任何写入（app 层前置校验）。
-	_, err := uc.ExecuteTransactions(ctx, projectID, "app", []databases.TransactionOp{
+	_, _, err := uc.ExecuteTransactions(ctx, projectID, "app", []databases.TransactionOp{
 		{Type: databases.TransactionOpCreate, CollectionID: "notes", DocumentID: "n1", Data: map[string]any{"title": "one"}},
 		{Type: databases.TransactionOpUpdate, CollectionID: "notes", DocumentID: "n1", Data: map[string]any{"title": "two"},
 			Permissions: []databases.Permission{{Type: "update", Role: "user:other"}}},
-	}, databases.TransactionModeAtomic, user)
+	}, databases.TransactionModeAtomic, user, "")
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.InvalidArgument, st.Code())
@@ -64,10 +64,10 @@ func TestDatabases_ExecuteTransactions_PerOpGrant(t *testing.T) {
 
 	// 批 2：种子 create + 合法 update（空 permissions = 不变更 ACL）→ 成功。
 	v1 := int64(1)
-	results, err := uc.ExecuteTransactions(ctx, projectID, "app", []databases.TransactionOp{
+	results, _, err := uc.ExecuteTransactions(ctx, projectID, "app", []databases.TransactionOp{
 		{Type: databases.TransactionOpCreate, CollectionID: "notes", DocumentID: "n1", Data: map[string]any{"title": "one"}},
 		{Type: databases.TransactionOpUpdate, CollectionID: "notes", DocumentID: "n1", Data: map[string]any{"title": "two"}, ExpectedVersion: &v1},
-	}, databases.TransactionModeAtomic, user)
+	}, databases.TransactionModeAtomic, user, "")
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	require.True(t, results[0].OK)

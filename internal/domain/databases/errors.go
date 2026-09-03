@@ -20,13 +20,18 @@ const (
 	ErrCodeInvalidArgument          = "DOCUMENT.INVALID_ARGUMENT"
 	ErrCodeTooLarge                 = "DOCUMENT.TOO_LARGE"
 	ErrCodeExhausted                = "DOCUMENT.EXHAUSTED"
+	// 写幂等（redesign §4.1/§10.1）：KEY_CONFLICT = 同 key 复用给不同请求
+	//（InvalidArgument）；IN_PROGRESS = 同 key 请求仍在执行、等待超时
+	//（Aborted，可重试）。
+	ErrCodeIdempotencyKeyConflict = "IDEMPOTENCY.KEY_CONFLICT"
+	ErrCodeIdempotencyInProgress  = "IDEMPOTENCY.IN_PROGRESS"
 )
 
 // ErrorCodeRetryable 是域码静态可重试表：OCC 冲突可重读合并重试、资源耗尽
-// 可退避重试；参数/权限/存在性类错误重试无意义。
+// 可退避重试、幂等执行中稍后重试；参数/权限/存在性类错误重试无意义。
 func ErrorCodeRetryable(code string) bool {
 	switch code {
-	case ErrCodeVersionConflict, ErrCodeExhausted:
+	case ErrCodeVersionConflict, ErrCodeExhausted, ErrCodeIdempotencyInProgress:
 		return true
 	}
 	return false
@@ -53,6 +58,8 @@ func ErrorDomainCode(err error) string {
 		return ErrCodeVersionColumnConflict
 	case errors.Is(err, ErrVersionColumnUnavailable):
 		return ErrCodeVersionColumnUnavailable
+	case errors.Is(err, ErrIdempotencyKeyConflict):
+		return ErrCodeIdempotencyKeyConflict
 	}
 	return ""
 }

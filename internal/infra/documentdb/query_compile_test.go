@@ -77,7 +77,7 @@ func TestBuildAppwriteQuery_CustomOrderHasIDTiebreaker(t *testing.T) {
 }
 
 // TestBuildAppwriteQuery_TotalFilterParamsLimit：跨 filter 绑定参数累计上限
-//（单 filter ≤1000 不封总量：100 query × 1000 值可积 10 万参数，超 PG 65535
+// （单 filter ≤1000 不封总量：100 query × 1000 值可积 10 万参数，超 PG 65535
 // 语句参数上限后以运行时错误暴露）。
 func TestBuildAppwriteQuery_TotalFilterParamsLimit(t *testing.T) {
 	makeFilter := func(n int) *query.Filter {

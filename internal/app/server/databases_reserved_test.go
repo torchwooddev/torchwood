@@ -32,7 +32,7 @@ func TestCreateDocument_FormerReservedIDsAreRegularIDs(t *testing.T) {
 	principal := databases.Principal{PlatformAdmin: true}
 
 	for _, id := range []string{"count", "bulk"} {
-		created, err := d.CreateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 1}, nil, principal)
+		created, _, err := d.CreateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 1}, nil, principal, "")
 		require.NoError(t, err, "document_id %q 应可正常创建", id)
 		require.Equal(t, id, created.ID)
 
@@ -40,17 +40,18 @@ func TestCreateDocument_FormerReservedIDsAreRegularIDs(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, got.Data["a"])
 
-		updated, err := d.UpdateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 2}, nil, nil, principal, &created.Version)
+		updated, _, err := d.UpdateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 2}, nil, nil, principal, &created.Version, "")
 		require.NoError(t, err)
 		require.Equal(t, 2, updated.Data["a"])
 
-		require.NoError(t, d.DeleteDocument(ctx, "p1", "db1", "coll1", id, principal, &updated.Version))
+		_, delErr := d.DeleteDocument(ctx, "p1", "db1", "coll1", id, principal, &updated.Version, "")
+		require.NoError(t, delErr)
 		_, err = d.GetDocument(ctx, "p1", "db1", "coll1", id, principal)
 		require.Equal(t, codes.NotFound, status.Code(err), "删除后 document_id %q 应不可再读", id)
 	}
 
 	// 普通 id 仍可正常创建（文档写入 fakeDocDB 成功）。
-	doc, err := d.CreateDocument(ctx, "p1", "db1", "coll1", "doc_1", map[string]any{"a": 1}, nil, principal)
+	doc, _, err := d.CreateDocument(ctx, "p1", "db1", "coll1", "doc_1", map[string]any{"a": 1}, nil, principal, "")
 	require.NoError(t, err)
 	require.Equal(t, "doc_1", doc.ID)
 }
@@ -71,7 +72,7 @@ func TestDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -79,7 +80,7 @@ func TestDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, nil, true))
 
-	created, err := uc.CreateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "reserved"}, nil, principal)
+	created, _, err := uc.CreateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "reserved"}, nil, principal, "")
 	require.NoError(t, err)
 	require.Equal(t, "count", created.ID)
 
@@ -87,11 +88,12 @@ func TestDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "reserved", got.Data["title"])
 
-	updated, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "renamed"}, nil, nil, principal, &created.Version)
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "renamed"}, nil, nil, principal, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "renamed", updated.Data["title"])
 
-	require.NoError(t, uc.DeleteDocument(ctx, projectID, "app", "posts", "count", principal, &updated.Version))
+	_, delErr := uc.DeleteDocument(ctx, projectID, "app", "posts", "count", principal, &updated.Version, "")
+	require.NoError(t, delErr)
 	_, err = uc.GetDocument(ctx, projectID, "app", "posts", "count", principal)
 	require.Equal(t, codes.NotFound, status.Code(err))
 }

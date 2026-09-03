@@ -40,7 +40,7 @@ var docDBErrorSQLStates = map[string]codes.Code{
 }
 
 // mapPGError 将 pgdriver 错误按 SQLSTATE 翻译为携带稳定域码的 gRPC status
-//（redesign §4.1：infra 错误必须带 error_id，禁止裸 "document database error"）。
+// （redesign §4.1：infra 错误必须带 error_id，禁止裸 "document database error"）。
 // 仅做类型匹配（errors.As 到 pgErrorFielder），不做字符串回退。
 // 23505 特殊处理：返回领域哨兵 ErrDuplicateKey（与 isUniqueViolation 路径一致，
 // 由 app 层 MapDocumentDBError 统一产出域码）；其余按 docDBErrorSQLStates 映射，
@@ -62,8 +62,8 @@ func mapPGError(err error) error {
 			}
 			st := status.New(code, fmt.Sprintf("%s: postgres error (sqlstate %s)", domainCode, state))
 			st, _ = st.WithDetails(&errdetails.ErrorInfo{
-				Reason:   domainCode,
-				Domain:   errorInfoDomain,
+				Reason: domainCode,
+				Domain: errorInfoDomain,
 				Metadata: map[string]string{
 					"sqlstate":  state,
 					"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),

@@ -58,14 +58,17 @@ type WriteOptions struct {
 }
 
 // Documents 是 Client/Server 共用的文档 CRUD 核：OCC、grant 展开/校验、
-// MapDocumentDBError。集合守卫、guest 读、owner 默认 ACE 留在包装层。
+// MapDocumentDBError、request_id 写幂等。集合守卫、guest 读、owner 默认 ACE
+// 留在包装层。
 type Documents struct {
 	docDB databases.DocumentDB
+	// idem 为 nil 时写幂等关闭（测试 / 无 store 部署形态）。
+	idem databases.IdempotencyStore
 }
 
-// New 构造文档核。docDB 不得为 nil。
-func New(docDB databases.DocumentDB) *Documents {
-	return &Documents{docDB: docDB}
+// New 构造文档核。docDB 不得为 nil；idem 为 nil 时幂等关闭。
+func New(docDB databases.DocumentDB, idem databases.IdempotencyStore) *Documents {
+	return &Documents{docDB: docDB, idem: idem}
 }
 
 // DocumentDB 返回注入的端口（包装层 catalog / EnsureCatalog 复用）。
@@ -77,26 +80,37 @@ func (d *Documents) CreateDocument(
 	data map[string]any,
 	perms []databases.Permission,
 	principal databases.Principal,
+	requestID string,
 	opts WriteOptions,
-) (*databases.Document, error) {
+) (*databases.Document, bool, error) {
 	if len(data) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data is required")
+		return nil, false, status.Error(codes.InvalidArgument, "data is required")
 	}
 	if err := ValidateDocumentPayload(data); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	perms, err := applyGrant(principal, perms, opts.AllowPrivilegedGrant)
-	if err != nil {
-		return nil, err
-	}
-	created, err := d.docDB.CreateDocument(ctx, projectID, databaseID, collectionID, databases.Document{
-		ID:   documentID,
-		Data: data,
-	}, perms, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("create document: %w", err))
-	}
-	return &created, nil
+	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.CreateDocument", principal,
+		documentFingerprintBody{
+			Database:    databaseID,
+			Collection:  collectionID,
+			Document:    documentID,
+			Data:        normalizeData(data),
+			Permissions: perms,
+		},
+		func(ctx context.Context) (*databases.Document, error) {
+			effPerms, err := applyGrant(principal, perms, opts.AllowPrivilegedGrant)
+			if err != nil {
+				return nil, err
+			}
+			created, err := d.docDB.CreateDocument(ctx, projectID, databaseID, collectionID, databases.Document{
+				ID:   documentID,
+				Data: data,
+			}, effPerms, principal)
+			if err != nil {
+				return nil, shared.MapDocumentDBError(fmt.Errorf("create document: %w", err))
+			}
+			return &created, nil
+		})
 }
 
 func (d *Documents) ListDocuments(
@@ -143,37 +157,52 @@ func (d *Documents) UpdateDocument(
 	increment map[string]int64,
 	principal databases.Principal,
 	version *int64,
+	requestID string,
 	opts WriteOptions,
-) (*databases.Document, error) {
+) (*databases.Document, bool, error) {
 	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
+		return nil, false, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
 	}
 	if err := ValidateDocumentPayload(data); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if len(perms) > 0 {
-		var err error
-		perms, err = applyGrant(principal, perms, opts.AllowPrivilegedGrant)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if len(data) == 0 {
-		data = map[string]any{}
-	}
-	updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
-		Document:        databases.Document{ID: documentID, Data: data},
-		Permissions:     perms,
-		Increment:       increment,
-		ExpectedVersion: *version,
-	}, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("update document: %w", err))
-	}
-	return &updated, nil
+	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.UpdateDocument", principal,
+		documentFingerprintBody{
+			Database:    databaseID,
+			Collection:  collectionID,
+			Document:    documentID,
+			Data:        normalizeData(data),
+			Permissions: perms,
+			Increment:   increment,
+			Version:     version,
+		},
+		func(ctx context.Context) (*databases.Document, error) {
+			effPerms := perms
+			if len(perms) > 0 {
+				var err error
+				effPerms, err = applyGrant(principal, perms, opts.AllowPrivilegedGrant)
+				if err != nil {
+					return nil, err
+				}
+			}
+			effData := data
+			if len(effData) == 0 {
+				effData = map[string]any{}
+			}
+			updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
+				Document:        databases.Document{ID: documentID, Data: effData},
+				Permissions:     effPerms,
+				Increment:       increment,
+				ExpectedVersion: *version,
+			}, principal)
+			if err != nil {
+				return nil, shared.MapDocumentDBError(fmt.Errorf("update document: %w", err))
+			}
+			return &updated, nil
+		})
 }
 
 func (d *Documents) UpsertDocument(
@@ -183,29 +212,41 @@ func (d *Documents) UpsertDocument(
 	conflictColumns []string,
 	perms []databases.Permission,
 	principal databases.Principal,
+	requestID string,
 	opts WriteOptions,
-) (*databases.Document, error) {
+) (*databases.Document, bool, error) {
 	if len(data) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "data is required")
+		return nil, false, status.Error(codes.InvalidArgument, "data is required")
 	}
 	if err := ValidateDocumentPayload(data); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(conflictColumns) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "conflict_columns is required")
+		return nil, false, status.Error(codes.InvalidArgument, "conflict_columns is required")
 	}
-	perms, err := applyGrant(principal, perms, opts.AllowPrivilegedGrant)
-	if err != nil {
-		return nil, err
-	}
-	upserted, err := d.docDB.UpsertDocument(ctx, projectID, databaseID, collectionID, databases.Document{
-		ID:   documentID,
-		Data: data,
-	}, conflictColumns, perms, principal)
-	if err != nil {
-		return nil, shared.MapDocumentDBError(fmt.Errorf("upsert document: %w", err))
-	}
-	return &upserted, nil
+	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.UpsertDocument", principal,
+		documentFingerprintBody{
+			Database:        databaseID,
+			Collection:      collectionID,
+			Document:        documentID,
+			Data:            normalizeData(data),
+			Permissions:     perms,
+			ConflictColumns: sortedStrings(conflictColumns),
+		},
+		func(ctx context.Context) (*databases.Document, error) {
+			effPerms, err := applyGrant(principal, perms, opts.AllowPrivilegedGrant)
+			if err != nil {
+				return nil, err
+			}
+			upserted, err := d.docDB.UpsertDocument(ctx, projectID, databaseID, collectionID, databases.Document{
+				ID:   documentID,
+				Data: data,
+			}, conflictColumns, effPerms, principal)
+			if err != nil {
+				return nil, shared.MapDocumentDBError(fmt.Errorf("upsert document: %w", err))
+			}
+			return &upserted, nil
+		})
 }
 
 func (d *Documents) DeleteDocument(
@@ -213,11 +254,26 @@ func (d *Documents) DeleteDocument(
 	projectID, databaseID, collectionID, documentID string,
 	principal databases.Principal,
 	version *int64,
-) error {
+	requestID string,
+) (bool, error) {
 	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
-		return err
+		return false, err
 	}
-	return shared.MapDocumentDBError(d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, databases.DeleteOptions{ExpectedVersion: *version}, principal))
+	_, replayed, err := idempotentExec(ctx, d.idem, projectID, requestID, "databases.DeleteDocument", principal,
+		documentFingerprintBody{
+			Database:   databaseID,
+			Collection: collectionID,
+			Document:   documentID,
+			Version:    version,
+		},
+		func(ctx context.Context) (struct{}, error) {
+			err := d.docDB.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, databases.DeleteOptions{ExpectedVersion: *version}, principal)
+			if err != nil {
+				return struct{}{}, shared.MapDocumentDBError(err)
+			}
+			return struct{}{}, nil
+		})
+	return replayed, err
 }
 
 func (d *Documents) CountDocuments(
@@ -241,23 +297,38 @@ func (d *Documents) BulkUpdateDocuments(
 	data map[string]any,
 	perms []databases.Permission,
 	principal databases.Principal,
+	requestID string,
 	opts WriteOptions,
-) (int64, error) {
+) (int64, bool, error) {
 	if err := validateBulkIDs(documentIDs); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if err := ValidateDocumentPayload(data); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	if len(perms) > 0 {
-		var err error
-		perms, err = applyGrant(principal, perms, opts.AllowPrivilegedGrant)
-		if err != nil {
-			return 0, err
-		}
-	}
-	n, err := d.docDB.BulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, perms, principal)
-	return n, shared.MapDocumentDBError(err)
+	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.BulkUpdateDocuments", principal,
+		bulkFingerprintBody{
+			Database:    databaseID,
+			Collection:  collectionID,
+			DocumentIDs: sortedStrings(documentIDs),
+			Data:        normalizeData(data),
+			Permissions: perms,
+		},
+		func(ctx context.Context) (int64, error) {
+			effPerms := perms
+			if len(perms) > 0 {
+				var err error
+				effPerms, err = applyGrant(principal, perms, opts.AllowPrivilegedGrant)
+				if err != nil {
+					return 0, err
+				}
+			}
+			n, err := d.docDB.BulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, effPerms, principal)
+			if err != nil {
+				return 0, shared.MapDocumentDBError(err)
+			}
+			return n, nil
+		})
 }
 
 func (d *Documents) BulkDeleteDocuments(
@@ -265,12 +336,24 @@ func (d *Documents) BulkDeleteDocuments(
 	projectID, databaseID, collectionID string,
 	documentIDs []string,
 	principal databases.Principal,
-) (int64, error) {
+	requestID string,
+) (int64, bool, error) {
 	if err := validateBulkIDs(documentIDs); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	n, err := d.docDB.BulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
-	return n, shared.MapDocumentDBError(err)
+	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.BulkDeleteDocuments", principal,
+		bulkFingerprintBody{
+			Database:    databaseID,
+			Collection:  collectionID,
+			DocumentIDs: sortedStrings(documentIDs),
+		},
+		func(ctx context.Context) (int64, error) {
+			n, err := d.docDB.BulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
+			if err != nil {
+				return 0, shared.MapDocumentDBError(err)
+			}
+			return n, nil
+		})
 }
 
 func validateBulkIDs(documentIDs []string) error {
@@ -298,23 +381,33 @@ func applyGrant(principal databases.Principal, perms []databases.Permission, all
 
 // ExecuteTransactions 透传事务内核（redesign §4.8 Phase 1）。守卫、种子与
 // grant 展开由包装层（app/server）完成；infra 单事务执行器保证原子性、
-// 锁纪律与事件同事务。ATOMIC 失败映射域码错误。
+// 锁纪律与事件同事务。ATOMIC 失败映射域码错误。幂等覆盖整批：request_id
+// 重放返回首次完整结果（含 PARTIAL per-op 结果，E2）。
 func (d *Documents) ExecuteTransactions(
 	ctx context.Context,
 	projectID, databaseID string,
 	ops []databases.TransactionOp,
 	mode databases.TransactionMode,
 	principal databases.Principal,
-) ([]databases.TransactionOpResult, error) {
-	results, err := d.docDB.ExecuteTransactions(ctx, projectID, databaseID, ops, mode, principal)
-	if err != nil {
-		// ATOMIC 失败：OpError 携带 index + 哨兵，映射为带 op 定位的域码错误。
-		if oe := databases.AsOpError(err); oe != nil {
-			if code := databases.ErrorDomainCode(oe.Err); code != "" {
-				return nil, shared.DomainStatusWithOp(code, oe.Index)
+	requestID string,
+) ([]databases.TransactionOpResult, bool, error) {
+	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.ExecuteTransactions", principal,
+		txFingerprintBody{
+			Database: databaseID,
+			Mode:     mode,
+			Ops:      txOpsFingerprint(ops),
+		},
+		func(ctx context.Context) ([]databases.TransactionOpResult, error) {
+			results, err := d.docDB.ExecuteTransactions(ctx, projectID, databaseID, ops, mode, principal)
+			if err != nil {
+				// ATOMIC 失败：OpError 携带 index + 哨兵，映射为带 op 定位的域码错误。
+				if oe := databases.AsOpError(err); oe != nil {
+					if code := databases.ErrorDomainCode(oe.Err); code != "" {
+						return nil, shared.DomainStatusWithOp(code, oe.Index)
+					}
+				}
+				return nil, shared.MapDocumentDBError(fmt.Errorf("execute transactions: %w", err))
 			}
-		}
-		return nil, shared.MapDocumentDBError(fmt.Errorf("execute transactions: %w", err))
-	}
-	return results, nil
+			return results, nil
+		})
 }

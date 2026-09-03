@@ -120,7 +120,7 @@ func TestBindListQuery_EmptyGtEq(t *testing.T) {
 }
 
 func TestListCountDocuments_EmptyComparisonValues(t *testing.T) {
-	core := New(newMemDocDB())
+	core := New(newMemDocDB(), nil)
 	ctx := context.Background()
 	emptyGt := databases.Query{AST: &query.Query{Filter: &query.Filter{Op: query.OpGreaterThan, Attribute: "n"}}}
 	_, _, _, err := core.ListDocuments(ctx, "p", "app", "notes", emptyGt, databases.Principal{})

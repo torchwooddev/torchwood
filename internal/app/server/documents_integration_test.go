@@ -28,7 +28,7 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	const (
@@ -41,10 +41,10 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 		{ID: "views", Key: "views", Type: "integer"},
 	}, nil, nil, true))
 
-	created, err := uc.CreateDocument(ctx, projectID, dbID, collID, "", map[string]any{
+	created, _, err := uc.CreateDocument(ctx, projectID, dbID, collID, "", map[string]any{
 		"title": "Hello Torchwood",
 		"views": 1,
-	}, databases.DefaultCollectionPermissions(), principal)
+	}, databases.DefaultCollectionPermissions(), principal, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, created.ID)
 	require.Equal(t, "Hello Torchwood", created.Data["title"])
@@ -53,9 +53,9 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.ID, got.ID)
 
-	updated, err := uc.UpdateDocument(ctx, projectID, dbID, collID, created.ID, map[string]any{
+	updated, _, err := uc.UpdateDocument(ctx, projectID, dbID, collID, created.ID, map[string]any{
 		"views": 99,
-	}, nil, nil, principal, &created.Version)
+	}, nil, nil, principal, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, float64(99), updated.Data["views"])
 	require.Equal(t, int64(2), updated.Version)
@@ -71,7 +71,8 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
-	require.NoError(t, uc.DeleteDocument(ctx, projectID, dbID, collID, created.ID, principal, &updated.Version))
+	_, delErr := uc.DeleteDocument(ctx, projectID, dbID, collID, created.ID, principal, &updated.Version, "")
+	require.NoError(t, delErr)
 	_, err = uc.GetDocument(ctx, projectID, dbID, collID, created.ID, principal)
 	require.Error(t, err)
 }
@@ -92,7 +93,7 @@ func TestDatabases_UpsertDocument(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -103,18 +104,18 @@ func TestDatabases_UpsertDocument(t *testing.T) {
 		{ID: "uq_email", Type: "unique", Attributes: []string{"email"}},
 	}, nil, true))
 
-	upserted, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+	upserted, _, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
 		"email": "a@example.com",
 		"name":  "Alice",
-	}, []string{"email"}, databases.DefaultCollectionPermissions(), principal)
+	}, []string{"email"}, databases.DefaultCollectionPermissions(), principal, "")
 	require.NoError(t, err)
 	require.Equal(t, "m1", upserted.ID)
 	require.Equal(t, "Alice", upserted.Data["name"])
 
-	updated, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+	updated, _, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
 		"email": "a@example.com",
 		"name":  "Alice Updated",
-	}, []string{"email"}, databases.DefaultCollectionPermissions(), principal)
+	}, []string{"email"}, databases.DefaultCollectionPermissions(), principal, "")
 	require.NoError(t, err)
 	require.Equal(t, "m1", updated.ID)
 	require.Equal(t, "Alice Updated", updated.Data["name"])
@@ -138,7 +139,7 @@ func TestDatabases_UpsertDocument_Validation(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -146,11 +147,11 @@ func TestDatabases_UpsertDocument_Validation(t *testing.T) {
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, nil, true))
 
-	_, err := uc.UpsertDocument(ctx, projectID, "app", "posts", "", nil, []string{"title"}, nil, principal)
+	_, _, err := uc.UpsertDocument(ctx, projectID, "app", "posts", "", nil, []string{"title"}, nil, principal, "")
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
-	_, err = uc.UpsertDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "t"}, nil, nil, principal)
+	_, _, err = uc.UpsertDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "t"}, nil, nil, principal, "")
 	st, _ = status.FromError(err)
 	require.Equal(t, codes.InvalidArgument, st.Code())
 }
@@ -172,7 +173,7 @@ func TestDatabases_UpsertDocument_EmptyACESeed(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -183,9 +184,9 @@ func TestDatabases_UpsertDocument_EmptyACESeed(t *testing.T) {
 	}, []databases.Permission{{Type: "create", Role: "keys"}}, true))
 
 	// 插入支：空 ACE 种子为 read/update/delete:keys，读回与修改不依赖集合级 read。
-	upserted, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+	upserted, _, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
 		"email": "seed@example.com",
-	}, []string{"email"}, nil, principal)
+	}, []string{"email"}, nil, principal, "")
 	require.NoError(t, err)
 	require.Equal(t, "m1", upserted.ID)
 	requirePermsMatchRoles(t, upserted.Permissions, "keys")
@@ -195,16 +196,16 @@ func TestDatabases_UpsertDocument_EmptyACESeed(t *testing.T) {
 	require.Equal(t, "seed@example.com", got.Data["email"])
 	requirePermsMatchRoles(t, got.Permissions, "keys")
 
-	updated, err := uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
 		"email": "seed2@example.com",
-	}, nil, nil, principal, &got.Version)
+	}, nil, nil, principal, &got.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "seed2@example.com", updated.Data["email"])
 
 	// 更新支：conflict 命中已有行，种子不得把目标行 ACL 替换为 __private__。
-	updatedAgain, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m2", map[string]any{
+	updatedAgain, _, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m2", map[string]any{
 		"email": "seed2@example.com",
-	}, []string{"email"}, nil, principal)
+	}, []string{"email"}, nil, principal, "")
 	require.NoError(t, err)
 	require.Equal(t, "m1", updatedAgain.ID)
 	requirePermsMatchRoles(t, updatedAgain.Permissions, "keys")
@@ -213,14 +214,14 @@ func TestDatabases_UpsertDocument_EmptyACESeed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(3), gotAgain.Version)
 
-	_, err = uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
 		"email": "seed3@example.com",
-	}, nil, nil, principal, &gotAgain.Version)
+	}, nil, nil, principal, &gotAgain.Version, "")
 	require.NoError(t, err)
 }
 
 // requirePermsMatchRoles 断言 perms 恰好是 role 的 read/update/delete 三元组
-//（seedDocumentPermissions 的种子形态，不含 __private__）。
+// （seedDocumentPermissions 的种子形态，不含 __private__）。
 func requirePermsMatchRoles(t *testing.T, perms []databases.Permission, role string) {
 	t.Helper()
 	require.Len(t, perms, 3)

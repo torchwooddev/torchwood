@@ -694,7 +694,7 @@ func buildUpdateParts(doc databases.Document, updatedBy string) (setParts []stri
 // principal's roles, or "" when no user role is held.
 // userIDFromPrincipal 返回写入审计列（_created_by/_updated_by）的归因主体：
 // user:<id> 角色优先（存裸 id，兼容既有语义）；否则 API key 主体存 "key:<id>"
-//（redesign §10.2-1：keys 写入行为可归因，原实现 keys-only 主体审计列为空）。
+// （redesign §10.2-1：keys 写入行为可归因，原实现 keys-only 主体审计列为空）。
 func userIDFromPrincipal(p databases.Principal) string {
 	for _, r := range p.Roles {
 		if strings.HasPrefix(r, "user:") {

@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/app/documents"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -39,10 +40,11 @@ func (s *DatabasesService) CreateDocument(ctx context.Context, req *clientv1.Cre
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	doc, err := s.databases.CreateDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), data, perms)
+	doc, replayed, err := s.databases.CreateDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), data, perms, requestIDFromMeta(ctx, req.GetRequestId()))
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return mapClientDocument(doc)
 }
 
@@ -102,7 +104,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.Upd
 		v := req.GetVersion()
 		version = &v
 	}
-	doc, err := s.databases.UpdateDocument(
+	doc, replayed, err := s.databases.UpdateDocument(
 		ctx,
 		req.GetDatabaseId(),
 		req.GetCollectionId(),
@@ -111,10 +113,12 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *clientv1.Upd
 		perms,
 		req.GetIncrement(),
 		version,
+		requestIDFromMeta(ctx, req.GetRequestId()),
 	)
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return mapClientDocument(doc)
 }
 
@@ -128,7 +132,7 @@ func (s *DatabasesService) UpsertDocument(ctx context.Context, req *clientv1.Ups
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	doc, err := s.databases.UpsertDocument(
+	doc, replayed, err := s.databases.UpsertDocument(
 		ctx,
 		req.GetDatabaseId(),
 		req.GetCollectionId(),
@@ -136,10 +140,12 @@ func (s *DatabasesService) UpsertDocument(ctx context.Context, req *clientv1.Ups
 		data,
 		req.GetConflictColumns(),
 		perms,
+		requestIDFromMeta(ctx, req.GetRequestId()),
 	)
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return mapClientDocument(doc)
 }
 
@@ -150,9 +156,11 @@ func (s *DatabasesService) DeleteDocument(ctx context.Context, req *clientv1.Del
 		v := req.GetVersion()
 		version = &v
 	}
-	if err := s.databases.DeleteDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), version); err != nil {
+	replayed, err := s.databases.DeleteDocument(ctx, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), version, requestIDFromMeta(ctx, req.GetRequestId()))
+	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return &sharedv1.Empty{}, nil
 }
 
@@ -186,6 +194,29 @@ func resolveProjectID(ctx context.Context, reqProjectID string) (string, error) 
 		return p.ProjectID, nil
 	}
 	return "", status.Error(codes.InvalidArgument, "project_id is required")
+}
+
+// requestIDFromMeta 返回写请求的幂等键：proto 字段优先，回退 HTTP 网关映射
+// 进来的 Idempotency-Key 头（grpc-gateway incoming metadata）。
+func requestIDFromMeta(ctx context.Context, inRequestID string) string {
+	if inRequestID != "" {
+		return inRequestID
+	}
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if values := md.Get("idempotency-key"); len(values) > 0 && values[0] != "" {
+			return values[0]
+		}
+	}
+	return ""
+}
+
+// markReplayed 在幂等重放时下发 x-torchwood-replayed 响应头（HTTP 面由网关
+// outgoing matcher 透传为响应头）。非 gRPC 传输 ctx 下静默跳过。
+func markReplayed(ctx context.Context, replayed bool) {
+	if !replayed {
+		return
+	}
+	_ = grpc.SetHeader(ctx, metadata.Pairs("x-torchwood-replayed", "true"))
 }
 
 func mapClientDocument(doc *databases.Document) (*sharedv1.Document, error) {

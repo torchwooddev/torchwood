@@ -133,7 +133,7 @@ func TestMapDocumentDBError_StatusPassthrough(t *testing.T) {
 }
 
 // TestDomainStatus_RetryableMetadata：retryable 静态表进 ErrorInfo metadata
-//（Agent 自动重试决策依据）。
+// （Agent 自动重试决策依据）。
 func TestDomainStatus_RetryableMetadata(t *testing.T) {
 	conflict := DomainStatus(databases.ErrCodeVersionConflict)
 	st := status.Convert(conflict)

@@ -1,5 +1,7 @@
 package databases
 
+import "strings"
+
 // Principal is the access context for document operations.
 // It is constructed by the app layer from shared.Principal and passed to
 // DocumentDB implementations. Keeping it in domain/databases avoids a
@@ -50,4 +52,24 @@ func (p Principal) IsSystem() bool {
 // skipped. System（内部）与 PlatformAdmin（console）都旁路，但它们不是同一 Actor.
 func (p Principal) BypassesDocumentACL() bool {
 	return p.IsSystem() || p.PlatformAdmin
+}
+
+// StableActorID 返回主体的稳定归因身份（写幂等键作用域用，redesign §10.1——
+// 复用 _created_by 归因链）：首个 user:<id> 角色 → 裸 id（end user / console
+// admin 经 DocPrincipal 注入 user:<AdminID>）；key 主体 → key:<id>；内部
+// System → "system"。返回空串表示无稳定身份（理论不可达），调用方跳过幂等
+// 而不是让所有匿名主体共享同一命名空间。
+func (p Principal) StableActorID() string {
+	for _, r := range p.Roles {
+		if id, ok := strings.CutPrefix(r, "user:"); ok && id != "" {
+			return id
+		}
+	}
+	if p.KeyID != "" {
+		return "key:" + p.KeyID
+	}
+	if p.IsSystem() {
+		return "system"
+	}
+	return ""
 }

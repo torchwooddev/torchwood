@@ -2,6 +2,7 @@ package bun
 
 import (
 	"github.com/google/wire"
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 )
 
@@ -9,6 +10,8 @@ var ProviderSet = wire.NewSet(
 	bunrepo.NewProjectRepository,
 	bunrepo.NewOAuthProviderRepository,
 	bunrepo.NewAPIKeyRepository,
+	bunrepo.NewIdempotencyStore,
+	wire.Bind(new(databases.IdempotencyStore), new(*bunrepo.IdempotencyStore)),
 	bunrepo.NewAdminRepository,
 	bunrepo.NewAdminProjectRepository,
 	bunrepo.NewAuditRepository,

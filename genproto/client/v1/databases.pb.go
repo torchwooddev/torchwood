@@ -31,9 +31,13 @@ type CreateDocumentRequest struct {
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
 	// 客户端自选 document_id；documents:count 为自定义方法段（REST 自定义动词），
 	// 不再占用 document_id 命名空间，可自由取任意合法值。
-	DocumentId    string           `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
-	Data          *structpb.Struct `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
-	Permissions   []string         `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	DocumentId  string           `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	Data        *structpb.Struct `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	Permissions []string         `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// 写幂等键（redesign §4.1/§10.1）：作用域 (project, actor, request_id)，
+	// 24h 内同键重放返回首次成功响应（响应头 x-torchwood-replayed: true）；
+	// 同键不同请求 → IDEMPOTENCY.KEY_CONFLICT。HTTP 面等价 Idempotency-Key 头。
+	RequestId     *string `protobuf:"bytes,6,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -103,6 +107,13 @@ func (x *CreateDocumentRequest) GetPermissions() []string {
 	return nil
 }
 
+func (x *CreateDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
+}
+
 type UpdateDocumentRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -112,7 +123,9 @@ type UpdateDocumentRequest struct {
 	Permissions  []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	Increment    map[string]int64       `protobuf:"bytes,6,rep,name=increment,proto3" json:"increment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	// 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
-	Version       *int64 `protobuf:"varint,7,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	Version *int64 `protobuf:"varint,7,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	// 写幂等键，语义同 CreateDocumentRequest.request_id。
+	RequestId     *string `protobuf:"bytes,8,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -196,6 +209,13 @@ func (x *UpdateDocumentRequest) GetVersion() int64 {
 	return 0
 }
 
+func (x *UpdateDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
+}
+
 type UpsertDocumentRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId      string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -204,8 +224,10 @@ type UpsertDocumentRequest struct {
 	Data            *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	Permissions     []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	ConflictColumns []string               `protobuf:"bytes,6,rep,name=conflict_columns,json=conflictColumns,proto3" json:"conflict_columns,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 写幂等键，语义同 CreateDocumentRequest.request_id。
+	RequestId     *string `protobuf:"bytes,7,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpsertDocumentRequest) Reset() {
@@ -278,6 +300,13 @@ func (x *UpsertDocumentRequest) GetConflictColumns() []string {
 		return x.ConflictColumns
 	}
 	return nil
+}
+
+func (x *UpsertDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
 }
 
 type GetDocumentRequest struct {
@@ -354,7 +383,9 @@ type DeleteDocumentRequest struct {
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
 	DocumentId   string                 `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
 	// 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
-	Version       *int64 `protobuf:"varint,4,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	Version *int64 `protobuf:"varint,4,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	// 写幂等键，语义同 CreateDocumentRequest.request_id。
+	RequestId     *string `protobuf:"bytes,5,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -415,6 +446,13 @@ func (x *DeleteDocumentRequest) GetVersion() int64 {
 		return *x.Version
 	}
 	return 0
+}
+
+func (x *DeleteDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
 }
 
 type ListDocumentsRequest struct {
@@ -688,7 +726,7 @@ var File_client_v1_databases_proto protoreflect.FileDescriptor
 
 const file_client_v1_databases_proto_rawDesc = "" +
 	"\n" +
-	"\x19client/v1/databases.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\x1a\x18shared/v1/document.proto\x1a\x15shared/v1/query.proto\"\xcd\x01\n" +
+	"\x19client/v1/databases.proto\x12\x13torchwood.client.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x15shared/v1/authz.proto\x1a\x16shared/v1/common.proto\x1a\x18shared/v1/document.proto\x1a\x15shared/v1/query.proto\"\x80\x02\n" +
 	"\x15CreateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -696,7 +734,10 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
 	"documentId\x12+\n" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
-	"\vpermissions\x18\x05 \x03(\tR\vpermissions\"\x8f\x03\n" +
+	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\"\n" +
+	"\n" +
+	"request_id\x18\x06 \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
+	"\v_request_id\"\xc2\x03\n" +
 	"\x15UpdateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -706,12 +747,15 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12W\n" +
 	"\tincrement\x18\x06 \x03(\v29.torchwood.client.v1.UpdateDocumentRequest.IncrementEntryR\tincrement\x12\x1d\n" +
-	"\aversion\x18\a \x01(\x03H\x00R\aversion\x88\x01\x01\x1a<\n" +
+	"\aversion\x18\a \x01(\x03H\x00R\aversion\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"request_id\x18\b \x01(\tH\x01R\trequestId\x88\x01\x01\x1a<\n" +
 	"\x0eIncrementEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01B\n" +
 	"\n" +
-	"\b_version\"\xf8\x01\n" +
+	"\b_versionB\r\n" +
+	"\v_request_id\"\xab\x02\n" +
 	"\x15UpsertDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -720,7 +764,10 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"documentId\x12+\n" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12)\n" +
-	"\x10conflict_columns\x18\x06 \x03(\tR\x0fconflictColumns\"\x9a\x01\n" +
+	"\x10conflict_columns\x18\x06 \x03(\tR\x0fconflictColumns\x12\"\n" +
+	"\n" +
+	"request_id\x18\a \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
+	"\v_request_id\"\x9a\x01\n" +
 	"\x12GetDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -728,16 +775,19 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
 	"documentId\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x04 \x01(\tR\tprojectId\"\xa9\x01\n" +
+	"project_id\x18\x04 \x01(\tR\tprojectId\"\xdc\x01\n" +
 	"\x15DeleteDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x1f\n" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
 	"documentId\x12\x1d\n" +
-	"\aversion\x18\x04 \x01(\x03H\x00R\aversion\x88\x01\x01B\n" +
+	"\aversion\x18\x04 \x01(\x03H\x00R\aversion\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"\b_version\"\x92\x02\n" +
+	"request_id\x18\x05 \x01(\tH\x01R\trequestId\x88\x01\x01B\n" +
+	"\n" +
+	"\b_versionB\r\n" +
+	"\v_request_id\"\x92\x02\n" +
 	"\x14ListDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -854,7 +904,9 @@ func file_client_v1_databases_proto_init() {
 	if File_client_v1_databases_proto != nil {
 		return
 	}
+	file_client_v1_databases_proto_msgTypes[0].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[1].OneofWrappers = []any{}
+	file_client_v1_databases_proto_msgTypes[2].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[4].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[5].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[7].OneofWrappers = []any{}

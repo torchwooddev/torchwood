@@ -144,6 +144,10 @@ message CreateDocumentRequest {
   string document_id = 3;
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;
+  // 写幂等键（redesign §4.1/§10.1）：作用域 (project, actor, request_id)，
+  // 24h 内同键重放返回首次成功响应（响应头 x-torchwood-replayed: true）；
+  // 同键不同请求 → IDEMPOTENCY.KEY_CONFLICT。HTTP 面等价 Idempotency-Key 头。
+  optional string request_id = 6;
 }
 
 message UpdateDocumentRequest {
@@ -155,6 +159,8 @@ message UpdateDocumentRequest {
   map<string, int64> increment = 6;
   // 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
   optional int64 version = 7;
+  // 写幂等键，语义同 CreateDocumentRequest.request_id。
+  optional string request_id = 8;
 }
 
 message UpsertDocumentRequest {
@@ -164,6 +170,8 @@ message UpsertDocumentRequest {
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;
   repeated string conflict_columns = 6;
+  // 写幂等键，语义同 CreateDocumentRequest.request_id。
+  optional string request_id = 7;
 }
 
 message GetDocumentRequest {
@@ -179,6 +187,8 @@ message DeleteDocumentRequest {
   string document_id = 3;
   // 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
   optional int64 version = 4;
+  // 写幂等键，语义同 CreateDocumentRequest.request_id。
+  optional string request_id = 5;
 }
 
 message ListDocumentsRequest {

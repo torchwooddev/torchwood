@@ -37,7 +37,7 @@ func TestDatabasesService_AuditResource(t *testing.T) {
 	env, err := testutil.NewInterceptorEnv(db, &config.AppConfig{}, docDB)
 	require.NoError(t, err)
 
-	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	svc := NewDatabasesService(uc)
 
 	adminCtx := auditAdminCtx(ctx)
@@ -91,7 +91,7 @@ func TestDatabasesService_UpsertDocumentAuditResource(t *testing.T) {
 	env, err := testutil.NewInterceptorEnv(db, &config.AppConfig{}, docDB)
 	require.NoError(t, err)
 
-	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := appserver.NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	svc := NewDatabasesService(uc)
 
 	adminCtx := auditAdminCtx(ctx)

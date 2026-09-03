@@ -82,7 +82,7 @@ func TestPrincipal_DocPrincipal_DropsConsoleTag(t *testing.T) {
 }
 
 // TestPrincipal_DocPrincipal_KeyAttribution：API key 主体投影携带 KeyID
-//（写入归因链路：_created_by/_updated_by 落 key:<id>）；非 key 主体不携带。
+// （写入归因链路：_created_by/_updated_by 落 key:<id>）；非 key 主体不携带。
 func TestPrincipal_DocPrincipal_KeyAttribution(t *testing.T) {
 	t.Parallel()
 

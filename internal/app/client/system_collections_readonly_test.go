@@ -33,8 +33,8 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	serverUC := appserver.NewDatabases(projectRepo, docDB)
-	clientUC := NewDatabases(projectRepo, docDB)
+	serverUC := appserver.NewDatabases(projectRepo, docDB, nil)
+	clientUC := NewDatabases(projectRepo, docDB, nil)
 
 	_, _, _, err := clientUC.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -58,7 +58,7 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	for _, coll := range []string{"users", "groups"} {
-		_, err := clientUC.CreateDocument(userCtx, databases.SystemDatabaseID, coll, "", map[string]any{"name": "x"}, nil)
+		_, _, err := clientUC.CreateDocument(userCtx, databases.SystemDatabaseID, coll, "", map[string]any{"name": "x"}, nil, "")
 		require.Equal(t, codes.InvalidArgument, status.Code(err), "create into sentinel %s", coll)
 	}
 
@@ -71,7 +71,7 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 		{Type: "update", Role: "users"},
 		{Type: "delete", Role: "users"},
 	}, true))
-	created, err := clientUC.CreateDocument(userCtx, "app", "notes", "", map[string]any{"title": "Note"}, nil)
+	created, _, err := clientUC.CreateDocument(userCtx, "app", "notes", "", map[string]any{"title": "Note"}, nil, "")
 	require.NoError(t, err)
 	got, err := clientUC.GetDocument(userCtx, projectID, "app", "notes", created.ID)
 	require.NoError(t, err)
@@ -85,7 +85,7 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 		{Type: "update", Role: "users"},
 		{Type: "delete", Role: "users"},
 	}, true))
-	custom, err := clientUC.CreateDocument(userCtx, "app", "users", "", map[string]any{"name": "custom write"}, nil)
+	custom, _, err := clientUC.CreateDocument(userCtx, "app", "users", "", map[string]any{"name": "custom write"}, nil, "")
 	require.NoError(t, err)
 	got, err = clientUC.GetDocument(userCtx, projectID, "app", "users", custom.ID)
 	require.NoError(t, err)

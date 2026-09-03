@@ -15,7 +15,7 @@ import (
 // TestCreateAttribute_RejectsArray (D-5)：array=true 不得写入 catalog（物理列是标量）。
 // CreateCollection 属性列表同样拒绝，防止绕过 CreateAttribute。
 func TestCreateAttribute_RejectsArray(t *testing.T) {
-	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
+	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB(), nil)
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
 		Permissions: []string{"databases.write"},

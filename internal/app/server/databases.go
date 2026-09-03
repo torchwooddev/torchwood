@@ -33,18 +33,19 @@ const (
 type Databases struct {
 	projectRepo projects.Repository
 	docDB       databases.DocumentDB
+	idem        databases.IdempotencyStore
 	docs        *documents.Documents
 }
 
-func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB) *Databases {
-	return &Databases{projectRepo: projectRepo, docDB: docDB, docs: documents.New(docDB)}
+func NewDatabases(projectRepo projects.Repository, docDB databases.DocumentDB, idem databases.IdempotencyStore) *Databases {
+	return &Databases{projectRepo: projectRepo, docDB: docDB, idem: idem, docs: documents.New(docDB, idem)}
 }
 
 func (d *Databases) documentsCore() *documents.Documents {
 	if d.docs != nil {
 		return d.docs
 	}
-	return documents.New(d.docDB)
+	return documents.New(d.docDB, d.idem)
 }
 
 func allowPrivilegedGrant(principal databases.Principal) bool {
@@ -383,9 +384,10 @@ func (d *Databases) CreateDocument(
 	data map[string]any,
 	perms []databases.Permission,
 	principal databases.Principal,
-) (*databases.Document, error) {
+	requestID string,
+) (*databases.Document, bool, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	// C1：Server 空文档 ACE 私有（不再回落到集合 read:any）。
 	// WHY: 默认集合已去 read:any，但历史集合仍可能含它；空 ACE 若仍 docHasPerms=false 会对 guest 可读。
@@ -399,7 +401,7 @@ func (d *Databases) CreateDocument(
 		seeded = true
 	}
 	// seeded 时 ACE 全部为系统推导（非调用方授予意图），不受授予者校验约束。
-	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{
+	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, requestID, documents.WriteOptions{
 		AllowPrivilegedGrant: seeded || allowPrivilegedGrant(principal),
 	})
 }
@@ -481,11 +483,12 @@ func (d *Databases) UpdateDocument(
 	increment map[string]int64,
 	principal databases.Principal,
 	version *int64,
-) (*databases.Document, error) {
+	requestID string,
+) (*databases.Document, bool, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, documents.WriteOptions{
+	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, requestID, documents.WriteOptions{
 		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
 	})
 }
@@ -497,9 +500,10 @@ func (d *Databases) UpsertDocument(
 	conflictColumns []string,
 	perms []databases.Permission,
 	principal databases.Principal,
-) (*databases.Document, error) {
+	requestID string,
+) (*databases.Document, bool, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	// 空 ACE 种子与 CreateDocument 同语义（seedDocumentPermissions）：原实现
 	// 对非 user 主体种 read:__private__，keys 主体 upsert 后自己都读不回；
@@ -509,7 +513,7 @@ func (d *Databases) UpsertDocument(
 		perms = seedDocumentPermissions(principal)
 		seeded = true
 	}
-	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, documents.WriteOptions{
+	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, requestID, documents.WriteOptions{
 		AllowPrivilegedGrant: seeded || allowPrivilegedGrant(principal),
 	})
 }
@@ -521,11 +525,12 @@ func (d *Databases) BulkUpdateDocuments(
 	data map[string]any,
 	perms []databases.Permission,
 	principal databases.Principal,
-) (int64, error) {
+	requestID string,
+) (int64, bool, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	return d.documentsCore().BulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, perms, principal, documents.WriteOptions{
+	return d.documentsCore().BulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, perms, principal, requestID, documents.WriteOptions{
 		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
 	})
 }
@@ -535,11 +540,12 @@ func (d *Databases) BulkDeleteDocuments(
 	projectID, databaseID, collectionID string,
 	documentIDs []string,
 	principal databases.Principal,
-) (int64, error) {
+	requestID string,
+) (int64, bool, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	return d.documentsCore().BulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
+	return d.documentsCore().BulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal, requestID)
 }
 
 func (d *Databases) DeleteDocument(
@@ -547,11 +553,12 @@ func (d *Databases) DeleteDocument(
 	projectID, databaseID, collectionID, documentID string,
 	principal databases.Principal,
 	version *int64,
-) error {
+	requestID string,
+) (bool, error) {
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return err
+		return false, err
 	}
-	return d.documentsCore().DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal, version)
+	return d.documentsCore().DeleteDocument(ctx, projectID, databaseID, collectionID, documentID, principal, version, requestID)
 }
 
 func (d *Databases) CountDocuments(
@@ -579,21 +586,22 @@ func (d *Databases) ExecuteTransactions(
 	ops []databases.TransactionOp,
 	mode databases.TransactionMode,
 	principal databases.Principal,
-) ([]databases.TransactionOpResult, error) {
+	requestID string,
+) ([]databases.TransactionOpResult, bool, error) {
 	if err := shared.RequireServerWriteActor(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(ops) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "ops is required")
+		return nil, false, status.Error(codes.InvalidArgument, "ops is required")
 	}
 	if len(ops) > documents.MaxBulkOperations {
-		return nil, status.Errorf(codes.InvalidArgument, "ops count %d exceeds maximum of %d", len(ops), documents.MaxBulkOperations)
+		return nil, false, status.Errorf(codes.InvalidArgument, "ops count %d exceeds maximum of %d", len(ops), documents.MaxBulkOperations)
 	}
 	if _, err := d.resolveProject(ctx, projectID); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	callerAllowed := allowPrivilegedGrant(principal)
 	for i := range ops {
@@ -601,16 +609,16 @@ func (d *Databases) ExecuteTransactions(
 		switch op.Type {
 		case databases.TransactionOpCreate, databases.TransactionOpUpdate, databases.TransactionOpUpsert, databases.TransactionOpDelete:
 		default:
-			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid op type %q", i, op.Type)
+			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid op type %q", i, op.Type)
 		}
 		if err := d.validateCollectionID(op.CollectionID); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid collection id %q", i, op.CollectionID)
+			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: invalid collection id %q", i, op.CollectionID)
 		}
 		if databases.IsSystemCollection(projectID, databaseID, op.CollectionID) {
-			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: system collection %q is not writable via transactions", i, op.CollectionID)
+			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: system collection %q is not writable via transactions", i, op.CollectionID)
 		}
 		if err := documents.ValidateDocumentPayload(op.Data); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
 		}
 		// create/upsert 空 ACE 种子与单文档 API 同语义（防锁死；update/delete 的
 		// 空 permissions 语义是"不变更文档 ACL"，不种子）。
@@ -623,11 +631,11 @@ func (d *Databases) ExecuteTransactions(
 		}
 		perms, err := applyTxGrant(principal, op.Permissions, opAllowed)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
+			return nil, false, status.Errorf(codes.InvalidArgument, "ops[%d]: %v", i, err)
 		}
 		op.Permissions = perms
 	}
-	return d.documentsCore().ExecuteTransactions(ctx, projectID, databaseID, ops, mode, principal)
+	return d.documentsCore().ExecuteTransactions(ctx, projectID, databaseID, ops, mode, principal, requestID)
 }
 
 // applyTxGrant 是 op 级 grant 展开（空列表跳过校验，与 update 语义一致）。
@@ -656,7 +664,7 @@ func (d *Databases) ValidateIdentifier(id string) error {
 }
 
 // validateCollectionID 在通用标识符校验之上叠加集合 ID 专用上限
-//（物理表名 + 索引名前缀段预算）。
+// （物理表名 + 索引名前缀段预算）。
 func (d *Databases) validateCollectionID(id string) error {
 	if len(id) > maxCollectionIDLen {
 		return status.Errorf(codes.InvalidArgument, "collection id %q exceeds maximum length of %d", id, maxCollectionIDLen)
@@ -665,7 +673,7 @@ func (d *Databases) validateCollectionID(id string) error {
 }
 
 // validateIndexNameLen 校验物理索引名 idx_<coll>_<id> 的拼接长度：静态上限
-//（coll ≤40 + id ≤40）封不死组合（最长 85 字节 > PG 63），必须叠加本校验。
+// （coll ≤40 + id ≤40）封不死组合（最长 85 字节 > PG 63），必须叠加本校验。
 func validateIndexNameLen(collectionID, indexID string) error {
 	if n := 4 + len(collectionID) + 1 + len(indexID); n > maxAttributeKeyLen {
 		return status.Errorf(codes.InvalidArgument,

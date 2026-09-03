@@ -41,7 +41,7 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	serverUC := appserver.NewDatabases(projectRepo, docDB)
+	serverUC := appserver.NewDatabases(projectRepo, docDB, nil)
 	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
 	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "notes", "Notes", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -57,11 +57,11 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
 	})
-	clientUC := NewDatabases(projectRepo, docDB)
+	clientUC := NewDatabases(projectRepo, docDB, nil)
 
-	created, err := clientUC.CreateDocument(userCtx, "app", "notes", "", map[string]any{
+	created, _, err := clientUC.CreateDocument(userCtx, "app", "notes", "", map[string]any{
 		"title": "Client note",
-	}, nil)
+	}, nil, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, created.ID)
 
@@ -78,9 +78,9 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	_, err = clientUC.GetDocument(otherCtx, projectID, "app", "notes", created.ID)
 	require.Error(t, err)
 
-	updated, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
+	updated, _, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
 		"title": "Updated note",
-	}, nil, nil, &created.Version)
+	}, nil, nil, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "Updated note", updated.Data["title"])
 	require.Equal(t, int64(2), updated.Version)
@@ -90,7 +90,8 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 
-	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID, &updated.Version))
+	_, delErr := clientUC.DeleteDocument(userCtx, "app", "notes", created.ID, &updated.Version, "")
+	require.NoError(t, delErr)
 }
 
 // TestClientDatabases_UpsertDocument (T2): client UpsertDocument inserts with
@@ -119,7 +120,7 @@ func TestClientDatabases_UpsertDocument(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	serverUC := appserver.NewDatabases(projectRepo, docDB)
+	serverUC := appserver.NewDatabases(projectRepo, docDB, nil)
 	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
 	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "members", "Members", []databases.Attribute{
 		{ID: "email", Key: "email", Type: "string", Size: 256},
@@ -138,21 +139,21 @@ func TestClientDatabases_UpsertDocument(t *testing.T) {
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
 	})
-	clientUC := NewDatabases(projectRepo, docDB)
+	clientUC := NewDatabases(projectRepo, docDB, nil)
 
-	upserted, err := clientUC.UpsertDocument(userCtx, "app", "members", "m1", map[string]any{
+	upserted, _, err := clientUC.UpsertDocument(userCtx, "app", "members", "m1", map[string]any{
 		"email": "upsert@example.com",
 		"name":  "First",
-	}, []string{"email"}, nil)
+	}, []string{"email"}, nil, "")
 	require.NoError(t, err)
 	require.Equal(t, "m1", upserted.ID)
 	require.Equal(t, "First", upserted.Data["name"])
 	require.Contains(t, upserted.Permissions, databases.Permission{Type: "update", Role: "user:" + user.ID})
 
-	updated, err := clientUC.UpsertDocument(userCtx, "app", "members", "m1", map[string]any{
+	updated, _, err := clientUC.UpsertDocument(userCtx, "app", "members", "m1", map[string]any{
 		"email": "upsert@example.com",
 		"name":  "Second",
-	}, []string{"email"}, nil)
+	}, []string{"email"}, nil, "")
 	require.NoError(t, err)
 	require.Equal(t, "m1", updated.ID)
 	require.Equal(t, "Second", updated.Data["name"])
@@ -177,7 +178,7 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
 	projectRepo := bunrepo.NewProjectRepository(db)
-	serverUC := appserver.NewDatabases(projectRepo, docDB)
+	serverUC := appserver.NewDatabases(projectRepo, docDB, nil)
 	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
 	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -186,7 +187,7 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 		{Type: "create", Role: "users"},
 	}, true))
 
-	clientUC := NewDatabases(projectRepo, docDB)
+	clientUC := NewDatabases(projectRepo, docDB, nil)
 	_, err := docDB.CreateDocument(ctx, projectID, "app", "posts", databases.Document{
 		Data: map[string]any{"title": "Public post"},
 	}, nil, databases.SystemPrincipal)
@@ -198,7 +199,7 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Equal(t, "Public post", list[0].Data["title"])
 
-	lockedUC := appserver.NewDatabases(projectRepo, docDB)
+	lockedUC := appserver.NewDatabases(projectRepo, docDB, nil)
 	require.NoError(t, lockedUC.CreateCollection(adminCtx(ctx), projectID, "app", "private", "Private", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
@@ -244,7 +245,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	serverUC := appserver.NewDatabases(projectRepo, docDB)
+	serverUC := appserver.NewDatabases(projectRepo, docDB, nil)
 	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
 	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "notes", "Notes", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
@@ -260,11 +261,11 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
 	})
-	clientUC := NewDatabases(projectRepo, docDB)
+	clientUC := NewDatabases(projectRepo, docDB, nil)
 
-	created, err := clientUC.CreateDocument(userCtx, "app", "notes", "", map[string]any{
+	created, _, err := clientUC.CreateDocument(userCtx, "app", "notes", "", map[string]any{
 		"title": "Private note",
-	}, nil)
+	}, nil, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, created.ID)
 	require.Len(t, created.Permissions, 3)
@@ -288,10 +289,10 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	_, err = clientUC.GetDocument(otherCtx, projectID, "app", "notes", created.ID)
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user read should be denied")
 
-	_, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil, &created.Version)
+	_, _, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil, &created.Version, "")
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user update should be denied")
 
-	err = clientUC.DeleteDocument(otherCtx, "app", "notes", created.ID, &created.Version)
+	_, err = clientUC.DeleteDocument(otherCtx, "app", "notes", created.ID, &created.Version, "")
 	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user delete should be denied")
 
 	// owner：读/改/删均放行。
@@ -299,13 +300,14 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Private note", got.Data["title"])
 
-	updated, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
+	updated, _, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
 		"title": "Updated note",
-	}, nil, nil, &created.Version)
+	}, nil, nil, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "Updated note", updated.Data["title"])
 
-	require.NoError(t, clientUC.DeleteDocument(userCtx, "app", "notes", created.ID, &updated.Version))
+	_, delErr := clientUC.DeleteDocument(userCtx, "app", "notes", created.ID, &updated.Version, "")
+	require.NoError(t, delErr)
 }
 
 func testConfig() *config.AppConfig {

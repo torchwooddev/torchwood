@@ -11,7 +11,9 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/pkg/crud"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -32,6 +34,30 @@ func (s *DatabasesService) projectID(ctx context.Context) string {
 		return ""
 	}
 	return p.ProjectID
+}
+
+// requestIDFromMeta 返回写请求的幂等键：proto 字段优先，回退 HTTP 网关映射
+// 进来的 Idempotency-Key 头（grpc-gateway incoming metadata）。
+func requestIDFromMeta(ctx context.Context, inRequestID string) string {
+	if inRequestID != "" {
+		return inRequestID
+	}
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if values := md.Get("idempotency-key"); len(values) > 0 && values[0] != "" {
+			return values[0]
+		}
+	}
+	return ""
+}
+
+// markReplayed 在幂等重放时下发 x-torchwood-replayed 响应头（gRPC response
+// metadata；HTTP 面由网关 outgoing matcher 透传为响应头）。非 gRPC 传输 ctx
+// 下静默跳过（直调用例）。
+func markReplayed(ctx context.Context, replayed bool) {
+	if !replayed {
+		return
+	}
+	_ = grpc.SetHeader(ctx, metadata.Pairs("x-torchwood-replayed", "true"))
 }
 
 // auditResource* 构建审计资源路径（A8）：ResourceID 形如
@@ -356,7 +382,7 @@ func (s *DatabasesService) CreateDocument(ctx context.Context, req *serverv1.Cre
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	doc, err := s.databases.CreateDocument(
+	doc, replayed, err := s.databases.CreateDocument(
 		ctx,
 		projectID,
 		req.GetDatabaseId(),
@@ -365,10 +391,12 @@ func (s *DatabasesService) CreateDocument(ctx context.Context, req *serverv1.Cre
 		data,
 		perms,
 		dbPrincipal(ctx),
+		requestIDFromMeta(ctx, req.GetRequestId()),
 	)
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return mapDocument(doc)
 }
 
@@ -432,7 +460,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 		v := req.GetVersion()
 		version = &v
 	}
-	doc, err := s.databases.UpdateDocument(
+	doc, replayed, err := s.databases.UpdateDocument(
 		ctx,
 		projectID,
 		req.GetDatabaseId(),
@@ -443,10 +471,12 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 		req.GetIncrement(),
 		dbPrincipal(ctx),
 		version,
+		requestIDFromMeta(ctx, req.GetRequestId()),
 	)
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return mapDocument(doc)
 }
 
@@ -464,7 +494,7 @@ func (s *DatabasesService) UpsertDocument(ctx context.Context, req *serverv1.Ups
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	doc, err := s.databases.UpsertDocument(
+	doc, replayed, err := s.databases.UpsertDocument(
 		ctx,
 		projectID,
 		req.GetDatabaseId(),
@@ -474,10 +504,12 @@ func (s *DatabasesService) UpsertDocument(ctx context.Context, req *serverv1.Ups
 		req.GetConflictColumns(),
 		perms,
 		dbPrincipal(ctx),
+		requestIDFromMeta(ctx, req.GetRequestId()),
 	)
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return mapDocument(doc)
 }
 
@@ -491,7 +523,7 @@ func (s *DatabasesService) BulkUpdateDocuments(ctx context.Context, req *serverv
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	n, err := s.databases.BulkUpdateDocuments(
+	n, replayed, err := s.databases.BulkUpdateDocuments(
 		ctx,
 		projectID,
 		req.GetDatabaseId(),
@@ -500,10 +532,12 @@ func (s *DatabasesService) BulkUpdateDocuments(ctx context.Context, req *serverv
 		updateData(req.GetData()),
 		perms,
 		dbPrincipal(ctx),
+		requestIDFromMeta(ctx, req.GetRequestId()),
 	)
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return &serverv1.BulkDocumentsResponse{Affected: n}, nil
 }
 
@@ -534,17 +568,18 @@ func (s *DatabasesService) ExecuteTransactions(ctx context.Context, req *serverv
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "invalid transaction mode %v", req.GetMode())
 	}
-	results, err := s.databases.ExecuteTransactions(ctx, projectID, req.GetDatabaseId(), ops, mode, dbPrincipal(ctx))
+	results, replayed, err := s.databases.ExecuteTransactions(ctx, projectID, req.GetDatabaseId(), ops, mode, dbPrincipal(ctx), requestIDFromMeta(ctx, req.GetRequestId()))
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	out := &serverv1.ExecuteTransactionsResponse{}
 	for _, r := range results {
 		res := &serverv1.TransactionOpResult{
-			Index:      int32(r.Index),
-			DocumentId: r.DocumentID,
-			Version:    r.Version,
-			ErrorCode:  r.ErrCode,
+			Index:        int32(r.Index),
+			DocumentId:   r.DocumentID,
+			Version:      r.Version,
+			ErrorCode:    r.ErrCode,
 			ErrorMessage: r.ErrMessage,
 		}
 		if r.OK {
@@ -597,17 +632,19 @@ func (s *DatabasesService) BulkDeleteDocuments(ctx context.Context, req *serverv
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	n, err := s.databases.BulkDeleteDocuments(
+	n, replayed, err := s.databases.BulkDeleteDocuments(
 		ctx,
 		projectID,
 		req.GetDatabaseId(),
 		req.GetCollectionId(),
 		req.GetDocumentIds(),
 		dbPrincipal(ctx),
+		requestIDFromMeta(ctx, req.GetRequestId()),
 	)
 	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return &serverv1.BulkDocumentsResponse{Affected: n}, nil
 }
 
@@ -622,9 +659,11 @@ func (s *DatabasesService) DeleteDocument(ctx context.Context, req *serverv1.Del
 		v := req.GetVersion()
 		version = &v
 	}
-	if err := s.databases.DeleteDocument(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), dbPrincipal(ctx), version); err != nil {
+	replayed, err := s.databases.DeleteDocument(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetDocumentId(), dbPrincipal(ctx), version, requestIDFromMeta(ctx, req.GetRequestId()))
+	if err != nil {
 		return nil, err
 	}
+	markReplayed(ctx, replayed)
 	return &sharedv1.Empty{}, nil
 }
 

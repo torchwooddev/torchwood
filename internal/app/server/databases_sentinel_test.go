@@ -27,7 +27,7 @@ func TestDatabases_ListFiltersSentinelAndGetRejects(t *testing.T) {
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App"))
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 
 	list, err := uc.ListDatabases(ctx, projectID)
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestDatabases_ListFiltersSentinelAndGetRejects(t *testing.T) {
 
 func TestDatabases_CreateDeleteSentinelRejected(t *testing.T) {
 	ctx := platformAdminCtx(context.Background())
-	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
+	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB(), nil)
 
 	err := uc.CreateDatabase(ctx, "proj-1", ident.ProjectDataPlaneID, "x")
 	require.Equal(t, codes.InvalidArgument, status.Code(err))

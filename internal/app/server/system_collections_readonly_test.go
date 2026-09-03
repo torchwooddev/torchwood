@@ -29,7 +29,7 @@ func TestSystemCollections_IsSystemFlag(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 
 	for _, id := range []string{"users", "sessions", "identities", "groups", "memberships", "buckets", "files"} {
 		coll, err := docDB.GetCollection(ctx, projectID, databases.SystemDatabaseID, id)
@@ -82,7 +82,7 @@ func TestSystemCollections_SchemaOpsDenied(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	perms := []databases.Permission{{Type: "read", Role: "keys"}}
 
 	assertInvalid := func(err error) {
@@ -120,14 +120,14 @@ func TestSystemCollections_DocumentAPIRejectsSentinel(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 
 	_, _, _, err := uc.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{}, keysPrincipal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = uc.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", "user-1", keysPrincipal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = uc.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", "", map[string]any{"email": "a@b.c"}, nil, keysPrincipal)
+	_, _, err = uc.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", "", map[string]any{"email": "a@b.c"}, nil, keysPrincipal, "")
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
@@ -147,7 +147,7 @@ func TestSystemCollections_UpdateCollectionPermissionValidation(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "App DB"))
 	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", nil, nil, nil, true))
 

@@ -31,6 +31,8 @@ var domainCodeGRPC = map[string]codes.Code{
 	databases.ErrCodeInvalidArgument:          codes.InvalidArgument,
 	databases.ErrCodeTooLarge:                 codes.InvalidArgument,
 	databases.ErrCodeExhausted:                codes.ResourceExhausted,
+	databases.ErrCodeIdempotencyKeyConflict:   codes.InvalidArgument,
+	databases.ErrCodeIdempotencyInProgress:    codes.Aborted,
 }
 
 // domainCodeMessage 是域码的人类可读消息（与领域哨兵文案同源）。
@@ -47,6 +49,8 @@ var domainCodeMessage = map[string]string{
 	databases.ErrCodeInvalidArgument:          "invalid argument",
 	databases.ErrCodeTooLarge:                 "document payload too large",
 	databases.ErrCodeExhausted:                "resource exhausted",
+	databases.ErrCodeIdempotencyKeyConflict:   databases.ErrIdempotencyKeyConflict.Error(),
+	databases.ErrCodeIdempotencyInProgress:    "request with the same idempotency key is still in progress",
 }
 
 const errorInfoDomain = "torchwood.document"
@@ -56,8 +60,8 @@ const errorInfoDomain = "torchwood.document"
 func DomainStatus(domainCode string) error {
 	st := status.New(domainCodeGRPC[domainCode], domainCode+": "+domainCodeMessage[domainCode])
 	st, _ = st.WithDetails(&errdetails.ErrorInfo{
-		Reason:   domainCode,
-		Domain:   errorInfoDomain,
+		Reason: domainCode,
+		Domain: errorInfoDomain,
 		Metadata: map[string]string{
 			"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
 		},
@@ -71,8 +75,8 @@ func DomainStatusWithOp(domainCode string, opIndex int) error {
 	code := domainCodeGRPC[domainCode]
 	st := status.New(code, fmt.Sprintf("%s: op[%d]: %s", domainCode, opIndex, domainCodeMessage[domainCode]))
 	st, _ = st.WithDetails(&errdetails.ErrorInfo{
-		Reason:   domainCode,
-		Domain:   errorInfoDomain,
+		Reason: domainCode,
+		Domain: errorInfoDomain,
 		Metadata: map[string]string{
 			"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
 			"op_index":  strconv.Itoa(opIndex),
@@ -82,7 +86,7 @@ func DomainStatusWithOp(domainCode string, opIndex int) error {
 }
 
 // UpdateDocumentVersionRequired 校验用户集合 Update/Delete 的 OCC 版本参数
-//（Phase 1 裁决②三态拆分）：
+// （Phase 1 裁决②三态拆分）：
 //   - 缺省（nil）→ FailedPrecondition / DOCUMENT.VERSION_REQUIRED；
 //   - 显式 ≤0（非法值）→ InvalidArgument / DOCUMENT.VERSION_INVALID；
 //   - 正确值 → 通过。
@@ -99,7 +103,9 @@ func UpdateDocumentVersionRequired(version *int64) error {
 // MapDocumentDBError 将文档库错误映射为携带稳定域码的 gRPC status：
 // ① 领域哨兵（可穿透 fmt.Errorf 包装链）→ DomainStatus；
 // ② infra 已产出的域码 status（SQLSTATE 路径）从包装链提取后透传保真——
-//    不提取会因丢失 GRPCStatus() 实现而退化为 Internal；
+//
+//	不提取会因丢失 GRPCStatus() 实现而退化为 Internal；
+//
 // ③ 其余原样返回。
 func MapDocumentDBError(err error) error {
 	if err == nil {

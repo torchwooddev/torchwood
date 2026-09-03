@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewDatabases_HoldsSharedDocumentsCore(t *testing.T) {
-	d := NewDatabases(stubProjects{}, &stubDocDB{})
+	d := NewDatabases(stubProjects{}, &stubDocDB{}, nil)
 	require.NotNil(t, d.docs)
 }
 
@@ -23,7 +23,7 @@ func TestCreateDocument_GoesThroughSharedCoreWithOwnerACE(t *testing.T) {
 	d := &Databases{
 		projectRepo: stubProjects{},
 		docDB:       catalog,
-		docs:        documents.New(rec),
+		docs:        documents.New(rec, nil),
 	}
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorKind: shared.ActorKindEndUser,
@@ -31,7 +31,7 @@ func TestCreateDocument_GoesThroughSharedCoreWithOwnerACE(t *testing.T) {
 		UserID:    "u1",
 		Roles:     []string{"users", "user:u1"},
 	})
-	created, err := d.CreateDocument(ctx, "app", "notes", "d1", map[string]any{"t": 1}, nil)
+	created, _, err := d.CreateDocument(ctx, "app", "notes", "d1", map[string]any{"t": 1}, nil, "")
 	require.NoError(t, err)
 	require.Equal(t, "d1", created.ID)
 	require.Equal(t, 1, rec.creates)
@@ -40,7 +40,7 @@ func TestCreateDocument_GoesThroughSharedCoreWithOwnerACE(t *testing.T) {
 }
 
 func TestResolveProject_PassesPlatformAdmin(t *testing.T) {
-	d := NewDatabases(stubProjects{}, &stubDocDB{})
+	d := NewDatabases(stubProjects{}, &stubDocDB{}, nil)
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorKind:       shared.ActorKindEndUser,
 		ProjectID:       "p1",
@@ -55,7 +55,7 @@ func TestResolveProject_PassesPlatformAdmin(t *testing.T) {
 }
 
 func TestResolveProject_AdminWithoutUserID(t *testing.T) {
-	d := NewDatabases(stubProjects{}, &stubDocDB{})
+	d := NewDatabases(stubProjects{}, &stubDocDB{}, nil)
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorKind:       shared.ActorKindAdmin,
 		AdminID:         "a1",
@@ -74,7 +74,7 @@ func TestResolveReadPrincipal_AdminNotGuest(t *testing.T) {
 	d := &Databases{
 		projectRepo: stubProjects{},
 		docDB:       rec,
-		docs:        documents.New(rec),
+		docs:        documents.New(rec, nil),
 	}
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorKind:       shared.ActorKindAdmin,
@@ -95,7 +95,7 @@ func TestListDocuments_GuestPrincipal(t *testing.T) {
 	d := &Databases{
 		projectRepo: stubProjects{},
 		docDB:       catalog,
-		docs:        documents.New(rec),
+		docs:        documents.New(rec, nil),
 	}
 	_, _, _, err := d.ListDocuments(context.Background(), "p1", "app", "posts", databases.Query{})
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestUpdateDocument_FiltersProtectedFields(t *testing.T) {
 	d := &Databases{
 		projectRepo: stubProjects{},
 		docDB:       catalog,
-		docs:        documents.New(rec),
+		docs:        documents.New(rec, nil),
 	}
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorKind: shared.ActorKindEndUser,
@@ -118,13 +118,13 @@ func TestUpdateDocument_FiltersProtectedFields(t *testing.T) {
 		Roles:     []string{"users", "user:u1"},
 	})
 	version := int64(1)
-	_, err := d.UpdateDocument(ctx, "app", "notes", "d1", map[string]any{
+	_, _, err := d.UpdateDocument(ctx, "app", "notes", "d1", map[string]any{
 		"title":          "new",
 		"password_hash":  "evil",
 		"email_verified": true,
 		"labels":         []string{"admin"},
 		"status":         "blocked",
-	}, nil, nil, &version)
+	}, nil, nil, &version, "")
 	require.NoError(t, err)
 	require.Equal(t, map[string]any{
 		"title":          "new",

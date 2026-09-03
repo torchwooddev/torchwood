@@ -22,6 +22,32 @@ func TestAuthIncomingHeaderMatcher_ProjectHeader(t *testing.T) {
 	}
 }
 
+// 写幂等（redesign §4.1/§10.1）：Idempotency-Key 请求头透传为 gRPC metadata，
+// x-torchwood-replayed 重放标记透传为响应头（不加 Grpc-Metadata- 前缀）。
+func TestAuthHeaderMatchers_Idempotency(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{"Idempotency-Key", "idempotency-key", "IDEMPOTENCY-KEY"} {
+		mapped, ok := authIncomingHeaderMatcher(key)
+		if !ok {
+			t.Fatalf("header %q should be forwarded", key)
+		}
+		if mapped != "idempotency-key" {
+			t.Fatalf("header %q should map to lowercase metadata key, got %q", key, mapped)
+		}
+	}
+
+	for _, key := range []string{"x-torchwood-replayed", "X-Torchwood-Replayed"} {
+		mapped, ok := authOutgoingHeaderMatcher(key)
+		if !ok {
+			t.Fatalf("metadata key %q should be forwarded", key)
+		}
+		if mapped != "X-Torchwood-Replayed" {
+			t.Fatalf("metadata key %q should map to X-Torchwood-Replayed, got %q", key, mapped)
+		}
+	}
+}
+
 // console session cookie 依赖 set-cookie metadata 透传为 Set-Cookie 响应头；
 // grpc-gateway 默认 matcher 会给所有 metadata 加 Grpc-Metadata- 前缀，导致
 // 浏览器收不到 cookie，这里锁定自定义 matcher 的行为。

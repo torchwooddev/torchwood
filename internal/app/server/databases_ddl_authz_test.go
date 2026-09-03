@@ -18,7 +18,7 @@ import (
 // Unauthenticated）。修复前 RequirePlatformAdmin 会误伤持 databases.write
 // 的 API key（ActorKind=service 必然被拒）。
 func TestDatabases_DDLMethods_RequireServerWriteActor(t *testing.T) {
-	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
+	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB(), nil)
 
 	denied := []*shared.Principal{
 		{ActorID: "user-1", ActorKind: shared.ActorKindEndUser, UserID: "user-1"},
@@ -57,7 +57,7 @@ func TestDatabases_DDLMethods_RequireServerWriteActor(t *testing.T) {
 
 // Round3 H3：守卫放开后 sentinel 库仍拒（不被 RequireServerWriteActor 的放行吞掉）。
 func TestDatabases_DDLMethods_KeepSystemCollectionProtection(t *testing.T) {
-	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
+	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB(), nil)
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
 		Permissions: []string{"databases.write"},

@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewDatabases_HoldsSharedDocumentsCore(t *testing.T) {
-	d := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
+	d := NewDatabases(fakeProjectRepo{}, newFakeDocDB(), nil)
 	require.NotNil(t, d.docs)
 }
 
@@ -22,10 +22,10 @@ func TestCreateDocument_GoesThroughSharedCore(t *testing.T) {
 	d := &Databases{
 		projectRepo: fakeProjectRepo{},
 		docDB:       catalog,
-		docs:        documents.New(rec),
+		docs:        documents.New(rec, nil),
 	}
 	principal := databases.Principal{Roles: []string{"keys"}}
-	created, err := d.CreateDocument(context.Background(), "p1", "db1", "coll1", "d1", map[string]any{"a": 1}, nil, principal)
+	created, _, err := d.CreateDocument(context.Background(), "p1", "db1", "coll1", "d1", map[string]any{"a": 1}, nil, principal, "")
 	require.NoError(t, err)
 	require.Equal(t, "d1", created.ID)
 
@@ -39,16 +39,16 @@ func TestCreateDocument_GoesThroughSharedCore(t *testing.T) {
 }
 
 func TestCreateDocument_KeysAllowPrivilegedGrant(t *testing.T) {
-	d := NewDatabases(fakeProjectRepo{}, collectionDocDB{fakeDocDB: newFakeDocDB()})
+	d := NewDatabases(fakeProjectRepo{}, collectionDocDB{fakeDocDB: newFakeDocDB()}, nil)
 	keys := databases.Principal{Roles: []string{"keys"}}
-	_, err := d.CreateDocument(context.Background(), "p1", "db1", "coll1", "d1", map[string]any{"a": 1}, []databases.Permission{
+	_, _, err := d.CreateDocument(context.Background(), "p1", "db1", "coll1", "d1", map[string]any{"a": 1}, []databases.Permission{
 		{Type: "update", Role: "user:other"},
-	}, keys)
+	}, keys, "")
 	require.NoError(t, err)
 
 	user := databases.Principal{Roles: []string{"users", "user:u1"}}
-	_, err = d.CreateDocument(context.Background(), "p1", "db1", "coll1", "d2", map[string]any{"a": 1}, []databases.Permission{
+	_, _, err = d.CreateDocument(context.Background(), "p1", "db1", "coll1", "d2", map[string]any{"a": 1}, []databases.Permission{
 		{Type: "update", Role: "user:other"},
-	}, user)
+	}, user, "")
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

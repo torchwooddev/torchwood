@@ -12,14 +12,10 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/pkg/contexts"
 	"github.com/torchwooddev/torchwood/internal/testutil"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
-// TestClientDatabases_ReservedIDDocumentCRUD：Client API 的 documents:count 迁移为
-// REST 自定义动词（R10-P1-3/B3）后，"count" 不再是保留字，可作 document_id 正常
-// 创建并对 Get/Update/Delete 各验证一次成功路径；Delete 后 Get 返回 NotFound。
-func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
+// Client 面写幂等（redesign §4.1/§10.1）：EndUser 主体同 key 重放返回原响应。
+func TestClientDatabases_IdempotencyReplay(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -32,14 +28,14 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-
 	projectRepo := bunrepo.NewProjectRepository(db)
+	store := bunrepo.NewIdempotencyStore(db)
 	account := NewTestAccount(testConfig(), projectRepo, db)
 	user, _, _, _, err := account.SignUp(ctx, SignUpCommand{
 		ProjectID: projectID,
-		Email:     "reserved-doc@torchwood.local",
+		Email:     "client-idem@torchwood.local",
 		Password:  "User@123456",
-		Name:      "Reserved Doc Owner",
+		Name:      "Client Idem",
 	})
 	require.NoError(t, err)
 
@@ -47,9 +43,7 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	require.NoError(t, serverUC.CreateDatabase(adminCtx(ctx), projectID, "app", "Application DB"))
 	require.NoError(t, serverUC.CreateCollection(adminCtx(ctx), projectID, "app", "notes", "Notes", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
-	}, nil, []databases.Permission{
-		{Type: "create", Role: "users"},
-	}, true))
+	}, nil, []databases.Permission{{Type: "create", Role: "users"}}, true))
 
 	userCtx := contexts.WithPrincipal(ctx, &shared.Principal{
 		ActorKind: shared.ActorKindEndUser,
@@ -57,26 +51,15 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 		UserID:    user.ID,
 		Roles:     []string{"users", "user:" + user.ID},
 	})
-	clientUC := NewDatabases(projectRepo, docDB, nil)
+	clientUC := NewDatabases(projectRepo, docDB, store)
 
-	created, _, err := clientUC.CreateDocument(userCtx, "app", "notes", "count", map[string]any{
-		"title": "Reserved note",
-	}, nil, "")
-	require.NoError(t, err, "document_id=\"count\" 应可正常创建")
-	require.Equal(t, "count", created.ID)
-
-	got, err := clientUC.GetDocument(userCtx, projectID, "app", "notes", "count")
+	first, replayed, err := clientUC.CreateDocument(userCtx, "app", "notes", "note-1", map[string]any{"title": "a"}, nil, "req-c-1")
 	require.NoError(t, err)
-	require.Equal(t, "Reserved note", got.Data["title"])
+	require.False(t, replayed)
 
-	updated, _, err := clientUC.UpdateDocument(userCtx, "app", "notes", "count", map[string]any{
-		"title": "Renamed note",
-	}, nil, nil, &created.Version, "")
+	second, replayed, err := clientUC.CreateDocument(userCtx, "app", "notes", "note-1", map[string]any{"title": "a"}, nil, "req-c-1")
 	require.NoError(t, err)
-	require.Equal(t, "Renamed note", updated.Data["title"])
-
-	_, delErr := clientUC.DeleteDocument(userCtx, "app", "notes", "count", &updated.Version, "")
-	require.NoError(t, delErr)
-	_, err = clientUC.GetDocument(userCtx, projectID, "app", "notes", "count")
-	require.Equal(t, codes.NotFound, status.Code(err), "删除后 document_id=\"count\" 应不可再读")
+	require.True(t, replayed)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, first.Version, second.Version)
 }

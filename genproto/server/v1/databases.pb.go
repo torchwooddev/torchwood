@@ -1369,9 +1369,13 @@ type CreateDocumentRequest struct {
 	// 客户端自选 document_id；documents:count / documents:bulkUpdate /
 	// documents:bulkDelete 为自定义方法段（REST 自定义动词），不再占用
 	// document_id 命名空间，可自由取任意合法值。
-	DocumentId    string           `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
-	Data          *structpb.Struct `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
-	Permissions   []string         `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	DocumentId  string           `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	Data        *structpb.Struct `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	Permissions []string         `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// 写幂等键（redesign §4.1/§10.1）：作用域 (project, actor, request_id)，
+	// 24h 内同键重放返回首次成功响应（响应头 x-torchwood-replayed: true）；
+	// 同键不同请求 → IDEMPOTENCY.KEY_CONFLICT。HTTP 面等价 Idempotency-Key 头。
+	RequestId     *string `protobuf:"bytes,6,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1441,6 +1445,13 @@ func (x *CreateDocumentRequest) GetPermissions() []string {
 	return nil
 }
 
+func (x *CreateDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
+}
+
 type UpdateDocumentRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -1452,7 +1463,9 @@ type UpdateDocumentRequest struct {
 	// 用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition
 	// （DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument
 	// （DOCUMENT.VERSION_INVALID）。
-	Version       *int64 `protobuf:"varint,7,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	Version *int64 `protobuf:"varint,7,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	// 写幂等键，语义同 CreateDocumentRequest.request_id。
+	RequestId     *string `protobuf:"bytes,8,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1536,6 +1549,13 @@ func (x *UpdateDocumentRequest) GetVersion() int64 {
 	return 0
 }
 
+func (x *UpdateDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
+}
+
 type UpsertDocumentRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId      string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -1544,8 +1564,10 @@ type UpsertDocumentRequest struct {
 	Data            *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	Permissions     []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	ConflictColumns []string               `protobuf:"bytes,6,rep,name=conflict_columns,json=conflictColumns,proto3" json:"conflict_columns,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 写幂等键，语义同 CreateDocumentRequest.request_id。
+	RequestId     *string `protobuf:"bytes,7,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpsertDocumentRequest) Reset() {
@@ -1620,6 +1642,13 @@ func (x *UpsertDocumentRequest) GetConflictColumns() []string {
 	return nil
 }
 
+func (x *UpsertDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
+}
+
 type GetDocumentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -1688,7 +1717,9 @@ type DeleteDocumentRequest struct {
 	// 用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition
 	// （DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument
 	// （DOCUMENT.VERSION_INVALID）。
-	Version       *int64 `protobuf:"varint,4,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	Version *int64 `protobuf:"varint,4,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	// 写幂等键，语义同 CreateDocumentRequest.request_id。
+	RequestId     *string `protobuf:"bytes,5,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1749,6 +1780,13 @@ func (x *DeleteDocumentRequest) GetVersion() int64 {
 		return *x.Version
 	}
 	return 0
+}
+
+func (x *DeleteDocumentRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
 }
 
 type ListDocumentsRequest struct {
@@ -2004,12 +2042,14 @@ func (x *CountDocumentsResponse) GetCount() int64 {
 }
 
 type BulkUpdateDocumentsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	DocumentIds   []string               `protobuf:"bytes,3,rep,name=document_ids,json=documentIds,proto3" json:"document_ids,omitempty"`
-	Data          *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
-	Permissions   []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	DocumentIds  []string               `protobuf:"bytes,3,rep,name=document_ids,json=documentIds,proto3" json:"document_ids,omitempty"`
+	Data         *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	Permissions  []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// 写幂等键，语义同 CreateDocumentRequest.request_id（幂等单元 = 批）。
+	RequestId     *string `protobuf:"bytes,6,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2079,11 +2119,20 @@ func (x *BulkUpdateDocumentsRequest) GetPermissions() []string {
 	return nil
 }
 
+func (x *BulkUpdateDocumentsRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
+}
+
 type BulkDeleteDocumentsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	DocumentIds   []string               `protobuf:"bytes,3,rep,name=document_ids,json=documentIds,proto3" json:"document_ids,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	DocumentIds  []string               `protobuf:"bytes,3,rep,name=document_ids,json=documentIds,proto3" json:"document_ids,omitempty"`
+	// 写幂等键，语义同 CreateDocumentRequest.request_id（幂等单元 = 批）。
+	RequestId     *string `protobuf:"bytes,4,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2137,6 +2186,13 @@ func (x *BulkDeleteDocumentsRequest) GetDocumentIds() []string {
 		return x.DocumentIds
 	}
 	return nil
+}
+
+func (x *BulkDeleteDocumentsRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
 }
 
 type BulkDocumentsResponse struct {
@@ -2299,10 +2355,13 @@ func (x *TransactionOp) GetConflictColumns() []string {
 }
 
 type ExecuteTransactionsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	Ops           []*TransactionOp       `protobuf:"bytes,2,rep,name=ops,proto3" json:"ops,omitempty"`
-	Mode          TransactionMode        `protobuf:"varint,3,opt,name=mode,proto3,enum=torchwood.server.v1.TransactionMode" json:"mode,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	Ops        []*TransactionOp       `protobuf:"bytes,2,rep,name=ops,proto3" json:"ops,omitempty"`
+	Mode       TransactionMode        `protobuf:"varint,3,opt,name=mode,proto3,enum=torchwood.server.v1.TransactionMode" json:"mode,omitempty"`
+	// 写幂等键，语义同 CreateDocumentRequest.request_id；幂等覆盖整批——
+	// 重放返回首次完整结果（含 PARTIAL per-op 结果，§11-E2）。
+	RequestId     *string `protobuf:"bytes,4,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2356,6 +2415,13 @@ func (x *ExecuteTransactionsRequest) GetMode() TransactionMode {
 		return x.Mode
 	}
 	return TransactionMode_TRANSACTION_MODE_UNSPECIFIED
+}
+
+func (x *ExecuteTransactionsRequest) GetRequestId() string {
+	if x != nil && x.RequestId != nil {
+		return *x.RequestId
+	}
+	return ""
 }
 
 type TransactionOpResult struct {
@@ -2610,7 +2676,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\n" +
 	"attributes\x18\x03 \x03(\tR\n" +
 	"attributes\x12\x16\n" +
-	"\x06orders\x18\x04 \x03(\tR\x06orders\"\xcd\x01\n" +
+	"\x06orders\x18\x04 \x03(\tR\x06orders\"\x80\x02\n" +
 	"\x15CreateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -2618,7 +2684,10 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
 	"documentId\x12+\n" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
-	"\vpermissions\x18\x05 \x03(\tR\vpermissions\"\x8f\x03\n" +
+	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\"\n" +
+	"\n" +
+	"request_id\x18\x06 \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
+	"\v_request_id\"\xc2\x03\n" +
 	"\x15UpdateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -2628,12 +2697,15 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12W\n" +
 	"\tincrement\x18\x06 \x03(\v29.torchwood.server.v1.UpdateDocumentRequest.IncrementEntryR\tincrement\x12\x1d\n" +
-	"\aversion\x18\a \x01(\x03H\x00R\aversion\x88\x01\x01\x1a<\n" +
+	"\aversion\x18\a \x01(\x03H\x00R\aversion\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"request_id\x18\b \x01(\tH\x01R\trequestId\x88\x01\x01\x1a<\n" +
 	"\x0eIncrementEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01B\n" +
 	"\n" +
-	"\b_version\"\xf8\x01\n" +
+	"\b_versionB\r\n" +
+	"\v_request_id\"\xab\x02\n" +
 	"\x15UpsertDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -2642,22 +2714,28 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"documentId\x12+\n" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12)\n" +
-	"\x10conflict_columns\x18\x06 \x03(\tR\x0fconflictColumns\"{\n" +
+	"\x10conflict_columns\x18\x06 \x03(\tR\x0fconflictColumns\x12\"\n" +
+	"\n" +
+	"request_id\x18\a \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
+	"\v_request_id\"{\n" +
 	"\x12GetDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x1f\n" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
-	"documentId\"\xa9\x01\n" +
+	"documentId\"\xdc\x01\n" +
 	"\x15DeleteDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x1f\n" +
 	"\vdocument_id\x18\x03 \x01(\tR\n" +
 	"documentId\x12\x1d\n" +
-	"\aversion\x18\x04 \x01(\x03H\x00R\aversion\x88\x01\x01B\n" +
+	"\aversion\x18\x04 \x01(\x03H\x00R\aversion\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"\b_version\"\xf3\x01\n" +
+	"request_id\x18\x05 \x01(\tH\x01R\trequestId\x88\x01\x01B\n" +
+	"\n" +
+	"\b_versionB\r\n" +
+	"\v_request_id\"\xf3\x01\n" +
 	"\x14ListDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -2679,19 +2757,25 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x05query\x18\x04 \x01(\v2\x1a.torchwood.shared.v1.QueryH\x00R\x05query\x88\x01\x01B\b\n" +
 	"\x06_query\".\n" +
 	"\x16CountDocumentsResponse\x12\x14\n" +
-	"\x05count\x18\x01 \x01(\x03R\x05count\"\xd4\x01\n" +
+	"\x05count\x18\x01 \x01(\x03R\x05count\"\x87\x02\n" +
 	"\x1aBulkUpdateDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12!\n" +
 	"\fdocument_ids\x18\x03 \x03(\tR\vdocumentIds\x12+\n" +
 	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12 \n" +
-	"\vpermissions\x18\x05 \x03(\tR\vpermissions\"\x85\x01\n" +
+	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\"\n" +
+	"\n" +
+	"request_id\x18\x06 \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
+	"\v_request_id\"\xb8\x01\n" +
 	"\x1aBulkDeleteDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12!\n" +
-	"\fdocument_ids\x18\x03 \x03(\tR\vdocumentIds\"3\n" +
+	"\fdocument_ids\x18\x03 \x03(\tR\vdocumentIds\x12\"\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
+	"\v_request_id\"3\n" +
 	"\x15BulkDocumentsResponse\x12\x1a\n" +
 	"\baffected\x18\x01 \x01(\x03R\baffected\"\xdf\x03\n" +
 	"\rTransactionOp\x12:\n" +
@@ -2707,12 +2791,15 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x0eIncrementEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01B\x13\n" +
-	"\x11_expected_version\"\xad\x01\n" +
+	"\x11_expected_version\"\xe0\x01\n" +
 	"\x1aExecuteTransactionsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x124\n" +
 	"\x03ops\x18\x02 \x03(\v2\".torchwood.server.v1.TransactionOpR\x03ops\x128\n" +
-	"\x04mode\x18\x03 \x01(\x0e2$.torchwood.server.v1.TransactionModeR\x04mode\"\xec\x01\n" +
+	"\x04mode\x18\x03 \x01(\x0e2$.torchwood.server.v1.TransactionModeR\x04mode\x12\"\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
+	"\v_request_id\"\xec\x01\n" +
 	"\x13TransactionOpResult\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x05R\x05index\x12@\n" +
 	"\x06status\x18\x02 \x01(\x0e2(.torchwood.server.v1.TransactionOpStatusR\x06status\x12\x1f\n" +
@@ -2925,11 +3012,16 @@ func file_server_v1_databases_proto_init() {
 	}
 	file_server_v1_databases_proto_msgTypes[4].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[7].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[17].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[18].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[19].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[21].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[22].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[24].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[26].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[27].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[29].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[30].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

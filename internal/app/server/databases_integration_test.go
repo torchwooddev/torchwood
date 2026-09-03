@@ -32,7 +32,7 @@ func TestDatabases_AcceptanceChain(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 
 	const (
 		dbID    = "app"
@@ -109,7 +109,7 @@ func TestDatabases_CreateCollection_DocumentSecurityFalse(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
 
@@ -140,7 +140,7 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -148,7 +148,7 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, nil, true))
 
-	created, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "no perms"}, nil, principal)
+	created, _, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "no perms"}, nil, principal, "")
 	require.NoError(t, err)
 	// 2026-08 回归修订：空 ACE 占位绑定创建者凭证角色（keys 保留读写删），
 	// 不再是无人可匹配的 __private__；guest/any 仍被剔除、集合回落仍关闭。
@@ -165,9 +165,9 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 	_, err = uc.GetDocument(ctx, projectID, "app", "posts", created.ID, databases.Principal{})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 
-	explicit, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "explicit"}, []databases.Permission{
+	explicit, _, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "explicit"}, []databases.Permission{
 		{Type: "read", Role: "any"},
-	}, principal)
+	}, principal, "")
 	require.NoError(t, err)
 	require.Len(t, explicit.Permissions, 1)
 	require.Equal(t, "read", explicit.Permissions[0].Type)
@@ -190,7 +190,7 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -200,7 +200,7 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 
 	const total = 12
 	for i := 0; i < total; i++ {
-		_, err := uc.CreateDocument(ctx, projectID, "app", "docs", fmt.Sprintf("doc-%04d", i), map[string]any{"n": i}, nil, principal)
+		_, _, err := uc.CreateDocument(ctx, projectID, "app", "docs", fmt.Sprintf("doc-%04d", i), map[string]any{"n": i}, nil, principal, "")
 		require.NoError(t, err)
 	}
 
@@ -253,7 +253,7 @@ func TestDatabases_ListCollections_Pagination(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
 
@@ -306,7 +306,7 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
@@ -320,7 +320,7 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	userPrincipal := databases.Principal{Roles: []string{"users", "user:alice"}}
 	perms, err := databases.ParsePermissionStrings([]string{"read:user:{id}", "update:user:{id}"})
 	require.NoError(t, err)
-	created, err := uc.CreateDocument(ctx, projectID, "app", "docs", "", map[string]any{"title": "t"}, perms, userPrincipal)
+	created, _, err := uc.CreateDocument(ctx, projectID, "app", "docs", "", map[string]any{"title": "t"}, perms, userPrincipal, "")
 	require.NoError(t, err)
 	require.Len(t, created.Permissions, 2)
 	require.Equal(t, "read", created.Permissions[0].Type)
@@ -333,7 +333,7 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	groupPrincipal := databases.Principal{Roles: []string{"users", "user:alice", "group:t1"}}
 	upPerms, err := databases.ParsePermissionStrings([]string{"update:group:{id}"})
 	require.NoError(t, err)
-	updated, err := uc.UpdateDocument(ctx, projectID, "app", "docs", created.ID, nil, upPerms, nil, groupPrincipal, &created.Version)
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "docs", created.ID, nil, upPerms, nil, groupPrincipal, &created.Version, "")
 	require.NoError(t, err)
 	require.Len(t, updated.Permissions, 1)
 	require.Equal(t, "update", updated.Permissions[0].Type)
@@ -341,13 +341,13 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 
 	// 场景 2：文档权限仅含 read（无 update）→ 更新权限被拒（B1 文档级优先，
 	// 集合级 update:user:alice 不再兜底；grantable 校验使用 alice 持有的角色）。
-	readOnly, err := uc.CreateDocument(ctx, projectID, "app", "docs", "", map[string]any{"title": "ro"}, []databases.Permission{
+	readOnly, _, err := uc.CreateDocument(ctx, projectID, "app", "docs", "", map[string]any{"title": "ro"}, []databases.Permission{
 		{Type: "read", Role: "user:alice"},
-	}, userPrincipal)
+	}, userPrincipal, "")
 	require.NoError(t, err)
 	ownUpPerms, err := databases.ParsePermissionStrings([]string{"update:user:{id}"})
 	require.NoError(t, err)
-	_, err = uc.UpdateDocument(ctx, projectID, "app", "docs", readOnly.ID, nil, ownUpPerms, nil, userPrincipal, &readOnly.Version)
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "docs", readOnly.ID, nil, ownUpPerms, nil, userPrincipal, &readOnly.Version, "")
 	require.Error(t, err)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }
@@ -368,7 +368,7 @@ func TestDatabases_BulkDocuments_MaxOperations(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -378,11 +378,11 @@ func TestDatabases_BulkDocuments_MaxOperations(t *testing.T) {
 	for i := range ids {
 		ids[i] = fmt.Sprintf("doc-%04d", i)
 	}
-	_, err := uc.BulkUpdateDocuments(ctx, projectID, "app", "docs", ids, map[string]any{"title": "x"}, nil, principal)
+	_, _, err := uc.BulkUpdateDocuments(ctx, projectID, "app", "docs", ids, map[string]any{"title": "x"}, nil, principal, "")
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	_, err = uc.BulkDeleteDocuments(ctx, projectID, "app", "docs", ids, principal)
+	_, _, err = uc.BulkDeleteDocuments(ctx, projectID, "app", "docs", ids, principal, "")
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
@@ -403,7 +403,7 @@ func TestDatabases_CreateDocument_TypeMismatch(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -411,12 +411,12 @@ func TestDatabases_CreateDocument_TypeMismatch(t *testing.T) {
 		{ID: "views", Key: "views", Type: "integer"},
 	}, nil, nil, true))
 
-	_, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"views": "abc"}, nil, principal)
+	_, _, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"views": "abc"}, nil, principal, "")
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 合法写入不受影响。
-	created, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"views": 42}, nil, principal)
+	created, _, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"views": 42}, nil, principal, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, created.ID)
 }
@@ -445,7 +445,7 @@ func TestDatabases_UpdateCollection(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -466,10 +466,10 @@ func TestDatabases_UpdateCollection(t *testing.T) {
 	require.True(t, got.Disabled)
 
 	// 停用后普通主体读写被拒（PermissionDenied），系统主体不受影响。
-	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "x"}, nil, principal)
+	_, _, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "x"}, nil, principal, "")
 	require.Error(t, err)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
-	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "x"}, nil, databases.SystemPrincipal)
+	_, _, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "x"}, nil, databases.SystemPrincipal, "")
 	require.NoError(t, err)
 
 	// 重新启用后恢复。
@@ -480,7 +480,7 @@ func TestDatabases_UpdateCollection(t *testing.T) {
 	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
 	require.NoError(t, err)
 	require.False(t, got.Disabled)
-	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "y"}, nil, principal)
+	_, _, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "y"}, nil, principal, "")
 	require.NoError(t, err)
 }
 
@@ -500,7 +500,7 @@ func TestDatabases_DeleteAttribute_DeleteIndex(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -542,7 +542,7 @@ func TestDatabases_DeleteAttribute_DeleteIndex(t *testing.T) {
 	require.Len(t, got.Indexes, 1)
 
 	// 新列可正常写入（验证 DROP COLUMN 后重建）。
-	_, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "t", "views": 7}, nil, principal)
+	_, _, err = uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "t", "views": 7}, nil, principal, "")
 	require.NoError(t, err)
 }
 
@@ -562,7 +562,7 @@ func TestDatabases_Document_Increment(t *testing.T) {
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
 
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	principal := databases.Principal{Roles: []string{"keys"}}
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
@@ -571,27 +571,27 @@ func TestDatabases_Document_Increment(t *testing.T) {
 		{ID: "title", Key: "title", Type: "string", Size: 64},
 	}, nil, nil, true))
 
-	created, err := uc.CreateDocument(ctx, projectID, "app", "stats", "", map[string]any{"views": 10, "title": "hello"}, nil, principal)
+	created, _, err := uc.CreateDocument(ctx, projectID, "app", "stats", "", map[string]any{"views": 10, "title": "hello"}, nil, principal, "")
 	require.NoError(t, err)
 
 	// +5 → 15
-	updated, err := uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 5}, principal, &created.Version)
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 5}, principal, &created.Version, "")
 	require.NoError(t, err)
 	require.EqualValues(t, 15, updated.Data["views"])
 	require.Equal(t, "hello", updated.Data["title"], "increment 不覆盖其他字段")
 
 	// -3 → 12
-	updated, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": -3}, principal, &updated.Version)
+	updated, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": -3}, principal, &updated.Version, "")
 	require.NoError(t, err)
 	require.EqualValues(t, 12, updated.Data["views"])
 
 	// 0 增量无字段可更新 → InvalidArgument（前端 Console 已过滤 0 增量）
-	_, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 0}, principal, &updated.Version)
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 0}, principal, &updated.Version, "")
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 空 data/permissions/increment 三选一校验
-	_, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, nil, principal, &updated.Version)
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, nil, principal, &updated.Version, "")
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
@@ -611,7 +611,7 @@ func TestDatabases_DeleteAttribute_CascadesDependentIndex(t *testing.T) {
 	defer cleanup()
 
 	docDB := documentdb.NewPostgresDocumentDB(db, nil)
-	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 
 	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{

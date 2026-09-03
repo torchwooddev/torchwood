@@ -67,10 +67,10 @@ type TransactionOp struct {
 // TransactionOpResult 是单个 op 的执行结果（PARTIAL 模式携带失败项；
 // ATOMIC 失败走整批 gRPC 错误）。
 type TransactionOpResult struct {
-	Index       int
-	OK          bool
-	DocumentID  string
-	Version     int64
-	ErrCode     string
-	ErrMessage  string
+	Index      int
+	OK         bool
+	DocumentID string
+	Version    int64
+	ErrCode    string
+	ErrMessage string
 }

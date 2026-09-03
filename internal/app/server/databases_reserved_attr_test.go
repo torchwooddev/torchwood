@@ -17,7 +17,7 @@ import (
 // （含 _version/_perms 等）。ValidateIdentifier 允许 "_" 前缀，必须在属性创建
 // 路径显式拒绝；CreateCollection 属性列表同样校验。
 func TestCreateAttribute_RejectsReservedVersion(t *testing.T) {
-	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB())
+	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB(), nil)
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
 		Permissions: []string{"databases.write"},
