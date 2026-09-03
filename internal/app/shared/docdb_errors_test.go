@@ -98,11 +98,16 @@ func TestMapDocumentDBError_OCCVersionErrors(t *testing.T) {
 		require.Equal(t, tc.domain, info.Reason)
 	}
 
-	// UpdateDocumentVersionRequired：未设置 / ≤0 → DOCUMENT.VERSION_REQUIRED。
+	// UpdateDocumentVersionRequired 三态（Phase 1 裁决②）：缺省 →
+	// FailedPrecondition/VERSION_REQUIRED；显式 0 → InvalidArgument/
+	// VERSION_INVALID；正确值通过。
 	require.Equal(t, codes.FailedPrecondition, status.Code(UpdateDocumentVersionRequired(nil)))
 	require.Contains(t, status.Convert(UpdateDocumentVersionRequired(nil)).Message(), databases.ErrCodeVersionRequired)
 	zero := int64(0)
-	require.Equal(t, codes.FailedPrecondition, status.Code(UpdateDocumentVersionRequired(&zero)))
+	require.Equal(t, codes.InvalidArgument, status.Code(UpdateDocumentVersionRequired(&zero)))
+	require.Contains(t, status.Convert(UpdateDocumentVersionRequired(&zero)).Message(), databases.ErrCodeVersionInvalid)
+	neg := int64(-1)
+	require.Equal(t, codes.InvalidArgument, status.Code(UpdateDocumentVersionRequired(&neg)))
 	one := int64(1)
 	require.NoError(t, UpdateDocumentVersionRequired(&one))
 }

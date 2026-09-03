@@ -323,7 +323,9 @@ message UpdateDocumentRequest {
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;
   map<string, int64> increment = 6;
-  // 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
+  // 用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition
+  // （DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument
+  // （DOCUMENT.VERSION_INVALID）。
   optional int64 version = 7;
 }
 
@@ -346,7 +348,9 @@ message DeleteDocumentRequest {
   string database_id = 1;
   string collection_id = 2;
   string document_id = 3;
-  // 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
+  // 用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition
+  // （DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument
+  // （DOCUMENT.VERSION_INVALID）。
   optional int64 version = 4;
 }
 
@@ -422,8 +426,10 @@ message TransactionOp {
   google.protobuf.Struct data = 4;
   repeated string permissions = 5;
   map<string, int64> increment = 6;
-  // OCC 原语三态（redesign §2-C4）：设置 → CAS；未设置 → 盲写 +1（LWW 契约，
-  // 仅 update 类）；0 → InvalidArgument。
+  // OCC 原语三态（redesign §2-C4 + §4.8 Phase 1 裁决②）：设置 → CAS；
+  // 未设置 → 盲写 +1（LWW 契约，仅 update 类；delete 缺省为 version_required）；
+  // 显式 0 → InvalidArgument（DOCUMENT.VERSION_INVALID，缺省是
+  // FailedPrecondition/DOCUMENT.VERSION_REQUIRED，两者不同）。
   optional int64 expected_version = 7;
   // upsert 专用：必须无序命中集合一个 unique 索引。
   repeated string conflict_columns = 8;

@@ -13,6 +13,7 @@ const (
 	ErrCodeNotFound                 = "DOCUMENT.NOT_FOUND"
 	ErrCodeNoFieldsToUpdate         = "DOCUMENT.NO_FIELDS_TO_UPDATE"
 	ErrCodeVersionRequired          = "DOCUMENT.VERSION_REQUIRED"
+	ErrCodeVersionInvalid           = "DOCUMENT.VERSION_INVALID"
 	ErrCodeVersionConflict          = "DOCUMENT.VERSION_CONFLICT"
 	ErrCodeVersionColumnConflict    = "DOCUMENT.VERSION_COLUMN_CONFLICT"
 	ErrCodeVersionColumnUnavailable = "DOCUMENT.VERSION_COLUMN_UNAVAILABLE"
@@ -44,6 +45,8 @@ func ErrorDomainCode(err error) string {
 		return ErrCodeNoFieldsToUpdate
 	case errors.Is(err, ErrVersionRequired):
 		return ErrCodeVersionRequired
+	case errors.Is(err, ErrVersionInvalid):
+		return ErrCodeVersionInvalid
 	case errors.Is(err, ErrVersionMismatch):
 		return ErrCodeVersionConflict
 	case errors.Is(err, ErrVersionColumnConflict):
@@ -68,9 +71,14 @@ var ErrNoFieldsToUpdate = errors.New("no fields to update")
 // not exist; mapped to codes.NotFound by the app layer.
 var ErrDocumentNotFound = errors.New("document not found")
 
-// ErrVersionRequired 是用户集合 Update/Delete/Increment 未携带（或 ≤0）ExpectedVersion
-// 时返回的错误；映射为 FailedPrecondition / version_required。
+// ErrVersionRequired 是用户集合 Update/Delete 未携带 ExpectedVersion（缺省）
+// 时返回的错误；映射为 FailedPrecondition / DOCUMENT.VERSION_REQUIRED。
 var ErrVersionRequired = errors.New("version_required")
+
+// ErrVersionInvalid 是 ExpectedVersion 显式设为 ≤0（非法值，与缺省语义不同）
+// 时返回的错误；映射为 InvalidArgument / DOCUMENT.VERSION_INVALID。
+// Phase 1 裁决②：拆分"缺省"与"显式 0"，消灭错误码错位（C4 本意）。
+var ErrVersionInvalid = errors.New("version_invalid")
 
 // ErrVersionMismatch 是 ExpectedVersion 与当前行 _version 不一致时返回的错误；
 // 映射为 FailedPrecondition / version_mismatch。

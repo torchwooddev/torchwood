@@ -151,6 +151,62 @@ func TestExecuteTransactions_PartialPermissionDenied(t *testing.T) {
 	require.Nil(t, got)
 }
 
+// expected_version 三态（Phase 1 裁决②）：缺省（nil）→ update 盲写 +1
+//（LWW）/ delete 报 version_required；显式 0 → InvalidArgument
+//（DOCUMENT.VERSION_INVALID，不再与缺省混同）。
+func TestExecuteTransactions_ExpectedVersionStates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	docDB, projectID, dbID := setupTxTest(t)
+	seed := []databases.Permission{{Type: "read", Role: "keys"}, {Type: "update", Role: "keys"}, {Type: "delete", Role: "keys"}}
+
+	// update 缺省 → 盲写 +1（LWW）。
+	results, err := docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpCreate, CollectionID: "notes", DocumentID: "n1", Data: map[string]any{"title": "one"}, Permissions: seed},
+		{Type: databases.TransactionOpUpdate, CollectionID: "notes", DocumentID: "n1", Data: map[string]any{"title": "two"}},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.NoError(t, err)
+	require.True(t, results[1].OK)
+	require.Equal(t, int64(2), results[1].Version)
+
+	// update 显式 0 → InvalidArgument / DOCUMENT.VERSION_INVALID（ATOMIC 整批回滚）。
+	zero := int64(0)
+	_, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpUpdate, CollectionID: "notes", DocumentID: "n1", Data: map[string]any{"title": "x"}, ExpectedVersion: &zero},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.Error(t, err)
+	oe := databases.AsOpError(err)
+	require.NotNil(t, oe)
+	require.Equal(t, databases.ErrCodeVersionInvalid, databases.ErrorDomainCode(oe.Err))
+
+	// delete 显式 0 → 同码；delete 缺省 → version_required（不支持盲删）。
+	_, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpDelete, CollectionID: "notes", DocumentID: "n1", ExpectedVersion: &zero},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.Error(t, err)
+	oe = databases.AsOpError(err)
+	require.NotNil(t, oe)
+	require.Equal(t, databases.ErrCodeVersionInvalid, databases.ErrorDomainCode(oe.Err))
+
+	_, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpDelete, CollectionID: "notes", DocumentID: "n1"},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.Error(t, err)
+	oe = databases.AsOpError(err)
+	require.NotNil(t, oe)
+	require.Equal(t, databases.ErrCodeVersionRequired, databases.ErrorDomainCode(oe.Err))
+
+	// 正确值 → 删除成功（当前版本：create v1 → 盲写 update v2）。
+	v2 := int64(2)
+	results, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpDelete, CollectionID: "notes", DocumentID: "n1", ExpectedVersion: &v2},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.NoError(t, err)
+	require.True(t, results[0].OK)
+}
+
 // 输入校验：空批/超限/非法类型/非法模式。
 func TestExecuteTransactions_Validation(t *testing.T) {
 	if testing.Short() {

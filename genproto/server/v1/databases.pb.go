@@ -1449,7 +1449,9 @@ type UpdateDocumentRequest struct {
 	Data         *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	Permissions  []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	Increment    map[string]int64       `protobuf:"bytes,6,rep,name=increment,proto3" json:"increment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	// 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
+	// 用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition
+	// （DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument
+	// （DOCUMENT.VERSION_INVALID）。
 	Version       *int64 `protobuf:"varint,7,opt,name=version,proto3,oneof" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1683,7 +1685,9 @@ type DeleteDocumentRequest struct {
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
 	DocumentId   string                 `protobuf:"bytes,3,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
-	// 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
+	// 用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition
+	// （DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument
+	// （DOCUMENT.VERSION_INVALID）。
 	Version       *int64 `protobuf:"varint,4,opt,name=version,proto3,oneof" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2187,8 +2191,10 @@ type TransactionOp struct {
 	Data         *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	Permissions  []string               `protobuf:"bytes,5,rep,name=permissions,proto3" json:"permissions,omitempty"`
 	Increment    map[string]int64       `protobuf:"bytes,6,rep,name=increment,proto3" json:"increment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	// OCC 原语三态（redesign §2-C4）：设置 → CAS；未设置 → 盲写 +1（LWW 契约，
-	// 仅 update 类）；0 → InvalidArgument。
+	// OCC 原语三态（redesign §2-C4 + §4.8 Phase 1 裁决②）：设置 → CAS；
+	// 未设置 → 盲写 +1（LWW 契约，仅 update 类；delete 缺省为 version_required）；
+	// 显式 0 → InvalidArgument（DOCUMENT.VERSION_INVALID，缺省是
+	// FailedPrecondition/DOCUMENT.VERSION_REQUIRED，两者不同）。
 	ExpectedVersion *int64 `protobuf:"varint,7,opt,name=expected_version,json=expectedVersion,proto3,oneof" json:"expected_version,omitempty"`
 	// upsert 专用：必须无序命中集合一个 unique 索引。
 	ConflictColumns []string `protobuf:"bytes,8,rep,name=conflict_columns,json=conflictColumns,proto3" json:"conflict_columns,omitempty"`

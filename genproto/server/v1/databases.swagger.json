@@ -760,7 +760,7 @@
           },
           {
             "name": "version",
-            "description": "用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。",
+            "description": "用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition\n（DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument\n（DOCUMENT.VERSION_INVALID）。",
             "in": "query",
             "required": false,
             "type": "string",
@@ -1690,7 +1690,7 @@
         "version": {
           "type": "string",
           "format": "int64",
-          "title": "用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。"
+          "title": "用户集合强制 OCC：必须与当前行 _version 相等；缺省 → FailedPrecondition\n（DOCUMENT.VERSION_REQUIRED）；显式 0 → InvalidArgument\n（DOCUMENT.VERSION_INVALID）。"
         }
       }
     },
@@ -2175,7 +2175,7 @@
         "expected_version": {
           "type": "string",
           "format": "int64",
-          "title": "OCC 原语三态（redesign §2-C4）：设置 → CAS；未设置 → 盲写 +1（LWW 契约，\n仅 update 类）；0 → InvalidArgument。"
+          "title": "OCC 原语三态（redesign §2-C4 + §4.8 Phase 1 裁决②）：设置 → CAS；\n未设置 → 盲写 +1（LWW 契约，仅 update 类；delete 缺省为 version_required）；\n显式 0 → InvalidArgument（DOCUMENT.VERSION_INVALID，缺省是\nFailedPrecondition/DOCUMENT.VERSION_REQUIRED，两者不同）。"
         },
         "conflict_columns": {
           "type": "array",

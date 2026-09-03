@@ -24,6 +24,7 @@ var domainCodeGRPC = map[string]codes.Code{
 	databases.ErrCodeNotFound:                 codes.NotFound,
 	databases.ErrCodeNoFieldsToUpdate:         codes.InvalidArgument,
 	databases.ErrCodeVersionRequired:          codes.FailedPrecondition,
+	databases.ErrCodeVersionInvalid:           codes.InvalidArgument,
 	databases.ErrCodeVersionConflict:          codes.FailedPrecondition,
 	databases.ErrCodeVersionColumnConflict:    codes.FailedPrecondition,
 	databases.ErrCodeVersionColumnUnavailable: codes.InvalidArgument,
@@ -39,6 +40,7 @@ var domainCodeMessage = map[string]string{
 	databases.ErrCodeNotFound:                 databases.ErrDocumentNotFound.Error(),
 	databases.ErrCodeNoFieldsToUpdate:         databases.ErrNoFieldsToUpdate.Error(),
 	databases.ErrCodeVersionRequired:          databases.ErrVersionRequired.Error(),
+	databases.ErrCodeVersionInvalid:           databases.ErrVersionInvalid.Error(),
 	databases.ErrCodeVersionConflict:          databases.ErrVersionMismatch.Error(),
 	databases.ErrCodeVersionColumnConflict:    databases.ErrVersionColumnConflict.Error(),
 	databases.ErrCodeVersionColumnUnavailable: databases.ErrVersionColumnUnavailable.Error(),
@@ -79,12 +81,17 @@ func DomainStatusWithOp(domainCode string, opIndex int) error {
 	return st.Err()
 }
 
-// UpdateDocumentVersionRequired 校验用户集合 Update/Delete 的 OCC 版本参数：
-// 未设置或 ≤0 → FailedPrecondition / DOCUMENT.VERSION_REQUIRED（Client/Server
-// Databases 写路径只允许用户集合，系统集合在 ensureCollection 已拒）。
+// UpdateDocumentVersionRequired 校验用户集合 Update/Delete 的 OCC 版本参数
+//（Phase 1 裁决②三态拆分）：
+//   - 缺省（nil）→ FailedPrecondition / DOCUMENT.VERSION_REQUIRED；
+//   - 显式 ≤0（非法值）→ InvalidArgument / DOCUMENT.VERSION_INVALID；
+//   - 正确值 → 通过。
 func UpdateDocumentVersionRequired(version *int64) error {
-	if version == nil || *version <= 0 {
+	if version == nil {
 		return DomainStatus(databases.ErrCodeVersionRequired)
+	}
+	if *version <= 0 {
+		return DomainStatus(databases.ErrCodeVersionInvalid)
 	}
 	return nil
 }

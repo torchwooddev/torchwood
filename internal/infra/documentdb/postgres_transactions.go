@@ -109,19 +109,22 @@ func (p *postgresDocumentDB) executeTxOp(
 		return doc.ID, doc.Version, nil
 
 	case databases.TransactionOpUpdate:
+		// Phase 1 裁决②：显式 ≤0 → InvalidArgument（version_invalid）；
+		// 缺省（nil）→ 盲写 +1（LWW 契约，复用 SkipVersion 机制）。
 		if op.ExpectedVersion != nil && *op.ExpectedVersion <= 0 {
-			return "", 0, databases.ErrVersionRequired
+			return "", 0, databases.ErrVersionInvalid
 		}
-		var version int64
+		update := databases.DocumentUpdate{
+			Document:    databases.Document{ID: op.DocumentID, Data: op.Data},
+			Permissions: op.Permissions,
+			Increment:   op.Increment,
+		}
 		if op.ExpectedVersion != nil {
-			version = *op.ExpectedVersion
+			update.ExpectedVersion = *op.ExpectedVersion
+		} else {
+			update.SkipVersion = true
 		}
-		doc, err := p.updateDocument(ctx, projectID, databaseID, op.CollectionID, databases.DocumentUpdate{
-			Document:        databases.Document{ID: op.DocumentID, Data: op.Data},
-			Permissions:     op.Permissions,
-			Increment:       op.Increment,
-			ExpectedVersion: version,
-		}, principal)
+		doc, err := p.updateDocument(ctx, projectID, databaseID, op.CollectionID, update, principal)
 		if err != nil {
 			return "", 0, err
 		}
@@ -148,8 +151,10 @@ func (p *postgresDocumentDB) executeTxOp(
 		return doc.ID, doc.Version, nil
 
 	case databases.TransactionOpDelete:
+		// delete 不支持盲删：缺省/≤0 均 version 类错误；显式 ≤0 按 裁决②
+		// 为 version_invalid（缺省为 version_required，与单文档 API 一致）。
 		if op.ExpectedVersion != nil && *op.ExpectedVersion <= 0 {
-			return "", 0, databases.ErrVersionRequired
+			return "", 0, databases.ErrVersionInvalid
 		}
 		var version int64
 		if op.ExpectedVersion != nil {
