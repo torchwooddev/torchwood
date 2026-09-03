@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -217,6 +219,12 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 			}
 		} else if !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
 			return doc, ErrPermissionDenied
+		}
+		// conflictColumns 必须精确命中集合的一个 unique 索引（属性集相等，
+		// 无序比较）——否则 ON CONFLICT 仲裁索引不存在，PG 报 42P10；前置校验
+		// 给出可操作的错误。Bypass 主体不取 catalog，靠 42P10 兜底。
+		if err := validateConflictColumns(coll, conflictColumns); err != nil {
+			return doc, err
 		}
 	}
 	// 目标行的实际 ID：预查命中用目标行，纯插入用 doc.ID。
@@ -697,6 +705,29 @@ func userIDFromPrincipal(p databases.Principal) string {
 		return "key:" + p.KeyID
 	}
 	return ""
+}
+
+// validateConflictColumns 校验 Upsert 的 conflictColumns 精确命中集合的一个
+// unique 索引（属性集相等，无序比较）。coll 为 nil（不可达防御）时放行，
+// 由 PG 42P10 兜底。
+func validateConflictColumns(coll *databases.Collection, conflictColumns []string) error {
+	if coll == nil {
+		return nil
+	}
+	sorted := append([]string(nil), conflictColumns...)
+	sort.Strings(sorted)
+	for _, idx := range coll.Indexes {
+		if !strings.EqualFold(idx.Type, "unique") {
+			continue
+		}
+		idxAttrs := append([]string(nil), idx.Attributes...)
+		sort.Strings(idxAttrs)
+		if slices.Equal(sorted, idxAttrs) {
+			return nil
+		}
+	}
+	return status.Errorf(codes.InvalidArgument,
+		"conflict columns %v must match a unique index on collection %q", conflictColumns, coll.ID)
 }
 
 func scanDocumentJSON(scanner interface{ Scan(dest ...any) error }) (*databases.Document, error) {

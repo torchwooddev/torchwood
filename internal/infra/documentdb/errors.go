@@ -24,6 +24,7 @@ var docDBErrorSQLStates = map[string]codes.Code{
 	"23502": codes.InvalidArgument,   // not_null_violation
 	"42703": codes.InvalidArgument,   // undefined_column
 	"42601": codes.InvalidArgument,   // syntax_error
+	"42804": codes.InvalidArgument,   // datatype_mismatch（值与列类型不符，如字符串进 integer 列）
 	"23503": codes.InvalidArgument,   // foreign_key_violation
 	"42883": codes.InvalidArgument,   // undefined_function
 	"42P10": codes.InvalidArgument,   // invalid_column_reference (ON CONFLICT 无匹配唯一索引)

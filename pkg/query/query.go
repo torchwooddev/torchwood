@@ -238,6 +238,30 @@ func Parse(raw string) (*Query, error) {
 		leaf := Filter{Op: op, Attribute: attr, Values: values}
 		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
 
+	case OpIn:
+		// Appwrite 语义：值必须是数组（in("status", ["a","b"])）。编译端
+		//（compilePredicate 的 OpIn）与 proto AST codec（Filter_In）均已支持，
+		// 此处补齐 DSL 解析使双栈算子对齐。
+		if len(args) != 2 {
+			return nil, fmt.Errorf("in requires 2 args")
+		}
+		attr, err := unquote(args[0])
+		if err != nil {
+			return nil, err
+		}
+		if !strings.HasPrefix(args[1], "[") {
+			return nil, fmt.Errorf("in requires an array of values, e.g. in(%q, [\"a\",\"b\"])", attr)
+		}
+		values, err := parseArray(args[1])
+		if err != nil {
+			return nil, err
+		}
+		if len(values) == 0 {
+			return nil, fmt.Errorf("in requires at least 1 value")
+		}
+		leaf := Filter{Op: OpIn, Attribute: attr, Values: values}
+		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
+
 	case OpBetween:
 		if len(args) != 3 {
 			return nil, fmt.Errorf("between requires 3 args")

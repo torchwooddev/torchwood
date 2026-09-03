@@ -33,6 +33,7 @@ func TestMapPGError_SQLState(t *testing.T) {
 		{"23502", codes.InvalidArgument},
 		{"42703", codes.InvalidArgument},
 		{"42601", codes.InvalidArgument},
+		{"42804", codes.InvalidArgument},
 		{"23503", codes.InvalidArgument},
 		{"42883", codes.InvalidArgument},
 		{"42P10", codes.InvalidArgument},

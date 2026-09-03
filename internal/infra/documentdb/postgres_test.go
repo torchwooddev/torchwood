@@ -349,6 +349,67 @@ func TestUserIDFromPrincipal_Priority(t *testing.T) {
 	require.Empty(t, userIDFromPrincipal(databases.Principal{Roles: []string{"keys"}}))
 }
 
+// 单元：conflictColumns 必须无序命中一个 unique 索引；key/非 unique 类型不算。
+func TestValidateConflictColumns(t *testing.T) {
+	coll := &databases.Collection{ID: "members", Indexes: []databases.Index{
+		{ID: "uq", Type: "unique", Attributes: []string{"channel_id", "user_id"}},
+		{ID: "plain", Type: "key", Attributes: []string{"email"}},
+	}}
+	require.NoError(t, validateConflictColumns(coll, []string{"user_id", "channel_id"}))
+	require.NoError(t, validateConflictColumns(coll, []string{"channel_id", "user_id"}))
+
+	err := validateConflictColumns(coll, []string{"email"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unique index")
+
+	// 子集/超集不算命中。
+	require.Error(t, validateConflictColumns(coll, []string{"channel_id"}))
+	require.Error(t, validateConflictColumns(coll, []string{"channel_id", "user_id", "extra"}))
+	require.NoError(t, validateConflictColumns(nil, []string{"any"}))
+}
+
+// 集成：非 Bypass 主体 upsert 的 conflictColumns 未命中 unique 索引 →
+// InvalidArgument（前置校验，先于 PG 42P10）。
+func TestPostgresDocumentDatabase_UpsertConflictColumnsPrecheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
+		{ID: "email", Key: "email", Type: "string", Size: 256},
+		{ID: "name", Key: "name", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "uq_email", Type: "unique", Attributes: []string{"email"}},
+	}, []databases.Permission{
+		{Type: "create", Role: "keys"},
+	}, true))
+
+	keys := databases.Principal{Roles: []string{"keys"}, KeyID: "k1"}
+	_, err := docDB.UpsertDocument(ctx, projectID, "app", "members", databases.Document{
+		ID:   "m1",
+		Data: map[string]any{"email": "a@b.c", "name": "n"},
+	}, []string{"name"}, nil, keys)
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+	require.Contains(t, st.Message(), "unique index")
+
+	// 命中 unique 索引：正常通过。
+	_, err = docDB.UpsertDocument(ctx, projectID, "app", "members", databases.Document{
+		ID:   "m1",
+		Data: map[string]any{"email": "a@b.c", "name": "n"},
+	}, []string{"email"}, nil, keys)
+	require.NoError(t, err)
+}
+
 // TestPostgresDocumentDatabase_AttributeDefaultValueCatalog：default 与 DDL 同源
 // 落 catalog 且 GetCollection/ListCollections 读回（回归：物理列 DEFAULT 生效但
 // catalog 不落库、读不回，契约断裂）。

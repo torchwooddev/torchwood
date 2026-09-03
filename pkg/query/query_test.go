@@ -35,6 +35,13 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			name: "in array",
+			raw:  `in("status",["draft","published"])`,
+			expected: Query{
+				Filters: []Filter{{Op: "in", Attribute: "status", Values: []string{"draft", "published"}}},
+			},
+		},
+		{
 			name: "order desc",
 			raw:  `orderDesc("createdAt")`,
 			expected: Query{
@@ -143,6 +150,19 @@ func TestParseMany_InputLimits(t *testing.T) {
 
 func TestParse_EmptyEqualArray(t *testing.T) {
 	_, err := Parse(`equal("title",[])`)
+	require.Error(t, err)
+}
+
+// TestParse_In：in 算子要求数组值（Appwrite 语义），非数组/空数组拒绝。
+func TestParse_In(t *testing.T) {
+	_, err := Parse(`in("status","draft")`)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "array")
+
+	_, err = Parse(`in("status",[])`)
+	require.Error(t, err)
+
+	_, err = Parse(`in("status")`)
 	require.Error(t, err)
 }
 
