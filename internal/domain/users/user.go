@@ -160,7 +160,9 @@ func containsLabel(labels []string, want string) bool {
 	return false
 }
 
-// DocumentData 是 Users API 投影到 databases.Document.Data 的字段快照（含密码哈希）。
+// DocumentData 是 Users API 投影到 databases.Document.Data 的字段快照。
+// password_hash 永不进入投影（响应面零哈希泄露；密码校验走 usersRepo 的
+// User.PasswordHash 结构体字段，与本投影无关）。
 func (u *User) DocumentData() map[string]any {
 	if u == nil {
 		return map[string]any{}
@@ -175,7 +177,6 @@ func (u *User) DocumentData() map[string]any {
 	}
 	data := map[string]any{
 		"email":          u.Email,
-		"password_hash":  u.PasswordHash,
 		"name":           u.Name,
 		"status":         u.Status,
 		"email_verified": u.EmailVerified,

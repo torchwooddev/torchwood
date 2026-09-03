@@ -34,11 +34,15 @@ func TestUsers_CreateUser_UsesUserRepository(t *testing.T) {
 	require.Equal(t, false, doc.Data["email_verified"])
 	require.Equal(t, []any{"vip"}, doc.Data["labels"])
 	require.Equal(t, map[string]any{"theme": "dark"}, doc.Data["prefs"])
-	hash, _ := doc.Data["password_hash"].(string)
-	ok, err := password.Verify("Passw0rd", hash)
+	// 密码经 repo 哈希存储（fake repo 读回验证）；投影响应面不含 password_hash。
+	require.NotContains(t, doc.Data, "password_hash")
+	require.Equal(t, []string{"GetByEmail", "Insert"}, repo.calls)
+	stored, err := repo.GetByID(ctx, "proj-1", doc.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	ok, err := password.Verify("Passw0rd", stored.PasswordHash)
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, []string{"GetByEmail", "Insert"}, repo.calls)
 
 	repo.calls = nil
 	_, err = uc.CreateUser(ctx, "proj-1", CreateUserCommand{

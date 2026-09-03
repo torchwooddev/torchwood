@@ -44,7 +44,7 @@ func TestServerUsers_CreateAndUpdate(t *testing.T) {
 	}
 
 	ctx := platformAdminCtx(context.Background())
-	uc, _, projectID, cleanup := newUsersUC(ctx, t)
+	uc, db, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
 
 	// 创建用户。
@@ -63,9 +63,11 @@ func TestServerUsers_CreateAndUpdate(t *testing.T) {
 	require.Equal(t, []any{"vip", "beta"}, doc.Data["labels"])
 	require.Equal(t, map[string]any{"theme": "dark"}, doc.Data["prefs"])
 
-	// 密码已哈希存储，可被 SignIn 验证。
-	hash, _ := doc.Data["password_hash"].(string)
-	ok, _ := password.Verify("Pass@123", hash)
+	// 密码已哈希存储（repo 直读验证）；投影响应面不含 password_hash。
+	require.NotContains(t, doc.Data, "password_hash")
+	stored, err := bunrepo.NewUserRepository(db).GetByID(ctx, projectID, doc.ID)
+	require.NoError(t, err)
+	ok, _ := password.Verify("Pass@123", stored.PasswordHash)
 	require.True(t, ok)
 
 	// 重复 email。
@@ -115,7 +117,7 @@ func TestServerUsers_PasswordResetAndSessions(t *testing.T) {
 	}
 
 	ctx := platformAdminCtx(context.Background())
-	uc, _, projectID, cleanup := newUsersUC(ctx, t)
+	uc, db, projectID, cleanup := newUsersUC(ctx, t)
 	defer cleanup()
 
 	doc, err := uc.CreateUser(ctx, projectID, CreateUserCommand{
@@ -129,13 +131,15 @@ func TestServerUsers_PasswordResetAndSessions(t *testing.T) {
 	_, err = uc.UpdateUserPassword(ctx, projectID, doc.ID, "NewPass@456")
 	require.NoError(t, err)
 
-	// DB 中当前哈希：旧密码失效、新密码可验证。
+	// DB 中当前哈希：旧密码失效、新密码可验证（repo 直读；投影不含 hash）。
 	after, err := uc.GetUser(ctx, projectID, doc.ID, databases.Principal{Roles: []string{"keys"}})
 	require.NoError(t, err)
-	hash, _ := after.Data["password_hash"].(string)
-	ok, _ := password.Verify("Pass@123", hash)
+	require.NotContains(t, after.Data, "password_hash")
+	stored, err := bunrepo.NewUserRepository(db).GetByID(ctx, projectID, doc.ID)
+	require.NoError(t, err)
+	ok, _ := password.Verify("Pass@123", stored.PasswordHash)
 	require.False(t, ok)
-	ok, _ = password.Verify("NewPass@456", hash)
+	ok, _ = password.Verify("NewPass@456", stored.PasswordHash)
 	require.True(t, ok)
 
 	// 弱密码拒绝。
