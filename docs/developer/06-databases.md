@@ -154,6 +154,14 @@ CREATE TABLE tw_shop_app._perms (
 
 用户集合 `BIGINT NOT NULL DEFAULT 1`，`Create/Upsert/Bulk` 盲写但 `_version+1`（`Bulk` `SkipVersion=true` LWW），`Update/Delete` 必填且等于当前值（行锁下比较，`versionColumnReady` 校验 `bigint`），成功 `+1`。错误 `version_required`/`version_mismatch`/`version_column_conflict`（`FailedPrecondition`），`version_column_unavailable`（`InvalidArgument`）。`_version` 可作过滤/排序/投影；系统表无此列。`Upsert` 的 `conflictColumns` 必须无序命中集合一个 unique 索引（非 Bypass 主体前置校验 `validateConflictColumns`，否则 InvalidArgument；Bypass 主体靠 PG 42P10 兜底）。
 
+## 8.1 事务内核 execute-tx（redesign §4.8 Phase 1）
+
+`DatabasesService/ExecuteTransactions`（Server 面）：单事务内顺序执行异构 op 批（`internal/infra/documentdb/postgres_transactions.go`，Bulk 的泛化）。op 模型 `{type(create/update/upsert/delete), collection_id, document_id, data, permissions, increment, expected_version, conflict_columns}`，上限 1000（`MaxBulkOperations`）。锁纪律：按 `(collection, documentID)` 排序预取 `pg_advisory_xact_lock` 防批间死锁，op 按请求序执行（事件序 = op 序）；各 op 复用单文档事务体（权限/OCC/conflictColumns 校验同源）。`ATOMIC`（默认）任一失败整批回滚（错误带 op index 域码定位）；`PARTIAL` 逐 op SAVEPOINT 容错、已成功不回滚、返回 per-op 结果（含失败域码）。create/upsert 空 ACE 种子与单文档 API 同语义。
+
+## 8.2 域错误码（redesign §4.1）
+
+域码稳定 snake_case（`DOCUMENT.NOT_FOUND`、`DOCUMENT.VERSION_CONFLICT` 等，`internal/domain/databases/errors.go`）静态映射 gRPC code；消息格式 `CODE: message`，ErrorInfo detail 携带 `reason`/`retryable`（OCC 冲突与资源耗尽可重试）及 infra 错误的 `sqlstate`/`error_id`。裸 "document database error" 已消灭；infra 产出的域码 status 在 app 层经 `errors.As` 提取透传（防包装链丢 status）。
+
 ## 9 事务与分页一致性
 
 `BulkUpdate/BulkDelete` 与单文档写走 `clients.Database.RunInTx`（已在事务内复用，否则开短事务，`internal/infra/documentdb/postgres_permissions.go:195`）；`ListDocuments` 先 `COUNT` 后主查询，非原子快照（`READ COMMITTED`，与 Appwrite 一致，以 `nextPageToken` 续页）。`pkg/crud` 提供 `ParseListParams`/`BuildPaginationInfo`（`pkg/crud/list.go:57`/`pagination.go:360`），游标 `EncodePageToken`/`DecodePageToken`（`v1` base64 JSON，TTL 24h，`filterDigest`/`orderBy` 一致性校验）。
