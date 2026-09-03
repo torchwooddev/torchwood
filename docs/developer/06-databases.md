@@ -18,12 +18,13 @@
 | 数据面 | `internal/infra/projectschema/` + `pkg/ident/` | 项目 schema 生命周期（Apply/迁移/孤儿对账/缓存失效桥接）、两段式寻址与标识规则（≤28 字符） |
 | 迁移 | `db/migrations/`（public 控制面）+ `internal/infra/projectschema/migrations/`（项目数据面模板） | catalog/outbox 控制面演进；新项目一次性建面 + 存量 `EnsureAll` 自愈 |
 | 事件 | `internal/infra/events/`（outbox + worker）→ `internal/infra/realtime/`（subscriber/hub/stream） | 写路径同事务落 `document_events_outbox` → Redis Pub/Sub → hub 按快照 ACL 过滤扇出（`VisibleTo`），出站帧剥 ACL |
-| 分页 | `pkg/crud/pagination.go`（HMAC 签名 offset token）+ documentdb `ka:/kb:` keyset token | 两族 token：结构化 offset 续页与 keyset 游标续页 |
+| 分页 | `pkg/crud/pagination.go`（HMAC 签名 offset token，静态表/控制面列表用）+ documentdb `ka:/kb:` keyset token | 文档面 keyset-only（C2 阶段①）：`ListDocuments` 只发/只认 keyset token；offset token 族仅存于 `pkg/crud` 静态表路径 |
+| 幂等 | `internal/domain/databases/idempotency.go`（端口）+ `internal/infra/bun/bunrepo/idempotency_repo.go` + `internal/app/documents/idempotency.go`（核层包裹） | `request_id` 写幂等（public.`idempotency_keys`）：只缓存成功响应、24h 重放、KEY_CONFLICT/IN_PROGRESS 域码 |
 | 传输 | `internal/api/servergrpc|clientgrpc/databases.go` + `proto/server|client/v1/databases.proto` | 请求校验、authz 注解（`method_auth` + scope 表）、双栈参数绑定、OpenAPI 契约 |
 
 ### 范围外
 
-Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Functions 执行、账本/OAuth 目录（同在 `tw_<project>` 但独立演进）、billing 用量统计（消费 `files.SumSize`，不经过文档端口——`SumDocumentField` 目前无生产调用方）。
+Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Functions 执行、账本/OAuth 目录（同在 `tw_<project>` 但独立演进）、billing 用量统计（消费 `files.SumSize`，不经过文档端口——`SumDocumentField` 已删除，`:aggregate` 的 sum 即其继任）。
 
 ### 关键不变量（变更评审锚点）
 
@@ -37,6 +38,9 @@ Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Func
 8. **默认私有**：`DefaultCollectionPermissions` 不含 `read:any`；空 ACE 文档按种子规则私有化（owner/创建者角色/`__private__`）。
 9. **标识长度**：`project.id/database.id ≤ 28`（schema 名 ≤60 字节，`pkg/ident`）；`collectionID ≤40`、属性 key ≤63、索引 ID ≤40（app 层入口），叠加索引名拼接校验 `idx_<coll>_<id>` ≤63（infra 二道防线：表/列名 ≤63 + 组合校验——静态段上限封不死组合长度）。PG 63 字节截断类缺陷已机制性封死；redesign 阶段②逻辑/物理名解耦后上限将收紧（collectionID ≤36）并随物理名分配退役。
 10. **查询双栈互斥**：`queries`（DSL 字符串）与 `query`（typed AST）携带冲突语义即 `InvalidArgument`；两栈算子集尚不对齐（DSL 无 `or`/`and`，AST 无 `between`/`isNull` 等；`in` 两栈均已支持）。跨 filter 绑定参数累计 ≤2000（封死 PG 65535 语句参数上限）。
+11. **写幂等（redesign §4.1/§10.1）**：携带 `request_id` 的写请求键作用域 `(project_id, actor_id, request_id)`；只缓存成功响应（失败释放、重试重新执行）；同 key 异体 → `IDEMPOTENCY.KEY_CONFLICT`；并发同 key 短轮询 ≤2s 后仍 in-flight → `IDEMPOTENCY.IN_PROGRESS`；重放返回原响应 + `x-torchwood-replayed: true` 响应头；done TTL 24h、in_flight 兜底 TTL 5min、惰性清理。
+12. **keyset-only（redesign C2 阶段①）**：`ListDocuments` 只发/只认 `ka:/kb:` token；`offset()` 算子与非 keyset token 一律 `InvalidArgument`；排序全程单键 + `_id` tiebreaker（多排序键首页即拒——token 只编码单键）。`ListCollections` 的 offset 分页维持到阶段②。
+13. **聚合一律在可见行集上执行（redesign §11-J D1）**：`:aggregate` 复用 `listPermissionFilter` 过滤链且过滤先于 GROUP BY——不可见行不进聚合、group 键不泄露；聚合目标必须是声明数值属性（integer/float）。
 
 ## 1 三类库
 
@@ -124,13 +128,13 @@ CREATE TABLE tw_shop_app._perms (
 |  | `search` | `search("title","hello")` | `to_tsvector('simple',col::text) @@ plainto_tsquery('simple',?)` |
 |  | `isNull`/`isNotNull` | `isNull("deleted_at")` | `IS NULL` |
 | 排序 | `orderAsc`/`orderDesc` | `orderDesc("$createdAt")` | `ORDER BY d."field" ASC/DESC, d._id <dir>`（与 cursor 续页路径同构的 `_id` tiebreaker） |
-| 分页 | `limit`/`offset` | `limit(25)` | `LIMIT/OFFSET` |
-|  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（与 `offset` 互斥；**多自定义排序键 + cursor → InvalidArgument**——游标只取首个排序键，完整多键游标属重设计阶段① C2） |
+| 分页 | `limit`/`offset` | `limit(25)` | `LIMIT`；**文档面 keyset-only（C2 阶段①）**：`ListDocuments`/`CountDocuments` 对 `offset()` 一律 `InvalidArgument`（"use cursor pagination" / count 全集语义）；`offset` 仍可用于 `pkg/crud` 静态表路径 |
+|  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（**多自定义排序键 → InvalidArgument，首页即拒**——token 只编码单键，完整多键游标属单 AST 专属会话；`ListDocuments` 的 `page_token` 也只认 `ka:/kb:` keyset token） |
 | 投影 | `select` | `select(["name","age"])` | 返回后裁剪 `Data` |
 
 别名 ` $id→_id`、`$createdAt→_created_at`、`$updatedAt→_updated_at`、`$version→_version`（`mapQueryField`）。程序化拼串用 `BuildFilter`/`BuildEqual`/`BuildLimit`（自动转义 `"`/`\`）。
 
-**输入上限**（`internal/infra/documentdb/postgres.go:46`）：`queries≤100`、`单串≤4096`、`equal 多值≤1000`、**跨 filter 绑定参数累计 ≤2000**（`maxTotalFilterParams`，封死 PG 65535 语句参数上限）、`maxQueryLimit=100`、`maxQueryOffset=10000`（`validateQueryInput` + `buildAppwriteQuery` 出口）。**写入载荷上限**（`internal/app/documents`）：总量 ≤1 MiB、单属性值 ≤256 KiB，超限 `DOCUMENT.TOO_LARGE`（InvalidArgument）。
+**输入上限**（`internal/infra/documentdb/postgres.go`）：`queries≤100`、`单串≤4096`、`equal 多值≤1000`、**跨 filter 绑定参数累计 ≤2000**（`maxTotalFilterParams`，封死 PG 65535 语句参数上限）、`maxQueryLimit=100`（`validateQueryInput` + `buildAppwriteQuery` 出口；`maxQueryOffset` 已随文档面 keyset-only 收敛删除）。**写入载荷上限**（`internal/app/documents`）：总量 ≤1 MiB、单属性值 ≤256 KiB，超限 `DOCUMENT.TOO_LARGE`（InvalidArgument，违规属性定位走 BadRequest violations）。
 
 **编译与校验**（`postgres_query_compile.go`）：`astFrom` 优先 `Query.AST`（`shared.v1.Query` typed 形态，与 `queries` 互斥），否则 `ParseMany`；`validateQueryFields` 白名单=系统列+已声明 attribute，`search` 需命中 `fulltext` 索引，`_version` 缺列返回 `version_column_unavailable`（`InvalidArgument`），系统集合敏感列（`users.password_hash/prefs/labels` 等）黑名单仅按 `IsSystemCollection` 生效（`pkg/query/proto` 双栈见 `docs/review/wave2-e4-query-ast.md`）。
 
@@ -146,7 +150,7 @@ CREATE TABLE tw_shop_app._perms (
 | `GetDocument` | 文档 `read`（`checkDocumentPermission`） |
 | `UpdateDocument` | 仅文档 `update`（不强制 `read`） |
 | `DeleteDocument` | 文档 `delete` |
-| `ListDocuments`/`CountDocuments`/`Sum` | `ListAccessDenied` 预拒 → `listPermissionFilter` 生成 `EXISTS(SELECT 1 FROM _perms p WHERE p._tenant=d._tenant AND ... p._type='read' AND p._permission=ANY(?::text[]))`；由集合 `read` 兜底分支时追加 `OR NOT EXISTS(...)` |
+| `ListDocuments`/`CountDocuments`/`Aggregate` | `ListAccessDenied` 预拒 → `listPermissionFilter` 生成 `EXISTS(SELECT 1 FROM _perms p WHERE p._tenant=d._tenant AND ... p._type='read' AND p._permission=ANY(?::text[]))`；由集合 `read` 兜底分支时追加 `OR NOT EXISTS(...)`；聚合复用同一过滤链且过滤先于 GROUP BY（D1：不可见行不进聚合、键不泄露） |
 
 `ValidateGrantablePermissions`：普通用户不可授予未持有角色与 `any` 写权限（`keys`/`System`/`PlatformAdmin` 跳过）。
 
@@ -160,11 +164,29 @@ CREATE TABLE tw_shop_app._perms (
 
 ## 8.2 域错误码（redesign §4.1）
 
-域码稳定 snake_case（`DOCUMENT.NOT_FOUND`、`DOCUMENT.VERSION_CONFLICT` 等，`internal/domain/databases/errors.go`）静态映射 gRPC code；消息格式 `CODE: message`，ErrorInfo detail 携带 `reason`/`retryable`（OCC 冲突与资源耗尽可重试）及 infra 错误的 `sqlstate`/`error_id`。裸 "document database error" 已消灭；infra 产出的域码 status 在 app 层经 `errors.As` 提取透传（防包装链丢 status）。
+域码稳定 snake_case（`DOCUMENT.NOT_FOUND`、`DOCUMENT.VERSION_CONFLICT`、`DOCUMENT.ATTRIBUTE_UNSERIALIZABLE`、`IDEMPOTENCY.KEY_CONFLICT` 等，`internal/domain/databases/errors.go`）静态映射 gRPC code；消息格式 `CODE: message`，ErrorInfo detail 携带 `reason`/`retryable`（OCC 冲突、资源耗尽与幂等执行中可重试）与 `error_id`（**DomainStatus 生成处统一注入**，与 infra SQLSTATE 路径对齐——每个错误实例可唯一引用；限流拒绝为 `RATE_LIMIT.EXCEEDED` / `torchwood.platform` + RetryInfo 精确退避）。字段级违规定位走 **google.rpc BadRequest 标准 detail（field_violations）**：execute-tx 的 op 定位迁移为字段路径形态（`ops[3].expected_version`——域码映射子字段：VERSION_\*→`expected_version`、PERMISSION_DENIED→`permissions`、NOT_FOUND/ALREADY_EXISTS→`document_id`、无映射→`ops[N]`）；载荷违规（`data.blob`）与 op 守卫（`ops[i].collection_id` 等）同形态。裸 "document database error" 已消灭；infra 产出的域码 status 在 app 层经 `errors.As` 提取透传（防包装链丢 status）。
+
+## 8.3 聚合 `documents:aggregate`（redesign §4.1 + §10.5 P1）
+
+`DatabasesService/AggregateDocuments`（Server 面，scope `databases.read`）：`POST .../documents:aggregate`，`sum/avg/min/max` + 可选单键 `group_by`（count 已有独立 `:count` RPC 不并入）。语义：
+
+- **D1（§11-J 已裁决）**：聚合一律在 `listPermissionFilter` 过滤后的可见行集上执行（过滤先于 GROUP BY）——不可见行不进聚合、group 键不泄露；权限 golden 集成测试锁语义（`aggregate_integration_test.go`）；最小桶/k-匿名未实现（可选产品功能，默认关）；权限变更前后聚合不可比属固有属性。
+- 聚合目标必须是集合声明的数值属性（`integer`/`float`，System 主体一视同仁防拼列）；`group_by` 须为已声明属性，键按 text 序列化（NULL 键=属性未设置的行，归入 `group_key` 未设置的组）。
+- 空集语义：`sum=0`（COALESCE）、`avg/min/max` 无值（proto `optional double` 未设置）；`group_by` 下空集返回空组列表。无 `group_by` 时恰返回一组。
+- 过滤算子与 ListDocuments 同语法（queries/typed AST 双栈）；排序/分页算子无意义（整集聚合，忽略——与 `:count` 同纪律）。
+
+## 8.4 写幂等 `request_id`（redesign §4.1/§10.1）
+
+七个写入口（Create/Update/Upsert/Delete/BulkUpdate/BulkDelete/ExecuteTransactions，Server 面 proto 字段 `request_id` + Client 面 Create/Update/Upsert/Delete；HTTP 面等价 `Idempotency-Key` 头，proto 字段优先）在 `internal/app/documents` 核层包裹：
+
+- **键作用域** `(project_id, actor_id, request_id)`；`actor_id` 复用归因链（`Principal.StableActorID`：`user:<id>` 角色存裸 id（end user / console admin）、API key 主体 `key:<id>`、内部 System `system`）；不同 actor 同 key 不冲突。
+- **指纹** = method + 请求关键字段规范序列化 sha256（批 ID/conflict_columns 排序规范化——集合语义，重试乱序不判冲突）；同 key 不同指纹 → `IDEMPOTENCY.KEY_CONFLICT`（InvalidArgument，重试无意义）。
+- **语义**：只缓存成功响应（失败 Release 释放占位，重试重新执行）；重放返回原响应 + `x-torchwood-replayed: true` 响应头（gRPC response metadata，网关 outgoing matcher 透传为 HTTP 头；零 proto 响应侵入）。并发同 key：短轮询（100ms 间隔）≤2s 后仍 in-flight → `IDEMPOTENCY.IN_PROGRESS`（Aborted，retryable）。`Complete` 失败不回滚写入（best-effort 缓存，只损失重放能力）；store 故障时写请求失败（Unavailable，不静默降级为 at-least-once）。
+- **存储** `public.idempotency_keys`（PK `(project_id, actor_id, request_id)` 仲裁并发认领 + `claim_token` 防过期重认领串写 + `expires_at` 索引惰性清理）；done TTL 24h（完成时刻起算）、in_flight 兜底 TTL 5min（崩溃残留行到期可重认领——期间同键重试收到 IN_PROGRESS）。execute-tx 幂等覆盖整批（PARTIAL 重放返回首次完整 per-op 结果，§11-E2）。
 
 ## 9 事务与分页一致性
 
-`BulkUpdate/BulkDelete` 与单文档写走 `clients.Database.RunInTx`（已在事务内复用，否则开短事务，`internal/infra/documentdb/postgres_permissions.go:195`）；`ListDocuments` 先 `COUNT` 后主查询，非原子快照（`READ COMMITTED`，与 Appwrite 一致，以 `nextPageToken` 续页）。`pkg/crud` 提供 `ParseListParams`/`BuildPaginationInfo`（`pkg/crud/list.go:57`/`pagination.go:360`），游标 `EncodePageToken`/`DecodePageToken`（`v1` base64 JSON，TTL 24h，`filterDigest`/`orderBy` 一致性校验）。
+`BulkUpdate/BulkDelete` 与单文档写走 `clients.Database.RunInTx`（已在事务内复用，否则开短事务，`internal/infra/documentdb/postgres_permissions.go`）；`ListDocuments` **keyset-only（C2 阶段①）**：首页（无 cursor）执行精确 COUNT 后主查询（非原子快照，`READ COMMITTED`），满页发 `ka:` token；续页（keyset token）跳过 COUNT（`total=0=unknown`），满页判定 has-more；排序全程单键 + `_id` tiebreaker（并发写入下不丢/不重行）。`pkg/crud` 提供 `ParseListParams`/`BuildPaginationInfo`（`pkg/crud/list.go:57`/`pagination.go:360`），offset token（`EncodePageToken`/`DecodePageToken`，`v1` base64 JSON，TTL 24h）仅供静态表/控制面列表使用，文档面不再接受。
 
 ## 10 系统列与写入过滤
 
