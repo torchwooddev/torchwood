@@ -371,26 +371,8 @@ func (d *Databases) CreateDocument(
 	// 仍被剔除，docHasPerms=true 依旧关闭集合回落，C1 目标不变。
 	seeded := false
 	if len(perms) == 0 {
+		perms = seedDocumentPermissions(principal)
 		seeded = true
-		switch role := ownerUserRole(principal); {
-		case role != "":
-			// 少见路径：Server 侧带用户身份，保持与 Client 相同的 owner ACE。
-			perms = []databases.Permission{
-				{Type: "read", Role: role},
-				{Type: "update", Role: role},
-				{Type: "delete", Role: role},
-			}
-		case creatorSeedRole(principal) != "":
-			role := creatorSeedRole(principal)
-			perms = []databases.Permission{
-				{Type: "read", Role: role},
-				{Type: "update", Role: role},
-				{Type: "delete", Role: role},
-			}
-		default:
-			// 无常规角色可绑定（如仅特权旁路的主体）：纯私有标记。
-			perms = []databases.Permission{{Type: "read", Role: "__private__"}}
-		}
 	}
 	// seeded 时 ACE 全部为系统推导（非调用方授予意图），不受授予者校验约束。
 	return d.documentsCore().CreateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, principal, documents.WriteOptions{
@@ -407,6 +389,25 @@ func ownerUserRole(principal databases.Principal) string {
 		}
 	}
 	return ""
+}
+
+// seedDocumentPermissions 生成空 ACE 写入的创建者种子（CreateDocument /
+// UpsertDocument 共用）：owner user 角色 → creatorSeedRole（keys/admin 等
+// 常规凭证角色）→ __private__ 纯私有标记。返回的 perms 恒非空。
+func seedDocumentPermissions(principal databases.Principal) []databases.Permission {
+	role := ownerUserRole(principal)
+	if role == "" {
+		role = creatorSeedRole(principal)
+	}
+	if role != "" {
+		return []databases.Permission{
+			{Type: "read", Role: role},
+			{Type: "update", Role: role},
+			{Type: "delete", Role: role},
+		}
+	}
+	// 无常规角色可绑定（如仅特权旁路的主体）：纯私有标记。
+	return []databases.Permission{{Type: "read", Role: "__private__"}}
 }
 
 // creatorSeedRole 返回空 ACE 文档占位绑定用的创建者常规角色（首个非
@@ -476,33 +477,16 @@ func (d *Databases) UpsertDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, err
 	}
+	// 空 ACE 种子与 CreateDocument 同语义（seedDocumentPermissions）：原实现
+	// 对非 user 主体种 read:__private__，keys 主体 upsert 后自己都读不回；
+	// 更新支还会把目标行 ACL 整体替换为 __private__，直接锁死既有文档。
+	seeded := false
 	if len(perms) == 0 {
-		hasUserRole := false
-		for _, r := range principal.Roles {
-			if strings.HasPrefix(r, "user:") {
-				hasUserRole = true
-				break
-			}
-		}
-		if hasUserRole {
-			var userRole string
-			for _, r := range principal.Roles {
-				if strings.HasPrefix(r, "user:") {
-					userRole = r
-					break
-				}
-			}
-			perms = []databases.Permission{
-				{Type: "read", Role: userRole},
-				{Type: "update", Role: userRole},
-				{Type: "delete", Role: userRole},
-			}
-		} else {
-			perms = []databases.Permission{{Type: "read", Role: "__private__"}}
-		}
+		perms = seedDocumentPermissions(principal)
+		seeded = true
 	}
 	return d.documentsCore().UpsertDocument(ctx, projectID, databaseID, collectionID, documentID, data, conflictColumns, perms, principal, documents.WriteOptions{
-		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
+		AllowPrivilegedGrant: seeded || allowPrivilegedGrant(principal),
 	})
 }
 

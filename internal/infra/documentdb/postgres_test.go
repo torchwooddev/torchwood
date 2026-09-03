@@ -160,6 +160,79 @@ func TestPostgresDocumentDatabase_UpsertDocument(t *testing.T) {
 	require.Equal(t, databases.Permission{Type: "read", Role: "user:u1"}, got.Permissions[0])
 }
 
+// TestPostgresDocumentDatabase_UpsertDocument_KeyseedPermsReadable：keys 主体以
+// 文档级 read/update/delete:keys（app 层 seedDocumentPermissions 的种子形态）走
+// upsert 插入支与更新支后，读回与修改不依赖集合级权限（回归配套：app 层原空 ACE
+// 种子 read:__private__ 会锁死文档，本测试锁定 infra 侧 _perms 持久化与判定链路）。
+func TestPostgresDocumentDatabase_UpsertDocument_KeyseedPermsReadable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	// 集合仅授 create:keys（无 read）：读回必须依赖文档级种子 ACE。
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
+		{ID: "email", Key: "email", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "email_key", Type: "unique", Attributes: []string{"email"}},
+	}, []databases.Permission{
+		{Type: "create", Role: "keys"},
+	}, true))
+
+	keys := databases.Principal{Roles: []string{"keys"}}
+	seed := []databases.Permission{
+		{Type: "read", Role: "keys"},
+		{Type: "update", Role: "keys"},
+		{Type: "delete", Role: "keys"},
+	}
+
+	// 插入支：keys 可读回、可改。
+	upserted, err := docDB.UpsertDocument(ctx, projectID, "app", "members", databases.Document{
+		ID:   "m1",
+		Data: map[string]any{"email": "k@example.com"},
+	}, []string{"email"}, seed, keys)
+	require.NoError(t, err)
+	require.Equal(t, "m1", upserted.ID)
+
+	got, err := docDB.GetDocument(ctx, projectID, "app", "members", "m1", keys)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "k@example.com", got.Data["email"])
+
+	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "members", databases.DocumentUpdate{
+		Document:        databases.Document{ID: "m1", Data: map[string]any{"email": "k2@example.com"}},
+		ExpectedVersion: got.Version,
+	}, keys)
+	require.NoError(t, err)
+	require.Equal(t, "k2@example.com", updated.Data["email"])
+
+	// 更新支：conflict 命中已有行，同种子 perms 替换后仍可读、可改。
+	updatedAgain, err := docDB.UpsertDocument(ctx, projectID, "app", "members", databases.Document{
+		ID:   "m2",
+		Data: map[string]any{"email": "k2@example.com"},
+	}, []string{"email"}, seed, keys)
+	require.NoError(t, err)
+	require.Equal(t, "m1", updatedAgain.ID)
+	require.Equal(t, int64(3), updatedAgain.Version)
+
+	gotAgain, err := docDB.GetDocument(ctx, projectID, "app", "members", "m1", keys)
+	require.NoError(t, err)
+	require.NotNil(t, gotAgain)
+
+	_, err = docDB.UpdateDocument(ctx, projectID, "app", "members", databases.DocumentUpdate{
+		Document:        databases.Document{ID: "m1", Data: map[string]any{"email": "k3@example.com"}},
+		ExpectedVersion: gotAgain.Version,
+	}, keys)
+	require.NoError(t, err)
+}
+
 // TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected
 // (P0-1): a principal holding only collection-level create must not be able to
 // update another user's row by submitting a new _id whose conflict columns

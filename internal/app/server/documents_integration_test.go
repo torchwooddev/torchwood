@@ -154,3 +154,81 @@ func TestDatabases_UpsertDocument_Validation(t *testing.T) {
 	st, _ = status.FromError(err)
 	require.Equal(t, codes.InvalidArgument, st.Code())
 }
+
+// TestDatabases_UpsertDocument_EmptyACESeed：keys 主体空 ACE upsert 的插入支与
+// 更新支都必须能读回、可改（回归：原实现种 read:__private__，且更新支把目标行
+// ACL 整体替换为 __private__，keys 自己创建的文档被锁死）。集合只授 create:keys
+// 不授 read，读回必须依赖文档级种子 ACE，精确复现锁死面。
+func TestDatabases_UpsertDocument_EmptyACESeed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := platformAdminCtx(context.Background())
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "members", "Members", []databases.Attribute{
+		{ID: "email", Key: "email", Type: "string", Size: 256},
+	}, []databases.Index{
+		{ID: "uq_email", Type: "unique", Attributes: []string{"email"}},
+	}, []databases.Permission{{Type: "create", Role: "keys"}}, true))
+
+	// 插入支：空 ACE 种子为 read/update/delete:keys，读回与修改不依赖集合级 read。
+	upserted, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+		"email": "seed@example.com",
+	}, []string{"email"}, nil, principal)
+	require.NoError(t, err)
+	require.Equal(t, "m1", upserted.ID)
+	requirePermsMatchRoles(t, upserted.Permissions, "keys")
+
+	got, err := uc.GetDocument(ctx, projectID, "app", "members", "m1", principal)
+	require.NoError(t, err)
+	require.Equal(t, "seed@example.com", got.Data["email"])
+	requirePermsMatchRoles(t, got.Permissions, "keys")
+
+	updated, err := uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+		"email": "seed2@example.com",
+	}, nil, nil, principal, &got.Version)
+	require.NoError(t, err)
+	require.Equal(t, "seed2@example.com", updated.Data["email"])
+
+	// 更新支：conflict 命中已有行，种子不得把目标行 ACL 替换为 __private__。
+	updatedAgain, err := uc.UpsertDocument(ctx, projectID, "app", "members", "m2", map[string]any{
+		"email": "seed2@example.com",
+	}, []string{"email"}, nil, principal)
+	require.NoError(t, err)
+	require.Equal(t, "m1", updatedAgain.ID)
+	requirePermsMatchRoles(t, updatedAgain.Permissions, "keys")
+
+	gotAgain, err := uc.GetDocument(ctx, projectID, "app", "members", "m1", principal)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), gotAgain.Version)
+
+	_, err = uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
+		"email": "seed3@example.com",
+	}, nil, nil, principal, &gotAgain.Version)
+	require.NoError(t, err)
+}
+
+// requirePermsMatchRoles 断言 perms 恰好是 role 的 read/update/delete 三元组
+//（seedDocumentPermissions 的种子形态，不含 __private__）。
+func requirePermsMatchRoles(t *testing.T, perms []databases.Permission, role string) {
+	t.Helper()
+	require.Len(t, perms, 3)
+	got := map[string]string{}
+	for _, p := range perms {
+		got[p.Type] = p.Role
+	}
+	for _, typ := range []string{"read", "update", "delete"} {
+		require.Equalf(t, role, got[typ], "permission %s:%s missing creator seed", typ, role)
+	}
+}
