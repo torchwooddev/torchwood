@@ -1,6 +1,7 @@
 # DocumentDB 子系统重设计（从零方案）
 
-> 状态：**设计提案，未实施**。当前架构以 `docs/developer/06-databases.md`（含 §0 子系统定义与边界）为准，勿将本文当作现状描述。
+> 状态：**设计提案，未实施；当前为 POC 阶段，无向后兼容义务**。当前架构以 `docs/developer/06-databases.md`（含 §0 子系统定义与边界）为准，勿将本文当作现状描述。
+> POC 含义：proto/API 可直接做破坏性修改（删除字段仍用 `reserved` 登记字段号——字段号卫生习惯而非兼容义务，跳过 `deprecated` 过渡态）；错误码与语义直接替换、不留旧文案映射；无灰度双读、无特性开关；本地/测试数据可随时重建（`docker:purge` + `db:migrate`），不做存量数据迁移。转出 POC（对外发布/有真实存量用户）前需重审本文所有"直接切换"类表述并补迁移方案。
 > 来源：2026-09 两轮深度评审（documentdb 适配器 + 全方案外围）得出的问题清单作为设计输入，三路独立设计（正确性/一致性、开发者体验/API 面、规模/性能/运维）交叉验证后裁决成文；2026-09-03 按维护者决策修订 §3.1（Typed 真实列）并补 §3.2（RLS 语义等价性验证）、§9（竞品路线调研）。
 > 相关：`docs/developer/06-databases.md`、`docs/design/schema-naming.md`、`docs/design/v2-events-and-realtime.md`。
 
@@ -235,7 +236,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 | ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
 
-每阶段附回退方案；阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
+POC 阶段各阶段**直接切换、不留兼容回退**：阶段③的 `_perms → _acl` 无需双读灰度（直接重建），阶段②无需存量四表迁移任务；"每阶段附回退方案"的要求在转出 POC 时再引入。阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
 
 ## 7. 风险与缓解
 
