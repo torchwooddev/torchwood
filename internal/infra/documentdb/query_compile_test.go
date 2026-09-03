@@ -1,6 +1,7 @@
 package documentdb
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,6 +74,39 @@ func TestBuildAppwriteQuery_CustomOrderHasIDTiebreaker(t *testing.T) {
 	_, _, orderSQL, err = buildAppwriteQuery(parsed)
 	require.NoError(t, err)
 	require.Equal(t, `ORDER BY d._created_at DESC, d._id DESC`, orderSQL)
+}
+
+// TestBuildAppwriteQuery_TotalFilterParamsLimit：跨 filter 绑定参数累计上限
+//（单 filter ≤1000 不封总量：100 query × 1000 值可积 10 万参数，超 PG 65535
+// 语句参数上限后以运行时错误暴露）。
+func TestBuildAppwriteQuery_TotalFilterParamsLimit(t *testing.T) {
+	makeFilter := func(n int) *query.Filter {
+		values := make([]string, n)
+		for i := range values {
+			values[i] = fmt.Sprintf("v%d", i)
+		}
+		return &query.Filter{Op: query.OpIn, Attribute: "status", Values: values}
+	}
+
+	// 3 × 700 = 2100 > 2000 → InvalidArgument。
+	over := &query.Query{Filter: &query.Filter{
+		Op:       query.OpAnd,
+		Children: []*query.Filter{makeFilter(700), makeFilter(700), makeFilter(700)},
+	}}
+	_, _, _, err := buildAppwriteQuery(over)
+	require.Error(t, err)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+
+	// 3 × 600 = 1800 ≤ 2000 → 通过。
+	ok := &query.Query{Filter: &query.Filter{
+		Op:       query.OpAnd,
+		Children: []*query.Filter{makeFilter(600), makeFilter(600), makeFilter(600)},
+	}}
+	where, args, _, err := buildAppwriteQuery(ok)
+	require.NoError(t, err)
+	require.NotEmpty(t, where)
+	require.Len(t, args, 1800)
 }
 
 func TestBuildAppwriteQuery_CodecAndStillAnd(t *testing.T) {

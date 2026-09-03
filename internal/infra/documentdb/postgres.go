@@ -53,6 +53,10 @@ const maxQueryCount = 100
 const maxQueryStringLen = 4096
 const maxFilterValues = 1000
 
+// maxTotalFilterParams 是跨 filter 绑定参数的累计上限（buildAppwriteQuery 出口
+// 检查），封死 100 条 query × 1000 值 = 10 万参数超出 PG 65535 语句参数上限的风险。
+const maxTotalFilterParams = 2000
+
 // maxIdentifierBytes 对齐 PG NAMEDATALEN-1：超长标识符被 PG 静默截断，两个仅
 // 超长部分不同的名字会映射到同一物理对象。app 层已按 collectionID ≤40 /
 // attr key ≤63 / 索引 ID ≤40 校验；此处是直调 adapter 的第二道防线。

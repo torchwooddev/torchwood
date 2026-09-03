@@ -197,6 +197,13 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 	if err != nil {
 		return "", nil, "", err
 	}
+	// 跨 filter 绑定参数累计上限：单 filter 已限 maxFilterValues，但 100 条
+	// query × 1000 值可累积 10 万绑定参数，超出 PG 单语句 65535 参数上限后
+	// 以运行时错误暴露。此处封死总量（List/Count/Sum 共用）。
+	if len(args) > maxTotalFilterParams {
+		return "", nil, "", status.Errorf(codes.InvalidArgument,
+			"query filters bind %d parameters in total, exceeds maximum of %d", len(args), maxTotalFilterParams)
+	}
 
 	// R08-P2-4：默认排序带 _id tiebreaker，同 _created_at 的多行分页保持稳定。
 	orderSQL := "ORDER BY d._created_at DESC, d._id DESC"
