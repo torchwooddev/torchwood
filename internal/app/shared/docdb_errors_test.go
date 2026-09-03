@@ -6,10 +6,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
-	"github.com/torchwooddev/torchwood/pkg/ident"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/pkg/ident"
 )
 
 // sqlstateStub 是 pgdriver.Error 的本地替身（pgdriver.Error 无导出构造函数，
@@ -64,30 +66,41 @@ func TestMapDocumentDBError_SQLState(t *testing.T) {
 	require.Equal(t, plain, MapDocumentDBError(plain))
 }
 
-// TestMapDocumentDBError_OCCVersionErrors (PR1): OCC 版本相关领域错误按稳定
-// 消息映射（SDK/Console 分支依赖消息文本）：
+// TestMapDocumentDBError_OCCVersionErrors (PR1 → 域码体系): OCC 版本相关领域
+// 错误映射为稳定域码（消息 "CODE: message" 格式，ErrorInfo.reason 同源）：
 //
-//	version_required / version_mismatch / version_column_conflict → FailedPrecondition
-//	version_column_unavailable → InvalidArgument
+//	DOCUMENT.VERSION_REQUIRED / _CONFLICT / _COLUMN_CONFLICT → FailedPrecondition
+//	DOCUMENT.VERSION_COLUMN_UNAVAILABLE → InvalidArgument
 func TestMapDocumentDBError_OCCVersionErrors(t *testing.T) {
 	cases := []struct {
-		err  error
-		code codes.Code
-		msg  string
+		err      error
+		code     codes.Code
+		domain   string
+		grpcCode codes.Code
 	}{
-		{databases.ErrVersionRequired, codes.FailedPrecondition, "version_required"},
-		{databases.ErrVersionMismatch, codes.FailedPrecondition, "version_mismatch"},
-		{databases.ErrVersionColumnConflict, codes.FailedPrecondition, "version_column_conflict"},
-		{databases.ErrVersionColumnUnavailable, codes.InvalidArgument, "version_column_unavailable"},
+		{databases.ErrVersionRequired, codes.FailedPrecondition, databases.ErrCodeVersionRequired, codes.FailedPrecondition},
+		{databases.ErrVersionMismatch, codes.FailedPrecondition, databases.ErrCodeVersionConflict, codes.FailedPrecondition},
+		{databases.ErrVersionColumnConflict, codes.FailedPrecondition, databases.ErrCodeVersionColumnConflict, codes.FailedPrecondition},
+		{databases.ErrVersionColumnUnavailable, codes.InvalidArgument, databases.ErrCodeVersionColumnUnavailable, codes.InvalidArgument},
 	}
 	for _, tc := range cases {
 		mapped := MapDocumentDBError(fmt.Errorf("update document: %w", tc.err))
 		require.Equal(t, tc.code, status.Code(mapped), "err %v", tc.err)
-		require.Equal(t, tc.msg, status.Convert(mapped).Message(), "err %v", tc.err)
+		st := status.Convert(mapped)
+		require.Equal(t, tc.domain+": "+tc.err.Error(), st.Message(), "err %v", tc.err)
+		var info *errdetails.ErrorInfo
+		for _, d := range st.Details() {
+			if i, ok := d.(*errdetails.ErrorInfo); ok {
+				info = i
+			}
+		}
+		require.NotNil(t, info, "err %v", tc.err)
+		require.Equal(t, tc.domain, info.Reason)
 	}
 
-	// UpdateDocumentVersionRequired：未设置 / ≤0 → version_required。
+	// UpdateDocumentVersionRequired：未设置 / ≤0 → DOCUMENT.VERSION_REQUIRED。
 	require.Equal(t, codes.FailedPrecondition, status.Code(UpdateDocumentVersionRequired(nil)))
+	require.Contains(t, status.Convert(UpdateDocumentVersionRequired(nil)).Message(), databases.ErrCodeVersionRequired)
 	zero := int64(0)
 	require.Equal(t, codes.FailedPrecondition, status.Code(UpdateDocumentVersionRequired(&zero)))
 	one := int64(1)
@@ -101,4 +114,38 @@ func TestMapDocumentDBError_Ident(t *testing.T) {
 
 	wrapped := fmt.Errorf("schema: %w", ident.ErrInvalidSchemaResourceID)
 	require.Equal(t, codes.InvalidArgument, status.Code(MapDocumentDBError(wrapped)))
+}
+
+// TestMapDocumentDBError_StatusPassthrough：infra 已产出域码 status 的错误被
+// fmt.Errorf 包装后，MapDocumentDBError 必须提取透传（不提取会因丢失
+// GRPCStatus() 实现而退化为 Internal）。
+func TestMapDocumentDBError_StatusPassthrough(t *testing.T) {
+	infraErr := DomainStatus(databases.ErrCodeInvalidArgument)
+	wrapped := fmt.Errorf("list documents: %w", infraErr)
+	passthrough := MapDocumentDBError(wrapped)
+	require.Equal(t, codes.InvalidArgument, status.Code(passthrough))
+	require.Contains(t, status.Convert(passthrough).Message(), databases.ErrCodeInvalidArgument)
+}
+
+// TestDomainStatus_RetryableMetadata：retryable 静态表进 ErrorInfo metadata
+//（Agent 自动重试决策依据）。
+func TestDomainStatus_RetryableMetadata(t *testing.T) {
+	conflict := DomainStatus(databases.ErrCodeVersionConflict)
+	st := status.Convert(conflict)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	found := false
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			found = true
+			require.Equal(t, "true", info.Metadata["retryable"])
+		}
+	}
+	require.True(t, found)
+
+	denied := DomainStatus(databases.ErrCodePermissionDenied)
+	for _, d := range status.Convert(denied).Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			require.Equal(t, "false", info.Metadata["retryable"])
+		}
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/driver/pgdriver"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -1761,7 +1762,15 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Equal(t, "document database error", status.Convert(err).Message())
+	// 域码体系（redesign §4.1）：消息携带稳定域码前缀，ErrorInfo.reason 同源。
+	require.Contains(t, status.Convert(err).Message(), databases.ErrCodeInvalidArgument)
+	for _, d := range status.Convert(err).Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			require.Equal(t, databases.ErrCodeInvalidArgument, info.Reason)
+			require.Equal(t, "42703", info.Metadata["sqlstate"])
+			require.NotEmpty(t, info.Metadata["error_id"])
+		}
+	}
 	// 裸 pgdriver.Error 不应上抛至调用方（J4-6）
 	var pgErr pgdriver.Error
 	require.False(t, errors.As(err, &pgErr), "pgdriver.Error should be translated before returning: %v", err)

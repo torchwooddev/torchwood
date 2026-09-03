@@ -2,11 +2,15 @@ package documentdb
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 // pgErrorFielder 是 pgdriver.Error 的最小接口面（Field('C') = SQLSTATE）；
@@ -35,26 +39,45 @@ var docDBErrorSQLStates = map[string]codes.Code{
 	"53400": codes.ResourceExhausted, // configuration_limit_exceeded
 }
 
-// mapPGError 将 pgdriver 错误按 SQLSTATE 翻译为 gRPC status 或领域哨兵。
-// 仅做类型匹配（errors.As 到 pgErrorFielder），不做字符串回退，保持与原
-// MapDocumentDBError 的 SQLSTATE 处理语义一致。
-// 23505 特殊处理：返回领域哨兵 ErrDuplicateKey（与 isUniqueViolation 路径一致），
-// 其余按 docDBErrorSQLStates 映射为 status.Error(code, "document database error")。
+// mapPGError 将 pgdriver 错误按 SQLSTATE 翻译为携带稳定域码的 gRPC status
+//（redesign §4.1：infra 错误必须带 error_id，禁止裸 "document database error"）。
+// 仅做类型匹配（errors.As 到 pgErrorFielder），不做字符串回退。
+// 23505 特殊处理：返回领域哨兵 ErrDuplicateKey（与 isUniqueViolation 路径一致，
+// 由 app 层 MapDocumentDBError 统一产出域码）；其余按 docDBErrorSQLStates 映射，
+// ErrorInfo detail 携带 reason/retryable/sqlstate/error_id。
 func mapPGError(err error) error {
 	if err == nil {
 		return nil
 	}
 	var fielder pgErrorFielder
 	if errors.As(err, &fielder) {
-		if code, ok := docDBErrorSQLStates[fielder.Field('C')]; ok {
+		state := fielder.Field('C')
+		if code, ok := docDBErrorSQLStates[state]; ok {
 			if code == codes.AlreadyExists {
 				return databases.ErrDuplicateKey
 			}
-			return status.Error(code, "document database error")
+			domainCode := databases.ErrCodeInvalidArgument
+			if code == codes.ResourceExhausted {
+				domainCode = databases.ErrCodeExhausted
+			}
+			st := status.New(code, fmt.Sprintf("%s: postgres error (sqlstate %s)", domainCode, state))
+			st, _ = st.WithDetails(&errdetails.ErrorInfo{
+				Reason:   domainCode,
+				Domain:   errorInfoDomain,
+				Metadata: map[string]string{
+					"sqlstate":  state,
+					"retryable": strconv.FormatBool(databases.ErrorCodeRetryable(domainCode)),
+					"error_id":  idgen.UUID().String(),
+				},
+			})
+			return st.Err()
 		}
 	}
 	return err
 }
+
+// errorInfoDomain 是 ErrorInfo 的 domain 字段（错误命名空间，非物理 schema）。
+const errorInfoDomain = "torchwood.document"
 
 // MapError 供测试或外部调用，显式触发 SQLSTATE 翻译（薄包装）。
 func MapError(err error) error {

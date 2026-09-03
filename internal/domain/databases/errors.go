@@ -2,6 +2,58 @@ package databases
 
 import "errors"
 
+// ---------------------------------------------------------------------------
+// 域错误码体系（redesign §4.1）：稳定 snake_case 域码静态映射 gRPC code，
+// 消息格式 "CODE: message"，供 Agent 机器判定恢复路径；retryable 为静态表。
+// ---------------------------------------------------------------------------
+
+const (
+	ErrCodePermissionDenied         = "DOCUMENT.PERMISSION_DENIED"
+	ErrCodeAlreadyExists            = "DOCUMENT.ALREADY_EXISTS"
+	ErrCodeNotFound                 = "DOCUMENT.NOT_FOUND"
+	ErrCodeNoFieldsToUpdate         = "DOCUMENT.NO_FIELDS_TO_UPDATE"
+	ErrCodeVersionRequired          = "DOCUMENT.VERSION_REQUIRED"
+	ErrCodeVersionConflict          = "DOCUMENT.VERSION_CONFLICT"
+	ErrCodeVersionColumnConflict    = "DOCUMENT.VERSION_COLUMN_CONFLICT"
+	ErrCodeVersionColumnUnavailable = "DOCUMENT.VERSION_COLUMN_UNAVAILABLE"
+	ErrCodeInvalidArgument          = "DOCUMENT.INVALID_ARGUMENT"
+	ErrCodeTooLarge                 = "DOCUMENT.TOO_LARGE"
+	ErrCodeExhausted                = "DOCUMENT.EXHAUSTED"
+)
+
+// ErrorCodeRetryable 是域码静态可重试表：OCC 冲突可重读合并重试、资源耗尽
+// 可退避重试；参数/权限/存在性类错误重试无意义。
+func ErrorCodeRetryable(code string) bool {
+	switch code {
+	case ErrCodeVersionConflict, ErrCodeExhausted:
+		return true
+	}
+	return false
+}
+
+// ErrorDomainCode 返回领域哨兵对应的域码；非哨兵错误返回空串。
+func ErrorDomainCode(err error) string {
+	switch {
+	case errors.Is(err, ErrPermissionDenied):
+		return ErrCodePermissionDenied
+	case errors.Is(err, ErrDuplicateKey):
+		return ErrCodeAlreadyExists
+	case errors.Is(err, ErrDocumentNotFound):
+		return ErrCodeNotFound
+	case errors.Is(err, ErrNoFieldsToUpdate):
+		return ErrCodeNoFieldsToUpdate
+	case errors.Is(err, ErrVersionRequired):
+		return ErrCodeVersionRequired
+	case errors.Is(err, ErrVersionMismatch):
+		return ErrCodeVersionConflict
+	case errors.Is(err, ErrVersionColumnConflict):
+		return ErrCodeVersionColumnConflict
+	case errors.Is(err, ErrVersionColumnUnavailable):
+		return ErrCodeVersionColumnUnavailable
+	}
+	return ""
+}
+
 // ErrPermissionDenied is returned when the caller lacks document-level permission.
 var ErrPermissionDenied = errors.New("permission denied")
 

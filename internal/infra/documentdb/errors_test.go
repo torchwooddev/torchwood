@@ -6,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
 )
 
 // sqlstateStub 是 pgdriver.Error 的本地替身（pgdriver.Error 无导出构造函数，
@@ -45,7 +47,26 @@ func TestMapPGError_SQLState(t *testing.T) {
 	for _, tc := range cases {
 		err := MapError(sqlstateStub{state: tc.state})
 		require.Equal(t, tc.code, status.Code(err), "state %s", tc.state)
-		require.Equal(t, "document database error", status.Convert(err).Message(), "state %s", tc.state)
+		// 域码体系：消息携带稳定域码前缀（区分参数类与资源类），ErrorInfo
+		// reason 同源并带 sqlstate/error_id。
+		st := status.Convert(err)
+		wantDomainCode := databases.ErrCodeInvalidArgument
+		if tc.code == codes.ResourceExhausted {
+			wantDomainCode = databases.ErrCodeExhausted
+		}
+		require.Contains(t, st.Message(), wantDomainCode, "state %s", tc.state)
+		found := false
+		for _, d := range st.Details() {
+			info, ok := d.(*errdetails.ErrorInfo)
+			if !ok {
+				continue
+			}
+			found = true
+			require.Equal(t, wantDomainCode, info.Reason, "state %s", tc.state)
+			require.Equal(t, tc.state, info.Metadata["sqlstate"], "state %s", tc.state)
+			require.NotEmpty(t, info.Metadata["error_id"], "state %s", tc.state)
+		}
+		require.True(t, found, "state %s: ErrorInfo detail missing", tc.state)
 	}
 
 	// 23505 特殊：映射为领域哨兵 ErrDuplicateKey，而非 generic status
