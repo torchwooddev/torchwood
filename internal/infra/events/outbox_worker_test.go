@@ -18,6 +18,7 @@ import (
 type recordingTransport struct {
 	enqueued []domainevents.Envelope
 	fail     bool
+	trims    int
 }
 
 func (t *recordingTransport) Enqueue(_ context.Context, ev domainevents.Envelope) error {
@@ -25,6 +26,11 @@ func (t *recordingTransport) Enqueue(_ context.Context, ev domainevents.Envelope
 		return errors.New("xadd failed")
 	}
 	t.enqueued = append(t.enqueued, ev)
+	return nil
+}
+
+func (t *recordingTransport) Trim(_ context.Context) error {
+	t.trims++
 	return nil
 }
 

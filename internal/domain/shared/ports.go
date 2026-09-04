@@ -31,11 +31,15 @@ type EventPublisher interface {
 	Publish(ctx context.Context, ev events.Envelope) error
 }
 
-// RealtimeTransport 是 outbox → server Hub 的最后一跳（A6：广播扇出）。
-// 实现：Redis Pub/Sub PUBLISH torchwood:realtime（完整信封 JSON），
-// 每个副本都收到同一事件。worker 进程只负责 Enqueue，不持有 WebSocket。
+// RealtimeTransport 是 outbox → server Hub 的最后一跳（阶段④ B3：Redis
+// Stream）。实现：XADD torchwood:events（完整信封 JSON，含 seq）；每个
+// server 实例一个消费组（组名 = 实例 ID）各自消费全量。worker 进程只负责
+// Enqueue 与周期 Trim，不持有 WebSocket。
 type RealtimeTransport interface {
 	Enqueue(ctx context.Context, ev events.Envelope) error
+	// Trim 周期裁剪投递 Stream（XTRIM MAXLEN ~）：Stream 只是投递通道，
+	// 重放窗口在 outbox 表（published 24h 清理 >> 1h 重放承诺）。
+	Trim(ctx context.Context) error
 }
 
 // RealtimeFanout 仅存在于 cmd/server 进程：SUBSCRIBE 频道并写入

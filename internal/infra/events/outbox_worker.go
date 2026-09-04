@@ -202,7 +202,9 @@ func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox,
 	return rows, nil
 }
 
-// cleanupOnce 删除超过保留窗口的已发布行与死信行（表无限增长治理）。
+// cleanupOnce 删除超过保留窗口的已发布行与死信行（表无限增长治理），
+// 并对投递 Stream 做周期 XTRIM（B3：MAXLEN ~ 100k，未投递条目不受影响——
+// XADD 不带 MAXLEN，裁剪只发生在低频清理路径）。
 func (w *OutboxWorker) cleanupOnce(ctx context.Context) {
 	func() {
 		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
@@ -236,6 +238,13 @@ func (w *OutboxWorker) cleanupOnce(ctx context.Context) {
 			}
 		} else if ctx.Err() == nil {
 			w.logger.Error("outbox purge dead failed", "error", err)
+		}
+	}()
+	func() {
+		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
+		defer cancel()
+		if err := w.transport.Trim(ctx2); err != nil && ctx.Err() == nil {
+			w.logger.Error("realtime stream trim failed", "error", err)
 		}
 	}()
 }
