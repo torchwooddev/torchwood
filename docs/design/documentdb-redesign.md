@@ -122,15 +122,19 @@ POST …/documents:query
 ### 4.2 存储与隔离层（Typed 真实列 + 全局 catalog）
 
 ```sql
--- public：全局 catalog（版本化迁移，唯一 DDL 事实源）
--- G1（2026-09-03）：catalog 为 cluster 内全局——多集群时随 project 所在 cluster 分布，
--- project→cluster 路由表在控制面，项目迁移 = schema + catalog 行 + 路由成套搬
+-- public：全局 catalog（已落地，迁移 000025；G1：catalog 为 cluster 内全局——多集群时随
+-- project 所在 cluster 分布，project→cluster 路由表在控制面，迁移 = schema+catalog 行成套搬）
+CREATE TABLE catalog_databases (project_id TEXT, database_id TEXT, name TEXT, 时间戳,
+  PRIMARY KEY (project_id, database_id), UNIQUE (project_id, name));   -- FK→projects CASCADE
 CREATE TABLE catalog_collections (
-  project_id BIGINT, database_id TEXT, collection_id TEXT,  -- 逻辑 ID ≤36 [a-z0-9-]
-  physical_name TEXT UNIQUE CHECK (char_length(physical_name) <= 63),  -- c_<base32> 服务端分配
-  attrs JSONB NOT NULL,        -- [{key,type,size,required,array,default}] 全量契约（default 读写一致）
-  indexes JSONB, perms JSONB, doc_security BOOL, schema_version BIGINT, ddl_seq BIGINT,  -- 乐观锁
-  PRIMARY KEY (project_id, database_id, collection_id));
+  project_id TEXT, database_id TEXT, collection_id TEXT,   -- 逻辑 ID（字符集维持 ^[a-zA-Z_]\w*$ ≤40，见下）
+  physical_name TEXT NOT NULL,   -- c_<base32(8)> 服务端分配；sentinel 系统集合 = 静态表名
+  attrs JSONB NOT NULL,          -- 全量契约（key/type/size/required/array/default/options，default 类型化保留标量）
+  indexes JSONB, permissions JSONB, doc_security BOOL, disabled BOOL, is_system BOOL,
+  schema_version BIGINT DEFAULT 1, ddl_seq BIGINT DEFAULT 1,   -- CAS 乐观锁（写路径递增，0 行→CATALOG.DDL_CONFLICT）
+  PRIMARY KEY (project_id, database_id, collection_id), FK→catalog_databases CASCADE);
+CREATE UNIQUE INDEX uq_..._physical_name ON catalog_collections (physical_name)
+  WHERE database_id <> '_';   -- 部分唯一：分配名全局唯一；sentinel 物理名=静态表名（schema 内局部）跨项目同名，排除在外
 
 -- 业务文档面保留 tw_<project>_<database>.<物理名>（每集合一张 typed 表）
 CREATE TABLE tw_shop_app.c_ab12cd34 (
@@ -149,7 +153,7 @@ ALTER TABLE tw_shop_app.c_ab12cd34 FORCE ROW LEVEL SECURITY;
 -- policy 四条（模板见 4.3）；列级 GRANT 只授数据列（_acl/_version/_tenant 锁死）
 ```
 
-- **标识符治理**：逻辑 ID 与物理名解耦——collectionID ≤36 `[a-z0-9-]`、属性 key ≤63 `^[a-zA-Z_]\w*$`、索引 ID ≤36，入口拒绝；物理名服务端分配，截断/碰撞类缺陷机制性不可达。
+- **标识符治理（2026-09-04 落地形态）**：逻辑 ID 与物理名解耦——**collectionID 字符集维持 `^[a-zA-Z_][a-zA-Z0-9_]*$` ≤40 不放宽**（原草图的 `[a-z0-9-]` ≤36 挂账待需求信号：snake_case 与属性键习惯一致，且避免 `_perms`/realtime 频道约定动荡）、属性 key ≤63、索引 ID ≤40；物理名 `c_<base32(8)>` 服务端分配（碰撞重试），截断/碰撞类缺陷机制性不可达；`_perms._collection` 与 realtime 频道保持逻辑 ID；**物理名不出现在任何 API 响应**（内部实现细节）。
 - **隔离**：应用谓词由单一查询构建器强制生成（`_tenant = ?`）+ 跨租户探针集成测试常驻；RLS policy 为判定执行点（见 4.3）；schema-per-project 布局保留（`tw_<p>_<db>`），配量化预警线与多集群分片出口（§3.1）。
 - **DDL**：加列 `ADD COLUMN ... DEFAULT`（PG11+ 元数据级）；索引一律 CONCURRENTLY + 独立事务 + `lock_timeout=2s` 重试 + catalog 两阶段状态机（building→active）+ reconcile 对账。
 
@@ -238,6 +242,8 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 
 **阶段①完成状态（2026-09-04 会话 #4 复审后整体完成，R11 亦已落地）**：**含单 AST 全部落地**——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token）、多键完整游标与 NULL 限制（§4.1）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展）、幂等与聚合（语义见 §4.1，聚合 oneof 类型化）、**单 AST**（queries 双栈 reserved 退役、算子全集含 not\* 变体族、select 进 proto、SDK typed builder + FromDSL 糖、R9b 分页字段归一）。**R11 已落地（2026-09-04，commit 758db77）**：`pkg/query/testdata/dsl_ast_golden.json` 共享 golden 语料（47 条含 10 错误条目）以中立 JSON 形态锁定两侧 DSL 文法，`root`/`sdk` override 块表达 offset 的设计内单侧差异；语料即仲裁——上线即暴露并修复 SDK 侧两处缺口（MaxQueries/MaxQueryLen 输入上限、limit 错误文案拆分），未发现语义级分歧。剩余记录项：users/storage 等静态表面遗留的 DSL 消费为 §0 边界邻居，归阶段②收敛。
 | ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
+
+**阶段②完成状态（2026-09-04 会话 #5 复审，bd0ac36..ad78309）**：**整体落地**——public 全局 catalog 两表（JSONB 合一，GetCollection 3 查询→1；default 类型化往返闭环，包 0-4 的旧记录项就此消解）；物理名解耦（`c_<base32(8)>` 分配、DDL/行查询全物理名、`_perms`/频道保持逻辑 ID、物理名零 API 泄漏；索引名组合长度对物理名自然满足）；ddl_seq CAS 五写路径 + `CATALOG.DDL_CONFLICT`；projectschema 四表退役（000001 no-op + 000011 DROP）；静态表面显式化（storage queries 拒绝、users 面独立 DSL 契约注释）。**复审裁决**：9 判断点 8 项接受；1 项纠正（R12：`CATALOG.DDL_CONFLICT` 的 gRPC code 由 InvalidArgument 改 **Aborted**——CAS 冲突非参数错误，对齐 `IDEMPOTENCY.IN_PROGRESS` 的 Aborted+retryable 先例，作者修正自己的预决策）；R12 一并收敛会话 #5 发现的 groups 面 queries 静默忽略（同 `rejectListQueries` 法）。挂账：物理名进程内缓存评估（业务库热路径 +1 主键点查）；collectionID 字符集放宽待需求。
 | ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
 
