@@ -98,7 +98,7 @@ tw_visible = tw_can('read') ∨ tw_can('update') ∨ tw_can('delete')   -- 能�
 - 身份函数 `STABLE`（`current_setting` 本身 STABLE，但不包裹仍退化逐行）；
 - `_acl` 建 GIN（`&&` 可作索引条件）；
 - 每 policy 上线前 EXPLAIN 验证。
-- **GUC 伪造面**：自定义 `app.*` GUC 任何能执行 SQL 的会话都能 SET（Supabase 的 `request.jwt.claims` 同样如此，其防线是通道隔离）。缓解：应用独占连接通道（直连 SQL 通道永不信任 `app.*`）+ 可选 HMAC 签名 `app.roles_sig`（SECURITY DEFINER 函数内验签）+ `tw_app` 非 owner + 全表 `FORCE ROW LEVEL SECURITY` + 池事务级 `SET LOCAL`。
+- **GUC 伪造面**：自定义 `app.*` GUC 任何能执行 SQL 的会话都能 SET（Supabase 的 `request.jwt.claims` 同样如此，其防线是通道隔离）。缓解（**已落地，2026-09-04 会话 #8**）：应用独占连接通道 + **HMAC 签名 `app.roles_sig`**（签名密钥 = `HMAC-SHA256(jwt.secret, "tw-roles-guc-v1")` 进程派生 + 启动钩子落 `tw_secrets`（REVOKE FROM PUBLIC，密钥不进 prosrc）；GUC 复合格式 `"<exp_unix>|<hexmac>"`，消息 = **`tenant|roles|exp`（R16 扩展：tenant 进签名**，见 §6 ③-b 状态）；`tw_roles()` 为 SECURITY DEFINER 验签函数，失败/缺失/过期 → 空数组 fail-closed）+ `tw_app` 非 owner + 全表 `FORCE ROW LEVEL SECURITY` + 池事务级 `SET LOCAL`。单密钥 + 滚动重启轮换（双钥窗口挂账转出 POC 前）。
 - **DB 角色分层**：`tw_owner`（DDL/迁移专用，不跑业务查询）、`tw_app`（运行时，非 owner 无 BYPASSRLS）、`tw_system`（BYPASSRLS，内部调用）。
 
 ### 3.3 权限判定单源：SQL 函数 vs 掩码预计算缓存
@@ -235,7 +235,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 - **内核 = op 模型 + 单事务执行器**：可序列化异构 op 列表（复用旧 `document_transaction_ops` 字段族：type/database/collection/document_id/data/permissions/increment/expected_version/conflict_columns）在一个 `RunInTx` 内顺序执行——RLS/GUC 一次注入、逐 op 判定（提交时权限）、按 `(_tenant,_id)` 排序加锁防批内死锁、OCC 逐 op、outbox 事件同事务（可共带 transaction_id）、all-or-nothing、失败返回带 op index 的 violations。**实现注意（2026-09-03 评审登记）**：排序加锁是执行器的目标态纪律，现状 Bulk 并不具备——`BulkUpdateDocuments` 无行锁、`BulkDeleteDocuments` 按输入顺序 `FOR UPDATE`；"Bulk 的泛化"指复用其单事务/事件/outbox 骨架，锁纪律须按本节新建，不得照抄现状 Bulk。
 - **三种消费形态**（按消费者执行位置选）：A `documents:execute-tx`（远程客户端一次性原子 op 批，Bulk 的泛化，无暂存表）；B Functions 事务上下文（服务端真事务，`InTx` 管道 + GUC 注入 + 生命周期，**不走 staged**——命令式代码无法 replay）；C staged session（跨请求暂存，复用旧 D-6 表设计与教训，等 A 的需求证据再启用）。
 - **Phase 1 实施裁决（2026-09-03 方案作者复审实施报告后）**：① op 模型收敛为**请求级单 database**（database 为 RPC 路径参数而非 per-op 字段——与旧 D-6"事务级单库"一致，跨库批无需求证据，上文字段族中的 per-op database 撤回）；② `expected_version=0` 一律 **InvalidArgument**（新代码不得继承旧错位；单文档 `UpdateDocumentVersionRequired` 同步拆分 nil→FailedPrecondition(version_required) vs ≤0→InvalidArgument——这正是 C4"消灭错误码错位"的本意）；③ grant 校验**严格 per-op**：种子 op 仅豁免自身，不得提升同批其他 op 的授予校验（批级提升是越权面）；④ upsert 不参与预排序锁（冲突目标预查前未知），死锁窗口由 PG 死锁检测（中止一方）+ request_id 幂等重试兜底——接受，可选改进（预锁冲突值键）挂账。
-- **分期**：Phase 1 = A，Phase 2 = B，Phase 3 = C 视需求。Agent 联动：op[] 即工具参数（结构化、整体幂等、可 dry_run）；批内事件顺序 = op 顺序（B1 的分配序问题在批内不存在）。
+- **分期**：Phase 1 = A（已落地）；Phase 2 = B **定稿为形态乙（2026-09-04 会话 #8 探查）**——函数运行于外部 Docker 容器（node/python 镜像，env 进 stdout 出），无共享 ctx/无回环通道，"函数即事务"在该执行模型下不成立；多写原子性由 Phase 1 的 `execute-tx` RPC 完整承载（函数经 API/SDK 调用），文档与 SDK 注释已落；Phase 3 = C 视需求。Agent 联动：op[] 即工具参数（结构化、整体幂等、可 dry_run）；批内事件顺序 = op 顺序（B1 的分配序问题在批内不存在）。
 
 ## 5. 与当前架构对照
 
@@ -260,7 +260,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 
 **阶段④完成状态（2026-09-04 会话 #7 复审并经 #7-R 返工后收口）**：**事件链换轴整体落地**——seq identity + UNIQUE（B1 语义入契约注释）、NOTIFY AFTER INSERT 触发器（R14：零语句数 + 同事务自动合并 + 4.8ms）、Redis Stream 消费组位点（hostname:pid 组名、$ 起步、XAUTOCLAIM、XTRIM 10 万）、`:changes` 双面补偿 + WS last_seq 门控重放（补发先于实时、确认帧经 Send 防乱序）、水位 1024 带因断开（resync:\<last_seq\> close）、transaction_id 批标识、载荷上限对齐 H1 1MiB（B4 data_ref 撤回挂账）。判断点 ①-⑦ 接受（孤儿消费组 XGROUP DESTROY 治理挂账；claimMinIdle 15min 超服务端去重窗的重复帧由客户端幂等吸收，at-least-once 契约内）；**R15 已落地（`3be9482`）**——`:changes` 两级扫描游标（收满退出=末条返回 seq / 触顶退出=扫描位置越过不可见块 + has_more=true，自然耗尽=0），proto `next_since_seq` + SDK pager/WS 确认帧跟随（"优先游标、0 回退末条事件 seq"两级契约），不可见块后不再静默漏失（600 连续不可见块跨页无重无漏用例锁定）——**阶段④正式收口**。
 
-**演进路径总览（2026-09-04）**：四阶段全部落地并收口——① 契约收敛（含单 AST）✅、② catalog 全局化 + 物理名 ✅、③-a 权限内核 ✅、④ 事件链 ✅；③-b（array 列与算子 / Functions 事务上下文 / roles_sig / `_acl` 完整列级锁死 + SECURITY DEFINER）挂账待启动。
+**演进路径总览（2026-09-04）**：四阶段全部落地并收口——① 契约收敛（含单 AST）✅、② catalog 全局化 + 物理名 ✅、③-a 权限内核 ✅、④ 事件链 ✅；**③-b 亦已落地（会话 #8，d6e2f2b..a9e741b）**——array<T> 原生列 + containsAny/All + 写侧四算子、Functions 事务上下文**形态乙定稿**（外部容器模型，原子性经 execute-tx）、roles_sig HMAC 验签（pgcrypto + tw_secrets，fail-closed 三态）、`_acl` 变更通道唯一化为 `tw_set_document_acl`（SECURITY DEFINER）。**③-b 复审裁决**：Functions 形态乙接受（探查实证充分）；细节修正 (a)(b)(c) 接受（sig 复合格式 / 密钥不进 prosrc / NOLOGIN 信任根授权）；包 A 两偏差接受（NULL 归一策略 / 多列索引拒绝）。**R16（阻塞，安全收紧）**：`tw_set_document_acl` 的 EXECUTE 面比实施报告所述更宽——白名单按 physical_name **全局**命中且 p_schema/p_tenant 自由（schema 命名确定性可猜），注入威胁模型下可**跨项目**改写任意行 `_acl`。收紧四件套：① sig 消息扩为 `tenant|roles|exp`（新增 `app.tenant` 同签 GUC），函数强制 `p_tenant = 验签 tenant`（跨租户/跨项目在签名层锁死）；② 函数内可见性校验（改 ACL 前以验签 roles 跑 `tw_visible`，不可见行拒绝——堵项目内提权读）；③ create 路径恢复 INSERT(_acl) 列授权、不走函数（新行无旧行；信任等价于"自己创建的内容"，撤回"INSERT 也移除"的预决策）；④ 供函数使用的验签 tenant 读取通道（注意 SECURITY DEFINER 内调用权限按 definer 检查）。**R17**：sdk/typescript 补登 ListChanges 方法映射（阶段④遗留合同测试红）。**A6 表述修正**：`_acl` 锁死（经函数唯一通道）；`_version` 不锁列（CAS 守卫 `WHERE _version=?` 已足，写错只自伤）。剩余挂账：vector 列与 KNN 算子（§10.5 P0 首项，专项会话）、数组算子补全（Intersect/Diff/Insert/Filter、TransactionOp 数组）、export/snapshot_seq、孤儿消费组治理、并行测试基建（SetupTestDB 争用 + 迁移循环测试并行红/串行绿）、双钥轮换窗口、转出 POC 检查项两条。
 
 POC 阶段各阶段**直接切换、不留兼容回退**：阶段③的 `_perms → _acl` 无需双读灰度（直接重建），阶段②无需存量四表迁移任务；"每阶段附回退方案"的要求在转出 POC 时再引入。阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
 
@@ -385,7 +385,7 @@ DocumentsDB 的量化限制参照：每请求 100 条 query、每条 4096 字符
 | 优先级 | 缺口 | 现状（torchwood） | 参照（Appwrite） | 说明 |
 |---|---|---|---|---|
 | **P0** | **向量近邻查询** | 重设计采纳 `vector` 列但 §4.1 算子集**无 KNN 算子**——列落地即死列 | VectorsDB 独立产品线（HNSW + 内置 embedding） | 需 `knn(attr, query_vec, k, metric)` 算子 + HNSW 索引联动 + 距离排序/阈值过滤；AI-Native 定位下第一优先 |
-| **P0** | **数组查询/写侧算子** | `array<T>` 已定但无配套算子；写侧只有 increment | `containsAny/containsAll`、`arrayAppend/Prepend/Insert/Remove/Unique/Intersect/Diff/Filter` | 查询侧对应 PG `&&/@>`；写侧原子更新家族整包吸收（Appwrite 全有） |
+| **P0** | ~~**数组查询/写侧算子**~~ **已落地（2026-09-04 会话 #8）**：查询 `containsAny/containsAll`（`&&/@>`，仅 array 属性）+ 写侧 `APPEND/PREPEND/REMOVE/UNIQUE` 四算子（单语句 SET，NULL 语义：append/prepend 归一、remove/unique 保真） | 曾：无配套算子 | Appwrite 全集参照 | 挂账：Intersect/Diff/Insert/Filter、TransactionOp 数组算子、数组列多列索引（需 btree_gin，已拒） |
 | **P0** | **`_created_by/_updated_by` 不可查询** | 系统字段白名单只有 `_id/_created_at/_updated_at/_version` | 系统字段可查 | "查我创建的文档"不可表达；**现架构即刻可修**（`systemQueryFields` 加两列） |
 | **P1** | ~~`not*` 取反变体家族~~ **已落地（2026-09-04 单 AST 会话）** | 曾无 notBetween/notContains 等 | 全套 not* 变体 + 通用 NOT 移出算子集（作者收敛，见 §4.1） | 算子级取反可走索引；DSL/proto 双栈不对称随 C7 落地一并消解 |
 | **P1** | 聚合家族 | count 独立 RPC，无 sum/avg/min/max/group_by | （无 group_by；靠 native 库承接） | `:aggregate` 扩展面是分析需求的泄压阀（§10.4）；group_by 的权限/语义要单独设计 |
