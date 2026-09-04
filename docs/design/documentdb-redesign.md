@@ -101,10 +101,11 @@ tw_visible = tw_can('read') ∨ tw_can('update') ∨ tw_can('delete')   -- 能�
 
 ### 4.1 契约层（DX）
 
-- **查询**：单 typed AST，算子全集 `eq ne lt lte gt gte in between isNull isNotNull contains startsWith endsWith search + and or not`（深度 ≤8）；`select[]` 投影在 SQL 层裁剪（杜绝 `to_jsonb(d.*)` 全列取回）；`orderAsc/Desc` 服务端强制追加 `$id`；cursor 服务端校验排序一致性，不一致即拒；`limit 1..200 默认 25`（0 = InvalidArgument，不再当"未指定"）。
+- **查询（2026-09-04 单 AST 会话落地定稿）**：单 typed AST 为唯一 wire 形态（server/client 两面 `queries` 字段已 reserved，服务端零 DSL 消费——**范围限定文档查询栈**；users/storage 等静态表面遗留的 DSL 消费为 §0 边界邻居，另行收敛，已记录）。算子全集定稿：`eq ne lt lte gt gte in between isNull isNotNull contains startsWith endsWith search` + **not\* 变体族**（notEqual/notBetween/notContains/notStartsWith/notEndsWith/notSearch）+ `and or` 嵌套（深度 ≤8，MaxDepth 已收紧）——**通用 NOT 移出算子集**（2026-09-04 作者收敛：索引不可走、总可德摩根展开为 not\* 变体，跟随 Appwrite 实证）。`select[]` 投影已进 proto；`orderAsc/Desc` 服务端强制 `_id` tiebreaker（方向随首键）；`limit 1..200 默认 25`（0 = InvalidArgument）。
+- **多键完整游标（C2 完成态，2026-09-04 落地）**：ORDER BY = 全部排序键各自方向 + `_id`（随首键）；keyset 谓词——方向统一时行比较 `(k1,…,kn,_id) op (…)`，**方向混合时逐键 OR 展开**（等值链 + 逐键严格比较，末项 `_id`）与全序严格一致；token 仍只编码 docID，服务端查行取全部键值。**NULL 排序键限制（已知，文档化）**：cursor 行含 NULL 键 → InvalidArgument；**数据行含 NULL 键在续页中被跳过**（谓词对 NULL 求值为 NULL，单键时代即同源行为）——NULL 密集列请先 isNull/isNotNull 过滤；NULLS LAST 谓词改写仅在需求出现时评估。
 - **并发**：`$version` 兼作弱 ETag；Update/Delete 必须 `if_match`（HTTP）/`expected_version`（gRPC），缺省即拒、0 即参数错误。
 - **幂等**：写统一 `request_id`（HTTP 头 `Idempotency-Key`），24h 去重，重放返回原响应 + `replayed=true`——Agent 重试安全的关键。**实施语义（2026-09-04 已落地）**：键作用域 `(project_id, actor_id, request_id)`（actor = 稳定归因身份）；指纹 = method+请求体规范序列化 hash，同 key 异体 → `IDEMPOTENCY.KEY_CONFLICT`；只缓存成功响应（失败 Release 释放重执行）；同 key in-flight 短轮询 ≤2s → `IDEMPOTENCY.IN_PROGRESS`（Aborted，retryable）；TTL 分离——done 24h / in_flight 兜底 5min（崩溃残留期间重试收 IN_PROGRESS 是保守正确）；重放标记走 `x-torchwood-replayed` 响应头（零 proto 响应侵入）；惰性清理不加 worker。
-- **聚合**（2026-09-04 已落地）：`documents:aggregate` 支持 sum/avg/min/max + 单键 group_by；**聚合一律在权限过滤后的可见行集上执行**（D1 规范的落地形态）；结果契约**首期统一 double**（integer 聚合精度界 2^53——`SUM(bigint)::float8`，int64 区分类型结果与 Data 的 Struct double 精度界一并归单 AST 会话的类型系统设计）；排序/分页算子忽略（与 count 同纪律，显式拒绝为一致性跟进项）。
+- **聚合**（2026-09-04 已落地，单 AST 会话完成类型化升级）：`documents:aggregate` 支持 sum/avg/min/max + 单键 group_by；**聚合一律在权限过滤后的可见行集上执行**（D1 规范的落地形态）；结果契约 **oneof 类型化**——integer 属性的 sum/min/max 返回 int64（`SUM(bigint)::int8` + 溢出拒绝 `AGGREGATE.OVERFLOW`），avg 恒 double，float 属性恒 double；**Data 维持 proto Struct double（2^53 精度界，文档化：int64 > 2^53 的业务值用 string 属性承载）**；排序/分页算子显式拒绝（R9/R9b）。
 - **错误**：`{code, retryable, violations[], doc_url}`，域码稳定 snake_case（如 `DOCUMENT.VERSION_CONFLICT`）静态映射 gRPC code；infra 错误必须带 `error_id`，禁止裸 "document database error"。
 - **Agent 面**：`GET …/collections/{c}?as=jsonschema` 导出 JSON Schema 2020-12；`GET /.well-known/torchwood` 资源/算子/错误码目录。
 - **类型系统**：标量（string/int64/float64/bool/datetime/email/url/uuid/enum）+ `array<T>`（PG 原生数组）+ `vector`（pgvector，可选）+ `object`（jsonb + JSON Schema 子集校验，首期不建内部索引）；`relation` 远期。
@@ -235,7 +236,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 |---|---|---|
 | ① 契约收敛 | 单 AST（DSL 降级为糖）、keyset 统一 + tiebreaker、错误码体系、default 落 catalog、写响应读回、幂等 `request_id`、**`documents:execute-tx`（事务内核 Phase 1，Bulk 泛化）** | 无 |
 
-**阶段①完成状态（2026-09-04 复审，#3-R 返工后收口）**：除单 AST（专属会话）外**全部落地**——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token、多排序键全路径拒绝——keyset-only 下首页必须发 token 而 token 仅编码单键，多键必不同构，故首页即拒；完整多键游标归单 AST/C2）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展：`DOCUMENT.* / IDEMPOTENCY.* / RATE_LIMIT.*`）、幂等与聚合（语义见 §4.1）。一致性返工 R6（聚合补 `validateQueryFields`，且对 Bypass 主体亦生效——比 List/Count 更严，Server-only 新 API 上为正向收紧）与 R9（count/aggregate 显式拒绝排序/分页算子）已落地。残留一条不阻塞的开缝：`rejectNonFilterOperators` 尚未覆盖 typed AST 的 `page_size/page_token`（DSL 路径已拦）——随单 AST 会话的查询面统一一并补。
+**阶段①完成状态（2026-09-04 会话 #4 复审后整体完成）**：**含单 AST 全部落地**——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token）、多键完整游标与 NULL 限制（§4.1）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展）、幂等与聚合（语义见 §4.1，聚合 oneof 类型化）、**单 AST**（queries 双栈 reserved 退役、算子全集含 not\* 变体族、select 进 proto、SDK typed builder + FromDSL 糖、R9b 分页字段归一）。残留两条不阻塞的记录项：① **R11（建议级）**——sdk/go 自备的 DSL 解析器与 `pkg/query` 无跨模块 parity 测试（模块边界所限），补共享 golden 语料（两侧测试读同一 testdata 文件）防文法漂移；② users/storage 等静态表面遗留的 DSL 消费为 §0 边界邻居，另行收敛。
 | ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
 | ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
@@ -365,7 +366,7 @@ DocumentsDB 的量化限制参照：每请求 100 条 query、每条 4096 字符
 | **P0** | **向量近邻查询** | 重设计采纳 `vector` 列但 §4.1 算子集**无 KNN 算子**——列落地即死列 | VectorsDB 独立产品线（HNSW + 内置 embedding） | 需 `knn(attr, query_vec, k, metric)` 算子 + HNSW 索引联动 + 距离排序/阈值过滤；AI-Native 定位下第一优先 |
 | **P0** | **数组查询/写侧算子** | `array<T>` 已定但无配套算子；写侧只有 increment | `containsAny/containsAll`、`arrayAppend/Prepend/Insert/Remove/Unique/Intersect/Diff/Filter` | 查询侧对应 PG `&&/@>`；写侧原子更新家族整包吸收（Appwrite 全有） |
 | **P0** | **`_created_by/_updated_by` 不可查询** | 系统字段白名单只有 `_id/_created_at/_updated_at/_version` | 系统字段可查 | "查我创建的文档"不可表达；**现架构即刻可修**（`systemQueryFields` 加两列） |
-| **P1** | `not*` 取反变体家族 | 无 notBetween/notContains 等（重设计 AST 有通用 `not`） | 全套 not* 变体，**无通用 NOT** | 算子级取反可走索引、通用 NOT 难优化——建议跟随 not* 变体路线，通用 `not` 仅留布尔树内 |
+| **P1** | ~~`not*` 取反变体家族~~ **已落地（2026-09-04 单 AST 会话）** | 曾无 notBetween/notContains 等 | 全套 not* 变体 + 通用 NOT 移出算子集（作者收敛，见 §4.1） | 算子级取反可走索引；DSL/proto 双栈不对称随 C7 落地一并消解 |
 | **P1** | 聚合家族 | count 独立 RPC，无 sum/avg/min/max/group_by | （无 group_by；靠 native 库承接） | `:aggregate` 扩展面是分析需求的泄压阀（§10.4）；group_by 的权限/语义要单独设计 |
 | **P1** | object 字段访问 | `object`(jsonb) 类型无路径查询/投影 | `exists/notExists`、`elemMatch`（DocumentsDB） | 路径访问 `a.b.c`、存在性、`elemMatch`（数组内对象元素匹配）；select 子字段投影 |
 | **P1** | increment clamp | increment 无上下界保护 | increment/decrement 带 `max/min` 硬上限（越界报错）；另有 multiply/divide/modulo/power、toggle | clamp 对 Agent 场景价值高（计数器防溢出/竞态）；数值算子家族按需扩展 |
