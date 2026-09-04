@@ -84,6 +84,14 @@ tw_visible = tw_can('read') ∨ tw_can('update') ∨ tw_can('delete')   -- 能�
   1. **写权=可见**（本决策）：授予 `update/delete` 隐含授予读可见性；存量 update-only ACE 自然获得可见性（良性放宽，无数据迁移）；
   2. **Upsert 收紧**（#7 的既成后果）：ON CONFLICT 路径下拟插入行须过 INSERT WITH CHECK（create）、冲突行须过 UPDATE USING（update），即 **upsert 需同时持有 create 与 update 权限**（现状是"命中行只查 update"的分叉语义）。
 
+**落地勘误与定稿（2026-09-04 会话 #6 实施后，PG 18 实证修正三处机制假设——语义决策不变，实现路径修正）**：
+
+1. **自锁与 `_acl` 第二语句**：PG 对修改 SELECT policy USING 引用列（`_acl`）的 UPDATE，**以新行复检 SELECT policy**——上文"WITH CHECK=恒真即保自锁"的假设不成立（复检与 WITH CHECK 无关）。定稿：主语句只 SET 数据+审计+`_version`（policy USING 裁决行级 update），**`_acl` 替换走同事务内 `tw_system` 身份的第二条 UPDATE**（以主语句成功为门槛；越权面=主语句 policy + app 层授予治理，与旧 `_perms` 可写面等价）。自锁语义完整保留。
+2. **Upsert 拆掉 ON CONFLICT**：PG 的 ON CONFLICT 推测插入要求**拟插入行通过 SELECT policy**，与 `tw_visible` 结构性冲突（无读授权集合上的 upsert 必失败）。定稿：预查（advisory lock 串行）分支——纯插入走普通 INSERT（WITH CHECK 裁决 create）、命中走普通 UPDATE（USING 裁决 update）；上文连带变化 2 的"需同时持有 create 与 update"修正为**"分支两侧分别裁决"**。残余语义变化：与并发普通 Create 撞唯一键报 DuplicateKey（可重试）而非转 update 支；存在性泄露经唯一索引属 #13 已知豁免面（普通 Create 同样可探测，非新增暴露类）。
+3. **delete 路径去 FOR UPDATE**：`SELECT ... FOR UPDATE` 叠加应用 UPDATE policy USING——delete-only 用户会被误拒。定稿：delete 预读走无锁 SELECT，OCC 由 **DELETE 语句内 `_version` CAS 守卫**（单语句 compare-and-delete）承载，比"锁行读版本再删"的竞态窗口更小。
+4. **错误映射定稿（含对上文 #11 的修正）**：不可见行 Get/Update/Delete → `NOT_FOUND`（**这是 403→404 的有意翻转**——上文"与现状一致"表述有误，现状为 403；翻转符合防枚举与 PostgREST 惯例）；**可见不可写行**（如 read-only 用户发起 Update）→ 0 行三态探测后 `PERMISSION_DENIED`（"可写即可读"使不可见⇒不存在成立，可见不可写是独立态）；42501 WITH CHECK → `PERMISSION_DENIED`。
+5. **`tw_visible` 签名定稿**：增加 `docsec` 参数——`document_security=false` 时走纯集合级分支（ACE 不参与；集合级 read ∨ update ∨ delete 蕴含可见，即"可写即可读"在集合级的一致延伸）；UPDATE/DELETE policy 以 `CASE docsec` 分派。
+
 **工程纪律**（违反则性能崩塌，均有实测数字背书，见 §9）：
 - **事务模型（A1，2026-09-03 接受）**：所有读写一律经显式事务（autocommit 退役），事务首条 `set_config('app.roles',…,true)` 注入身份——漏注入=空结果（fail-closed），事务结束自动失效零残留；否决会话级 GUC（错配路径静默继承上一用户角色）。
 - 所有跨表取值（catalog、角色函数）一律 `(SELECT ...)` 标量子查询包裹强制 InitPlan（每语句一次）——裸写是逐行 SubPlan：实测 100 万行 8100ms vs InitPlan 93.7ms；Supabase 官方基准裸 policy 1840ms vs initplan+索引 0.21ms；
@@ -244,7 +252,9 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 | ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
 
 **阶段②完成状态（2026-09-04 会话 #5 复审并经 #5-R 返工后收口）**：**整体落地**——public 全局 catalog 两表（JSONB 合一，GetCollection 3 查询→1；default 类型化往返闭环，包 0-4 的旧记录项就此消解）；物理名解耦（`c_<base32(8)>` 分配、DDL/行查询全物理名、`_perms`/频道保持逻辑 ID、物理名零 API 泄漏；索引名组合长度对物理名自然满足）；ddl_seq CAS 五写路径 + `CATALOG.DDL_CONFLICT`（**Aborted + retryable**，R12a 裁决落地：CAS 冲突非参数错误，对齐 `IDEMPOTENCY.IN_PROGRESS` 先例）；projectschema 四表退役（000001 no-op + 000011 DROP）；静态表面显式化（storage + **groups**（R12b）queries 拒绝、users 面独立 DSL 契约注释）。复审：9 判断点 8 接受 + 1 纠正（R12 两小项已落地：`cacbe87`/`60dfe41`）。挂账：物理名进程内缓存评估（业务库热路径 +1 主键点查）；collectionID 字符集放宽待需求。
-| ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
+| ③ 权限内嵌 + RLS 判定 | **③-a（会话 #6 已落地）**：`_acl` 内嵌直切（无双读）、`tw_can/tw_coll_allows/tw_visible/tw_roles` 单源函数（000027）、RLS policy 四条 + FORCE + 列级 GRANT + DB 角色分层（000026）、GUC/每请求一事务（A1）、错误映射定稿（§3.2 勘误块）；**③-b（后续）**：array 列与算子、Functions 事务上下文（内核 Phase 2）、roles_sig HMAC、`_acl/_version` 完整列级锁死与 SECURITY DEFINER ACL 函数 | 中 |
+
+**阶段③-a 完成状态（2026-09-04 会话 #6 复审，d2f2713..c5d7551）**：**权限内核换轴整体落地**——`_perms` 退役、`_acl TEXT[]` 内嵌 + GIN（权限随 `to_jsonb(d.*)` 免费回填，B6 批量 IN 查询删除）；RLS 为判定执行点（应用层 `listPermissionFilter`/`checkDocumentPermission` 双实现退役；三处 PG 18 实证勘误见 §3.2 落地勘误块：`_acl` 第二语句/自锁保留、upsert 拆 ON CONFLICT 分支裁决、delete 单语句 CAS）；连接模型 = **单一变色龙身份 + `SET LOCAL ROLE` 三选一 + `set_config('app.roles')` 合并注入**（A1 原型结论：BYPASSRLS 经 SET ROLE 按 current_user 生效，无需独立 system DSN；loopback 每请求一事务合并注入 1.37ms vs 未合并 3.33ms vs autocommit 290µs，合并已采纳）；列级 GRANT 务实版（仅 `_tenant` 锁死，`_acl` 在 UPDATE 列收紧为仅 tw_system 第二语句通道——R13a）；A1 范围 = 文档面（静态 bun 表面维持 authenticator 本身份，无 RLS 无注入）；门禁（EXPLAIN InitPlan 形态断言 + 10 万行 RLS 开/关相对基准 4.9x < 30x 阈值）；golden 矩阵函数级+行为级双层。挂账：③-b 全部内容；测试 DSN superuser 豁免面（生产配非 superuser 应用账号，已入 06-databases 不变量 #14 + runbook）。
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
 
 POC 阶段各阶段**直接切换、不留兼容回退**：阶段③的 `_perms → _acl` 无需双读灰度（直接重建），阶段②无需存量四表迁移任务；"每阶段附回退方案"的要求在转出 POC 时再引入。阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
