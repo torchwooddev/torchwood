@@ -85,29 +85,38 @@ func (p *postgresDocumentDB) ensureCollectionRLS(ctx context.Context, schema, ph
 		`ALTER TABLE %s ENABLE ROW LEVEL SECURITY; ALTER TABLE %s FORCE ROW LEVEL SECURITY`, tbl, tbl)); err != nil {
 		return fmt.Errorf("enable row level security: %w", err)
 	}
-	// 列级 GRANT（预决策 6）：SELECT 全列（WHERE _tenant 过滤与 to_jsonb(d.*)
-	// 载荷需要）；INSERT/UPDATE 授数据列 + 除 _tenant 外系统列——_tenant 锁死
-	// 不可写。列清单读 information_schema（自愈：加列后下次 DDL touch 补授权）。
+	// 列级 GRANT（预决策 6 + R13a）：SELECT 全列（WHERE _tenant 过滤与
+	// to_jsonb(d.*) 载荷需要）；INSERT 授数据列 + 除 _tenant 外系统列（create
+	// 种子随行携带 _acl 是单语句必需）；UPDATE 再排除 _acl——_acl 的变更通道
+	// 收敛为单一 choke point（同事务 tw_system 第二语句，自锁路径），应用身份
+	// 直改 _acl 的旁路从列权限上封死（非自锁变更可过 SELECT policy 新行复检，
+	// 必须不可达）。列清单读 information_schema；授权形态为 REVOKE ALL 后按
+	// 清单重授（幂等重建——存量表的旧授权形态在 DDL touch 时被矫正）。
 	cols, err := p.tableColumns(ctx, schema, physical)
 	if err != nil {
 		return err
 	}
-	writable := make([]string, 0, len(cols))
+	insertCols := make([]string, 0, len(cols))
+	updateCols := make([]string, 0, len(cols))
 	for _, c := range cols {
 		if c == "_tenant" {
 			continue
 		}
-		writable = append(writable, quoteIdent(c))
+		insertCols = append(insertCols, quoteIdent(c))
+		if c != "_acl" {
+			updateCols = append(updateCols, quoteIdent(c))
+		}
 	}
-	colList := strings.Join(writable, ", ")
+	insertList := strings.Join(insertCols, ", ")
+	updateList := strings.Join(updateCols, ", ")
 	stmts := []string{
 		fmt.Sprintf(`REVOKE ALL ON %s FROM %s`, tbl, clients.RoleApp),
 		fmt.Sprintf(`GRANT SELECT ON %s TO %s`, tbl, clients.RoleApp),
-		fmt.Sprintf(`GRANT INSERT (%s) ON %s TO %s`, colList, tbl, clients.RoleApp),
-		fmt.Sprintf(`GRANT UPDATE (%s) ON %s TO %s`, colList, tbl, clients.RoleApp),
+		fmt.Sprintf(`GRANT INSERT (%s) ON %s TO %s`, insertList, tbl, clients.RoleApp),
+		fmt.Sprintf(`GRANT UPDATE (%s) ON %s TO %s`, updateList, tbl, clients.RoleApp),
 		fmt.Sprintf(`GRANT DELETE ON %s TO %s`, tbl, clients.RoleApp),
-		// tw_system（BYPASSRLS 信任根）表级全权：尾随读回/事件快照/内部路径
-		// 需要全列读写。
+		// tw_system（BYPASSRLS 信任根）表级全权：尾随读回/事件快照/_acl
+		// choke point 与内部路径需要全列读写。
 		fmt.Sprintf(`GRANT ALL ON %s TO %s`, tbl, clients.RoleSystem),
 	}
 	for _, stmt := range stmts {

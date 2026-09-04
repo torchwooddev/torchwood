@@ -15,6 +15,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 )
 
@@ -406,6 +407,89 @@ func TestRLS_Behavior_TenantColumnLocked(t *testing.T) {
 			fmt.Sprintf(`SELECT _tenant FROM %s WHERE _id = 't1'`, tbl)).Scan(&tenant)
 	}))
 	require.NotZero(t, tenant)
+}
+
+// TestRLS_Behavior_ACLColumnLockedToSystemPath（R13a）：_acl 的变更通道收敛为
+// 单一 choke point——同事务 tw_system 第二语句（自锁路径）。tw_app 即使注入
+// 正常 roles（policy 判定全放行）也不得直改 _acl：UPDATE 列级 GRANT 已排除
+// _acl（非自锁变更可过 SELECT policy 新行复检，该旁路必须从列权限上封死）。
+// 同步验证 reconcile 矫正：手动模拟存量表的旧授权形态（GRANT UPDATE(_acl)），
+// DDL touch 后被 REVOKE 重授形态矫正回锁死。
+func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	docDB := NewPostgresDocumentDB(db, nil).(*postgresDocumentDB)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 0)
+	defer cleanup()
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "users"},
+		{Type: "read", Role: "any"},
+		{Type: "update", Role: "any"},
+	}, true))
+	alice := databases.Principal{Roles: []string{"users", "user:alice"}}
+	_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+		ID: "a1", Data: map[string]any{"title": "x"},
+	}, []databases.Permission{{Type: "read", Role: "user:alice"}, {Type: "update", Role: "user:alice"}}, alice)
+	require.NoError(t, err, "create 种子/显式 _acl 随 INSERT 携带（INSERT 列授权保留 _acl）")
+
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
+	tbl := testSchema(t, projectID, "app") + "." + physical
+
+	// tw_app 注入正常 roles（对该行 read+update 全放行）直改 _acl → 列权限拒绝。
+	updateACLAsApp := func() error {
+		return db.RunInTx(clients.WithExecIdentity(ctx, clients.ExecIdentity{
+			Role:  clients.RoleApp,
+			Roles: []string{"users", "user:alice", "any"},
+		}), func(txCtx context.Context) error {
+			_, err := db.Conn(txCtx).ExecContext(txCtx,
+				fmt.Sprintf(`UPDATE %s SET _acl = '{read:any}' WHERE _id = 'a1'`, tbl))
+			return err
+		})
+	}
+	err = updateACLAsApp()
+	require.Error(t, err, "tw_app 直改 _acl 必须被列权限拒绝（R13a choke point）")
+	require.Contains(t, err.Error(), "42501")
+	// SQLSTATE 路径映射为 PERMISSION_DENIED（mapError 语义）。
+	require.ErrorIs(t, docDB.mapError(err), ErrPermissionDenied)
+
+	// reconcile 矫正：模拟存量表旧授权形态（UPDATE 含 _acl），DDL touch 后恢复锁死。
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`GRANT UPDATE (_acl) ON %s TO tw_app`, tbl))
+	require.NoError(t, err)
+	require.NoError(t, updateACLAsApp(), "模拟旧授权形态下直改放行（对照组，确认矫正必要性）")
+	// 对照组已把 _acl 改为 {read:any}（只读）——恢复造数，隔离后续自锁断言。
+	_, err = db.ExecContext(ctx, fmt.Sprintf(
+		`UPDATE %s SET _acl = '{read:user:alice,update:user:alice}' WHERE _id = 'a1'`, tbl))
+	require.NoError(t, err)
+	// DDL touch（任意汇聚路径触发 ensureCollectionRLS 的 REVOKE 重授）。
+	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", "docs", databases.Index{
+		ID: "r13a_touch", Type: "key", Attributes: []string{"title"},
+	}))
+	err = updateACLAsApp()
+	require.Error(t, err, "DDL touch 后旧授权形态必须被矫正（REVOKE ALL → 按清单重授）")
+	require.Contains(t, err.Error(), "42501")
+
+	// 自锁路径回归：tw_app 经 updateDocument 替换 _acl（system 第二语句）仍正常。
+	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
+		Document: databases.Document{ID: "a1", Data: map[string]any{"title": "locked"}},
+		Permissions: []databases.Permission{
+			{Type: "read", Role: "user:bob"},
+			{Type: "update", Role: "user:bob"},
+		},
+		ExpectedVersion: 1,
+	}, alice)
+	require.NoError(t, err, "自锁（system 第二语句路径）不受列级收紧影响")
+	require.Equal(t, []databases.Permission{
+		{Type: "read", Role: "user:bob"},
+		{Type: "update", Role: "user:bob"},
+	}, updated.Permissions)
 }
 
 // TestRLS_ExplainInitPlanGate（I1 最小版）：policy 的 catalog 子查询必须被
