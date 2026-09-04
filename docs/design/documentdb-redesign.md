@@ -235,7 +235,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 |---|---|---|
 | ① 契约收敛 | 单 AST（DSL 降级为糖）、keyset 统一 + tiebreaker、错误码体系、default 落 catalog、写响应读回、幂等 `request_id`、**`documents:execute-tx`（事务内核 Phase 1，Bulk 泛化）** | 无 |
 
-**阶段①完成状态（2026-09-04 复审）**：除单 AST（专属会话）外全部落地——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token、多排序键全路径拒绝——keyset-only 下首页必须发 token 而 token 仅编码单键，多键必不同构，故首页即拒；完整多键游标归单 AST/C2）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展：`DOCUMENT.* / IDEMPOTENCY.* / RATE_LIMIT.*`）、幂等与聚合（语义见 §4.1）。遗留：AggregateDocuments 补 `validateQueryFields`（与 List/Count 一致性返工项）。
+**阶段①完成状态（2026-09-04 复审，#3-R 返工后收口）**：除单 AST（专属会话）外**全部落地**——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token、多排序键全路径拒绝——keyset-only 下首页必须发 token 而 token 仅编码单键，多键必不同构，故首页即拒；完整多键游标归单 AST/C2）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展：`DOCUMENT.* / IDEMPOTENCY.* / RATE_LIMIT.*`）、幂等与聚合（语义见 §4.1）。一致性返工 R6（聚合补 `validateQueryFields`，且对 Bypass 主体亦生效——比 List/Count 更严，Server-only 新 API 上为正向收紧）与 R9（count/aggregate 显式拒绝排序/分页算子）已落地。残留一条不阻塞的开缝：`rejectNonFilterOperators` 尚未覆盖 typed AST 的 `page_size/page_token`（DSL 路径已拦）——随单 AST 会话的查询面统一一并补。
 | ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
 | ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
