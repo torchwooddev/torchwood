@@ -236,7 +236,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 |---|---|---|
 | ① 契约收敛 | 单 AST（DSL 降级为糖）、keyset 统一 + tiebreaker、错误码体系、default 落 catalog、写响应读回、幂等 `request_id`、**`documents:execute-tx`（事务内核 Phase 1，Bulk 泛化）** | 无 |
 
-**阶段①完成状态（2026-09-04 会话 #4 复审后整体完成）**：**含单 AST 全部落地**——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token）、多键完整游标与 NULL 限制（§4.1）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展）、幂等与聚合（语义见 §4.1，聚合 oneof 类型化）、**单 AST**（queries 双栈 reserved 退役、算子全集含 not\* 变体族、select 进 proto、SDK typed builder + FromDSL 糖、R9b 分页字段归一）。残留两条不阻塞的记录项：① **R11（建议级）**——sdk/go 自备的 DSL 解析器与 `pkg/query` 无跨模块 parity 测试（模块边界所限），补共享 golden 语料（两侧测试读同一 testdata 文件）防文法漂移；② users/storage 等静态表面遗留的 DSL 消费为 §0 边界邻居，另行收敛。
+**阶段①完成状态（2026-09-04 会话 #4 复审后整体完成，R11 亦已落地）**：**含单 AST 全部落地**——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token）、多键完整游标与 NULL 限制（§4.1）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展）、幂等与聚合（语义见 §4.1，聚合 oneof 类型化）、**单 AST**（queries 双栈 reserved 退役、算子全集含 not\* 变体族、select 进 proto、SDK typed builder + FromDSL 糖、R9b 分页字段归一）。**R11 已落地（2026-09-04，commit 758db77）**：`pkg/query/testdata/dsl_ast_golden.json` 共享 golden 语料（47 条含 10 错误条目）以中立 JSON 形态锁定两侧 DSL 文法，`root`/`sdk` override 块表达 offset 的设计内单侧差异；语料即仲裁——上线即暴露并修复 SDK 侧两处缺口（MaxQueries/MaxQueryLen 输入上限、limit 错误文案拆分），未发现语义级分歧。剩余记录项：users/storage 等静态表面遗留的 DSL 消费为 §0 边界邻居，归阶段②收敛。
 | ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
 | ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
