@@ -128,7 +128,7 @@ CREATE TABLE tw_shop_app._perms (
 |  | `search` | `search("title","hello")` | `to_tsvector('simple',col::text) @@ plainto_tsquery('simple',?)` |
 |  | `isNull`/`isNotNull` | `isNull("deleted_at")` | `IS NULL` |
 | 排序 | `orderAsc`/`orderDesc` | `orderDesc("$createdAt")` | `ORDER BY d."field" ASC/DESC, d._id <dir>`（与 cursor 续页路径同构的 `_id` tiebreaker） |
-| 分页 | `limit`/`offset` | `limit(25)` | `LIMIT`；**文档面 keyset-only（C2 阶段①）**：`ListDocuments`/`CountDocuments` 对 `offset()` 一律 `InvalidArgument`（"use cursor pagination" / count 全集语义）；`offset` 仍可用于 `pkg/crud` 静态表路径 |
+| 分页 | `limit`/`offset` | `limit(25)` | `LIMIT`；**文档面 keyset-only（C2 阶段①）**：`ListDocuments`/`CountDocuments` 对 `offset()` 一律 `InvalidArgument`；count/aggregate 对全部排序/分页算子（order/limit/offset/cursor/token）显式拒绝（R9，整集语义）；`offset` 仍可用于 `pkg/crud` 静态表路径 |
 |  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（**多自定义排序键 → InvalidArgument，首页即拒**——token 只编码单键，完整多键游标属单 AST 专属会话；`ListDocuments` 的 `page_token` 也只认 `ka:/kb:` keyset token） |
 | 投影 | `select` | `select(["name","age"])` | 返回后裁剪 `Data` |
 
@@ -173,7 +173,7 @@ CREATE TABLE tw_shop_app._perms (
 - **D1（§11-J 已裁决）**：聚合一律在 `listPermissionFilter` 过滤后的可见行集上执行（过滤先于 GROUP BY）——不可见行不进聚合、group 键不泄露；权限 golden 集成测试锁语义（`aggregate_integration_test.go`）；最小桶/k-匿名未实现（可选产品功能，默认关）；权限变更前后聚合不可比属固有属性。
 - 聚合目标必须是集合声明的数值属性（`integer`/`float`，System 主体一视同仁防拼列）；`group_by` 须为已声明属性，键按 text 序列化（NULL 键=属性未设置的行，归入 `group_key` 未设置的组）。
 - 空集语义：`sum=0`（COALESCE）、`avg/min/max` 无值（proto `optional double` 未设置）；`group_by` 下空集返回空组列表。无 `group_by` 时恰返回一组。
-- 过滤算子与 ListDocuments 同语法（queries/typed AST 双栈）；排序/分页算子无意义（整集聚合，忽略——与 `:count` 同纪律）。
+- 过滤算子与 ListDocuments 同语法（queries/typed AST 双栈）；排序/分页算子（orderAsc/Desc、limit、offset、cursor、page token）在 count 与 aggregate 一律 `InvalidArgument` 显式拒绝（整集语义，R9——静默 no-op 违背 §4.1 显式拒绝原则）。
 
 ## 8.4 写幂等 `request_id`（redesign §4.1/§10.1）
 
