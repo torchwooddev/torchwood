@@ -23,15 +23,12 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 	if err != nil {
 		return p.mapError(err)
 	}
-	// R02-P1-2：schema / _perms 表与 catalog 元数据包进同一事务，
-	// 任一步失败整体回滚，避免"schema 已建而元数据缺失"。
-	// catalog 已全局化（public 两表），建库不再依赖项目数据面 schema。
+	// R02-P1-2：schema 与 catalog 元数据包进同一事务，任一步失败整体回滚，
+	// 避免"schema 已建而元数据缺失"。catalog 已全局化（public 两表），建库
+	// 不再依赖项目数据面 schema；_perms 表已退役（阶段③包 A，_acl 内嵌行内）。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
 			return fmt.Errorf("create schema: %w", err)
-		}
-		if err := p.ensurePermsTable(txCtx, schema); err != nil {
-			return err
 		}
 		m := &model.DocumentDatabase{
 			ProjectID:  projectID,
@@ -199,10 +196,6 @@ func (p *postgresDocumentDB) resolvePhysicalTable(ctx context.Context, projectID
 
 func tableName(schema, collectionID string) string {
 	return quoteIdent(schema) + "." + quoteIdent(collectionID)
-}
-
-func permsTableName(schema string) string {
-	return quoteIdent(schema) + "." + quoteIdent("_perms")
 }
 
 // InternalIDCacheInvalidator 是 internalIDCache 的进程内失效面：组合根把

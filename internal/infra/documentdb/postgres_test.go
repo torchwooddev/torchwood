@@ -999,8 +999,10 @@ func TestErrDuplicateKey_DomainAlias(t *testing.T) {
 }
 
 // TestDeleteCollection_CleansPerms (#3): deleting a collection must remove its
-// _perms rows so that recreating the same collection cannot leak old
-// document-level permissions onto new documents.
+// document-level permissions so that recreating the same collection cannot leak
+// old permissions onto new documents. 阶段③包 A：_acl 内嵌行内，DROP TABLE 即
+// 随行消亡——本测试退化为行为级防回归（重建后旧 ACE 不得复活）+ 物理表消亡
+// 的结构性断言。
 func TestDeleteCollection_CleansPerms(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -1009,7 +1011,7 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer func() { _ = db.Close() }()
 
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -1021,13 +1023,6 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 			{ID: "title", Key: "title", Type: "string", Size: 256},
 		}, nil, nil, true))
 	}
-	countPerms := func() int {
-		t.Helper()
-		var n int
-		sql := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(testSchema(t, projectID, "app")))
-		require.NoError(t, db.QueryRowContext(ctx, sql, internalID, "notes").Scan(&n))
-		return n
-	}
 
 	createColl()
 	_, err := docDB.CreateDocument(ctx, projectID, "app", "notes", databases.Document{
@@ -1035,14 +1030,18 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 		Data: map[string]any{"title": "secret"},
 	}, []databases.Permission{{Type: "read", Role: "user:alice"}}, databases.SystemPrincipal)
 	require.NoError(t, err)
-	require.Equal(t, 1, countPerms())
 
-	// After deletion no _perms rows may remain for the collection.
+	// After deletion the physical table (and its embedded _acl) must be gone.
+	oldPhysical := testPhysicalName(t, ctx, db, projectID, "app", "notes")
 	require.NoError(t, docDB.DeleteCollection(ctx, projectID, "app", "notes"))
-	require.Equal(t, 0, countPerms())
+	var exists bool
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)`,
+		testSchema(t, projectID, "app"), oldPhysical).Scan(&exists))
+	require.False(t, exists, "删除集合后物理表不得残留")
 
 	// Recreate the same collection and a document with the same ID but no
-	// document-level permissions: alice must NOT see it (no old-perms leak).
+	// document-level permissions: alice must NOT see it (no old-ACL leak).
 	createColl()
 	_, err = docDB.CreateDocument(ctx, projectID, "app", "notes", databases.Document{
 		ID:   "doc-1",

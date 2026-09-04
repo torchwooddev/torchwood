@@ -2,6 +2,7 @@ package documentdb
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/ident"
-	"github.com/uptrace/bun"
 )
 
 // TestInternalIDCache_InvalidationOnRecreate：Round4 J5-3——删除项目后同 ID
@@ -34,7 +34,6 @@ func TestInternalIDCache_InvalidationOnRecreate(t *testing.T) {
 
 	appSchema, err := ident.SchemaName(projectID, "app")
 	require.NoError(t, err)
-	appIdent := bun.Ident(appSchema)
 
 	writePost := func(title string) string {
 		created, err := docDB.CreateDocument(ctx, projectID, "app", "posts",
@@ -48,11 +47,12 @@ func TestInternalIDCache_InvalidationOnRecreate(t *testing.T) {
 	tenantOf := func(t *testing.T, docID string) int64 {
 		t.Helper()
 		var tenant int64
+		physical := testPhysicalName(t, ctx, db, projectID, "app", "posts")
 		require.NoError(t, db.NewSelect().
-			TableExpr("?._perms AS p", appIdent).
+			TableExpr(fmt.Sprintf("%q.%q", appSchema, physical)).
 			Column("_tenant").
-			Where("_document = ?", docID).
-			Where("_type = 'read'").Limit(1).
+			Where("_id = ?", docID).
+			Limit(1).
 			Scan(ctx, &tenant))
 		return tenant
 	}

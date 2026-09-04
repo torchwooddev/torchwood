@@ -87,11 +87,11 @@ type DeleteOptions struct {
 	SkipVersion     bool
 }
 
-// ReservedAttributeKeys 是禁止作为用户属性的系统列（含 _version）。
+// ReservedAttributeKeys 是禁止作为用户属性的系统列（含 _version/_acl）。
 // ValidateIdentifier 允许 "_" 前缀，必须在属性创建路径显式拒绝。
 var ReservedAttributeKeys = map[string]struct{}{
 	"_id": {}, "_tenant": {}, "_created_at": {}, "_updated_at": {},
-	"_created_by": {}, "_updated_by": {}, "_version": {}, "_perms": {},
+	"_created_by": {}, "_updated_by": {}, "_version": {}, "_perms": {}, "_acl": {},
 }
 
 type DocumentList struct {

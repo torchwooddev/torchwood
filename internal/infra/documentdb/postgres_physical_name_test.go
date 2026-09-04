@@ -173,9 +173,10 @@ func TestPhysicalName_BypassPaths(t *testing.T) {
 	require.Equal(t, int64(2), n)
 }
 
-// TestPhysicalName_PermsKeepLogicalCollectionID：_perms 键与 realtime 频道
-// 契约保持逻辑 collectionID（预决策 2），不随物理名漂移。
-func TestPhysicalName_PermsKeepLogicalCollectionID(t *testing.T) {
+// TestPhysicalNameACLEmbeddedInPhysicalTable：_acl 内嵌物理表行内（阶段③
+// 包 A，_perms 退役）——文档 ACE 随行存储于服务端分配的物理表，realtime 频道
+// 契约与逻辑 collectionID 的耦合点随之消失（频道名只来自事件信封的逻辑 ID）。
+func TestPhysicalNameACLEmbeddedInPhysicalTable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -194,21 +195,12 @@ func TestPhysicalName_PermsKeepLogicalCollectionID(t *testing.T) {
 	}, []databases.Permission{{Type: "read", Role: "user:u1"}}, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	rows, err := db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT DISTINCT _collection FROM %s`, permsTableName(testSchema(t, projectID, "app"))))
-	require.NoError(t, err)
-	defer func() { _ = rows.Close() }()
-	var colls []string
-	for rows.Next() {
-		var c string
-		require.NoError(t, rows.Scan(&c))
-		colls = append(colls, c)
-	}
-	require.NoError(t, rows.Err())
-	require.NotEmpty(t, colls)
-	for _, c := range colls {
-		require.Equal(t, "posts", c, "_perms._collection 必须保持逻辑 collectionID")
-	}
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "posts")
+	tbl := testSchema(t, projectID, "app") + "." + physical
+	var acl string
+	require.NoError(t, db.QueryRowContext(ctx,
+		fmt.Sprintf(`SELECT _acl::text FROM %s WHERE _id = 'p1'`, tbl)).Scan(&acl))
+	require.Equal(t, `{read:user:u1}`, acl)
 }
 
 // TestDDLSeq_IncrementAcrossDDLPaths：五个元数据写路径的 CAS 递增——
@@ -353,13 +345,24 @@ func TestIndexName_PhysicalNaturalFit(t *testing.T) {
 	// 逻辑名组合校验保留（防直调）：40+40 组合仍被拒绝。
 	require.Error(t, validateIndexNameLen(strings.Repeat("c", 40), strings.Repeat("i", 40)))
 
-	// 物理索引名确实由物理名前缀构成。
+	// 物理索引名确实由物理名前缀构成（阶段③包 A 起表还带 idx_<phys>_acl
+	// GIN 索引，按精确名点查避免歧义）。
 	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", longColl, databases.Index{
 		ID: strings.Repeat("i", 20), Type: "key", Attributes: []string{"n"},
 	}))
-	var idxName string
-	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT indexname FROM pg_indexes WHERE schemaname = ? AND tablename = ? AND indexname LIKE ?`,
-		testSchema(t, projectID, "app"), physical, "idx_"+physical+"%").Scan(&idxName))
-	require.Equal(t, fmt.Sprintf("idx_%s_%s", physical, strings.Repeat("i", 20)), idxName)
+	userIdx := fmt.Sprintf("idx_%s_%s", physical, strings.Repeat("i", 20))
+	aclIdx := fmt.Sprintf("idx_%s_acl", physical)
+	var gotNames []string
+	rows, err := db.QueryContext(ctx,
+		`SELECT indexname FROM pg_indexes WHERE schemaname = ? AND tablename = ? AND indexname IN (?, ?)`,
+		testSchema(t, projectID, "app"), physical, userIdx, aclIdx)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var n string
+		require.NoError(t, rows.Scan(&n))
+		gotNames = append(gotNames, n)
+	}
+	require.NoError(t, rows.Err())
+	require.ElementsMatch(t, []string{userIdx, aclIdx}, gotNames)
 }

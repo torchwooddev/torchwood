@@ -1,6 +1,7 @@
 // 集合/属性/索引 DDL 与 catalog 元数据（public 全局两表，redesign §4.2/C1）：
-// 建表、_version 列生命周期、索引表达式构建（fulltext 对齐见 W-E）、权限表写入。
-// attrs/indexes 以 JSONB 合一：GetCollection 单查询读回全量契约（含 default）。
+// 建表、_acl 内嵌列 + GIN、_version 列生命周期、索引表达式构建（fulltext 对齐见
+// W-E）。attrs/indexes 以 JSONB 合一：GetCollection 单查询读回全量契约（含 default）。
+// _perms 表已退役（阶段③包 A）：文档 ACE 内嵌 _acl 列，存量死表不迁移。
 package documentdb
 
 import (
@@ -78,7 +79,7 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	// 整体回滚，避免"物理表建成而元数据缺失"。元数据先行（预留物理名），
 	// 物理名碰撞在 INSERT 上换名重试，DDL 失败随回滚释放预留名。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		if err := p.ensureSchemaAndPerms(txCtx, schema); err != nil {
+		if err := p.ensureSchema(txCtx, schema); err != nil {
 			return err
 		}
 		physical, _, err := p.insertCollectionMetadata(txCtx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
@@ -263,16 +264,13 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
-	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
+	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return p.mapError(err)
 	}
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		// _perms 键保持逻辑 collectionID（redesign 预决策 2），按逻辑名清理。
-		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
-			return err
-		}
-		// 物理表按服务端分配名 DROP（逻辑/物理名解耦，预决策 2）。
+		// 物理表按服务端分配名 DROP（逻辑/物理名解耦，预决策 2）；_acl 内嵌表内
+		//（阶段③包 A），DROP 即随行消亡，无跨表权限残留可清理。
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, physical))); err != nil {
 			return err
 		}
@@ -477,38 +475,17 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 	}))
 }
 
-func (p *postgresDocumentDB) ensureSchemaAndPerms(ctx context.Context, schema string) error {
+func (p *postgresDocumentDB) ensureSchema(ctx context.Context, schema string) error {
 	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
-	return p.ensurePermsTable(ctx, schema)
-}
-
-func (p *postgresDocumentDB) ensurePermsTable(ctx context.Context, schema string) error {
-	sql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		_id BIGSERIAL PRIMARY KEY,
-		_tenant BIGINT NOT NULL,
-		_collection TEXT NOT NULL,
-		_document TEXT NOT NULL,
-		_type TEXT NOT NULL,
-		_permission TEXT NOT NULL,
-		_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		UNIQUE (_tenant, _collection, _document, _type, _permission)
-	)`, permsTableName(schema))
-	if _, err := p.conn(ctx).ExecContext(ctx, sql); err != nil {
-		return fmt.Errorf("create perms table: %w", err)
-	}
-	idx := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_perms_lookup ON %s (_tenant, _collection, _document, _type)`, permsTableName(schema))
-	if _, err := p.conn(ctx).ExecContext(ctx, idx); err != nil {
-		return err
-	}
-	idx2 := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_perms_role ON %s (_tenant, _collection, _type, _permission)`, permsTableName(schema))
-	_, err := p.conn(ctx).ExecContext(ctx, idx2)
-	return err
+	return nil
 }
 
 // createCollectionTable 建集合物理表（physical = 服务端分配的物理表名；
 // sentinel 系统集合 = 逻辑名，指向 tw_<project> 静态表）。
+// _acl TEXT[] 内嵌文档 ACE（阶段③包 A）：所有文档表带列（含 sentinel 测试表）；
+// GIN 索引仅用户集合建（&& 匹配可走索引，redesign §3.2 工程纪律）。
 func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, physical string, tenant int64, attrs []databases.Attribute, isSystem bool) error {
 	cols := []string{
 		"_id TEXT NOT NULL",
@@ -517,6 +494,7 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 		"_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
 		"_created_by TEXT",
 		"_updated_by TEXT",
+		"_acl TEXT[] NOT NULL DEFAULT '{}'",
 	}
 	// 仅用户集合追加 _version（OCC）；系统集合不加列。
 	if !isSystem {
@@ -557,8 +535,13 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 	}
 	// R5-J3-1（D-P1-3）：用户集合默认时间索引——新建即建，存量表经
 	// IF NOT EXISTS 幂等（系统表跳过，与 _version 列的处理一致）。
+	// _acl GIN（阶段③包 A）同位：tw_can 的 && 匹配与 listPermissionFilter
+	// 的 _acl 过滤都消费该索引。
 	if !isSystem {
 		if err := p.ensureTenantCreatedIndex(ctx, schema, physical); err != nil {
+			return err
+		}
+		if err := p.ensureACLIndex(ctx, schema, physical); err != nil {
 			return err
 		}
 	}
@@ -615,15 +598,19 @@ func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, p
 // 文档写路径不得调用本函数：ADD COLUMN 是 AccessExclusiveLock。
 // 键以物理表名为准（逻辑/物理名解耦后同名逻辑集合不串缓存）。
 //
-// R5-J3-1：入口先幂等补建默认时间索引（ensureTenantCreatedIndex）——本函数
-// 是用户集合所有 DDL touch（CreateCollection/CreateAttribute/CreateIndex）
-// 的汇聚点，存量集合在下次任意 DDL touch 时自动获得该索引；放在 versionColumns
-// 缓存短路之前，保证每次 touch 都对账（IF NOT EXISTS 已存在时仅 catalog 查找）。
+// R5-J3-1：入口先幂等补建默认时间索引（ensureTenantCreatedIndex）与 _acl GIN
+//（ensureACLIndex，阶段③包 A）——本函数是用户集合所有 DDL touch
+//（CreateCollection/CreateAttribute/CreateIndex）的汇聚点，存量集合在下次任意
+// DDL touch 时自动补齐；放在 versionColumns 缓存短路之前，保证每次 touch 都对账
+//（IF NOT EXISTS 已存在时仅 catalog 查找）。
 func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema, physical string, isSystem bool) error {
 	if isSystem {
 		return nil
 	}
 	if err := p.ensureTenantCreatedIndex(ctx, schema, physical); err != nil {
+		return err
+	}
+	if err := p.ensureACLIndex(ctx, schema, physical); err != nil {
 		return err
 	}
 	key := schema + "." + physical
@@ -781,6 +768,19 @@ func (p *postgresDocumentDB) ensureTenantCreatedIndex(ctx context.Context, schem
 	return nil
 }
 
+// ensureACLIndex 为用户集合幂等补建 _acl 的 GIN 索引（阶段③包 A，redesign
+// §3.2 工程纪律：_acl 建 GIN，&& 可作索引条件）。索引名前缀段用物理表名
+//（idx_<phys>_acl 自然 ≤63，与 idx_<phys>_tenant_created 同方案）；IF NOT EXISTS
+// 幂等，DDL 路径重复执行仅一次 catalog 查找。
+func (p *postgresDocumentDB) ensureACLIndex(ctx context.Context, schema, physical string) error {
+	idxName := quoteIdent(fmt.Sprintf("idx_%s_acl", physical))
+	sql := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin (_acl)`, idxName, tableName(schema, physical))
+	if _, err := p.conn(ctx).ExecContext(ctx, sql); err != nil {
+		return fmt.Errorf("create acl index: %w", err)
+	}
+	return nil
+}
+
 // validateIndexDefinition 拒绝与查询编译器不相容的索引定义：fulltext 查询
 // 按单列 to_tsvector("col"::text) 编译，多列拼接索引的表达式与任何单字段
 // 查询都不匹配——索引永不命中，只会误导用户以为 search 有索引支撑。
@@ -905,27 +905,4 @@ func mapCollectionRow(m *model.DocumentCollection) (*databases.Collection, error
 	}
 	c.Indexes = idxs
 	return c, nil
-}
-
-func (p *postgresDocumentDB) setPermissions(ctx context.Context, schema, collectionID, documentID string, tenant int64, perms []databases.Permission) error {
-	if len(perms) == 0 {
-		return nil
-	}
-	base := fmt.Sprintf(`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES `, permsTableName(schema))
-	var vals []string
-	var args []any
-	for range perms {
-		vals = append(vals, "(?, ?, ?, ?, ?)")
-	}
-	for _, perm := range perms {
-		args = append(args, tenant, collectionID, documentID, perm.Type, perm.Role)
-	}
-	sql := base + strings.Join(vals, ", ") + " ON CONFLICT DO NOTHING"
-	_, err := p.conn(ctx).ExecContext(ctx, sql, args...)
-	return err
-}
-
-func (p *postgresDocumentDB) clearPermissions(ctx context.Context, schema, collectionID, documentID string, tenant int64) error {
-	_, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ? AND _document = ?`, permsTableName(schema)), tenant, collectionID, documentID)
-	return err
 }

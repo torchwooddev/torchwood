@@ -536,7 +536,7 @@ func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
 	// 回滚后 catalog 行与物理表同时撤销（元数据与 DDL 同事务）。
 	var tblCount int
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name <> '_perms'`, schema).Scan(&tblCount))
+		`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ?`, schema).Scan(&tblCount))
 	require.Zero(t, tblCount, "回滚后不得残留物理表")
 	rolledBack, err := docDB.GetCollection(ctx, projectID, "app", "docs")
 	require.NoError(t, err)

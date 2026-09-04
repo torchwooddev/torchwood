@@ -12,8 +12,9 @@ import (
 	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
-// TestPermissions_ListFilterTenantIsolation (A5): 列表权限过滤的 EXISTS 子查询必须
-// 关联 d._tenant，异租户同 collection/文档 ID 的 _perms 行不得放行本租户列表。
+// TestPermissions_ListFilterTenantIsolation (A5): 列表权限过滤与租户隔离——
+// _acl 内嵌行内（阶段③包 A）后由主查询 d._tenant = ? 谓词承载，异租户同 _id
+// 的行不得放行本租户列表。
 func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -27,7 +28,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
-	// 集合无 read 授权：强制走逐文档 EXISTS 过滤路径（无 SkipDocumentPermissionFilter）。
+	// 集合无 read 授权：强制走逐文档 _acl 过滤路径（无 SkipDocumentPermissionFilter）。
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
@@ -38,15 +39,17 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	created, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
 		ID:   "doc-1",
 		Data: map[string]any{"title": "t1"},
-	}, nil, databases.SystemPrincipal)
+	}, []databases.Permission{{Type: "read", Role: "user:alice"}}, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	permsTable := permsTableName(testSchema(t, projectID, "app"))
-	// 异租户 _perms 行（同 collection/文档/类型/角色）不得影响本租户列表。
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
+	tbl := testSchema(t, projectID, "app") + "." + physical
+	// 异租户文档行（同 _id、_acl 含 read:user:bob）不得影响本租户列表：_acl
+	// 内嵌行内（阶段③包 A），租户隔离由主查询 d._tenant = ? 谓词承载（A5）。
 	foreignTenant := internalID + 1000
 	_, err = db.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, ?, ?, 'read', 'user:bob')`,
-		permsTable), foreignTenant, "docs", created.ID)
+		`INSERT INTO %s (_id, _tenant, _acl, title) VALUES (?, ?, '{read:user:bob}', 'foreign')`, tbl),
+		created.ID, foreignTenant)
 	require.NoError(t, err)
 
 	bob := databases.Principal{Roles: []string{"user:bob"}}
@@ -56,10 +59,9 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)
 
-	// 同租户 _perms 行放行（正对照）。
+	// 同租户文档行换上 read:user:bob（正对照）。
 	_, err = db.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, ?, ?, 'read', 'user:bob')`,
-		permsTable), internalID, "docs", created.ID)
+		`UPDATE %s SET _acl = '{read:user:bob}' WHERE _tenant = ? AND _id = ?`, tbl), internalID, created.ID)
 	require.NoError(t, err)
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		AST: &query.Query{Filter: query.Eq("$id", "doc-1")},
@@ -479,10 +481,12 @@ func TestPermissions_ListORFallback(t *testing.T) {
 	require.Len(t, aliceList.Documents, 1)
 }
 
-// TestPermissions_WriteRowTypeConsistency (B1 step 7): _perms 表可能存在
-// _type='write' 行（ParsePermissionStrings 会展开为三行，但直调 adapter 的路径
-// 可能不展开）。单文档路径 matchTypes 使 create/update/delete 检查命中 write 行，
-// 列表过滤只匹配 _type='read'——两者语义一致（write 不隐含 read），验证而不改行为。
+// TestPermissions_WriteRowTypeConsistency (B1 step 7): _acl 可能存在 'write:'
+// 元素（ParsePermissionStrings 会展开，但直调 adapter 的路径可能不展开）。
+// 单文档路径 matchTypes 使 create/update/delete 检查命中 write 元素，列表过滤
+// 只匹配 read——两者语义一致（write 不隐含 read），验证而不改行为。
+//（阶段③包 C 的 tw_visible 落地后，"可写即可读"产品语义将有意取代本测试的
+// Get/List 断言——届时随 golden 矩阵更新。）
 func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -491,7 +495,7 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	defer func() { _ = db.Close() }()
 
-	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
@@ -510,14 +514,14 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	}, nil, alice)
 	require.NoError(t, err)
 
-	// 直插 _type='write' 行（模拟未展开的直调路径）。
-	permsTable := permsTableName(testSchema(t, projectID, "app"))
+	// 直改 _acl 为 'write' 元素（模拟未展开的直调路径）。
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
+	tbl := testSchema(t, projectID, "app") + "." + physical
 	_, err = db.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s (_tenant, _collection, _document, _type, _permission) VALUES (?, ?, ?, 'write', 'user:alice')`,
-		permsTable), internalID, "docs", created.ID)
+		`UPDATE %s SET _acl = '{write:user:alice}' WHERE _id = ?`, tbl), created.ID)
 	require.NoError(t, err)
 
-	// write 行命中 update 检查（matchTypes 展开）→ 可更新（D3：无 read 预检）。
+	// write 元素命中 update 检查（matchTypes 展开）→ 可更新（D3：无 read 预检）。
 	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{
 			ID:   created.ID,
@@ -531,14 +535,71 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	_, err = docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, alice)
 	require.ErrorIs(t, err, ErrPermissionDenied)
 
-	// 列表过滤只匹配 _type='read'：文档对 alice 不可见（一致性确认）。
+	// 列表过滤只匹配 read 元素：文档对 alice 不可见（一致性确认）。
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		AST: &query.Query{Filter: query.Eq("$id", created.ID)},
 	}, alice)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)
 
-	// write 行命中 delete 检查 → 可删除。
+	// write 元素命中 delete 检查 → 可删除。
 	err = docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID, databases.DeleteOptions{ExpectedVersion: 2}, alice)
 	require.NoError(t, err)
+}
+
+// TestPermissions_ListBackfillNoExtraQueries（阶段③包 A）：List 的 permissions
+// 回填来自 to_jsonb(d.*) 载荷内的 _acl 顺带解析——查询数不随可见文档数增长
+//（attachDocumentPermissionsBatch 的批量 IN 查询已删除，B6 回填零额外查询）。
+// queryCountHook 复用 postgres_catalog_global_test.go 的定义。
+func TestPermissions_ListBackfillNoExtraQueries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "App DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "users"},
+		{Type: "read", Role: "any"},
+	}, true))
+
+	makeDoc := func(id string) {
+		t.Helper()
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+			ID:   id,
+			Data: map[string]any{"title": id},
+		}, []databases.Permission{{Type: "read", Role: "any"}}, databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+	makeDoc("d1")
+	makeDoc("d2")
+
+	hook := &queryCountHook{}
+	db.AddQueryHook(hook)
+	list := func() int {
+		t.Helper()
+		before := hook.snapshot()
+		res, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{}, databases.Principal{Roles: []string{"user:bob"}})
+		require.NoError(t, err)
+		for _, d := range res.Documents {
+			require.NotEmpty(t, d.Permissions, "permissions 必须随 to_jsonb 载荷回填")
+		}
+		return hook.snapshot() - before
+	}
+	two := list()
+
+	makeDoc("d3")
+	makeDoc("d4")
+	makeDoc("d5")
+	five := list()
+
+	require.Equal(t, two, five, "List 查询数不得随可见文档数增长（权限回填免费化）")
 }

@@ -43,7 +43,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
 	if !principal.BypassesDocumentACL() {
-		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
+		permWhere, permArgs, err := p.listPermissionFilter(ctx, coll, principal)
 		if err != nil {
 			return nil, p.mapError(err)
 		}
@@ -205,10 +205,8 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if err := rows.Err(); err != nil {
 		return nil, p.mapError(err)
 	}
-	// B6：List 回传 permissions（与 Get 对齐）；W-D 改单条 IN 批量取回。
-	if err := p.attachDocumentPermissionsBatch(ctx, schema, collectionID, internalID, docs); err != nil {
-		return nil, p.mapError(err)
-	}
+	// B6：List 回传 permissions（与 Get 对齐）——_acl 含在 to_jsonb(d.*) 载荷内
+	// 顺带解析（阶段③包 A 权限回填免费化，W-D 的批量 IN 查询已删除）。
 
 	if len(parsed.Selects) > 0 {
 		selected := make(map[string]struct{}, len(parsed.Selects))
@@ -377,7 +375,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
 	if !principal.BypassesDocumentACL() {
-		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
+		permWhere, permArgs, err := p.listPermissionFilter(ctx, coll, principal)
 		if err != nil {
 			return 0, p.mapError(err)
 		}
@@ -480,7 +478,7 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
 	if !principal.BypassesDocumentACL() {
-		permWhere, permArgs, err := p.listPermissionFilter(ctx, projectID, databaseID, collectionID, schema, coll, principal)
+		permWhere, permArgs, err := p.listPermissionFilter(ctx, coll, principal)
 		if err != nil {
 			return nil, p.mapError(err)
 		}

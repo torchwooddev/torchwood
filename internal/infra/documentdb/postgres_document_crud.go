@@ -42,10 +42,11 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 	return out, nil
 }
 
-// createDocument 是 CreateDocument 的事务体：数据行与 _perms 写入在同一事务内，
-// 任一步失败整体回滚，避免权限写入失败时文档数据 fail-open。
+// createDocument 是 CreateDocument 的事务体：数据行（含 _acl 内嵌 ACE，阶段③
+// 包 A）在同一事务内写入，无跨表权限步骤；权限写入失败导致文档 fail-open 的
+// 窗口从结构上消灭。
 func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
+	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return doc, err
 	}
@@ -88,6 +89,17 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 		placeholders += "?, ?"
 		args = append(args, createdBy, createdBy)
 	}
+	// _acl 内嵌（阶段③包 A）：非空权限集随 INSERT 一并写入，替代 _perms
+	// 表的 setPermissions；数据与 ACE 同行同事务，原子性由单语句保证。
+	if len(perms) > 0 {
+		if columns != "" {
+			columns += ", "
+			placeholders += ", "
+		}
+		columns += quoteIdent("_acl")
+		placeholders += "?::text[]"
+		args = append(args, aclParam(perms))
+	}
 	args = append([]any{doc.ID}, args...)
 	allPlaceholders := "?"
 	if columns != "" {
@@ -100,9 +112,6 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 			return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 		}
 		return doc, fmt.Errorf("insert document: %w", err)
-	}
-	if err := p.setPermissions(ctx, schema, collectionID, doc.ID, internalID, perms); err != nil {
-		return doc, err
 	}
 	created, err := p.GetDocument(ctx, projectID, databaseID, collectionID, doc.ID, databases.SystemPrincipal)
 	if err != nil {
@@ -214,7 +223,7 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 		// 命中已存在行 → 对该行做文档级 update 检查（UpdateDocument 语义）；
 		// 未命中 → 纯插入 → 集合级 create 权限（CreateDocument 语义）。
 		if targetID != "" {
-			if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, targetID, internalID, "update", principal, coll); err != nil {
+			if err := p.checkDocumentPermission(ctx, projectID, databaseID, collectionID, tbl, targetID, internalID, "update", principal, coll); err != nil {
 				return doc, err
 			}
 		} else if !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
@@ -233,7 +242,18 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 		effectiveID = targetID
 	}
 
-	// INSERT 部分（含 _created_by/_updated_by 审计列，与 CreateDocument 一致）。
+	// 更新支事件 acl=写前快照：在 upsert 语句之前抓拍（阶段③包 A——语句自身
+	// 会替换 _acl，快照必须先行；旧实现的清/写分离已内嵌为 SET 子句）。
+	var prePerms []databases.Permission
+	var preHasPerms bool
+	if targetID != "" && !isSystem && p.pub != nil {
+		prePerms, preHasPerms, err = p.getDocumentACL(ctx, tbl, effectiveID, internalID)
+		if err != nil {
+			return doc, err
+		}
+	}
+
+	// INSERT 部分（含 _created_by/_updated_by 审计列与 _acl，与 CreateDocument 一致）。
 	columns, placeholders, args := buildInsertParts(doc)
 	createdBy := userIDFromPrincipal(principal)
 	if createdBy != "" {
@@ -245,6 +265,16 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 		placeholders += "?, ?"
 		args = append(args, createdBy, createdBy)
 	}
+	if len(perms) > 0 {
+		// _acl 内嵌（阶段③包 A）：插入支直接携带，更新支经 SET 替换。
+		if columns != "" {
+			columns += ", "
+			placeholders += ", "
+		}
+		columns += quoteIdent("_acl")
+		placeholders += "?::text[]"
+		args = append(args, aclParam(perms))
+	}
 	args = append([]any{doc.ID}, args...)
 	allPlaceholders := "?"
 	if columns != "" {
@@ -255,6 +285,12 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	setParts, setArgs := buildUpdateParts(doc, userIDFromPrincipal(principal))
 	if len(setParts) == 0 {
 		return doc, status.Error(codes.InvalidArgument, "no fields to upsert")
+	}
+	// 文档级权限替换语义（与 UpdateDocument 一致）：非空时随语句整体替换；
+	// 作用于目标行（effectiveID）的 _acl，而非调用方传入的 doc.ID。
+	if len(perms) > 0 {
+		setParts = append(setParts, quoteIdent("_acl")+" = ?::text[]")
+		setArgs = append(setArgs, aclParam(perms))
 	}
 	// Upsert 更新支：盲写（不做 OCC），但用户集合 _version 仍 +1。
 	// ON CONFLICT DO UPDATE 中未限定列名在目标行与 excluded 之间歧义（42702），
@@ -270,25 +306,6 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 			return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 		}
 		return doc, fmt.Errorf("upsert document: %w", err)
-	}
-	// 文档级权限替换语义（与 UpdateDocument 一致）：非空时先清后写。
-	// 作用于目标行（effectiveID），而非调用方传入的 doc.ID。
-	// upsert 更新支事件 acl=写前：在替换 _perms 之前抓拍。
-	var prePerms []databases.Permission
-	var preHasPerms bool
-	if targetID != "" && !isSystem && p.pub != nil {
-		prePerms, preHasPerms, err = p.getDocumentPermissions(ctx, schema, collectionID, effectiveID, internalID)
-		if err != nil {
-			return doc, err
-		}
-	}
-	if len(perms) > 0 {
-		if err := p.clearPermissions(ctx, schema, collectionID, effectiveID, internalID); err != nil {
-			return doc, err
-		}
-		if err := p.setPermissions(ctx, schema, collectionID, effectiveID, internalID, perms); err != nil {
-			return doc, err
-		}
 	}
 	upserted, err := p.GetDocument(ctx, projectID, databaseID, collectionID, effectiveID, databases.SystemPrincipal)
 	if err != nil {
@@ -342,11 +359,17 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 	if doc == nil {
 		return nil, nil
 	}
-	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, docID, internalID, "read", principal, nil); err != nil {
-		return nil, p.mapError(err)
-	}
-	if err := p.attachDocumentPermissions(ctx, schema, collectionID, internalID, doc); err != nil {
-		return nil, p.mapError(err)
+	// 权限回填已免费化（阶段③包 A）：to_jsonb(d.*) 含 _acl，parseDocumentJSON
+	// 顺带解析为 doc.Permissions——不再二次点查 _perms；判定用已解析 ACE 的
+	// 内存路径（与 AllowsDocumentAccess 单源同语义）。
+	if !principal.BypassesDocumentACL() {
+		coll, cerr := p.getCollectionForAccess(ctx, projectID, databaseID, collectionID)
+		if cerr != nil {
+			return nil, p.mapError(cerr)
+		}
+		if cerr := p.checkDocumentACL(coll, doc.Permissions, len(doc.Permissions) > 0, "read", principal); cerr != nil {
+			return nil, p.mapError(cerr)
+		}
 	}
 	return doc, nil
 }
@@ -402,22 +425,32 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 		isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return doc, ErrPermissionDenied
 	}
+	tbl := tableName(schema, physical)
 	// D3：UpdateDocument 仅检查 update 权限，不再强制 read 预检
-	// （对齐 Appwrite/Supabase：update 策略独立于 select 策略；B1 文档级优先下
+	//（对齐 Appwrite/Supabase：update 策略独立于 select 策略；B1 文档级优先下
 	// "仅持 update 权限"的文档对持权者可用）。
-	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, doc.ID, internalID, "update", principal, nil); err != nil {
-		return doc, err
-	}
-	// update 事件 acl=写前：在 SET / _perms 替换之前抓拍当前文档 _perms。
+	// 判定与事件写前 ACL 快照共用一次 _acl 点查（阶段③包 A：非旁路路径
+	// 由 2 次权限查询并为 1 次）。
 	var prePerms []databases.Permission
 	var preHasPerms bool
-	if !isSystem && p.pub != nil {
-		prePerms, preHasPerms, err = p.getDocumentPermissions(ctx, schema, collectionID, doc.ID, internalID)
+	if !principal.BypassesDocumentACL() {
+		coll, cerr := p.getCollectionForAccess(ctx, projectID, databaseID, collectionID)
+		if cerr != nil {
+			return doc, cerr
+		}
+		prePerms, preHasPerms, err = p.getDocumentACL(ctx, tbl, doc.ID, internalID)
+		if err != nil {
+			return doc, err
+		}
+		if cerr := p.checkDocumentACL(coll, prePerms, preHasPerms, "update", principal); cerr != nil {
+			return doc, cerr
+		}
+	} else if !isSystem && p.pub != nil {
+		prePerms, preHasPerms, err = p.getDocumentACL(ctx, tbl, doc.ID, internalID)
 		if err != nil {
 			return doc, err
 		}
 	}
-	tbl := tableName(schema, physical)
 	updatedBy := userIDFromPrincipal(principal)
 	setParts, args := buildUpdateParts(doc, updatedBy)
 	incParts, incArgs := buildIncrementParts(update.Increment)
@@ -435,6 +468,13 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 			setParts = append(setParts, quoteIdent("_updated_by")+" = ?")
 			args = append(args, updatedBy)
 		}
+	}
+	// _acl 内嵌（阶段③包 A）：非空权限集整体替换（与旧"先清后写 _perms"
+	// 同语义），与数据列同一 UPDATE 语句、同事务原子生效；追加在审计列补充分支
+	// 之后，保证 permissions-only 更新仍刷新 _updated_at（R02-P1-4）。
+	if len(update.Permissions) > 0 {
+		setParts = append(setParts, quoteIdent("_acl")+" = ?::text[]")
+		args = append(args, aclParam(update.Permissions))
 	}
 	if len(setParts) > 0 {
 		if !isSystem {
@@ -477,14 +517,6 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 			}
 		}
 	}
-	if len(update.Permissions) > 0 {
-		if err := p.clearPermissions(ctx, schema, collectionID, doc.ID, internalID); err != nil {
-			return doc, err
-		}
-		if err := p.setPermissions(ctx, schema, collectionID, doc.ID, internalID, update.Permissions); err != nil {
-			return doc, err
-		}
-	}
 	// D5：尾随读回用 SystemPrincipal（与 CreateDocument 一致）——B1 下把文档权限
 	// 改成不含自己 read 的集合后数据已提交，若仍以调用方 principal 读回会返回
 	// PermissionDenied（半完成状态）。
@@ -515,8 +547,8 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 	}))
 }
 
-// deleteDocument 是 DeleteDocument 的事务体：_perms 清理与数据行删除在同一
-// 事务内，删除失败时不会残留权限行。用户集合（非系统）强制 OCC：
+// deleteDocument 是 DeleteDocument 的事务体：数据行删除即权限消亡（_acl 内嵌
+// 行内，阶段③包 A——无跨表清理步骤）。用户集合（非系统）强制 OCC：
 // ExpectedVersion 必填且须等于当前行 _version（行锁下比较，防止竞态）。
 func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
 	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
@@ -527,18 +559,37 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 	if err := p.requireVersionColumn(ctx, schema, physical, isSystem); err != nil {
 		return err
 	}
+	tbl := tableName(schema, physical)
 	if !principal.BypassesDocumentACL() && isWriteProtectedSystemCollection(databaseID, collectionID) {
 		return ErrPermissionDenied
 	}
-	if err := p.checkDocumentPermission(ctx, projectID, databaseID, schema, collectionID, docID, internalID, "delete", principal, nil); err != nil {
-		return err
+	// 判定与事件写前 ACL 快照共用一次 _acl 点查（阶段③包 A）。
+	var prePerms []databases.Permission
+	var preHasPerms bool
+	if !principal.BypassesDocumentACL() {
+		coll, cerr := p.getCollectionForAccess(ctx, projectID, databaseID, collectionID)
+		if cerr != nil {
+			return cerr
+		}
+		prePerms, preHasPerms, err = p.getDocumentACL(ctx, tbl, docID, internalID)
+		if err != nil {
+			return err
+		}
+		if cerr := p.checkDocumentACL(coll, prePerms, preHasPerms, "delete", principal); cerr != nil {
+			return cerr
+		}
+	} else if !isSystem && p.pub != nil {
+		prePerms, preHasPerms, err = p.getDocumentACL(ctx, tbl, docID, internalID)
+		if err != nil {
+			return err
+		}
 	}
 	if !isSystem {
 		// 用户集合：取删除前 _version（行锁下比较，防止竞态）；delete 事件
 		// 的 version 与 acl 都基于写前状态。
 		var currentVersion int64
 		err := p.conn(ctx).QueryRowContext(ctx,
-			fmt.Sprintf(`SELECT _version FROM %s WHERE _id = ? AND _tenant = ? FOR UPDATE`, tableName(schema, physical)),
+			fmt.Sprintf(`SELECT _version FROM %s WHERE _id = ? AND _tenant = ? FOR UPDATE`, tbl),
 			docID, internalID,
 		).Scan(&currentVersion)
 		if err != nil {
@@ -555,28 +606,18 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 				return databases.ErrVersionMismatch
 			}
 		}
-		// 分叉：有 publisher 时必须在清 _perms 之前抓拍写前 ACL，并带删除前
-		// version 发 delete 事件后直接返回；无 publisher 走下方公共路径。
-		// 两条路径都必须清 _perms、都必须删行（事件失败同样随事务回滚）。
+		// 分叉：有 publisher 时删除后带删除前 version 发 delete 事件；无
+		// publisher 走下方公共路径。两条路径都必须删行（事件失败同样随事务
+		// 回滚）。
 		if p.pub != nil {
-			prePerms, preHasPerms, err := p.getDocumentPermissions(ctx, schema, collectionID, docID, internalID)
-			if err != nil {
-				return err
-			}
-			if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
-				return err
-			}
-			if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, physical)), docID, internalID); err != nil {
+			if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tbl), docID, internalID); err != nil {
 				return err
 			}
 			return p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, docID,
 				domainevents.EventDocumentsDelete, currentVersion, nil, prePerms, preHasPerms, nil)
 		}
 	}
-	if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
-		return err
-	}
-	_, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, physical)), docID, internalID)
+	_, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tbl), docID, internalID)
 	return err
 }
 
@@ -773,6 +814,17 @@ func parseDocumentJSON(raw []byte) (*databases.Document, error) {
 		doc.Version = int64(v)
 	} else {
 		doc.Version = 1
+	}
+	// _acl：to_jsonb(d.*) 把 text[] 投影为 JSON 字符串数组，顺带解析为
+	// doc.Permissions（阶段③包 A 权限回填免费化——List/Get 零额外查询）。
+	if rawACL, ok := payload["_acl"].([]any); ok {
+		items := make([]string, 0, len(rawACL))
+		for _, item := range rawACL {
+			if s, isStr := item.(string); isStr {
+				items = append(items, s)
+			}
+		}
+		doc.Permissions = parseACLStrings(items)
 	}
 	for k, v := range payload {
 		if strings.HasPrefix(k, "_") {
