@@ -160,6 +160,8 @@ message CreateFileRequest {
 
 message ListFilesRequest {
   string bucket_id = 1;
+  // 不支持：storage 面不消费查询过滤，携带即 InvalidArgument（服务端显式
+  // 拒绝，不再静默忽略）。文件定位用 bucket_id 路径参数 + 分页。
   repeated string queries = 2;
   int32 page_size = 3;
   string page_token = 4;

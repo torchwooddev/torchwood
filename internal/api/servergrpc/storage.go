@@ -54,6 +54,10 @@ func (s *StorageService) ListBuckets(ctx context.Context, req *sharedv1.ListRequ
 	if err := rejectListFilterOrderBy(req); err != nil {
 		return nil, err
 	}
+	// storage 面不消费查询过滤：显式拒绝（预决策 7），不再静默忽略。
+	if err := rejectListQueries(req.GetQueries()); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -145,6 +149,11 @@ func (s *StorageService) CreateFile(ctx context.Context, req *serverv1.CreateFil
 }
 
 func (s *StorageService) ListFiles(ctx context.Context, req *serverv1.ListFilesRequest) (*serverv1.ListFilesResponse, error) {
+	// storage 面不消费查询过滤：显式拒绝（预决策 7）；bucket_id 定位走路径
+	// 参数，不属查询过滤。
+	if err := rejectListQueries(req.GetQueries()); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")

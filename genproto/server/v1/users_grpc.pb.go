@@ -36,6 +36,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type UsersServiceClient interface {
 	CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*User, error)
+	// ListUsers 的 queries（shared.v1.ListRequest）是**静态表面 DSL**：经
+	// ParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性），
+	// 独立于文档查询栈的单 typed AST——勿与 databases 的 Query 混用。
 	ListUsers(ctx context.Context, in *v1.ListRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
 	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*User, error)
 	UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*User, error)
@@ -149,6 +152,9 @@ func (c *usersServiceClient) CreateUserToken(ctx context.Context, in *GetUserReq
 // for forward compatibility.
 type UsersServiceServer interface {
 	CreateUser(context.Context, *CreateUserRequest) (*User, error)
+	// ListUsers 的 queries（shared.v1.ListRequest）是**静态表面 DSL**：经
+	// ParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性），
+	// 独立于文档查询栈的单 typed AST——勿与 databases 的 Query 混用。
 	ListUsers(context.Context, *v1.ListRequest) (*ListUsersResponse, error)
 	GetUser(context.Context, *GetUserRequest) (*User, error)
 	UpdateUser(context.Context, *UpdateUserRequest) (*User, error)

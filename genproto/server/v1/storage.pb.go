@@ -402,11 +402,13 @@ func (x *CreateFileRequest) GetMetadata() map[string]string {
 }
 
 type ListFilesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BucketId      string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
-	Queries       []string               `protobuf:"bytes,2,rep,name=queries,proto3" json:"queries,omitempty"`
-	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	BucketId string                 `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`
+	// 不支持：storage 面不消费查询过滤，携带即 InvalidArgument（服务端显式
+	// 拒绝，不再静默忽略）。文件定位用 bucket_id 路径参数 + 分页。
+	Queries       []string `protobuf:"bytes,2,rep,name=queries,proto3" json:"queries,omitempty"`
+	PageSize      int32    `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string   `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

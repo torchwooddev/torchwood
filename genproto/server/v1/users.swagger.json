@@ -18,6 +18,7 @@
   "paths": {
     "/v1/server/users": {
       "get": {
+        "summary": "ListUsers 的 queries（shared.v1.ListRequest）是**静态表面 DSL**：经\nParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性），\n独立于文档查询栈的单 typed AST——勿与 databases 的 Query 混用。",
         "operationId": "UsersService_ListUsers",
         "responses": {
           "200": {
@@ -61,6 +62,7 @@
           },
           {
             "name": "queries",
+            "description": "queries 是静态表面遗留的 Appwrite 风格 DSL 串通道，与文档查询栈的单\ntyped AST（shared.v1.Query）相互独立。消费面：users ListUsers 经\nParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性）；\nstorage buckets/files 不支持——携带即 InvalidArgument（显式拒绝，不\n静默忽略）；其余使用本消息的面以各自 handler 的显式行为为准。",
             "in": "query",
             "required": false,
             "type": "array",

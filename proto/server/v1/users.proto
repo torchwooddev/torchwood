@@ -71,6 +71,9 @@ service UsersService {
     option (google.api.http) = { post: "/v1/server/users", body: "*" };
   }
 
+  // ListUsers 的 queries（shared.v1.ListRequest）是**静态表面 DSL**：经
+  // ParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性），
+  // 独立于文档查询栈的单 typed AST——勿与 databases 的 Query 混用。
   rpc ListUsers(shared.v1.ListRequest) returns (ListUsersResponse) {
     option (google.api.http) = { get: "/v1/server/users" };
   }

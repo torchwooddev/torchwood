@@ -22,12 +22,17 @@ const (
 )
 
 type ListRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Filter        string                 `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
-	OrderBy       string                 `protobuf:"bytes,4,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
-	Queries       []string               `protobuf:"bytes,5,rep,name=queries,proto3" json:"queries,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	PageSize  int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	Filter    string                 `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
+	OrderBy   string                 `protobuf:"bytes,4,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
+	// queries 是静态表面遗留的 Appwrite 风格 DSL 串通道，与文档查询栈的单
+	// typed AST（shared.v1.Query）相互独立。消费面：users ListUsers 经
+	// ParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性）；
+	// storage buckets/files 不支持——携带即 InvalidArgument（显式拒绝，不
+	// 静默忽略）；其余使用本消息的面以各自 handler 的显式行为为准。
+	Queries       []string `protobuf:"bytes,5,rep,name=queries,proto3" json:"queries,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

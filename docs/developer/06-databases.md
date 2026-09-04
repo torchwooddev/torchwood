@@ -13,10 +13,10 @@
 |---|---|---|
 | 领域 | `internal/domain/databases/` | Document/Collection/Attribute/Index/Permission/Principal 模型，权限判定（`AllowsDocumentAccess`/`CollectionAllows` 等），`DocumentDB` 三端口（`repository.go`：Catalog / SchemaApplier / Documents） |
 | 查询 | `pkg/query/`（客户端语法糖解析器 + 程序化构造器 + `ToWireJSON`）+ `pkg/query/proto/`（proto→AST 编解码） | 单 typed AST（C7）：`shared.v1.Query` 是服务端唯一消费形态；DSL 串仅作 SDK/CLI 客户端糖 |
-| 适配器 | `internal/infra/documentdb/`（同包 7 文件） | catalog 寻址、collection DDL、文档 CRUD（OCC/Upsert/Bulk/advisor lock）、查询编译与执行、权限 SQL 下推、SQLSTATE 翻译 |
+| 适配器 | `internal/infra/documentdb/`（同包 8 文件，含 `catalog_codec.go` JSONB 编解码） | 全局 catalog 寻址（public 两表 + 物理名解析）、collection DDL、文档 CRUD（OCC/Upsert/Bulk/advisor lock）、查询编译与执行、权限 SQL 下推、SQLSTATE 翻译 |
 | 应用 | `internal/app/documents/`（Client/Server 共用核）+ `internal/app/server|client` 的 Databases 用例 | 用例守卫（sentinel 拒绝/标识校验/系统集合拦截/disabled）、空 ACE 种子、grant 展开/校验、错误映射 |
 | 数据面 | `internal/infra/projectschema/` + `pkg/ident/` | 项目 schema 生命周期（Apply/迁移/孤儿对账/缓存失效桥接）、两段式寻址与标识规则（≤28 字符） |
-| 迁移 | `db/migrations/`（public 控制面）+ `internal/infra/projectschema/migrations/`（项目数据面模板） | catalog/outbox 控制面演进；新项目一次性建面 + 存量 `EnsureAll` 自愈 |
+| 迁移 | `db/migrations/`（public 控制面，含全局 catalog 两表 000025）+ `internal/infra/projectschema/migrations/`（项目数据面模板，legacy 四表已随 000001 no-op + 000011 DROP 退役） | catalog/outbox 控制面演进；新项目一次性建面 + 存量 `EnsureAll` 自愈 |
 | 事件 | `internal/infra/events/`（outbox + worker）→ `internal/infra/realtime/`（subscriber/hub/stream） | 写路径同事务落 `document_events_outbox` → Redis Pub/Sub → hub 按快照 ACL 过滤扇出（`VisibleTo`），出站帧剥 ACL |
 | 分页 | `pkg/crud/pagination.go`（HMAC 签名 offset token，静态表/控制面列表用）+ documentdb `ka:/kb:` keyset token | 文档面 keyset-only（C2 阶段①）：`ListDocuments` 只发/只认 keyset token；offset token 族仅存于 `pkg/crud` 静态表路径 |
 | 幂等 | `internal/domain/databases/idempotency.go`（端口）+ `internal/infra/bun/bunrepo/idempotency_repo.go` + `internal/app/documents/idempotency.go`（核层包裹） | `request_id` 写幂等（public.`idempotency_keys`）：只缓存成功响应、24h 重放、KEY_CONFLICT/IN_PROGRESS 域码 |
@@ -36,7 +36,7 @@ Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Func
 6. **权限语义对齐**：SQL 过滤谓词（`listPermissionFilter`）与内存判定（`AllowsDocumentAccess`）必须逐语义一致，改动需同步两侧与测试（`permissions_test.go`）。
 7. **事件语义**：at-least-once、不保证顺序；客户端按 `event_id` 去重、按 `version` 判序；出站帧永不含 ACL 快照。
 8. **默认私有**：`DefaultCollectionPermissions` 不含 `read:any`；空 ACE 文档按种子规则私有化（owner/创建者角色/`__private__`）。
-9. **标识长度**：`project.id/database.id ≤ 28`（schema 名 ≤60 字节，`pkg/ident`）；`collectionID ≤40`、属性 key ≤63、索引 ID ≤40（app 层入口），叠加索引名拼接校验 `idx_<coll>_<id>` ≤63（infra 二道防线：表/列名 ≤63 + 组合校验——静态段上限封不死组合长度）。PG 63 字节截断类缺陷已机制性封死；redesign 阶段②逻辑/物理名解耦后上限将收紧（collectionID ≤36）并随物理名分配退役。
+9. **标识长度**：`project.id/database.id ≤ 28`（schema 名 ≤60 字节，`pkg/ident`）；`collectionID ≤40`（`^[a-zA-Z_][a-zA-Z0-9_]*$`，字符集维持——`[a-z0-9-]` 放宽挂账待需求信号）、属性 key ≤63、索引 ID ≤40（app 层入口）。**逻辑/物理名已解耦（阶段②包 B）**：新集合物理表名服务端分配 `c_<base32(8)>`（全局唯一 + 碰撞重试），DDL/行查询/索引名（`idx_<phys>_<id>`）全部走物理名，63 字节截断类缺陷对业务集合机制性不可达；逻辑名上的长度与组合校验保留（app 入口约束 + infra 二道防线防 adapter 直调）；sentinel 系统集合物理名 = 逻辑名（静态表）。
 10. **查询单栈（C7）**：wire 只收 `query`（typed AST，`shared.v1.Query`）；`queries` DSL 字符串字段已 reserved，服务端文档查询栈零字符串解析（`ResolveQuery`/`astFrom` 无 ParseMany 回退）。算子全集 `eq ne lt lte gt gte in between notBetween isNull isNotNull contains notContains startsWith notStartsWith endsWith notEndsWith search notSearch + and/or`（嵌套深度 ≤8；无通用 NOT，取反由 not* 变体承担——索引友好）；`select` 投影。DSL 串是 SDK/CLI 的客户端糖（`pkg/query.Parse/ParseMany`、`sdk/go/query.FromDSL`），解析为 AST 后发送。跨 filter 绑定参数累计 ≤2000（封死 PG 65535 语句参数上限）。
 11. **写幂等（redesign §4.1/§10.1）**：携带 `request_id` 的写请求键作用域 `(project_id, actor_id, request_id)`；只缓存成功响应（失败释放、重试重新执行）；同 key 异体 → `IDEMPOTENCY.KEY_CONFLICT`；并发同 key 短轮询 ≤2s 后仍 in-flight → `IDEMPOTENCY.IN_PROGRESS`；重放返回原响应 + `x-torchwood-replayed: true` 响应头；done TTL 24h、in_flight 兜底 TTL 5min、惰性清理。
 12. **keyset-only（redesign C2 完成态）**：`ListDocuments` 只发/只认 `ka:/kb:` token；`offset()` 算子与非 keyset token 一律 `InvalidArgument`；ORDER BY = 全部排序键 + `_id` tiebreaker（方向随首键），keyset 谓词按方向行比较或逐键 OR 展开（多键游标完整支持，token 仍只编码 docID + 服务端查行取全部键值）。`ListCollections` 的 offset 分页维持到阶段②。
@@ -46,11 +46,11 @@ Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Func
 
 | 层 | Schema 形态 | 技术 | 关键表 |
 |---|---|---|---|
-| `public` 控制面 + 事件脊柱 | 固定 `public` | `bun` + `golang-migrate`（`db/migrations/`） | `projects`/`admins`/`admin_projects`/`api_keys`/`audit_logs`/`provider_resource_index`/`document_events_outbox`+`_dead` |
-| 项目数据面 `tw_<project>` | 一段式 `tw_<p>` | `bun` + `internal/infra/projectschema/` | 静态表 `users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files` + 目录 `document_databases`/`document_collections`/`document_attributes`/`document_indexes` + 账本/Functions/OAuth |
-| 业务文档面 `tw_<project>_<database>` | 两段式 `tw_<p>_<db>` | 原生 SQL（`documentdb`） | 每个 `database.id` 一个 schema，只放用户 collection 真实表 + 每业务 schema 一张 `_perms` |
+| `public` 控制面 + 事件脊柱 | 固定 `public` | `bun` + `golang-migrate`（`db/migrations/`） | `projects`/`admins`/`admin_projects`/`api_keys`/`audit_logs`/`provider_resource_index`/`document_events_outbox`+`_dead` + **全局 catalog 两表 `catalog_databases`/`catalog_collections`**（000025，阶段②） |
+| 项目数据面 `tw_<project>` | 一段式 `tw_<p>` | `bun` + `internal/infra/projectschema/` | 静态表 `users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files` + 账本/Functions/OAuth（**文档目录已全局化迁出**，legacy 四表随 projectschema 000011 退役） |
+| 业务文档面 `tw_<project>_<database>` | 两段式 `tw_<p>_<db>` | 原生 SQL（`documentdb`） | 每个 `database.id` 一个 schema，只放用户 collection 物理表（`c_<base32(8)>` 服务端分配，阶段②）+ 每业务 schema 一张 `_perms` |
 
-`default` 是首个业务库（普通库，可删可重建）；系统静态表不再是文档集合（`internal/infra/projectschema/migrator.go` 在 `CreateProject` 同事务 `CREATE SCHEMA` + `Apply`，进程启动 `EnsureAll` 自愈）。
+`default` 是首个业务库（普通库，可删可重建）；系统静态表不再是文档集合（`internal/infra/projectschema/migrator.go` 在 `CreateProject` 同事务 `CREATE SCHEMA` + `Apply`，进程启动 `EnsureAll` 自愈）。**catalog 全局化（redesign §4.2/C1/G1）**：catalog 是 cluster 内全局的两张 public 表——`catalog_databases` 简单行 + `catalog_collections` 把 attrs/indexes/permissions 以 JSONB 列合一（含 default/size/array 全量属性契约、`physical_name`、`schema_version`、`ddl_seq` 乐观锁）；GetCollection 热路径从 3 查询（四表时代）收敛为 1；每项目四表模型与模板退役（projectschema 000001 no-op + 000011 DROP 存量，POC 无数据搬迁）。
 
 ## 2 标识与 Schema 规则
 
@@ -82,10 +82,10 @@ conn.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(s
 
 **静态表**（`tw_<project>`，`internal/infra/bun/model/*.go`）：`users`/`sessions`/`identities`/`groups`/`memberships`/`buckets`/`files`，`bun` 模型，无 `_id`/`_perms`/`_version`，经 Account / Groups / Storage 专用 RPC 读写。`SystemCollectionIDs` 仍在 `internal/domain/databases/system_collections.go` 仅用于 DocumentDB 跳过 `_version`/写保护与测试重建。`users.DocumentData()` 投影**不含 `password_hash`**（密码校验走 `usersRepo` 的 `User.PasswordHash`）。
 
-**动态表**（`tw_<project>_<db>.<collection>`，每集合一张真实表）：
+**动态表**（`tw_<project>_<db>.<物理名>`，每集合一张真实表）：**物理表名由服务端分配**（`c_<base32(8)>` 小写字母数字，全局唯一 + 碰撞重试；sentinel 系统集合物理名 = 逻辑名，指向静态表）——逻辑 collectionID 与物理表名解耦（redesign §4.2 标识符治理，阶段②），DDL 与行查询经 `resolvePhysicalTable` 单条 catalog 点查解析（sentinel 直通零查询；bypass/System 聚合与列表路径同样可用），**物理名不出现在任何 API 响应**；`_perms._collection` 键与 realtime 频道保持逻辑 collectionID。
 
 ```sql
-CREATE TABLE tw_shop_app.posts (
+CREATE TABLE tw_shop_app.c_ab12cd34 (
   _id TEXT NOT NULL, _tenant BIGINT NOT NULL DEFAULT 1,
   _created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   _updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -94,25 +94,27 @@ CREATE TABLE tw_shop_app.posts (
   -- 每个 attribute 一列（pgTypeFor 映射）
   PRIMARY KEY (_tenant, _id)
 );
+CREATE INDEX idx_c_ab12cd34_tenant_created ON tw_shop_app.c_ab12cd34 (_tenant, _created_at, _id);
 CREATE TABLE tw_shop_app._perms (
   _id BIGSERIAL PRIMARY KEY, _tenant BIGINT NOT NULL,
-  _collection TEXT NOT NULL, _document TEXT NOT NULL,
+  _collection TEXT NOT NULL, -- 逻辑 collectionID，不随物理名漂移
+  _document TEXT NOT NULL,
   _type TEXT NOT NULL, _permission TEXT NOT NULL,
   UNIQUE (_tenant,_collection,_document,_type,_permission)
 );
 ```
 
-目录位于项目面：`document_databases` → `document_collections`（含 `permissions`/`document_security`/`disabled`/`is_system`）→ `document_attributes` → `document_indexes`。`DeleteCollection` 同步清理 `_perms` 行，防同名重建泄漏。
+目录位于 **public 全局两表**（`catalog_databases` → `catalog_collections` 合一行，attrs/indexes/permissions 为 JSONB 列，含 `physical_name`/`ddl_seq`）。`DeleteCollection` 同步清理 `_perms` 行，防同名重建泄漏。**ddl_seq 乐观锁**（redesign §4.4）：五个元数据写路径（UpdateCollection/CreateAttribute/CreateIndex/DeleteAttribute/DeleteIndex）CAS 递增（`UPDATE ... WHERE ddl_seq = ?`），0 行 → `CATALOG.DDL_CONFLICT`（InvalidArgument，retryable——调用方重读 catalog 后重试）；`schema_version` 仅立列（演进状态机挂账 §4.6）。**索引名** `idx_<物理名>_<索引ID>`：物理名 ≤10 字符使组合长度自然 ≤63（截断类缺陷机制性不可达）；逻辑名上的组合校验保留（防 adapter 直调）。
 
 ## 5 Attribute / Index 动态管理
 
 | 操作 | SQL |
 |---|---|
-| `CreateAttribute` | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + 写 `document_attributes`（含 `default_value`），`required→NOT NULL`、`default→DEFAULT` |
-| `DeleteAttribute` | `ALTER TABLE ... DROP COLUMN IF EXISTS` + 同事务清理依赖该列的索引（`postgres_permissions.go:DeleteAttribute`） |
-| `CreateIndex` | `CREATE INDEX idx_<coll>_<idx> ON <tbl>(cols)` / `UNIQUE` / `USING gin(to_tsvector('simple', col))` + 写 `document_indexes`；索引名拼接 ≤63 校验（`validateIndexNameLen`） |
-| `DeleteIndex` | `DROP INDEX IF EXISTS` + 删目录（`RunInTx` 原子，`DeleteIndex`） |
-| `UpdateCollection` | 权限替换与字段更新同一事务，统一刷 `updated_at`（空 patch no-op） |
+| `CreateAttribute` | `ALTER TABLE <物理名> ADD COLUMN IF NOT EXISTS` + attrs JSONB 追加（含 default）+ ddl_seq CAS，`required→NOT NULL`、`default→DEFAULT` |
+| `DeleteAttribute` | `ALTER TABLE <物理名> DROP COLUMN IF EXISTS` + 同事务清理依赖该列的索引（`postgres_permissions.go:DeleteAttribute`）+ attrs/indexes JSONB 回写 + CAS |
+| `CreateIndex` | `CREATE INDEX idx_<物理名>_<idx> ON <物理名>(cols)` / `UNIQUE` / `USING gin(to_tsvector('simple', col))` + indexes JSONB 追加 + CAS（组合长度对物理名自然 ≤63） |
+| `DeleteIndex` | `DROP INDEX IF EXISTS` + indexes JSONB 删除 + CAS（`RunInTx` 原子，`DeleteIndex`） |
+| `UpdateCollection` | 权限替换与字段更新同一 UPDATE，统一刷 `updated_at` + ddl_seq CAS（空 patch no-op；并发冲突 → `CATALOG.DDL_CONFLICT`） |
 
 类型映射（`pgTypeFor`）：`string/email/url→VARCHAR(n)/TEXT`、`integer→BIGINT`、`float→DOUBLE PRECISION`、`boolean→BOOLEAN`、`datetime→TIMESTAMPTZ`、`json→JSONB`。
 
@@ -239,6 +241,7 @@ wire := parsed.ToWireJSON() // CLI/工具直连 JSON 请求面
 ## 12 测试与参考
 
 - 集成 `internal/infra/documentdb/postgres_test.go`（`testing.Short` 跳过），`internal/testutil/db.go:SetupTestDB` 按 `TORCHWOOD_TEST_DATABASE_SOURCE` 创建隔离库（`pg_terminate_backend` + `DROP DATABASE`）。
+- **全局 catalog / 物理名（阶段②包 A/B）**：`postgres_catalog_global_test.go`（codec 全字段往返、public 两表 CRUD 落点、GetCollection 单查询 QueryHook 计数、并发建集 AlreadyExists、物理名预留形态）；`postgres_physical_name_test.go`（两集合物理表隔离与删除清理、物理名不出现在 API 响应、bypass/System 路径、`_perms` 保持逻辑 ID、ddl_seq 五路径递增与并发冲突 `CATALOG.DDL_CONFLICT`、索引名组合校验对物理名自然满足）；`migrations_cycle_test.go` 锁 public 迁移 up/down 对称（含 000025）。
 - `pkg/query/query_test.go`（DSL 糖 + 构造器）、`pkg/query/proto/proto_test.go`（每算子编解码往返）、`postgres_query_compile_test.go`（每算子 SQL + keyset 谓词形态）、`permissions_test.go` 覆盖算子/转义/白名单/敏感列/权限分支；`TestPostgresDocumentDocuments_MultiKeyCursor` 锁多键跨页不丢不重。
 - **DSL 文法 parity 锁**：`pkg/query/testdata/dsl_ast_golden.json`（47 条，含 10 错误条目）是根模块解析器与 `sdk/go/query.FromDSL` 的**共同仲裁语料**——两侧 golden 测试以中立 JSON 形态比对；`root`/`sdk` override 块表达设计内的单侧契约差异（如 offset：根侧通用解析器支持、SDK 糖按文档面 keyset-only 拒绝）。改语料须在 commit message 给出理由，禁止单方删条目。
 - `pkg/crud/`：AIP-132/158/160 抽象，`filter.go`/`order.go`/`pagination.go` 供静态表列表复用，动态文档优先 `pkg/query`。
