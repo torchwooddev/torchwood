@@ -2,8 +2,15 @@ package clients
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/torchwooddev/torchwood/pkg/uow"
 	"github.com/uptrace/bun"
@@ -91,6 +98,24 @@ func SameExecIdentity(a, b ExecIdentity) bool {
 // 供两类调用方使用：RunInTx 的 BEGIN 后首注，与事务中段的身份切换（如尾随
 // 读回 SystemPrincipal）；中段切换的调用方负责退出前恢复（ResetExecIdentity
 // 或回注外层身份），保证 ctx 身份与连接角色在边界一致。
+//
+// roles_sig（阶段③-b 包 C，A2 简化版）：tw_app 身份同时注入 app.roles_sig =
+// HMAC-SHA256(密钥, roles||'|'||exp)（"<exp>|<hexmac>"，60s 窗口），供
+// tw_roles() 验签——app.roles GUC 本身可被任何持 SQL 会话者 set_config 伪造，
+// 验签后伪造通道封死（密钥仅存在于 Go 进程与 tw_secrets 表，tw_app 不可读）。
+// 密钥未初始化时不注入 sig → tw_roles() 验签失败 → 零角色 fail-closed
+//（与漏注入同语义）。
+// InjectExecIdentity 在当前事务连接上注入执行身份（SET LOCAL ROLE + set_config）。
+// 供两类调用方使用：RunInTx 的 BEGIN 后首注，与事务中段的身份切换（如尾随
+// 读回 SystemPrincipal）；中段切换的调用方负责退出前恢复（ResetExecIdentity
+// 或回注外层身份），保证 ctx 身份与连接角色在边界一致。
+//
+// roles_sig（阶段③-b 包 C，A2 简化版）：tw_app 身份同时注入 app.roles_sig =
+// HMAC-SHA256(密钥, roles||'|'||exp)（"<exp>|<hexmac>"，60s 窗口），供
+// tw_roles() 验签——app.roles GUC 本身可被任何持 SQL 会话者 set_config 伪造，
+// 验签后伪造通道封死（密钥仅存在于 Go 进程与 tw_secrets 表，tw_app 不可读）。
+// 密钥未初始化时不注入 sig → tw_roles() 验签失败 → 零角色 fail-closed
+//（与漏注入同语义）。
 func InjectExecIdentity(ctx context.Context, idb bun.IDB, id ExecIdentity) error {
 	switch id.Role {
 	case RoleApp, RoleOwner, RoleSystem:
@@ -98,25 +123,100 @@ func InjectExecIdentity(ctx context.Context, idb bun.IDB, id ExecIdentity) error
 		// 角色名拼入 SQL：仅接受固定白名单，拒绝任意输入。
 		return fmt.Errorf("invalid exec role %q", id.Role)
 	}
-	// pgdriver 全程 simple protocol（客户端插参）：两条注入语句合并为单次
-	// 往返（A1 原型验证结论）。
-	_, err := idb.ExecContext(ctx,
-		fmt.Sprintf(`SET LOCAL ROLE %s; SELECT set_config('app.roles', ?, true)`, id.Role),
-		strings.Join(id.Roles, rolesSeparator),
-	)
+	// pgdriver 全程 simple protocol（客户端插参）：注入语句合并为单次往返
+	//（A1 原型验证结论）。
+	roles := strings.Join(id.Roles, rolesSeparator)
+	stmt, args := injectIdentitySQL(id.Role, roles)
+	_, err := idb.ExecContext(ctx, fmt.Sprintf(stmt, id.Role), args...)
 	if err != nil {
 		return fmt.Errorf("inject exec identity %s: %w", id.Role, err)
 	}
 	return nil
 }
 
+// injectIdentitySQL 返回（带一个 %s 角色位占位的）注入语句与绑定参数：
+// tw_app 且密钥已初始化时附带 roles_sig 签名（两个 set_config 同语句），
+// 其余角色仅注入 roles。
+func injectIdentitySQL(role, roles string) (string, []any) {
+	if role == RoleApp {
+		if keyHex, ok := RolesSigKeyHex(); ok {
+			return `SET LOCAL ROLE %s; SELECT set_config('app.roles', ?, true), set_config('app.roles_sig', ?, true)`,
+				[]any{roles, SignRolesSig(keyHex, roles, time.Now())}
+		}
+	}
+	return `SET LOCAL ROLE %s; SELECT set_config('app.roles', ?, true)`, []any{roles}
+}
+
 // ResetExecIdentity 把连接恢复为 authenticator 本身份（RESET ROLE）并清空
-// app.roles——用于无外层身份的事务中段切换退出（复合 uow 事务回到 DSN 用户）。
+// app.roles/app.roles_sig——用于无外层身份的事务中段切换退出（复合 uow 事务
+// 回到 DSN 用户）。
 func ResetExecIdentity(ctx context.Context, idb bun.IDB) error {
 	if _, err := idb.ExecContext(ctx,
-		`RESET ROLE; SELECT set_config('app.roles', '', true)`,
+		`RESET ROLE; SELECT set_config('app.roles', '', true), set_config('app.roles_sig', '', true)`,
 	); err != nil {
 		return fmt.Errorf("reset exec identity: %w", err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// roles_sig 密钥派生与签名（阶段③-b 包 C，A2；page-token 同模式：
+// pkg/crud pagination.go 的 purpose 派生 + 进程级 atomic Init）
+// ---------------------------------------------------------------------------
+
+// RolesSigPurpose 是 roles GUC 签名的密钥派生域（HMAC-SHA256(master, purpose)）。
+const RolesSigPurpose = "tw-roles-guc-v1"
+
+// rolesSigTTL 是签名有效期窗口（注入时刻起 60s：文档事务为短事务，窗口
+// 同时是 DB 时钟偏差容差）。
+const rolesSigTTL = 60 * time.Second
+
+var rolesSigKeyHex atomic.Value // string
+
+// InitRolesSigKey 以主密钥（security.jwt.secret）进程内派生 roles 签名密钥
+//（hex）。组合根启动期调用（server/worker 各自一次），随后由启动钩子
+// UPSERT 进 public.tw_secrets 供 tw_roles() 验签（documentdb.SyncRolesSigKey）。
+func InitRolesSigKey(master string) error {
+	if strings.TrimSpace(master) == "" {
+		return fmt.Errorf("roles sig signing requires a non-empty master secret")
+	}
+	mac := hmac.New(sha256.New, []byte(master))
+	_, _ = mac.Write([]byte(RolesSigPurpose))
+	rolesSigKeyHex.Store(hex.EncodeToString(mac.Sum(nil)))
+	return nil
+}
+
+// RolesSigKeyHex 返回进程内派生的 roles 签名密钥（hex）；未初始化时 ok=false
+//（此时 tw_app 注入不带 sig，DB 侧验签 fail-closed）。
+func RolesSigKeyHex() (string, bool) {
+	v, ok := rolesSigKeyHex.Load().(string)
+	return v, ok && v != ""
+}
+
+// SignRolesSig 生成 app.roles_sig 的值："<exp_unix>|<hexmac>"，mac =
+// HMAC-SHA256(keyHex, roles + "|" + exp)。exp 由 now+TTL 起算。
+func SignRolesSig(keyHex, roles string, now time.Time) string {
+	exp := now.Add(rolesSigTTL).Unix()
+	mac := hmac.New(sha256.New, []byte(keyHex))
+	_, _ = mac.Write([]byte(roles + "|" + strconv.FormatInt(exp, 10)))
+	return strconv.FormatInt(exp, 10) + "|" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// SyncRolesSigKey 把进程内派生的 roles 签名密钥 UPSERT 进 public.tw_secrets
+//（迁移 000029），供 tw_roles() 验签——server/worker 启动钩子（bootkit）调用，
+// 以 authenticator（表 owner）身份执行。滚动轮换：改 security.jwt.secret 后
+// 重启，本函数覆盖旧行即完成换钥（单密钥，双钥窗口挂账转出 POC 前）。
+func SyncRolesSigKey(ctx context.Context, db *Database) error {
+	keyHex, ok := RolesSigKeyHex()
+	if !ok {
+		return errors.New("roles sig key not initialized (call InitRolesSigKey first)")
+	}
+	if _, err := db.Conn(ctx).ExecContext(ctx,
+		`INSERT INTO public.tw_secrets (purpose, key_hex) VALUES (?, ?)
+		 ON CONFLICT (purpose) DO UPDATE SET key_hex = EXCLUDED.key_hex, updated_at = NOW()`,
+		RolesSigPurpose, keyHex,
+	); err != nil {
+		return fmt.Errorf("sync roles sig key: %w", err)
 	}
 	return nil
 }

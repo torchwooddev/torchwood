@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	config "github.com/torchwooddev/torchwood/internal/pkg/config"
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/pkg/crud"
 )
 
@@ -69,6 +70,17 @@ func ValidateJWTSecret(secret string) error {
 func InitPageTokenSigning(c *config.AppConfig) error {
 	if err := crud.InitPageTokenSigning(c.GetSecurity().GetJwt().GetSecret()); err != nil {
 		return fmt.Errorf("init page token signing: %w", err)
+	}
+	return nil
+}
+
+// InitRolesSigSigning 启用 roles GUC 签名密钥的进程内派生（阶段③-b 包 C，A2：
+// HMAC-SHA256(jwt.secret, "tw-roles-guc-v1")，page-token 同模式）。密钥随后由
+// RolesSigKeySyncHook 落库（tw_secrets），tw_roles() 验签消费——server 注入、
+// worker 不跑 tw_app 业务查询但同步无害（幂等 UPSERT，滚动重启即换钥）。
+func InitRolesSigSigning(c *config.AppConfig) error {
+	if err := clients.InitRolesSigKey(c.GetSecurity().GetJwt().GetSecret()); err != nil {
+		return fmt.Errorf("init roles sig signing: %w", err)
 	}
 	return nil
 }

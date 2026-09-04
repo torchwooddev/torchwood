@@ -42,7 +42,7 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 // 包 A）在同一事务内写入，无跨表权限步骤；权限写入失败导致文档 fail-open 的
 // 窗口从结构上消灭。
 func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return doc, err
 	}
@@ -88,17 +88,9 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 		placeholders += "?, ?"
 		args = append(args, createdBy, createdBy)
 	}
-	// _acl 内嵌（阶段③包 A）：非空权限集随 INSERT 一并写入，替代 _perms
-	// 表的 setPermissions；数据与 ACE 同行同事务，原子性由单语句保证。
-	if len(perms) > 0 {
-		if columns != "" {
-			columns += ", "
-			placeholders += ", "
-		}
-		columns += quoteIdent("_acl")
-		placeholders += "?::text[]"
-		args = append(args, aclParam(perms))
-	}
+	// _acl 不随 INSERT 携带（阶段③-b 包 C：INSERT 列授权已移除 _acl，行内
+	// DEFAULT '{}' 兜底空 ACL）；非空权限集在同事务内经 tw_set_document_acl
+	// 补设——数据与 ACE 仍同行同事务，原子性不变。
 	args = append([]any{doc.ID}, args...)
 	allPlaceholders := "?"
 	if columns != "" {
@@ -111,6 +103,11 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 			return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 		}
 		return doc, fmt.Errorf("insert document: %w", err)
+	}
+	if len(perms) > 0 {
+		if err := p.setDocumentACL(ctx, schema, physical, internalID, doc.ID, perms); err != nil {
+			return doc, fmt.Errorf("seed document acl: %w", err)
+		}
 	}
 	created, err := p.GetDocument(ctx, projectID, databaseID, collectionID, doc.ID, databases.SystemPrincipal)
 	if err != nil {
@@ -275,16 +272,8 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 		args = append(args, createdBy, createdBy)
 	}
 	if targetID == "" {
-		// 插入支：_acl 随 INSERT 携带（阶段③包 A 语义，INSERT 无旧行复检）。
-		if len(perms) > 0 {
-			if columns != "" {
-				columns += ", "
-				placeholders += ", "
-			}
-			columns += quoteIdent("_acl")
-			placeholders += "?::text[]"
-			args = append(args, aclParam(perms))
-		}
+		// 插入支：_acl 不随 INSERT 携带（INSERT 列授权已移除，阶段③-b 包 C），
+		// 非空权限集随后经 tw_set_document_acl 补设（同事务）。
 		args = append([]any{doc.ID}, args...)
 		allPlaceholders := "?"
 		if columns != "" {
@@ -297,6 +286,11 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 				return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 			}
 			return doc, fmt.Errorf("upsert document: %w", err)
+		}
+		if len(perms) > 0 {
+			if err := p.setDocumentACL(ctx, schema, physical, internalID, doc.ID, perms); err != nil {
+				return doc, fmt.Errorf("seed upserted acl: %w", err)
+			}
 		}
 	} else {
 		// 更新支：数据 + 审计列盲写（不做 OCC），用户集合 _version +1；_acl 不进
@@ -326,26 +320,13 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 			return doc, fmt.Errorf("%w", databases.ErrDocumentNotFound)
 		}
 	}
-	// 更新支的 _acl 替换（tw_system 第二语句）：作用于目标行（effectiveID）；
-	// 行级权限已由语句的 WITH CHECK（create）与 UPDATE USING（update）共同裁决。
+	// 更新支的 _acl 替换（tw_set_document_acl，阶段③-b 包 C）：作用于目标行
+	//（effectiveID）；行级权限已由语句的 WITH CHECK（create）与 UPDATE USING
+	//（update）共同裁决。tw_system 身份切换的第二语句路径已退役（函数
+	// SECURITY DEFINER owner=tw_system 承载 BYPASSRLS 语义）。
 	if targetID != "" && len(perms) > 0 {
-		if err := p.withDocumentTx(ctx, systemExecIdentity(), func(sysCtx context.Context) error {
-			res, err := p.conn(sysCtx).ExecContext(sysCtx,
-				fmt.Sprintf(`UPDATE %s SET %s = ?::text[] WHERE _id = ? AND _tenant = ?`, tbl, quoteIdent("_acl")),
-				aclParam(perms), effectiveID, internalID)
-			if err != nil {
-				return err
-			}
-			n, err := res.RowsAffected()
-			if err != nil {
-				return err
-			}
-			if n != 1 {
-				return fmt.Errorf("replace upserted acl: expected 1 row, got %d", n)
-			}
-			return nil
-		}); err != nil {
-			return doc, err
+		if err := p.setDocumentACL(ctx, schema, physical, internalID, effectiveID, perms); err != nil {
+			return doc, fmt.Errorf("replace upserted acl: %w", err)
 		}
 	}
 	upserted, err := p.GetDocument(ctx, projectID, databaseID, collectionID, effectiveID, databases.SystemPrincipal)
@@ -594,26 +575,13 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 			return doc, ErrPermissionDenied
 		}
 	}
-	// _acl 替换（tw_system 第二语句，阶段③包 C）：非空权限集整体替换（与旧
-	// "先清后写 _perms"同语义）；同事务原子生效。
+	// _acl 替换（tw_set_document_acl，阶段③-b 包 C）：非空权限集整体替换（与旧
+	// "先清后写 _perms"同语义）；同事务原子生效。tw_system 身份切换的第二语句
+	// 路径已退役（函数 SECURITY DEFINER owner=tw_system 承载 BYPASSRLS 语义，
+	// 自锁规避不变）。
 	if len(update.Permissions) > 0 {
-		if err := p.withDocumentTx(ctx, systemExecIdentity(), func(sysCtx context.Context) error {
-			res, err := p.conn(sysCtx).ExecContext(sysCtx,
-				fmt.Sprintf(`UPDATE %s SET %s = ?::text[] WHERE _id = ? AND _tenant = ?`, tbl, quoteIdent("_acl")),
-				aclParam(update.Permissions), doc.ID, internalID)
-			if err != nil {
-				return err
-			}
-			n, err := res.RowsAffected()
-			if err != nil {
-				return err
-			}
-			if n != 1 {
-				return fmt.Errorf("replace document acl: expected 1 row, got %d", n)
-			}
-			return nil
-		}); err != nil {
-			return doc, err
+		if err := p.setDocumentACL(ctx, schema, physical, internalID, doc.ID, update.Permissions); err != nil {
+			return doc, fmt.Errorf("replace document acl: %w", err)
 		}
 	}
 	// D5：尾随读回用 SystemPrincipal（与 CreateDocument 一致）——B1 下把文档权限

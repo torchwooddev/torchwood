@@ -6,6 +6,7 @@ package documentdb
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
@@ -24,9 +25,24 @@ func execIdentityFor(principal databases.Principal) clients.ExecIdentity {
 	return clients.ExecIdentity{Role: clients.RoleApp, Roles: expanded}
 }
 
-// systemExecIdentity 是尾随读回（D5）与事件快照取数用的系统身份。
-func systemExecIdentity() clients.ExecIdentity {
-	return clients.ExecIdentity{Role: clients.RoleSystem, Roles: databases.ExpandPermissionRoles(databases.SystemPrincipal.Roles)}
+// setDocumentACL 经 tw_set_document_acl（000029，SECURITY DEFINER owner=
+// tw_system，BYPASSRLS）替换文档 _acl——_acl 的变更通道唯一化为本函数
+//（应用身份直改的旁路从 INSERT/UPDATE 列授权封死，A6；BYPASSRLS 绕开
+// UPDATE 修改 SELECT policy 引用列的新行复检，自锁语义由此保留）。同事务、
+// 当前身份（tw_app，EXECUTE 已授）调用；p_table 在函数内经 catalog
+// physical_name 白名单校验（防注入）。返回受影响行数（调用方校验 ==1）。
+func (p *postgresDocumentDB) setDocumentACL(ctx context.Context, schema, physical string, tenant int64, docID string, perms []databases.Permission) error {
+	var n int64
+	if err := p.conn(ctx).QueryRowContext(ctx,
+		`SELECT public.tw_set_document_acl(?, ?, ?, ?, ?::text[])`,
+		schema, physical, tenant, docID, aclParam(perms),
+	).Scan(&n); err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("set document acl: expected 1 row, got %d", n)
+	}
+	return nil
 }
 
 // withDocumentTx 把文档面操作包进带执行身份的事务（读写同构，A1）。

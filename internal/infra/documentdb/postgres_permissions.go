@@ -545,36 +545,22 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 	if err := p.missingRowsError(ctx, tbl, missing, internalID); err != nil {
 		return 0, err
 	}
-	// _acl 替换（tw_system 第二语句，阶段③包 C）：仅作用于主语句实际更新过的
-	// 行（byID 键集）——不可见/不可写的行已在主语句处缺失并整体回滚。
+	// _acl 替换（tw_set_document_acl，阶段③-b 包 C）：仅作用于主语句实际更新过
+	// 的行（byID 键集）——不可见/不可写的行已在主语句处缺失并整体回滚。
+	// tw_system 身份切换的第二语句路径已退役（函数 SECURITY DEFINER owner=
+	// tw_system 承载 BYPASSRLS 语义）。
 	if len(perms) > 0 {
 		updatedIDs := make([]string, 0, len(byID))
 		for id := range byID {
 			updatedIDs = append(updatedIDs, id)
 		}
-		if err := p.withDocumentTx(ctx, systemExecIdentity(), func(sysCtx context.Context) error {
-			return eachIDChunk(updatedIDs, bulkInChunk, func(chunk []string) error {
-				sqlArgs := make([]any, 0, len(chunk)+2)
-				sqlArgs = append(sqlArgs, aclParam(perms), internalID)
-				for _, id := range chunk {
-					sqlArgs = append(sqlArgs, id)
-				}
-				res, err := p.conn(sysCtx).ExecContext(sysCtx, fmt.Sprintf(
-					`UPDATE %s SET _acl = ?::text[] WHERE _tenant = ? AND _id IN (%s)`,
-					tbl, inPlaceholders(len(chunk))),
-					sqlArgs...)
-				if err != nil {
+		if err := eachIDChunk(updatedIDs, bulkInChunk, func(chunk []string) error {
+			for _, id := range chunk {
+				if err := p.setDocumentACL(ctx, schema, physical, internalID, id, perms); err != nil {
 					return err
 				}
-				n, err := res.RowsAffected()
-				if err != nil {
-					return err
-				}
-				if n != int64(len(chunk)) {
-					return fmt.Errorf("replace bulk acl: expected %d rows, got %d", len(chunk), n)
-				}
-				return nil
-			})
+			}
+			return nil
 		}); err != nil {
 			return 0, err
 		}

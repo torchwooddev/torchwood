@@ -386,10 +386,11 @@ func TestRLS_Behavior_TenantColumnLocked(t *testing.T) {
 	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 	tbl := testSchema(t, projectID, "app") + "." + physical
 
-	err = db.RunInTx(ctx, func(txCtx context.Context) error {
-		if _, err := db.Conn(txCtx).ExecContext(txCtx, `SET LOCAL ROLE tw_app; SELECT set_config('app.roles', 'any', true)`); err != nil {
-			return err
-		}
+	// 手工 GUC 注入已不可见（roles_sig 验签，阶段③-b 包 C）：一律经
+	// WithExecIdentity（InjectExecIdentity 自动签名）。
+	err = db.RunInTx(clients.WithExecIdentity(ctx, clients.ExecIdentity{
+		Role: clients.RoleApp, Roles: []string{"any"},
+	}), func(txCtx context.Context) error {
 		_, err := db.Conn(txCtx).ExecContext(txCtx,
 			fmt.Sprintf(`UPDATE %s SET _tenant = 999 WHERE _id = 't1'`, tbl))
 		return err
@@ -399,22 +400,21 @@ func TestRLS_Behavior_TenantColumnLocked(t *testing.T) {
 
 	// SELECT _tenant 可读（查询谓词与载荷需要）。
 	var tenant int64
-	require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context) error {
-		if _, err := db.Conn(txCtx).ExecContext(txCtx, `SET LOCAL ROLE tw_app; SELECT set_config('app.roles', 'any', true)`); err != nil {
-			return err
-		}
+	require.NoError(t, db.RunInTx(clients.WithExecIdentity(ctx, clients.ExecIdentity{
+		Role: clients.RoleApp, Roles: []string{"any"},
+	}), func(txCtx context.Context) error {
 		return db.Conn(txCtx).QueryRowContext(txCtx,
 			fmt.Sprintf(`SELECT _tenant FROM %s WHERE _id = 't1'`, tbl)).Scan(&tenant)
 	}))
 	require.NotZero(t, tenant)
 }
 
-// TestRLS_Behavior_ACLColumnLockedToSystemPath（R13a）：_acl 的变更通道收敛为
-// 单一 choke point——同事务 tw_system 第二语句（自锁路径）。tw_app 即使注入
-// 正常 roles（policy 判定全放行）也不得直改 _acl：UPDATE 列级 GRANT 已排除
-// _acl（非自锁变更可过 SELECT policy 新行复检，该旁路必须从列权限上封死）。
-// 同步验证 reconcile 矫正：手动模拟存量表的旧授权形态（GRANT UPDATE(_acl)），
-// DDL touch 后被 REVOKE 重授形态矫正回锁死。
+// TestRLS_Behavior_ACLColumnLockedToSystemPath（R13a + 阶段③-b 包 C）：_acl 的
+// 变更通道唯一化为 tw_set_document_acl（000029，SECURITY DEFINER）。tw_app
+// 即使注入正常 roles（policy 判定全放行）也不得直改 _acl：UPDATE/INSERT 列级
+// GRANT 均已排除 _acl（非自锁变更可过 SELECT policy 新行复检，该旁路必须从
+// 列权限上双向封死）。同步验证 reconcile 矫正：手动模拟存量表的旧授权形态
+//（GRANT UPDATE(_acl)/INSERT(_acl)），DDL touch 后被 REVOKE 重授形态矫正回锁死。
 func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -438,7 +438,7 @@ func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
 	_, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
 		ID: "a1", Data: map[string]any{"title": "x"},
 	}, []databases.Permission{{Type: "read", Role: "user:alice"}, {Type: "update", Role: "user:alice"}}, alice)
-	require.NoError(t, err, "create 种子/显式 _acl 随 INSERT 携带（INSERT 列授权保留 _acl）")
+	require.NoError(t, err, "create 种子经 tw_set_document_acl 补设（INSERT 列授权已移除 _acl）")
 
 	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 	tbl := testSchema(t, projectID, "app") + "." + physical
@@ -460,7 +460,20 @@ func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
 	// SQLSTATE 路径映射为 PERMISSION_DENIED（mapError 语义）。
 	require.ErrorIs(t, docDB.mapError(err), ErrPermissionDenied)
 
-	// reconcile 矫正：模拟存量表旧授权形态（UPDATE 含 _acl），DDL touch 后恢复锁死。
+	// 阶段③-b 包 C：INSERT 携带 _acl 同样被列权限拒绝（应用身份不得种 _acl）。
+	err = db.RunInTx(clients.WithExecIdentity(ctx, clients.ExecIdentity{
+		Role:  clients.RoleApp,
+		Roles: []string{"users"},
+	}), func(txCtx context.Context) error {
+		_, err := db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(
+			`INSERT INTO %s (_id, _acl) VALUES ('evil', '{read:any}')`, tbl))
+		return err
+	})
+	require.Error(t, err, "tw_app INSERT 携带 _acl 必须被列权限拒绝")
+	require.Contains(t, err.Error(), "42501")
+
+	// reconcile 矫正：模拟存量表旧授权形态（UPDATE/INSERT 含 _acl），DDL touch
+	// 后恢复锁死。
 	_, err = db.ExecContext(ctx, fmt.Sprintf(`GRANT UPDATE (_acl) ON %s TO tw_app`, tbl))
 	require.NoError(t, err)
 	require.NoError(t, updateACLAsApp(), "模拟旧授权形态下直改放行（对照组，确认矫正必要性）")
@@ -475,8 +488,18 @@ func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
 	err = updateACLAsApp()
 	require.Error(t, err, "DDL touch 后旧授权形态必须被矫正（REVOKE ALL → 按清单重授）")
 	require.Contains(t, err.Error(), "42501")
+	err = db.RunInTx(clients.WithExecIdentity(ctx, clients.ExecIdentity{
+		Role:  clients.RoleApp,
+		Roles: []string{"users"},
+	}), func(txCtx context.Context) error {
+		_, err := db.Conn(txCtx).ExecContext(txCtx, fmt.Sprintf(
+			`INSERT INTO %s (_id, _acl) VALUES ('evil2', '{read:any}')`, tbl))
+		return err
+	})
+	require.Error(t, err, "DDL touch 后 INSERT(_acl) 旧授权形态同样被矫正")
 
-	// 自锁路径回归：tw_app 经 updateDocument 替换 _acl（system 第二语句）仍正常。
+	// 自锁路径回归：tw_app 经 updateDocument 替换 _acl（tw_set_document_acl
+	// 函数，BYPASSRLS definer）仍正常。
 	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{ID: "a1", Data: map[string]any{"title": "locked"}},
 		Permissions: []databases.Permission{
@@ -485,7 +508,7 @@ func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
 		},
 		ExpectedVersion: 1,
 	}, alice)
-	require.NoError(t, err, "自锁（system 第二语句路径）不受列级收紧影响")
+	require.NoError(t, err, "自锁（tw_set_document_acl 路径）不受列级收紧影响")
 	require.Equal(t, []databases.Permission{
 		{Type: "read", Role: "user:bob"},
 		{Type: "update", Role: "user:bob"},
@@ -520,10 +543,10 @@ func TestRLS_ExplainInitPlanGate(t *testing.T) {
 	tbl := testSchema(t, projectID, "app") + "." + physical
 
 	var plan strings.Builder
-	require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context) error {
-		if _, err := db.Conn(txCtx).ExecContext(txCtx, `SET LOCAL ROLE tw_app; SELECT set_config('app.roles', 'any', true)`); err != nil {
-			return err
-		}
+	// roles_sig（阶段③-b 包 C）：经 WithExecIdentity 注入（自动签名）。
+	require.NoError(t, db.RunInTx(clients.WithExecIdentity(ctx, clients.ExecIdentity{
+		Role: clients.RoleApp, Roles: []string{"any"},
+	}), func(txCtx context.Context) error {
 		rows, err := db.Conn(txCtx).QueryContext(txCtx,
 			fmt.Sprintf(`EXPLAIN (COSTS OFF) SELECT _id FROM %s`, tbl))
 		if err != nil {
@@ -572,18 +595,23 @@ func TestRLS_RelativeBenchmark(t *testing.T) {
 		tbl, internalID, rows))
 	require.NoError(t, err)
 
-	countAs := func(setRole string, withGUC bool) time.Duration {
+	countAs := func(role string, withRoles bool) time.Duration {
 		t.Helper()
+		var id clients.ExecIdentity
+		switch role {
+		case clients.RoleSystem:
+			id = clients.ExecIdentity{Role: clients.RoleSystem}
+		default:
+			// roles_sig（阶段③-b 包 C）：手工 set_config 注入无签名不可见，
+			// 一律经 WithExecIdentity（自动签名）。
+			id = clients.ExecIdentity{Role: clients.RoleApp, Roles: []string{"any"}}
+			if !withRoles {
+				id.Roles = nil
+			}
+		}
 		best := time.Duration(1 << 62)
 		for i := 0; i < 3; i++ {
-			require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context) error {
-				inject := fmt.Sprintf(`SET LOCAL ROLE %s`, setRole)
-				if withGUC {
-					inject += `; SELECT set_config('app.roles', 'any', true)`
-				}
-				if _, err := db.Conn(txCtx).ExecContext(txCtx, inject); err != nil {
-					return err
-				}
+			require.NoError(t, db.RunInTx(clients.WithExecIdentity(ctx, id), func(txCtx context.Context) error {
 				start := time.Now()
 				var n int
 				if err := db.Conn(txCtx).QueryRowContext(txCtx,
@@ -600,8 +628,8 @@ func TestRLS_RelativeBenchmark(t *testing.T) {
 		return best
 	}
 
-	offDur := countAs("tw_system", false)
-	onDur := countAs("tw_app", true)
+	offDur := countAs(clients.RoleSystem, false)
+	onDur := countAs(clients.RoleApp, true)
 	ratio := float64(onDur) / float64(offDur)
 	t.Logf("rls relative benchmark (rows=%d): rls_off=%v rls_on=%v ratio=%.1fx", rows, offDur, onDur, ratio)
 	require.Less(t, ratio, 30.0, "RLS 开/关 COUNT 比值超上限（InitPlan 化失效或逐行 SubPlan 退化）")

@@ -88,8 +88,19 @@ func SetupTestDB(t *testing.T) *clients.Database {
 	if err := runMigrations(ctx, db.DB); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+	// roles_sig（000029，阶段③-b 包 C）：进程内派生签名密钥并落库 tw_secrets，
+	// tw_roles() 验签依赖——漏接则所有 tw_app RLS 查询 fail-closed（测试红）。
+	if err := clients.InitRolesSigKey(TestRolesSigMaster); err != nil {
+		t.Fatalf("init roles sig key: %v", err)
+	}
+	if err := clients.SyncRolesSigKey(ctx, db); err != nil {
+		t.Fatalf("sync roles sig key: %v", err)
+	}
 	return db
 }
+
+// TestRolesSigMaster 是集成测试的 roles 签名主密钥（与生产同强度口径）。
+const TestRolesSigMaster = "integration-test-roles-sig-master-0123456789abcdef"
 
 func uniqueTestDBName() string {
 	// Postgres folds unquoted identifiers to lowercase; keep the generated

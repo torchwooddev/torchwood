@@ -114,6 +114,11 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	if err := bootkit.InitPageTokenSigning(&c); err != nil {
 		return nil, err
 	}
+	// 阶段③-b 包 C：与 server 同一 roles 签名密钥派生（幂等 UPSERT 落库，
+	// 与 server 并发写同值无害）。
+	if err := bootkit.InitRolesSigSigning(&c); err != nil {
+		return nil, err
+	}
 	return &c, nil
 }
 

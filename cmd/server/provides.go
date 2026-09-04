@@ -74,6 +74,11 @@ func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	if err := bootkit.InitPageTokenSigning(&c); err != nil {
 		return nil, err
 	}
+	// 阶段③-b 包 C：启用 roles GUC 签名密钥派生（A2，page-token 同模式）；
+	// 落库由 OnStart 钩子（bootkit.RolesSigKeySyncHook）完成。
+	if err := bootkit.InitRolesSigSigning(&c); err != nil {
+		return nil, err
+	}
 	return &c, nil
 }
 

@@ -24,9 +24,11 @@ func NewComponentBuilders() []lynx.ServiceFactory {
 	return nil
 }
 
-// NewOnStarts 注册项目 schema 确保钩子：启动时对全部项目幂等 EnsureAll。
+// NewOnStarts 注册项目 schema 确保钩子与 roles 签名密钥同步钩子：启动时对
+// 全部项目幂等 EnsureAll，并把进程内派生的 roles 签名密钥 UPSERT 进
+// tw_secrets（阶段③-b 包 C：tw_roles() 验签依赖）。
 func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Logger) boot.OnStartHooks {
-	return boot.OnStartHooks{ProjectSchemaEnsureHook(repo, db, logger)}
+	return boot.OnStartHooks{ProjectSchemaEnsureHook(repo, db, logger), RolesSigKeySyncHook(db, logger)}
 }
 
 // NewOnStops 返回空钩子集：底层资源清理不进 Lynx（见 cmd/*/main.go 注释，
@@ -54,5 +56,30 @@ func ProjectSchemaEnsureHook(repo projects.Repository, db *clients.Database, log
 			ids[i] = list[i].ID
 		}
 		return projectschema.EnsureAll(ctx, db, ids)
+	}
+}
+
+// RolesSigKeySyncHook 返回启动期 roles 签名密钥同步钩子（阶段③-b 包 C）：
+// 把进程内派生的密钥 UPSERT 进 public.tw_secrets，供 tw_roles() 验签。
+// 密钥未初始化（InitRolesSigSigning 未跑）时跳过——tw_app 查询将因 sig
+// 缺失 fail-closed，错误会在首个业务查询暴露而非静默放行。
+func RolesSigKeySyncHook(db *clients.Database, logger *slog.Logger) lynx.HookFunc {
+	return func(ctx context.Context) error {
+		if db == nil {
+			return nil
+		}
+		if _, ok := clients.RolesSigKeyHex(); !ok {
+			if logger != nil {
+				logger.Warn("roles sig key not initialized; tw_app queries will fail closed until InitRolesSigSigning runs")
+			}
+			return nil
+		}
+		if err := clients.SyncRolesSigKey(ctx, db); err != nil {
+			if logger != nil {
+				logger.Error("sync roles sig key", "error", err)
+			}
+			return err
+		}
+		return nil
 	}
 }

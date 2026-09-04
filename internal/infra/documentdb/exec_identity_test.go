@@ -248,8 +248,10 @@ func TestExecIdentity_FailClosedRolesGUC(t *testing.T) {
 	require.Zero(t, n, "空 roles 注入必须解包为零角色（policy 恒 false）")
 }
 
-// 编译期锚点：systemExecIdentity 供包 C 的读回路径使用。
-var _ = systemExecIdentity
+// 编译期锚点（阶段③-b 包 C 更新）：systemExecIdentity 已随 _acl 写点收敛到
+// tw_set_document_acl 退役；尾随读回/事件快照的系统身份经 execIdentityFor
+//（SystemPrincipal → tw_system）承载，锚点改挂 execIdentityFor。
+var _ = execIdentityFor
 
 // 静态检查 execIdentityFor 的主体映射。
 func TestExecIdentity_PrincipalMapping(t *testing.T) {
