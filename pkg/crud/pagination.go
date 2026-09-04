@@ -29,7 +29,8 @@ const (
 	TokenModeCursor = "cursor"
 
 	// MaxQueryOffset 上限：拒绝客户端伪造超深分页 token 打爆数据库。
-	// 与 documentdb 的 maxQueryOffset 对齐（R4-J2-4）。
+	// 仅服务静态表/控制面 offset token（文档面已 keyset-only，原 documentdb
+	// 侧同名上限随 C2 阶段①收敛删除——R4-J2-4 的对齐关系就此解除）。
 	MaxQueryOffset = 10000
 
 	// pageTokenKeyPurpose 是密钥派生的 purpose 域，与 pkg/jwtparser
