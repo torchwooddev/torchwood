@@ -7,6 +7,7 @@ import type {
   Document,
   DocumentListParams,
   Index,
+  ListChangesResponse,
   ListMeta,
   ListParams,
   UpdateDocumentInput,
@@ -375,6 +376,28 @@ export class ServerDatabasesService {
           document_ids: documentIds,
         },
       }
+    );
+  }
+
+  // 拉取集合的已提交事件流（阶段④ §4.5 补偿 API，R17 补登）：seq 升序、
+  // 按本 key 的可见性过滤。since_seq 为续传游标（0 = 从最老可用事件起）；
+  // 游标早于重放窗口 → FailedPrecondition EVENTS.RESUME_EXPIRED（全量重拉后
+  // 重新续传）。delete 事件无 data（tombstone：document_id + version 标识
+  // 删除）；transaction_id 非空表示来自 execute-tx 原子批（批内顺序 = op 序）；
+  // 按 event_id 幂等去重（at-leat-once）。续传**优先 next_since_seq**（R15
+  // 两级语义），仅当为 0 时回退末条 change 的 seq；has_more=false 时恒为 0。
+  async listChanges(
+    databaseId: string,
+    collectionId: string,
+    params?: { since_seq?: number | string; limit?: number }
+  ): Promise<ListChangesResponse> {
+    const query: Record<string, string | number | undefined> = {};
+    if (params?.since_seq !== undefined) query.since_seq = String(params.since_seq);
+    if (params?.limit !== undefined) query.limit = params.limit;
+    return this.http.request<ListChangesResponse>(
+      "GET",
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/changes`,
+      { auth: "apiKey", query }
     );
   }
 

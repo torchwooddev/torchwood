@@ -75,6 +75,30 @@ export interface Document {
   version?: number;
 }
 
+/** 已提交的文档写事件（阶段④ §4.5 补偿 API；delete 事件无 data = tombstone）。 */
+export interface Change {
+  seq: number | string;
+  event_id: string;
+  event: string;
+  document_id: string;
+  // int64，网关可能给 string，消费时 Number()。
+  version: number | string;
+  created_at: string;
+  truncated?: boolean;
+  data?: Document;
+  // 非空表示来自 execute-tx 原子批（批内顺序 = op 序）。
+  transaction_id?: string;
+}
+
+/** ListChanges 响应：next_since_seq 是续传游标（R15 两级语义——满页 = 末条
+ * 返回 seq；扫描触顶 = 越过不可见块的扫描位置），续传**优先使用本字段**，
+ * 仅当为 0 时回退末条 change 的 seq；has_more=false 时恒为 0。 */
+export interface ListChangesResponse {
+  changes?: Change[];
+  has_more?: boolean;
+  next_since_seq?: number | string;
+}
+
 export interface Group {
   id: string;
   name: string;

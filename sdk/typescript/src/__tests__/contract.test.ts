@@ -100,6 +100,7 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     BulkUpdateDocuments: "bulkUpdateDocuments",
     BulkDeleteDocuments: "bulkDeleteDocuments",
     ExecuteTransactions: "executeTransactions",
+    ListChanges: "listChanges",
   },
   FunctionsService: {
     ListRuntimes: "listRuntimes",
@@ -228,6 +229,7 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     UpsertDocument: "upsertDocument",
     DeleteDocument: "deleteDocument",
     CountDocuments: "countDocuments",
+    ListChanges: "listChanges",
   },
   "client.GroupsService": {
     CreateGroup: "createGroup",
