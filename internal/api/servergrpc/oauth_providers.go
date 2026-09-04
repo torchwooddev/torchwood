@@ -24,9 +24,6 @@ func NewOAuthProvidersService(oauthProviders *appserver.OAuthProviders) *OAuthPr
 }
 
 func (s *OAuthProvidersService) ListOAuthProviders(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListOAuthProvidersResponse, error) {
-	if err := rejectListFilterOrderBy(req); err != nil {
-		return nil, err
-	}
 	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())

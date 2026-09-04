@@ -7,8 +7,11 @@ option go_package = "github.com/torchwooddev/torchwood/genproto/shared/v1;shared
 message ListRequest {
   int32 page_size = 1;
   string page_token = 2;
-  string filter = 3;
-  string order_by = 4;
+  // filter/order_by（字段号 3/4）已退役（W-K 终结）：静态表面从未实现
+  // AIP-160/132 过滤排序，携带即拒的守卫随之删除；POC 无兼容义务，字段号
+  // 与名字 reserved 禁止复用。文档面的查询走 queries / shared.v1.Query。
+  reserved 3, 4;
+  reserved "filter", "order_by";
   // queries 是静态表面遗留的 Appwrite 风格 DSL 串通道，与文档查询栈的单
   // typed AST（shared.v1.Query）相互独立。消费面：users ListUsers 经
   // ParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性）；

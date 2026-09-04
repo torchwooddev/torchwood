@@ -86,9 +86,6 @@ func (s *FunctionsService) CreateFunction(ctx context.Context, req *serverv1.Cre
 }
 
 func (s *FunctionsService) ListFunctions(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListFunctionsResponse, error) {
-	if err := rejectListFilterOrderBy(req); err != nil {
-		return nil, err
-	}
 	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())

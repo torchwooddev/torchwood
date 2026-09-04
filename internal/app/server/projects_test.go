@@ -633,7 +633,7 @@ func TestProjects_ListProjects_MemberGrantedProjects(t *testing.T) {
 		AdminID:   "adm-member-1",
 		Roles:     []string{"member"},
 	})
-	list, info, err := projectsUC.ListProjects(unboundCtx, 10, "", "", "")
+	list, info, err := projectsUC.ListProjects(unboundCtx, 10, "")
 	require.NoError(t, err)
 	require.Empty(t, list)
 	require.Zero(t, info.TotalCount)
@@ -648,7 +648,7 @@ func TestProjects_ListProjects_MemberGrantedProjects(t *testing.T) {
 		ProjectID: owned.ID,
 		Roles:     []string{"member"},
 	})
-	list, info, err = projectsUC.ListProjects(memberCtx, 10, "", "", "")
+	list, info, err = projectsUC.ListProjects(memberCtx, 10, "")
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Equal(t, 1, info.TotalCount)

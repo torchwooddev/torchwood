@@ -76,9 +76,6 @@ func (s *BillingService) ListRollups(ctx context.Context, req *serverv1.ListRoll
 }
 
 func (s *BillingService) ListStatements(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListStatementsResponse, error) {
-	if err := rejectListFilterOrderBy(req); err != nil {
-		return nil, err
-	}
 	rows, next, err := s.billing.ListStatements(ctx, int(req.GetPageSize()), req.GetPageToken())
 	if err != nil {
 		return nil, err

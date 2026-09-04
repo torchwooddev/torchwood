@@ -244,12 +244,12 @@ func (s *Projects) purgeObjectsAsync(projectID string) {
 	}()
 }
 
-func (s *Projects) ListProjects(ctx context.Context, pageSize int32, pageToken, filter, orderBy string) ([]projects.Project, *crud.PaginationInfo, error) {
+func (s *Projects) ListProjects(ctx context.Context, pageSize int32, pageToken string) ([]projects.Project, *crud.PaginationInfo, error) {
 	principal, ok := contexts.Principal(ctx)
 	if !ok {
 		return nil, nil, status.Error(codes.Unauthenticated, "unauthenticated")
 	}
-	params, err := crud.ParseListParams(pageSize, pageToken, filter, orderBy)
+	params, err := crud.ParseListParams(pageSize, pageToken, "", "")
 	if err != nil {
 		return nil, nil, err
 	}

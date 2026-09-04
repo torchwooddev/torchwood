@@ -51,9 +51,6 @@ func (s *StorageService) CreateBucket(ctx context.Context, req *serverv1.CreateB
 }
 
 func (s *StorageService) ListBuckets(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListBucketsResponse, error) {
-	if err := rejectListFilterOrderBy(req); err != nil {
-		return nil, err
-	}
 	// storage 面不消费查询过滤：显式拒绝（预决策 7），不再静默忽略。
 	if err := rejectListQueries(req.GetQueries()); err != nil {
 		return nil, err

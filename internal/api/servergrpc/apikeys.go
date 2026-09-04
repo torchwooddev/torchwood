@@ -58,9 +58,6 @@ func (s *APIKeysService) CreateAPIKey(ctx context.Context, req *serverv1.CreateA
 }
 
 func (s *APIKeysService) ListAPIKeys(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListAPIKeysResponse, error) {
-	if err := rejectListFilterOrderBy(req); err != nil {
-		return nil, err
-	}
 	params, err := crud.ParseListParams(req.GetPageSize(), req.GetPageToken(), "", "")
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())

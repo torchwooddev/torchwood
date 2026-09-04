@@ -35,9 +35,6 @@ func withAuditResource(ctx context.Context, resourceID string) context.Context {
 }
 
 func (s *PaymentsService) ListOrders(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListOrdersResponse, error) {
-	if err := rejectListFilterOrderBy(req); err != nil {
-		return nil, err
-	}
 	before, err := decodeServerOrderCursor(req.GetPageToken())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid page token")

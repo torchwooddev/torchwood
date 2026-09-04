@@ -45,9 +45,6 @@ func (s *GroupsService) CreateGroup(ctx context.Context, req *serverv1.CreateGro
 }
 
 func (s *GroupsService) ListGroups(ctx context.Context, req *sharedv1.ListRequest) (*serverv1.ListGroupsResponse, error) {
-	if err := rejectListFilterOrderBy(req); err != nil {
-		return nil, err
-	}
 	// groups 面不消费查询过滤：显式拒绝（R12b，同 storage 法），不再静默忽略。
 	if err := rejectListQueries(req.GetQueries()); err != nil {
 		return nil, err

@@ -25,8 +25,6 @@ type ListRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	PageSize  int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Filter    string                 `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
-	OrderBy   string                 `protobuf:"bytes,4,opt,name=order_by,json=orderBy,proto3" json:"order_by,omitempty"`
 	// queries 是静态表面遗留的 Appwrite 风格 DSL 串通道，与文档查询栈的单
 	// typed AST（shared.v1.Query）相互独立。消费面：users ListUsers 经
 	// ParseUserList 白名单解析（equal/greaterThan/lessThan + 白名单属性）；
@@ -78,20 +76,6 @@ func (x *ListRequest) GetPageSize() int32 {
 func (x *ListRequest) GetPageToken() string {
 	if x != nil {
 		return x.PageToken
-	}
-	return ""
-}
-
-func (x *ListRequest) GetFilter() string {
-	if x != nil {
-		return x.Filter
-	}
-	return ""
-}
-
-func (x *ListRequest) GetOrderBy() string {
-	if x != nil {
-		return x.OrderBy
 	}
 	return ""
 }
@@ -212,14 +196,12 @@ var File_shared_v1_common_proto protoreflect.FileDescriptor
 
 const file_shared_v1_common_proto_rawDesc = "" +
 	"\n" +
-	"\x16shared/v1/common.proto\x12\x13torchwood.shared.v1\"\x96\x01\n" +
+	"\x16shared/v1/common.proto\x12\x13torchwood.shared.v1\"\x81\x01\n" +
 	"\vListRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x16\n" +
-	"\x06filter\x18\x03 \x01(\tR\x06filter\x12\x19\n" +
-	"\border_by\x18\x04 \x01(\tR\aorderBy\x12\x18\n" +
-	"\aqueries\x18\x05 \x03(\tR\aqueries\"\xa0\x01\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x18\n" +
+	"\aqueries\x18\x05 \x03(\tR\aqueriesJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\x06filterR\border_by\"\xa0\x01\n" +
 	"\x10ListResponseMeta\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12&\n" +

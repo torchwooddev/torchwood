@@ -115,30 +115,30 @@ func (s *ProjectsService) CreateProject(ctx context.Context, req *serverv1.Creat
 
 ### 7.1 列表分页（`shared.v1.ListRequest` + `pkg/crud`）
 
-`proto/shared/v1/common.proto:7`：`page_size/page_token/filter/order_by/queries`；响应 `ListResponseMeta{page_size,next_page_token,prev_page_token,total_count}`（AIP-132/158/160），其中 `total_count ≤0` 表示总数未知（keyset 分页下 0 与空集合不可区分，需以 `next_page_token` 是否为空判定是否还有更多）。
+`proto/shared/v1/common.proto:7`：`page_size/page_token/queries`（`filter`/`order_by` 字段号 3/4 已 reserved——W-K 终结：静态表面从未实现 AIP-160/132，POC 无兼容义务）；响应 `ListResponseMeta{page_size,next_page_token,prev_page_token,total_count}`（AIP-132/158/160），其中 `total_count ≤0` 表示总数未知（keyset 分页下 0 与空集合不可区分，需以 `next_page_token` 是否为空判定是否还有更多）。
 
 `pkg/crud/list.go:57` `ParseListParams(pageSize,pageToken,filter,orderBy)`：校验 `page_size∈[1,1000]`（默认 50）、`page_token` 解码得 `Offset`；`pagination.go:360` `BuildPaginationInfo(params,totalCount,hasMore)` 产出 `HasNext/NextOffset/HasPrevious/PreviousOffset`，`EncodePageToken(offset)`（`v1` base64 JSON，`DefaultTokenTTL=24h`）。
 
 **页 token 安全（R4-J2-4）**：生产进程启动时经 `crud.InitPageTokenSigning(jwtSecret)` 启用 HMAC-SHA256 签名（purpose 派生密钥，与 JWT/OAuth 域隔离），此后：
 
-- 签发侧所有 `Encode*PageToken` 自动附加签名；解码侧伪造、篡改 offset 的 token 一律 `InvalidArgument`；
-- token 内记录 `order_by` 与 filter digest（经 `GeneratePageTokens`/`GeneratePreviousPageToken` 签发的 token 携带），翻页请求二者与签发时不一致即 `InvalidArgument`（`list.go:163` 语义由此真实生效）；
+- 签发侧 `EncodePageToken` 自动附加签名；解码侧伪造、篡改 offset 的 token 一律 `InvalidArgument`（历史 `v1:offset` 未签名简单格式已退役，不再解析）；
+- token 结构保留 `order_by`/filter digest 绑定字段，`ParseListParams`/`ValidatePageTokenForRequest` 在 token 携带时校验跨页一致性；当前唯一签发方 `EncodePageToken` 仅写 offset，不携带绑定；
 - offset 上限 `MaxQueryOffset=10000`，超出拒绝（防伪造超深分页拖垮数据库）；
 - 未启用签名的进程保持历史行为（接受未签名 token），便于灰度。
 
 Handler：
 
 ```go
-list, info, _ := s.projects.ListProjects(ctx, req.GetPageSize(), req.GetPageToken(), req.GetFilter(), req.GetOrderBy())
+list, info, _ := s.projects.ListProjects(ctx, req.GetPageSize(), req.GetPageToken())
 meta := &sharedv1.ListResponseMeta{PageSize: info.PageSize, TotalCount: int32(info.TotalCount)}
 if info.HasNext { meta.NextPageToken = crud.EncodePageToken(info.NextOffset) }
 if info.HasPrevious { meta.PrevPageToken = crud.EncodePageToken(info.PreviousOffset) }
 ```
 
-- `filter/order_by` 显性化：token 携带 digest 时要求翻页二者与首请求一致（不一致→`InvalidArgument`）；勿手拼 SQL `filter/order`。**注意**：管理面部分列表（`ListProjects`/`ListCollections`/`ListFunctions` 等）当前经 `EncodePageToken` 直接签发，未写入 `order_by`/`filter` 绑定；此类端点换过滤条件不会被拒，绑定仅对经 `GeneratePageTokens` 签发且携带 digest 的 token 生效。
+- 勿手拼 SQL `filter/order`；动态文档查询一律走 `pkg/query`（见下）。
 - `pkg/crud/filter.go`/`order.go` 供静态表列表复用，动态文档优先 `pkg/query`（见 `06-databases.md` §6）。
 
-示例（documents 支持 `queries`（Appwrite 风格 DSL，见 06-databases.md §6）；storage buckets 列表当前不支持 filter/order_by，传入会被 `InvalidArgument` 显式拒绝）：
+示例（documents 支持 `queries`（Appwrite 风格 DSL，见 06-databases.md §6）；storage buckets/files 列表携带 `queries` 会被 `InvalidArgument` 显式拒绝）：
 
 ```bash
 curl -H 'X-API-Key: <key>' 'http://127.0.0.1:9080/v1/databases/default/collections/<collection_id>/documents?page_size=20&queries=name%20eq%20%22a%22'
