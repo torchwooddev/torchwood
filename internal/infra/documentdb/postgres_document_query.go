@@ -361,6 +361,12 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 	if err != nil {
 		return nil, p.mapError(err)
 	}
+	// 过滤/排序字段白名单与兄弟路径（List/Count）同源校验（R6）：未声明列
+	// 不落 PG 42703、search 需 fulltext 索引、$version 过 readiness 检查。
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
+		return nil, p.mapError(err)
+	}
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
