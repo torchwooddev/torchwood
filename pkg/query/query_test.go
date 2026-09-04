@@ -170,3 +170,51 @@ func TestValidate_EmptyGreaterThan(t *testing.T) {
 	q := &Query{Filter: &Filter{Op: OpGreaterThan, Attribute: "n"}}
 	require.Error(t, q.Validate())
 }
+
+// TestParse_NotVariants（C7 预决策 1）：not* 变体族在客户端语法糖层可解析
+// （SDK 解析为 AST 后发送；服务端零 DSL 消费）。
+func TestParse_NotVariants(t *testing.T) {
+	cases := []struct {
+		raw    string
+		op     string
+		values []string
+	}{
+		{raw: `notContains("name","jo")`, op: OpNotContains, values: []string{"jo"}},
+		{raw: `notStartsWith("name","jo")`, op: OpNotStartsWith, values: []string{"jo"}},
+		{raw: `notEndsWith("name","jo")`, op: OpNotEndsWith, values: []string{"jo"}},
+		{raw: `notSearch("body","hello")`, op: OpNotSearch, values: []string{"hello"}},
+		{raw: `notBetween("age",18,65)`, op: OpNotBetween, values: []string{"18", "65"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			q, err := Parse(tc.raw)
+			require.NoError(t, err)
+			require.Len(t, q.Filters, 1)
+			require.Equal(t, tc.op, q.Filters[0].Op)
+			require.Equal(t, tc.values, q.Filters[0].Values)
+		})
+	}
+
+	// notBetween 参数数错误 → 解析期拒绝。
+	_, err := Parse(`notBetween("age",18)`)
+	require.Error(t, err)
+}
+
+// TestConstructors：程序化构造器产出与手写等价的 AST 节点。
+func TestConstructors(t *testing.T) {
+	require.Equal(t, &Filter{Op: OpEqual, Attribute: "a", Values: []string{"x"}}, Eq("a", "x"))
+	require.Equal(t, &Filter{Op: OpBetween, Attribute: "n", Values: []string{"1", "9"}}, Between("n", "1", "9"))
+	require.Equal(t, &Filter{Op: OpIsNull, Attribute: "d"}, IsNull("d"))
+
+	// And/Or：单子节点坍缩、空入参 nil、多子节点组树。
+	a, b := Eq("a", "1"), Eq("b", "2")
+	require.Equal(t, a, And(a))
+	require.Equal(t, a, Or(a))
+	require.Nil(t, And())
+	require.Nil(t, Or())
+	require.Equal(t, &Filter{Op: OpAnd, Children: []*Filter{a, b}}, And(a, b))
+	require.Equal(t, &Filter{Op: OpOr, Children: []*Filter{a, b}}, Or(a, b))
+	// nil 子节点被跳过（坍缩同单子节点）。
+	require.Equal(t, a, And(nil, a))
+}
+

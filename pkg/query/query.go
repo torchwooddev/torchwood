@@ -9,7 +9,8 @@ import (
 )
 
 // Canonical AST operators. Appwrite codec names are the comparison ops;
-// proto eq/ne/lt/... map onto these（codec 在 pkg/query/proto）。
+// proto eq/ne/lt/... map onto these（codec 在 pkg/query/proto）。取反一律走
+// not* 变体（索引友好）；无通用 NOT 算子（德摩根展开可表达，C7 预决策 1）。
 const (
 	OpEqual            = "equal"
 	OpNotEqual         = "notEqual"
@@ -18,22 +19,28 @@ const (
 	OpGreaterThan      = "greaterThan"
 	OpGreaterThanEqual = "greaterThanEqual"
 	OpContains         = "contains"
+	OpNotContains      = "notContains"
 	OpStartsWith       = "startsWith"
+	OpNotStartsWith    = "notStartsWith"
 	OpEndsWith         = "endsWith"
+	OpNotEndsWith      = "notEndsWith"
 	OpSearch           = "search"
+	OpNotSearch        = "notSearch"
 	OpIsNull           = "isNull"
 	OpIsNotNull        = "isNotNull"
 	OpBetween          = "between"
+	OpNotBetween       = "notBetween"
 	OpIn               = "in"
 	OpAnd              = "and"
 	OpOr               = "or"
 )
 
 // Codec input limits (A2). documentdb still clamps SQL-side IN arity.
+// MaxDepth：and/or 嵌套深度上限（§4.1 深度 ≤8；单 AST 会话从 16 收紧）。
 const (
 	MaxQueries  = 100
 	MaxQueryLen = 4096
-	MaxDepth    = 16
+	MaxDepth    = 8
 )
 
 // Filter is a boolean expression node: a comparison leaf or and/or.
@@ -150,9 +157,9 @@ func validateLeaf(f Filter) error {
 	switch f.Op {
 	case OpIsNull, OpIsNotNull:
 		return nil
-	case OpBetween:
+	case OpBetween, OpNotBetween:
 		if len(f.Values) != 2 {
-			return fmt.Errorf("between requires 2 values")
+			return fmt.Errorf("%s requires 2 values", f.Op)
 		}
 	default:
 		if len(f.Values) < 1 {
@@ -182,7 +189,8 @@ func andFilters(leaves []Filter) *Filter {
 var queryRe = regexp.MustCompile(`^(\w+)\((.*)\)$`)
 
 // Parse parses a single Appwrite-style query string into an AST Query.
-// Examples:
+// 定位（C7 单 AST）：本解析器是**客户端语法糖**——SDK/工具把 DSL 串解析成
+// AST 后以 typed Query 发送；服务端文档查询栈不消费字符串。示例：
 //
 //	equal("email","a@b.com")
 //	greaterThan("age",18)
@@ -211,7 +219,9 @@ func Parse(raw string) (*Query, error) {
 	}
 
 	switch op {
-	case OpEqual, OpNotEqual, OpLessThan, OpLessThanEqual, OpGreaterThan, OpGreaterThanEqual, OpContains, OpStartsWith, OpEndsWith, OpSearch:
+	case OpEqual, OpNotEqual, OpLessThan, OpLessThanEqual, OpGreaterThan, OpGreaterThanEqual,
+		OpContains, OpNotContains, OpStartsWith, OpNotStartsWith, OpEndsWith, OpNotEndsWith,
+		OpSearch, OpNotSearch:
 		if len(args) < 2 {
 			return nil, fmt.Errorf("%s requires at least 2 args", op)
 		}
@@ -262,9 +272,9 @@ func Parse(raw string) (*Query, error) {
 		leaf := Filter{Op: OpIn, Attribute: attr, Values: values}
 		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
 
-	case OpBetween:
+	case OpBetween, OpNotBetween:
 		if len(args) != 3 {
-			return nil, fmt.Errorf("between requires 3 args")
+			return nil, fmt.Errorf("%s requires 3 args", op)
 		}
 		attr, err := unquote(args[0])
 		if err != nil {

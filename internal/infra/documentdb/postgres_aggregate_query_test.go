@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -39,7 +40,7 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 
 	// ① 过滤未声明列 → InvalidArgument（不落 PG 42703）。
 	_, err := docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("nonexistent","x")`},
+		AST: &query.Query{Filter: query.Eq("nonexistent", "x")},
 	}, aggs, "", bob)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -47,7 +48,7 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 
 	// ② search 对无 fulltext 索引的集合 → InvalidArgument。
 	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`search("title","hello")`},
+		AST: &query.Query{Filter: query.Search("title", "hello")},
 	}, aggs, "", bob)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -57,7 +58,7 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 	// 与 List 路径同语义），不落 PG。files 有数值列 size（满足聚合数值白名单
 	// 的前置校验），keys 角色可读。
 	_, err = docDB.AggregateDocuments(ctx, projectID, databases.SystemDatabaseID, "files", databases.Query{
-		Queries: []string{`equal("$version", 1)`},
+		AST: &query.Query{Filter: query.Eq("$version", "1")},
 	}, []databases.AggregateSpec{{Function: databases.AggregateSum, Field: "size"}}, "", databases.Principal{Roles: []string{"keys"}})
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -70,7 +71,7 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	fresh := NewPostgresDocumentDB(db, nil)
 	_, err = fresh.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("$version", 1)`},
+		AST: &query.Query{Filter: query.Eq("$version", "1")},
 	}, aggs, "", databases.SystemPrincipal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), databases.ErrVersionColumnUnavailable.Error())
@@ -81,7 +82,7 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 		{ID: "views", Key: "views", Type: "integer"},
 	}, nil, []databases.Permission{{Type: "read", Role: "any"}}, true))
 	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts2", databases.Query{
-		Queries: []string{`equal("title","x")`},
+		AST: &query.Query{Filter: query.Eq("title", "x")},
 	}, aggs, "", bob)
 	require.NoError(t, err)
 }
@@ -116,28 +117,21 @@ func TestCountAndAggregate_RejectNonFilterOperators(t *testing.T) {
 		require.Contains(t, status.Convert(err).Message(), "not supported on")
 	}
 
-	// count：orderAsc / limit / cursor / page token。
+	// count：orderAsc / cursor / page token（typed page_size/page_token 的
+	// 拒绝属 R9b，随分页字段归一在多键游标会话补齐）。
 	_, err := docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title","x")`, `orderAsc("views")`},
+		AST: &query.Query{Filter: query.Eq("title", "x"), Orders: []query.Order{{Attribute: "views"}}},
 	}, bob)
 	assertRejected(t, err)
 	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`limit(10)`},
-	}, bob)
-	assertRejected(t, err)
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries:   []string{`cursorAfter("doc-1")`},
+		AST:       &query.Query{CursorAfter: "doc-1"},
 		PageToken: "ka:doc-1",
 	}, bob)
 	assertRejected(t, err)
 
-	// aggregate：orderDesc / limit / page token。
+	// aggregate：orderDesc / page token。
 	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`orderDesc("views")`},
-	}, aggs, "", bob)
-	assertRejected(t, err)
-	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title","x")`, `limit(5)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "views", Desc: true}}},
 	}, aggs, "", bob)
 	assertRejected(t, err)
 	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
@@ -147,11 +141,11 @@ func TestCountAndAggregate_RejectNonFilterOperators(t *testing.T) {
 
 	// 纯过滤不受影响（count 与 aggregate 均可走通）。
 	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title","x")`},
+		AST: &query.Query{Filter: query.Eq("title", "x")},
 	}, bob)
 	require.NoError(t, err)
 	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title","x")`},
+		AST: &query.Query{Filter: query.Eq("title", "x")},
 	}, aggs, "", bob)
 	require.NoError(t, err)
 }

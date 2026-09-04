@@ -393,15 +393,22 @@ func TestDatabases_CountAndListDocuments(t *testing.T) {
 	ctx := context.Background()
 
 	count, err := c.Databases.CountDocuments(ctx, "messages",
-		[]string{`equal("channel_id","ch1")`})
+		&sharedv1.Query{Filter: eqFilter("channel_id", "ch1")})
 	require.NoError(t, err)
 	require.Equal(t, int64(42), count)
 
 	docs, next, err := c.Databases.ListDocuments(ctx, "messages",
-		[]string{`equal("channel_id","ch1")`}, 20, "")
+		&sharedv1.Query{Filter: eqFilter("channel_id", "ch1"), PageSize: 20})
 	require.NoError(t, err)
 	require.Len(t, docs, 2)
 	require.Equal(t, "next-token", next)
+}
+
+// eqFilter 是测试用的 equal 过滤构造捷径。
+func eqFilter(attr string, values ...string) *sharedv1.Filter {
+	return &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{
+		Attribute: attr, Values: values,
+	}}}
 }
 
 func TestDatabases_BulkOperations(t *testing.T) {

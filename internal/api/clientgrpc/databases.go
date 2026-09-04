@@ -54,7 +54,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *clientv1.List
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
-	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	q, err := documents.BindListQuery(req.GetPageSize(), req.GetPageToken(), req.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *clientv1.Cou
 		return nil, err
 	}
 	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
-	q, err := documents.BindListQuery(req.GetQueries(), 0, "", req.GetQuery())
+	q, err := documents.BindListQuery(0, "", req.GetQuery())
 	if err != nil {
 		return nil, err
 	}

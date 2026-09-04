@@ -45,9 +45,8 @@ func isWriteProtectedSystemCollection(databaseID, collectionID string) bool {
 
 const maxQueryLimit = 100
 
-// A2 输入上限：queries 条数 / 单条查询串长度 / equal 多值个数。
-const maxQueryCount = 100
-const maxQueryStringLen = 4096
+// A2 输入上限：equal/in 多值个数（DSL 串长度/条数上限随双栈退役移除——
+// AST 叶数由 pkg/query.MaxQueries 封顶）。
 const maxFilterValues = 1000
 
 // maxTotalFilterParams 是跨 filter 绑定参数的累计上限（buildAppwriteQuery 出口

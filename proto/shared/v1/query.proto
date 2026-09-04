@@ -4,7 +4,9 @@ package torchwood.shared.v1;
 
 option go_package = "github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1";
 
-// Comparison is a leaf predicate: attribute plus one or more values.
+// Comparison is a leaf predicate: attribute plus zero or more values.
+// Value arity per operator: eq/ne/lt/lte/gt/gte/in/contains/starts_with/
+// ends_with/search >= 1; between/not_between exactly 2; is_null/is_not_null 0.
 message Comparison {
   string attribute = 1;
   repeated string values = 2;
@@ -15,8 +17,10 @@ message FilterList {
   repeated Filter filters = 1;
 }
 
-// Filter is a boolean expression tree. Comparison ops use Appwrite-equivalent
-// semantics; and/or are recursive. The Appwrite string codec remains implicit AND.
+// Filter is a boolean expression tree (single-AST, C7). Comparison ops use
+// Appwrite-equivalent semantics; and/or are recursive (depth <= 8). Negation
+// is expressed by not* variants only (index-friendly); there is no generic
+// NOT operator.
 message Filter {
   oneof expr {
     Comparison eq = 1;
@@ -32,6 +36,14 @@ message Filter {
     Comparison search = 11;
     FilterList and = 12;
     FilterList or = 13;
+    Comparison between = 14;
+    Comparison is_null = 15;
+    Comparison is_not_null = 16;
+    Comparison not_between = 17;
+    Comparison not_contains = 18;
+    Comparison not_starts_with = 19;
+    Comparison not_ends_with = 20;
+    Comparison not_search = 21;
   }
 }
 
@@ -41,11 +53,15 @@ message Order {
   bool desc = 2;
 }
 
-// Query is the typed document list/count model (filter tree + orders + page).
-// page_token is the authoritative pager (K-20); page_size is the page bound.
+// Query is the single wire form of document list/count/aggregate filters
+// (C7: the server consumes no query strings; the Appwrite DSL survives only
+// as client-side sugar in SDKs/tools). page_token is the authoritative pager
+// (K-20); page_size is the page bound.
 message Query {
   Filter filter = 1;
   repeated Order orders = 2;
   int32 page_size = 3;
   string page_token = 4;
+  // Projection: server trims the returned Data to these fields.
+  repeated string select = 5;
 }

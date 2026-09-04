@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -112,9 +113,9 @@ func TestAggregateDocuments_PermissionGolden(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, float64(140), *groups[0].Values[0].Value)
 
-	// DSL 过滤在权限过滤之内叠加：u1 + equal(topic,a) → 10。
+	// AST 过滤在权限过滤之内叠加：u1 + equal(topic,a) → 10。
 	groups, err = uc.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("topic","a")`},
+		AST: &query.Query{Filter: query.Eq("topic", "a")},
 	}, []databases.AggregateSpec{
 		{Function: databases.AggregateSum, Field: "views"},
 	}, "", u1)

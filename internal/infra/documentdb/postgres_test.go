@@ -78,16 +78,16 @@ func TestPostgresDocumentDatabase_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, float64(100), updated.Data["views"])
 
-	// List with Appwrite-style query.
+	// List with typed AST query（C7 单 AST）.
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`greaterThan("views",50)`, `orderDesc("$createdAt")`},
+		AST: &query.Query{Filter: query.Gt("views", "50"), Orders: []query.Order{{Attribute: "$createdAt", Desc: true}}},
 	}, databases.Principal{Roles: []string{"any"}})
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
 	require.Equal(t, int64(1), list.TotalCount)
 
 	// Count.
-	count, err := docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: []string{`equal("title","Hello World")`}}, databases.Principal{Roles: []string{"any"}})
+	count, err := docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{AST: &query.Query{Filter: query.Eq("title", "Hello World")}}, databases.Principal{Roles: []string{"any"}})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
@@ -448,7 +448,7 @@ func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
 	// 编码单键），首页即拒——R3 的"cursor 拒多键"扩展到全路径（首页与
 	// cursor 页同构要求）。
 	_, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-		Queries: []string{`orderDesc("priority")`, `orderAsc("title")`, `limit(2)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}, {Attribute: "title"}}, PageSize: 2},
 	}, anyReader)
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -457,13 +457,13 @@ func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
 
 	// 单键 cursor 不受影响（独立单键链路：单键首页 + 单键续页）。
 	singlePage1, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-		Queries: []string{`orderDesc("priority")`, `limit(2)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2},
 	}, anyReader)
 	require.NoError(t, err)
 	require.Len(t, singlePage1.Documents, 2)
 	singleLast := singlePage1.Documents[len(singlePage1.Documents)-1].ID
 	single, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-		Queries: []string{`orderDesc("priority")`, `limit(2)`, `cursorAfter("` + singleLast + `")`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2, CursorAfter: singleLast},
 	}, anyReader)
 	require.NoError(t, err)
 	require.Len(t, single.Documents, 1)
@@ -627,7 +627,7 @@ func TestPostgresDocumentDocuments_TiebreakerPagination(t *testing.T) {
 	// keyset cursor 续页：首页 + cursorAfter 翻完。
 	var keysetPages [][]databases.Document
 	page1, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-		Queries: []string{`orderDesc("priority")`, `limit(2)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2},
 	}, anyReader)
 	require.NoError(t, err)
 	require.Len(t, page1.Documents, 2)
@@ -636,7 +636,7 @@ func TestPostgresDocumentDocuments_TiebreakerPagination(t *testing.T) {
 	last := page1.Documents[len(page1.Documents)-1].ID
 	for i := 0; i < 3; i++ {
 		page, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-			Queries: []string{`orderDesc("priority")`, `limit(2)`, `cursorAfter("` + last + `")`},
+			AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2, CursorAfter: last},
 		}, anyReader)
 		require.NoError(t, err)
 		if len(page.Documents) == 0 {
@@ -651,7 +651,7 @@ func TestPostgresDocumentDocuments_TiebreakerPagination(t *testing.T) {
 	// token，token 翻完全集；不再有 offset 续页路径。
 	var tokenPages [][]databases.Document
 	tp, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-		Queries: []string{`orderDesc("priority")`, `limit(2)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2},
 	}, anyReader)
 	require.NoError(t, err)
 	require.Len(t, tp.Documents, 2)
@@ -660,7 +660,7 @@ func TestPostgresDocumentDocuments_TiebreakerPagination(t *testing.T) {
 	tokenPages = append(tokenPages, tp.Documents)
 	for tp.NextPageToken != "" {
 		tp, err = docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-			Queries:   []string{`orderDesc("priority")`, `limit(2)`},
+			AST:       &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2},
 			PageToken: tp.NextPageToken,
 		}, anyReader)
 		require.NoError(t, err)
@@ -787,7 +787,7 @@ func TestPostgresDocumentDatabase_UpsertDocument_ConcurrentRace(t *testing.T) {
 
 	// 唯一键保证集合内仅一行，且数据必须保持 victim 的值。
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "users", databases.Query{
-		Queries: []string{`equal("email","race@x.com")`},
+		AST: &query.Query{Filter: query.Eq("email", "race@x.com")},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -820,14 +820,14 @@ func TestPostgresDocumentDatabase_Permissions(t *testing.T) {
 
 	// User without permission cannot read.
 	list, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries: []string{`equal("$id","` + created.ID + `")`},
+		AST: &query.Query{Filter: query.Eq("$id", created.ID)},
 	}, databases.Principal{Roles: []string{"user:bob"}})
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)
 
 	// User with permission can read.
 	list, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries: []string{`equal("$id","` + created.ID + `")`},
+		AST: &query.Query{Filter: query.Eq("$id", created.ID)},
 	}, databases.Principal{Roles: []string{"user:alice"}})
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -932,12 +932,12 @@ func TestDeleteCollection_CleansPerms(t *testing.T) {
 	require.NoError(t, err)
 
 	alice := databases.Principal{Roles: []string{"user:alice"}}
-	list, err := docDB.ListDocuments(ctx, projectID, "app", "notes", databases.Query{Queries: []string{`equal("$id","doc-1")`}}, alice)
+	list, err := docDB.ListDocuments(ctx, projectID, "app", "notes", databases.Query{AST: &query.Query{Filter: query.Eq("$id", "doc-1")}}, alice)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)
 
 	// System can still see the recreated document.
-	sys, err := docDB.ListDocuments(ctx, projectID, "app", "notes", databases.Query{Queries: []string{`equal("$id","doc-1")`}}, databases.SystemPrincipal)
+	sys, err := docDB.ListDocuments(ctx, projectID, "app", "notes", databases.Query{AST: &query.Query{Filter: query.Eq("$id", "doc-1")}}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, sys.Documents, 1)
 }
@@ -975,7 +975,7 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 
 	// Multi-value equal on an integer column.
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("views",[1,2,3])`},
+		AST: &query.Query{Filter: query.Eq("views", "1", "2", "3")},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 3)
@@ -987,7 +987,7 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 
 	// Multi-value notEqual on an integer column.
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`notEqual("views",[1,2])`},
+		AST: &query.Query{Filter: query.Ne("views", "1", "2")},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 3)
@@ -999,7 +999,7 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 
 	// Single value equal on a string column (regression).
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title","a")`},
+		AST: &query.Query{Filter: query.Eq("title", "a")},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -1007,14 +1007,14 @@ func TestListDocuments_MultiValueEqualNotEqual(t *testing.T) {
 
 	// Multi-value equal on a string column (regression).
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title",["a","b"])`},
+		AST: &query.Query{Filter: query.Eq("title", "a", "b")},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 2)
 
 	// Single value notEqual on a string column (regression).
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`notEqual("title","a")`},
+		AST: &query.Query{Filter: query.Ne("title", "a")},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 4)
@@ -1095,7 +1095,7 @@ func TestListDocuments_SelectProjection(t *testing.T) {
 
 	// Projection to ["name","age"]: Data only holds those keys.
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "profiles", databases.Query{
-		Queries: []string{`select(["name","age"])`, `limit(10)`},
+		AST: &query.Query{Selects: []string{"name", "age"}, PageSize: 10},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -1107,7 +1107,7 @@ func TestListDocuments_SelectProjection(t *testing.T) {
 	// Projection to ["$id"]: alias maps to the system _id field, so Data is
 	// empty while the system fields remain.
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "profiles", databases.Query{
-		Queries: []string{`select(["$id"])`, `limit(10)`},
+		AST: &query.Query{Selects: []string{"$id"}, PageSize: 10},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -1153,14 +1153,14 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	// page 2 with cursor on the last id of page 1 = [d2, d1] (no overlap,
 	// list exhausted).
 	page1, err := docDB.ListDocuments(ctx, projectID, "app", "seqdocs", databases.Query{
-		Queries: []string{`limit(2)`},
+		AST: &query.Query{PageSize: 2},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, page1.Documents, 2)
 	require.Equal(t, orderDESC[:2], []string{page1.Documents[0].ID, page1.Documents[1].ID})
 
 	page2, err := docDB.ListDocuments(ctx, projectID, "app", "seqdocs", databases.Query{
-		Queries: []string{`limit(2)`, `cursorAfter("` + page1.Documents[1].ID + `")`},
+		AST: &query.Query{PageSize: 2, CursorAfter: page1.Documents[1].ID},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, page2.Documents, 2)
@@ -1171,7 +1171,7 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	// cursorAfter + orderAsc("age"): ages 10,20,30,40 → page1 [d4,d3],
 	// page2 [d2,d1].
 	asc1, err := docDB.ListDocuments(ctx, projectID, "app", "seqdocs", databases.Query{
-		Queries: []string{`orderAsc("age")`, `limit(2)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "age"}}, PageSize: 2},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, asc1.Documents, 2)
@@ -1179,7 +1179,7 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	require.Equal(t, "d3", asc1.Documents[1].ID)
 
 	asc2, err := docDB.ListDocuments(ctx, projectID, "app", "seqdocs", databases.Query{
-		Queries: []string{`orderAsc("age")`, `limit(2)`, `cursorAfter("` + asc1.Documents[1].ID + `")`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "age"}}, PageSize: 2, CursorAfter: asc1.Documents[1].ID},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, asc2.Documents, 2)
@@ -1190,7 +1190,7 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 	// (created_at, _id) > cursor selects the rows before the cursor in the
 	// DESC result order, i.e. the previous page [d4, d3] before d2.
 	rev, err := docDB.ListDocuments(ctx, projectID, "app", "seqdocs", databases.Query{
-		Queries: []string{`limit(2)`, `cursorBefore("d2")`},
+		AST: &query.Query{PageSize: 2, CursorBefore: "d2"},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, rev.Documents, 2)
@@ -1199,23 +1199,22 @@ func TestListDocuments_CursorPagination(t *testing.T) {
 
 	// Cursor document does not exist → InvalidArgument.
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "seqdocs", databases.Query{
-		Queries: []string{`limit(2)`, `cursorAfter("nope-not-exists")`},
+		AST: &query.Query{PageSize: 2, CursorAfter: "nope-not-exists"},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// Invalid order field in cursor mode → InvalidArgument (no silent skip).
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "seqdocs", databases.Query{
-		Queries: []string{`orderAsc("bad field")`, `limit(2)`, `cursorAfter("d1")`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "bad field"}}, PageSize: 2, CursorAfter: "d1"},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 // TestListDocuments_PaginationGuards (A1/F3-2): page_size 负数回退默认页大小；
-// DSL 未显式指定 limit 时 page_size 生效（此前 ParseMany 恒注入 50 掩盖该行为）；
-// DSL limit 优先于 page_size；DSL limit(-1)/offset(-1) 在解析期报错（fail-fast）；
-// offset 超上限 → InvalidArgument。
+// AST page_size 优先于请求级 page_size；AST offset 显式拒绝（keyset-only）；
+// 非 keyset token 拒绝。
 func TestListDocuments_PaginationGuards(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -1272,41 +1271,36 @@ func TestListDocuments_PaginationGuards(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 7)
 
-	// DSL limit 显式指定时优先于 page_size。
+	// AST page_size 显式指定时优先于请求级 page_size（C7：等价旧 DSL limit）。
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		PageSize: 5,
-		Queries:  []string{`limit(3)`},
+		AST:      &query.Query{PageSize: 3},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 3)
 
-	// DSL limit(-1) → 解析期 fail-fast 报错（不产生 LIMIT -1）。
+	// AST offset（keyset-only，C2）：List 一律拒绝——正负值同理（负值是
+	// 客户端语法糖层的解析错误，服务端按显式拒绝兜底）。
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`limit(-1)`},
-	}, databases.SystemPrincipal)
-	require.Error(t, err)
-
-	// DSL offset(-1) → 解析期 fail-fast 报错。
-	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`offset(-1)`},
-	}, databases.SystemPrincipal)
-	require.Error(t, err)
-
-	// keyset-only（C2 阶段①收敛）：offset() 在 List/Count 一律拒绝
-	//（"use cursor pagination" / count 全集语义）。
-	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`offset(10001)`},
+		AST: &query.Query{Offset: -1},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "cursor pagination")
 
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`offset(0)`, `limit(2)`},
+		AST: &query.Query{Offset: 10001, PageSize: 2},
 	}, databases.SystemPrincipal)
-	require.NoError(t, err, "offset(0) 与缺省不可区分，等价无操作")
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "cursor pagination")
 
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", databases.Query{Queries: []string{`offset(1)`}}, databases.SystemPrincipal)
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+		AST: &query.Query{Offset: 0, PageSize: 2},
+	}, databases.SystemPrincipal)
+	require.NoError(t, err, "offset=0 与缺省不可区分，等价无操作")
+
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "docs", databases.Query{AST: &query.Query{Offset: 1}}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
@@ -1406,7 +1400,7 @@ func TestListDocuments_KeysetContinuationSkipsCount(t *testing.T) {
 	hook.count = 0
 	cursor := page1.Documents[len(page1.Documents)-1].ID
 	kPage, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`limit(3)`, fmt.Sprintf("cursorAfter(%q)", cursor)},
+		AST: &query.Query{PageSize: 3, CursorAfter: cursor},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Zero(t, kPage.TotalCount)
@@ -1483,8 +1477,9 @@ func TestCreateCollection_DefaultTimeIndex(t *testing.T) {
 	require.Zero(t, n, "系统集合跳过默认时间索引（与 _version 列处理一致）")
 }
 
-// TestListDocuments_InputLimits (A2): queries 条数、单条长度、equal 多值个数
-// 超上限均报 InvalidArgument；正常调用不受影响。
+// TestListDocuments_InputLimits (A2): AST 叶数上限（原 queries 条数上限的
+// 单 AST 等价物）与 equal 多值个数超上限均报 InvalidArgument；正常调用不受
+// 影响。DSL 串条数/长度上限随双栈退役移除（服务端不再收字符串）。
 func TestListDocuments_InputLimits(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -1502,35 +1497,33 @@ func TestListDocuments_InputLimits(t *testing.T) {
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, nil, true))
 
-	// 101 条 queries → InvalidArgument。
-	queries := make([]string, maxQueryCount+1)
-	for i := range queries {
-		queries[i] = `limit(1)`
+	// 101 个过滤叶（and 嵌套）→ InvalidArgument（MaxQueries=100）。
+	children := make([]*query.Filter, query.MaxQueries+1)
+	for i := range children {
+		children[i] = query.Eq("title", "x")
 	}
-	_, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: queries}, databases.SystemPrincipal)
+	over := &query.Query{Filter: query.And(children...)}
+	_, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{AST: over}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: queries}, databases.SystemPrincipal)
-	require.Error(t, err)
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
-
-	// 超长查询串 → InvalidArgument。
-	long := `equal("title","` + strings.Repeat("a", maxQueryStringLen) + `")`
-	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: []string{long}}, databases.SystemPrincipal)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{AST: over}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	// 1001 个 equal 值 → InvalidArgument（查询串长度在上限内，命中值数限制）。
-	values := strings.Repeat(`"a",`, maxFilterValues) + `"a"`
+	// 1001 个 equal 值 → InvalidArgument（maxFilterValues）。
+	values := make([]string, maxFilterValues+1)
+	for i := range values {
+		values[i] = "a"
+	}
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title",[` + values + `])`},
+		AST: &query.Query{Filter: query.Eq("title", values...)},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 正常查询不受影响。
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title","hello")`, `limit(10)`},
+		AST: &query.Query{Filter: query.Eq("title", "hello"), PageSize: 10},
 	}, databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)
@@ -1835,7 +1828,7 @@ func TestListDocuments_SystemPathRawPGError(t *testing.T) {
 	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries: []string{`equal("nonexistent_col","x")`},
+		AST: &query.Query{Filter: query.Eq("nonexistent_col", "x")},
 	}, databases.SystemPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -1878,26 +1871,26 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 
 	// 非 System 查询未声明列 → InvalidArgument。
 	_, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("nonexistent","x")`},
+		AST: &query.Query{Filter: query.Eq("nonexistent", "x")},
 	}, bob)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 非 System 查询未声明列（Count）→ InvalidArgument。
-	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{Queries: []string{`equal("nonexistent","x")`}}, bob)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{AST: &query.Query{Filter: query.Eq("nonexistent", "x")}}, bob)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// order 非法字段 → InvalidArgument（不再静默跳过）。
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`orderDesc("bad field")`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "bad field", Desc: true}}},
 	}, bob)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// search 对无 fulltext 索引的集合 → InvalidArgument。
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`search("title","hello")`},
+		AST: &query.Query{Filter: query.Search("title", "hello")},
 	}, bob)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -1905,13 +1898,13 @@ func TestListDocuments_QueryFieldWhitelist(t *testing.T) {
 	// search 命中 fulltext 索引列（files.name_fulltext）→ 可用。
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "files", databases.Query{
-		Queries: []string{`search("name","hello")`},
+		AST: &query.Query{Filter: query.Search("name", "hello")},
 	}, keysPrincipal)
 	require.NoError(t, err)
 
 	// 合法字段（声明 attr + 系统列）不受影响。
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`equal("title","x")`, `orderAsc("$id")`, `limit(5)`},
+		AST: &query.Query{Filter: query.Eq("title", "x"), Orders: []query.Order{{Attribute: "$id"}}, PageSize: 5},
 	}, bob)
 	require.NoError(t, err)
 }
@@ -1936,26 +1929,26 @@ func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
 
 	// users（default 库系统集合）：password_hash 禁止过滤。
 	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries: []string{`equal("password_hash","x")`},
+		AST: &query.Query{Filter: query.Eq("password_hash", "x")},
 	}, keysPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// sessions.secret_hash / identities.provider_data 同样禁止。
 	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "sessions", databases.Query{
-		Queries: []string{`equal("secret_hash","x")`},
+		AST: &query.Query{Filter: query.Eq("secret_hash", "x")},
 	}, keysPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "identities", databases.Query{
-		Queries: []string{`equal("provider_data","x")`},
+		AST: &query.Query{Filter: query.Eq("provider_data", "x")},
 	}, keysPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	// 非敏感声明列（email）可查。
 	_, err = docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "users", databases.Query{
-		Queries: []string{`equal("email","x@y.z")`},
+		AST: &query.Query{Filter: query.Eq("email", "x@y.z")},
 	}, keysPrincipal)
 	require.NoError(t, err)
 
@@ -1965,7 +1958,7 @@ func TestListDocuments_SensitiveFieldBlacklist(t *testing.T) {
 		{ID: "password_hash", Key: "password_hash", Type: "string", Size: 512},
 	}, nil, nil, true))
 	_, err = docDB.ListDocuments(ctx, projectID, "app", "users", databases.Query{
-		Queries: []string{`equal("password_hash","x")`},
+		AST: &query.Query{Filter: query.Eq("password_hash", "x")},
 	}, keysPrincipal)
 	require.NoError(t, err)
 }
@@ -2402,7 +2395,7 @@ func TestCreateIndex_FulltextAlignment(t *testing.T) {
 	}
 
 	got, err := docDB.ListDocuments(ctx, projectID, "app", "posts", databases.Query{
-		Queries: []string{`search("body","hello")`},
+		AST: &query.Query{Filter: query.Search("body", "hello")},
 	}, keys)
 	require.NoError(t, err, "对齐后的 fulltext 索引上 search 必须可用")
 	require.Len(t, got.Documents, 2)
@@ -2470,7 +2463,7 @@ func TestListDocuments_KeysetTokenContinuation(t *testing.T) {
 
 	// 首页：cursorAfter + orderAsc，满页（limit=5）→ keyset token。
 	page1, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
-		Queries: []string{`orderAsc("$id")`, `limit(5)`, `cursorAfter("doc-0004")`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "$id"}}, PageSize: 5, CursorAfter: "doc-0004"},
 	}, guest)
 	require.NoError(t, err)
 	require.Len(t, page1.Documents, 5)
@@ -2490,7 +2483,7 @@ func TestListDocuments_KeysetTokenContinuation(t *testing.T) {
 
 	// 续页：PageToken（不带 cursorAfter 查询）→ 保持 keyset 语义。
 	page2, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
-		Queries:   []string{`orderAsc("$id")`, `limit(5)`},
+		AST:       &query.Query{Orders: []query.Order{{Attribute: "$id"}}, PageSize: 5},
 		PageToken: page1.NextPageToken,
 	}, guest)
 	require.NoError(t, err)
@@ -2500,7 +2493,7 @@ func TestListDocuments_KeysetTokenContinuation(t *testing.T) {
 	require.Empty(t, page2.NextPageToken, "不满页（2<5）无续页 token")
 	// offset 模式确认批量回填非空路径（doc-0000 有 2 条 ACE）与精确 COUNT 不受影响。
 	off, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
-		Queries: []string{`orderAsc("$id")`, `limit(1)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "$id"}}, PageSize: 1},
 	}, guest)
 	require.NoError(t, err)
 	require.Len(t, off.Documents[0].Permissions, 2, "批量回填必须返回完整 ACE 列表")
@@ -2509,7 +2502,7 @@ func TestListDocuments_KeysetTokenContinuation(t *testing.T) {
 	// cursorBefore(doc-0006) → 比它新的 5 行 [0011..0007]，满页 → kb:0011；
 	// 续页 before 0011 → 无更靠前（更新）的行 → 空页收尾。
 	b1, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
-		Queries: []string{`limit(5)`, `cursorBefore("doc-0006")`},
+		AST: &query.Query{PageSize: 5, CursorBefore: "doc-0006"},
 	}, guest)
 	require.NoError(t, err)
 	require.Len(t, b1.Documents, 5)
@@ -2518,7 +2511,7 @@ func TestListDocuments_KeysetTokenContinuation(t *testing.T) {
 	require.Equal(t, "kb:doc-0011", b1.NextPageToken)
 
 	b2, err := docDB.ListDocuments(ctx, projectID, "app", "kdocs", databases.Query{
-		Queries:   []string{`limit(5)`},
+		AST:       &query.Query{PageSize: 5},
 		PageToken: b1.NextPageToken,
 	}, guest)
 	require.NoError(t, err)

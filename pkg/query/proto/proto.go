@@ -9,7 +9,8 @@ import (
 	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
-// FromProto decodes a proto Query into the AST. nil input yields nil.
+// FromProto decodes a proto Query into the AST（C7 单 AST：proto Query 是
+// 服务端唯一消费的查询形态）。nil input yields nil.
 func FromProto(src *sharedv1.Query) (*query.Query, error) {
 	if src == nil {
 		return nil, nil
@@ -23,6 +24,7 @@ func FromProto(src *sharedv1.Query) (*query.Query, error) {
 		Filter:    filter,
 		PageSize:  src.GetPageSize(),
 		PageToken: src.GetPageToken(),
+		Selects:   append([]string{}, src.GetSelect()...),
 	}
 	if filter != nil && filter.Op != query.OpAnd && filter.Op != query.OpOr {
 		out.Filters = []query.Filter{*filter}
@@ -75,6 +77,22 @@ func filterFromProto(src *sharedv1.Filter, depth int, leaves *int) (*query.Filte
 		return comparisonFilter(query.OpEndsWith, e.EndsWith, leaves)
 	case *sharedv1.Filter_Search:
 		return comparisonFilter(query.OpSearch, e.Search, leaves)
+	case *sharedv1.Filter_Between:
+		return comparisonFilter(query.OpBetween, e.Between, leaves)
+	case *sharedv1.Filter_IsNull:
+		return comparisonFilter(query.OpIsNull, e.IsNull, leaves)
+	case *sharedv1.Filter_IsNotNull:
+		return comparisonFilter(query.OpIsNotNull, e.IsNotNull, leaves)
+	case *sharedv1.Filter_NotBetween:
+		return comparisonFilter(query.OpNotBetween, e.NotBetween, leaves)
+	case *sharedv1.Filter_NotContains:
+		return comparisonFilter(query.OpNotContains, e.NotContains, leaves)
+	case *sharedv1.Filter_NotStartsWith:
+		return comparisonFilter(query.OpNotStartsWith, e.NotStartsWith, leaves)
+	case *sharedv1.Filter_NotEndsWith:
+		return comparisonFilter(query.OpNotEndsWith, e.NotEndsWith, leaves)
+	case *sharedv1.Filter_NotSearch:
+		return comparisonFilter(query.OpNotSearch, e.NotSearch, leaves)
 	case *sharedv1.Filter_And:
 		return boolFilter(query.OpAnd, e.And, depth, leaves)
 	case *sharedv1.Filter_Or:
@@ -86,6 +104,8 @@ func filterFromProto(src *sharedv1.Filter, depth int, leaves *int) (*query.Filte
 	}
 }
 
+// comparisonFilter 按 §4.1 的算子值数量约束分流：between/notBetween 恰 2；
+// isNull/isNotNull 0；其余 ≥1。
 func comparisonFilter(op string, c *sharedv1.Comparison, leaves *int) (*query.Filter, error) {
 	if c == nil {
 		return nil, fmt.Errorf("%s comparison is required", op)
@@ -94,8 +114,20 @@ func comparisonFilter(op string, c *sharedv1.Comparison, leaves *int) (*query.Fi
 		return nil, fmt.Errorf("%s attribute is required", op)
 	}
 	values := append([]string{}, c.GetValues()...)
-	if len(values) < 1 {
-		return nil, fmt.Errorf("%s requires at least 1 value", op)
+	switch op {
+	case query.OpBetween, query.OpNotBetween:
+		if len(values) != 2 {
+			return nil, fmt.Errorf("%s requires exactly 2 values", op)
+		}
+	case query.OpIsNull, query.OpIsNotNull:
+		// 无值算子：proto 端多余 values 直接拒绝（而非静默忽略）。
+		if len(values) != 0 {
+			return nil, fmt.Errorf("%s takes no values", op)
+		}
+	default:
+		if len(values) < 1 {
+			return nil, fmt.Errorf("%s requires at least 1 value", op)
+		}
 	}
 	if leaves != nil {
 		*leaves++

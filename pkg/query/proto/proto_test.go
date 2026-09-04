@@ -72,3 +72,113 @@ func TestFromProto_LeafCountCap(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+// comparison 返回带 attribute/values 的 Comparison（测试捷径）。
+func comparison(attr string, values ...string) *sharedv1.Comparison {
+	return &sharedv1.Comparison{Attribute: attr, Values: values}
+}
+
+// TestFromProto_EveryOperatorRoundTrip（C7 单 AST）：Filter oneof 的每个算子
+// 分支 → AST 节点断言（算子/属性/值），覆盖 §4.1 算子全集。
+func TestFromProto_EveryOperatorRoundTrip(t *testing.T) {
+	cmp := func(expr *sharedv1.Filter) *query.Query {
+		t.Helper()
+		ast, err := FromProto(&sharedv1.Query{Filter: expr})
+		require.NoError(t, err)
+		require.NotNil(t, ast.Filter)
+		return ast
+	}
+	cases := []struct {
+		name string
+		expr *sharedv1.Filter
+		op   string
+		attr string
+		vals []string
+	}{
+		{"eq", &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: comparison("a", "b")}}, query.OpEqual, "a", []string{"b"}},
+		{"ne", &sharedv1.Filter{Expr: &sharedv1.Filter_Ne{Ne: comparison("a", "b")}}, query.OpNotEqual, "a", []string{"b"}},
+		{"lt", &sharedv1.Filter{Expr: &sharedv1.Filter_Lt{Lt: comparison("a", "5")}}, query.OpLessThan, "a", []string{"5"}},
+		{"lte", &sharedv1.Filter{Expr: &sharedv1.Filter_Lte{Lte: comparison("a", "5")}}, query.OpLessThanEqual, "a", []string{"5"}},
+		{"gt", &sharedv1.Filter{Expr: &sharedv1.Filter_Gt{Gt: comparison("a", "5")}}, query.OpGreaterThan, "a", []string{"5"}},
+		{"gte", &sharedv1.Filter{Expr: &sharedv1.Filter_Gte{Gte: comparison("a", "5")}}, query.OpGreaterThanEqual, "a", []string{"5"}},
+		{"in", &sharedv1.Filter{Expr: &sharedv1.Filter_In{In: comparison("a", "x", "y")}}, query.OpIn, "a", []string{"x", "y"}},
+		{"contains", &sharedv1.Filter{Expr: &sharedv1.Filter_Contains{Contains: comparison("a", "jo")}}, query.OpContains, "a", []string{"jo"}},
+		{"not_contains", &sharedv1.Filter{Expr: &sharedv1.Filter_NotContains{NotContains: comparison("a", "jo")}}, query.OpNotContains, "a", []string{"jo"}},
+		{"starts_with", &sharedv1.Filter{Expr: &sharedv1.Filter_StartsWith{StartsWith: comparison("a", "jo")}}, query.OpStartsWith, "a", []string{"jo"}},
+		{"not_starts_with", &sharedv1.Filter{Expr: &sharedv1.Filter_NotStartsWith{NotStartsWith: comparison("a", "jo")}}, query.OpNotStartsWith, "a", []string{"jo"}},
+		{"ends_with", &sharedv1.Filter{Expr: &sharedv1.Filter_EndsWith{EndsWith: comparison("a", "jo")}}, query.OpEndsWith, "a", []string{"jo"}},
+		{"not_ends_with", &sharedv1.Filter{Expr: &sharedv1.Filter_NotEndsWith{NotEndsWith: comparison("a", "jo")}}, query.OpNotEndsWith, "a", []string{"jo"}},
+		{"search", &sharedv1.Filter{Expr: &sharedv1.Filter_Search{Search: comparison("a", "hi")}}, query.OpSearch, "a", []string{"hi"}},
+		{"not_search", &sharedv1.Filter{Expr: &sharedv1.Filter_NotSearch{NotSearch: comparison("a", "hi")}}, query.OpNotSearch, "a", []string{"hi"}},
+		{"between", &sharedv1.Filter{Expr: &sharedv1.Filter_Between{Between: comparison("a", "1", "9")}}, query.OpBetween, "a", []string{"1", "9"}},
+		{"not_between", &sharedv1.Filter{Expr: &sharedv1.Filter_NotBetween{NotBetween: comparison("a", "1", "9")}}, query.OpNotBetween, "a", []string{"1", "9"}},
+		{"is_null", &sharedv1.Filter{Expr: &sharedv1.Filter_IsNull{IsNull: comparison("a")}}, query.OpIsNull, "a", []string{}},
+		{"is_not_null", &sharedv1.Filter{Expr: &sharedv1.Filter_IsNotNull{IsNotNull: comparison("a")}}, query.OpIsNotNull, "a", []string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ast := cmp(tc.expr)
+			require.Equal(t, tc.op, ast.Filter.Op)
+			require.Equal(t, tc.attr, ast.Filter.Attribute)
+			require.Equal(t, tc.vals, ast.Filter.Values)
+		})
+	}
+}
+
+// select/orders/分页字段随 Query 顶层解码。
+func TestFromProto_QueryTopLevelFields(t *testing.T) {
+	ast, err := FromProto(&sharedv1.Query{
+		Filter:    &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: comparison("a", "b")}},
+		Orders:    []*sharedv1.Order{{Attribute: "$createdAt", Desc: true}},
+		PageSize:  25,
+		PageToken: "ka:doc-1",
+		Select:    []string{"$id", "title"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []query.Order{{Attribute: "$createdAt", Desc: true}}, ast.Orders)
+	require.Equal(t, int32(25), ast.PageSize)
+	require.Equal(t, "ka:doc-1", ast.PageToken)
+	require.Equal(t, []string{"$id", "title"}, ast.Selects)
+}
+
+// 值数量约束按算子分流：between 恰 2、is_null 零值、eq 至少 1。
+func TestFromProto_ValueArity(t *testing.T) {
+	_, err := FromProto(&sharedv1.Query{Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Between{
+		Between: comparison("a", "1"),
+	}}})
+	require.ErrorContains(t, err, "exactly 2")
+
+	_, err = FromProto(&sharedv1.Query{Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Between{
+		Between: comparison("a", "1", "2", "3"),
+	}}})
+	require.ErrorContains(t, err, "exactly 2")
+
+	_, err = FromProto(&sharedv1.Query{Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_IsNull{
+		IsNull: comparison("a", "x"),
+	}}})
+	require.ErrorContains(t, err, "no values")
+
+	_, err = FromProto(&sharedv1.Query{Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_NotBetween{
+		NotBetween: comparison("a", "1"),
+	}}})
+	require.ErrorContains(t, err, "exactly 2")
+}
+
+// and/or 深度 ≤8（§4.1；单 AST 会话从 16 收紧）。N 层嵌套 → 最深叶在
+// 深度 N：8 层通过、9 层拒绝。
+func TestFromProto_DepthLimit(t *testing.T) {
+	build := func(depth int) *sharedv1.Filter {
+		leaf := &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: comparison("a", "1")}}
+		cur := leaf
+		for i := 0; i < depth; i++ {
+			cur = &sharedv1.Filter{Expr: &sharedv1.Filter_And{And: &sharedv1.FilterList{Filters: []*sharedv1.Filter{cur}}}}
+		}
+		return cur
+	}
+	_, err := FromProto(&sharedv1.Query{Filter: build(query.MaxDepth + 1)})
+	require.ErrorContains(t, err, "nesting")
+
+	ast, err := FromProto(&sharedv1.Query{Filter: build(query.MaxDepth)})
+	require.NoError(t, err)
+	require.NotNil(t, ast.Filter)
+}

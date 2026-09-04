@@ -194,13 +194,17 @@ message DeleteDocumentRequest {
 message ListDocumentsRequest {
   string database_id = 1;
   string collection_id = 2;
-  repeated string queries = 3;
+  // 单 AST（C7）：queries DSL 字符串已退役（POC 无兼容期，直接 reserved）。
+  reserved 3;
+  reserved "queries";
+  // GET 面专用（C7 预决策 3）：page_size/page_token 保留为简单分页参数；
+  // 过滤/排序/投影一律走 query（POST :list 的 body 即 Query）。
   int32 page_size = 4;
   string page_token = 5;
   string project_id = 6;
-  // Typed AST. Dual-stack with queries/page_size/page_token; both set and
-  // conflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.
-  optional torchwood.shared.v1.Query query = 7;
+  // Typed AST（唯一过滤载体）。page_size/page_token 与 query 内同名字段
+  // 同时设置且不等 → InvalidArgument。
+  torchwood.shared.v1.Query query = 7;
 }
 
 message ListDocumentsResponse {
@@ -212,8 +216,10 @@ message ListDocumentsResponse {
 message CountDocumentsRequest {
   string database_id = 1;
   string collection_id = 2;
-  repeated string queries = 3;
-  optional torchwood.shared.v1.Query query = 4;
+  // 单 AST（C7）：queries DSL 字符串已退役；过滤走 query（GET 面仅支持无过滤计数）。
+  reserved 3;
+  reserved "queries";
+  torchwood.shared.v1.Query query = 4;
   string project_id = 5;
 }
 

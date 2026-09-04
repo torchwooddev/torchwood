@@ -21,7 +21,9 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Comparison is a leaf predicate: attribute plus one or more values.
+// Comparison is a leaf predicate: attribute plus zero or more values.
+// Value arity per operator: eq/ne/lt/lte/gt/gte/in/contains/starts_with/
+// ends_with/search >= 1; between/not_between exactly 2; is_null/is_not_null 0.
 type Comparison struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Attribute     string                 `protobuf:"bytes,1,opt,name=attribute,proto3" json:"attribute,omitempty"`
@@ -119,8 +121,10 @@ func (x *FilterList) GetFilters() []*Filter {
 	return nil
 }
 
-// Filter is a boolean expression tree. Comparison ops use Appwrite-equivalent
-// semantics; and/or are recursive. The Appwrite string codec remains implicit AND.
+// Filter is a boolean expression tree (single-AST, C7). Comparison ops use
+// Appwrite-equivalent semantics; and/or are recursive (depth <= 8). Negation
+// is expressed by not* variants only (index-friendly); there is no generic
+// NOT operator.
 type Filter struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Expr:
@@ -138,6 +142,14 @@ type Filter struct {
 	//	*Filter_Search
 	//	*Filter_And
 	//	*Filter_Or
+	//	*Filter_Between
+	//	*Filter_IsNull
+	//	*Filter_IsNotNull
+	//	*Filter_NotBetween
+	//	*Filter_NotContains
+	//	*Filter_NotStartsWith
+	//	*Filter_NotEndsWith
+	//	*Filter_NotSearch
 	Expr          isFilter_Expr `protobuf_oneof:"expr"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -297,6 +309,78 @@ func (x *Filter) GetOr() *FilterList {
 	return nil
 }
 
+func (x *Filter) GetBetween() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_Between); ok {
+			return x.Between
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetIsNull() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_IsNull); ok {
+			return x.IsNull
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetIsNotNull() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_IsNotNull); ok {
+			return x.IsNotNull
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetNotBetween() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_NotBetween); ok {
+			return x.NotBetween
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetNotContains() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_NotContains); ok {
+			return x.NotContains
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetNotStartsWith() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_NotStartsWith); ok {
+			return x.NotStartsWith
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetNotEndsWith() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_NotEndsWith); ok {
+			return x.NotEndsWith
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetNotSearch() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_NotSearch); ok {
+			return x.NotSearch
+		}
+	}
+	return nil
+}
+
 type isFilter_Expr interface {
 	isFilter_Expr()
 }
@@ -353,6 +437,38 @@ type Filter_Or struct {
 	Or *FilterList `protobuf:"bytes,13,opt,name=or,proto3,oneof"`
 }
 
+type Filter_Between struct {
+	Between *Comparison `protobuf:"bytes,14,opt,name=between,proto3,oneof"`
+}
+
+type Filter_IsNull struct {
+	IsNull *Comparison `protobuf:"bytes,15,opt,name=is_null,json=isNull,proto3,oneof"`
+}
+
+type Filter_IsNotNull struct {
+	IsNotNull *Comparison `protobuf:"bytes,16,opt,name=is_not_null,json=isNotNull,proto3,oneof"`
+}
+
+type Filter_NotBetween struct {
+	NotBetween *Comparison `protobuf:"bytes,17,opt,name=not_between,json=notBetween,proto3,oneof"`
+}
+
+type Filter_NotContains struct {
+	NotContains *Comparison `protobuf:"bytes,18,opt,name=not_contains,json=notContains,proto3,oneof"`
+}
+
+type Filter_NotStartsWith struct {
+	NotStartsWith *Comparison `protobuf:"bytes,19,opt,name=not_starts_with,json=notStartsWith,proto3,oneof"`
+}
+
+type Filter_NotEndsWith struct {
+	NotEndsWith *Comparison `protobuf:"bytes,20,opt,name=not_ends_with,json=notEndsWith,proto3,oneof"`
+}
+
+type Filter_NotSearch struct {
+	NotSearch *Comparison `protobuf:"bytes,21,opt,name=not_search,json=notSearch,proto3,oneof"`
+}
+
 func (*Filter_Eq) isFilter_Expr() {}
 
 func (*Filter_Ne) isFilter_Expr() {}
@@ -378,6 +494,22 @@ func (*Filter_Search) isFilter_Expr() {}
 func (*Filter_And) isFilter_Expr() {}
 
 func (*Filter_Or) isFilter_Expr() {}
+
+func (*Filter_Between) isFilter_Expr() {}
+
+func (*Filter_IsNull) isFilter_Expr() {}
+
+func (*Filter_IsNotNull) isFilter_Expr() {}
+
+func (*Filter_NotBetween) isFilter_Expr() {}
+
+func (*Filter_NotContains) isFilter_Expr() {}
+
+func (*Filter_NotStartsWith) isFilter_Expr() {}
+
+func (*Filter_NotEndsWith) isFilter_Expr() {}
+
+func (*Filter_NotSearch) isFilter_Expr() {}
 
 // Order is a single sort key. desc=false is ascending.
 type Order struct {
@@ -432,14 +564,18 @@ func (x *Order) GetDesc() bool {
 	return false
 }
 
-// Query is the typed document list/count model (filter tree + orders + page).
-// page_token is the authoritative pager (K-20); page_size is the page bound.
+// Query is the single wire form of document list/count/aggregate filters
+// (C7: the server consumes no query strings; the Appwrite DSL survives only
+// as client-side sugar in SDKs/tools). page_token is the authoritative pager
+// (K-20); page_size is the page bound.
 type Query struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Filter        *Filter                `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
-	Orders        []*Order               `protobuf:"bytes,2,rep,name=orders,proto3" json:"orders,omitempty"`
-	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Filter    *Filter                `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
+	Orders    []*Order               `protobuf:"bytes,2,rep,name=orders,proto3" json:"orders,omitempty"`
+	PageSize  int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Projection: server trims the returned Data to these fields.
+	Select        []string `protobuf:"bytes,5,rep,name=select,proto3" json:"select,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -502,6 +638,13 @@ func (x *Query) GetPageToken() string {
 	return ""
 }
 
+func (x *Query) GetSelect() []string {
+	if x != nil {
+		return x.Select
+	}
+	return nil
+}
+
 var File_shared_v1_query_proto protoreflect.FileDescriptor
 
 const file_shared_v1_query_proto_rawDesc = "" +
@@ -513,7 +656,7 @@ const file_shared_v1_query_proto_rawDesc = "" +
 	"\x06values\x18\x02 \x03(\tR\x06values\"C\n" +
 	"\n" +
 	"FilterList\x125\n" +
-	"\afilters\x18\x01 \x03(\v2\x1b.torchwood.shared.v1.FilterR\afilters\"\xdf\x05\n" +
+	"\afilters\x18\x01 \x03(\v2\x1b.torchwood.shared.v1.FilterR\afilters\"\xf9\t\n" +
 	"\x06Filter\x121\n" +
 	"\x02eq\x18\x01 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\x02eq\x121\n" +
 	"\x02ne\x18\x02 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\x02ne\x121\n" +
@@ -529,17 +672,28 @@ const file_shared_v1_query_proto_rawDesc = "" +
 	" \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\bendsWith\x129\n" +
 	"\x06search\x18\v \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\x06search\x123\n" +
 	"\x03and\x18\f \x01(\v2\x1f.torchwood.shared.v1.FilterListH\x00R\x03and\x121\n" +
-	"\x02or\x18\r \x01(\v2\x1f.torchwood.shared.v1.FilterListH\x00R\x02orB\x06\n" +
+	"\x02or\x18\r \x01(\v2\x1f.torchwood.shared.v1.FilterListH\x00R\x02or\x12;\n" +
+	"\abetween\x18\x0e \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\abetween\x12:\n" +
+	"\ais_null\x18\x0f \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\x06isNull\x12A\n" +
+	"\vis_not_null\x18\x10 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\tisNotNull\x12B\n" +
+	"\vnot_between\x18\x11 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\n" +
+	"notBetween\x12D\n" +
+	"\fnot_contains\x18\x12 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\vnotContains\x12I\n" +
+	"\x0fnot_starts_with\x18\x13 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\rnotStartsWith\x12E\n" +
+	"\rnot_ends_with\x18\x14 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\vnotEndsWith\x12@\n" +
+	"\n" +
+	"not_search\x18\x15 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\tnotSearchB\x06\n" +
 	"\x04expr\"9\n" +
 	"\x05Order\x12\x1c\n" +
 	"\tattribute\x18\x01 \x01(\tR\tattribute\x12\x12\n" +
-	"\x04desc\x18\x02 \x01(\bR\x04desc\"\xac\x01\n" +
+	"\x04desc\x18\x02 \x01(\bR\x04desc\"\xc4\x01\n" +
 	"\x05Query\x123\n" +
 	"\x06filter\x18\x01 \x01(\v2\x1b.torchwood.shared.v1.FilterR\x06filter\x122\n" +
 	"\x06orders\x18\x02 \x03(\v2\x1a.torchwood.shared.v1.OrderR\x06orders\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tR\tpageTokenB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
+	"page_token\x18\x04 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06select\x18\x05 \x03(\tR\x06selectB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_query_proto_rawDescOnce sync.Once
@@ -576,13 +730,21 @@ var file_shared_v1_query_proto_depIdxs = []int32{
 	0,  // 11: torchwood.shared.v1.Filter.search:type_name -> torchwood.shared.v1.Comparison
 	1,  // 12: torchwood.shared.v1.Filter.and:type_name -> torchwood.shared.v1.FilterList
 	1,  // 13: torchwood.shared.v1.Filter.or:type_name -> torchwood.shared.v1.FilterList
-	2,  // 14: torchwood.shared.v1.Query.filter:type_name -> torchwood.shared.v1.Filter
-	3,  // 15: torchwood.shared.v1.Query.orders:type_name -> torchwood.shared.v1.Order
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	0,  // 14: torchwood.shared.v1.Filter.between:type_name -> torchwood.shared.v1.Comparison
+	0,  // 15: torchwood.shared.v1.Filter.is_null:type_name -> torchwood.shared.v1.Comparison
+	0,  // 16: torchwood.shared.v1.Filter.is_not_null:type_name -> torchwood.shared.v1.Comparison
+	0,  // 17: torchwood.shared.v1.Filter.not_between:type_name -> torchwood.shared.v1.Comparison
+	0,  // 18: torchwood.shared.v1.Filter.not_contains:type_name -> torchwood.shared.v1.Comparison
+	0,  // 19: torchwood.shared.v1.Filter.not_starts_with:type_name -> torchwood.shared.v1.Comparison
+	0,  // 20: torchwood.shared.v1.Filter.not_ends_with:type_name -> torchwood.shared.v1.Comparison
+	0,  // 21: torchwood.shared.v1.Filter.not_search:type_name -> torchwood.shared.v1.Comparison
+	2,  // 22: torchwood.shared.v1.Query.filter:type_name -> torchwood.shared.v1.Filter
+	3,  // 23: torchwood.shared.v1.Query.orders:type_name -> torchwood.shared.v1.Order
+	24, // [24:24] is the sub-list for method output_type
+	24, // [24:24] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_shared_v1_query_proto_init() }
@@ -604,6 +766,14 @@ func file_shared_v1_query_proto_init() {
 		(*Filter_Search)(nil),
 		(*Filter_And)(nil),
 		(*Filter_Or)(nil),
+		(*Filter_Between)(nil),
+		(*Filter_IsNull)(nil),
+		(*Filter_IsNotNull)(nil),
+		(*Filter_NotBetween)(nil),
+		(*Filter_NotContains)(nil),
+		(*Filter_NotStartsWith)(nil),
+		(*Filter_NotEndsWith)(nil),
+		(*Filter_NotSearch)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

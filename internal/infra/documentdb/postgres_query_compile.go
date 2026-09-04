@@ -133,51 +133,29 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema str
 	return nil
 }
 
-// validateQueryInput 校验 List/Count 的 queries 输入上限（A2）：条数、
-// 单条长度；超限直接 InvalidArgument，防止超大 IN 参数击穿 PG 参数上限。
-func validateQueryInput(queries []string) error {
-	if len(queries) > maxQueryCount {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("queries count exceeds maximum of %d", maxQueryCount))
+// astFrom 是 SQL 编译前的 AST 入口（C7 单 AST）：caller（app 层
+// ResolveQuery）已填好 AST，此处合并 GET 面分页字段后校验。服务端不再
+// 解析 DSL 字符串（queries 回退分支已随双栈退役删除）。
+func astFrom(q databases.Query) (*query.Query, error) {
+	ast := cloneQuery(q.AST)
+	if ast.PageSize == 0 {
+		ast.PageSize = q.PageSize
 	}
-	for _, raw := range queries {
-		if len(raw) > maxQueryStringLen {
-			return status.Error(codes.InvalidArgument, fmt.Sprintf("query string exceeds maximum length of %d", maxQueryStringLen))
-		}
+	if ast.PageToken == "" {
+		ast.PageToken = q.PageToken
 	}
-	return nil
+	if err := ast.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
+	}
+	return ast, nil
 }
 
-// astFrom 是 SQL 编译前的 AST 入口。
-// 生产 List/Count 由 documents.ResolveQuery 填好 AST，adapter 不再解析字符串。
-// AST == nil 时回退 ParseMany(Queries)，供内部直连与既有集成测。
-// AST 与 Queries 同时提供 → InvalidArgument（与 ResolveQuery 双栈一致）。
-func astFrom(q databases.Query) (*query.Query, error) {
-	if q.AST != nil {
-		if len(q.Queries) > 0 {
-			return nil, status.Error(codes.InvalidArgument, "query and queries cannot both be set")
-		}
-		ast := *q.AST
-		if ast.PageSize == 0 {
-			ast.PageSize = q.PageSize
-		}
-		if ast.PageToken == "" {
-			ast.PageToken = q.PageToken
-		}
-		if err := ast.Validate(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
-		}
-		return &ast, nil
+func cloneQuery(src *query.Query) *query.Query {
+	if src == nil {
+		return &query.Query{}
 	}
-	if err := validateQueryInput(q.Queries); err != nil {
-		return nil, err
-	}
-	parsed, err := query.ParseMany(q.Queries)
-	if err != nil {
-		return nil, fmt.Errorf("invalid query: %w", err)
-	}
-	parsed.PageSize = q.PageSize
-	parsed.PageToken = q.PageToken
-	return parsed, nil
+	cp := *src
+	return &cp
 }
 
 func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
@@ -314,7 +292,9 @@ func compilePredicate(f *query.Filter) (string, []any, error) {
 			args[i] = v
 		}
 		return fmt.Sprintf("%s NOT IN (%s)", col, phs), args, nil
-	case query.OpLessThan, query.OpLessThanEqual, query.OpGreaterThan, query.OpGreaterThanEqual, query.OpContains, query.OpStartsWith, query.OpEndsWith, query.OpSearch:
+	case query.OpLessThan, query.OpLessThanEqual, query.OpGreaterThan, query.OpGreaterThanEqual,
+		query.OpContains, query.OpStartsWith, query.OpEndsWith, query.OpSearch,
+		query.OpNotContains, query.OpNotStartsWith, query.OpNotEndsWith, query.OpNotSearch:
 		if len(f.Values) < 1 {
 			return "", nil, status.Errorf(codes.InvalidArgument, "%s requires at least 1 value", f.Op)
 		}
@@ -333,8 +313,18 @@ func compilePredicate(f *query.Filter) (string, []any, error) {
 			return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{escapeLikePattern(f.Values[0]) + "%"}, nil
 		case query.OpEndsWith:
 			return fmt.Sprintf(`%s ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0])}, nil
-		default:
+		case query.OpSearch:
 			return fmt.Sprintf("to_tsvector('simple', %s::text) @@ plainto_tsquery('simple', ?)", col), []any{f.Values[0]}, nil
+		// not* 变体（C7 预决策 1）：NOT 包裹正算子。三值逻辑下 NULL 键行
+		// 对 NOT(比较) 求值为 NULL 而被排除——与 Appwrite/SQL NOT 语义一致。
+		case query.OpNotContains:
+			return fmt.Sprintf(`%s NOT ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0]) + "%"}, nil
+		case query.OpNotStartsWith:
+			return fmt.Sprintf(`%s NOT ILIKE ? ESCAPE '\'`, col), []any{escapeLikePattern(f.Values[0]) + "%"}, nil
+		case query.OpNotEndsWith:
+			return fmt.Sprintf(`%s NOT ILIKE ? ESCAPE '\'`, col), []any{"%" + escapeLikePattern(f.Values[0])}, nil
+		default:
+			return fmt.Sprintf("NOT (to_tsvector('simple', %s::text) @@ plainto_tsquery('simple', ?))", col), []any{f.Values[0]}, nil
 		}
 	case query.OpIsNull:
 		return fmt.Sprintf("%s IS NULL", col), nil, nil
@@ -345,6 +335,11 @@ func compilePredicate(f *query.Filter) (string, []any, error) {
 			return "", nil, fmt.Errorf("between requires 2 values")
 		}
 		return fmt.Sprintf("%s BETWEEN ? AND ?", col), []any{f.Values[0], f.Values[1]}, nil
+	case query.OpNotBetween:
+		if len(f.Values) != 2 {
+			return "", nil, fmt.Errorf("notBetween requires 2 values")
+		}
+		return fmt.Sprintf("%s NOT BETWEEN ? AND ?", col), []any{f.Values[0], f.Values[1]}, nil
 	default:
 		return "", nil, fmt.Errorf("unsupported filter operator: %s", f.Op)
 	}

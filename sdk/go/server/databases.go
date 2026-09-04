@@ -218,15 +218,15 @@ func (d *DatabasesService) DeleteDocument(ctx context.Context, collectionID, doc
 	return err
 }
 
-// ListDocuments 按查询 DSL 列出文档，返回文档列表与下一页游标（空表示无更多）。
-func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, queries []string, pageSize int32, pageToken string) ([]*sharedv1.Document, string, error) {
-	resp, err := d.c.databases.ListDocuments(ctx, &serverv1.ListDocumentsRequest{
+// ListDocuments 按 typed AST 查询列出文档（C7 单 AST：服务端不再消费 DSL
+// 字符串；分页走 q.PageSize/q.PageToken），返回文档列表与下一页游标（空表示无更多）。
+func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, q *sharedv1.Query) ([]*sharedv1.Document, string, error) {
+	req := &serverv1.ListDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
-		Queries:      queries,
-		PageSize:     pageSize,
-		PageToken:    pageToken,
-	})
+		Query:        q,
+	}
+	resp, err := d.c.databases.ListDocuments(ctx, req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -242,21 +242,22 @@ func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID strin
 type DocumentsPager struct {
 	svc          *DatabasesService
 	collectionID string
-	queries      []string
+	query        *sharedv1.Query
 	pageSize     int32
 	nextToken    string
 	done         bool
 }
 
-// NewDocumentsPager 创建文档分页迭代器。pageSize<=0 时默认 50。
-func (d *DatabasesService) NewDocumentsPager(collectionID string, queries []string, pageSize int32) *DocumentsPager {
+// NewDocumentsPager 创建文档分页迭代器（filter/orders 取自 q；pageSize 覆盖
+// q.PageSize）。pageSize<=0 时默认 50。
+func (d *DatabasesService) NewDocumentsPager(collectionID string, q *sharedv1.Query, pageSize int32) *DocumentsPager {
 	if pageSize <= 0 {
 		pageSize = 50
 	}
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	return &DocumentsPager{svc: d, collectionID: collectionID, queries: queries, pageSize: pageSize}
+	return &DocumentsPager{svc: d, collectionID: collectionID, query: q, pageSize: pageSize}
 }
 
 // Next 拉取下一页，返回文档列表；已到末尾返回 nil,nil。
@@ -264,7 +265,15 @@ func (p *DocumentsPager) Next(ctx context.Context) ([]*sharedv1.Document, error)
 	if p.done {
 		return nil, nil
 	}
-	docs, next, err := p.svc.ListDocuments(ctx, p.collectionID, p.queries, p.pageSize, p.nextToken)
+	// proto 消息含锁不可值拷贝；分页参数逐字段组装（filter/orders/select
+	// 指针共享只读）。
+	q := &sharedv1.Query{PageSize: p.pageSize, PageToken: p.nextToken}
+	if p.query != nil {
+		q.Filter = p.query.GetFilter()
+		q.Orders = p.query.GetOrders()
+		q.Select = p.query.GetSelect()
+	}
+	docs, next, err := p.svc.ListDocuments(ctx, p.collectionID, q)
 	if err != nil {
 		return nil, err
 	}
@@ -297,12 +306,12 @@ func (p *DocumentsPager) All(ctx context.Context) ([]*sharedv1.Document, error) 
 // HasMore 报告是否还有更多页。
 func (p *DocumentsPager) HasMore() bool { return !p.done }
 
-// CountDocuments 按查询 DSL 统计文档数量（P3-9：独立 Request，不含分页字段）。
-func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID string, queries []string) (int64, error) {
+// CountDocuments 按 typed AST 过滤统计文档数量（P3-9：独立 Request，不含分页字段）。
+func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID string, q *sharedv1.Query) (int64, error) {
 	resp, err := d.c.databases.CountDocuments(ctx, &serverv1.CountDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
-		Queries:      queries,
+		Query:        q,
 	})
 	if err != nil {
 		return 0, err
@@ -311,13 +320,13 @@ func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID stri
 }
 
 // AggregateDocuments 在权限过滤后的可见行集上聚合（sum/avg/min/max +
-// 可选单键 groupBy；groupBy 空 = 不分组）。queries 为查询 DSL 过滤
-// （与 ListDocuments 同语法；排序/分页算子无意义）。
-func (d *DatabasesService) AggregateDocuments(ctx context.Context, collectionID string, queries []string, aggregations []*serverv1.AggregateSpec, groupBy string) (*serverv1.AggregateDocumentsResponse, error) {
+// 可选单键 groupBy；groupBy 空 = 不分组）。q 为 typed AST 过滤
+//（与 ListDocuments 同形；排序/分页算子无意义）。
+func (d *DatabasesService) AggregateDocuments(ctx context.Context, collectionID string, q *sharedv1.Query, aggregations []*serverv1.AggregateSpec, groupBy string) (*serverv1.AggregateDocumentsResponse, error) {
 	req := &serverv1.AggregateDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
-		Queries:      queries,
+		Query:        q,
 		Aggregations: aggregations,
 	}
 	if groupBy != "" {

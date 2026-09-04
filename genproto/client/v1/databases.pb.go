@@ -459,13 +459,14 @@ type ListDocumentsRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Queries      []string               `protobuf:"bytes,3,rep,name=queries,proto3" json:"queries,omitempty"`
-	PageSize     int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken    string                 `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	ProjectId    string                 `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	// Typed AST. Dual-stack with queries/page_size/page_token; both set and
-	// conflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.
-	Query         *v1.Query `protobuf:"bytes,7,opt,name=query,proto3,oneof" json:"query,omitempty"`
+	// GET 面专用（C7 预决策 3）：page_size/page_token 保留为简单分页参数；
+	// 过滤/排序/投影一律走 query（POST :list 的 body 即 Query）。
+	PageSize  int32  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	ProjectId string `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Typed AST（唯一过滤载体）。page_size/page_token 与 query 内同名字段
+	// 同时设置且不等 → InvalidArgument。
+	Query         *v1.Query `protobuf:"bytes,7,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -512,13 +513,6 @@ func (x *ListDocumentsRequest) GetCollectionId() string {
 		return x.CollectionId
 	}
 	return ""
-}
-
-func (x *ListDocumentsRequest) GetQueries() []string {
-	if x != nil {
-		return x.Queries
-	}
-	return nil
 }
 
 func (x *ListDocumentsRequest) GetPageSize() int32 {
@@ -606,8 +600,7 @@ type CountDocumentsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Queries       []string               `protobuf:"bytes,3,rep,name=queries,proto3" json:"queries,omitempty"`
-	Query         *v1.Query              `protobuf:"bytes,4,opt,name=query,proto3,oneof" json:"query,omitempty"`
+	Query         *v1.Query              `protobuf:"bytes,4,opt,name=query,proto3" json:"query,omitempty"`
 	ProjectId     string                 `protobuf:"bytes,5,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -655,13 +648,6 @@ func (x *CountDocumentsRequest) GetCollectionId() string {
 		return x.CollectionId
 	}
 	return ""
-}
-
-func (x *CountDocumentsRequest) GetQueries() []string {
-	if x != nil {
-		return x.Queries
-	}
-	return nil
 }
 
 func (x *CountDocumentsRequest) GetQuery() *v1.Query {
@@ -787,31 +773,27 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"request_id\x18\x05 \x01(\tH\x01R\trequestId\x88\x01\x01B\n" +
 	"\n" +
 	"\b_versionB\r\n" +
-	"\v_request_id\"\x92\x02\n" +
+	"\v_request_id\"\xf8\x01\n" +
 	"\x14ListDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x18\n" +
-	"\aqueries\x18\x03 \x03(\tR\aqueries\x12\x1b\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x05 \x01(\tR\tpageToken\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x06 \x01(\tR\tprojectId\x125\n" +
-	"\x05query\x18\a \x01(\v2\x1a.torchwood.shared.v1.QueryH\x00R\x05query\x88\x01\x01B\b\n" +
-	"\x06_query\"\x8f\x01\n" +
+	"project_id\x18\x06 \x01(\tR\tprojectId\x120\n" +
+	"\x05query\x18\a \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryJ\x04\b\x03\x10\x04R\aqueries\"\x8f\x01\n" +
 	"\x15ListDocumentsResponse\x12;\n" +
 	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.shared.v1.DocumentR\tdocuments\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xd7\x01\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xbd\x01\n" +
 	"\x15CountDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x18\n" +
-	"\aqueries\x18\x03 \x03(\tR\aqueries\x125\n" +
-	"\x05query\x18\x04 \x01(\v2\x1a.torchwood.shared.v1.QueryH\x00R\x05query\x88\x01\x01\x12\x1d\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x120\n" +
+	"\x05query\x18\x04 \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05query\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x05 \x01(\tR\tprojectIdB\b\n" +
-	"\x06_query\".\n" +
+	"project_id\x18\x05 \x01(\tR\tprojectIdJ\x04\b\x03\x10\x04R\aqueries\".\n" +
 	"\x16CountDocumentsResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x03R\x05count2\xb5\f\n" +
 	"\x10DatabasesService\x12\xa9\x01\n" +
@@ -908,8 +890,6 @@ func file_client_v1_databases_proto_init() {
 	file_client_v1_databases_proto_msgTypes[1].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[2].OneofWrappers = []any{}
 	file_client_v1_databases_proto_msgTypes[4].OneofWrappers = []any{}
-	file_client_v1_databases_proto_msgTypes[5].OneofWrappers = []any{}
-	file_client_v1_databases_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

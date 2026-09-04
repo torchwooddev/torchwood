@@ -1848,12 +1848,13 @@ type ListDocumentsRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Queries      []string               `protobuf:"bytes,3,rep,name=queries,proto3" json:"queries,omitempty"`
-	PageSize     int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken    string                 `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	// Typed AST. Dual-stack with queries/page_size/page_token; both set and
-	// conflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.
-	Query         *v1.Query `protobuf:"bytes,6,opt,name=query,proto3,oneof" json:"query,omitempty"`
+	// GET 面专用（C7 预决策 3）：page_size/page_token 保留为简单分页参数；
+	// 过滤/排序/投影一律走 query（POST :list 的 body 即 Query）。
+	PageSize  int32  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Typed AST（唯一过滤载体）。page_size/page_token 与 query 内同名字段
+	// 同时设置且不等 → InvalidArgument。
+	Query         *v1.Query `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1900,13 +1901,6 @@ func (x *ListDocumentsRequest) GetCollectionId() string {
 		return x.CollectionId
 	}
 	return ""
-}
-
-func (x *ListDocumentsRequest) GetQueries() []string {
-	if x != nil {
-		return x.Queries
-	}
-	return nil
 }
 
 func (x *ListDocumentsRequest) GetPageSize() int32 {
@@ -1984,12 +1978,10 @@ func (x *ListDocumentsResponse) GetMeta() *v1.ListResponseMeta {
 
 // CountDocumentsRequest 独立于 ListDocumentsRequest（P3-9）：不暴露无效分页参数（page_size/page_token）。
 type CountDocumentsRequest struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Queries      []string               `protobuf:"bytes,3,rep,name=queries,proto3" json:"queries,omitempty"`
-	// Typed AST. Dual-stack with queries; both set and conflicting → InvalidArgument.
-	Query         *v1.Query `protobuf:"bytes,4,opt,name=query,proto3,oneof" json:"query,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	Query         *v1.Query              `protobuf:"bytes,4,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2036,13 +2028,6 @@ func (x *CountDocumentsRequest) GetCollectionId() string {
 		return x.CollectionId
 	}
 	return ""
-}
-
-func (x *CountDocumentsRequest) GetQueries() []string {
-	if x != nil {
-		return x.Queries
-	}
-	return nil
 }
 
 func (x *CountDocumentsRequest) GetQuery() *v1.Query {
@@ -2153,15 +2138,14 @@ type AggregateDocumentsRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
 	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	// 过滤（与 ListDocuments 同语法）；排序/分页算子无意义（整集聚合）。
-	Queries []string `protobuf:"bytes,3,rep,name=queries,proto3" json:"queries,omitempty"`
 	// 至少一项；UNSPECIFIED → InvalidArgument。
 	Aggregations []*AggregateSpec `protobuf:"bytes,4,rep,name=aggregations,proto3" json:"aggregations,omitempty"`
 	// 可选单键 group_by：须为已声明属性；键按 text 序列化且只来自可见行
 	// （D1：不可见行的键不会出现）。
 	GroupBy *string `protobuf:"bytes,5,opt,name=group_by,json=groupBy,proto3,oneof" json:"group_by,omitempty"`
-	// Typed AST filter. Dual-stack with queries; both set and conflicting → InvalidArgument.
-	Query         *v1.Query `protobuf:"bytes,6,opt,name=query,proto3,oneof" json:"query,omitempty"`
+	// Typed AST filter（唯一过滤载体；排序/分页算子对整集语义无意义，
+	// 服务端显式拒绝）。
+	Query         *v1.Query `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2208,13 +2192,6 @@ func (x *AggregateDocumentsRequest) GetCollectionId() string {
 		return x.CollectionId
 	}
 	return ""
-}
-
-func (x *AggregateDocumentsRequest) GetQueries() []string {
-	if x != nil {
-		return x.Queries
-	}
-	return nil
 }
 
 func (x *AggregateDocumentsRequest) GetAggregations() []*AggregateSpec {
@@ -3091,42 +3068,36 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"request_id\x18\x05 \x01(\tH\x01R\trequestId\x88\x01\x01B\n" +
 	"\n" +
 	"\b_versionB\r\n" +
-	"\v_request_id\"\xf3\x01\n" +
+	"\v_request_id\"\xd9\x01\n" +
 	"\x14ListDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x18\n" +
-	"\aqueries\x18\x03 \x03(\tR\aqueries\x12\x1b\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\tR\tpageToken\x125\n" +
-	"\x05query\x18\x06 \x01(\v2\x1a.torchwood.shared.v1.QueryH\x00R\x05query\x88\x01\x01B\b\n" +
-	"\x06_query\"\x8f\x01\n" +
+	"page_token\x18\x05 \x01(\tR\tpageToken\x120\n" +
+	"\x05query\x18\x06 \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryJ\x04\b\x03\x10\x04R\aqueries\"\x8f\x01\n" +
 	"\x15ListDocumentsResponse\x12;\n" +
 	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.shared.v1.DocumentR\tdocuments\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xb8\x01\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\x9e\x01\n" +
 	"\x15CountDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x18\n" +
-	"\aqueries\x18\x03 \x03(\tR\aqueries\x125\n" +
-	"\x05query\x18\x04 \x01(\v2\x1a.torchwood.shared.v1.QueryH\x00R\x05query\x88\x01\x01B\b\n" +
-	"\x06_query\".\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x120\n" +
+	"\x05query\x18\x04 \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryJ\x04\b\x03\x10\x04R\aqueries\".\n" +
 	"\x16CountDocumentsResponse\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x03R\x05count\"i\n" +
 	"\rAggregateSpec\x12B\n" +
 	"\bfunction\x18\x01 \x01(\x0e2&.torchwood.server.v1.AggregateFunctionR\bfunction\x12\x14\n" +
-	"\x05field\x18\x02 \x01(\tR\x05field\"\xb1\x02\n" +
+	"\x05field\x18\x02 \x01(\tR\x05field\"\x97\x02\n" +
 	"\x19AggregateDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
-	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x18\n" +
-	"\aqueries\x18\x03 \x03(\tR\aqueries\x12F\n" +
+	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12F\n" +
 	"\faggregations\x18\x04 \x03(\v2\".torchwood.server.v1.AggregateSpecR\faggregations\x12\x1e\n" +
-	"\bgroup_by\x18\x05 \x01(\tH\x00R\agroupBy\x88\x01\x01\x125\n" +
-	"\x05query\x18\x06 \x01(\v2\x1a.torchwood.shared.v1.QueryH\x01R\x05query\x88\x01\x01B\v\n" +
-	"\t_group_byB\b\n" +
-	"\x06_query\"\x8f\x01\n" +
+	"\bgroup_by\x18\x05 \x01(\tH\x00R\agroupBy\x88\x01\x01\x120\n" +
+	"\x05query\x18\x06 \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryB\v\n" +
+	"\t_group_byJ\x04\b\x03\x10\x04R\aqueries\"\x8f\x01\n" +
 	"\x0eAggregateValue\x12B\n" +
 	"\bfunction\x18\x01 \x01(\x0e2&.torchwood.server.v1.AggregateFunctionR\bfunction\x12\x14\n" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12\x19\n" +
@@ -3418,8 +3389,6 @@ func file_server_v1_databases_proto_init() {
 	file_server_v1_databases_proto_msgTypes[18].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[19].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[21].OneofWrappers = []any{}
-	file_server_v1_databases_proto_msgTypes[22].OneofWrappers = []any{}
-	file_server_v1_databases_proto_msgTypes[24].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[27].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[28].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[29].OneofWrappers = []any{}

@@ -407,7 +407,7 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	q, err := documents.BindListQuery(req.GetQueries(), req.GetPageSize(), req.GetPageToken(), req.GetQuery())
+	q, err := documents.BindListQuery(req.GetPageSize(), req.GetPageToken(), req.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -675,7 +675,7 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.Cou
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	q, err := documents.BindListQuery(req.GetQueries(), 0, "", req.GetQuery())
+	q, err := documents.BindListQuery(0, "", req.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -693,7 +693,7 @@ func (s *DatabasesService) AggregateDocuments(ctx context.Context, req *serverv1
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
 	}
 	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
-	q, err := documents.BindListQuery(req.GetQueries(), 0, "", req.GetQuery())
+	q, err := documents.BindListQuery(0, "", req.GetQuery())
 	if err != nil {
 		return nil, err
 	}

@@ -423,17 +423,8 @@
             "type": "string"
           },
           {
-            "name": "queries",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "collectionFormat": "multi"
-          },
-          {
             "name": "page_size",
+            "description": "GET 面专用（C7 预决策 3）：page_size/page_token 保留为简单分页参数；\n过滤/排序/投影一律走 query（POST :list 的 body 即 Query）。",
             "in": "query",
             "required": false,
             "type": "integer",
@@ -622,6 +613,134 @@
             "collectionFormat": "multi"
           },
           {
+            "name": "query.filter.between.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.between.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.is_null.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.is_null.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.is_not_null.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.is_not_null.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_between.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_between.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_contains.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_contains.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_starts_with.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_starts_with.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_ends_with.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_ends_with.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_search.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_search.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
             "name": "query.page_size",
             "in": "query",
             "required": false,
@@ -633,6 +752,17 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "query.select",
+            "description": "Projection: server trims the returned Data to these fields.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
           }
         ],
         "tags": [
@@ -1039,16 +1169,6 @@
             "type": "string"
           },
           {
-            "name": "queries",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "collectionFormat": "multi"
-          },
-          {
             "name": "query.filter.eq.attribute",
             "in": "query",
             "required": false,
@@ -1225,6 +1345,134 @@
             "collectionFormat": "multi"
           },
           {
+            "name": "query.filter.between.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.between.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.is_null.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.is_null.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.is_not_null.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.is_not_null.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_between.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_between.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_contains.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_contains.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_starts_with.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_starts_with.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_ends_with.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_ends_with.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.not_search.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.not_search.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
             "name": "query.page_size",
             "in": "query",
             "required": false,
@@ -1236,6 +1484,17 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "query.select",
+            "description": "Projection: server trims the returned Data to these fields.",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
           }
         ],
         "tags": [
@@ -1317,7 +1576,7 @@
           },
           {
             "name": "query",
-            "description": "Typed AST. Dual-stack with queries/page_size/page_token; both set and\nconflicting → InvalidArgument. See docs/review/wave2-e4-query-ast.md.",
+            "description": "Typed AST（唯一过滤载体）。page_size/page_token 与 query 内同名字段\n同时设置且不等 → InvalidArgument。",
             "in": "body",
             "required": true,
             "schema": {
@@ -1325,17 +1584,8 @@
             }
           },
           {
-            "name": "queries",
-            "in": "query",
-            "required": false,
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "collectionFormat": "multi"
-          },
-          {
             "name": "page_size",
+            "description": "GET 面专用（C7 预决策 3）：page_size/page_token 保留为简单分页参数；\n过滤/排序/投影一律走 query（POST :list 的 body 即 Query）。",
             "in": "query",
             "required": false,
             "type": "integer",
@@ -1541,13 +1791,6 @@
     "DatabasesServiceAggregateDocumentsBody": {
       "type": "object",
       "properties": {
-        "queries": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "title": "过滤（与 ListDocuments 同语法）；排序/分页算子无意义（整集聚合）。"
-        },
         "aggregations": {
           "type": "array",
           "items": {
@@ -1562,7 +1805,7 @@
         },
         "query": {
           "$ref": "#/definitions/v1Query",
-          "description": "Typed AST filter. Dual-stack with queries; both set and conflicting → InvalidArgument."
+          "title": "Typed AST filter（唯一过滤载体；排序/分页算子对整集语义无意义，\n服务端显式拒绝）。"
         }
       }
     },
@@ -1729,15 +1972,8 @@
     "torchwoodserverv1DatabasesServiceCountDocumentsBody": {
       "type": "object",
       "properties": {
-        "queries": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "query": {
-          "$ref": "#/definitions/v1Query",
-          "description": "Typed AST. Dual-stack with queries; both set and conflicting → InvalidArgument."
+          "$ref": "#/definitions/v1Query"
         }
       },
       "title": "CountDocumentsRequest 独立于 ListDocumentsRequest（P3-9）：不暴露无效分页参数（page_size/page_token）。"
@@ -2000,7 +2236,7 @@
           }
         }
       },
-      "description": "Comparison is a leaf predicate: attribute plus one or more values."
+      "description": "Comparison is a leaf predicate: attribute plus zero or more values.\nValue arity per operator: eq/ne/lt/lte/gt/gte/in/contains/starts_with/\nends_with/search \u003e= 1; between/not_between exactly 2; is_null/is_not_null 0."
     },
     "v1CreateDatabaseRequest": {
       "type": "object",
@@ -2169,9 +2405,33 @@
         },
         "or": {
           "$ref": "#/definitions/v1FilterList"
+        },
+        "between": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "is_null": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "is_not_null": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "not_between": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "not_contains": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "not_starts_with": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "not_ends_with": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "not_search": {
+          "$ref": "#/definitions/v1Comparison"
         }
       },
-      "description": "Filter is a boolean expression tree. Comparison ops use Appwrite-equivalent\nsemantics; and/or are recursive. The Appwrite string codec remains implicit AND."
+      "description": "Filter is a boolean expression tree (single-AST, C7). Comparison ops use\nAppwrite-equivalent semantics; and/or are recursive (depth \u003c= 8). Negation\nis expressed by not* variants only (index-friendly); there is no generic\nNOT operator."
     },
     "v1FilterList": {
       "type": "object",
@@ -2301,9 +2561,16 @@
         },
         "page_token": {
           "type": "string"
+        },
+        "select": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Projection: server trims the returned Data to these fields."
         }
       },
-      "description": "Query is the typed document list/count model (filter tree + orders + page).\npage_token is the authoritative pager (K-20); page_size is the page bound."
+      "description": "Query is the single wire form of document list/count/aggregate filters\n(C7: the server consumes no query strings; the Appwrite DSL survives only\nas client-side sugar in SDKs/tools). page_token is the authoritative pager\n(K-20); page_size is the page bound."
     },
     "v1TransactionMode": {
       "type": "string",

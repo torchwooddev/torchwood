@@ -90,15 +90,15 @@ func (d *DatabasesService) DeleteDocument(ctx context.Context, collectionID, doc
 	return err
 }
 
-// ListDocuments 按查询 DSL 列出文档，返回文档列表与下一页游标（空表示无更多）。
-func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, queries []string, pageSize int32, pageToken string) ([]*sharedv1.Document, string, error) {
-	resp, err := d.c.databases.ListDocuments(ctx, &clientv1.ListDocumentsRequest{
+// ListDocuments 按 typed AST 查询列出文档（C7 单 AST），返回文档列表与
+// 下一页游标（空表示无更多）。分页走 q.PageSize/q.PageToken。
+func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, q *sharedv1.Query) ([]*sharedv1.Document, string, error) {
+	req := &clientv1.ListDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
-		Queries:      queries,
-		PageSize:     pageSize,
-		PageToken:    pageToken,
-	})
+		Query:        q,
+	}
+	resp, err := d.c.databases.ListDocuments(ctx, req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -109,13 +109,13 @@ func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID strin
 	return resp.Documents, next, nil
 }
 
-// CountDocuments 按查询 DSL 统计文档数量。
-func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID string, queries []string) (int64, error) {
+// CountDocuments 按 typed AST 过滤统计文档数量。
+func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID string, q *sharedv1.Query) (int64, error) {
 	// P3-9：CountDocuments 独立 Request（不暴露无效分页参数）。
 	resp, err := d.c.databases.CountDocuments(ctx, &clientv1.CountDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
-		Queries:      queries,
+		Query:        q,
 	})
 	if err != nil {
 		return 0, err

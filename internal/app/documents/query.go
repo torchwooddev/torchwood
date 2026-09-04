@@ -9,51 +9,32 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// BindListQuery 把 ListDocuments 传输字段编进 domain Query（proto codec 在此完成，
-// handler 不手写 Parse）。
-func BindListQuery(queries []string, pageSize int32, pageToken string, protoQ *sharedv1.Query) (databases.Query, error) {
+// BindListQuery 把 List/Count/Aggregate 传输字段编进 domain Query（C7 单 AST：
+// proto codec 在此完成，handler 不手写解析；queries 字符串栈已退役）。
+// pageSize/pageToken 是 GET 面的简单分页参数，与 Query 内同名字段冲突（不等）即拒。
+func BindListQuery(pageSize int32, pageToken string, protoQ *sharedv1.Query) (databases.Query, error) {
 	ast, err := queryproto.FromProto(protoQ)
 	if err != nil {
 		return databases.Query{}, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
 	}
 	return databases.Query{
-		Queries:   queries,
 		PageSize:  pageSize,
 		PageToken: pageToken,
 		AST:       ast,
 	}, nil
 }
 
-// ResolveQuery 是 List/Count 的双栈入口：proto AST（q.AST）优先，否则
-// ParseMany(queries)。两者同时提供谓词/排序/分页且冲突时 InvalidArgument。
+// ResolveQuery 是 List/Count/Aggregate 的唯一 AST 入口：合并 GET 面分页字段
+// 后校验。AST 缺省（无过滤的 plain list）合法。
 func ResolveQuery(q databases.Query) (*query.Query, error) {
-	ast := q.AST
-	protoActive := ast.HasPredicate() || ast.HasOrders() || ast.HasPage()
-	if protoActive && len(q.Queries) > 0 {
-		return nil, status.Error(codes.InvalidArgument, "query and queries cannot both be set")
+	out := cloneAST(q.AST)
+	if err := mergePage(out, q.PageSize, q.PageToken); err != nil {
+		return nil, err
 	}
-	if protoActive {
-		out := cloneAST(ast)
-		if err := mergePage(out, q.PageSize, q.PageToken); err != nil {
-			return nil, err
-		}
-		if err := out.Validate(); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
-		}
-		return out, nil
-	}
-	parsed, err := query.ParseMany(q.Queries)
-	if err != nil {
+	if err := out.Validate(); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
 	}
-	if parsed.PageSize == 0 {
-		parsed.PageSize = q.PageSize
-	}
-	parsed.PageToken = q.PageToken
-	if err := parsed.Validate(); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid query: %v", err)
-	}
-	return parsed, nil
+	return out, nil
 }
 
 func mergePage(ast *query.Query, pageSize int32, pageToken string) error {

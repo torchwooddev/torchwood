@@ -42,10 +42,13 @@ type Document struct {
 }
 
 type Query struct {
+	// Queries 是 DSL 字符串遗留字段：文档查询栈（List/Count/Aggregate）已单
+	// AST 化不再消费；仅供边界邻居面（users/buckets/files 等系统静态表
+	// listing）携带，勿在新代码使用。
 	Queries   []string
 	PageSize  int32
 	PageToken string
-	// AST is the typed query (proto codec). Dual-stack with Queries.
+	// AST is the typed query（C7 单一消费形态）。
 	AST *query.Query
 }
 

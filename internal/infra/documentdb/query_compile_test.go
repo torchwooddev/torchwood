@@ -8,44 +8,68 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/query"
-	queryproto "github.com/torchwooddev/torchwood/pkg/query/proto"
 )
 
-func TestBuildAppwriteQuery_EqualMatchesProtoEq(t *testing.T) {
-	parsed, err := query.Parse(`equal("a","b")`)
-	require.NoError(t, err)
-	fromDSL, argsDSL, _, err := buildAppwriteQuery(parsed)
-	require.NoError(t, err)
+// 每算子编译单测（C7 单 AST）：AST 构造 → SQL 断言。DSL 解析路径的等价性
+// 由 pkg/query 与 pkg/query/proto 的测试保证（客户端语法糖）。
 
-	ast, err := queryproto.FromProto(&sharedv1.Query{
-		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{
-			Attribute: "a",
-			Values:    []string{"b"},
-		}}},
-	})
+func TestBuildAppwriteQuery_EveryComparisonOperator(t *testing.T) {
+	cases := []struct {
+		name   string
+		filter *query.Filter
+		where  string
+		args   []any
+	}{
+		{"eq single", query.Eq("a", "b"), `d."a" = ?`, []any{"b"}},
+		{"eq multi → IN", query.Eq("a", "b", "c"), `d."a" IN (?, ?)`, []any{"b", "c"}},
+		{"ne single", query.Ne("a", "b"), `d."a" != ?`, []any{"b"}},
+		{"ne multi → NOT IN", query.Ne("a", "b", "c"), `d."a" NOT IN (?, ?)`, []any{"b", "c"}},
+		{"lt", query.Lt("a", "5"), `d."a" < ?`, []any{"5"}},
+		{"lte", query.Lte("a", "5"), `d."a" <= ?`, []any{"5"}},
+		{"gt", query.Gt("a", "5"), `d."a" > ?`, []any{"5"}},
+		{"gte", query.Gte("a", "5"), `d."a" >= ?`, []any{"5"}},
+		{"in", query.In("a", "x", "y"), `d."a" IN (?, ?)`, []any{"x", "y"}},
+		{"contains", query.Contains("a", "jo"), `d."a" ILIKE ? ESCAPE '\'`, []any{"%jo%"}},
+		{"notContains", query.NotContains("a", "jo"), `d."a" NOT ILIKE ? ESCAPE '\'`, []any{"%jo%"}},
+		{"startsWith", query.StartsWith("a", "jo"), `d."a" ILIKE ? ESCAPE '\'`, []any{"jo%"}},
+		{"notStartsWith", query.NotStartsWith("a", "jo"), `d."a" NOT ILIKE ? ESCAPE '\'`, []any{"jo%"}},
+		{"endsWith", query.EndsWith("a", "jo"), `d."a" ILIKE ? ESCAPE '\'`, []any{"%jo"}},
+		{"notEndsWith", query.NotEndsWith("a", "jo"), `d."a" NOT ILIKE ? ESCAPE '\'`, []any{"%jo"}},
+		{"search", query.Search("a", "hi"), `to_tsvector('simple', d."a"::text) @@ plainto_tsquery('simple', ?)`, []any{"hi"}},
+		{"notSearch", query.NotSearch("a", "hi"), `NOT (to_tsvector('simple', d."a"::text) @@ plainto_tsquery('simple', ?))`, []any{"hi"}},
+		{"between", query.Between("a", "1", "9"), `d."a" BETWEEN ? AND ?`, []any{"1", "9"}},
+		{"notBetween", query.NotBetween("a", "1", "9"), `d."a" NOT BETWEEN ? AND ?`, []any{"1", "9"}},
+		{"isNull", query.IsNull("a"), `d."a" IS NULL`, nil},
+		{"isNotNull", query.IsNotNull("a"), `d."a" IS NOT NULL`, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			where, args, _, err := buildAppwriteQuery(&query.Query{Filter: tc.filter})
+			require.NoError(t, err)
+			require.Equal(t, tc.where, where)
+			if tc.args == nil {
+				require.Empty(t, args)
+			} else {
+				require.Equal(t, tc.args, args)
+			}
+		})
+	}
+}
+
+// contains 族通配符转义在 not* 变体同样生效（escapeLikePattern 复用）。
+func TestBuildAppwriteQuery_NotLikeEscapesWildcards(t *testing.T) {
+	where, args, _, err := buildAppwriteQuery(&query.Query{Filter: query.NotContains("a", "50%_off")})
 	require.NoError(t, err)
-	fromProto, argsProto, _, err := buildAppwriteQuery(ast)
-	require.NoError(t, err)
-	require.Equal(t, fromDSL, fromProto)
-	require.Equal(t, argsDSL, argsProto)
-	require.Equal(t, `d."a" = ?`, fromDSL)
-	require.Equal(t, []any{"b"}, argsDSL)
+	require.Equal(t, `d."a" NOT ILIKE ? ESCAPE '\'`, where)
+	require.Equal(t, []any{`%50\%\_off%`}, args)
 }
 
 func TestBuildAppwriteQuery_OrCompilesToSQLOr(t *testing.T) {
-	ast, err := queryproto.FromProto(&sharedv1.Query{
-		Filter: &sharedv1.Filter{Expr: &sharedv1.Filter_Or{Or: &sharedv1.FilterList{
-			Filters: []*sharedv1.Filter{
-				{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{Attribute: "status", Values: []string{"a"}}}},
-				{Expr: &sharedv1.Filter_Eq{Eq: &sharedv1.Comparison{Attribute: "status", Values: []string{"b"}}}},
-			},
-		}}},
+	where, args, _, err := buildAppwriteQuery(&query.Query{
+		Filter: query.Or(query.Eq("status", "a"), query.Eq("status", "b")),
 	})
-	require.NoError(t, err)
-	where, args, _, err := buildAppwriteQuery(ast)
 	require.NoError(t, err)
 	require.Equal(t, `(d."status" = ? OR d."status" = ?)`, where)
 	require.Equal(t, []any{"a", "b"}, args)
@@ -54,30 +78,24 @@ func TestBuildAppwriteQuery_OrCompilesToSQLOr(t *testing.T) {
 
 // TestBuildAppwriteQuery_CustomOrderHasIDTiebreaker：自定义排序必须以
 // _id 收尾且与 cursor 续页路径同构（重复排序键的全序确定性 + keyset 各页
-// 同序；offset 翻页跨页不丢不重的机制保证）。
+// 同序；跨页不丢不重的机制保证）。
 func TestBuildAppwriteQuery_CustomOrderHasIDTiebreaker(t *testing.T) {
-	parsed, err := query.ParseMany([]string{`orderAsc("status")`})
-	require.NoError(t, err)
-	_, _, orderSQL, err := buildAppwriteQuery(parsed)
+	_, _, orderSQL, err := buildAppwriteQuery(&query.Query{Orders: []query.Order{{Attribute: "status"}}})
 	require.NoError(t, err)
 	require.Equal(t, `ORDER BY d."status" ASC, d._id ASC`, orderSQL)
 
-	parsed, err = query.ParseMany([]string{`orderDesc("priority")`})
-	require.NoError(t, err)
-	_, _, orderSQL, err = buildAppwriteQuery(parsed)
+	_, _, orderSQL, err = buildAppwriteQuery(&query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}})
 	require.NoError(t, err)
 	require.Equal(t, `ORDER BY d."priority" DESC, d._id DESC`, orderSQL)
 
 	// 默认排序（无显式 orders）同样带 _id。
-	parsed, err = query.ParseMany([]string{`equal("status","open")`})
-	require.NoError(t, err)
-	_, _, orderSQL, err = buildAppwriteQuery(parsed)
+	_, _, orderSQL, err = buildAppwriteQuery(&query.Query{Filter: query.Eq("status", "open")})
 	require.NoError(t, err)
 	require.Equal(t, `ORDER BY d._created_at DESC, d._id DESC`, orderSQL)
 }
 
 // TestBuildAppwriteQuery_TotalFilterParamsLimit：跨 filter 绑定参数累计上限
-// （单 filter ≤1000 不封总量：100 query × 1000 值可积 10 万参数，超 PG 65535
+//（单 filter ≤1000 不封总量：100 叶 × 1000 值可积 10 万参数，超 PG 65535
 // 语句参数上限后以运行时错误暴露）。
 func TestBuildAppwriteQuery_TotalFilterParamsLimit(t *testing.T) {
 	makeFilter := func(n int) *query.Filter {
@@ -85,34 +103,28 @@ func TestBuildAppwriteQuery_TotalFilterParamsLimit(t *testing.T) {
 		for i := range values {
 			values[i] = fmt.Sprintf("v%d", i)
 		}
-		return &query.Filter{Op: query.OpIn, Attribute: "status", Values: values}
+		return query.In("status", values...)
 	}
 
 	// 3 × 700 = 2100 > 2000 → InvalidArgument。
-	over := &query.Query{Filter: &query.Filter{
-		Op:       query.OpAnd,
-		Children: []*query.Filter{makeFilter(700), makeFilter(700), makeFilter(700)},
-	}}
+	over := &query.Query{Filter: query.And(makeFilter(700), makeFilter(700), makeFilter(700))}
 	_, _, _, err := buildAppwriteQuery(over)
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	// 3 × 600 = 1800 ≤ 2000 → 通过。
-	ok := &query.Query{Filter: &query.Filter{
-		Op:       query.OpAnd,
-		Children: []*query.Filter{makeFilter(600), makeFilter(600), makeFilter(600)},
-	}}
+	ok := &query.Query{Filter: query.And(makeFilter(600), makeFilter(600), makeFilter(600))}
 	where, args, _, err := buildAppwriteQuery(ok)
 	require.NoError(t, err)
 	require.NotEmpty(t, where)
 	require.Len(t, args, 1800)
 }
 
-func TestBuildAppwriteQuery_CodecAndStillAnd(t *testing.T) {
-	parsed, err := query.ParseMany([]string{`equal("a","1")`, `equal("b","2")`})
-	require.NoError(t, err)
-	where, args, _, err := buildAppwriteQuery(parsed)
+func TestBuildAppwriteQuery_AndTree(t *testing.T) {
+	where, args, _, err := buildAppwriteQuery(&query.Query{
+		Filter: query.And(query.Eq("a", "1"), query.Eq("b", "2")),
+	})
 	require.NoError(t, err)
 	require.Equal(t, `(d."a" = ? AND d."b" = ?)`, where)
 	require.Equal(t, []any{"1", "2"}, args)
@@ -130,12 +142,23 @@ func TestBuildAppwriteQuery_EmptyValuesInvalidArgument(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-func TestAstFrom_BothASTAndQueries(t *testing.T) {
-	_, err := astFrom(databases.Query{
-		Queries: []string{`equal("a","1")`},
-		AST:     &query.Query{Filter: &query.Filter{Op: query.OpEqual, Attribute: "a", Values: []string{"1"}}},
+func TestAstFrom_MergesPageFields(t *testing.T) {
+	ast, err := astFrom(databases.Query{
+		PageSize:  7,
+		PageToken: "ka:doc-1",
+		AST:       &query.Query{Filter: query.Eq("a", "1")},
 	})
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.NoError(t, err)
+	require.Equal(t, int32(7), ast.PageSize)
+	require.Equal(t, "ka:doc-1", ast.PageToken)
+
+	// AST 自带分页优先。
+	ast, err = astFrom(databases.Query{
+		PageSize: 9,
+		AST:      &query.Query{Filter: query.Eq("a", "1"), PageSize: 3},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(3), ast.PageSize)
 }
 
 func TestAstFrom_EmptyGtEq(t *testing.T) {
