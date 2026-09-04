@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
 const (
@@ -798,7 +799,9 @@ func buildCreateDocumentReq(databaseID, collectionID, documentID, data, permissi
 	return req, nil
 }
 
-// buildListDocumentsReq 构造 ListDocumentsRequest JSON map（供 list/count 复用）。
+// buildListDocumentsReq 构造 ListDocumentsRequest JSON map（供 list/count
+// 复用）。C7 单 AST：--queries 的 DSL 串在客户端经 pkg/query 解析为 AST 后
+// 以 "query" 字段发送（服务端零 DSL 消费）。
 func buildListDocumentsReq(databaseID, collectionID, queries string, pageSize int32, pageToken string) (map[string]any, error) {
 	if databaseID == "" {
 		return nil, fmt.Errorf("缺少 database-id")
@@ -815,7 +818,11 @@ func buildListDocumentsReq(databaseID, collectionID, queries string, pageSize in
 		if err != nil {
 			return nil, err
 		}
-		req["queries"] = qs
+		ast, err := query.ParseMany(qs)
+		if err != nil {
+			return nil, fmt.Errorf("--queries 解析失败: %w", err)
+		}
+		req["query"] = ast.ToWireJSON()
 	}
 	if pageSize > 0 {
 		req["pageSize"] = pageSize

@@ -5,12 +5,31 @@ import type {
   Collection,
   Database,
   Document,
+  DocumentListParams,
   Index,
   ListMeta,
   ListParams,
   UpdateDocumentInput,
   UpsertDocumentInput,
 } from "../types.js";
+import type { QueryAst } from "../query.js";
+
+// documentsQueryBody 组装 POST :list 的 body（Query JSON；分页字段并入——
+// page_size/page_token 与 query 内同名字段以 query 为准，不重复携带）。
+function documentsQueryBody(
+  query: QueryAst,
+  pageSize?: number,
+  pageToken?: string
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...query };
+  if (body.pageSize === undefined && pageSize !== undefined) {
+    body.pageSize = pageSize;
+  }
+  if (body.pageToken === undefined && pageToken !== undefined) {
+    body.pageToken = pageToken;
+  }
+  return body;
+}
 
 export class ServerDatabasesService {
   constructor(private readonly http: HttpTransport) {}
@@ -198,11 +217,22 @@ export class ServerDatabasesService {
     );
   }
 
+  // C7 单 AST：带 query（过滤/排序/投影）时走 POST :list（body 即 Query
+  // JSON，分页字段并入）；无 query 时保留 GET 简单分页（page_size/page_token）。
   async listDocuments(
     databaseId: string,
     collectionId: string,
-    params?: ListParams
+    params?: DocumentListParams
   ): Promise<{ documents: Document[]; meta?: ListMeta }> {
+    if (params?.query) {
+      const body = documentsQueryBody(params.query, params.page_size, params.page_token);
+      const res = await this.http.request<{ documents: Document[]; meta?: ListMeta }>(
+        "POST",
+        `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:list`,
+        { auth: "apiKey", body }
+      );
+      return { documents: res.documents ?? [], meta: res.meta };
+    }
     const res = await this.http.request<{ documents: Document[]; meta?: ListMeta }>(
       "GET",
       `/v1/server/databases/${databaseId}/collections/${collectionId}/documents`,
@@ -279,16 +309,33 @@ export class ServerDatabasesService {
     );
   }
 
+  // C7 单 AST：带 query 过滤时走 POST :count（GET 面仅支持无过滤计数）。
   async countDocuments(
     databaseId: string,
     collectionId: string,
-    params?: Pick<ListParams, "queries">
+    params?: Pick<DocumentListParams, "query">
   ): Promise<string | number> {
+    if (params?.query) {
+      const res = await this.http.request<{ count: string | number }>(
+        "POST",
+        `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:count`,
+        {
+          auth: "apiKey",
+          body: {
+            database_id: databaseId,
+            collection_id: collectionId,
+            query: params.query,
+          },
+        }
+      );
+      return res.count ?? 0;
+    }
     // int64：网关序列化为字符串（如 "42"）；消费时建议 Number() 归一化。
+    // GET 面只做无过滤计数；有 query 时已在上方走 POST :count。
     const res = await this.http.request<{ count: string | number }>(
       "GET",
       `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:count`,
-      { auth: "apiKey", query: listQuery(params) }
+      { auth: "apiKey" }
     );
     return res.count ?? 0;
   }
@@ -330,4 +377,95 @@ export class ServerDatabasesService {
       }
     );
   }
+
+  // 聚合（sum/avg/min/max + 可选单键 group_by）。结果类型化（C7 预决策 5）：
+  // integer 属性的 sum/min/max → int64_value（protojson 下为字符串）；
+  // avg 与 float 属性 → double_value。query 为过滤 AST（排序/分页算子无意义）。
+  async aggregateDocuments(
+    databaseId: string,
+    collectionId: string,
+    input: {
+      aggregations: { function: "SUM" | "AVG" | "MIN" | "MAX"; field: string }[];
+      group_by?: string;
+      query?: QueryAst;
+    }
+  ): Promise<AggregateDocumentsResponse> {
+    return this.http.request<AggregateDocumentsResponse>(
+      "POST",
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:aggregate`,
+      {
+        auth: "apiKey",
+        body: {
+          database_id: databaseId,
+          collection_id: collectionId,
+          aggregations: input.aggregations.map((a) => ({
+            function: `AGGREGATE_FUNCTION_${a.function}`,
+            field: a.field,
+          })),
+          group_by: input.group_by,
+          query: input.query,
+        },
+      }
+    );
+  }
+
+  // 事务内核 execute-tx（redesign §4.8 Phase 1）：单事务内异构 op 批。
+  // mode 缺省/ATOMIC 任一失败整批回滚；PARTIAL 逐 op savepoint 容错并返回
+  // per-op 结果。ops 的 expected_version 三态见 proto 注释。
+  async executeTransactions(
+    databaseId: string,
+    ops: TransactionOp[],
+    mode?: "ATOMIC" | "PARTIAL"
+  ): Promise<{ results: TransactionOpResult[] }> {
+    return this.http.request<{ results: TransactionOpResult[] }>(
+      "POST",
+      `/v1/server/databases/${databaseId}/documents:execute-tx`,
+      {
+        auth: "apiKey",
+        body: {
+          database_id: databaseId,
+          ops,
+          mode: mode ? `TRANSACTION_MODE_${mode}` : undefined,
+        },
+      }
+    );
+  }
+}
+
+/** 聚合项结果：oneof result（int64_value 网关序列化为字符串）。 */
+export interface AggregateValue {
+  function: string;
+  field: string;
+  int64_value?: string;
+  double_value?: number;
+}
+
+export interface AggregateGroup {
+  group_key?: string;
+  values: AggregateValue[];
+}
+
+export interface AggregateDocumentsResponse {
+  groups: AggregateGroup[];
+}
+
+/** execute-tx 的单个 op（字段族按 type 消费，见 proto TransactionOp 注释）。 */
+export interface TransactionOp {
+  type: "CREATE" | "UPDATE" | "UPSERT" | "DELETE";
+  collection_id: string;
+  document_id?: string;
+  data?: Record<string, unknown>;
+  permissions?: string[];
+  increment?: Record<string, number>;
+  expected_version?: string;
+  conflict_columns?: string[];
+}
+
+export interface TransactionOpResult {
+  index: number;
+  status: "OK" | "ERROR";
+  document_id?: string;
+  version?: string;
+  error_code?: string;
+  error_message?: string;
 }

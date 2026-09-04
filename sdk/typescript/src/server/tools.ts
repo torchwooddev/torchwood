@@ -51,7 +51,7 @@ export const agentTools: readonly Readonly<AgentTool>[] = Object.freeze([
     name: TOOL_QUERY_DOCUMENTS,
     fullMethod: "/torchwood.server.v1.DatabasesService/ListDocuments",
     inputNotes:
-      "必填 database_id、collection_id。优先 query（shared.v1.Query AST：filter/orders/page_size/page_token）；仍接受 queries[]string + page_size/page_token。两者同时提供且冲突 → InvalidArgument",
+      "必填 database_id、collection_id。query 为 shared.v1.Query AST（filter/orders/select/page_size/page_token，单 AST——DSL 字符串已退役）；page_size/page_token 与 query 内同名字段冲突即拒",
   }),
   freezeTool({
     name: TOOL_GET_DOCUMENT,

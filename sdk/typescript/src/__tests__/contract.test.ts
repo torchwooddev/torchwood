@@ -96,8 +96,10 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     UpsertDocument: "upsertDocument",
     DeleteDocument: "deleteDocument",
     CountDocuments: "countDocuments",
+    AggregateDocuments: "aggregateDocuments",
     BulkUpdateDocuments: "bulkUpdateDocuments",
     BulkDeleteDocuments: "bulkDeleteDocuments",
+    ExecuteTransactions: "executeTransactions",
   },
   FunctionsService: {
     ListRuntimes: "listRuntimes",

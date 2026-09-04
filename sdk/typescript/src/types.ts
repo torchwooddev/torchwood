@@ -10,6 +10,15 @@ export interface ListParams {
   page_token?: string;
 }
 
+// 文档面（ListDocuments/CountDocuments）查询参数（C7 单 AST）：过滤/排序/
+// 投影走 query AST；page_size/page_token 保留为简单分页参数（GET 面）。
+// 其余面（assets/groups/…）的 queries DSL 不受影响。
+export interface DocumentListParams {
+  query?: import("./query.js").QueryAst;
+  page_size?: number;
+  page_token?: string;
+}
+
 export interface Account {
   id: string;
   email: string;

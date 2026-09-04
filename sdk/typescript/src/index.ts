@@ -10,6 +10,8 @@ export type {
   RealtimeWebSocket,
 } from "./graviton.js";
 export * from "./types.js";
+// 文档查询 typed AST 构造器（C7 单 AST）。
+export * from "./query.js";
 export {
   agentTools,
   lookupAgentTool,

@@ -296,12 +296,16 @@ func TestBuildListDocumentsReq(t *testing.T) {
 			require.Equal(t, tt.databaseID, req["databaseId"])
 			require.Equal(t, tt.collectionID, req["collectionId"])
 			if tt.queries == "" {
-				_, ok := req["queries"]
+				_, ok := req["query"]
 				require.False(t, ok)
 			} else {
-				qs, err := jsonStringList(tt.queries, "--queries")
-				require.NoError(t, err)
-				require.Equal(t, qs, req["queries"])
+				// C7 单 AST：DSL 串在客户端解析为 AST wire JSON（不再透传字符串）。
+				wire, ok := req["query"].(map[string]any)
+				require.True(t, ok)
+				eq, ok := wire["filter"].(map[string]any)["eq"].(map[string]any)
+				require.True(t, ok)
+				require.Equal(t, "title", eq["attribute"])
+				require.Equal(t, []string{"hi"}, eq["values"])
 			}
 			if tt.pageSize > 0 {
 				require.Equal(t, tt.pageSize, req["pageSize"])
