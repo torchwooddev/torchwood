@@ -907,7 +907,12 @@ func TestPostgresDocumentDatabase_UpsertDocument_ConcurrentRace(t *testing.T) {
 
 	require.NoError(t, victimErr)
 	if attackerErr != nil {
-		require.ErrorIs(t, attackerErr, ErrPermissionDenied)
+		// 阶段③包 C 语义（与上方顺序版用例一致）：attacker 预查经 SELECT
+		// policy 过滤看不到 victim 行 ⇒ 走纯插入 ⇒ 撞唯一索引 DuplicateKey；
+		// 预查可见时为 UPDATE 权限拒绝 ErrPermissionDenied。两种交错下写入
+		// 均被拒，最终数据保持 victim 的值。
+		require.True(t, errors.Is(attackerErr, ErrPermissionDenied) || errors.Is(attackerErr, ErrDuplicateKey),
+			"attacker 并发 upsert 必须被拒（PermissionDenied 或经唯一索引 DuplicateKey），got: %v", attackerErr)
 	}
 
 	// 唯一键保证集合内仅一行，且数据必须保持 victim 的值。

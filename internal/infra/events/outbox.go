@@ -93,7 +93,9 @@ func (o *eventOutbox) Publish(ctx context.Context, ev domainevents.Envelope) err
 
 // marshalEnvelope 序列化完整信封并按 1 MiB 上限做防御性截断：
 // 1) 整体超限 → 去掉 data、标记 truncated（业务写不回滚）；
-// 2) acl 仍超限（极端权限列表）→ 逐条截断 acl 数组并记日志。
+// 2) acl 仍超限（极端权限列表）→ 截断 acl 数组并记日志：先按平均条目
+//    字节一次跳删到目标附近（逐条重 marshal 是 O(n²)，数万条权限下
+//    分钟级不可用），残余量再逐条收敛。
 // 经济事件（Domain 非空）载荷小且无 acl / data，直接序列化。
 func marshalEnvelope(ev domainevents.Envelope) (json.RawMessage, error) {
 	if ev.IsEconomy() {
@@ -111,6 +113,22 @@ func marshalEnvelope(ev domainevents.Envelope) (json.RawMessage, error) {
 	payload, err = json.Marshal(envelopePayloadMap(ev))
 	if err != nil {
 		return nil, err
+	}
+	if total := len(ev.ACL.CollectionPermissions) + len(ev.ACL.DocumentPermissions); total > 0 && len(payload) > maxEnvelopeBytes {
+		drop := (len(payload)-maxEnvelopeBytes)*total/len(payload) + 1
+		for drop > 0 && (len(ev.ACL.CollectionPermissions) > 0 || len(ev.ACL.DocumentPermissions) > 0) {
+			if len(ev.ACL.CollectionPermissions) > 0 {
+				ev.ACL.CollectionPermissions = ev.ACL.CollectionPermissions[:len(ev.ACL.CollectionPermissions)-1]
+			}
+			if len(ev.ACL.DocumentPermissions) > 0 {
+				ev.ACL.DocumentPermissions = ev.ACL.DocumentPermissions[:len(ev.ACL.DocumentPermissions)-1]
+			}
+			drop--
+		}
+		payload, err = json.Marshal(envelopePayloadMap(ev))
+		if err != nil {
+			return nil, err
+		}
 	}
 	for len(payload) > maxEnvelopeBytes && (len(ev.ACL.CollectionPermissions) > 0 || len(ev.ACL.DocumentPermissions) > 0) {
 		if len(ev.ACL.CollectionPermissions) > 0 {
