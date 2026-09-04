@@ -560,19 +560,24 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 		if err := p.ensureACLIndex(ctx, schema, physical); err != nil {
 			return err
 		}
-	}
-	// RBAC 授权（阶段③包 B）：tw_owner 建表即授权——tw_app 运行时 DML、
-	// tw_system 旁路全权（表级；包 C 起收紧为列级 GRANT 排除 _tenant 写 +
-	// RLS policy）。
-	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
-		`GRANT SELECT, INSERT, UPDATE, DELETE ON %s TO %s`,
-		tableName(schema, physical), clients.RoleApp)); err != nil {
-		return fmt.Errorf("grant table to app role: %w", err)
-	}
-	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
-		`GRANT ALL ON %s TO %s`,
-		tableName(schema, physical), clients.RoleSystem)); err != nil {
-		return fmt.Errorf("grant table to system role: %w", err)
+		// RLS 判定执行点（阶段③包 C）：四条 policy + FORCE + 列级 GRANT
+		//（tw_app 排除 _tenant 写）。
+		if err := p.ensureCollectionRLS(ctx, schema, physical); err != nil {
+			return err
+		}
+	} else {
+		// sentinel 系统集合（测试面）：静态平面独立授权（预决策 9），不启 RLS，
+		// 保持表级授权。
+		if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
+			`GRANT SELECT, INSERT, UPDATE, DELETE ON %s TO %s`,
+			tableName(schema, physical), clients.RoleApp)); err != nil {
+			return fmt.Errorf("grant table to app role: %w", err)
+		}
+		if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
+			`GRANT ALL ON %s TO %s`,
+			tableName(schema, physical), clients.RoleSystem)); err != nil {
+			return fmt.Errorf("grant table to system role: %w", err)
+		}
 	}
 	return nil
 }
@@ -627,11 +632,11 @@ func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, p
 // 文档写路径不得调用本函数：ADD COLUMN 是 AccessExclusiveLock。
 // 键以物理表名为准（逻辑/物理名解耦后同名逻辑集合不串缓存）。
 //
-// R5-J3-1：入口先幂等补建默认时间索引（ensureTenantCreatedIndex）与 _acl GIN
-//（ensureACLIndex，阶段③包 A）——本函数是用户集合所有 DDL touch
-//（CreateCollection/CreateAttribute/CreateIndex）的汇聚点，存量集合在下次任意
-// DDL touch 时自动补齐；放在 versionColumns 缓存短路之前，保证每次 touch 都对账
-//（IF NOT EXISTS 已存在时仅 catalog 查找）。
+// R5-J3-1：入口先幂等补建默认时间索引（ensureTenantCreatedIndex）、_acl GIN
+//（ensureACLIndex，阶段③包 A）与 RLS policy + 列级 GRANT（ensureCollectionRLS，
+// 阶段③包 C）——本函数是用户集合所有 DDL touch（CreateCollection/
+// CreateAttribute/CreateIndex）的汇聚点，存量集合在下次任意 DDL touch 时自动
+// 补齐；放在 versionColumns 缓存短路之前，保证每次 touch 都对账（幂等重建）。
 func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema, physical string, isSystem bool) error {
 	if isSystem {
 		return nil
@@ -640,6 +645,9 @@ func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema,
 		return err
 	}
 	if err := p.ensureACLIndex(ctx, schema, physical); err != nil {
+		return err
+	}
+	if err := p.ensureCollectionRLS(ctx, schema, physical); err != nil {
 		return err
 	}
 	key := schema + "." + physical

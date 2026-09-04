@@ -1,0 +1,139 @@
+// RLS 判定执行点（redesign §3.2/§4.3，阶段③包 C）：用户集合表（c_*）建表时
+// 生成四条 policy（RLS-as-code 模板），DDL touch 路径顺带 reconcile（对齐
+// ensureTenantCreatedIndex 模式）。集合级权限经 (SELECT ...) 标量子查询实时读
+// catalog——权限变更零 DDL；所有跨表取值 InitPlan 化（§3.2 工程纪律）。
+//
+// 四条 policy（预决策 4）：
+//   SELECT  USING = tw_visible（可写即可读，产品语义）
+//   INSERT  WITH CHECK = 集合级 create（catalog 子查询）
+//   UPDATE  USING = CASE docsec → tw_can(update) ELSE 集合级 update；
+//           WITH CHECK = 恒真（保现状"允许自锁"——C1 种子与事件写前快照依赖）
+//   DELETE  USING = CASE docsec → tw_can(delete) ELSE 集合级 delete
+// 全表 ENABLE + FORCE ROW LEVEL SECURITY（owner 亦受 policy，仅 BYPASSRLS 旁路）。
+// 列级 GRANT：tw_app 仅 SELECT 全列 + INSERT/UPDATE 数据列与除 _tenant 外的
+// 系统列（_tenant 锁死不可写，预决策 6）；tw_system 表级 ALL。
+package documentdb
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/torchwooddev/torchwood/internal/infra/clients"
+)
+
+// policyCatalogLookup 生成按物理名点查 catalog_collections 的标量子查询
+//（InitPlan 化：无行变量相关性，规划器转为每语句一次）。
+func policyCatalogLookup(physical, expr string) string {
+	return fmt.Sprintf(`(SELECT %s FROM public.catalog_collections cc WHERE cc.physical_name = '%s')`,
+		expr, escapeSQLStringLiteral(physical))
+}
+
+// rlsPolicySQL 生成 <tbl> 的四条 policy 语句（DROP IF EXISTS + CREATE，幂等重建）。
+// SELECT policy 的 USING 在 tw_visible 之前内联空 _acl 快速路径（与 tw_visible
+// 内部同源）：绝大多数行（空 _acl + 集合级任一授权）免函数调用短路——大集合
+// 全扫的相对基准由它压住（I1）；非空 _acl 行回落 tw_visible 完整判定。
+func rlsPolicySQL(schema, physical string) []string {
+	tbl := tableName(schema, physical)
+	roles := `(SELECT public.tw_roles())`
+	docsec := policyCatalogLookup(physical, "cc.document_security")
+	collAllows := func(typ string) string {
+		return policyCatalogLookup(physical, fmt.Sprintf("public.tw_coll_allows(cc.permissions, public.tw_roles(), '%s')", typ))
+	}
+	fastPath := fmt.Sprintf(
+		`COALESCE(cardinality(_acl) = 0 AND cardinality(%s) > 0 AND (%s OR %s OR %s), false)`,
+		roles, collAllows("read"), collAllows("update"), collAllows("delete"))
+	return []string{
+		fmt.Sprintf(`DROP POLICY IF EXISTS tw_select ON %s`, tbl),
+		fmt.Sprintf(`CREATE POLICY tw_select ON %s FOR SELECT USING (
+			%s OR public.tw_visible(_acl, %s, %s, %s, %s, %s))`,
+			tbl, fastPath, roles, docsec, collAllows("read"), collAllows("update"), collAllows("delete")),
+
+		fmt.Sprintf(`DROP POLICY IF EXISTS tw_insert ON %s`, tbl),
+		fmt.Sprintf(`CREATE POLICY tw_insert ON %s FOR INSERT WITH CHECK (%s)`,
+			tbl, collAllows("create")),
+
+		fmt.Sprintf(`DROP POLICY IF EXISTS tw_update ON %s`, tbl),
+		fmt.Sprintf(`CREATE POLICY tw_update ON %s FOR UPDATE USING (
+			CASE WHEN %s THEN public.tw_can(_acl, %s, 'update', %s) ELSE %s END)
+			WITH CHECK (true)`,
+			tbl, docsec, roles, collAllows("update"), collAllows("update")),
+
+		fmt.Sprintf(`DROP POLICY IF EXISTS tw_delete ON %s`, tbl),
+		fmt.Sprintf(`CREATE POLICY tw_delete ON %s FOR DELETE USING (
+			CASE WHEN %s THEN public.tw_can(_acl, %s, 'delete', %s) ELSE %s END)`,
+			tbl, docsec, roles, collAllows("delete"), collAllows("delete")),
+	}
+}
+
+// escapeSQLStringLiteral 转义内嵌 SQL 字面量（physical_name 为服务端生成的
+// c_<base32>，本无引号；防御性转义保持模板不可注入）。
+func escapeSQLStringLiteral(s string) string {
+	return strings.ReplaceAll(s, `'`, `''`)
+}
+
+// ensureCollectionRLS 为用户集合表生成 policy + FORCE RLS + 列级 GRANT（幂等，
+// DDL touch 汇聚点 reconcileVersionColumn 与建表路径共用）。
+func (p *postgresDocumentDB) ensureCollectionRLS(ctx context.Context, schema, physical string) error {
+	tbl := tableName(schema, physical)
+	for _, stmt := range rlsPolicySQL(schema, physical) {
+		if _, err := p.conn(ctx).ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("ensure rls policy: %w", err)
+		}
+	}
+	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s ENABLE ROW LEVEL SECURITY; ALTER TABLE %s FORCE ROW LEVEL SECURITY`, tbl, tbl)); err != nil {
+		return fmt.Errorf("enable row level security: %w", err)
+	}
+	// 列级 GRANT（预决策 6）：SELECT 全列（WHERE _tenant 过滤与 to_jsonb(d.*)
+	// 载荷需要）；INSERT/UPDATE 授数据列 + 除 _tenant 外系统列——_tenant 锁死
+	// 不可写。列清单读 information_schema（自愈：加列后下次 DDL touch 补授权）。
+	cols, err := p.tableColumns(ctx, schema, physical)
+	if err != nil {
+		return err
+	}
+	writable := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if c == "_tenant" {
+			continue
+		}
+		writable = append(writable, quoteIdent(c))
+	}
+	colList := strings.Join(writable, ", ")
+	stmts := []string{
+		fmt.Sprintf(`REVOKE ALL ON %s FROM %s`, tbl, clients.RoleApp),
+		fmt.Sprintf(`GRANT SELECT ON %s TO %s`, tbl, clients.RoleApp),
+		fmt.Sprintf(`GRANT INSERT (%s) ON %s TO %s`, colList, tbl, clients.RoleApp),
+		fmt.Sprintf(`GRANT UPDATE (%s) ON %s TO %s`, colList, tbl, clients.RoleApp),
+		fmt.Sprintf(`GRANT DELETE ON %s TO %s`, tbl, clients.RoleApp),
+		// tw_system（BYPASSRLS 信任根）表级全权：尾随读回/事件快照/内部路径
+		// 需要全列读写。
+		fmt.Sprintf(`GRANT ALL ON %s TO %s`, tbl, clients.RoleSystem),
+	}
+	for _, stmt := range stmts {
+		if _, err := p.conn(ctx).ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("column grants: %w", err)
+		}
+	}
+	return nil
+}
+
+// tableColumns 返回表的全部列名（有序）。
+func (p *postgresDocumentDB) tableColumns(ctx context.Context, schema, physical string) ([]string, error) {
+	rows, err := p.conn(ctx).QueryContext(ctx,
+		`SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position`,
+		schema, physical)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var cols []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		cols = append(cols, c)
+	}
+	return cols, rows.Err()
+}

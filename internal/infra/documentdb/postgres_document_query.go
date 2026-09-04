@@ -59,7 +59,10 @@ func (p *postgresDocumentDB) listDocuments(ctx context.Context, projectID, datab
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
-	if !principal.BypassesDocumentACL() {
+	// 判定执行点（阶段③包 C）：业务集合由 SELECT policy（tw_visible）隐式
+	// 过滤——不拼权限 WHERE；sentinel 系统集合（静态平面，预决策 9）保留
+	// 应用层过滤谓词。
+	if !principal.BypassesDocumentACL() && isSystem {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, coll, principal)
 		if err != nil {
 			return nil, p.mapError(err)
@@ -404,7 +407,8 @@ func (p *postgresDocumentDB) countDocuments(ctx context.Context, projectID, data
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
-	if !principal.BypassesDocumentACL() {
+	// 判定执行点（阶段③包 C）：业务集合 policy 隐式过滤；sentinel 保留谓词。
+	if !principal.BypassesDocumentACL() && isSystem {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, coll, principal)
 		if err != nil {
 			return 0, p.mapError(err)
@@ -523,7 +527,9 @@ func (p *postgresDocumentDB) aggregateDocuments(ctx context.Context, projectID, 
 
 	whereParts := []string{"d._tenant = ?"}
 	args := []any{internalID}
-	if !principal.BypassesDocumentACL() {
+	// 判定执行点（阶段③包 C）：业务集合 policy 隐式过滤（D1：聚合先于
+	// GROUP BY 的可见行集语义由 securityQuals 机制保证）；sentinel 保留谓词。
+	if !principal.BypassesDocumentACL() && isSystem {
 		permWhere, permArgs, err := p.listPermissionFilter(ctx, coll, principal)
 		if err != nil {
 			return nil, p.mapError(err)

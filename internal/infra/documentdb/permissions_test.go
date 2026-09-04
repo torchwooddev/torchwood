@@ -139,11 +139,15 @@ func TestPermissions_DocumentLevelOverridesCollection(t *testing.T) {
 	}, alice)
 	require.NoError(t, err)
 
-	_, err = docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, databases.Principal{Roles: []string{"user:bob"}})
-	require.ErrorIs(t, err, ErrPermissionDenied)
-
-	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, alice)
+	// 阶段③包 C：不可见 = 不存在（防枚举，SELECT policy 静默过滤）——Get 返回
+	// nil（app 层映射 NotFound），不再 PermissionDenied。
+	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, databases.Principal{Roles: []string{"user:bob"}})
 	require.NoError(t, err)
+	require.Nil(t, got)
+
+	got, err = docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, alice)
+	require.NoError(t, err)
+	require.NotNil(t, got)
 	require.Equal(t, "Secret", got.Data["title"])
 }
 
@@ -214,8 +218,10 @@ func TestPermissions_KeysNotBypass(t *testing.T) {
 	require.NoError(t, err)
 
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
-	_, err = docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, keysPrincipal)
-	require.ErrorIs(t, err, ErrPermissionDenied)
+	// 阶段③包 C：keys 不 bypass——不可见 = 不存在（nil/NotFound，防枚举）。
+	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, keysPrincipal)
+	require.NoError(t, err)
+	require.Nil(t, got)
 }
 
 func TestPermissions_PlatformAdminBypass(t *testing.T) {
@@ -483,10 +489,9 @@ func TestPermissions_ListORFallback(t *testing.T) {
 
 // TestPermissions_WriteRowTypeConsistency (B1 step 7): _acl 可能存在 'write:'
 // 元素（ParsePermissionStrings 会展开，但直调 adapter 的路径可能不展开）。
-// 单文档路径 matchTypes 使 create/update/delete 检查命中 write 元素，列表过滤
-// 只匹配 read——两者语义一致（write 不隐含 read），验证而不改行为。
-//（阶段③包 C 的 tw_visible 落地后，"可写即可读"产品语义将有意取代本测试的
-// Get/List 断言——届时随 golden 矩阵更新。）
+// matchTypes 使 create/update/delete 检查命中 write 元素——经 RLS policy
+//（阶段③包 C）与 tw_visible 的"可写即可读"产品语义：write ACE 持有者可见、
+// 可改、可删（原"write 不隐含 read"的 D3 断言被有意取代，§3.2 #10）。
 func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -521,7 +526,7 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 		`UPDATE %s SET _acl = '{write:user:alice}' WHERE _id = ?`, tbl), created.ID)
 	require.NoError(t, err)
 
-	// write 元素命中 update 检查（matchTypes 展开）→ 可更新（D3：无 read 预检）。
+	// write 元素命中 update 检查（matchTypes 展开）→ 可更新。
 	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{
 			ID:   created.ID,
@@ -531,16 +536,16 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 	}, alice)
 	require.NoError(t, err)
 
-	// write 不隐含 read：GetDocument 的 read 检查拒绝。
-	_, err = docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, alice)
-	require.ErrorIs(t, err, ErrPermissionDenied)
+	// 可写即可读（tw_visible）：write ACE 持有者可见。
+	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, alice)
+	require.NoError(t, err)
+	require.NotNil(t, got)
 
-	// 列表过滤只匹配 read 元素：文档对 alice 不可见（一致性确认）。
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		AST: &query.Query{Filter: query.Eq("$id", created.ID)},
 	}, alice)
 	require.NoError(t, err)
-	require.Len(t, list.Documents, 0)
+	require.Len(t, list.Documents, 1, "write ACE 持有者经 tw_visible 可见")
 
 	// write 元素命中 delete 检查 → 可删除。
 	err = docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID, databases.DeleteOptions{ExpectedVersion: 2}, alice)

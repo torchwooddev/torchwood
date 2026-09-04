@@ -69,7 +69,7 @@ func (p *postgresDocumentDB) ExecuteTransactions(
 				results = append(results, databases.TransactionOpResult{
 					Index:      i,
 					OK:         false,
-					ErrCode:    databases.ErrorDomainCode(err),
+					ErrCode:    databases.ErrorDomainCode(p.mapError(err)),
 					ErrMessage: err.Error(),
 				})
 				continue

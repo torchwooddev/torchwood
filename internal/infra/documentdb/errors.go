@@ -33,6 +33,7 @@ var docDBErrorSQLStates = map[string]codes.Code{
 	"42883": codes.InvalidArgument,   // undefined_function
 	"42P10": codes.InvalidArgument,   // invalid_column_reference (ON CONFLICT 无匹配唯一索引)
 	"23505": codes.AlreadyExists,     // unique_violation（元数据重复键兜底映射）
+	"42501": codes.PermissionDenied,  // insufficient_privilege / row-level security policy 违例（阶段③包 C：INSERT WITH CHECK 拒绝等）
 	"53100": codes.ResourceExhausted, // disk_full
 	"53200": codes.ResourceExhausted, // out_of_memory
 	"54000": codes.ResourceExhausted, // program_limit_exceeded
@@ -49,17 +50,24 @@ func mapPGError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var fielder pgErrorFielder
-	if errors.As(err, &fielder) {
-		state := fielder.Field('C')
-		if code, ok := docDBErrorSQLStates[state]; ok {
-			if code == codes.AlreadyExists {
-				return databases.ErrDuplicateKey
-			}
-			domainCode := databases.ErrCodeInvalidArgument
-			if code == codes.ResourceExhausted {
-				domainCode = databases.ErrCodeExhausted
-			}
+		var fielder pgErrorFielder
+		if errors.As(err, &fielder) {
+			state := fielder.Field('C')
+			if code, ok := docDBErrorSQLStates[state]; ok {
+				switch code {
+				case codes.AlreadyExists:
+					// 23505：领域哨兵 ErrDuplicateKey（与 isUniqueViolation 路径一致，
+					// 由 app 层 MapDocumentDBError 统一产出域码）。
+					return databases.ErrDuplicateKey
+				case codes.PermissionDenied:
+					// 42501（阶段③包 C）：RLS policy 违例 / 权限不足 → 领域哨兵
+					// ErrPermissionDenied。
+					return databases.ErrPermissionDenied
+				}
+				domainCode := databases.ErrCodeInvalidArgument
+				if code == codes.ResourceExhausted {
+					domainCode = databases.ErrCodeExhausted
+				}
 			st := status.New(code, fmt.Sprintf("%s: postgres error (sqlstate %s)", domainCode, state))
 			st, _ = st.WithDetails(&errdetails.ErrorInfo{
 				Reason: domainCode,

@@ -839,7 +839,13 @@ func TestPostgresDocumentDatabase_UpsertDocument_PrivilegeEscalationRejected(t *
 			"name":  "hacked",
 		},
 	}, []string{"email"}, nil, attacker)
-	require.ErrorIs(t, err, ErrPermissionDenied)
+	// 阶段③包 C：doc-a 对攻击者不可见（预查经 SELECT policy 过滤 ⇒ 视为纯
+	// 插入）→ 撞唯一索引被拒。安全不变量不变：写入被拒；错误码从
+	// PermissionDenied 变为 DuplicateKey（唯一键存在性泄露是 §3.2 #13 已知
+	// 豁免面）。
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrDuplicateKey),
+		"越权 upsert 必须被拒（PermissionDenied 或经唯一索引 DuplicateKey），got: %v", err)
 
 	// 文档 A 必须未被修改。
 	got, err := docDB.GetDocument(ctx, projectID, "app", "users", "doc-a", databases.SystemPrincipal)

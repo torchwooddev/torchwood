@@ -172,6 +172,42 @@ func (p *postgresDocumentDB) listPermissionFilter(
 		[]any{pgTextArray(aclMatchKeys("read", expanded))}, nil
 }
 
+// missingRowsError 探测批量化路径的缺失行（RETURNING / FOR UPDATE 行集与
+// 输入的差集）成因（阶段③包 C）：可见（经 SELECT policy）但未被主语句触及
+// ⇒ 不可写 ⇒ ErrPermissionDenied；不可见 ⇒ 不存在 ⇒ ErrDocumentNotFound
+//（"0 行⇒不存在"仅对不可见行成立——可见不可写行须回 PERMISSION_DENIED）。
+func (p *postgresDocumentDB) missingRowsError(ctx context.Context, tbl string, missing []string, tenant int64) error {
+	if len(missing) == 0 {
+		return nil
+	}
+	visible := false
+	err := eachIDChunk(missing, bulkInChunk, func(chunk []string) error {
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, tenant)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		rows, err := p.conn(ctx).QueryContext(ctx, fmt.Sprintf(
+			`SELECT 1 FROM %s WHERE _tenant = ? AND _id IN (%s) LIMIT 1`, tbl, inPlaceholders(len(chunk))),
+			args...)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rows.Close() }()
+		if rows.Next() {
+			visible = true
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return err
+	}
+	if visible {
+		return ErrPermissionDenied
+	}
+	return fmt.Errorf("%w", databases.ErrDocumentNotFound)
+}
+
 func buildIncrementParts(increment map[string]int64) (setParts []string, args []any) {
 	for k, delta := range increment {
 		if !safeNameRe.MatchString(k) || strings.HasPrefix(k, "_") || delta == 0 {
@@ -254,10 +290,11 @@ type bulkPrefetchContext struct {
 	permsByDoc map[string][]databases.Permission
 }
 
-// prefetchBulkAccess 做批量化前置工作：集合可达性 + 逐文档 permType 权限
-// 全量校验（同一 databases.AllowsDocumentAccess 判定，非 SQL 谓词改写）+
-// 事件所需写前 ACL 批量预取。任一文档被拒 → ErrPermissionDenied（调用方
-// 整体回滚，all-or-nothing）。
+// prefetchBulkAccess 做批量化前置工作：sentinel 系统集合的逐文档 permType 权限
+// 全量校验（同一 databases.AllowsDocumentAccess 判定）+ 事件所需写前 ACL 批量
+// 预取。判定执行点（阶段③包 C）：业务集合的逐文档校验退役——UPDATE/DELETE
+// policy USING 裁决（不可见/不可写 ⇒ RETURNING/受影响行缺失 ⇒ NotFound），
+// 此处仅取事件快照。sentinel 被拒 → ErrPermissionDenied（整体回滚）。
 func (p *postgresDocumentDB) prefetchBulkAccess(
 	ctx context.Context,
 	projectID, databaseID, collectionID, tbl string,
@@ -268,7 +305,8 @@ func (p *postgresDocumentDB) prefetchBulkAccess(
 	needEventACL bool,
 ) (*bulkPrefetchContext, error) {
 	pc := &bulkPrefetchContext{permsByDoc: map[string][]databases.Permission{}}
-	if !principal.BypassesDocumentACL() {
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	if !principal.BypassesDocumentACL() && isSystem {
 		coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
 		if err != nil {
 			return nil, err
@@ -370,12 +408,10 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 			args = append(args, updatedBy)
 		}
 	}
-	// _acl 替换内嵌 SET（阶段③包 A）：非空时整体替换为 perms；追加在审计列
-	// 补充分支之后，保证 permissions-only 批量更新仍刷新 _updated_at。
-	if len(perms) > 0 {
-		setParts = append(setParts, quoteIdent("_acl")+" = ?::text[]")
-		args = append(args, aclParam(perms))
-	}
+	// _acl 不进主语句（阶段③包 C，与 updateDocument 同因）：PG 对修改 SELECT
+	// policy 引用列的 UPDATE 以新行复检 SELECT policy（自锁被拒）；主语句裁决
+	// 行级 update 权限，_acl 替换走随后的 tw_system 第二语句（限主语句实际
+	// 更新过的行）。
 	if !isSystem {
 		// 每次成功写 +1（含权限-only 更新；SkipVersion 同样 +1）。
 		setParts = append(setParts, "_version = _version + 1")
@@ -419,9 +455,49 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 	}); err != nil {
 		return 0, err
 	}
+	missing := make([]string, 0, len(ids))
 	for _, id := range ids {
 		if _, ok := byID[id]; !ok {
-			return 0, fmt.Errorf("%w", databases.ErrDocumentNotFound)
+			missing = append(missing, id)
+		}
+	}
+	// 阶段③包 C：主语句（UPDATE policy）未触及的行 → 探测区分
+	// 可见不可写（PERMISSION_DENIED）与不存在（NOT_FOUND）。
+	if err := p.missingRowsError(ctx, tbl, missing, internalID); err != nil {
+		return 0, err
+	}
+	// _acl 替换（tw_system 第二语句，阶段③包 C）：仅作用于主语句实际更新过的
+	// 行（byID 键集）——不可见/不可写的行已在主语句处缺失并整体回滚。
+	if len(perms) > 0 {
+		updatedIDs := make([]string, 0, len(byID))
+		for id := range byID {
+			updatedIDs = append(updatedIDs, id)
+		}
+		if err := p.withDocumentTx(ctx, systemExecIdentity(), func(sysCtx context.Context) error {
+			return eachIDChunk(updatedIDs, bulkInChunk, func(chunk []string) error {
+				sqlArgs := make([]any, 0, len(chunk)+2)
+				sqlArgs = append(sqlArgs, aclParam(perms), internalID)
+				for _, id := range chunk {
+					sqlArgs = append(sqlArgs, id)
+				}
+				res, err := p.conn(sysCtx).ExecContext(sysCtx, fmt.Sprintf(
+					`UPDATE %s SET _acl = ?::text[] WHERE _tenant = ? AND _id IN (%s)`,
+					tbl, inPlaceholders(len(chunk))),
+					sqlArgs...)
+				if err != nil {
+					return err
+				}
+				n, err := res.RowsAffected()
+				if err != nil {
+					return err
+				}
+				if n != int64(len(chunk)) {
+					return fmt.Errorf("replace bulk acl: expected %d rows, got %d", len(chunk), n)
+				}
+				return nil
+			})
+		}); err != nil {
+			return 0, err
 		}
 	}
 	// 每文档一条 update 事件（实时订阅按 doc 过滤）：version/data=写后
@@ -430,6 +506,11 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 	if wantEvents {
 		for _, docID := range ids {
 			updated := *byID[docID]
+			// 替换路径的写后 _acl = 新 perms（系统语句已落）；未替换时 byID
+			// 快照的 _acl 即当前值。
+			if len(perms) > 0 {
+				updated.Permissions = perms
+			}
 			pre := pc.permsByDoc[docID]
 			if err := p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, docID,
 				domainevents.EventDocumentsUpdate, updated.Version, &updated, pre, len(pre) > 0, pc.coll); err != nil {
@@ -506,8 +587,9 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 			return 0, err
 		}
 	}
-	// 写前 _version（FOR UPDATE 批量锁行，保留单条路径的行锁语义）：事件
-	// version 与 acl 都基于写前状态；有文档不存在 → 整体回滚。
+	// 写前 _version（无锁预读——FOR UPDATE 会叠加 UPDATE policy，delete-only
+	// 用户被误拒；删除原子性由 DELETE policy + 事务承载）：事件 version 与 acl
+	// 都基于写前状态；有文档不可见 → 整体回滚。
 	versions := make(map[string]int64, len(ids))
 	if !isSystem {
 		if err := eachIDChunk(ids, bulkInChunk, func(chunk []string) error {
@@ -517,7 +599,7 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 			}
 			sqlArgs = append(sqlArgs, internalID)
 			rows, err := p.conn(ctx).QueryContext(ctx, fmt.Sprintf(
-				`SELECT d._id, d._version FROM %s AS d WHERE d._id IN (%s) AND d._tenant = ? FOR UPDATE`,
+				`SELECT d._id, d._version FROM %s AS d WHERE d._id IN (%s) AND d._tenant = ?`,
 				tbl, inPlaceholders(len(chunk))),
 				sqlArgs...)
 			if err != nil {
@@ -536,10 +618,16 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 		}); err != nil {
 			return 0, err
 		}
+		missing := make([]string, 0, len(ids))
 		for _, id := range ids {
 			if _, ok := versions[id]; !ok {
-				return 0, fmt.Errorf("%w", databases.ErrDocumentNotFound)
+				missing = append(missing, id)
 			}
+		}
+		// FOR UPDATE 叠加 UPDATE policy（PG 锁语句语义）——未锁到的行探测区分
+		// 可见不可写（PERMISSION_DENIED）与不存在（NOT_FOUND）。
+		if err := p.missingRowsError(ctx, tbl, missing, internalID); err != nil {
+			return 0, err
 		}
 	}
 	var deleted int64
@@ -565,8 +653,11 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 		return 0, err
 	}
 	if !isSystem && deleted != int64(len(ids)) {
-		// FOR UPDATE 已锁全部行，行数缺失只可能来自违反不变量的并发路径；
-		// 防御性整体回滚（系统集合与单条路径一致：不做存在性检查）。
+		// 残留行探测：未删掉的行要么可见不可删（DELETE policy 拒绝 ⇒
+		// PERMISSION_DENIED），要么不可见（防御性 NotFound——并发路径异常）。
+		if err := p.missingRowsError(ctx, tbl, ids, internalID); err != nil {
+			return 0, err
+		}
 		return 0, fmt.Errorf("%w", databases.ErrDocumentNotFound)
 	}
 	// 每文档一条 delete 事件：version=写前、acl=写前、data=nil。

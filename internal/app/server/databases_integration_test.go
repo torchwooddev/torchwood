@@ -162,9 +162,9 @@ func TestDatabases_ServerCreateDocument_EmptyPermissions(t *testing.T) {
 	got, err := uc.GetDocument(ctx, projectID, "app", "posts", created.ID, principal)
 	require.NoError(t, err)
 	require.Equal(t, "no perms", got.Data["title"])
-	// guest 不可见（C1 目标保持）。
+	// guest 不可见（C1 目标保持；阶段③包 C：NotFound 取代 PermissionDenied）。
 	_, err = uc.GetDocument(ctx, projectID, "app", "posts", created.ID, databases.Principal{})
-	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	require.Equal(t, codes.NotFound, status.Code(err))
 
 	explicit, _, err := uc.CreateDocument(ctx, projectID, "app", "posts", "", map[string]any{"title": "explicit"}, []databases.Permission{
 		{Type: "read", Role: "any"},

@@ -408,12 +408,14 @@ func TestOutbox_FailedWriteNoRow(t *testing.T) {
 		Document:        databases.Document{ID: created.ID, Data: map[string]any{"title": "hacked"}},
 		ExpectedVersion: 1,
 	}, databases.Principal{Roles: []string{"users", "user:other"}})
-	require.ErrorIs(t, err, ErrPermissionDenied)
+	// 阶段③包 C：不可见 = 不存在（防枚举）——NotFound 取代 PermissionDenied。
+	require.ErrorIs(t, err, databases.ErrDocumentNotFound)
 	require.Len(t, outboxRows(t, db, ctx), 1, "权限失败不产生 outbox 行")
 
+	// 阶段③包 C：不可见删除同理（探测经 SELECT policy ⇒ NotFound）。
 	require.ErrorIs(t, docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID,
 		databases.DeleteOptions{ExpectedVersion: 1}, databases.Principal{Roles: []string{"users", "user:other"}}),
-		ErrPermissionDenied)
+		databases.ErrDocumentNotFound)
 	require.Len(t, outboxRows(t, db, ctx), 1, "删除权限失败不产生 outbox 行")
 
 	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, databases.SystemPrincipal)

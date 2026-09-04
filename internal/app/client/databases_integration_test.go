@@ -270,16 +270,18 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	require.NotEmpty(t, created.ID)
 	require.Len(t, created.Permissions, 3)
 
-	// 匿名：GetDocument 拒绝，列表不可见。
+	// 匿名：GetDocument 不可见 = 不存在（阶段③包 C：SELECT policy 静默过滤，
+	// NotFound 取代 PermissionDenied——防枚举），列表不可见。
 	_, err = clientUC.GetDocument(ctx, projectID, "app", "notes", created.ID)
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "anonymous read of private doc should be denied")
+	require.Equal(t, codes.NotFound, status.Code(err), "anonymous read of private doc should be not-found")
 
 	anonList, anonTotal, _, err := clientUC.ListDocuments(ctx, projectID, "app", "notes", databases.Query{})
 	require.NoError(t, err)
 	require.Zero(t, anonTotal)
 	require.Empty(t, anonList)
 
-	// 他用户：读/改/删均拒绝。
+	// 他用户：读不可见 = 不存在（NotFound）；改/删同理（阶段③包 C：policy
+	// 静默过滤 + 存在性探测，NotFound 取代 PermissionDenied）。
 	otherCtx := contexts.WithPrincipal(ctx, &shared.Principal{
 		ActorKind: shared.ActorKindEndUser,
 		ProjectID: projectID,
@@ -287,13 +289,13 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 		Roles:     []string{"users", "user:other-user"},
 	})
 	_, err = clientUC.GetDocument(otherCtx, projectID, "app", "notes", created.ID)
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user read should be denied")
+	require.Equal(t, codes.NotFound, status.Code(err), "other user read should be not-found")
 
 	_, _, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil, &created.Version, "")
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user update should be denied")
+	require.Equal(t, codes.NotFound, status.Code(err), "other user update should be not-found")
 
 	_, err = clientUC.DeleteDocument(otherCtx, "app", "notes", created.ID, &created.Version, "")
-	require.Equal(t, codes.PermissionDenied, status.Code(err), "other user delete should be denied")
+	require.Equal(t, codes.NotFound, status.Code(err), "other user delete should be not-found")
 
 	// owner：读/改/删均放行。
 	got, err := clientUC.GetDocument(userCtx, projectID, "app", "notes", created.ID)
