@@ -411,11 +411,11 @@ func TestPostgresDocumentDatabase_UpsertConflictColumnsPrecheck(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys：多自定义排序键
-// → InvalidArgument（keyset-only 下 token 只编码单键，多键首页与续页不同构
-// 会静默丢/重——C2 阶段①把 R3 的 cursor 拒多键扩展到首页即拒；完整多键
-// 游标属单 AST 专属会话）。单键 cursor 路径不受影响。
-func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
+// TestPostgresDocumentDocuments_MultiKeyCursor（C2 完成态）：多排序键完整
+// keyset 游标——ORDER BY = 全部排序键 + _id tiebreaker（方向随首键）；统一
+// 方向走行比较谓词、混合方向走逐键 OR 展开；cursor 以 docID 定位 + 服务端
+// 查行取全部键值；跨页不丢不重（确定性用例：同键多行 + 混合方向）。
+func TestPostgresDocumentDocuments_MultiKeyCursor(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -431,31 +431,89 @@ func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "items", "Items", []databases.Attribute{
 		{ID: "priority", Key: "priority", Type: "integer"},
 		{ID: "title", Key: "title", Type: "string", Size: 64},
+		{ID: "seq", Key: "seq", Type: "integer"},
 	}, nil, []databases.Permission{
 		{Type: "create", Role: "any"},
 		{Type: "read", Role: "any"},
 	}, true))
 
 	anyReader := databases.Principal{Roles: []string{"any"}}
-	for i := 0; i < 3; i++ {
+	// priority 有重复（同键多行跨页是 keyset 的难点），title/seq 全序互补。
+	docs := [][2]any{
+		{7, "t0"}, {7, "t1"}, {7, "t2"},
+		{5, "t3"}, {5, "t4"},
+		{3, "t5"}, {3, "t6"}, {3, "t7"},
+	}
+	for i, d := range docs {
 		_, err := docDB.CreateDocument(ctx, projectID, "app", "items", databases.Document{
-			Data: map[string]any{"priority": 7, "title": fmt.Sprintf("t%d", i)},
+			Data: map[string]any{"priority": d[0], "title": d[1], "seq": i},
 		}, nil, anyReader)
 		require.NoError(t, err)
 	}
 
-	// keyset-only（C2 阶段①）：多排序键无法构造同构 keyset 续页（token 只
-	// 编码单键），首页即拒——R3 的"cursor 拒多键"扩展到全路径（首页与
-	// cursor 页同构要求）。
-	_, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
-		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}, {Attribute: "title"}}, PageSize: 2},
-	}, anyReader)
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	require.Equal(t, codes.InvalidArgument, st.Code())
-	require.Contains(t, st.Message(), "single order key")
+	// paginate 用给定 orders 全量翻页，返回按序 docID 拼起来的序列。
+	paginate := func(orders []query.Order) []string {
+		t.Helper()
+		var got []string
+		q := databases.Query{AST: &query.Query{Orders: orders, PageSize: 2}}
+		for {
+			page, err := docDB.ListDocuments(ctx, projectID, "app", "items", q, anyReader)
+			require.NoError(t, err)
+			for _, d := range page.Documents {
+				got = append(got, fmt.Sprintf("%v/%v", d.Data["title"], d.Data["seq"]))
+			}
+			if page.NextPageToken == "" || len(page.Documents) == 0 {
+				break
+			}
+			q.PageToken = page.NextPageToken
+		}
+		return got
+	}
+	// 直接读全序（单页大 limit）作为期望值。
+	full := func(orders []query.Order) []string {
+		t.Helper()
+		page, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+			AST: &query.Query{Orders: orders, PageSize: 100},
+		}, anyReader)
+		require.NoError(t, err)
+		out := make([]string, 0, len(page.Documents))
+		for _, d := range page.Documents {
+			out = append(out, fmt.Sprintf("%v/%v", d.Data["title"], d.Data["seq"]))
+		}
+		return out
+	}
 
-	// 单键 cursor 不受影响（独立单键链路：单键首页 + 单键续页）。
+	seen := func(seq []string) bool { // 不丢不重
+		uniq := map[string]int{}
+		for _, s := range seq {
+			uniq[s]++
+		}
+		return len(uniq) == len(docs) && func() bool {
+			for _, c := range uniq {
+				if c != 1 {
+					return false
+				}
+			}
+			return true
+		}()
+	}
+
+	// ① 双键统一方向（DESC+DESC → 行比较谓词）。
+	uniformOrders := []query.Order{{Attribute: "priority", Desc: true}, {Attribute: "title", Desc: true}}
+	require.Equal(t, full(uniformOrders), paginate(uniformOrders))
+	require.True(t, seen(paginate(uniformOrders)), "统一方向跨页不丢不重")
+
+	// ② 双键混合方向（priority DESC + title ASC → OR 展开谓词）。
+	mixedOrders := []query.Order{{Attribute: "priority", Desc: true}, {Attribute: "title"}}
+	require.Equal(t, full(mixedOrders), paginate(mixedOrders))
+	require.True(t, seen(paginate(mixedOrders)), "混合方向跨页不丢不重")
+
+	// ③ 三键混合方向（priority ASC + title DESC + seq ASC）。
+	triOrders := []query.Order{{Attribute: "priority"}, {Attribute: "title", Desc: true}, {Attribute: "seq"}}
+	require.Equal(t, full(triOrders), paginate(triOrders))
+	require.True(t, seen(paginate(triOrders)), "三键混合方向跨页不丢不重")
+
+	// 单键 cursor 路径回归（独立单键链路：单键首页 + 单键续页）。
 	singlePage1, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
 		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2},
 	}, anyReader)
@@ -466,7 +524,61 @@ func TestPostgresDocumentDocuments_CursorRejectsMultiOrderKeys(t *testing.T) {
 		AST: &query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}, PageSize: 2, CursorAfter: singleLast},
 	}, anyReader)
 	require.NoError(t, err)
-	require.Len(t, single.Documents, 1)
+	require.NotEmpty(t, single.Documents)
+}
+
+// TestPostgresDocumentDocuments_NullCursorKeyRejected（预决策 4）：cursor 行
+// 的排序键值含 NULL → InvalidArgument（消息明示先过滤）；不静默产出丢行
+// 的续页。
+func TestPostgresDocumentDocuments_NullCursorKeyRejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "items", "Items", []databases.Attribute{
+		{ID: "priority", Key: "priority", Type: "integer"},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "any"},
+		{Type: "read", Role: "any"},
+	}, true))
+
+	anyReader := databases.Principal{Roles: []string{"any"}}
+	// n1 的 priority 未设置（列保持 NULL）。
+	_, err := docDB.CreateDocument(ctx, projectID, "app", "items", databases.Document{
+		ID:   "n1",
+		Data: map[string]any{},
+	}, nil, anyReader)
+	require.NoError(t, err)
+	_, err = docDB.CreateDocument(ctx, projectID, "app", "items", databases.Document{
+		ID:   "n2",
+		Data: map[string]any{"priority": 1},
+	}, nil, anyReader)
+	require.NoError(t, err)
+
+	// cursor 定位在 NULL 键行 → InvalidArgument，消息提示先过滤。
+	_, err = docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		AST: &query.Query{Orders: []query.Order{{Attribute: "priority"}}, PageSize: 1, CursorAfter: "n1"},
+	}, anyReader)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "NULL")
+	require.Contains(t, status.Convert(err).Message(), "filter")
+
+	// 过滤后（isNotNull）正常分页。
+	page, err := docDB.ListDocuments(ctx, projectID, "app", "items", databases.Query{
+		AST: &query.Query{Filter: query.IsNotNull("priority"), Orders: []query.Order{{Attribute: "priority"}}, PageSize: 5},
+	}, anyReader)
+	require.NoError(t, err)
+	require.Len(t, page.Documents, 1)
+	require.Equal(t, "n2", page.Documents[0].ID)
 }
 
 // TestPostgresDocumentDatabase_AttributeDefaultValueCatalog：default 与 DDL 同源

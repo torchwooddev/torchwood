@@ -9,6 +9,7 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
 // TestPermissions_ListFilterTenantIsolation (A5): 列表权限过滤的 EXISTS 子查询必须
@@ -50,7 +51,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 
 	bob := databases.Principal{Roles: []string{"user:bob"}}
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$id","doc-1")`},
+		AST: &query.Query{Filter: query.Eq("$id", "doc-1")},
 	}, bob)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)
@@ -61,7 +62,7 @@ func TestPermissions_ListFilterTenantIsolation(t *testing.T) {
 		permsTable), internalID, "docs", created.ID)
 	require.NoError(t, err)
 	list, err = docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$id","doc-1")`},
+		AST: &query.Query{Filter: query.Eq("$id", "doc-1")},
 	}, bob)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -459,20 +460,20 @@ func TestPermissions_ListORFallback(t *testing.T) {
 
 	// bob：私有文档不可见（文档权限覆盖），无 _perms 文档可见（NOT EXISTS 兜底）。
 	bobList, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$id","` + privateDoc.ID + `")`},
+		AST: &query.Query{Filter: query.Eq("$id", privateDoc.ID)},
 	}, databases.Principal{Roles: []string{"user:bob"}})
 	require.NoError(t, err)
 	require.Len(t, bobList.Documents, 0)
 
 	bobPublic, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$id","public-1")`},
+		AST: &query.Query{Filter: query.Eq("$id", "public-1")},
 	}, databases.Principal{Roles: []string{"user:bob"}})
 	require.NoError(t, err)
 	require.Len(t, bobPublic.Documents, 1)
 
 	// alice：私有文档与公开文档均可见。
 	aliceList, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$id","private-1")`},
+		AST: &query.Query{Filter: query.Eq("$id", "private-1")},
 	}, alice)
 	require.NoError(t, err)
 	require.Len(t, aliceList.Documents, 1)
@@ -532,7 +533,7 @@ func TestPermissions_WriteRowTypeConsistency(t *testing.T) {
 
 	// 列表过滤只匹配 _type='read'：文档对 alice 不可见（一致性确认）。
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$id","` + created.ID + `")`},
+		AST: &query.Query{Filter: query.Eq("$id", created.ID)},
 	}, alice)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 0)

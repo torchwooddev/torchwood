@@ -12,6 +12,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -234,7 +235,7 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 	// 与旧 offset 族 token 一律拒绝。
 	require.Contains(t, next, "ka:")
 	_, _, _, err = uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`orderAsc("$id")`, `limit(10)`, `offset(10)`},
+		AST: &query.Query{Orders: []query.Order{{Attribute: "$id"}}, PageSize: 10, Offset: 10},
 	}, principal)
 	require.Error(t, err)
 	require.Contains(t, status.Convert(err).Message(), "cursor pagination")

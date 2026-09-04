@@ -87,9 +87,9 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestCountAndAggregate_RejectNonFilterOperators（返工 R9）：整集语义对排序/
-// 分页算子显式拒绝（keyset-only 收敛后 count/aggregate 是最后两处静默 no-op，
-// 违背 §4.1 显式拒绝原则）。
+// TestCountAndAggregate_RejectNonFilterOperators（返工 R9 + R9b）：整集语义
+// 对排序/分页算子显式拒绝。R9b：typed AST 的 page_size/page_token 随分页
+// 字段归一进 AST 后一并拦截（此前 DSL 路径已拦、typed 路径漏拦）。
 func TestCountAndAggregate_RejectNonFilterOperators(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -117,10 +117,18 @@ func TestCountAndAggregate_RejectNonFilterOperators(t *testing.T) {
 		require.Contains(t, status.Convert(err).Message(), "not supported on")
 	}
 
-	// count：orderAsc / cursor / page token（typed page_size/page_token 的
-	// 拒绝属 R9b，随分页字段归一在多键游标会话补齐）。
+	// count：orderAsc / page_size（typed AST，R9b）/ page_token（typed AST，
+	// R9b）/ cursor / 请求级 page token。
 	_, err := docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
 		AST: &query.Query{Filter: query.Eq("title", "x"), Orders: []query.Order{{Attribute: "views"}}},
+	}, bob)
+	assertRejected(t, err)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
+		AST: &query.Query{PageSize: 10},
+	}, bob)
+	assertRejected(t, err)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
+		AST: &query.Query{PageToken: "ka:doc-1"},
 	}, bob)
 	assertRejected(t, err)
 	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
@@ -129,9 +137,17 @@ func TestCountAndAggregate_RejectNonFilterOperators(t *testing.T) {
 	}, bob)
 	assertRejected(t, err)
 
-	// aggregate：orderDesc / page token。
+	// aggregate：orderDesc / page_size（typed AST，R9b）/ page token。
 	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
 		AST: &query.Query{Orders: []query.Order{{Attribute: "views", Desc: true}}},
+	}, aggs, "", bob)
+	assertRejected(t, err)
+	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
+		AST: &query.Query{Filter: query.Eq("title", "x"), PageSize: 5},
+	}, aggs, "", bob)
+	assertRejected(t, err)
+	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
+		AST: &query.Query{PageToken: "ka:doc-1"},
 	}, aggs, "", bob)
 	assertRejected(t, err)
 	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{

@@ -9,6 +9,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/query"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -61,13 +62,13 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, int64(2), updated.Version)
 
 	list, total, _, err := uc.ListDocuments(ctx, projectID, dbID, collID, databases.Query{
-		Queries: []string{`equal("title","Hello Torchwood")`, `orderDesc("$createdAt")`},
+		AST: &query.Query{Filter: query.Eq("title", "Hello Torchwood"), Orders: []query.Order{{Attribute: "$createdAt", Desc: true}}},
 	}, principal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, list, 1)
 
-	count, err := uc.CountDocuments(ctx, projectID, dbID, collID, databases.Query{Queries: []string{`equal("title","Hello Torchwood")`}}, principal)
+	count, err := uc.CountDocuments(ctx, projectID, dbID, collID, databases.Query{AST: &query.Query{Filter: query.Eq("title", "Hello Torchwood")}}, principal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 

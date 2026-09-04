@@ -3,6 +3,7 @@ package documentdb
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -11,6 +12,8 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/pkg/query"
 )
+
+func timeNow() time.Time { return time.Unix(1700000000, 0).UTC() }
 
 // 每算子编译单测（C7 单 AST）：AST 构造 → SQL 断言。DSL 解析路径的等价性
 // 由 pkg/query 与 pkg/query/proto 的测试保证（客户端语法糖）。
@@ -166,4 +169,52 @@ func TestAstFrom_EmptyGtEq(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = astFrom(databases.Query{AST: &query.Query{Filter: &query.Filter{Op: query.OpEqual, Attribute: "a"}}})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// buildKeysetPredicate 的 SQL 形（C2 完成态）：统一方向 → 行比较；混合方向
+// → 逐键 OR 展开；op 随 after/before 与键方向翻转。
+func TestBuildKeysetPredicate_UniformRowComparison(t *testing.T) {
+	keys := []sortKey{{field: "priority", dir: "DESC"}, {field: "title", dir: "DESC"}}
+	sqlText, args, err := buildKeysetPredicate(keys, []any{7, "t1"}, "doc-1", "after")
+	require.NoError(t, err)
+	require.Equal(t, `(d."priority", d."title", d._id) < (?, ?, ?)`, sqlText)
+	require.Equal(t, []any{7, "t1", "doc-1"}, args)
+
+	sqlText, args, err = buildKeysetPredicate(keys, []any{7, "t1"}, "doc-1", "before")
+	require.NoError(t, err)
+	require.Equal(t, `(d."priority", d."title", d._id) > (?, ?, ?)`, sqlText)
+	require.Equal(t, []any{7, "t1", "doc-1"}, args)
+
+	ascKeys := []sortKey{{field: "age", dir: "ASC"}}
+	sqlText, args, err = buildKeysetPredicate(ascKeys, []any{30}, "d1", "after")
+	require.NoError(t, err)
+	require.Equal(t, `(d."age", d._id) > (?, ?)`, sqlText)
+	require.Equal(t, []any{30, "d1"}, args)
+}
+
+func TestBuildKeysetPredicate_MixedDirectionORExpansion(t *testing.T) {
+	keys := []sortKey{{field: "priority", dir: "DESC"}, {field: "title", dir: "ASC"}}
+	sqlText, args, err := buildKeysetPredicate(keys, []any{7, "t1"}, "doc-1", "after")
+	require.NoError(t, err)
+	// after：DESC 键取 <、ASC 键取 >；_id 方向随首键（DESC → <）。
+	require.Equal(t,
+		`((d."priority" < ?) OR (d."priority" = ? AND d."title" > ?) OR (d."priority" = ? AND d."title" = ? AND d._id < ?))`,
+		sqlText)
+	require.Equal(t, []any{7, 7, "t1", 7, "t1", "doc-1"}, args)
+
+	sqlText, args, err = buildKeysetPredicate(keys, []any{7, "t1"}, "doc-1", "before")
+	require.NoError(t, err)
+	require.Equal(t,
+		`((d."priority" > ?) OR (d."priority" = ? AND d."title" < ?) OR (d."priority" = ? AND d."title" = ? AND d._id > ?))`,
+		sqlText)
+	require.Equal(t, []any{7, 7, "t1", 7, "t1", "doc-1"}, args)
+}
+
+func TestBuildKeysetPredicate_DefaultSingleKeyBackcompat(t *testing.T) {
+	// 无显式排序（默认 _created_at DESC）与单键时代同形态。
+	keys := []sortKey{{field: "_created_at", dir: "DESC"}}
+	sqlText, args, err := buildKeysetPredicate(keys, []any{timeNow()}, "d1", "after")
+	require.NoError(t, err)
+	require.Equal(t, `(d."_created_at", d._id) < (?, ?)`, sqlText)
+	require.Len(t, args, 2)
 }

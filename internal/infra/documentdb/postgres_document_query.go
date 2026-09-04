@@ -68,11 +68,11 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 		args = append(args, filterArgs...)
 	}
 
-	// DSL 未显式指定 limit 时（ParseMany 不再注入默认值）用 q.PageSize，
-	// 仍为 0/负数则回退默认 50；显式 limit 保留上限 clamp（maxQueryLimit）。
+	// 页大小归一（C7/R9b）：astFrom 已把请求级 page_size 并进 AST，此处读
+	// 归一结果；0/负数回退默认 50，上限 clamp（maxQueryLimit）。
 	limit := parsed.Limit
 	if limit == 0 {
-		limit = int(q.PageSize)
+		limit = int(parsed.PageSize)
 	}
 	if limit <= 0 {
 		limit = 50
@@ -105,50 +105,73 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	} else if parsed.CursorBefore != "" {
 		cursor, cursorKind = parsed.CursorBefore, "before"
 	}
-	// 排序键：仅取 Orders[0]，无显式排序默认 _created_at DESC；全程追加
-	// _id tiebreaker（首页与 cursor 页同构，keyset token 的跨页稳定性保证）。
-	// 多排序键在 keyset-only 下无法构造同构续页（token 只编码单键），首页
-	// 即拒——R3 的"cursor 拒多键"校验扩展到全路径。
-	if len(parsed.Orders) > 1 {
-		return nil, p.mapError(status.Error(codes.InvalidArgument, "cursor pagination requires a single order key"))
-	}
-	sortField := "_created_at"
-	sortDir := "DESC"
-	if len(parsed.Orders) == 1 {
-		sortField = mapQueryField(parsed.Orders[0].Attribute)
-		if parsed.Orders[0].Desc {
-			sortDir = "DESC"
-		} else {
-			sortDir = "ASC"
+	// 排序键全集（C2 完成态）：无显式排序默认 _created_at DESC；ORDER BY =
+	// 全部排序键 + _id tiebreaker（方向随首键）——首页与 cursor 页同构的全序，
+	// keyset token 跨页稳定性的机制保证。
+	sortKeys := make([]sortKey, 0, len(parsed.Orders)+1)
+	if len(parsed.Orders) == 0 {
+		sortKeys = append(sortKeys, sortKey{field: "_created_at", dir: "DESC"})
+	} else {
+		for _, o := range parsed.Orders {
+			field := mapQueryField(o.Attribute)
+			if !safeNameRe.MatchString(field) {
+				return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", o.Attribute)))
+			}
+			dir := "ASC"
+			if o.Desc {
+				dir = "DESC"
+			}
+			sortKeys = append(sortKeys, sortKey{field: field, dir: dir})
 		}
 	}
-	// 排序字段必须显式校验（不能沿用 ORDER 路径的静默跳过）。
-	if !safeNameRe.MatchString(sortField) {
-		return nil, p.mapError(status.Error(codes.InvalidArgument, fmt.Sprintf("invalid order field: %s", parsed.Orders[0].Attribute)))
+	var orderParts []string
+	for _, k := range sortKeys {
+		orderParts = append(orderParts, fmt.Sprintf("d.%s %s", quoteIdent(k.field), k.dir))
 	}
-	orderSQL = fmt.Sprintf(`ORDER BY d.%s %s, d._id %s`, quoteIdent(sortField), sortDir, sortDir)
+	orderParts = append(orderParts, fmt.Sprintf("d._id %s", sortKeys[0].dir))
+	orderSQL = "ORDER BY " + strings.Join(orderParts, ", ")
 
 	if cursor != "" {
 		if err := validateDocID(cursor); err != nil {
 			return nil, p.mapError(err)
 		}
-		var cursorValue any
+		// cursor 行按 docID 定位，服务端查行取全部排序键值（token 仍只编码
+		// docID；ka:/kb: 前缀 + docID，与单键时代同形态）。
+		cols := make([]string, len(sortKeys))
+		for i, k := range sortKeys {
+			cols[i] = quoteIdent(k.field)
+		}
+		values := make([]any, len(sortKeys))
+		scanVals := make([]any, len(sortKeys))
+		for i := range values {
+			scanVals[i] = &values[i]
+		}
 		err := p.conn(ctx).QueryRowContext(ctx,
-			fmt.Sprintf(`SELECT %s FROM %s WHERE _id = ? AND _tenant = ?`, quoteIdent(sortField), tbl),
+			fmt.Sprintf(`SELECT %s FROM %s WHERE _id = ? AND _tenant = ?`, strings.Join(cols, ", "), tbl),
 			cursor, internalID,
-		).Scan(&cursorValue)
+		).Scan(scanVals...)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, p.mapError(status.Error(codes.InvalidArgument, "cursor document not found"))
 			}
 			return nil, p.mapError(err)
 		}
-		op := ">"
-		if (sortDir == "ASC" && cursorKind == "before") || (sortDir == "DESC" && cursorKind == "after") {
-			op = "<"
+		// NULL 排序键不支持游标（预决策 4）：行比较谓词对 NULL 求值为 NULL
+		// 会被静默排除，cursor 定位含 NULL 键的行即拒——要求调用方先过滤
+		//（isNull/isNotNull）再分页。数据行含 NULL 键在续页中被跳过是同源
+		// 已知限制（见 docs/developer/06-databases.md §9）。
+		for i, v := range values {
+			if v == nil {
+				return nil, p.mapError(status.Error(codes.InvalidArgument,
+					fmt.Sprintf("cursor order key %s is NULL; NULL sort keys are not supported by cursor pagination, filter them out first", sortKeys[i].field)))
+			}
 		}
-		whereParts = append(whereParts, fmt.Sprintf(`(d.%s, d._id) %s (?, ?)`, quoteIdent(sortField), op))
-		args = append(args, cursorValue, cursor)
+		keysetSQL, keysetArgs, err := buildKeysetPredicate(sortKeys, values, cursor, cursorKind)
+		if err != nil {
+			return nil, p.mapError(err)
+		}
+		whereParts = append(whereParts, keysetSQL)
+		args = append(args, keysetArgs...)
 	}
 
 	// W-D：keyset 续页不产出精确 total——COUNT 与数据查询同价（含 EXISTS
@@ -218,9 +241,87 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}, nil
 }
 
+// sortKey 是一个排序键（物理列 + 方向）；keyset 谓词与 ORDER BY 同源消费。
+type sortKey struct {
+	field string
+	dir   string
+}
+
+// buildKeysetPredicate 构造多键 keyset 谓词（C2 完成态）。cursor 行的排序键
+// 值由服务端查行取得（values 与 sortKeys 一一对应），cursorID 是 _id。
+//
+// 方向一致（全 ASC 或全 DESC）→ 行比较 `(k1,…,kn,_id) op (?,…,?)`——形式
+// 最简且 PG 可用 RowCompare 索引扫描；方向混合 → 逐键 OR 展开
+// `k1 OP1 ? OR (k1 = ? AND k2 OP2 ?) OR … OR (k1 = ? AND … AND _id OPn ?)`
+//（行比较无法表达逐键方向）。op 选取：after = ORDER BY 方向的"向后"，
+// before = 反向（与单键时代语义一致）。
+func buildKeysetPredicate(sortKeys []sortKey, values []any, cursorID, cursorKind string) (string, []any, error) {
+	if len(sortKeys) == 0 || len(sortKeys) != len(values) {
+		return "", nil, status.Error(codes.Internal, "keyset predicate requires matching sort keys and values")
+	}
+	keyOp := func(dir string) string {
+		if dir == "DESC" {
+			if cursorKind == "after" {
+				return "<"
+			}
+			return ">"
+		}
+		if cursorKind == "after" {
+			return ">"
+		}
+		return "<"
+	}
+	uniform := true
+	for _, k := range sortKeys[1:] {
+		if k.dir != sortKeys[0].dir {
+			uniform = false
+			break
+		}
+	}
+	if uniform {
+		op := keyOp(sortKeys[0].dir)
+		cols := make([]string, 0, len(sortKeys)+1)
+		phs := make([]string, 0, len(sortKeys)+1)
+		outArgs := make([]any, 0, len(sortKeys)+1)
+		for i, k := range sortKeys {
+			cols = append(cols, "d."+quoteIdent(k.field))
+			phs = append(phs, "?")
+			outArgs = append(outArgs, values[i])
+		}
+		cols = append(cols, "d._id")
+		phs = append(phs, "?")
+		outArgs = append(outArgs, cursorID)
+		return fmt.Sprintf("(%s) %s (%s)", strings.Join(cols, ", "), op, strings.Join(phs, ", ")), outArgs, nil
+	}
+	// 混合方向：OR 展开。第 i 项谓词前缀是 k1..k{i-1} 的等值链；末项是
+	// _id tiebreaker（方向随首键）。占位符顺序与 args 严格对应。
+	var terms []string
+	var outArgs []any
+	for i := range sortKeys {
+		var parts []string
+		for j := 0; j < i; j++ {
+			parts = append(parts, fmt.Sprintf("d.%s = ?", quoteIdent(sortKeys[j].field)))
+			outArgs = append(outArgs, values[j])
+		}
+		parts = append(parts, fmt.Sprintf("d.%s %s ?", quoteIdent(sortKeys[i].field), keyOp(sortKeys[i].dir)))
+		outArgs = append(outArgs, values[i])
+		terms = append(terms, "("+strings.Join(parts, " AND ")+")")
+	}
+	var idParts []string
+	for j := range sortKeys {
+		idParts = append(idParts, fmt.Sprintf("d.%s = ?", quoteIdent(sortKeys[j].field)))
+		outArgs = append(outArgs, values[j])
+	}
+	idParts = append(idParts, fmt.Sprintf("d._id %s ?", keyOp(sortKeys[0].dir)))
+	outArgs = append(outArgs, cursorID)
+	terms = append(terms, "("+strings.Join(idParts, " AND ")+")")
+	return "(" + strings.Join(terms, " OR ") + ")", outArgs, nil
+}
+
 // keyset token 是明文 "ka:<docID>" / "kb:<docID>"（与 crud 的结构化 offset
 // token 不冲突：那边是版本化编码数据）。简单前缀+docID，无需防篡改——
-// token 只承载定位语义，越权由查询 ACL 过滤兜底。
+// token 只承载定位语义，越权由查询 ACL 过滤兜底。多键排序下 token 仍只
+// 编码 docID：服务端按 docID 查行取全部排序键值（C2 完成态）。
 const (
 	keysetAfterPrefix  = "ka:"
 	keysetBeforePrefix = "kb:"
@@ -254,8 +355,9 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	}
 	// keyset-only（C2 收敛）：count 是过滤全集语义，offset() 无意义且原先
 	// 仅作深翻页上限校验——显式拒绝（不再静默忽略）。排序/分页算子同理
-	//（R9：静默 no-op 违背 §4.1 显式拒绝原则）。
-	if err := rejectNonFilterOperators(parsed, q.PageToken, "count"); err != nil {
+	//（R9：静默 no-op 违背 §4.1 显式拒绝原则；R9b：分页字段归一进 AST 后
+	// 一并拦截）。
+	if err := rejectNonFilterOperators(parsed, "count"); err != nil {
 		return 0, p.mapError(err)
 	}
 	tbl := tableName(schema, collectionID)
@@ -363,9 +465,9 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 	if err != nil {
 		return nil, p.mapError(err)
 	}
-	// 整集语义只消费过滤算子：排序/分页算子显式拒绝（R9，§4.1 显式拒绝
-	// 原则——keyset-only 后这是最后两处静默 no-op）。
-	if err := rejectNonFilterOperators(parsed, q.PageToken, "aggregate"); err != nil {
+	// 整集语义只消费过滤算子：排序/分页算子显式拒绝（R9 + R9b 分页字段
+	// 归一，§4.1 显式拒绝原则）。
+	if err := rejectNonFilterOperators(parsed, "aggregate"); err != nil {
 		return nil, p.mapError(err)
 	}
 	// 过滤/排序字段白名单与兄弟路径（List/Count）同源校验（R6）：未声明列
@@ -473,11 +575,13 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 }
 
 // rejectNonFilterOperators 拒绝对整集语义（count/aggregate）无意义的排序/
-// 分页算子（R9）：keyset-only 收敛后这是最后两处静默 no-op，违背 §4.1
-// 显式拒绝原则。kind 仅用于错误消息（"count"/"aggregate"）。
-func rejectNonFilterOperators(parsed *query.Query, pageToken, kind string) error {
-	if len(parsed.Orders) > 0 || parsed.Limit != 0 || parsed.Offset != 0 ||
-		parsed.CursorAfter != "" || parsed.CursorBefore != "" || pageToken != "" {
+// 分页算子（R9 + R9b）。R9b 归一：分页字段（page_size/page_token）在
+// astFrom 已并进 AST，此处只查 AST——typed AST 的分页字段不再漏拦。
+// kind 仅用于错误消息（"count"/"aggregate"）。
+func rejectNonFilterOperators(parsed *query.Query, kind string) error {
+	if len(parsed.Orders) > 0 || parsed.PageSize != 0 || parsed.PageToken != "" ||
+		parsed.Limit != 0 || parsed.Offset != 0 ||
+		parsed.CursorAfter != "" || parsed.CursorBefore != "" {
 		return status.Error(codes.InvalidArgument,
 			fmt.Sprintf("orders and pagination are not supported on %s; use list queries", kind))
 	}

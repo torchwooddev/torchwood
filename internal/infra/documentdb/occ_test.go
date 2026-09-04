@@ -13,6 +13,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
 // occTestProject 创建带 "app"."docs" 用户集合的测试环境。
@@ -344,7 +345,7 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 
 	listPrincipal := databases.Principal{Roles: []string{"users", "user:u1"}}
 	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$version", 2)`},
+		AST: &query.Query{Filter: query.Eq("$version", "2")},
 	}, listPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -438,7 +439,7 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 
 	listPrincipal := databases.Principal{Roles: []string{"users", "user:u1"}}
 	_, err = fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$version", 1)`},
+		AST: &query.Query{Filter: query.Eq("$version", "1")},
 	}, listPrincipal)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -497,7 +498,7 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	require.Equal(t, int64(2), updated.Version)
 
 	list, err := fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$version", 2)`},
+		AST: &query.Query{Filter: query.Eq("$version", "2")},
 	}, listPrincipal)
 	require.NoError(t, err)
 	require.Len(t, list.Documents, 1)
@@ -581,7 +582,7 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 
 	fresh := NewPostgresDocumentDB(db, nil)
 	_, err = fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
-		Queries: []string{`equal("$version", 1)`},
+		AST: &query.Query{Filter: query.Eq("$version", "1")},
 	}, databases.Principal{Roles: []string{"users", "user:u1"}})
 	require.ErrorIs(t, err, databases.ErrVersionColumnConflict)
 	require.Contains(t, err.Error(), databases.ErrVersionColumnConflict.Error())
@@ -681,7 +682,7 @@ func TestQueryVersion_SystemCollectionRejected(t *testing.T) {
 	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{
-		Queries: []string{`equal("$version", 1)`},
+		AST: &query.Query{Filter: query.Eq("$version", "1")},
 	}, databases.Principal{Roles: []string{"keys"}})
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
