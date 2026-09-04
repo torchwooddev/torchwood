@@ -207,6 +207,13 @@ func (b *Builder) Build() *sharedv1.Query {
 
 var dslRe = regexp.MustCompile(`^(\w+)\((.*)\)$`)
 
+// 输入上限：与 pkg/query 的 MaxQueries/MaxQueryLen 同值（模块独立无法共享
+// 常量，文法契约由共享 golden 语料锁定——pkg/query/testdata/dsl_ast_golden.json）。
+const (
+	dslMaxQueries  = 100
+	dslMaxQueryLen = 4096
+)
+
 // FromDSL 把 Appwrite 风格 DSL 串解析为 typed Query（隐式 AND 合并）。
 // 支持算子：equal/notEqual/lessThan/lessThanEqual/greaterThan/
 // greaterThanEqual/in/contains/notContains/startsWith/notStartsWith/
@@ -215,12 +222,18 @@ var dslRe = regexp.MustCompile(`^(\w+)\((.*)\)$`)
 // offset() 不支持（文档面 keyset-only）；cursorAfter/Before 映射为
 // ka:/kb: keyset page token。
 func FromDSL(parts ...string) (*sharedv1.Query, error) {
+	if len(parts) > dslMaxQueries {
+		return nil, fmt.Errorf("queries count exceeds maximum of %d", dslMaxQueries)
+	}
 	q := &sharedv1.Query{}
 	var leaves []*sharedv1.Filter
 	for _, raw := range parts {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue
+		}
+		if len(raw) > dslMaxQueryLen {
+			return nil, fmt.Errorf("query string exceeds maximum length of %d", dslMaxQueryLen)
 		}
 		m := dslRe.FindStringSubmatch(raw)
 		if m == nil {
@@ -322,9 +335,13 @@ func FromDSL(parts ...string) (*sharedv1.Query, error) {
 			if len(args) != 1 {
 				return nil, fmt.Errorf("limit requires 1 arg")
 			}
+			// 错误文案与 pkg/query 逐字一致（golden 语料锁 substring）。
 			n, err := strconv.Atoi(args[0])
-			if err != nil || n < 0 {
-				return nil, fmt.Errorf("limit must be a non-negative integer")
+			if err != nil {
+				return nil, fmt.Errorf("limit must be an integer")
+			}
+			if n < 0 {
+				return nil, fmt.Errorf("limit must be non-negative")
 			}
 			if n > 0 {
 				q.PageSize = int32(n)

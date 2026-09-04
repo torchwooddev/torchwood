@@ -1,0 +1,671 @@
+[
+  {
+    "dsl": [
+      "equal(\"email\",\"a@b.com\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "equal",
+        "attribute": "email",
+        "values": [
+          "a@b.com"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "equal(\"status\",[\"active\",\"pending\"])"
+    ],
+    "ast": {
+      "filter": {
+        "op": "equal",
+        "attribute": "status",
+        "values": [
+          "active",
+          "pending"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "notEqual(\"status\",\"draft\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "notEqual",
+        "attribute": "status",
+        "values": [
+          "draft"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "notEqual(\"views\",[1,2])"
+    ],
+    "ast": {
+      "filter": {
+        "op": "notEqual",
+        "attribute": "views",
+        "values": [
+          "1",
+          "2"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "lessThan(\"age\",18)"
+    ],
+    "ast": {
+      "filter": {
+        "op": "lessThan",
+        "attribute": "age",
+        "values": [
+          "18"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "lessThanEqual(\"age\",65)"
+    ],
+    "ast": {
+      "filter": {
+        "op": "lessThanEqual",
+        "attribute": "age",
+        "values": [
+          "65"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "greaterThan(\"views\",100)"
+    ],
+    "ast": {
+      "filter": {
+        "op": "greaterThan",
+        "attribute": "views",
+        "values": [
+          "100"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "greaterThanEqual(\"score\",2.5)"
+    ],
+    "ast": {
+      "filter": {
+        "op": "greaterThanEqual",
+        "attribute": "score",
+        "values": [
+          "2.5"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "between(\"age\",18,65)"
+    ],
+    "ast": {
+      "filter": {
+        "op": "between",
+        "attribute": "age",
+        "values": [
+          "18",
+          "65"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "notBetween(\"age\",18,65)"
+    ],
+    "ast": {
+      "filter": {
+        "op": "notBetween",
+        "attribute": "age",
+        "values": [
+          "18",
+          "65"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "isNull(\"deleted_at\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "isNull",
+        "attribute": "deleted_at"
+      }
+    }
+  },
+  {
+    "dsl": [
+      "isNotNull(\"name\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "isNotNull",
+        "attribute": "name"
+      }
+    }
+  },
+  {
+    "dsl": [
+      "contains(\"name\",\"jo\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "contains",
+        "attribute": "name",
+        "values": [
+          "jo"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "notContains(\"name\",\"jo\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "notContains",
+        "attribute": "name",
+        "values": [
+          "jo"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "startsWith(\"name\",\"jo\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "startsWith",
+        "attribute": "name",
+        "values": [
+          "jo"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "notStartsWith(\"name\",\"jo\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "notStartsWith",
+        "attribute": "name",
+        "values": [
+          "jo"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "endsWith(\"name\",\"son\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "endsWith",
+        "attribute": "name",
+        "values": [
+          "son"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "notEndsWith(\"name\",\"son\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "notEndsWith",
+        "attribute": "name",
+        "values": [
+          "son"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "search(\"body\",\"hello world\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "search",
+        "attribute": "body",
+        "values": [
+          "hello world"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "notSearch(\"body\",\"hello\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "notSearch",
+        "attribute": "body",
+        "values": [
+          "hello"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "in(\"status\",[\"draft\",\"published\"])"
+    ],
+    "ast": {
+      "filter": {
+        "op": "in",
+        "attribute": "status",
+        "values": [
+          "draft",
+          "published"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "orderAsc(\"createdAt\")"
+    ],
+    "ast": {
+      "orders": [
+        {
+          "attribute": "createdAt"
+        }
+      ]
+    }
+  },
+  {
+    "dsl": [
+      "orderDesc(\"$createdAt\")"
+    ],
+    "ast": {
+      "orders": [
+        {
+          "attribute": "$createdAt",
+          "desc": true
+        }
+      ]
+    }
+  },
+  {
+    "dsl": [
+      "limit(25)"
+    ],
+    "ast": {
+      "pageSize": 25
+    }
+  },
+  {
+    "dsl": [
+      "cursorAfter(\"doc-1\")"
+    ],
+    "ast": {
+      "cursorAfter": "doc-1"
+    }
+  },
+  {
+    "dsl": [
+      "cursorBefore(\"doc-2\")"
+    ],
+    "ast": {
+      "cursorBefore": "doc-2"
+    }
+  },
+  {
+    "dsl": [
+      "select([\"$id\",\"title\"])"
+    ],
+    "ast": {
+      "selects": [
+        "$id",
+        "title"
+      ]
+    }
+  },
+  {
+    "dsl": [
+      "equal(\"status\",\"open\")",
+      "greaterThan(\"priority\",2)",
+      "orderDesc(\"$createdAt\")",
+      "limit(25)",
+      "select([\"title\"])"
+    ],
+    "ast": {
+      "filter": {
+        "op": "and",
+        "children": [
+          {
+            "op": "equal",
+            "attribute": "status",
+            "values": [
+              "open"
+            ]
+          },
+          {
+            "op": "greaterThan",
+            "attribute": "priority",
+            "values": [
+              "2"
+            ]
+          }
+        ]
+      },
+      "orders": [
+        {
+          "attribute": "$createdAt",
+          "desc": true
+        }
+      ],
+      "selects": [
+        "title"
+      ],
+      "pageSize": 25
+    }
+  },
+  {
+    "dsl": [
+      "orderAsc(\"$id\")",
+      "limit(5)",
+      "cursorAfter(\"doc-0004\")"
+    ],
+    "ast": {
+      "orders": [
+        {
+          "attribute": "$id"
+        }
+      ],
+      "pageSize": 5,
+      "cursorAfter": "doc-0004"
+    }
+  },
+  {
+    "dsl": [
+      ""
+    ],
+    "ast": {}
+  },
+  {
+    "dsl": [
+      "equal(\"title\",\"a \\\"quoted\\\" value\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "equal",
+        "attribute": "title",
+        "values": [
+          "a \"quoted\" value"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "equal(\"path\",\"C:\\\\dir\\\\file\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "equal",
+        "attribute": "path",
+        "values": [
+          "C:\\dir\\file"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "equal(\"name\",\"héllo 世界\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "equal",
+        "attribute": "name",
+        "values": [
+          "héllo 世界"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "equal(\"tag\",\"[x]\")"
+    ],
+    "ast": {
+      "filter": {
+        "op": "equal",
+        "attribute": "tag",
+        "values": [
+          "[x]"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "equal(\"env\",prod)"
+    ],
+    "ast": {
+      "filter": {
+        "op": "equal",
+        "attribute": "env",
+        "values": [
+          "prod"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "equal(\"title\",[])"
+    ],
+    "error": "requires at least 1 value"
+  },
+  {
+    "dsl": [
+      "limit(-1)"
+    ],
+    "error": "limit must be non-negative"
+  },
+  {
+    "dsl": [
+      "limit(abc)"
+    ],
+    "error": "limit must be an integer"
+  },
+  {
+    "dsl": [
+      "equal(\"a,\"b\")"
+    ],
+    "error": "unbalanced arguments"
+  },
+  {
+    "dsl": [
+      "bogus(\"a\")"
+    ],
+    "error": "unsupported query operator: bogus"
+  },
+  {
+    "dsl": [
+      "not-a-query"
+    ],
+    "error": "invalid query format"
+  },
+  {
+    "dsl": [
+      "in(\"status\",\"draft\")"
+    ],
+    "error": "in requires an array of values"
+  },
+  {
+    "dsl": [
+      "between(\"age\",18)"
+    ],
+    "error": "requires 3 args"
+  },
+  {
+    "dsl": [
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)",
+      "limit(1)"
+    ],
+    "error": "queries count exceeds maximum of 100"
+  },
+  {
+    "dsl": [
+      "equal(\"title\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\")"
+    ],
+    "error": "query string exceeds maximum length of 4096"
+  },
+  {
+    "dsl": [
+      "offset(20)"
+    ],
+    "root": {
+      "ast": {
+        "offset": 20
+      }
+    },
+    "sdk": {
+      "error": "offset() is not supported"
+    }
+  },
+  {
+    "dsl": [
+      "offset(-1)"
+    ],
+    "root": {
+      "error": "offset must be non-negative"
+    },
+    "sdk": {
+      "error": "offset() is not supported"
+    }
+  }
+]
