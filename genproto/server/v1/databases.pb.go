@@ -2215,12 +2215,19 @@ func (x *AggregateDocumentsRequest) GetQuery() *v1.Query {
 	return nil
 }
 
-// 单个聚合值：value 未设置 = 空集下的 avg/min/max（无值；sum 空集恒 0）。
+// 单个聚合值（类型化，预决策 5）：integer 属性的 sum/min/max → int64_value
+// （int64 精度，>2^53 精确）；avg 恒 double_value；float 属性恒 double_value。
+// oneof 未设置 = 空集下的 avg/min/max（无值；sum 空集按属性类型返回 0）。
+// 旧 double value 字段已退役（POC 无兼容期）。
 type AggregateValue struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Function      AggregateFunction      `protobuf:"varint,1,opt,name=function,proto3,enum=torchwood.server.v1.AggregateFunction" json:"function,omitempty"`
-	Field         string                 `protobuf:"bytes,2,opt,name=field,proto3" json:"field,omitempty"`
-	Value         *float64               `protobuf:"fixed64,3,opt,name=value,proto3,oneof" json:"value,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Function AggregateFunction      `protobuf:"varint,1,opt,name=function,proto3,enum=torchwood.server.v1.AggregateFunction" json:"function,omitempty"`
+	Field    string                 `protobuf:"bytes,2,opt,name=field,proto3" json:"field,omitempty"`
+	// Types that are valid to be assigned to Result:
+	//
+	//	*AggregateValue_Int64Value
+	//	*AggregateValue_DoubleValue
+	Result        isAggregateValue_Result `protobuf_oneof:"result"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2269,12 +2276,46 @@ func (x *AggregateValue) GetField() string {
 	return ""
 }
 
-func (x *AggregateValue) GetValue() float64 {
-	if x != nil && x.Value != nil {
-		return *x.Value
+func (x *AggregateValue) GetResult() isAggregateValue_Result {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *AggregateValue) GetInt64Value() int64 {
+	if x != nil {
+		if x, ok := x.Result.(*AggregateValue_Int64Value); ok {
+			return x.Int64Value
+		}
 	}
 	return 0
 }
+
+func (x *AggregateValue) GetDoubleValue() float64 {
+	if x != nil {
+		if x, ok := x.Result.(*AggregateValue_DoubleValue); ok {
+			return x.DoubleValue
+		}
+	}
+	return 0
+}
+
+type isAggregateValue_Result interface {
+	isAggregateValue_Result()
+}
+
+type AggregateValue_Int64Value struct {
+	Int64Value int64 `protobuf:"varint,4,opt,name=int64_value,json=int64Value,proto3,oneof"`
+}
+
+type AggregateValue_DoubleValue struct {
+	DoubleValue float64 `protobuf:"fixed64,5,opt,name=double_value,json=doubleValue,proto3,oneof"`
+}
+
+func (*AggregateValue_Int64Value) isAggregateValue_Result() {}
+
+func (*AggregateValue_DoubleValue) isAggregateValue_Result() {}
 
 // 一个聚合组：无 group_by 时恰一组且 group_key 未设置；group_by 属性未设置
 // 的行归入 group_key 未设置的组。
@@ -3097,12 +3138,14 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\faggregations\x18\x04 \x03(\v2\".torchwood.server.v1.AggregateSpecR\faggregations\x12\x1e\n" +
 	"\bgroup_by\x18\x05 \x01(\tH\x00R\agroupBy\x88\x01\x01\x120\n" +
 	"\x05query\x18\x06 \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryB\v\n" +
-	"\t_group_byJ\x04\b\x03\x10\x04R\aqueries\"\x8f\x01\n" +
+	"\t_group_byJ\x04\b\x03\x10\x04R\aqueries\"\xc9\x01\n" +
 	"\x0eAggregateValue\x12B\n" +
 	"\bfunction\x18\x01 \x01(\x0e2&.torchwood.server.v1.AggregateFunctionR\bfunction\x12\x14\n" +
-	"\x05field\x18\x02 \x01(\tR\x05field\x12\x19\n" +
-	"\x05value\x18\x03 \x01(\x01H\x00R\x05value\x88\x01\x01B\b\n" +
-	"\x06_value\"}\n" +
+	"\x05field\x18\x02 \x01(\tR\x05field\x12!\n" +
+	"\vint64_value\x18\x04 \x01(\x03H\x00R\n" +
+	"int64Value\x12#\n" +
+	"\fdouble_value\x18\x05 \x01(\x01H\x00R\vdoubleValueB\b\n" +
+	"\x06resultJ\x04\b\x03\x10\x04R\x05value\"}\n" +
 	"\x0eAggregateGroup\x12 \n" +
 	"\tgroup_key\x18\x01 \x01(\tH\x00R\bgroupKey\x88\x01\x01\x12;\n" +
 	"\x06values\x18\x02 \x03(\v2#.torchwood.server.v1.AggregateValueR\x06valuesB\f\n" +
@@ -3390,7 +3433,10 @@ func file_server_v1_databases_proto_init() {
 	file_server_v1_databases_proto_msgTypes[19].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[21].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[27].OneofWrappers = []any{}
-	file_server_v1_databases_proto_msgTypes[28].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[28].OneofWrappers = []any{
+		(*AggregateValue_Int64Value)(nil),
+		(*AggregateValue_DoubleValue)(nil),
+	}
 	file_server_v1_databases_proto_msgTypes[29].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[31].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[32].OneofWrappers = []any{}

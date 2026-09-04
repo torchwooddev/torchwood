@@ -503,12 +503,27 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 	if groupBy != "" {
 		selects = append(selects, fmt.Sprintf(`d.%s::text AS __group_key`, quoteIdent(groupBy)))
 	}
-	for _, agg := range aggs {
+	// 表达式按属性类型分流（预决策 5）：integer 属性的 sum/min/max 走 int64
+	//（SUM(bigint) 在 PG 返回 numeric，显式 ::int8 并在溢出时拒绝；min/max
+	// 原生 bigint）；avg 恒 float8（AVG(bigint) 返回 numeric → ::float8）；
+	// float 属性恒 float8。
+	resultInt64 := make([]bool, len(aggs))
+	for i, agg := range aggs {
 		fn := strings.ToUpper(string(agg.Function))
-		// sum 空集（全 NULL）定义为 0；avg/min/max 空集保持 NULL（Value=nil）。
-		expr := fmt.Sprintf(`%s(d.%s)::float8`, fn, quoteIdent(agg.Field))
-		if agg.Function == databases.AggregateSum {
+		isInteger := attrs[agg.Field] == "integer"
+		resultInt64[i] = isInteger && (agg.Function == databases.AggregateSum ||
+			agg.Function == databases.AggregateMin || agg.Function == databases.AggregateMax)
+		var expr string
+		switch {
+		case resultInt64[i] && agg.Function == databases.AggregateSum:
+			// 空集（全 NULL）定义为 0；溢出由 22003 检测拒绝。
+			expr = fmt.Sprintf(`COALESCE(%s(d.%s), 0)::int8`, fn, quoteIdent(agg.Field))
+		case resultInt64[i]:
+			expr = fmt.Sprintf(`%s(d.%s)`, fn, quoteIdent(agg.Field))
+		case agg.Function == databases.AggregateSum:
 			expr = fmt.Sprintf(`COALESCE(%s(d.%s), 0)::float8`, fn, quoteIdent(agg.Field))
+		default:
+			expr = fmt.Sprintf(`%s(d.%s)::float8`, fn, quoteIdent(agg.Field))
 		}
 		selects = append(selects, expr)
 	}
@@ -517,9 +532,22 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 		querySQL += fmt.Sprintf(` GROUP BY d.%s ORDER BY d.%s`, quoteIdent(groupBy), quoteIdent(groupBy))
 	}
 
+	// mapAggregateError 把执行期 PG 错误按聚合语义翻译：::int8 溢出
+	//（numeric_value_out_of_range，22003）→ ErrAggregateOverflow。
+	mapAggregateError := func(err error) error {
+		if err == nil {
+			return nil
+		}
+		var fielder pgErrorFielder
+		if errors.As(err, &fielder) && fielder.Field('C') == "22003" {
+			return databases.ErrAggregateOverflow
+		}
+		return err
+	}
+
 	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, args...)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(mapAggregateError(err))
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -528,44 +556,63 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 	if groupBy != "" {
 		scanVals = append(scanVals, &groupKey)
 	}
-	values := make([]sql.NullFloat64, len(aggs))
-	for i := range values {
-		scanVals = append(scanVals, &values[i])
+	// 混合类型列各自 Null 扫描（int64 列 → NullInt64，double 列 → NullFloat64）。
+	int64Vals := make([]sql.NullInt64, len(aggs))
+	floatVals := make([]sql.NullFloat64, len(aggs))
+	for i := range aggs {
+		if resultInt64[i] {
+			scanVals = append(scanVals, &int64Vals[i])
+		} else {
+			scanVals = append(scanVals, &floatVals[i])
+		}
+	}
+
+	buildValues := func() []databases.AggregateValue {
+		vals := make([]databases.AggregateValue, 0, len(aggs))
+		for i, agg := range aggs {
+			v := databases.AggregateValue{Function: agg.Function, Field: agg.Field}
+			switch {
+			case resultInt64[i] && int64Vals[i].Valid:
+				v.Kind, v.Int64 = databases.AggregateValueInt64, int64Vals[i].Int64
+			case resultInt64[i]:
+				// 空集 min/max：无值（sum 已 COALESCE 为 0，不会走到这里）。
+			case floatVals[i].Valid:
+				v.Kind, v.Double = databases.AggregateValueDouble, floatVals[i].Float64
+			}
+			vals = append(vals, v)
+		}
+		return vals
 	}
 
 	var groups []databases.AggregateGroup
 	for rows.Next() {
 		if err := rows.Scan(scanVals...); err != nil {
-			return nil, p.mapError(err)
+			return nil, p.mapError(mapAggregateError(err))
 		}
-		g := databases.AggregateGroup{Values: make([]databases.AggregateValue, 0, len(aggs))}
+		g := databases.AggregateGroup{Values: buildValues()}
 		if groupBy != "" {
 			if groupKey.Valid {
 				key := groupKey.String
 				g.GroupKey = &key
 			}
 		}
-		for i, agg := range aggs {
-			v := databases.AggregateValue{Function: agg.Function, Field: agg.Field}
-			if values[i].Valid {
-				fv := values[i].Float64
-				v.Value = &fv
-			}
-			g.Values = append(g.Values, v)
-		}
 		groups = append(groups, g)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(mapAggregateError(err))
 	}
 	if groups == nil && groupBy == "" {
 		// 无 group_by 时空集也返回一组（sum=0 / avg=min=max=nil）。
 		g := databases.AggregateGroup{Values: make([]databases.AggregateValue, 0, len(aggs))}
-		for _, agg := range aggs {
+		for i, agg := range aggs {
 			v := databases.AggregateValue{Function: agg.Function, Field: agg.Field}
 			if agg.Function == databases.AggregateSum {
-				zero := 0.0
-				v.Value = &zero
+				// sum 空集 = 0，类型跟随属性（integer → int64 0）。
+				if resultInt64[i] {
+					v.Kind = databases.AggregateValueInt64
+				} else {
+					v.Kind = databases.AggregateValueDouble
+				}
 			}
 			g.Values = append(g.Values, v)
 		}

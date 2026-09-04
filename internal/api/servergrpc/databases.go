@@ -729,9 +729,11 @@ func (s *DatabasesService) AggregateDocuments(ctx context.Context, req *serverv1
 				Function: aggregateFunctionToProto(v.Function),
 				Field:    v.Field,
 			}
-			if v.Value != nil {
-				fv := *v.Value
-				pv.Value = &fv
+			switch v.Kind {
+			case databases.AggregateValueInt64:
+				pv.Result = &serverv1.AggregateValue_Int64Value{Int64Value: v.Int64}
+			case databases.AggregateValueDouble:
+				pv.Result = &serverv1.AggregateValue_DoubleValue{DoubleValue: v.Double}
 			}
 			pg.Values = append(pg.Values, pv)
 		}

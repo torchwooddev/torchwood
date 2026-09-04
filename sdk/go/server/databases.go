@@ -322,6 +322,10 @@ func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID stri
 // AggregateDocuments 在权限过滤后的可见行集上聚合（sum/avg/min/max +
 // 可选单键 groupBy；groupBy 空 = 不分组）。q 为 typed AST 过滤
 //（与 ListDocuments 同形；排序/分页算子无意义）。
+// 结果类型化：integer 属性的 sum/min/max → AggregateValue_Int64Value
+//（int64 精确，>2^53 可靠）；avg 与 float 属性 → AggregateValue_DoubleValue。
+// 注意：文档 Data 的 number 通道是 double——业务值可能超过 2^53 时，
+// 属性请用 integer（聚合 int64 通道）或 string 承载。
 func (d *DatabasesService) AggregateDocuments(ctx context.Context, collectionID string, q *sharedv1.Query, aggregations []*serverv1.AggregateSpec, groupBy string) (*serverv1.AggregateDocumentsResponse, error) {
 	req := &serverv1.AggregateDocumentsRequest{
 		DatabaseId:   d.db,

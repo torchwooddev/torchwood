@@ -24,12 +24,25 @@ type AggregateSpec struct {
 	Field    string
 }
 
-// AggregateValue 是单个聚合项的结果。Value 为 nil 表示空集下的 avg/min/max
-// （无值；sum 空集定义为 0）。
+// AggregateNumberKind 标记聚合结果的标量类型（预决策 5）：integer 属性的
+// sum/min/max → int64（int64 精度，>2^53 精确）；avg 恒 double；
+// float 属性恒 double。
+type AggregateNumberKind int
+
+const (
+	// AggregateValueNone 是空集下的 avg/min/max（无值；sum 空集按属性类型返回 0）。
+	AggregateValueNone AggregateNumberKind = iota
+	AggregateValueInt64
+	AggregateValueDouble
+)
+
+// AggregateValue 是单个聚合项的结果：Kind 决定读 Int64 还是 Double。
 type AggregateValue struct {
 	Function AggregateFunction
 	Field    string
-	Value    *float64
+	Kind     AggregateNumberKind
+	Int64    int64
+	Double   float64
 }
 
 // AggregateGroup 是一个聚合组：无 group_by 时恰有一组且 GroupKey 为 nil；

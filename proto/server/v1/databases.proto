@@ -440,11 +440,19 @@ message AggregateDocumentsRequest {
   torchwood.shared.v1.Query query = 6;
 }
 
-// 单个聚合值：value 未设置 = 空集下的 avg/min/max（无值；sum 空集恒 0）。
+// 单个聚合值（类型化，预决策 5）：integer 属性的 sum/min/max → int64_value
+//（int64 精度，>2^53 精确）；avg 恒 double_value；float 属性恒 double_value。
+// oneof 未设置 = 空集下的 avg/min/max（无值；sum 空集按属性类型返回 0）。
+// 旧 double value 字段已退役（POC 无兼容期）。
 message AggregateValue {
   AggregateFunction function = 1;
   string field = 2;
-  optional double value = 3;
+  reserved 3;
+  reserved "value";
+  oneof result {
+    int64 int64_value = 4;
+    double double_value = 5;
+  }
 }
 
 // 一个聚合组：无 group_by 时恰一组且 group_key 未设置；group_by 属性未设置

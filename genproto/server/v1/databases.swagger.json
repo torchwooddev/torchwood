@@ -2129,12 +2129,16 @@
         "field": {
           "type": "string"
         },
-        "value": {
+        "int64_value": {
+          "type": "string",
+          "format": "int64"
+        },
+        "double_value": {
           "type": "number",
           "format": "double"
         }
       },
-      "title": "单个聚合值：value 未设置 = 空集下的 avg/min/max（无值；sum 空集恒 0）。"
+      "title": "单个聚合值（类型化，预决策 5）：integer 属性的 sum/min/max → int64_value\n（int64 精度，\u003e2^53 精确）；avg 恒 double_value；float 属性恒 double_value。\noneof 未设置 = 空集下的 avg/min/max（无值；sum 空集按属性类型返回 0）。\n旧 double value 字段已退役（POC 无兼容期）。"
     },
     "v1Attribute": {
       "type": "object",

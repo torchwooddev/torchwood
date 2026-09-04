@@ -27,6 +27,9 @@ const (
 	//（Aborted，可重试）。
 	ErrCodeIdempotencyKeyConflict = "IDEMPOTENCY.KEY_CONFLICT"
 	ErrCodeIdempotencyInProgress  = "IDEMPOTENCY.IN_PROGRESS"
+	// 聚合（单 AST 会话·预决策 5）：integer 聚合超出 int64 范围
+	//（SUM(bigint)::int8 溢出，PG 22003）。
+	ErrCodeAggregateOverflow = "AGGREGATE.OVERFLOW"
 )
 
 // ErrorCodeRetryable 是域码静态可重试表：OCC 冲突可重读合并重试、资源耗尽
@@ -62,6 +65,8 @@ func ErrorDomainCode(err error) string {
 		return ErrCodeVersionColumnUnavailable
 	case errors.Is(err, ErrIdempotencyKeyConflict):
 		return ErrCodeIdempotencyKeyConflict
+	case errors.Is(err, ErrAggregateOverflow):
+		return ErrCodeAggregateOverflow
 	}
 	return ""
 }
@@ -100,6 +105,10 @@ var ErrVersionColumnConflict = errors.New("version_column_conflict")
 // ErrVersionColumnUnavailable 是尚未 reconcile（缺 _version 列）的用户表上
 // 写文档或使用 $version 查询时返回的错误；映射为 InvalidArgument / version_column_unavailable。
 var ErrVersionColumnUnavailable = errors.New("version_column_unavailable")
+
+// ErrAggregateOverflow 是 integer 属性聚合结果超出 int64 范围时返回的错误
+//（SUM(bigint)::int8 溢出）；映射为 InvalidArgument / AGGREGATE.OVERFLOW。
+var ErrAggregateOverflow = errors.New("aggregate_overflow")
 
 // SimpleDocumentUpdate builds a DocumentUpdate for data and optional permission changes.
 func SimpleDocumentUpdate(doc Document, perms []Permission) DocumentUpdate {

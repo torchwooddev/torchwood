@@ -170,10 +170,12 @@ CREATE TABLE tw_shop_app._perms (
 
 `DatabasesService/AggregateDocuments`（Server 面，scope `databases.read`）：`POST .../documents:aggregate`，`sum/avg/min/max` + 可选单键 `group_by`（count 已有独立 `:count` RPC 不并入）。语义：
 
-- **D1（§11-J 已裁决）**：聚合一律在 `listPermissionFilter` 过滤后的可见行集上执行（过滤先于 GROUP BY）——不可见行不进聚合、group 键不泄露；权限 golden 集成测试锁语义（`aggregate_integration_test.go`）；最小桶/k-匿名未实现（可选产品功能，默认关）；权限变更前后聚合不可比属固有属性。
+- **D1（§11-J 已裁决）**：聚合一律在 `listPermissionFilter` 过滤后的可见行集上执行（过滤先于 GROUP BY）——不可见行不进聚合、group 键不泄露；权限 golden 集成测试锁语义（`aggregate_integration_test.go`）；最小桶/k-匿名未实现（可选产品功能，默认关）；权限变更前后聚合结果不可比属固有属性。
 - 聚合目标必须是集合声明的数值属性（`integer`/`float`，System 主体一视同仁防拼列）；`group_by` 须为已声明属性，键按 text 序列化（NULL 键=属性未设置的行，归入 `group_key` 未设置的组）。
-- 空集语义：`sum=0`（COALESCE）、`avg/min/max` 无值（proto `optional double` 未设置）；`group_by` 下空集返回空组列表。无 `group_by` 时恰返回一组。
-- 过滤算子与 ListDocuments 同语法（queries/typed AST 双栈）；排序/分页算子（orderAsc/Desc、limit、offset、cursor、page token）在 count 与 aggregate 一律 `InvalidArgument` 显式拒绝（整集语义，R9——静默 no-op 违背 §4.1 显式拒绝原则）。
+- 空集语义：`sum=0`（COALESCE，类型跟随属性）、`avg/min/max` 无值（proto oneof 未设置）；`group_by` 下空集返回空组列表。无 `group_by` 时恰返回一组。
+- **结果类型化（预决策 5）**：`AggregateValue.result` 是 oneof——integer 属性的 `sum/min/max` 走 `int64_value`（`SUM(bigint)::int8` 显式收敛、`MIN/MAX` 原生 bigint，`>2^53` 精确）；`avg` 恒 `double_value`（`AVG(bigint)::float8`）；float 属性恒 `double_value`。integer 聚合超出 int64 → `InvalidArgument` / `AGGREGATE.OVERFLOW`（PG 22003 翻译，域码见 `internal/domain/databases/errors.go`）。
+- **Data 的 double 精度界（维持不变）**：文档 Data（JSON `Struct`）的 number 通道是 double——业务值可能超过 2^53 时请用 **string 属性承载**（换 Struct 形态收益不成比例，redesign §4.1 类型系统既定取舍）；聚合面经 `int64_value` 已绕开该界，读写两个通道各自精确。
+- 过滤算子与 ListDocuments 同形（单 typed AST）；排序/分页算子（orders、page_size、page_token、cursor、token）在 count 与 aggregate 一律 `InvalidArgument` 显式拒绝（整集语义，R9 + R9b——分页字段归一进 AST 后统一拦截）。
 
 ## 8.4 写幂等 `request_id`（redesign §4.1/§10.1）
 
