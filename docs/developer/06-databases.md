@@ -174,6 +174,8 @@ CREATE INDEX idx_c_ab12cd34_acl ON tw_shop_app.c_ab12cd34 USING gin (_acl);
 
 `DatabasesService/ExecuteTransactions`（Server 面）：单事务内顺序执行异构 op 批（`internal/infra/documentdb/postgres_transactions.go`，Bulk 的泛化）。op 模型 `{type(create/update/upsert/delete), collection_id, document_id, data, permissions, increment, expected_version, conflict_columns}`，上限 1000（`MaxBulkOperations`）。锁纪律：按 `(collection, documentID)` 排序预取 `pg_advisory_xact_lock` 防批间死锁，op 按请求序执行（事件序 = op 序）；各 op 复用单文档事务体（权限/OCC/conflictColumns 校验同源）。`ATOMIC`（默认）任一失败整批回滚（错误带 op index 域码定位）；`PARTIAL` 逐 op SAVEPOINT 容错、已成功不回滚、返回 per-op 结果（含失败域码）。create/upsert 空 ACE 种子与单文档 API 同语义。
 
+**Functions 的多写原子性（Phase 2 形态乙，阶段③-b 定稿）**：函数代码运行在外部 Docker 容器（进程隔离，§4.8 Phase 2 的"同进程共享 ctx"前提不成立），不做跨进程事务——函数内的多写原子批一律经本 RPC 表达（函数通过 API/SDK 调用 `documents:execute-tx`），批内事件序 = op 序，成功全提交、失败（ATOMIC）整批回滚。
+
 ## 8.2 域错误码（redesign §4.1）
 
 域码稳定 snake_case（`DOCUMENT.NOT_FOUND`、`DOCUMENT.VERSION_CONFLICT`、`DOCUMENT.ATTRIBUTE_UNSERIALIZABLE`、`IDEMPOTENCY.KEY_CONFLICT` 等，`internal/domain/databases/errors.go`）静态映射 gRPC code；消息格式 `CODE: message`，ErrorInfo detail 携带 `reason`/`retryable`（OCC 冲突、资源耗尽与幂等执行中可重试）与 `error_id`（**DomainStatus 生成处统一注入**，与 infra SQLSTATE 路径对齐——每个错误实例可唯一引用；限流拒绝为 `RATE_LIMIT.EXCEEDED` / `torchwood.platform` + RetryInfo 精确退避）。字段级违规定位走 **google.rpc BadRequest 标准 detail（field_violations）**：execute-tx 的 op 定位迁移为字段路径形态（`ops[3].expected_version`——域码映射子字段：VERSION_\*→`expected_version`、PERMISSION_DENIED→`permissions`、NOT_FOUND/ALREADY_EXISTS→`document_id`、无映射→`ops[N]`）；载荷违规（`data.blob`）与 op 守卫（`ops[i].collection_id` 等）同形态。裸 "document database error" 已消灭；infra 产出的域码 status 在 app 层经 `errors.As` 提取透传（防包装链丢 status）。

@@ -58,6 +58,14 @@ CMD ["node","-e","const {main}=require('./index');Promise.resolve(main(JSON.pars
 
 安全基线（`docker.go:Execute`）：`CapDrop ALL`、`no-new-privileges`、只读根文件系统+`/tmp` tmpfs、`memory/cpu/pids(512)` 按 spec、网络默认 per-project 隔离 bridge `tw-func-<project.id>`（项目间函数容器互不可达；显式配置 `functions.docker.network` 时 opt-in 全局网络，跨项目容器同网互通有横向访问风险，见 `configs/config.yaml.template` 警告），`TW_DATA` 传参，超时强制删容器。
 
+### 4.1 事务边界（redesign §4.8 Phase 2 形态乙，阶段③-b 定稿）
+
+函数代码运行在**外部 Docker 容器**（node/python 镜像，进程隔离）：输入经 `TW_DATA` 环境变量注入、输出从 stdout 收集，与 server 不共享 `context.Context` 或数据库事务连接（探查结论：容器内无 SDK 注入、无回环网络通道、无 `JoinTx` 机制）。因此 **Phase 2 的事务上下文注入（形态甲）前提不成立，声明降级为形态乙**：
+
+- 函数内的**多写原子性**统一由 Phase 1 的 `DatabasesService/ExecuteTransactions`（`POST /v1/server/databases/{db}/collections` 面 `documents:execute-tx`，见 `06-databases.md` §8.1）提供——函数代码通过 API/SDK（scoped API Key）调用即可，ATOMIC 批成功全提交、任一失败整批回滚，批内事件序 = op 序。
+- 单条文档写本身的原子性（数据行 + `_acl` + outbox 事件同事务）由服务端保证，与调用方是否为函数无关。
+- 跨进程事务协调（两阶段提交/补偿协调器）不在 POC 范围；如未来函数改宿主进程内运行时（如嵌入式解释器），可再评估形态甲。
+
 ## 5 全局信号量（`pkg/semaphore`）
 
 `pkg/semaphore/semaphore.go:52` `RedisSemaphore` + `InMemorySemaphore` 回退（`ProvideSemaphores`，`internal/app/functions/semaphores.go:21`），`Semaphore` 接口 `TryAcquire(ctx)(bool, func(), error)`：
