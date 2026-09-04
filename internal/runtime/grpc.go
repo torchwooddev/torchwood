@@ -62,30 +62,7 @@ func NewGRPCServer(
 	grpcCfg := cfg.GetServer().GetGrpc()
 	timeout := parseDuration(grpcCfg.GetTimeout(), 30*time.Second)
 
-	publicMethods, apiKeyMethods, permissionMethods, err := collectMethodsByAccess(
-		clientv1.File_client_v1_account_proto,
-		clientv1.File_client_v1_databases_proto,
-		clientv1.File_client_v1_groups_proto,
-		clientv1.File_client_v1_payments_proto,
-		clientv1.File_client_v1_assets_proto,
-		clientv1.File_client_v1_subscriptions_proto,
-		serverv1.File_server_v1_projects_proto,
-		serverv1.File_server_v1_health_proto,
-		serverv1.File_server_v1_storage_proto,
-		serverv1.File_server_v1_users_proto,
-		serverv1.File_server_v1_apikeys_proto,
-		serverv1.File_server_v1_oauth_providers_proto,
-		serverv1.File_server_v1_groups_proto,
-		serverv1.File_server_v1_databases_proto,
-		serverv1.File_server_v1_functions_proto,
-		serverv1.File_server_v1_payments_proto,
-		serverv1.File_server_v1_assets_proto,
-		serverv1.File_server_v1_subscriptions_proto,
-		serverv1.File_server_v1_billing_proto,
-		serverv1.File_server_v1_outbox_proto,
-		consolev1.File_console_v1_auth_proto,
-		consolev1.File_console_v1_admins_proto,
-	)
+	publicMethods, apiKeyMethods, permissionMethods, err := collectMethodsByAccess(authzFileDescriptors()...)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +189,35 @@ func assertRegisteredMethodsHaveAuthz(grpcSrv *grpc.Server, publicMethods, apiKe
 		return fmt.Errorf("registered grpc methods missing authz annotation: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+// authzFileDescriptors 是 authz 推导（collectMethodsByAccess）与 swagger 一致性
+// 测试共用的业务 proto 文件清单（单一事实源；新增服务文件只登记此处）。
+func authzFileDescriptors() []protoreflect.FileDescriptor {
+	return []protoreflect.FileDescriptor{
+		clientv1.File_client_v1_account_proto,
+		clientv1.File_client_v1_databases_proto,
+		clientv1.File_client_v1_groups_proto,
+		clientv1.File_client_v1_payments_proto,
+		clientv1.File_client_v1_assets_proto,
+		clientv1.File_client_v1_subscriptions_proto,
+		serverv1.File_server_v1_projects_proto,
+		serverv1.File_server_v1_health_proto,
+		serverv1.File_server_v1_storage_proto,
+		serverv1.File_server_v1_users_proto,
+		serverv1.File_server_v1_apikeys_proto,
+		serverv1.File_server_v1_oauth_providers_proto,
+		serverv1.File_server_v1_groups_proto,
+		serverv1.File_server_v1_databases_proto,
+		serverv1.File_server_v1_functions_proto,
+		serverv1.File_server_v1_payments_proto,
+		serverv1.File_server_v1_assets_proto,
+		serverv1.File_server_v1_subscriptions_proto,
+		serverv1.File_server_v1_billing_proto,
+		serverv1.File_server_v1_outbox_proto,
+		consolev1.File_console_v1_auth_proto,
+		consolev1.File_console_v1_admins_proto,
+	}
 }
 
 func collectMethodsByAccess(fileDescs ...protoreflect.FileDescriptor) (publicMethods []string, apiKeyMethods []string, permissionMethods map[string][]string, err error) {

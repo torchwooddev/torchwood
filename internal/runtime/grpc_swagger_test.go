@@ -11,42 +11,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	clientv1 "github.com/torchwooddev/torchwood/genproto/client/v1"
-	consolev1 "github.com/torchwooddev/torchwood/genproto/console/v1"
-	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// businessFileDescriptors 与 NewGRPCServer 中 collectMethodsByAccess 的入参保持一致
-// （新增服务文件后两处都要登记）。
+// businessFileDescriptors 复用 authzFileDescriptors 单一事实源
+// （NewGRPCServer 的 collectMethodsByAccess 与本文件 swagger 覆盖检查同源）。
 func businessFileDescriptors() []protoreflect.FileDescriptor {
-	return []protoreflect.FileDescriptor{
-		clientv1.File_client_v1_account_proto,
-		clientv1.File_client_v1_databases_proto,
-		clientv1.File_client_v1_groups_proto,
-		clientv1.File_client_v1_payments_proto,
-		clientv1.File_client_v1_assets_proto,
-		clientv1.File_client_v1_subscriptions_proto,
-		serverv1.File_server_v1_projects_proto,
-		serverv1.File_server_v1_health_proto,
-		serverv1.File_server_v1_storage_proto,
-		serverv1.File_server_v1_users_proto,
-		serverv1.File_server_v1_apikeys_proto,
-		serverv1.File_server_v1_oauth_providers_proto,
-		serverv1.File_server_v1_groups_proto,
-		serverv1.File_server_v1_databases_proto,
-		serverv1.File_server_v1_functions_proto,
-		serverv1.File_server_v1_payments_proto,
-		serverv1.File_server_v1_assets_proto,
-		serverv1.File_server_v1_subscriptions_proto,
-		serverv1.File_server_v1_billing_proto,
-		serverv1.File_server_v1_outbox_proto,
-		consolev1.File_console_v1_auth_proto,
-		consolev1.File_console_v1_admins_proto,
-	}
+	return authzFileDescriptors()
 }
 
 func accessLevelString(l sharedv1.AccessLevel) (string, bool) {
