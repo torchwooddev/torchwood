@@ -206,10 +206,11 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 
 ### 4.5 事件层
 
-- 写事务内 outbox INSERT（全局 `seq bigserial`）+ `pg_notify` 唤醒（替代 200ms 轮询，5s 兜底轮询；NOTIFY 仅作信号——无持久化、每消费者占一条连接，不承担投递）。
-- 投递：dispatcher 批拉（SKIP LOCKED）→ Redis **Stream**（XADD/XREADGROUP/XACK 位点）→ 各 server 消费扇出——回到 Stream 是有意决策：当年改 Pub/Sub 为解决多副本可见性，消费组模式同样解决且换来不丢帧与位点回放；注释与实现必须同步（现状 6 处 XADD 注释腐化即前车之鉴）。
-- 顺序承诺（B1，2026-09-03 定稿）：**单文档全序**（行锁保证 seq 随提交序）；**集合内为分配序**——跨文档不保证与提交序一致，且 seq 有空洞（回滚事务消耗 seq 但无事件，不表示丢事件）；seq 仅作续传游标与去重 ID；不承诺跨集合因果。写入一致性契约文档。
-- 补偿：断线重连带 `last_seq`，服务端重放保留窗口（默认 1h）；窗口外返回 `EVENTS.RESUME_EXPIRED` 并指引 `GET :changes?since_seq=…`；大载荷不再截断，改带 `data_ref`（按版本拉取）。
+- 写事务内 outbox INSERT（全局 `seq` identity）+ `pg_notify` 唤醒（替代 200ms 轮询，5s 兜底轮询；NOTIFY 仅作信号——无持久化、每消费者占一条连接，不承担投递）。**落地形态定稿（R14，2026-09-04）**：NOTIFY 走 **AFTER INSERT 行级触发器**而非应用侧逐条 `SELECT pg_notify`——零额外客户端语句（应用侧会使 Bulk 语句数翻倍，违反 R5-P2-6 预算），PG 自动合并同事务相同 NOTIFY（execute-tx 100 op 批一次唤醒），随 commit 投递/回滚丢弃语义不变；实测 commit→LISTEN 平均 4.8ms。pgdriver 自带 Listener（专属连接 + 断线重连 + Channel API），无需退化短轮询。
+- 投递：dispatcher 批拉（SKIP LOCKED，批 256）→ Redis **Stream** `torchwood:events`（XADD 不带 MAXLEN + worker 周期 XTRIM 10 万；**每 server 实例一消费组**，组名 hostname:pid——同机多进程不共组，重启即新组从 `$` 起步不回放，恢复靠客户端 last_seq 重放）→ XREADGROUP → hub 扇出 → XACK；XAUTOCLAIM 回收 idle>15min PEL；`published_at` 批量回写保留（XACK 后幂等 UPDATE，清理与 `:changes` 数据源统一为 outbox 表）。重放窗口在 outbox 表（published 行 24h 清理覆盖 1h 承诺）。回到 Stream 是有意决策：当年改 Pub/Sub 为解决多副本可见性，消费组模式同样解决且换来不丢帧与位点回放。
+- 顺序承诺（B1，2026-09-03 定稿）：**单文档全序**（行锁保证 seq 随提交序）；**集合内为分配序**——跨文档不保证与提交序一致，且 seq 有空洞（回滚事务消耗 seq 但无事件，不表示丢事件）；seq 仅作续传游标与去重 ID；不承诺跨集合因果。已写入 API/SDK 契约注释。execute-tx 批事件共带 `transaction_id`（Agent 端原子批分组）。
+- 补偿：断线重连带 `last_seq`（subscribe 帧门控重放：补发先于实时、确认帧经 Send 通道防双写乱序）；窗口外返回 `EVENTS.RESUME_EXPIRED` 并指引全量重拉；`GET :changes?since_seq=` 双面（Server+Client），可见性过滤与 hub 扇出同语义。**载荷上限修订（B4 撤回）**：事件上限对齐 H1 = **1MiB**（写入面已拒超限，正常路径无截断；超限仅防御性截断 + truncated 标志）——原 `data_ref = GET ?version=N` 撤回（按版本拉取无地基，文档表只存最新行，挂账远期版本化读取）。
+- 慢消费者：**RESYNC 帧撤回，改为带因断开**——send buffer 64→1024，满水位 OnSlow 恰一次 → writeLoop 以 `resync:<last_seq>` close 断开，客户端零退避重连带 last_seq 即天然重同步（断开即重放，语义等价、协议更简）；lastSeq 游标仅在成功入队后上抬（客户端从该 seq 续传不漏未投递帧）；close reason 为 best-effort（正确性不依赖——SDK 自行跟踪 seq）。
 
 ### 4.6 Schema 演进契约
 
@@ -255,7 +256,11 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 | ③ 权限内嵌 + RLS 判定 | **③-a（会话 #6 已落地）**：`_acl` 内嵌直切（无双读）、`tw_can/tw_coll_allows/tw_visible/tw_roles` 单源函数（000027）、RLS policy 四条 + FORCE + 列级 GRANT + DB 角色分层（000026）、GUC/每请求一事务（A1）、错误映射定稿（§3.2 勘误块）；**③-b（后续）**：array 列与算子、Functions 事务上下文（内核 Phase 2）、roles_sig HMAC、`_acl/_version` 完整列级锁死与 SECURITY DEFINER ACL 函数 | 中 |
 
 **阶段③-a 完成状态（2026-09-04 会话 #6 复审，d2f2713..c5d7551）**：**权限内核换轴整体落地**——`_perms` 退役、`_acl TEXT[]` 内嵌 + GIN（权限随 `to_jsonb(d.*)` 免费回填，B6 批量 IN 查询删除）；RLS 为判定执行点（应用层 `listPermissionFilter`/`checkDocumentPermission` 双实现退役；三处 PG 18 实证勘误见 §3.2 落地勘误块：`_acl` 第二语句/自锁保留、upsert 拆 ON CONFLICT 分支裁决、delete 单语句 CAS）；连接模型 = **单一变色龙身份 + `SET LOCAL ROLE` 三选一 + `set_config('app.roles')` 合并注入**（A1 原型结论：BYPASSRLS 经 SET ROLE 按 current_user 生效，无需独立 system DSN；loopback 每请求一事务合并注入 1.37ms vs 未合并 3.33ms vs autocommit 290µs，合并已采纳）；列级 GRANT 务实版（仅 `_tenant` 锁死；**`_acl` 经 R13a 从 tw_app 的 UPDATE 列授权移除，变更通道收敛为单一 choke point（tw_system 第二语句，列权限 + 代码路径双侧强制）**；INSERT 保留 `_acl`——create 单语句必需且无新行复检面）；A1 范围 = 文档面（静态 bun 表面维持 authenticator 本身份，无 RLS 无注入）；门禁（EXPLAIN InitPlan 形态断言 + 10 万行 RLS 开/关相对基准 4.9x < 30x 阈值）；golden 矩阵函数级+行为级双层。**R13a 已落地（`e85b897`）——阶段③-a 正式收口。**挂账：③-b 全部内容；测试 DSN superuser 豁免面（生产配非 superuser 应用账号，已入 06-databases 不变量 #14 + runbook）；**转出 POC 检查项：启动/迁移路径加一次全量列授权 reconcile 扫描**（存量表旧授权形态现依赖 DDL touch 矫正，测试库每次重建无此面，真实存量环境需要一次性扫齐）。
-| ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
+| ④ 事件 Stream 化 | outbox seq + NOTIFY 触发器唤醒 + Redis Stream 消费组位点 + last_seq 重放/`:changes` 补偿 + 水位带因断开 | 中 |
+
+**阶段④完成状态（2026-09-04 会话 #7 复审，cb48b51..6f32be3 + R14 自返工）**：**事件链换轴整体落地**——seq identity + UNIQUE（B1 语义入契约注释）、NOTIFY AFTER INSERT 触发器（R14：零语句数 + 同事务自动合并 + 4.8ms）、Redis Stream 消费组位点（hostname:pid 组名、$ 起步、XAUTOCLAIM、XTRIM 10 万）、`:changes` 双面补偿 + WS last_seq 门控重放（补发先于实时、确认帧经 Send 防乱序）、水位 1024 带因断开（resync:\<last_seq\> close）、transaction_id 批标识、载荷上限对齐 H1 1MiB（B4 data_ref 撤回挂账）。判断点 ①-⑦ 接受（孤儿消费组 XGROUP DESTROY 治理挂账；claimMinIdle 15min 超服务端去重窗的重复帧由客户端幂等吸收，at-least-once 契约内）；**⑧ 驳回为 R15**：`ListChanges` 扫描上限 5 万行命中时 `has_more=false`——≥5 万连续不可见事件块后的可见事件**静默漏失**（响应缺扫描游标，客户端无法越过不可见块续传）。R15（唯一返工项）：响应加 `next_since_seq` 扫描游标 + cap 命中置 has_more=true + SDK pager/WS 重放跟随游标——趁 proto 免费窗口修。
+
+**演进路径总览（2026-09-04）**：四阶段全部落地——① 契约收敛（含单 AST）✅、② catalog 全局化 + 物理名 ✅、③-a 权限内核 ✅、④ 事件链 ✅（R15 待返工后收口）；③-b（array 列与算子 / Functions 事务上下文 / roles_sig / `_acl` 完整列级锁死 + SECURITY DEFINER）挂账待启动。
 
 POC 阶段各阶段**直接切换、不留兼容回退**：阶段③的 `_perms → _acl` 无需双读灰度（直接重建），阶段②无需存量四表迁移任务；"每阶段附回退方案"的要求在转出 POC 时再引入。阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
 
