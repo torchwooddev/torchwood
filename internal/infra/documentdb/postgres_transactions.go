@@ -20,6 +20,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
+	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 func (p *postgresDocumentDB) ExecuteTransactions(
@@ -43,8 +45,11 @@ func (p *postgresDocumentDB) ExecuteTransactions(
 	}
 
 	var results []databases.TransactionOpResult
+	// 批标识（阶段④ §4.8）：同批事件的 transaction_id 共享，顺序 = op 序；
+	// 单文档写路径不置入（ctx 无值，Publish 读到空串）。
+	txCtx0 := domainevents.WithTransactionID(ctx, idgen.ULID().String())
 	// E1：RLS/GUC 一次注入（批首身份 = 请求 principal）、逐 op 判定。
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(txCtx0, execIdentityFor(principal), func(txCtx context.Context) error {
 		// 批间死锁防护：对批内全部 op 目标（排序后）预取事务级 advisory 锁。
 		if err := p.lockTxTargets(txCtx, projectID, databaseID, ops); err != nil {
 			return err

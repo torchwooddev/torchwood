@@ -67,11 +67,12 @@ func TestMarshalEnvelope_IncludesACL(t *testing.T) {
 	require.Contains(t, m, "data")
 }
 
-// TestMarshalEnvelope_TruncatesOversizedData：超 256 KiB 的事件去掉 data、
-// 标记 truncated=true，元数据与 acl 保留。
+// TestMarshalEnvelope_TruncatesOversizedData：超 1 MiB 的事件去掉 data、
+// 标记 truncated=true，元数据与 acl 保留（防御性截断——写入面 1 MiB 上限
+// 已拒超限，本路径只在极端 _acl 场景兜底）。
 func TestMarshalEnvelope_TruncatesOversizedData(t *testing.T) {
 	ev := testEnvelope()
-	ev.Data.Data = bigData(300 * 1024)
+	ev.Data.Data = bigData(1200 * 1024)
 	payload, err := marshalEnvelope(ev)
 	require.NoError(t, err)
 	require.LessOrEqual(t, len(payload), maxEnvelopeBytes)
@@ -88,10 +89,10 @@ func TestMarshalEnvelope_TruncatesOversizedData(t *testing.T) {
 	require.Equal(t, []any{"read:user:u1"}, acl["document_permissions"])
 }
 
-// TestMarshalEnvelope_KeepsDataUnderLimit：256 KiB 以内保留完整 data。
+// TestMarshalEnvelope_KeepsDataUnderLimit：1 MiB 以内保留完整 data。
 func TestMarshalEnvelope_KeepsDataUnderLimit(t *testing.T) {
 	ev := testEnvelope()
-	ev.Data.Data = bigData(100 * 1024)
+	ev.Data.Data = bigData(500 * 1024)
 	payload, err := marshalEnvelope(ev)
 	require.NoError(t, err)
 	require.False(t, jsonContains(payload, `"truncated":true`))
@@ -103,7 +104,7 @@ func TestMarshalEnvelope_KeepsDataUnderLimit(t *testing.T) {
 func TestMarshalEnvelope_TruncatesACL(t *testing.T) {
 	ev := testEnvelope()
 	ev.Data = nil
-	for i := 0; i < 30000; i++ {
+	for i := 0; i < 90000; i++ {
 		ev.ACL.DocumentPermissions = append(ev.ACL.DocumentPermissions,
 			databases.Permission{Type: "read", Role: fmt.Sprintf("user:u%d", i)})
 	}
@@ -116,7 +117,7 @@ func TestMarshalEnvelope_TruncatesACL(t *testing.T) {
 	require.NoError(t, json.Unmarshal(payload, &m))
 	acl, ok := m["acl"].(map[string]any)
 	require.True(t, ok)
-	require.Less(t, len(acl["document_permissions"].([]any)), 30000, "acl 数组必须被截断")
+	require.Less(t, len(acl["document_permissions"].([]any)), 90000, "acl 数组必须被截断")
 }
 
 // TestPublish_InsertsOutboxRow：Publish 落一行 outbox；topic=集合频道名；

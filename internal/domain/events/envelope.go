@@ -3,6 +3,7 @@
 package events
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -45,6 +46,17 @@ type Envelope struct {
 	Data         *databases.Document // delete 时 nil
 	ACL          ACLSnapshot
 
+	// Seq 是 outbox 行的全局分配序（阶段④，B1）：Publish 时未赋值（0），
+	// 由 worker 领取行后从 seq 列回填，随 Stream 条目与 WS 帧下发。
+	// 0 = 未知序（不进 payload）；客户端仅把它当续传游标与去重辅助，
+	// 不得当全局提交序使用（集合内为分配序、有空洞，见 §4.5）。
+	Seq int64
+
+	// TransactionID 是 execute-tx 事务批的批标识（§4.8）：同批全部事件的
+	// 事件在信封里共带同一 ID、顺序 = op 序；单文档路径为空。由
+	// WithTransactionID 经 ctx 传播、Publish 落入 outbox。
+	TransactionID string
+
 	// v3 经济事件扩展（设计 §5.1）：Domain 非空表示非文档事件
 	// （payments / economy / subscriptions），Channel 显式给出扇出频道
 	// （D17 单一 accounts.{userId}），Attrs 携带事件专属字段且不含隐私。
@@ -52,6 +64,23 @@ type Envelope struct {
 	Domain  string
 	Channel string
 	Attrs   map[string]any
+}
+
+type transactionIDKey struct{}
+
+// WithTransactionID 把 execute-tx 批标识放进 ctx（事务内核在 withDocumentTx
+// 前置入；事件 Publish 在同事务内读取）。
+func WithTransactionID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, transactionIDKey{}, id)
+}
+
+// TransactionIDFrom 读取 ctx 中的事务批标识（未置入为空串）。
+func TransactionIDFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(transactionIDKey{}).(string)
+	return v
 }
 
 // IsEconomy 报告是否为 v3 经济事件（显式 domain/channel 的非文档事件）。
@@ -86,7 +115,8 @@ func DocumentPayload(d *databases.Document) map[string]any {
 
 // ClientPayload 返回出站 JSON（WS 帧 / 客户端可见）：**不含 acl**。
 // 保留 event_id / event / 资源 id / version / created_at / truncated / data；
-// delete 事件无 data 键。
+// delete 事件无 data 键。seq > 0 时带 seq（续传游标）；transaction_id 非空
+// 时透出（Agent 端原子批分组消费，§4.8）。
 // 经济事件（Domain 非空）：文档专属字段不出现，改为 domain + channel
 // + Attrs（channel 必须进 payload——worker → Stream → Hub 链路只认 payload）。
 func (e Envelope) ClientPayload() map[string]any {
@@ -101,6 +131,12 @@ func (e Envelope) ClientPayload() map[string]any {
 			// version 对齐文档事件（P1-14）：同频道内单调递增，客户端可判序
 			//（补偿 outbox 失败退避插队导致的乱序投递）。
 			"version": e.Version,
+		}
+		if e.Seq > 0 {
+			m["seq"] = e.Seq
+		}
+		if e.TransactionID != "" {
+			m["transaction_id"] = e.TransactionID
 		}
 		for k, v := range e.Attrs {
 			m[k] = v
@@ -117,6 +153,12 @@ func (e Envelope) ClientPayload() map[string]any {
 		"version":       e.Version,
 		"created_at":    e.CreatedAt.UTC().Format(time.RFC3339),
 		"truncated":     e.Truncated,
+	}
+	if e.Seq > 0 {
+		m["seq"] = e.Seq
+	}
+	if e.TransactionID != "" {
+		m["transaction_id"] = e.TransactionID
 	}
 	if e.Data != nil {
 		m["data"] = DocumentPayload(e.Data)

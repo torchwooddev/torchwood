@@ -453,8 +453,9 @@ func TestOutbox_SystemCollectionNoRows(t *testing.T) {
 	require.Len(t, outboxRows(t, db, ctx), 0, "系统集合写不得产生 outbox 行")
 }
 
-// TestOutbox_OversizedDocumentTruncated：超大文档写成功，outbox 行
-// truncated=true 且不含 data；业务行存在。
+// TestOutbox_OversizedDocumentTruncated：超大文档（>1 MiB 信封，防御性
+// 截断路径——写入面 app 层已拒 1 MiB，此处直连 docDB 绕过该校验）写成功，
+// outbox 行 truncated=true 且不含 data；业务行存在。
 func TestOutbox_OversizedDocumentTruncated(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -463,10 +464,10 @@ func TestOutbox_OversizedDocumentTruncated(t *testing.T) {
 	docDB, db, projectID, cleanup := outboxTestProject(t, ctx)
 	defer cleanup()
 
-	blob := strings.Repeat("x", 300*1024)
+	blob := strings.Repeat("x", 600*1024)
 	created, err := docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
 		ID:   "big",
-		Data: map[string]any{"title": "t", "blob": map[string]any{"text": blob}},
+		Data: map[string]any{"title": "t", "blob": map[string]any{"text": blob, "text2": blob}},
 	}, outboxOwnerPerms(), occPrincipal())
 	require.NoError(t, err)
 	require.Equal(t, int64(1), created.Version, "超限事件不得回滚业务写")
@@ -484,6 +485,54 @@ func TestOutbox_OversizedDocumentTruncated(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got, "业务行必须存在")
 	require.Equal(t, len(blob), len(got.Data["blob"].(map[string]any)["text"].(string)))
+	require.Equal(t, len(blob), len(got.Data["blob"].(map[string]any)["text2"].(string)))
+}
+
+// TestOutbox_ExecuteTxSharesTransactionID（阶段④包 A，§4.8）：execute-tx
+// 批内全部事件共带同一非空 transaction_id；事件 seq 顺序 = op 顺序；
+// 单文档路径 transaction_id 缺省。
+func TestOutbox_ExecuteTxSharesTransactionID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	docDB, db, projectID, cleanup := outboxTestProject(t, ctx)
+	defer cleanup()
+
+	// 单文档路径先行：不带 transaction_id。
+	outboxCreate(t, docDB, projectID, "solo")
+
+	v1 := int64(1)
+	_, err := docDB.ExecuteTransactions(ctx, projectID, "app", []databases.TransactionOp{
+		{Type: databases.TransactionOpCreate, CollectionID: "docs", DocumentID: "t1",
+			Data: map[string]any{"title": "one"}, Permissions: outboxOwnerPerms()},
+		{Type: databases.TransactionOpCreate, CollectionID: "docs", DocumentID: "t2",
+			Data: map[string]any{"title": "two"}, Permissions: outboxOwnerPerms()},
+		{Type: databases.TransactionOpUpdate, CollectionID: "docs", DocumentID: "t1",
+			Data: map[string]any{"title": "uno"}, ExpectedVersion: &v1},
+	}, databases.TransactionModeAtomic, occPrincipal())
+	require.NoError(t, err)
+
+	rows := outboxRows(t, db, ctx)
+	require.Len(t, rows, 4)
+	solo := outboxPayload(t, rows[0])
+	require.Equal(t, "solo", solo["document_id"])
+	_, hasTx := solo["transaction_id"]
+	require.False(t, hasTx, "单文档路径不得带 transaction_id")
+
+	batchIDs := map[string]bool{}
+	for _, row := range rows[1:] {
+		m := outboxPayload(t, row)
+		require.NotEmpty(t, m["transaction_id"], "批内事件必须共带 transaction_id")
+		batchIDs[m["transaction_id"].(string)] = true
+	}
+	require.Len(t, batchIDs, 1, "同批 transaction_id 必须一致")
+
+	// 事件顺序 = op 序：create t1 → create t2 → update t1（按 seq 升序核对）。
+	require.True(t, rows[1].Seq < rows[2].Seq && rows[2].Seq < rows[3].Seq, "seq 必须随 op 序单调")
+	require.Equal(t, "t1", outboxPayload(t, rows[1])["document_id"])
+	require.Equal(t, "t2", outboxPayload(t, rows[2])["document_id"])
+	require.Equal(t, domainevents.EventDocumentsUpdate, outboxPayload(t, rows[3])["event"])
 }
 
 // TestOutbox_NoPublisherIsNop：未注入 EventPublisher（单测）时写路径无

@@ -30,6 +30,8 @@ func UnmarshalEnvelope(data []byte) (domainevents.Envelope, error) {
 		CollectionID string          `json:"collection_id"`
 		DocumentID   string          `json:"document_id"`
 		Version      int64           `json:"version"`
+		Seq          int64           `json:"seq"`
+		TransactionID string         `json:"transaction_id"`
 		CreatedAt    string          `json:"created_at"`
 		Truncated    bool            `json:"truncated"`
 		Data         json.RawMessage `json:"data"`
@@ -41,16 +43,18 @@ func UnmarshalEnvelope(data []byte) (domainevents.Envelope, error) {
 		return domainevents.Envelope{}, fmt.Errorf("decode envelope: %w", err)
 	}
 	ev := domainevents.Envelope{
-		EventID:      raw.EventID,
-		Event:        raw.Event,
-		ProjectID:    raw.ProjectID,
-		DatabaseID:   raw.DatabaseID,
-		CollectionID: raw.CollectionID,
-		DocumentID:   raw.DocumentID,
-		Version:      raw.Version,
-		Truncated:    raw.Truncated,
-		Domain:       raw.Domain,
-		Channel:      raw.Channel,
+		EventID:       raw.EventID,
+		Event:         raw.Event,
+		ProjectID:     raw.ProjectID,
+		DatabaseID:    raw.DatabaseID,
+		CollectionID:  raw.CollectionID,
+		DocumentID:    raw.DocumentID,
+		Version:       raw.Version,
+		Seq:           raw.Seq,
+		TransactionID: raw.TransactionID,
+		Truncated:     raw.Truncated,
+		Domain:        raw.Domain,
+		Channel:       raw.Channel,
 	}
 	if raw.CreatedAt != "" {
 		createdAt, err := time.Parse(time.RFC3339, raw.CreatedAt)
@@ -71,6 +75,8 @@ func UnmarshalEnvelope(data []byte) (domainevents.Envelope, error) {
 		delete(m, "domain")
 		delete(m, "channel")
 		delete(m, "created_at")
+		delete(m, "seq")
+		delete(m, "transaction_id")
 		ev.Attrs = m
 		return ev, nil
 	}
