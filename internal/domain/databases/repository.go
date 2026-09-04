@@ -85,10 +85,16 @@ type ListChangesOptions struct {
 
 // ChangeFeed 是事件补偿读取端口（阶段④ §4.5）：从 outbox 表读某集合的
 // 已提交事件，按请求者可见性过滤（快照 ACL + 当前 principal，与 hub
-// 扇出同语义）。返回 seq 升序的可见事件与 has_more（仍有更多可见事件，
-// 以末条 seq 续传）。
+// 扇出同语义）。返回 seq 升序的可见事件、has_more 与续传游标
+// nextSinceSeq（R15 两级语义）：
+//   - (a) 收满 limit+1 退出（可见事件充足）：nextSinceSeq = 末条*返回*
+//     事件 seq，续传首条恰为第 limit+1 条；
+//   - (b) 扫描上限退出（连续不可见块触顶）：nextSinceSeq = 内部扫描
+//     位置（越过已判不可见的块），has_more=true；
+//   - 自然耗尽：has_more=false、nextSinceSeq=0。
+// 调用方续传优先使用 nextSinceSeq，仅当为 0 时回退末条事件 seq。
 type ChangeFeed interface {
-	ListChanges(ctx context.Context, projectID, databaseID, collectionID string, opts ListChangesOptions, principal Principal) ([]DocumentChange, bool, error)
+	ListChanges(ctx context.Context, projectID, databaseID, collectionID string, opts ListChangesOptions, principal Principal) (changes []DocumentChange, hasMore bool, nextSinceSeq int64, err error)
 }
 
 // DocumentDB 嵌入四端口，现有注入点多数不用改签名。

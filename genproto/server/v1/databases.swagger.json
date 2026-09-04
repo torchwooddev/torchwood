@@ -2120,7 +2120,12 @@
         },
         "has_more": {
           "type": "boolean",
-          "title": "仍有更多可见事件：以 changes 末条 seq 作下一页 since_seq 续传。"
+          "title": "仍有更多可见事件或扫描触顶：续传下一页。"
+        },
+        "next_since_seq": {
+          "type": "string",
+          "format": "int64",
+          "title": "扫描游标（R15）：越过不可见事件；续传**优先使用本字段**，仅当为 0\n时回退 changes 末条 seq。has_more=true 时必有值。\n满页退出 = 末条*返回*事件 seq（续传首条恰为第 limit+1 条）；\n扫描上限退出 = 越过已判不可见块的扫描位置（连续他人私有事件块后\n的可见事件不漏失）。"
         }
       }
     },

@@ -248,6 +248,9 @@ message ListChangesRequest {
 
 message ListChangesResponse {
   repeated shared.v1.Change changes = 1;
-  // 仍有更多可见事件：以 changes 末条 seq 作下一页 since_seq 续传。
+  // 仍有更多可见事件或扫描触顶：续传下一页。
   bool has_more = 2;
+  // 扫描游标（R15）：越过不可见事件；续传**优先使用本字段**，仅当为 0
+  // 时回退 changes 末条 seq。has_more=true 时必有值。
+  int64 next_since_seq = 3;
 }

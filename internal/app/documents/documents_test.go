@@ -255,6 +255,6 @@ func (m *memDocDB) ExecuteTransactions(_ context.Context, _, _ string, ops []dat
 
 var _ databases.DocumentDB = (*memDocDB)(nil)
 
-func (*memDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
-	return nil, false, nil
+func (*memDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, int64, error) {
+	return nil, false, 0, nil
 }

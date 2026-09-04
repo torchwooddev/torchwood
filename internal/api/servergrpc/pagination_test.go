@@ -152,7 +152,7 @@ func (*paginationDocDB) ExecuteTransactions(context.Context, string, string, []d
 	panic("ExecuteTransactions: not implemented in test fake")
 }
 
-func (*paginationDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
+func (*paginationDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, int64, error) {
 	panic("ListChanges: not implemented in test fake")
 }
 

@@ -21,17 +21,21 @@ import (
 // 不在测试路径上）。
 type changesDocDB struct {
 	databases.DocumentDB
-	changes []databases.DocumentChange
-	hasMore bool
-	err     error
+	changes      []databases.DocumentChange
+	hasMore      bool
+	nextSinceSeq int64
+	err          error
 }
 
 func (c *changesDocDB) GetCollection(context.Context, string, string, string) (*databases.Collection, error) {
 	return &databases.Collection{ID: "posts", Name: "Posts"}, nil
 }
 
-func (c *changesDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
-	return c.changes, c.hasMore, c.err
+func (c *changesDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, int64, error) {
+	if c.err != nil {
+		return nil, false, 0, c.err
+	}
+	return c.changes, c.hasMore, c.nextSinceSeq, nil
 }
 
 // TestServerGRPC_ListChanges（阶段④ §4.5）：映射（seq/tombstone/
@@ -43,7 +47,7 @@ func TestServerGRPC_ListChanges(t *testing.T) {
 			Data: &databases.Document{ID: "d1", Data: map[string]any{"t": "v"}, Version: 1}},
 		{Seq: 7, EventID: "e2", Event: domainevents.EventDocumentsDelete, DocumentID: "d1",
 			Version: 2, CreatedAt: time.Now(), TransactionID: "tx-9"},
-	}, hasMore: true}
+	}, hasMore: true, nextSinceSeq: 7}
 	svc := NewDatabasesService(server.NewDatabases(paginationProjectRepo{}, docDB, nil))
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "admin-1", ActorKind: shared.ActorKindAdmin, ProjectID: "proj-1",
@@ -61,6 +65,7 @@ func TestServerGRPC_ListChanges(t *testing.T) {
 	require.Equal(t, int64(7), resp.Changes[1].Seq)
 	require.Nil(t, resp.Changes[1].Data, "delete 事件无 data（tombstone）")
 	require.Equal(t, "tx-9", resp.Changes[1].TransactionId)
+	require.Equal(t, int64(7), resp.NextSinceSeq, "R15 扫描游标透传")
 
 	// 游标过期 → FailedPrecondition / EVENTS.RESUME_EXPIRED。
 	docDB.err = databases.ErrResumeExpired

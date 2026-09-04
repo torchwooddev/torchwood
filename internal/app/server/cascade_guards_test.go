@@ -215,7 +215,7 @@ func (*fakeDocDB) ExecuteTransactions(context.Context, string, string, []databas
 	panic("ExecuteTransactions: not implemented in test fake")
 }
 
-func (*fakeDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
+func (*fakeDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, int64, error) {
 	panic("ListChanges: not implemented in test fake")
 }
 

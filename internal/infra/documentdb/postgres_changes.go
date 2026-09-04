@@ -21,20 +21,29 @@ const (
 	// changesScanBatch 是底层扫描页大小（可见性过滤在应用层做——不可见
 	// 行不占返回额度，需翻页继续扫描）。
 	changesScanBatch = 500
-	// maxChangesScanRows 是单次调用扫描行数硬上限（极端私有集合下防
-	// 无界扫描：全不可见时最多翻 maxChangesScanRows/changesScanBatch 页）。
-	maxChangesScanRows = 50000
 )
 
+// maxChangesScanRows 是单次调用扫描行数硬上限（极端私有集合下防无界
+// 扫描）。R15：上限退出改返回扫描游标 + has_more=true（越过已判不可见
+// 的块续传），不再静默截断。var 而非 const：测试覆写缩短验证块场景
+//（对齐 idempotencyWaitBudget 先例）。
+var maxChangesScanRows = 50000
+
 // ListChanges 返回 collection 中 seq > SinceSeq 的已提交事件（可见性过滤
-// 后，seq 升序）。has_more = 仍有更多可见事件（客户端以末条 seq 续传）。
+// 后，seq 升序）。hasMore = 仍有更多可见事件或扫描触上限（上限后可能
+// 仍有可见事件）；nextSinceSeq 是续传游标（R15 两级语义）：
+//   - (a) 收满 limit+1 退出（可见事件充足）：= 最后一条*返回*的可见事件
+//     seq——续传首条恰为第 limit+1 条，无重无漏；
+//   - (b) 扫描上限退出：= 内部扫描位置（越过已判不可见的块）——续传
+//     从块后继续，不再重扫；
+//   - 自然耗尽：hasMore=false、nextSinceSeq=0。
 // SinceSeq > 0 且早于该集合最老可用事件 → ErrResumeExpired。
 func (p *postgresDocumentDB) ListChanges(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
 	opts databases.ListChangesOptions,
 	principal databases.Principal,
-) ([]databases.DocumentChange, bool, error) {
+) ([]databases.DocumentChange, bool, int64, error) {
 	if opts.Limit <= 0 {
 		opts.Limit = defaultChangesLimit
 	}
@@ -48,19 +57,26 @@ func (p *postgresDocumentDB) ListChanges(
 
 	if opts.SinceSeq > 0 {
 		if err := p.checkChangesCursor(ctx, topic, opts.SinceSeq); err != nil {
-			return nil, false, err
+			return nil, false, 0, err
 		}
 	}
 
-	// 扫描多取一条可见事件：collect limit+1，截断到 limit，has_more 由
-	// 第 limit+1 条是否存在决定。
+	// 扫描多取一条可见事件：collect limit+1，截断到 limit——has_more 由
+	// 第 limit+1 条是否存在决定（退出 (a)）。
 	out := make([]databases.DocumentChange, 0, opts.Limit+1)
 	var lastSeq int64 = opts.SinceSeq
 	scanned := 0
-	for len(out) <= opts.Limit && scanned < maxChangesScanRows {
+	scanCapped := false
+	for len(out) <= opts.Limit {
+		if scanned >= maxChangesScanRows {
+			// 上限退出 (b)：循环顶检查——上一批必然是满批（不满批已自然
+			// 耗尽退出），故此后可能仍有行。
+			scanCapped = true
+			break
+		}
 		rows, err := p.scanChanges(ctx, topic, lastSeq, opts.DocumentID, changesScanBatch)
 		if err != nil {
-			return nil, false, err
+			return nil, false, 0, err
 		}
 		if len(rows) == 0 {
 			break
@@ -93,14 +109,22 @@ func (p *postgresDocumentDB) ListChanges(
 			}
 		}
 		if len(rows) < changesScanBatch {
-			break
+			break // 自然耗尽
 		}
 	}
-	hasMore := len(out) > opts.Limit
-	if hasMore {
+	switch {
+	case len(out) > opts.Limit:
+		// 退出 (a)：游标 = 末条返回 seq（内部扫描位置可能已越过第
+		// limit+1 条可见事件，用它续转会漏掉该事件）。
 		out = out[:opts.Limit]
+		return out, true, out[len(out)-1].Seq, nil
+	case scanCapped:
+		// 退出 (b)：has_more=true（上限后可能仍有可见事件——静默 false
+		// 即 R15 漏失根源）；游标 = 扫描位置（越过已判不可见的块）。
+		return out, true, lastSeq, nil
+	default:
+		return out, false, 0, nil
 	}
-	return out, hasMore, nil
 }
 
 // checkChangesCursor 判定续传游标是否仍在可用窗口内：SinceSeq 早于该

@@ -22,17 +22,21 @@ import (
 // nil 兜底，不在测试路径上）。
 type clientChangesDocDB struct {
 	databases.DocumentDB
-	changes []databases.DocumentChange
-	hasMore bool
-	err     error
+	changes      []databases.DocumentChange
+	hasMore      bool
+	nextSinceSeq int64
+	err          error
 }
 
 func (c *clientChangesDocDB) GetCollection(context.Context, string, string, string) (*databases.Collection, error) {
 	return &databases.Collection{ID: "posts", Name: "Posts"}, nil
 }
 
-func (c *clientChangesDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
-	return c.changes, c.hasMore, c.err
+func (c *clientChangesDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, int64, error) {
+	if c.err != nil {
+		return nil, false, 0, c.err
+	}
+	return c.changes, c.hasMore, c.nextSinceSeq, nil
 }
 
 // TestClientGRPC_ListChanges（阶段④ §4.5，与 Server 面同用例核心）：

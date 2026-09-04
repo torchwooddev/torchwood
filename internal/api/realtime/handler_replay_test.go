@@ -28,10 +28,10 @@ type replayDocDB struct {
 	lastOpts databases.ListChangesOptions
 }
 
-func (r *replayDocDB) ListChanges(_ context.Context, _, _, _ string, opts databases.ListChangesOptions, _ databases.Principal) ([]databases.DocumentChange, bool, error) {
+func (r *replayDocDB) ListChanges(_ context.Context, _, _, _ string, opts databases.ListChangesOptions, _ databases.Principal) ([]databases.DocumentChange, bool, int64, error) {
 	r.calls++
 	r.lastOpts = opts
-	return r.changes, r.hasMore, r.err
+	return r.changes, r.hasMore, 0, r.err
 }
 
 // replayHarness 组装带重放桩的 handler 测试环境。
@@ -171,10 +171,13 @@ func TestSubscribe_HasMoreOnAck(t *testing.T) {
 	var ack struct {
 		Type    string `json:"type"`
 		HasMore bool   `json:"has_more"`
+		NextSeq int64  `json:"next_seq"`
 	}
 	readTestFrame(t, c, &ack)
 	require.Equal(t, "subscribed", ack.Type)
 	require.True(t, ack.HasMore)
+	// R15：has_more 时确认帧携带续传游标（扫描游标 0 → 回退末条补发事件 seq）。
+	require.Equal(t, int64(6), ack.NextSeq)
 }
 
 // TestSubscribe_ResumeExpiredErrorFrame：游标过期 → error 帧

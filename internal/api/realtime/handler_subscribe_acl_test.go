@@ -35,7 +35,7 @@ func (*aclProbeDocDB) ExecuteTransactions(context.Context, string, string, []dat
 	panic("ExecuteTransactions: not implemented in test fake")
 }
 
-func (*aclProbeDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
+func (*aclProbeDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, int64, error) {
 	panic("ListChanges: not implemented in test fake")
 }
 

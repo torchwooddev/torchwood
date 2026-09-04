@@ -590,21 +590,23 @@ func (d *Databases) AggregateDocuments(
 }
 
 // ListChanges 事件补偿入口（阶段④ §4.5）：读语义守卫与 ListDocuments 同链；
-// 可见性过滤（快照 ACL + 当前 principal）在 infra ChangeFeed。
+// 可见性过滤（快照 ACL + 当前 principal）在 infra ChangeFeed。返回续传游标
+// nextSinceSeq（R15 两级语义：满页 = 末条返回 seq；扫描触顶 = 越过不可见
+// 块的扫描位置）。
 func (d *Databases) ListChanges(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
 	opts databases.ListChangesOptions,
 	principal databases.Principal,
-) ([]databases.DocumentChange, bool, error) {
+) ([]databases.DocumentChange, bool, int64, error) {
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
-	changes, hasMore, err := d.docDB.ListChanges(ctx, projectID, databaseID, collectionID, opts, principal)
+	changes, hasMore, nextSinceSeq, err := d.docDB.ListChanges(ctx, projectID, databaseID, collectionID, opts, principal)
 	if err != nil {
-		return nil, false, shared.MapDocumentDBError(err)
+		return nil, false, 0, shared.MapDocumentDBError(err)
 	}
-	return changes, hasMore, nil
+	return changes, hasMore, nextSinceSeq, nil
 }
 
 func (d *Databases) MapAttributeType(t string) string {

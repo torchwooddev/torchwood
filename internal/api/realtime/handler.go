@@ -584,7 +584,7 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 	if _, dup := st.subs[f.Channel]; !dup {
 		st.subs[f.Channel] = struct{}{}
 		if f.LastSeq > 0 {
-			replayed, hasMore, err := h.subscribeWithReplay(ctx, st, parsed, f)
+			replayed, hasMore, nextSeq, err := h.subscribeWithReplay(ctx, st, parsed, f)
 			if err != nil {
 				delete(st.subs, f.Channel)
 				if errors.Is(err, databases.ErrResumeExpired) {
@@ -606,10 +606,16 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 			ack.HasMore = hasMore
 			// 确认帧必须排在补发帧之后：经 Send 通道由 writeLoop 统一写
 			//（readLoop 直写与 writeLoop 并发，直写会抢在补发帧之前上线）。
-			st.hubConn.TrySend(map[string]any{
+			// has_more=true 时 next_seq 携带续传游标（R15）：扫描游标优先
+			//（越过不可见块），0 时回退末条补发事件 seq。
+			ackFrame := map[string]any{
 				"type": "subscribed", "id": ack.ID, "channel": ack.Channel,
 				"replayed": ack.Replayed, "has_more": ack.HasMore,
-			}, 0)
+			}
+			if hasMore {
+				ackFrame["next_seq"] = nextSeq
+			}
+			st.hubConn.TrySend(ackFrame, 0)
 			return
 		}
 		h.hub.Subscribe(f.Channel, st.hubConn)
@@ -620,8 +626,10 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 // subscribeWithReplay 执行带 last_seq 的订阅（调用方已校验频道合法且非
 // 重复订阅）：BeginReplay → Subscribe → ListChanges 补发 → EndReplay。
 // 补发帧先入 Send；补发期间 Dispatch 到达的实时帧在 backlog 中去重
-//（event_id 已在补发批）后续序刷入。
-func (h *Handler) subscribeWithReplay(ctx context.Context, st *connState, ch parsedChannel, f *inboundFrame) (int64, bool, error) {
+//（event_id 已在补发批）后续序刷入。nextSeq 为续传游标（R15）：扫描
+// 游标优先，0 时回退末条补发事件 seq（自然耗尽时为 0——hasMore=false
+// 不会消费它）。
+func (h *Handler) subscribeWithReplay(ctx context.Context, st *connState, ch parsedChannel, f *inboundFrame) (int64, bool, int64, error) {
 	// 门控必须先于 Subscribe：否则订阅生效到门控生效之间的 Dispatch
 	// 会直接入 Send，插到补发帧之前造成乱序。
 	h.hub.BeginReplay(st.hubConn)
@@ -631,14 +639,14 @@ func (h *Handler) subscribeWithReplay(ctx context.Context, st *connState, ch par
 	if ch.docID != "" {
 		docID = ch.docID
 	}
-	changes, hasMore, err := h.docDB.ListChanges(ctx, st.projectID, ch.dbID, ch.collID,
+	changes, hasMore, nextSinceSeq, err := h.docDB.ListChanges(ctx, st.projectID, ch.dbID, ch.collID,
 		databases.ListChangesOptions{SinceSeq: f.LastSeq, DocumentID: docID, Limit: maxReplayChanges},
 		st.docPrincipal)
 	if err != nil {
 		// 失败路径：解除订阅并保持门控清理（EndReplay 空 seen 即清空）。
 		h.hub.Unsubscribe(f.Channel, st.hubConn.ID)
 		h.hub.EndReplay(st.hubConn, nil)
-		return 0, false, err
+		return 0, false, 0, err
 	}
 
 	seen := make(map[string]struct{}, len(changes))
@@ -657,7 +665,11 @@ func (h *Handler) subscribeWithReplay(ctx context.Context, st *connState, ch par
 		}
 	}
 	h.hub.EndReplay(st.hubConn, seen)
-	return int64(len(seen)), hasMore, nil
+	nextSeq := nextSinceSeq
+	if nextSeq == 0 && len(changes) > 0 {
+		nextSeq = changes[len(changes)-1].Seq
+	}
+	return int64(len(seen)), hasMore, nextSeq, nil
 }
 
 // changePayload 把领域 Change 映射为与实时事件帧同形的 payload

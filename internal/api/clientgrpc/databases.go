@@ -191,7 +191,7 @@ func (s *DatabasesService) ListChanges(ctx context.Context, req *clientv1.ListCh
 	if req.GetSinceSeq() < 0 {
 		return nil, status.Error(codes.InvalidArgument, "since_seq must be >= 0")
 	}
-	changes, hasMore, err := s.databases.ListChanges(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(),
+	changes, hasMore, nextSinceSeq, err := s.databases.ListChanges(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(),
 		databases.ListChangesOptions{SinceSeq: req.GetSinceSeq(), Limit: int(req.GetLimit())})
 	if err != nil {
 		return nil, err
@@ -218,7 +218,7 @@ func (s *DatabasesService) ListChanges(ctx context.Context, req *clientv1.ListCh
 		}
 		out = append(out, mapped)
 	}
-	return &clientv1.ListChangesResponse{Changes: out, HasMore: hasMore}, nil
+	return &clientv1.ListChangesResponse{Changes: out, HasMore: hasMore, NextSinceSeq: nextSinceSeq}, nil
 }
 
 func resolveProjectID(ctx context.Context, reqProjectID string) (string, error) {

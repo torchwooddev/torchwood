@@ -791,8 +791,11 @@ func (x *ListChangesRequest) GetProjectId() string {
 type ListChangesResponse struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Changes []*v1.Change           `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
-	// 仍有更多可见事件：以 changes 末条 seq 作下一页 since_seq 续传。
-	HasMore       bool `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	// 仍有更多可见事件或扫描触顶：续传下一页。
+	HasMore bool `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	// 扫描游标（R15）：越过不可见事件；续传**优先使用本字段**，仅当为 0
+	// 时回退 changes 末条 seq。has_more=true 时必有值。
+	NextSinceSeq  int64 `protobuf:"varint,3,opt,name=next_since_seq,json=nextSinceSeq,proto3" json:"next_since_seq,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -839,6 +842,13 @@ func (x *ListChangesResponse) GetHasMore() bool {
 		return x.HasMore
 	}
 	return false
+}
+
+func (x *ListChangesResponse) GetNextSinceSeq() int64 {
+	if x != nil {
+		return x.NextSinceSeq
+	}
+	return 0
 }
 
 var File_client_v1_databases_proto protoreflect.FileDescriptor
@@ -936,10 +946,11 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\tsince_seq\x18\x03 \x01(\x03R\bsinceSeq\x12\x14\n" +
 	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x05 \x01(\tR\tprojectId\"g\n" +
+	"project_id\x18\x05 \x01(\tR\tprojectId\"\x8d\x01\n" +
 	"\x13ListChangesResponse\x125\n" +
 	"\achanges\x18\x01 \x03(\v2\x1b.torchwood.shared.v1.ChangeR\achanges\x12\x19\n" +
-	"\bhas_more\x18\x02 \x01(\bR\ahasMore2\xe1\r\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12$\n" +
+	"\x0enext_since_seq\x18\x03 \x01(\x03R\fnextSinceSeq2\xe1\r\n" +
 	"\x10DatabasesService\x12\xa9\x01\n" +
 	"\x0eCreateDocument\x12*.torchwood.client.v1.CreateDocumentRequest\x1a\x1d.torchwood.shared.v1.Document\"L\x82\xd3\xe4\x93\x02F:\x01*\"A/v1/databases/{database_id}/collections/{collection_id}/documents\x12\xaf\x02\n" +
 	"\rListDocuments\x12).torchwood.client.v1.ListDocumentsRequest\x1a*.torchwood.client.v1.ListDocumentsResponse\"\xc6\x01\x92A\"b\x00j\x1e\n" +

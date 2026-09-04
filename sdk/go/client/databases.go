@@ -124,10 +124,12 @@ func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID stri
 }
 
 // ListChanges 拉取集合的已提交事件流（阶段④ §4.5 补偿 API，语义详见
-// Realtime 连接的 last_seq 续传约定）：seq 升序、按当前用户可见性过滤；
-// has_more=true 时以末条 Seq 作下一页 sinceSeq 续传；游标早于重放窗口 →
+// Realtime 连接的 last_seq 续传约定）：seq 升序、按当前用户可见性过滤。
+// 返回 nextSinceSeq 续传游标（R15 两级语义：满页 = 末条返回 seq；扫描
+// 触顶 = 越过不可见块的扫描位置）——续传**优先使用本字段**，0 时回退
+// 末条 change 的 seq；has_more=false 时恒为 0。游标早于重放窗口 →
 // EVENTS.RESUME_EXPIRED（全量重拉后重新续传）。delete 事件为 tombstone。
-func (d *DatabasesService) ListChanges(ctx context.Context, collectionID string, sinceSeq int64, limit int32) ([]*sharedv1.Change, bool, error) {
+func (d *DatabasesService) ListChanges(ctx context.Context, collectionID string, sinceSeq int64, limit int32) ([]*sharedv1.Change, bool, int64, error) {
 	resp, err := d.c.databases.ListChanges(ctx, &clientv1.ListChangesRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
@@ -135,9 +137,9 @@ func (d *DatabasesService) ListChanges(ctx context.Context, collectionID string,
 		Limit:        limit,
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
-	return resp.Changes, resp.HasMore, nil
+	return resp.Changes, resp.HasMore, resp.NextSinceSeq, nil
 }
 
 func toStruct(data map[string]any) (*structpb.Struct, error) {
