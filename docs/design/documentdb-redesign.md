@@ -103,7 +103,8 @@ tw_visible = tw_can('read') ∨ tw_can('update') ∨ tw_can('delete')   -- 能�
 
 - **查询**：单 typed AST，算子全集 `eq ne lt lte gt gte in between isNull isNotNull contains startsWith endsWith search + and or not`（深度 ≤8）；`select[]` 投影在 SQL 层裁剪（杜绝 `to_jsonb(d.*)` 全列取回）；`orderAsc/Desc` 服务端强制追加 `$id`；cursor 服务端校验排序一致性，不一致即拒；`limit 1..200 默认 25`（0 = InvalidArgument，不再当"未指定"）。
 - **并发**：`$version` 兼作弱 ETag；Update/Delete 必须 `if_match`（HTTP）/`expected_version`（gRPC），缺省即拒、0 即参数错误。
-- **幂等**：写统一 `request_id`（HTTP 头 `Idempotency-Key`），24h 去重，重放返回原响应 + `replayed=true`——Agent 重试安全的关键。
+- **幂等**：写统一 `request_id`（HTTP 头 `Idempotency-Key`），24h 去重，重放返回原响应 + `replayed=true`——Agent 重试安全的关键。**实施语义（2026-09-04 已落地）**：键作用域 `(project_id, actor_id, request_id)`（actor = 稳定归因身份）；指纹 = method+请求体规范序列化 hash，同 key 异体 → `IDEMPOTENCY.KEY_CONFLICT`；只缓存成功响应（失败 Release 释放重执行）；同 key in-flight 短轮询 ≤2s → `IDEMPOTENCY.IN_PROGRESS`（Aborted，retryable）；TTL 分离——done 24h / in_flight 兜底 5min（崩溃残留期间重试收 IN_PROGRESS 是保守正确）；重放标记走 `x-torchwood-replayed` 响应头（零 proto 响应侵入）；惰性清理不加 worker。
+- **聚合**（2026-09-04 已落地）：`documents:aggregate` 支持 sum/avg/min/max + 单键 group_by；**聚合一律在权限过滤后的可见行集上执行**（D1 规范的落地形态）；结果契约**首期统一 double**（integer 聚合精度界 2^53——`SUM(bigint)::float8`，int64 区分类型结果与 Data 的 Struct double 精度界一并归单 AST 会话的类型系统设计）；排序/分页算子忽略（与 count 同纪律，显式拒绝为一致性跟进项）。
 - **错误**：`{code, retryable, violations[], doc_url}`，域码稳定 snake_case（如 `DOCUMENT.VERSION_CONFLICT`）静态映射 gRPC code；infra 错误必须带 `error_id`，禁止裸 "document database error"。
 - **Agent 面**：`GET …/collections/{c}?as=jsonschema` 导出 JSON Schema 2020-12；`GET /.well-known/torchwood` 资源/算子/错误码目录。
 - **类型系统**：标量（string/int64/float64/bool/datetime/email/url/uuid/enum）+ `array<T>`（PG 原生数组）+ `vector`（pgvector，可选）+ `object`（jsonb + JSON Schema 子集校验，首期不建内部索引）；`relation` 远期。
@@ -233,6 +234,8 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 | 阶段 | 内容 | 物理层变动 |
 |---|---|---|
 | ① 契约收敛 | 单 AST（DSL 降级为糖）、keyset 统一 + tiebreaker、错误码体系、default 落 catalog、写响应读回、幂等 `request_id`、**`documents:execute-tx`（事务内核 Phase 1，Bulk 泛化）** | 无 |
+
+**阶段①完成状态（2026-09-04 复审）**：除单 AST（专属会话）外全部落地——keyset-only（ListDocuments 拒 offset()/offset 族 token、首页满页发 ka: token、多排序键全路径拒绝——keyset-only 下首页必须发 token 而 token 仅编码单键，多键必不同构，故首页即拒；完整多键游标归单 AST/C2）、错误契约（BadRequest violations + error_id 全路径 + 域码命名空间按子系统扩展：`DOCUMENT.* / IDEMPOTENCY.* / RATE_LIMIT.*`）、幂等与聚合（语义见 §4.1）。遗留：AggregateDocuments 补 `validateQueryFields`（与 List/Count 一致性返工项）。
 | ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
 | ③ 权限内嵌 + RLS 判定 | `_perms` → `_acl` 双读灰度迁移；`tw_can`/`tw_visible` 单源函数；RLS policy 生成（SELECT=可见谓词）+ 列级 GRANT + DB 角色分层；array 列落地；**Functions 事务上下文（内核 Phase 2：GUC 注入 + 函数生命周期）** | 中 |
 | ④ 事件 Stream 化 | outbox seq + pg_notify 唤醒 + Redis Stream 位点 + RESYNC/`:changes` 补偿 | 中 |
