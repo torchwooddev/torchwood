@@ -20,10 +20,9 @@ type legacySystemDocumentSpec struct {
 // SeedLegacySystemDocumentCollections 在 sentinel 上建七张旧文档表，仅供测试。
 func SeedLegacySystemDocumentCollections(ctx context.Context, db *clients.Database, docDB databases.DocumentDB, projectID string) error {
 	now := time.Now()
-	m := &model.DocumentDatabase{ID: ident.ProjectDataPlaneID, ProjectID: projectID, Name: "(project)", CreatedAt: now, UpdatedAt: now}
+	m := &model.DocumentDatabase{ProjectID: projectID, DatabaseID: ident.ProjectDataPlaneID, Name: "(project)", CreatedAt: now, UpdatedAt: now}
 	if _, err := db.NewInsert().Model(m).
-		ModelTableExpr("?.document_databases AS ddb", CatalogIdent(projectID)).
-		On("CONFLICT (project_id, id) DO NOTHING").Exec(ctx); err != nil {
+		On("CONFLICT (project_id, database_id) DO NOTHING").Exec(ctx); err != nil {
 		return err
 	}
 	specs := legacySystemDocumentSpecs()

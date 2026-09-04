@@ -28,7 +28,7 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 	var version int64
 	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT MAX(version) FROM "+quoted+".schema_migrations").Scan(&version))
-	require.Equal(t, int64(10), version)
+	require.Equal(t, int64(11), version)
 
 	var dirty bool
 	require.NoError(t, db.QueryRowContext(ctx,
@@ -36,7 +36,6 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 	require.False(t, dirty)
 
 	for _, table := range []string{
-		"document_databases", "document_collections", "document_attributes", "document_indexes",
 		"project_oauth_providers", "functions", "function_deployments", "function_variables", "function_executions",
 		"payment_orders", "asset_defs", "subscriptions", "usage_rollups", "billing_statements",
 		"users", "sessions", "identities", "groups", "memberships", "buckets", "files",
@@ -45,6 +44,17 @@ func TestApply_IdempotentCatalogAndOAuth(t *testing.T) {
 		require.NoError(t, db.QueryRowContext(ctx,
 			`SELECT to_regclass(?)`, quoted+"."+table).Scan(&reg), table)
 		require.NotNil(t, reg, "expected %s.%s", quoted, table)
+	}
+
+	// 每项目 legacy catalog 四表已退役（阶段②包 A）：模板不再创建（000001
+	// no-op）、存量由 000011 DROP。
+	for _, table := range []string{
+		"document_databases", "document_collections", "document_attributes", "document_indexes",
+	} {
+		var reg any
+		require.NoError(t, db.QueryRowContext(ctx,
+			`SELECT to_regclass(?)`, quoted+"."+table).Scan(&reg), table)
+		require.Nil(t, reg, "legacy catalog 表 %s 应已退役", table)
 	}
 
 	schema, err := ident.ProjectSchemaName(projectID)

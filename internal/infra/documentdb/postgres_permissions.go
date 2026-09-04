@@ -3,12 +3,12 @@ package documentdb
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
-	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 )
 
@@ -702,39 +702,32 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		return p.mapError(err)
 	}
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		// B8：同事务清理依赖该属性的索引，避免幽灵索引指向已删列。
-		cat, err := p.catalogIdent(projectID)
+		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
 		if err != nil {
 			return err
 		}
-		var idxs []*model.DocumentIndex
-		if err := p.conn(txCtx).NewSelect().Model((*model.DocumentIndex)(nil)).
-			ModelTableExpr("?.document_indexes AS di", cat).
-			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).
-			Scan(txCtx, &idxs); err != nil {
+		attrs, err := decodeAttributes(row.Attrs)
+		if err != nil {
 			return err
 		}
+		idxs, err := decodeIndexes(row.Indexes)
+		if err != nil {
+			return err
+		}
+		// B8：同事务清理依赖该属性的索引，避免幽灵索引指向已删列（与属性
+		// 是否存在无关，命中引用即清）。
+		keptIdxs := make([]databases.Index, 0, len(idxs))
+		idxsChanged := false
 		for _, idx := range idxs {
-			contains := false
-			for _, attr := range idx.Attributes {
-				if attr == key {
-					contains = true
-					break
-				}
-			}
-			if !contains {
+			if !slices.Contains(idx.Attributes, key) {
+				keptIdxs = append(keptIdxs, idx)
 				continue
 			}
+			idxsChanged = true
 			idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, idx.ID))
 			if _, err := p.conn(txCtx).ExecContext(txCtx,
 				fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
 			); err != nil {
-				return err
-			}
-			if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
-				ModelTableExpr("?.document_indexes AS di", cat).
-				Where("project_id = ? AND database_id = ? AND collection_id = ? AND id = ?", projectID, databaseID, collectionID, idx.ID).
-				Exec(txCtx); err != nil {
 				return err
 			}
 		}
@@ -743,10 +736,30 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		); err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
-			ModelTableExpr("?.document_attributes AS da", cat).
-			Where("project_id = ? AND database_id = ? AND collection_id = ? AND key = ?", projectID, databaseID, collectionID, key).
-			Exec(txCtx)
+		// 属性不存在时保持旧语义（DELETE 0 行静默成功），仅在有实际变更时回写。
+		keptAttrs := make([]databases.Attribute, 0, len(attrs))
+		attrsChanged := false
+		for _, a := range attrs {
+			if a.Key == key {
+				attrsChanged = true
+				continue
+			}
+			keptAttrs = append(keptAttrs, a)
+		}
+		if !attrsChanged && !idxsChanged {
+			return nil
+		}
+		attrsJSON, err := encodeAttributes(keptAttrs)
+		if err != nil {
+			return err
+		}
+		idxsJSON, err := encodeIndexes(keptIdxs)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET attrs = ?, indexes = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
+			attrsJSON, idxsJSON, projectID, databaseID, collectionID)
 		return err
 	}))
 }
@@ -759,8 +772,8 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 	if err != nil {
 		return p.mapError(err)
 	}
-	// R02-P1-1：DROP INDEX 与 document_indexes 元数据删除包进同一事务，
-	// 任一步失败整体回滚，避免"物理索引已删而 catalog 仍记录"。
+	// R02-P1-1：DROP INDEX 与 catalog 元数据删除包进同一事务，任一步失败
+	// 整体回滚，避免"物理索引已删而 catalog 仍记录"。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, indexID))
 		if _, err := p.conn(txCtx).ExecContext(txCtx,
@@ -768,14 +781,34 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 		); err != nil {
 			return err
 		}
-		cat, err := p.catalogIdent(projectID)
+		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
 		if err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
-			ModelTableExpr("?.document_indexes AS di", cat).
-			Where("project_id = ? AND database_id = ? AND collection_id = ? AND id = ?", projectID, databaseID, collectionID, indexID).
-			Exec(txCtx)
+		idxs, err := decodeIndexes(row.Indexes)
+		if err != nil {
+			return err
+		}
+		// 索引不存在时保持旧语义（DELETE 0 行静默成功）。
+		kept := make([]databases.Index, 0, len(idxs))
+		found := false
+		for _, idx := range idxs {
+			if idx.ID == indexID {
+				found = true
+				continue
+			}
+			kept = append(kept, idx)
+		}
+		if !found {
+			return nil
+		}
+		idxsJSON, err := encodeIndexes(kept)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET indexes = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
+			idxsJSON, projectID, databaseID, collectionID)
 		return err
 	}))
 }

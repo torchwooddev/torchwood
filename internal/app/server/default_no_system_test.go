@@ -36,16 +36,13 @@ func TestDefaultDatabase_NoSystemCollections(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = projectsUC.DeleteProjectInternal(context.Background(), p.ID) })
 
-	cat := testutil.CatalogIdent(p.ID)
 	defaultSystem, err := db.NewSelect().Model((*model.DocumentCollection)(nil)).
-		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ? AND is_system = TRUE", p.ID, "default").
 		Count(ctx)
 	require.NoError(t, err)
 	require.Zero(t, defaultSystem, "零行 database_id='default' AND is_system")
 
 	sentinelSystem, err := db.NewSelect().Model((*model.DocumentCollection)(nil)).
-		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ? AND is_system = TRUE", p.ID, databases.SystemDatabaseID).
 		Count(ctx)
 	require.NoError(t, err)

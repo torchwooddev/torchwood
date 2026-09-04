@@ -78,9 +78,7 @@ func TestProjects_CreateProject_Success(t *testing.T) {
 		require.Nil(t, reg, "D-7: %s 已删除", rel)
 	}
 
-	cat := testutil.CatalogIdent(p.ID)
 	projectCatalog, err := db.NewSelect().Model((*model.DocumentCollection)(nil)).
-		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND is_system = TRUE", p.ID).
 		Count(ctx)
 	require.NoError(t, err)

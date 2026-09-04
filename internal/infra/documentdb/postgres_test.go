@@ -614,9 +614,14 @@ func TestPostgresDocumentDatabase_AttributeDefaultValueCatalog(t *testing.T) {
 
 	got, err := docDB.GetCollection(ctx, projectID, "app", "posts")
 	require.NoError(t, err)
-	// catalog 的 default_value 列为 TEXT：读回统一字符串形态（写入可传标量）。
-	require.Equal(t, "untitled", findAttr(got, "title").Default)
-	require.Equal(t, "42", findAttr(got, "views").Default)
+	// JSONB 合一列保留 default 的标量类型（string/int/bool/float 读写一致）；
+	// API 面（proto string default_value）经 fmt.Sprint 输出不变。
+	title := findAttr(got, "title")
+	require.Equal(t, "untitled", title.Default)
+	require.Equal(t, 128, title.Size, "size 经 JSONB 契约读回")
+	views := findAttr(got, "views")
+	require.InDelta(t, 42, views.Default, 0, "integer default 读回保持数值")
+	require.Equal(t, "42", fmt.Sprint(views.Default), "API 面字符串形态不变")
 
 	// CreateAttribute 路径同样落库并读回。
 	require.NoError(t, docDB.CreateAttribute(ctx, projectID, "app", "posts", databases.Attribute{
@@ -624,13 +629,15 @@ func TestPostgresDocumentDatabase_AttributeDefaultValueCatalog(t *testing.T) {
 	}))
 	got, err = docDB.GetCollection(ctx, projectID, "app", "posts")
 	require.NoError(t, err)
-	require.Equal(t, "true", findAttr(got, "pinned").Default)
+	require.Equal(t, true, findAttr(got, "pinned").Default)
+	require.Equal(t, "true", fmt.Sprint(findAttr(got, "pinned").Default))
 
 	// ListCollections 路径读回。
 	list, _, err := docDB.ListCollections(ctx, projectID, "app", databases.ListQuery{})
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Equal(t, "untitled", findAttr(&list[0], "title").Default)
+	require.Equal(t, 128, findAttr(&list[0], "title").Size)
 }
 
 // TestPostgresDocumentDatabase_UpdateCollection_AtomicityAndAudit：权限替换与
@@ -1641,8 +1648,8 @@ func TestListDocuments_InputLimits(t *testing.T) {
 	require.Len(t, list.Documents, 0)
 }
 
-// TestCreateCollectionMetadata_IdempotentSystemRow (A3): 系统集合元数据集合行已存在时
-// 重复 createCollectionMetadata 幂等成功（DO NOTHING + 行数判断），子表插入被跳过。
+// TestCreateCollectionMetadata_IdempotentSystemRow (A3): 系统集合元数据行已存在时
+// 重复 insertCollectionMetadata 幂等成功（DO NOTHING + 行数判断，复用既有物理名）。
 func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -1658,8 +1665,9 @@ func TestCreateCollectionMetadata_IdempotentSystemRow(t *testing.T) {
 	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
 
 	p := &postgresDocumentDB{db: db}
-	err := p.createCollectionMetadata(ctx, projectID, databases.SystemDatabaseID, "users", "users", nil, nil, nil, true)
+	_, idempotent, err := p.insertCollectionMetadata(ctx, projectID, databases.SystemDatabaseID, "users", "users", nil, nil, nil, true)
 	require.NoError(t, err)
+	require.True(t, idempotent)
 }
 
 // TestCreateCollectionMetadata_DuplicateUserCollection (A3): 用户集合建同名同 ID
@@ -2142,7 +2150,7 @@ func TestCreateDocument_AuditColumns(t *testing.T) {
 }
 
 // TestDeleteIndex_RecreateSameIndex (R02-P1-1)：DeleteIndex 事务化——删除后
-// catalog 与物理索引一致，同名索引可重建（不撞 document_indexes 唯一约束）。
+// catalog 与物理索引一致，同名索引可重建（不撞 catalog 合一行内重复）。
 func TestDeleteIndex_RecreateSameIndex(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -2200,10 +2208,9 @@ func TestCreateDatabase_RollbackOnMetadataFailure(t *testing.T) {
 
 	docDB := NewPostgresDocumentDB(db, nil)
 
-	// 预插同 (project_id, id) 元数据行，令 INSERT 撞复合主键。
-	_, err := db.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s.document_databases (id, project_id, name, created_at, updated_at) VALUES ('app', ?, 'preexisting', NOW(), NOW())`,
-		quoteIdent(testProjectSchema(t, projectID))),
+	// 预插同 (project_id, database_id) 元数据行，令 INSERT 撞复合主键。
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO public.catalog_databases (project_id, database_id, name, created_at, updated_at) VALUES (?, 'app', 'preexisting', NOW(), NOW())`,
 		projectID)
 	require.NoError(t, err)
 
@@ -2453,15 +2460,6 @@ func TestCatalogReads_DoNotApplyProjectSchema(t *testing.T) {
 		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = '_id'`, schema).Scan(&hasDocID))
 	require.Equal(t, 1, hasID)
 	require.Zero(t, hasDocID)
-}
-
-func TestIsMissingCatalog_SQLStateFallback(t *testing.T) {
-	require.True(t, isMissingCatalog(errors.New(`ERROR: relation "tw_x.document_collections" does not exist (SQLSTATE 42P01)`)))
-	require.True(t, isMissingCatalog(errors.New(`ERROR: schema "tw_x" does not exist (SQLSTATE 3F000)`)))
-	require.False(t, isMissingCatalog(errors.New(`ERROR: duplicate key (SQLSTATE 23505)`)))
-	require.False(t, isMissingCatalog(nil))
-	require.Equal(t, "42P01", missingCatalogSQLState(errors.New("SQLSTATE 42P01")))
-	require.Equal(t, "3F000", missingCatalogSQLState(errors.New("SQLSTATE 3F000")))
 }
 
 // TestCreateIndex_FulltextAlignment (W-E)：fulltext 索引表达式与查询编译

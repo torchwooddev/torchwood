@@ -226,16 +226,16 @@ func CatalogQuoted(projectID string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
-// InsertCatalogDatabase 向项目 schema 的 document_databases 插入一行。
+// InsertCatalogDatabase 向 public 全局 catalog_databases 插入一行。
 func InsertCatalogDatabase(ctx context.Context, db *clients.Database, projectID, id, name string) {
 	now := time.Now()
 	if _, err := db.NewInsert().Model(&model.DocumentDatabase{
-		ID:        id,
-		ProjectID: projectID,
-		Name:      name,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}).ModelTableExpr("?.document_databases AS ddb", CatalogIdent(projectID)).Exec(ctx); err != nil {
+		ProjectID:  projectID,
+		DatabaseID: id,
+		Name:       name,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}).Exec(ctx); err != nil {
 		panic(err)
 	}
 }

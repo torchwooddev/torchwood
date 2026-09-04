@@ -61,14 +61,16 @@ func TestInternalIDCache_InvalidationOnRecreate(t *testing.T) {
 	id1 := writePost("before-delete")
 	require.Equal(t, firstInternalID, tenantOf(t, id1), "_tenant 应为首次解析的 internal_id")
 
-	// 模拟项目删除：DROP 业务 schema + 清 tw_<p> 目录元数据 + 删控制面行
-	// （缓存此时已陈旧；目录表位于项目数据面 schema，见 postgres_catalog.go catalogIdent）。
+	// 模拟项目删除：DROP 业务 schema + 清全局 catalog 行 + 删控制面行
+	// （缓存此时已陈旧；catalog 位于 public 两表，见 db/migrations/000025）。
 	_, err = db.ExecContext(ctx,
 		`DROP SCHEMA IF EXISTS `+quoteIdent(appSchema)+` CASCADE`)
 	require.NoError(t, err)
-	projSchema, err := ident.ProjectSchemaName(projectID)
+	_, err = db.ExecContext(ctx,
+		`DELETE FROM public.catalog_collections WHERE project_id = ?`, projectID)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `DELETE FROM `+quoteIdent(projSchema)+`.document_databases WHERE project_id = ?`, projectID)
+	_, err = db.ExecContext(ctx,
+		`DELETE FROM public.catalog_databases WHERE project_id = ?`, projectID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `DELETE FROM public.projects WHERE id = ?`, projectID)
 	require.NoError(t, err)

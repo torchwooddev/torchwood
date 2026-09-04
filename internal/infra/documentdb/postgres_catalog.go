@@ -1,4 +1,5 @@
-// 目录与 schema 寻址：database CRUD、catalog 标识、两段式 schema 解析、内部租户 id、缺目录错误判别。
+// 目录与 schema 寻址：database CRUD（public 全局 catalog，redesign §4.2/C1）、
+// 两段式 schema 解析、内部租户 id。
 package documentdb
 
 import (
@@ -6,11 +7,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/driver/pgdriver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -25,15 +23,9 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 	if err != nil {
 		return p.mapError(err)
 	}
-	if err := p.EnsureCatalog(ctx, projectID); err != nil {
-		return p.mapError(err)
-	}
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return p.mapError(err)
-	}
-	// R02-P1-2：schema / _perms 表与 document_databases 元数据包进同一事务，
+	// R02-P1-2：schema / _perms 表与 catalog 元数据包进同一事务，
 	// 任一步失败整体回滚，避免"schema 已建而元数据缺失"。
+	// catalog 已全局化（public 两表），建库不再依赖项目数据面 schema。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
 			return fmt.Errorf("create schema: %w", err)
@@ -42,29 +34,23 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 			return err
 		}
 		m := &model.DocumentDatabase{
-			ID:        id,
-			ProjectID: projectID,
-			Name:      name,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			ProjectID:  projectID,
+			DatabaseID: id,
+			Name:       name,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now(),
 		}
-		_, err := p.conn(txCtx).NewInsert().Model(m).
-			ModelTableExpr("?.document_databases AS ddb", cat).Exec(txCtx)
+		_, err := p.conn(txCtx).NewInsert().Model(m).Exec(txCtx)
 		return err
 	}))
 }
 
 func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id string) (*databases.Database, error) {
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return nil, p.mapError(err)
-	}
 	m := new(model.DocumentDatabase)
-	err = p.conn(ctx).NewSelect().Model(m).
-		ModelTableExpr("?.document_databases AS ddb", cat).
-		Where("project_id = ? AND id = ?", projectID, id).Scan(ctx)
+	err := p.conn(ctx).NewSelect().Model(m).
+		Where("project_id = ? AND database_id = ?", projectID, id).Scan(ctx)
 	if err != nil {
-		if p.catalogAbsent(ctx, projectID, err) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, p.mapError(err)
@@ -73,18 +59,10 @@ func (p *postgresDocumentDB) GetDatabase(ctx context.Context, projectID, id stri
 }
 
 func (p *postgresDocumentDB) ListDatabases(ctx context.Context, projectID string) ([]databases.Database, error) {
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return nil, p.mapError(err)
-	}
 	var ms []model.DocumentDatabase
-	err = p.conn(ctx).NewSelect().Model(&ms).
-		ModelTableExpr("?.document_databases AS ddb", cat).
+	err := p.conn(ctx).NewSelect().Model(&ms).
 		Where("project_id = ?", projectID).Order("created_at DESC").Scan(ctx)
 	if err != nil {
-		if p.catalogAbsent(ctx, projectID, err) {
-			return []databases.Database{}, nil
-		}
 		return nil, p.mapError(err)
 	}
 	out := make([]databases.Database, len(ms))
@@ -99,39 +77,28 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 	if err != nil {
 		return p.mapError(err)
 	}
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return p.mapError(err)
-	}
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
 			return err
 		}
 		// F4-2：物理对象删除后必须清理元数据，否则同名库/集合无法重建。
+		// catalog_collections 的 FK ON DELETE CASCADE 是兜底，显式删除保持
+		// 与删除路径同事务的清晰边界。
 		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
-			ModelTableExpr("?.document_collections AS dc", cat).
-			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
-			return err
-		}
-		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
-			ModelTableExpr("?.document_attributes AS da", cat).
-			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
-			return err
-		}
-		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
-			ModelTableExpr("?.document_indexes AS di", cat).
 			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx); err != nil {
 			return err
 		}
 		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentDatabase)(nil)).
-			ModelTableExpr("?.document_databases AS ddb", cat).
-			Where("id = ? AND project_id = ?", id, projectID).Exec(txCtx)
+			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx)
 		return err
 	}))
 }
 
-// EnsureCatalog 对项目数据面执行 projectschema.Apply。Catalog 读路径不得调用。
-// sys_users 仍在时跳过 Apply，避免把 staging 表提前 rename 成最终名。
+// EnsureCatalog 对项目数据面执行 projectschema.Apply。职责已收缩（阶段②包 A）：
+// catalog 元数据在 public 全局两表（000025），此处仅确保项目 schema 存在——
+// sentinel 系统集合的物理表寄居 tw_<project>，建集合前必须就绪；业务库两段式
+// schema 与项目数据面无依赖，不走本函数。sys_users 仍在时跳过 Apply，
+// 避免把 staging 表提前 rename 成最终名。
 func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string) error {
 	staging, err := p.systemTablesStaging(ctx, projectID)
 	if err != nil {
@@ -161,22 +128,6 @@ SELECT EXISTS (
 		return false, p.mapError(err)
 	}
 	return has, nil
-}
-
-func (p *postgresDocumentDB) catalogIdent(projectID string) (bun.Ident, error) {
-	s, err := ident.ProjectSchemaName(projectID)
-	if err != nil {
-		return bun.Ident(""), mapIdentError(err)
-	}
-	return bun.Ident(s), nil
-}
-
-func (p *postgresDocumentDB) catalogQuoted(projectID string) (string, error) {
-	s, err := ident.ProjectSchemaName(projectID)
-	if err != nil {
-		return "", mapIdentError(err)
-	}
-	return quoteIdent(s), nil
 }
 
 // documentSchema 解析文档读写 / CreateCollection 的目标 schema。
@@ -261,67 +212,12 @@ func (p *postgresDocumentDB) resolveInternalID(ctx context.Context, projectID st
 	return internalID, nil
 }
 
-func isMissingCatalog(err error) bool {
-	if err == nil {
-		return false
-	}
-	switch missingCatalogSQLState(err) {
-	case "42P01", "3F000":
-		return true
-	}
-	return false
-}
-
-func missingCatalogSQLState(err error) string {
-	if err == nil {
-		return ""
-	}
-	var pgErr pgdriver.Error
-	if errors.As(err, &pgErr) {
-		return pgErr.Field('C')
-	}
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "SQLSTATE 3F000"):
-		return "3F000"
-	case strings.Contains(msg, "SQLSTATE 42P01"):
-		return "42P01"
-	}
-	return ""
-}
-
-// catalogAbsent 是「行不存在」或「项目 schema 不存在」。schema 在而 catalog
-// 表不在（脏迁移 42P01）返回 false，让调用方透传原错误。
-func (p *postgresDocumentDB) catalogAbsent(ctx context.Context, projectID string, err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return true
-	}
-	if !isMissingCatalog(err) {
-		return false
-	}
-	if missingCatalogSQLState(err) == "3F000" {
-		return true
-	}
-	schema, identErr := ident.ProjectSchemaName(projectID)
-	if identErr != nil {
-		return false
-	}
-	var reg any
-	if qerr := p.conn(ctx).QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&reg); qerr != nil {
-		return false
-	}
-	return reg == nil
-}
-
 func mapDatabase(m *model.DocumentDatabase) *databases.Database {
 	if m == nil {
 		return nil
 	}
 	return &databases.Database{
-		ID:        m.ID,
+		ID:        m.DatabaseID,
 		ProjectID: m.ProjectID,
 		Name:      m.Name,
 		CreatedAt: m.CreatedAt,

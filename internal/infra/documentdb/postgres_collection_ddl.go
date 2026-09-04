@@ -1,4 +1,6 @@
-// 集合/属性/索引 DDL 与 catalog 元数据：建表、_version 列生命周期、索引表达式构建（fulltext 对齐见 W-E）、权限表写入。
+// 集合/属性/索引 DDL 与 catalog 元数据（public 全局两表，redesign §4.2/C1）：
+// 建表、_version 列生命周期、索引表达式构建（fulltext 对齐见 W-E）、权限表写入。
+// attrs/indexes 以 JSONB 合一：GetCollection 单查询读回全量契约（含 default）。
 package documentdb
 
 import (
@@ -11,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -22,6 +22,10 @@ import (
 	"github.com/torchwooddev/torchwood/pkg/crud"
 	"github.com/torchwooddev/torchwood/pkg/ident"
 )
+
+// physicalNameAllocAttempts 限制物理名碰撞重试次数（5 字节熵 40 bit，
+// 撞库内既有名的概率可忽略；上限只防异常态下的死循环）。
+const physicalNameAllocAttempts = 8
 
 func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
 	// sentinel 只允许系统名单集合（测试重建旧文档表）；生产入口已
@@ -53,8 +57,13 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	if err := validateIndexNameLen(collectionID, "tenant_created"); err != nil {
 		return p.mapError(err)
 	}
-	if err := p.EnsureCatalog(ctx, projectID); err != nil {
-		return p.mapError(err)
+	// sentinel 集合的物理表寄居项目数据面（tw_<project>.users 等静态表/
+	// 测试重建的旧文档表），建集合前须确保项目 schema 就绪；业务库两段式
+	// schema 与项目数据面无依赖。
+	if databaseID == ident.ProjectDataPlaneID {
+		if err := p.EnsureCatalog(ctx, projectID); err != nil {
+			return p.mapError(err)
+		}
 	}
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
@@ -65,10 +74,14 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		return p.mapError(err)
 	}
 
-	// DDL 与 document_* 元数据包进同一事务（PG 支持事务内 DDL），
-	// 任一步失败整体回滚，避免"物理表建成而元数据缺失"。
+	// DDL 与 catalog 元数据包进同一事务（PG 支持事务内 DDL），任一步失败
+	// 整体回滚，避免"物理表建成而元数据缺失"。元数据先行（预留物理名），
+	// 物理名碰撞在 INSERT 上换名重试，DDL 失败随回滚释放预留名。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
 		if err := p.ensureSchemaAndPerms(txCtx, schema); err != nil {
+			return err
+		}
+		if _, _, err := p.insertCollectionMetadata(txCtx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity); err != nil {
 			return err
 		}
 		isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
@@ -84,26 +97,104 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 				return err
 			}
 		}
-		return p.createCollectionMetadata(txCtx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
+		return nil
 	}))
 }
 
-func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
-	cat, err := p.catalogIdent(projectID)
+// insertCollectionMetadata 写入 catalog_collections 合一行（含物理名预留与
+// attrs/indexes/permissions JSONB）。返回分配的物理名；系统集合命中既有行时
+// 幂等成功（复用既有物理名），用户集合返回 ErrDuplicateKey（→ AlreadyExists）。
+func (p *postgresDocumentDB) insertCollectionMetadata(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) (string, bool, error) {
+	attrsJSON, err := encodeAttributes(attrs)
 	if err != nil {
-		return nil, p.mapError(err)
+		return "", false, err
 	}
-	m := new(model.DocumentCollection)
-	err = p.conn(ctx).NewSelect().Model(m).
-		ModelTableExpr("?.document_collections AS dc", cat).
-		Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Scan(ctx)
+	idxsJSON, err := encodeIndexes(idxs)
 	if err != nil {
-		if p.catalogAbsent(ctx, projectID, err) {
+		return "", false, err
+	}
+	permsJSON, err := encodePermissions(perms)
+	if err != nil {
+		return "", false, err
+	}
+	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
+	now := time.Now()
+	for attempt := 0; attempt < physicalNameAllocAttempts; attempt++ {
+		// sentinel 系统集合的物理表即静态表（不可改名），物理名 = 逻辑名。
+		candidate := newPhysicalName()
+		if databaseID == ident.ProjectDataPlaneID {
+			candidate = collectionID
+		}
+		m := &model.DocumentCollection{
+			ProjectID:        projectID,
+			DatabaseID:       databaseID,
+			CollectionID:     collectionID,
+			Name:             name,
+			PhysicalName:     candidate,
+			DocumentSecurity: documentSecurity,
+			IsSystem:         isSystem,
+			Permissions:      permsJSON,
+			Attrs:            attrsJSON,
+			Indexes:          idxsJSON,
+			SchemaVersion:    1,
+			DDLSeq:           1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+		res, err := p.conn(ctx).NewInsert().Model(m).
+			On("CONFLICT (project_id, database_id, collection_id) DO NOTHING").Exec(ctx)
+		if err != nil {
+			if isPhysicalNameConflict(err) {
+				// 全局物理名碰撞：换名重试（有界）。
+				continue
+			}
+			return "", false, err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return "", false, err
+		}
+		if affected > 0 {
+			return candidate, false, nil
+		}
+		// 集合行已存在：系统集合视为幂等成功（并发首请求防护，复用既有
+		// 物理名走后续 IF NOT EXISTS DDL）；用户集合返回 ErrDuplicateKey。
+		if !isSystem {
+			return "", false, ErrDuplicateKey
+		}
+		var existing string
+		if err := p.conn(ctx).NewSelect().Model((*model.DocumentCollection)(nil)).
+			Column("physical_name").
+			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).
+			Scan(ctx, &existing); err != nil {
+			return "", false, err
+		}
+		return existing, true, nil
+	}
+	return "", false, status.Error(codes.Internal, "physical name allocation exhausted retries")
+}
+
+// isPhysicalNameConflict 识别 23505 且约束为物理名唯一索引（区别于集合
+// 主键/名称冲突——后者不可换名重试）。
+func isPhysicalNameConflict(err error) bool {
+	var fielder pgErrorFielder
+	if !errors.As(err, &fielder) {
+		return false
+	}
+	return fielder.Field('C') == "23505" && fielder.Field('n') == physicalNameConstraint
+}
+
+func (p *postgresDocumentDB) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*databases.Collection, error) {
+	m := new(model.DocumentCollection)
+	err := p.conn(ctx).NewSelect().Model(m).
+		Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, p.mapError(err)
 	}
-	coll, mapErr := p.mapCollection(ctx, m)
+	coll, mapErr := mapCollectionRow(m)
 	if mapErr != nil {
 		return nil, p.mapError(mapErr)
 	}
@@ -127,79 +218,27 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 		offset = off
 	}
 
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return nil, databases.ListMeta{}, p.mapError(err)
-	}
-
-	var total int64
 	count, err := p.conn(ctx).NewSelect().Model((*model.DocumentCollection)(nil)).
-		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).Count(ctx)
 	if err != nil {
-		if p.catalogAbsent(ctx, projectID, err) {
-			return []databases.Collection{}, databases.ListMeta{}, nil
-		}
 		return nil, databases.ListMeta{}, p.mapError(err)
 	}
-	total = int64(count)
+	total := int64(count)
 
 	var ms []model.DocumentCollection
 	err = p.conn(ctx).NewSelect().Model(&ms).
-		ModelTableExpr("?.document_collections AS dc", cat).
 		Where("project_id = ? AND database_id = ?", projectID, databaseID).
 		Order("created_at DESC").
 		Limit(pageSize).Offset(offset).Scan(ctx)
 	if err != nil {
-		if p.catalogAbsent(ctx, projectID, err) {
-			return []databases.Collection{}, databases.ListMeta{}, nil
-		}
 		return nil, databases.ListMeta{}, p.mapError(err)
 	}
 	if len(ms) == 0 {
 		return []databases.Collection{}, databases.ListMeta{TotalCount: total}, nil
 	}
-
-	collectionIDs := make([]string, 0, len(ms))
-	for i := range ms {
-		collectionIDs = append(collectionIDs, ms[i].ID)
-	}
-
-	var allAttrs []model.DocumentAttribute
-	if err := p.conn(ctx).NewSelect().Model(&allAttrs).
-		ModelTableExpr("?.document_attributes AS da", cat).
-		Where("project_id = ? AND database_id = ?", projectID, databaseID).
-		Where("collection_id IN (?)", bun.List(collectionIDs)).
-		Scan(ctx); err != nil {
-		if p.catalogAbsent(ctx, projectID, err) {
-			return []databases.Collection{}, databases.ListMeta{}, nil
-		}
-		return nil, databases.ListMeta{}, p.mapError(err)
-	}
-	attrsByColl := make(map[string][]model.DocumentAttribute, len(ms))
-	for i := range allAttrs {
-		attrsByColl[allAttrs[i].CollectionID] = append(attrsByColl[allAttrs[i].CollectionID], allAttrs[i])
-	}
-
-	var allIdxs []model.DocumentIndex
-	if err := p.conn(ctx).NewSelect().Model(&allIdxs).
-		ModelTableExpr("?.document_indexes AS di", cat).
-		Where("project_id = ? AND database_id = ?", projectID, databaseID).
-		Where("collection_id IN (?)", bun.List(collectionIDs)).
-		Scan(ctx); err != nil {
-		if p.catalogAbsent(ctx, projectID, err) {
-			return []databases.Collection{}, databases.ListMeta{}, nil
-		}
-		return nil, databases.ListMeta{}, p.mapError(err)
-	}
-	idxsByColl := make(map[string][]model.DocumentIndex, len(ms))
-	for i := range allIdxs {
-		idxsByColl[allIdxs[i].CollectionID] = append(idxsByColl[allIdxs[i].CollectionID], allIdxs[i])
-	}
-
 	out := make([]databases.Collection, len(ms))
 	for i := range ms {
-		c, err := mapCollectionRow(&ms[i], attrsByColl[ms[i].ID], idxsByColl[ms[i].ID])
+		c, err := mapCollectionRow(&ms[i])
 		if err != nil {
 			return nil, databases.ListMeta{}, p.mapError(err)
 		}
@@ -218,30 +257,17 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 		return p.mapError(err)
 	}
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		// _perms 键保持逻辑 collectionID（redesign 预决策 2），按逻辑名清理。
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
 			return err
 		}
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, collectionID))); err != nil {
 			return err
 		}
-		cat, err := p.catalogIdent(projectID)
-		if err != nil {
-			return err
-		}
-		// F4-2：物理表删除后同步清理属性/索引元数据，否则删了建不回来。
-		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentAttribute)(nil)).
-			ModelTableExpr("?.document_attributes AS da", cat).
-			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx); err != nil {
-			return err
-		}
-		if _, err := p.conn(txCtx).NewDelete().Model((*model.DocumentIndex)(nil)).
-			ModelTableExpr("?.document_indexes AS di", cat).
-			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx); err != nil {
-			return err
-		}
-		_, err = p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
-			ModelTableExpr("?.document_collections AS dc", cat).
-			Where("project_id = ? AND database_id = ? AND id = ?", projectID, databaseID, collectionID).Exec(txCtx)
+		// F4-2：物理表删除后同步清理 catalog 行（attrs/indexes 合一行随行消
+		// 失），否则删了建不回来。
+		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
+			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx)
 		return err
 	}))
 }
@@ -253,13 +279,16 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 	// 权限替换与字段更新同一事务（任一失败整体回滚，避免"权限已换、
 	// 元数据未更"的半更新）；权限-only 变更同样刷 updated_at（审计列统一）。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		if patch.Permissions != nil {
-			if err := p.setCollectionPermissions(txCtx, projectID, databaseID, collectionID, *patch.Permissions); err != nil {
-				return err
-			}
-		}
 		var sets []string
 		var args []any
+		if patch.Permissions != nil {
+			permsJSON, err := encodePermissions(*patch.Permissions)
+			if err != nil {
+				return err
+			}
+			sets = append(sets, "permissions = ?")
+			args = append(args, permsJSON)
+		}
 		if patch.Name != "" {
 			sets = append(sets, "name = ?")
 			args = append(args, patch.Name)
@@ -278,16 +307,28 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 		}
 		sets = append(sets, "updated_at = ?")
 		args = append(args, time.Now(), projectID, databaseID, collectionID)
-		catSQL, err := p.catalogQuoted(projectID)
-		if err != nil {
-			return err
-		}
-		_, err = p.conn(txCtx).ExecContext(txCtx,
-			fmt.Sprintf(`UPDATE %s.document_collections SET `, catSQL)+strings.Join(sets, ", ")+` WHERE project_id = ? AND database_id = ? AND id = ?`,
+		_, err := p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET `+strings.Join(sets, ", ")+
+				` WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
 			args...,
 		)
 		return err
 	}))
+}
+
+// loadCollectionRow 取 catalog_collections 合一行；行缺失 → NotFound（含
+// attrs/indexes 供 read-modify-write 路径复用）。
+func (p *postgresDocumentDB) loadCollectionRow(ctx context.Context, projectID, databaseID, collectionID string) (*model.DocumentCollection, error) {
+	m := new(model.DocumentCollection)
+	err := p.conn(ctx).NewSelect().Model(m).
+		Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, status.Error(codes.NotFound, "collection not found")
+		}
+		return nil, err
+	}
+	return m, nil
 }
 
 func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, databaseID, collectionID string, attr databases.Attribute) error {
@@ -323,32 +364,30 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s`, tableName(schema, collectionID), colSQL)); err != nil {
 			return err
 		}
-		m := &model.DocumentAttribute{
-			ID:           attr.ID,
-			CollectionID: collectionID,
-			DatabaseID:   databaseID,
-			ProjectID:    projectID,
-			Key:          attr.Key,
-			Type:         attr.Type,
-			Required:     attr.Required,
-			IsArray:      attr.Array,
-			CreatedAt:    time.Now(),
-		}
-		if attr.Size > 0 {
-			m.Size = &attr.Size
-		}
-		// default 与 DDL（attributeColumnSQL 的 DEFAULT）同源落 catalog：物理列
-		// 生效但元数据缺失曾是契约断裂（GetCollection 读不回 default）。
-		if attr.Default != nil {
-			def := fmt.Sprint(attr.Default)
-			m.DefaultValue = &def
-		}
-		cat, err := p.catalogIdent(projectID)
+		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
 		if err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).NewInsert().Model(m).
-			ModelTableExpr("?.document_attributes AS da", cat).Exec(txCtx)
+		attrs, err := decodeAttributes(row.Attrs)
+		if err != nil {
+			return err
+		}
+		// key 与 ID 唯一性由合一行内校验承载（旧四表靠 UNIQUE 约束 23505）。
+		for _, a := range attrs {
+			if a.Key == attr.Key || a.ID == attr.ID {
+				return fmt.Errorf("%w: attribute %q already exists", ErrDuplicateKey, attr.Key)
+			}
+		}
+		// default 与 DDL（attributeColumnSQL 的 DEFAULT）同源落 catalog：物理列
+		// 生效但元数据缺失曾是契约断裂（GetCollection 读不回 default）。
+		attrs = append(attrs, attr)
+		attrsJSON, err := encodeAttributes(attrs)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET attrs = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
+			attrsJSON, projectID, databaseID, collectionID)
 		return err
 	}))
 }
@@ -373,22 +412,27 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 		if err := p.createCollectionIndex(txCtx, schema, collectionID, idx); err != nil {
 			return err
 		}
-		m := &model.DocumentIndex{
-			ID:           idx.ID,
-			CollectionID: collectionID,
-			DatabaseID:   databaseID,
-			ProjectID:    projectID,
-			Type:         idx.Type,
-			Attributes:   idx.Attributes,
-			Orders:       idx.Orders,
-			CreatedAt:    time.Now(),
-		}
-		cat, err := p.catalogIdent(projectID)
+		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
 		if err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).NewInsert().Model(m).
-			ModelTableExpr("?.document_indexes AS di", cat).Exec(txCtx)
+		idxs, err := decodeIndexes(row.Indexes)
+		if err != nil {
+			return err
+		}
+		for _, i := range idxs {
+			if i.ID == idx.ID {
+				return fmt.Errorf("%w: index %q already exists", ErrDuplicateKey, idx.ID)
+			}
+		}
+		idxs = append(idxs, idx)
+		idxsJSON, err := encodeIndexes(idxs)
+		if err != nil {
+			return err
+		}
+		_, err = p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET indexes = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
+			idxsJSON, projectID, databaseID, collectionID)
 		return err
 	}))
 }
@@ -703,7 +747,7 @@ func validateIndexDefinition(idx databases.Index) error {
 }
 
 // rejectArrayAttribute 是 catalog 写入前的第二道防线：物理列是标量，
-// 不得把 IsArray=true 写入 document_attributes。
+// 不得把 IsArray=true 写入 catalog。
 func rejectArrayAttribute(attr databases.Attribute) error {
 	if attr.Array {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute %q: array is not supported", attr.Key))
@@ -785,112 +829,12 @@ func quoteLiteral(s string) string {
 	return `'` + strings.ReplaceAll(s, `'`, `''`) + `'`
 }
 
-func (p *postgresDocumentDB) createCollectionMetadata(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
-	permStrings := make([]string, 0, len(perms))
-	for _, perm := range perms {
-		permStrings = append(permStrings, fmt.Sprintf("%s:%s", perm.Type, perm.Role))
-	}
-	coll := &model.DocumentCollection{
-		ID:               collectionID,
-		DatabaseID:       databaseID,
-		ProjectID:        projectID,
-		Name:             name,
-		DocumentSecurity: documentSecurity,
-		IsSystem:         databases.IsSystemCollection(projectID, databaseID, collectionID),
-		Permissions:      permStrings,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
-	}
-	cat, err := p.catalogIdent(projectID)
-	if err != nil {
-		return err
-	}
-	res, err := p.conn(ctx).NewInsert().Model(coll).
-		ModelTableExpr("?.document_collections AS dc", cat).
-		On("CONFLICT (project_id, database_id, id) DO NOTHING").Exec(ctx)
-	if err != nil {
-		return err
-	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		// 集合行已存在：系统集合视为幂等成功（并发首请求 23505 防护，极端竞态下
-		// 子表缺失属人工可修复场景）；用户集合返回 ErrDuplicateKey（→ AlreadyExists）。
-		if databases.IsSystemCollection(projectID, databaseID, collectionID) {
-			return nil
-		}
-		return ErrDuplicateKey
-	}
-	for _, attr := range attrs {
-		m := &model.DocumentAttribute{
-			ID:           attr.ID,
-			CollectionID: collectionID,
-			DatabaseID:   databaseID,
-			ProjectID:    projectID,
-			Key:          attr.Key,
-			Type:         attr.Type,
-			Required:     attr.Required,
-			IsArray:      attr.Array,
-			CreatedAt:    time.Now(),
-		}
-		if attr.Size > 0 {
-			m.Size = &attr.Size
-		}
-		if attr.Default != nil {
-			def := fmt.Sprint(attr.Default)
-			m.DefaultValue = &def
-		}
-		if _, err := p.conn(ctx).NewInsert().Model(m).
-			ModelTableExpr("?.document_attributes AS da", cat).Exec(ctx); err != nil {
-			return err
-		}
-	}
-	for _, idx := range idxs {
-		m := &model.DocumentIndex{
-			ID:           idx.ID,
-			CollectionID: collectionID,
-			DatabaseID:   databaseID,
-			ProjectID:    projectID,
-			Type:         idx.Type,
-			Attributes:   idx.Attributes,
-			Orders:       idx.Orders,
-			CreatedAt:    time.Now(),
-		}
-		if _, err := p.conn(ctx).NewInsert().Model(m).
-			ModelTableExpr("?.document_indexes AS di", cat).Exec(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (p *postgresDocumentDB) mapCollection(ctx context.Context, m *model.DocumentCollection) (*databases.Collection, error) {
-	cat, err := p.catalogIdent(m.ProjectID)
-	if err != nil {
-		return nil, err
-	}
-	var attrs []model.DocumentAttribute
-	if err := p.conn(ctx).NewSelect().Model(&attrs).
-		ModelTableExpr("?.document_attributes AS da", cat).
-		Where("project_id = ? AND database_id = ? AND collection_id = ?", m.ProjectID, m.DatabaseID, m.ID).
-		Scan(ctx); err != nil {
-		return nil, err
-	}
-	var idxs []model.DocumentIndex
-	if err := p.conn(ctx).NewSelect().Model(&idxs).
-		ModelTableExpr("?.document_indexes AS di", cat).
-		Where("project_id = ? AND database_id = ? AND collection_id = ?", m.ProjectID, m.DatabaseID, m.ID).
-		Scan(ctx); err != nil {
-		return nil, err
-	}
-	return mapCollectionRow(m, attrs, idxs)
-}
-
-func mapCollectionRow(m *model.DocumentCollection, attrs []model.DocumentAttribute, idxs []model.DocumentIndex) (*databases.Collection, error) {
+// mapCollectionRow 从 catalog_collections 合一行解码 domain Collection
+//（attrs/indexes/permissions JSONB 单源读回，default/size/array 全字段）。
+// PhysicalName 是内部实现细节，不进 domain 形状（不出现在任何 API 响应）。
+func mapCollectionRow(m *model.DocumentCollection) (*databases.Collection, error) {
 	c := &databases.Collection{
-		ID:               m.ID,
+		ID:               m.CollectionID,
 		DatabaseID:       m.DatabaseID,
 		ProjectID:        m.ProjectID,
 		Name:             m.Name,
@@ -900,46 +844,22 @@ func mapCollectionRow(m *model.DocumentCollection, attrs []model.DocumentAttribu
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}
-	for _, p := range m.Permissions {
-		c.Permissions = append(c.Permissions, parsePermission(p))
-	}
-	for _, a := range attrs {
-		attr := databases.Attribute{ID: a.ID, Key: a.Key, Type: a.Type, Required: a.Required, Array: a.IsArray}
-		if a.Size != nil {
-			attr.Size = *a.Size
-		}
-		if a.DefaultValue != nil {
-			attr.Default = *a.DefaultValue
-		}
-		c.Attributes = append(c.Attributes, attr)
-	}
-	for _, i := range idxs {
-		c.Indexes = append(c.Indexes, databases.Index{ID: i.ID, Type: i.Type, Attributes: i.Attributes, Orders: i.Orders})
-	}
-	return c, nil
-}
-
-func parsePermission(s string) databases.Permission {
-	parts := strings.SplitN(s, ":", 2)
-	if len(parts) != 2 {
-		return databases.Permission{}
-	}
-	return databases.Permission{Type: parts[0], Role: parts[1]}
-}
-
-func (p *postgresDocumentDB) setCollectionPermissions(ctx context.Context, projectID, databaseID, collectionID string, perms []databases.Permission) error {
-	var raw []string
-	for _, perm := range perms {
-		raw = append(raw, fmt.Sprintf("%s:%s", perm.Type, perm.Role))
-	}
-	catSQL, err := p.catalogQuoted(projectID)
+	perms, err := decodePermissions(m.Permissions)
 	if err != nil {
-		return p.mapError(err)
+		return nil, err
 	}
-	_, err = p.conn(ctx).ExecContext(ctx,
-		fmt.Sprintf(`UPDATE %s.document_collections SET permissions = ? WHERE project_id = ? AND database_id = ? AND id = ?`, catSQL),
-		pgdialect.Array(raw), projectID, databaseID, collectionID)
-	return err
+	c.Permissions = perms
+	attrs, err := decodeAttributes(m.Attrs)
+	if err != nil {
+		return nil, err
+	}
+	c.Attributes = attrs
+	idxs, err := decodeIndexes(m.Indexes)
+	if err != nil {
+		return nil, err
+	}
+	c.Indexes = idxs
+	return c, nil
 }
 
 func (p *postgresDocumentDB) setPermissions(ctx context.Context, schema, collectionID, documentID string, tenant int64, perms []databases.Permission) error {

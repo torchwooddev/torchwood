@@ -84,23 +84,6 @@ BEGIN
     END LOOP;
 END $$;
 
-DELETE FROM {{schema}}.document_indexes
-WHERE database_id = '_'
-  AND collection_id IN (
-      'users', 'sessions', 'identities', 'groups',
-      'memberships', 'buckets', 'files'
-  );
-DELETE FROM {{schema}}.document_attributes
-WHERE database_id = '_'
-  AND collection_id IN (
-      'users', 'sessions', 'identities', 'groups',
-      'memberships', 'buckets', 'files'
-  );
-DELETE FROM {{schema}}.document_collections
-WHERE database_id = '_'
-  AND id IN (
-      'users', 'sessions', 'identities', 'groups',
-      'memberships', 'buckets', 'files'
-  );
-DELETE FROM {{schema}}.document_databases
-WHERE id = '_';
+-- 每项目 catalog 四表已退役（阶段②包 A）：本版本原尾部的 sentinel catalog
+-- 清理 DELETE（document_indexes/attributes/collections/databases）随 000001
+-- 不再建表而删除——存量四表整体由 000011 DROP，新库无此表面。

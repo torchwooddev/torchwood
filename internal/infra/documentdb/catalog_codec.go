@@ -1,0 +1,176 @@
+// 全局 catalog 的 JSONB 编解码（redesign §4.2 / C1，预决策 1）：attrs/indexes/
+// permissions 以 JSON 列合一落库，default/size/array/options 全字段读写一致
+// 以此为唯一契约源——四表模型 default_value 类契约断裂从结构上消灭。
+package documentdb
+
+import (
+	"crypto/rand"
+	"encoding/base32"
+	"encoding/json"
+	"strings"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+)
+
+// attributeJSON 是 attrs 列的元素形态。Default 用 any 保留标量类型（bool/int/
+// float/string），omitempty 仅在 nil 时省略——显式 false/0 是合法缺省值。
+type attributeJSON struct {
+	ID       string         `json:"id"`
+	Key      string         `json:"key"`
+	Type     string         `json:"type"`
+	Size     int            `json:"size,omitempty"`
+	Required bool           `json:"required,omitempty"`
+	Array    bool           `json:"array,omitempty"`
+	Default  any            `json:"default,omitempty"`
+	Options  map[string]any `json:"options,omitempty"`
+}
+
+type indexJSON struct {
+	ID         string   `json:"id"`
+	Type       string   `json:"type"`
+	Attributes []string `json:"attributes"`
+	Orders     []string `json:"orders,omitempty"`
+}
+
+type permissionJSON struct {
+	Type string `json:"type"`
+	Role string `json:"role"`
+}
+
+func encodeAttributes(attrs []databases.Attribute) (string, error) {
+	if len(attrs) == 0 {
+		return "[]", nil
+	}
+	out := make([]attributeJSON, 0, len(attrs))
+	for _, a := range attrs {
+		out = append(out, attributeJSON{
+			ID:       a.ID,
+			Key:      a.Key,
+			Type:     a.Type,
+			Size:     a.Size,
+			Required: a.Required,
+			Array:    a.Array,
+			Default:  a.Default,
+			Options:  a.Options,
+		})
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", status.Error(codes.Internal, "encode catalog attributes")
+	}
+	return string(b), nil
+}
+
+func decodeAttributes(raw string) ([]databases.Attribute, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var in []attributeJSON
+	if err := json.Unmarshal([]byte(raw), &in); err != nil {
+		return nil, status.Error(codes.Internal, "decode catalog attributes")
+	}
+	out := make([]databases.Attribute, 0, len(in))
+	for _, a := range in {
+		out = append(out, databases.Attribute{
+			ID:       a.ID,
+			Key:      a.Key,
+			Type:     a.Type,
+			Size:     a.Size,
+			Required: a.Required,
+			Array:    a.Array,
+			Default:  a.Default,
+			Options:  a.Options,
+		})
+	}
+	return out, nil
+}
+
+func encodeIndexes(idxs []databases.Index) (string, error) {
+	if len(idxs) == 0 {
+		return "[]", nil
+	}
+	out := make([]indexJSON, 0, len(idxs))
+	for _, i := range idxs {
+		out = append(out, indexJSON{
+			ID:         i.ID,
+			Type:       i.Type,
+			Attributes: i.Attributes,
+			Orders:     i.Orders,
+		})
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", status.Error(codes.Internal, "encode catalog indexes")
+	}
+	return string(b), nil
+}
+
+func decodeIndexes(raw string) ([]databases.Index, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var in []indexJSON
+	if err := json.Unmarshal([]byte(raw), &in); err != nil {
+		return nil, status.Error(codes.Internal, "decode catalog indexes")
+	}
+	out := make([]databases.Index, 0, len(in))
+	for _, i := range in {
+		out = append(out, databases.Index{
+			ID:         i.ID,
+			Type:       i.Type,
+			Attributes: i.Attributes,
+			Orders:     i.Orders,
+		})
+	}
+	return out, nil
+}
+
+func encodePermissions(perms []databases.Permission) (string, error) {
+	if len(perms) == 0 {
+		return "[]", nil
+	}
+	out := make([]permissionJSON, 0, len(perms))
+	for _, p := range perms {
+		out = append(out, permissionJSON{Type: p.Type, Role: p.Role})
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", status.Error(codes.Internal, "encode catalog permissions")
+	}
+	return string(b), nil
+}
+
+func decodePermissions(raw string) ([]databases.Permission, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var in []permissionJSON
+	if err := json.Unmarshal([]byte(raw), &in); err != nil {
+		return nil, status.Error(codes.Internal, "decode catalog permissions")
+	}
+	out := make([]databases.Permission, 0, len(in))
+	for _, p := range in {
+		out = append(out, databases.Permission{Type: p.Type, Role: p.Role})
+	}
+	return out, nil
+}
+
+// physicalNameConstraint 是 catalog_collections.physical_name 部分唯一索引名，
+// 23505 时按其区分"物理名碰撞（换名重试）"与"集合主键冲突（AlreadyExists）"。
+const physicalNameConstraint = "uq_catalog_collections_physical_name"
+
+// newPhysicalName 分配集合物理表名 c_<base32(8)>（小写字母数字，5 字节熵 →
+// 8 字符，redesign §4.2 标识符治理）：全局唯一约束 + 调用方碰撞重试。物理名
+// 是内部实现细节，不得出现在任何 API 响应。
+func newPhysicalName() string {
+	var b [5]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand 失败属进程级异常；退化为零熵名会在唯一约束上碰撞重试，
+		// 由调用方的有界重试兜底并最终报错。
+		return "c_00000000"
+	}
+	return "c_" + strings.ToLower(base32.StdEncoding.EncodeToString(b[:]))
+}
