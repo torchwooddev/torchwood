@@ -12,7 +12,7 @@
 | 层 | 模块 | 职责 |
 |---|---|---|
 | 领域 | `internal/domain/databases/` | Document/Collection/Attribute/Index/Permission/Principal 模型，权限判定（`AllowsDocumentAccess`/`CollectionAllows` 等），`DocumentDB` 三端口（`repository.go`：Catalog / SchemaApplier / Documents） |
-| 查询 | `pkg/query/` + `pkg/query/proto/` | Appwrite DSL 解析与 typed AST 编解码（双栈，同请求冲突即 `InvalidArgument`） |
+| 查询 | `pkg/query/`（客户端语法糖解析器 + 程序化构造器 + `ToWireJSON`）+ `pkg/query/proto/`（proto→AST 编解码） | 单 typed AST（C7）：`shared.v1.Query` 是服务端唯一消费形态；DSL 串仅作 SDK/CLI 客户端糖 |
 | 适配器 | `internal/infra/documentdb/`（同包 7 文件） | catalog 寻址、collection DDL、文档 CRUD（OCC/Upsert/Bulk/advisor lock）、查询编译与执行、权限 SQL 下推、SQLSTATE 翻译 |
 | 应用 | `internal/app/documents/`（Client/Server 共用核）+ `internal/app/server|client` 的 Databases 用例 | 用例守卫（sentinel 拒绝/标识校验/系统集合拦截/disabled）、空 ACE 种子、grant 展开/校验、错误映射 |
 | 数据面 | `internal/infra/projectschema/` + `pkg/ident/` | 项目 schema 生命周期（Apply/迁移/孤儿对账/缓存失效桥接）、两段式寻址与标识规则（≤28 字符） |
@@ -20,7 +20,7 @@
 | 事件 | `internal/infra/events/`（outbox + worker）→ `internal/infra/realtime/`（subscriber/hub/stream） | 写路径同事务落 `document_events_outbox` → Redis Pub/Sub → hub 按快照 ACL 过滤扇出（`VisibleTo`），出站帧剥 ACL |
 | 分页 | `pkg/crud/pagination.go`（HMAC 签名 offset token，静态表/控制面列表用）+ documentdb `ka:/kb:` keyset token | 文档面 keyset-only（C2 阶段①）：`ListDocuments` 只发/只认 keyset token；offset token 族仅存于 `pkg/crud` 静态表路径 |
 | 幂等 | `internal/domain/databases/idempotency.go`（端口）+ `internal/infra/bun/bunrepo/idempotency_repo.go` + `internal/app/documents/idempotency.go`（核层包裹） | `request_id` 写幂等（public.`idempotency_keys`）：只缓存成功响应、24h 重放、KEY_CONFLICT/IN_PROGRESS 域码 |
-| 传输 | `internal/api/servergrpc|clientgrpc/databases.go` + `proto/server|client/v1/databases.proto` | 请求校验、authz 注解（`method_auth` + scope 表）、双栈参数绑定、OpenAPI 契约 |
+| 传输 | `internal/api/servergrpc|clientgrpc/databases.go` + `proto/server|client/v1/databases.proto` | 请求校验、authz 注解（`method_auth` + scope 表）、AST 参数绑定（`BindListQuery`）、OpenAPI 契约 |
 
 ### 范围外
 
@@ -37,9 +37,9 @@ Storage 对象本体（`files` 行只是元数据，对象在 S3/MinIO）、Func
 7. **事件语义**：at-least-once、不保证顺序；客户端按 `event_id` 去重、按 `version` 判序；出站帧永不含 ACL 快照。
 8. **默认私有**：`DefaultCollectionPermissions` 不含 `read:any`；空 ACE 文档按种子规则私有化（owner/创建者角色/`__private__`）。
 9. **标识长度**：`project.id/database.id ≤ 28`（schema 名 ≤60 字节，`pkg/ident`）；`collectionID ≤40`、属性 key ≤63、索引 ID ≤40（app 层入口），叠加索引名拼接校验 `idx_<coll>_<id>` ≤63（infra 二道防线：表/列名 ≤63 + 组合校验——静态段上限封不死组合长度）。PG 63 字节截断类缺陷已机制性封死；redesign 阶段②逻辑/物理名解耦后上限将收紧（collectionID ≤36）并随物理名分配退役。
-10. **查询双栈互斥**：`queries`（DSL 字符串）与 `query`（typed AST）携带冲突语义即 `InvalidArgument`；两栈算子集尚不对齐（DSL 无 `or`/`and`，AST 无 `between`/`isNull` 等；`in` 两栈均已支持）。跨 filter 绑定参数累计 ≤2000（封死 PG 65535 语句参数上限）。
+10. **查询单栈（C7）**：wire 只收 `query`（typed AST，`shared.v1.Query`）；`queries` DSL 字符串字段已 reserved，服务端文档查询栈零字符串解析（`ResolveQuery`/`astFrom` 无 ParseMany 回退）。算子全集 `eq ne lt lte gt gte in between notBetween isNull isNotNull contains notContains startsWith notStartsWith endsWith notEndsWith search notSearch + and/or`（嵌套深度 ≤8；无通用 NOT，取反由 not* 变体承担——索引友好）；`select` 投影。DSL 串是 SDK/CLI 的客户端糖（`pkg/query.Parse/ParseMany`、`sdk/go/query.FromDSL`），解析为 AST 后发送。跨 filter 绑定参数累计 ≤2000（封死 PG 65535 语句参数上限）。
 11. **写幂等（redesign §4.1/§10.1）**：携带 `request_id` 的写请求键作用域 `(project_id, actor_id, request_id)`；只缓存成功响应（失败释放、重试重新执行）；同 key 异体 → `IDEMPOTENCY.KEY_CONFLICT`；并发同 key 短轮询 ≤2s 后仍 in-flight → `IDEMPOTENCY.IN_PROGRESS`；重放返回原响应 + `x-torchwood-replayed: true` 响应头；done TTL 24h、in_flight 兜底 TTL 5min、惰性清理。
-12. **keyset-only（redesign C2 阶段①）**：`ListDocuments` 只发/只认 `ka:/kb:` token；`offset()` 算子与非 keyset token 一律 `InvalidArgument`；排序全程单键 + `_id` tiebreaker（多排序键首页即拒——token 只编码单键）。`ListCollections` 的 offset 分页维持到阶段②。
+12. **keyset-only（redesign C2 完成态）**：`ListDocuments` 只发/只认 `ka:/kb:` token；`offset()` 算子与非 keyset token 一律 `InvalidArgument`；ORDER BY = 全部排序键 + `_id` tiebreaker（方向随首键），keyset 谓词按方向行比较或逐键 OR 展开（多键游标完整支持，token 仍只编码 docID + 服务端查行取全部键值）。`ListCollections` 的 offset 分页维持到阶段②。
 13. **聚合一律在可见行集上执行（redesign §11-J D1）**：`:aggregate` 复用 `listPermissionFilter` 过滤链且过滤先于 GROUP BY——不可见行不进聚合、group 键不泄露；聚合目标必须是声明数值属性（integer/float）。
 
 ## 1 三类库
@@ -116,27 +116,30 @@ CREATE TABLE tw_shop_app._perms (
 
 类型映射（`pgTypeFor`）：`string/email/url→VARCHAR(n)/TEXT`、`integer→BIGINT`、`float→DOUBLE PRECISION`、`boolean→BOOLEAN`、`datetime→TIMESTAMPTZ`、`json→JSONB`。
 
-## 6 查询 DSL（`pkg/query`）
+## 6 查询（单 typed AST，C7）
 
-`pkg/query/query.go:184` `Parse` 以 `^(\w+)\((.*)\)$` 匹配算子，`splitArgs` 处理引号/转义/括号嵌套；`ParseMany` 合并多串为 `Query{Filter, Filters, Orders, Selects, Limit, Offset, CursorAfter/Before, PageSize, PageToken}`，`Filter` 为 `OpAnd` 树。
+**wire 形态唯一**：List/Count/Aggregate 的过滤/排序/投影一律走 `query`（`shared.v1.Query`：`filter` 树 + `orders` + `select` + `pageSize/pageToken`）。`queries` DSL 字符串字段已 reserved（POC 无兼容期）；GET 面保留 `page_size/page_token` 简单分页参数，过滤条件一律 POST body（`:list` 的 body 即 Query JSON）。绑定链：`BindListQuery`（proto codec，`pkg/query/proto.FromProto`）→ `ResolveQuery`（合并 GET 面分页字段 + 校验）→ infra `astFrom`（归一后再校验）。
 
-| 类 | 算子 | 示例 | SQL |
-|---|---|---|---|
-| 过滤 | `equal`/`notEqual`/`in` | `equal("status","a")` / `in("status",["a","b"])` | `=` / `IN` / `NOT IN` |
-|  | `lessThan`/`greaterThan`/`between` | `between("age",18,60)` | `<`/`>`/`BETWEEN ? AND ?` |
-|  | `contains`/`startsWith`/`endsWith` | `contains("name","jo")` | `ILIKE '%v%' ESCAPE '\'`（`escapeLikePattern` 转义 `%_\'） |
-|  | `search` | `search("title","hello")` | `to_tsvector('simple',col::text) @@ plainto_tsquery('simple',?)` |
-|  | `isNull`/`isNotNull` | `isNull("deleted_at")` | `IS NULL` |
-| 排序 | `orderAsc`/`orderDesc` | `orderDesc("$createdAt")` | `ORDER BY d."field" ASC/DESC, d._id <dir>`（与 cursor 续页路径同构的 `_id` tiebreaker） |
-| 分页 | `limit`/`offset` | `limit(25)` | `LIMIT`；**文档面 keyset-only（C2 阶段①）**：`ListDocuments`/`CountDocuments` 对 `offset()` 一律 `InvalidArgument`；count/aggregate 对全部排序/分页算子（order/limit/offset/cursor/token）显式拒绝（R9，整集语义）；`offset` 仍可用于 `pkg/crud` 静态表路径 |
-|  | `cursorAfter`/`cursorBefore` | `cursorAfter("doc-id")` | keyset 谓词（**多自定义排序键 → InvalidArgument，首页即拒**——token 只编码单键，完整多键游标属单 AST 专属会话；`ListDocuments` 的 `page_token` 也只认 `ka:/kb:` keyset token） |
-| 投影 | `select` | `select(["name","age"])` | 返回后裁剪 `Data` |
+**算子全集**（`Filter` oneof，`pkg/query` 常量同源）：`eq ne lt lte gt gte in between notBetween isNull isNotNull contains notContains startsWith notStartsWith endsWith notEndsWith search notSearch + and/or`（嵌套深度 ≤8，`MaxDepth`）；无通用 NOT——取反全部由 not* 变体承担（索引友好，德摩根展开可表达）。值数量约束：比较族 ≥1（eq/ne 多值 → IN/NOT IN）、between/notBetween 恰 2、isNull/isNotNull 0。
 
-别名 ` $id→_id`、`$createdAt→_created_at`、`$updatedAt→_updated_at`、`$version→_version`（`mapQueryField`）。程序化拼串用 `BuildFilter`/`BuildEqual`/`BuildLimit`（自动转义 `"`/`\`）。
+| 类 | 算子（proto oneof 分支） | SQL |
+|---|---|---|
+| 过滤 | `eq`/`ne`/`in` | `=` / `IN` / `NOT IN`（eq/ne 多值自动进集合语义） |
+|  | `lt`/`lte`/`gt`/`gte`/`between` | `<`/`<=`/`>`/`>=`/`BETWEEN ? AND ?`；`notBetween` → `NOT BETWEEN` |
+|  | `contains`/`startsWith`/`endsWith`（及 not* 变体） | `ILIKE '%v%' ESCAPE '\'`（`escapeLikePattern` 转义 `%_\'；not* → `NOT ILIKE`） |
+|  | `search`/`notSearch` | `to_tsvector('simple',col::text) @@ plainto_tsquery('simple',?)`（not → `NOT (...)`） |
+|  | `isNull`/`isNotNull` | `IS NULL` / `IS NOT NULL` |
+| 排序 | `orders[]`（attribute+desc） | `ORDER BY d.k1 dir1, …, d._id <首键方向>`（与 cursor 续页路径同构的 `_id` tiebreaker） |
+| 分页 | `pageSize`/`pageToken` | LIMIT；**keyset-only（C2 完成态，见 §9）**：`pageToken` 只认 `ka:/kb:` token；count/aggregate 对排序/分页算子（orders/pageSize/pageToken/cursor）显式拒绝（R9+R9b，整集语义） |
+| 投影 | `select[]` | 返回后裁剪 `Data` |
 
-**输入上限**（`internal/infra/documentdb/postgres.go`）：`queries≤100`、`单串≤4096`、`equal 多值≤1000`、**跨 filter 绑定参数累计 ≤2000**（`maxTotalFilterParams`，封死 PG 65535 语句参数上限）、`maxQueryLimit=100`（`validateQueryInput` + `buildAppwriteQuery` 出口；`maxQueryOffset` 已随文档面 keyset-only 收敛删除）。**写入载荷上限**（`internal/app/documents`）：总量 ≤1 MiB、单属性值 ≤256 KiB，超限 `DOCUMENT.TOO_LARGE`（InvalidArgument，违规属性定位走 BadRequest violations）。
+别名 `$id→_id`、`$createdAt→_created_at`、`$updatedAt→_updated_at`、`$version→_version`（`mapQueryField`）。
 
-**编译与校验**（`postgres_query_compile.go`）：`astFrom` 优先 `Query.AST`（`shared.v1.Query` typed 形态，与 `queries` 互斥），否则 `ParseMany`；`validateQueryFields` 白名单=系统列+已声明 attribute，`search` 需命中 `fulltext` 索引，`_version` 缺列返回 `version_column_unavailable`（`InvalidArgument`），系统集合敏感列（`users.password_hash/prefs/labels` 等）黑名单仅按 `IsSystemCollection` 生效（`pkg/query/proto` 双栈见 `docs/review/wave2-e4-query-ast.md`）。
+**DSL 是客户端糖**：`pkg/query.Parse/ParseMany`（含 `BuildFilter`/`BuildEqual` 拼串助手与 `ToWireJSON`——AST→protojson 形态，CLI 用）与 `sdk/go/query.FromDSL` 在客户端把 Appwrite 风格串解析为 AST 后发送；服务端零消费。程序化构造用 `pkg/query` 构造器（`query.Eq/Gt/Between/IsNull/And/Or…`）或 SDK 的 `sdk/go/query`（链式 `Builder`）。
+
+**输入上限**（`internal/infra/documentdb/postgres.go`）：AST 叶数 ≤100（`pkg/query.MaxQueries`，`Validate` 封顶）、eq/in 多值 ≤1000、**跨 filter 绑定参数累计 ≤2000**（`maxTotalFilterParams`，封死 PG 65535 语句参数上限）、`maxQueryLimit=100`（页大小上限 clamp）。DSL 串条数/长度上限随双栈退役移除（服务端不再收字符串）。**写入载荷上限**（`internal/app/documents`）：总量 ≤1 MiB、单属性值 ≤256 KiB，超限 `DOCUMENT.TOO_LARGE`（InvalidArgument，违规属性定位走 BadRequest violations）。
+
+**编译与校验**（`postgres_query_compile.go`）：`astFrom` 收归一后的 AST（无字符串回退）；`validateQueryFields` 白名单=系统列+已声明 attribute，`search` 需命中 `fulltext` 索引，`_version` 缺列返回 `version_column_unavailable`（`InvalidArgument`），系统集合敏感列（`users.password_hash/prefs/labels` 等）黑名单仅按 `IsSystemCollection` 生效。
 
 ## 7 权限模型（`_perms`）
 
@@ -188,7 +191,9 @@ CREATE TABLE tw_shop_app._perms (
 
 ## 9 事务与分页一致性
 
-`BulkUpdate/BulkDelete` 与单文档写走 `clients.Database.RunInTx`（已在事务内复用，否则开短事务，`internal/infra/documentdb/postgres_permissions.go`）；`ListDocuments` **keyset-only（C2 阶段①）**：首页（无 cursor）执行精确 COUNT 后主查询（非原子快照，`READ COMMITTED`），满页发 `ka:` token；续页（keyset token）跳过 COUNT（`total=0=unknown`），满页判定 has-more；排序全程单键 + `_id` tiebreaker（并发写入下不丢/不重行）。`pkg/crud` 提供 `ParseListParams`/`BuildPaginationInfo`（`pkg/crud/list.go:57`/`pagination.go:360`），offset token（`EncodePageToken`/`DecodePageToken`，`v1` base64 JSON，TTL 24h）仅供静态表/控制面列表使用，文档面不再接受。
+`BulkUpdate/BulkDelete` 与单文档写走 `clients.Database.RunInTx`（已在事务内复用，否则开短事务，`internal/infra/documentdb/postgres_permissions.go`）；`ListDocuments` **keyset-only（C2 完成态，多键）**：首页（无 cursor）执行精确 COUNT 后主查询（非原子快照，`READ COMMITTED`），满页发 `ka:` token；续页（keyset token）跳过 COUNT（`total=0=unknown`），满页判定 has-more。**排序 = 全部排序键 + `_id` tiebreaker（方向随首键）**；keyset 谓词：方向一致（全 ASC/全 DESC）走行比较 `(k1,…,kn,_id) op (?,…,?)`，方向混合走逐键 OR 展开（`k1 OP1 ? OR (k1 = ? AND k2 OP2 ?) OR …`）——两种形态与 ORDER BY 全序严格一致（跨页不丢不重的机制保证，确定性用例锁行为）。cursor 仍以 docID 定位：服务端按 docID 查行取全部排序键值（token 只编码 `ka:/kb:`+docID）。
+
+**NULL 排序键的已知限制**（预决策 4）：行比较谓词对 NULL 求值为 NULL（行被排除）——cursor 行的排序键含 NULL → `InvalidArgument`（消息明示"filter them out first"，先 isNull/isNotNull 过滤再分页）；数据行含 NULL 键在续页中被跳过。不做 NULLS LAST 谓词改写（行比较谓词与 NULL 的组合正确性代价不成比例）。`pkg/crud` 提供 `ParseListParams`/`BuildPaginationInfo`（`pkg/crud/list.go:57`/`pagination.go:360`），offset token（`EncodePageToken`/`DecodePageToken`，`v1` base64 JSON，TTL 24h）仅供静态表/控制面列表使用，文档面不再接受。
 
 ## 10 系统列与写入过滤
 
@@ -209,18 +214,24 @@ CREATE TABLE tw_shop_app._perms (
 docDB.CreateCollection(ctx, pid, "app", "posts", perms, false)
 docDB.CreateAttribute(ctx, pid, "app", "posts", Attribute{Key:"title", Type:"string", Size:128, Required:true})
 
-// Appwrite DSL 查询（ListDocuments 的 queries）
-queries := []string{
-  query.BuildEqual("status", "published"),
-  `greaterThan("views", 100)`,
-  `orderDesc("$createdAt")`,
-  `limit(25)`,
+// 单 AST 查询（C7）：程序化构造器（pkg/query）+ Query 结构体字面量
+ast := &query.Query{
+  Filter: query.And(query.Eq("status", "published"), query.Gt("views", "100")),
+  Orders: []query.Order{{Attribute: "$createdAt", Desc: true}},
+  PageSize: 25,
 }
-docs, total, nextToken, _ := docDB.ListDocuments(ctx, pid, "app", "posts", Query{Queries: queries, PageSize: 25}, principal)
+docs, total, nextToken, _ := docDB.ListDocuments(ctx, pid, "app", "posts", databases.Query{AST: ast}, principal)
 
-// Typed 双栈（shared.v1.Query AST 与 queries 互斥）
-ast := sharedv1.Query{Filter: &sharedv1.Filter{Op:"and", Children: ...}}
-docDB.ListDocuments(ctx, pid, "app", "posts", Query{AST: &ast}, principal)
+// 多键排序 + 游标（C2 完成态）：全部排序键 + _id tiebreaker；
+// 续页把上页 nextToken 填进 PageToken
+ast = &query.Query{
+  Orders: []query.Order{{Attribute: "priority", Desc: true}, {Attribute: "title"}},
+  PageSize: 25, PageToken: nextToken,
+}
+
+// DSL 串是客户端糖（SDK/CLI 解析为 AST 后发送，服务端零消费）
+parsed, _ := query.ParseMany([]string{`equal("status","published")`, `limit(25)`})
+wire := parsed.ToWireJSON() // CLI/工具直连 JSON 请求面
 ```
 
 分页用 `pkg/crud`（见 `09-api-guide.md` §3）：`ParseListParams` 校验 `page_size/page_token/filter/order_by`，`BuildPaginationInfo` 产出 `HasNext/NextOffset`，handler 用 `EncodePageToken` 编码 `next_page_token`。
@@ -228,6 +239,6 @@ docDB.ListDocuments(ctx, pid, "app", "posts", Query{AST: &ast}, principal)
 ## 12 测试与参考
 
 - 集成 `internal/infra/documentdb/postgres_test.go`（`testing.Short` 跳过），`internal/testutil/db.go:SetupTestDB` 按 `TORCHWOOD_TEST_DATABASE_SOURCE` 创建隔离库（`pg_terminate_backend` + `DROP DATABASE`）。
-- `pkg/query/query_test.go`、`postgres_query_compile_test.go`、`permissions_test.go` 覆盖算子/转义/白名单/敏感列/权限分支。
+- `pkg/query/query_test.go`（DSL 糖 + 构造器）、`pkg/query/proto/proto_test.go`（每算子编解码往返）、`postgres_query_compile_test.go`（每算子 SQL + keyset 谓词形态）、`permissions_test.go` 覆盖算子/转义/白名单/敏感列/权限分支；`TestPostgresDocumentDocuments_MultiKeyCursor` 锁多键跨页不丢不重。
 - `pkg/crud/`：AIP-132/158/160 抽象，`filter.go`/`order.go`/`pagination.go` 供静态表列表复用，动态文档优先 `pkg/query`。
 - 参考：`internal/domain/databases/` 端口与 `Principal`；`internal/infra/documentdb/postgres*.go`；`pkg/query/proto/proto.go` typed AST；`db/migrations/` + `internal/infra/projectschema/`；`AGENTS.md` §数据库约定。
