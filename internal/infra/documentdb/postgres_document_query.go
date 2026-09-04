@@ -18,7 +18,7 @@ import (
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
 	var out *databases.DocumentList
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		list, err := p.listDocuments(txCtx, projectID, databaseID, collectionID, q, principal)
 		if err != nil {
 			return err
@@ -364,7 +364,7 @@ func decodeKeysetToken(token string) (id, kind string, ok bool) {
 
 func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
 	var total int64
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		n, err := p.countDocuments(txCtx, projectID, databaseID, collectionID, q, principal)
 		if err != nil {
 			return err
@@ -445,7 +445,7 @@ func (p *postgresDocumentDB) countDocuments(ctx context.Context, projectID, data
 // 须为已声明属性。空集语义：sum=0（COALESCE）、avg/min/max 无值（Value=nil）。
 func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, aggs []databases.AggregateSpec, groupBy string, principal databases.Principal) ([]databases.AggregateGroup, error) {
 	var groups []databases.AggregateGroup
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		gs, err := p.aggregateDocuments(txCtx, projectID, databaseID, collectionID, q, aggs, groupBy, principal)
 		if err != nil {
 			return err

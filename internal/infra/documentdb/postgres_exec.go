@@ -25,13 +25,54 @@ func execIdentityFor(principal databases.Principal) clients.ExecIdentity {
 	return clients.ExecIdentity{Role: clients.RoleApp, Roles: expanded}
 }
 
-// setDocumentACL 经 tw_set_document_acl（000029，SECURITY DEFINER owner=
-// tw_system，BYPASSRLS）替换文档 _acl——_acl 的变更通道唯一化为本函数
-//（应用身份直改的旁路从 INSERT/UPDATE 列授权封死，A6；BYPASSRLS 绕开
-// UPDATE 修改 SELECT policy 引用列的新行复检，自锁语义由此保留）。同事务、
-// 当前身份（tw_app，EXECUTE 已授）调用；p_table 在函数内经 catalog
-// physical_name 白名单校验（防注入）。返回受影响行数（调用方校验 ==1）。
+// execIdentity 是文档面入口的身份构建器（R16 ①）：在开启事务前解析项目
+// internal_id（resolveInternalID 有进程缓存）并填入 Tenant——sig 消息覆盖
+// tenant（tenant|roles|exp），tw_set_document_acl 强制 p_tenant = 验签 tenant，
+// 跨租户/跨项目在签名层死锁。解析失败时 Tenant=0：sig 仍自洽注入，但不会
+// 命中任何真实行的 _tenant（identity 序列自 1 起），且事务体内的
+// resolvePhysicalTable 会以真实错误先行返回——fail-closed。
+// 接线选择说明：未采用"把身份构建挪进事务体"（withDocumentTx 的 BEGIN 后
+// 首注依赖 ctx 身份先于 fn 存在，挪入需改全部入口的事务结构）；本包装在
+// 入口处多一次缓存读（首访一次 projects 点查），侵入最小。
+func (p *postgresDocumentDB) execIdentity(ctx context.Context, projectID string, principal databases.Principal) clients.ExecIdentity {
+	id := execIdentityFor(principal)
+	if id.Role != clients.RoleApp {
+		return id
+	}
+	if internalID, err := p.resolveInternalID(ctx, projectID); err == nil {
+		id.Tenant = internalID
+	}
+	return id
+}
+
+// setDocumentACL 替换文档 _acl（R16 收口后语义）：
+//   - tw_app 身份：经 tw_set_document_acl（000029 修订，SECURITY DEFINER
+//     owner=tw_system，BYPASSRLS 绕开 UPDATE 修改 SELECT policy 引用列的新行
+//     复检）。函数内两道强制校验：p_tenant = tw_tenant()（验签 tenant，跨
+//     租户/跨项目在签名层死锁）与目标行 tw_visible 可见性（堵项目内改他人
+//     ACL 提权读）；任一不满足 → 返回 0（= 无行可改）。合法路径不受影响：
+//     "可写即可读"使 update/upsert/bulk 的既有权限面 ⊆ tw_visible 面。
+//   - tw_system 身份（SystemPrincipal/PlatformAdmin 的 _acl 替换）：信任根
+//     直写 UPDATE——tw_system 无函数 EXECUTE（R16 ④ 收紧后仅 tw_app），且
+//     表级 ALL 不受列授权限制；BYPASSRLS 语义等价、无提权面（已持全权）。
+// p_table 在函数内经 catalog physical_name 白名单校验（防注入）。
 func (p *postgresDocumentDB) setDocumentACL(ctx context.Context, schema, physical string, tenant int64, docID string, perms []databases.Permission) error {
+	if id, ok := clients.ExecIdentityFrom(ctx); ok && id.Role == clients.RoleSystem {
+		res, err := p.conn(ctx).ExecContext(ctx,
+			fmt.Sprintf(`UPDATE %s SET %s = ?::text[] WHERE _id = ? AND _tenant = ?`, tableName(schema, physical), quoteIdent("_acl")),
+			aclParam(perms), docID, tenant)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("set document acl: expected 1 row, got %d", n)
+		}
+		return nil
+	}
 	var n int64
 	if err := p.conn(ctx).QueryRowContext(ctx,
 		`SELECT public.tw_set_document_acl(?, ?, ?, ?, ?::text[])`,

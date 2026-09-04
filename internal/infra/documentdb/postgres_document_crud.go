@@ -24,7 +24,7 @@ import (
 
 func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
 	var out databases.Document
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		created, err := p.createDocument(txCtx, projectID, databaseID, collectionID, doc, perms, principal)
 		if err != nil {
 			return err
@@ -42,7 +42,7 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 // 包 A）在同一事务内写入，无跨表权限步骤；权限写入失败导致文档 fail-open 的
 // 窗口从结构上消灭。
 func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
+	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return doc, err
 	}
@@ -88,9 +88,17 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 		placeholders += "?, ?"
 		args = append(args, createdBy, createdBy)
 	}
-	// _acl 不随 INSERT 携带（阶段③-b 包 C：INSERT 列授权已移除 _acl，行内
-	// DEFAULT '{}' 兜底空 ACL）；非空权限集在同事务内经 tw_set_document_acl
-	// 补设——数据与 ACE 仍同行同事务，原子性不变。
+	// _acl 随 INSERT 携带（R16 ③ 恢复通道：新行无旧行、可见性校验不适用，
+	// 内容治理在 app 层授予校验；INSERT 列授权已恢复 _acl）。
+	if len(perms) > 0 {
+		if columns != "" {
+			columns += ", "
+			placeholders += ", "
+		}
+		columns += quoteIdent("_acl")
+		placeholders += "?::text[]"
+		args = append(args, aclParam(perms))
+	}
 	args = append([]any{doc.ID}, args...)
 	allPlaceholders := "?"
 	if columns != "" {
@@ -103,11 +111,6 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 			return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 		}
 		return doc, fmt.Errorf("insert document: %w", err)
-	}
-	if len(perms) > 0 {
-		if err := p.setDocumentACL(ctx, schema, physical, internalID, doc.ID, perms); err != nil {
-			return doc, fmt.Errorf("seed document acl: %w", err)
-		}
 	}
 	created, err := p.GetDocument(ctx, projectID, databaseID, collectionID, doc.ID, databases.SystemPrincipal)
 	if err != nil {
@@ -146,7 +149,7 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		conflictCols = append(conflictCols, quoteIdent(col))
 	}
 	var out databases.Document
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		upserted, err := p.upsertDocument(txCtx, projectID, databaseID, collectionID, doc, conflictCols, conflictColumns, perms, principal)
 		if err != nil {
 			return err
@@ -272,8 +275,16 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 		args = append(args, createdBy, createdBy)
 	}
 	if targetID == "" {
-		// 插入支：_acl 不随 INSERT 携带（INSERT 列授权已移除，阶段③-b 包 C），
-		// 非空权限集随后经 tw_set_document_acl 补设（同事务）。
+		// 插入支：_acl 随 INSERT 携带（R16 ③ 恢复通道；INSERT 无旧行复检）。
+		if len(perms) > 0 {
+			if columns != "" {
+				columns += ", "
+				placeholders += ", "
+			}
+			columns += quoteIdent("_acl")
+			placeholders += "?::text[]"
+			args = append(args, aclParam(perms))
+		}
 		args = append([]any{doc.ID}, args...)
 		allPlaceholders := "?"
 		if columns != "" {
@@ -286,11 +297,6 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 				return doc, fmt.Errorf("%w: %s", ErrDuplicateKey, err.Error())
 			}
 			return doc, fmt.Errorf("upsert document: %w", err)
-		}
-		if len(perms) > 0 {
-			if err := p.setDocumentACL(ctx, schema, physical, internalID, doc.ID, perms); err != nil {
-				return doc, fmt.Errorf("seed upserted acl: %w", err)
-			}
 		}
 	} else {
 		// 更新支：数据 + 审计列盲写（不做 OCC），用户集合 _version +1；_acl 不进
@@ -367,7 +373,7 @@ func conflictLockKey(values []any) string {
 
 func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) (*databases.Document, error) {
 	var doc *databases.Document
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		got, err := p.getDocument(txCtx, projectID, databaseID, collectionID, docID, principal)
 		if err != nil {
 			return err
@@ -416,7 +422,7 @@ func (p *postgresDocumentDB) getDocument(ctx context.Context, projectID, databas
 
 func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, databaseID, collectionID string, update databases.DocumentUpdate, principal databases.Principal) (databases.Document, error) {
 	var out databases.Document
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		updated, err := p.updateDocument(txCtx, projectID, databaseID, collectionID, update, principal)
 		if err != nil {
 			return err
@@ -603,7 +609,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 }
 
 func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
-	return p.mapError(p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	return p.mapError(p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		return p.deleteDocument(txCtx, projectID, databaseID, collectionID, docID, opts, principal)
 	}))
 }

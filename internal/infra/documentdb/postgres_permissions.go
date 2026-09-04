@@ -312,7 +312,7 @@ func (p *postgresDocumentDB) BulkUpdateDocuments(
 	// 整体包在带执行身份的单个事务里（A1：每请求一事务），中途失败整体回滚
 	//（行为从"部分成功"收紧为"原子"）。
 	var affected int64
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		n, err := p.bulkUpdateDocuments(txCtx, projectID, databaseID, collectionID, documentIDs, data, perms, principal)
 		if err != nil {
 			return err
@@ -596,7 +596,7 @@ func (p *postgresDocumentDB) BulkDeleteDocuments(
 		return 0, nil
 	}
 	var affected int64
-	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		n, err := p.bulkDeleteDocuments(txCtx, projectID, databaseID, collectionID, documentIDs, principal)
 		if err != nil {
 			return err

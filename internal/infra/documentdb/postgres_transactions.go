@@ -49,7 +49,7 @@ func (p *postgresDocumentDB) ExecuteTransactions(
 	// 单文档写路径不置入（ctx 无值，Publish 读到空串）。
 	txCtx0 := domainevents.WithTransactionID(ctx, idgen.ULID().String())
 	// E1：RLS/GUC 一次注入（批首身份 = 请求 principal）、逐 op 判定。
-	err := p.withDocumentTx(txCtx0, execIdentityFor(principal), func(txCtx context.Context) error {
+	err := p.withDocumentTx(txCtx0, p.execIdentity(ctx, projectID, principal), func(txCtx context.Context) error {
 		// 批间死锁防护：对批内全部 op 目标（排序后）预取事务级 advisory 锁。
 		if err := p.lockTxTargets(txCtx, projectID, databaseID, ops); err != nil {
 			return err
