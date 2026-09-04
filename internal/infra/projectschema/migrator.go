@@ -17,9 +17,6 @@ import (
 //go:embed migrations/*.up.sql
 var migrationFS embed.FS
 
-// systemTablesCutVersion 是 000009：Exec 前必须在同一事务 CopySystemDocuments。
-const systemTablesCutVersion int64 = 9
-
 // readySchemas 缓存"该 Database 实例上该 project schema 已达最新迁移版本"。
 // 键含 *clients.Database 指针：测试进程内多套 testutil 库共用同一 projectID
 // 时不互相污染；生产每进程一个 Database 实例。迁移集是编译期 embed，新增
@@ -61,7 +58,10 @@ func Invalidate(db *clients.Database, projectID string) {
 	readySchemas.Delete(readyKey{db: db, projectID: projectID})
 }
 
-// ApplyUpTo 应用不超过 maxVersion 的迁移（maxVersion<=0 表示全部）。拷贝测试停在 000008。
+// ApplyUpTo 应用不超过 maxVersion 的迁移（maxVersion<=0 表示全部）。
+// 唯一非零调用方是 testutil：sentinel 系统集合测试面停在 000008——静态表
+// 保持 sys_* staging 名，腾出最终名给测试重建的旧文档表（生产全量 Apply，
+// 新库 000008+000009 同事务直达最终名）。
 func ApplyUpTo(ctx context.Context, db *clients.Database, projectID string, maxVersion int64) error {
 	return applyUpTo(ctx, db, projectID, maxVersion)
 }
@@ -130,11 +130,6 @@ CREATE TABLE IF NOT EXISTS %s.schema_migrations (
 			}
 			if maxVersion > 0 && f.version > maxVersion {
 				continue
-			}
-			if f.version == systemTablesCutVersion {
-				if err := CopySystemDocuments(txCtx, db, projectID); err != nil {
-					return fmt.Errorf("copy system documents before %s: %w", f.name, err)
-				}
 			}
 			body := strings.ReplaceAll(f.sql, "{{schema}}", quoted)
 			if _, err := db.Conn(txCtx).ExecContext(txCtx, body); err != nil {

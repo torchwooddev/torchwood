@@ -259,7 +259,7 @@ func TestCreateCollection_PhysicalNameReserved(t *testing.T) {
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", nil, nil, nil, true))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "comments", "Comments", nil, nil, nil, true))
-	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
+	require.NoError(t, testutil.SeedSystemDocumentCollections(ctx, db, docDB, projectID))
 
 	var phys []string
 	require.NoError(t, db.NewSelect().Model((*model.DocumentCollection)(nil)).

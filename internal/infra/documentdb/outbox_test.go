@@ -434,7 +434,7 @@ func TestOutbox_SystemCollectionNoRows(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 	docDB := NewPostgresDocumentDB(db, events.NewEventOutbox(db))
-	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
+	require.NoError(t, testutil.SeedSystemDocumentCollections(ctx, db, docDB, projectID))
 
 	_, err := docDB.CreateDocument(ctx, projectID, databases.SystemDatabaseID, "users", databases.Document{
 		ID:   "u1",

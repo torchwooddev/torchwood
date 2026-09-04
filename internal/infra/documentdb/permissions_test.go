@@ -389,7 +389,7 @@ func TestPermissions_KeysCannotWriteSystemCollections(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
+	require.NoError(t, testutil.SeedSystemDocumentCollections(ctx, db, docDB, projectID))
 
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 

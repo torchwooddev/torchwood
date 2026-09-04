@@ -94,37 +94,9 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 // EnsureCatalog 对项目数据面执行 projectschema.Apply。职责已收缩（阶段②包 A）：
 // catalog 元数据在 public 全局两表（000025），此处仅确保项目 schema 存在——
 // sentinel 系统集合的物理表寄居 tw_<project>，建集合前必须就绪；业务库两段式
-// schema 与项目数据面无依赖，不走本函数。sys_users 仍在时跳过 Apply，
-// 避免把 staging 表提前 rename 成最终名。
+// schema 与项目数据面无依赖，不走本函数。
 func (p *postgresDocumentDB) EnsureCatalog(ctx context.Context, projectID string) error {
-	staging, err := p.systemTablesStaging(ctx, projectID)
-	if err != nil {
-		return p.mapError(err)
-	}
-	if staging {
-		return nil
-	}
 	return p.mapError(mapIdentError(projectschema.Apply(ctx, p.db, projectID)))
-}
-
-// systemTablesStaging 探测 sys_users 仍在（000008 已应用、000009 未应用）。
-// 此时 EnsureCatalog 不得 Apply 后续迁移。
-func (p *postgresDocumentDB) systemTablesStaging(ctx context.Context, projectID string) (bool, error) {
-	schema, err := ident.ProjectSchemaName(projectID)
-	if err != nil {
-		return false, p.mapError(mapIdentError(err))
-	}
-	var has bool
-	err = p.conn(ctx).QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1 FROM information_schema.tables
-  WHERE table_schema = ? AND table_name = 'sys_users'
-)
-`, schema).Scan(&has)
-	if err != nil {
-		return false, p.mapError(err)
-	}
-	return has, nil
 }
 
 // documentSchema 解析文档读写 / CreateCollection 的目标 schema。

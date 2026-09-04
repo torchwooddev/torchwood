@@ -10,22 +10,23 @@ import (
 	"github.com/torchwooddev/torchwood/pkg/ident"
 )
 
-type legacySystemDocumentSpec struct {
+type systemDocumentSpec struct {
 	name        string
 	attrs       []databases.Attribute
 	indexes     []databases.Index
 	permissions []databases.Permission
 }
 
-// SeedLegacySystemDocumentCollections 在 sentinel 上建七张旧文档表，仅供测试。
-func SeedLegacySystemDocumentCollections(ctx context.Context, db *clients.Database, docDB databases.DocumentDB, projectID string) error {
+// SeedSystemDocumentCollections 在 sentinel 上重建七张系统集合文档表，
+// 仅供测试（生产系统资源是静态表，不走文档面；见 06-databases §0）。
+func SeedSystemDocumentCollections(ctx context.Context, db *clients.Database, docDB databases.DocumentDB, projectID string) error {
 	now := time.Now()
 	m := &model.DocumentDatabase{ProjectID: projectID, DatabaseID: ident.ProjectDataPlaneID, Name: "(project)", CreatedAt: now, UpdatedAt: now}
 	if _, err := db.NewInsert().Model(m).
 		On("CONFLICT (project_id, database_id) DO NOTHING").Exec(ctx); err != nil {
 		return err
 	}
-	specs := legacySystemDocumentSpecs()
+	specs := systemDocumentSpecs()
 	for _, id := range databases.SystemCollectionIDs {
 		spec := specs[id]
 		if err := docDB.CreateCollection(ctx, projectID, databases.SystemDatabaseID, id, spec.name, spec.attrs, spec.indexes, spec.permissions, true); err != nil {
@@ -35,8 +36,8 @@ func SeedLegacySystemDocumentCollections(ctx context.Context, db *clients.Databa
 	return nil
 }
 
-func legacySystemDocumentSpecs() map[string]legacySystemDocumentSpec {
-	return map[string]legacySystemDocumentSpec{
+func systemDocumentSpecs() map[string]systemDocumentSpec {
+	return map[string]systemDocumentSpec{
 		"users": {
 			name: "users",
 			attrs: []databases.Attribute{

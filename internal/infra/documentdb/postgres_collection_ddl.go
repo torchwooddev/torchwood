@@ -30,7 +30,10 @@ const physicalNameAllocAttempts = 8
 
 func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, databaseID, collectionID, name string, attrs []databases.Attribute, idxs []databases.Index, perms []databases.Permission, documentSecurity bool) error {
 	// sentinel 只允许系统名单集合（测试重建旧文档表）；生产入口已
-	// RejectExternalDatabaseID，不得对 "_" 建业务集合。
+	// RejectExternalDatabaseID，不得对 "_" 建业务集合。测试播种走停 000008
+	// 的 fixture（静态表保持 sys_* staging 名），此处不做 EnsureCatalog——
+	// Apply 会执行 000009 把 sys_* rename 成最终名，与播种表撞名；schema
+	// 就绪由 fixture 的 ApplyUpTo / CreateProject 全量 Apply 保证。
 	if databaseID == ident.ProjectDataPlaneID && !databases.IsSystemCollectionID(collectionID) {
 		return status.Error(codes.InvalidArgument, "only system collections may be created in the project data plane")
 	}
@@ -57,14 +60,6 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	}
 	if err := validateIndexNameLen(collectionID, "tenant_created"); err != nil {
 		return p.mapError(err)
-	}
-	// sentinel 集合的物理表寄居项目数据面（tw_<project>.users 等静态表/
-	// 测试重建的旧文档表），建集合前须确保项目 schema 就绪；业务库两段式
-	// schema 与项目数据面无依赖。
-	if databaseID == ident.ProjectDataPlaneID {
-		if err := p.EnsureCatalog(ctx, projectID); err != nil {
-			return p.mapError(err)
-		}
 	}
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {

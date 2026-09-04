@@ -28,7 +28,7 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 	defer cleanup()
 
 	docDB := NewPostgresDocumentDB(db, nil)
-	require.NoError(t, testutil.SeedLegacySystemDocumentCollections(ctx, db, docDB, projectID))
+	require.NoError(t, testutil.SeedSystemDocumentCollections(ctx, db, docDB, projectID))
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},

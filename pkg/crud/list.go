@@ -166,12 +166,6 @@ func CalculateHasMoreWithResult(resultCount int, pageSize int32) bool {
 	return resultCount >= int(pageSize)
 }
 
-// PageTokenInfo represents decoded page token information
-type PageTokenInfo struct {
-	Offset int            `json:"offset"`
-	Token  *PageTokenData `json:"token,omitempty"`
-}
-
 // ValidatePageTokenForRequest validates that a page token is appropriate
 // for the current request context
 func ValidatePageTokenForRequest(
@@ -185,17 +179,17 @@ func ValidatePageTokenForRequest(
 	}
 
 	// Decode and validate the token structure
-	info, err := DecodeAndValidatePageToken(pageToken)
+	data, err := DecodePageTokenFull(pageToken)
 	if err != nil {
 		return err
 	}
-	if info.Token != nil {
+	if data != nil {
 		canonicalOrderBy := strings.TrimSpace(strings.ToLower(orderBy))
-		if info.Token.OrderBy != "" && strings.TrimSpace(strings.ToLower(info.Token.OrderBy)) != canonicalOrderBy {
+		if data.OrderBy != "" && strings.TrimSpace(strings.ToLower(data.OrderBy)) != canonicalOrderBy {
 			return fmt.Errorf("order_by must match the original request when using page_token")
 		}
 		filterDigest := FilterDigest(filter)
-		if info.Token.FilterDigest != "" && info.Token.FilterDigest != filterDigest {
+		if data.FilterDigest != "" && data.FilterDigest != filterDigest {
 			return fmt.Errorf("filter must match the original request when using page_token")
 		}
 	}
@@ -210,7 +204,6 @@ func ValidatePageTokenForRequest(
 		}
 	}
 
-	_ = info // Reserved for future use
 	return nil
 }
 

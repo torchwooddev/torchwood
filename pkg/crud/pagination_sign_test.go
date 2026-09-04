@@ -3,7 +3,9 @@ package crud
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -97,48 +99,49 @@ func TestParseListParamsRejectsOffsetBeyondMax(t *testing.T) {
 func TestParseListParamsBindsOrderByAndFilter(t *testing.T) {
 	resetSigning(t, "master-secret-for-tests-0123456789")
 
-	params := ListParams{PageSize: 10, Offset: 10, Filter: `name equal "a"`, OrderBy: "created_at DESC"}
-	next, prev := GeneratePageTokens(params, 10, 100)
-	require.NotEmpty(t, next)
-	require.NotEmpty(t, prev)
+	filter := `name equal "a"`
+	orderBy := "created_at DESC"
+	next := mintBoundToken(10, 10, filter, orderBy)
+	prev := mintBoundToken(0, 10, filter, orderBy)
 
-	_, err := ParseListParams(10, next, params.Filter, params.OrderBy)
+	_, err := ParseListParams(10, next, filter, orderBy)
 	require.NoError(t, err)
 
 	// 换 filter 复用旧 token 必须被拒（09-api-guide 声称的防护由此变为真实）。
-	_, err = ParseListParams(10, next, `name equal "b"`, params.OrderBy)
+	_, err = ParseListParams(10, next, `name equal "b"`, orderBy)
 	require.ErrorContains(t, err, "filter must match")
 
 	// 换 order_by 同理。
-	_, err = ParseListParams(10, next, params.Filter, "name ASC")
+	_, err = ParseListParams(10, next, filter, "name ASC")
 	require.ErrorContains(t, err, "order_by must match")
 
-	_, err = ParseListParams(10, prev, params.Filter, params.OrderBy)
+	_, err = ParseListParams(10, prev, filter, orderBy)
 	require.NoError(t, err)
 }
 
-func TestGeneratePreviousPageTokenCarriesBinding(t *testing.T) {
-	resetSigning(t, "master-secret-for-tests-0123456789")
-
-	params := ListParams{PageSize: 10, Offset: 30, Filter: `status equal 1`, OrderBy: "id ASC"}
-	prev := GeneratePreviousPageToken(params)
-	require.NotEmpty(t, prev)
-
-	_, err := ParseListParams(10, prev, "", "")
-	require.Error(t, err)
-	got, err := ParseListParams(10, prev, params.Filter, params.OrderBy)
-	require.NoError(t, err)
-	require.Equal(t, 20, got.Offset)
+// mintBoundToken 手工铸造带 order_by/filter 绑定的 token，覆盖
+// ParseListParams 的跨页一致性校验路径（生产侧 EncodePageToken 仅签发
+// offset-only token，不携带绑定字段）。
+func mintBoundToken(offset int, pageSize int32, filter, orderBy string) string {
+	data := PageTokenData{
+		Version:      PageTokenVersion,
+		Mode:         TokenModeLegacy,
+		Offset:       offset,
+		Created:      time.Now().UTC(),
+		PageSize:     pageSize,
+		OrderBy:      strings.TrimSpace(orderBy),
+		FilterDigest: FilterDigest(filter),
+	}
+	seal(&data)
+	return encodeTokenData(data)
 }
 
-func TestLegacyColonTokenOnlyAcceptedWithoutSigning(t *testing.T) {
-	// 未启用签名的进程：历史 "v1:offset" 格式保持可解析（带弃用告警）。
+func TestLegacyColonTokenRejected(t *testing.T) {
+	// 历史 "v1:offset" 简单格式已退役：无论进程是否启用签名都不可解析。
 	resetSigning(t, "")
-	offset, err := DecodePageToken("v1:77")
-	require.NoError(t, err)
-	require.Equal(t, 77, offset)
+	_, err := DecodePageToken("v1:77")
+	require.Error(t, err)
 
-	// 已启用签名的进程：无法携带签名的 legacy 格式必须被拒（fail-closed）。
 	resetSigning(t, "master-secret-for-tests-0123456789")
 	_, err = DecodePageToken("v1:77")
 	require.Error(t, err)
