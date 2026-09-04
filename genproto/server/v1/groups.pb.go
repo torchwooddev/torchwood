@@ -563,11 +563,13 @@ func (x *CreateMembershipRequest) GetStatus() string {
 }
 
 type ListMembershipsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GroupId       string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
-	Queries       []string               `protobuf:"bytes,2,rep,name=queries,proto3" json:"queries,omitempty"`
-	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	GroupId string                 `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	// 不支持：groups 面不消费查询过滤，携带即 InvalidArgument（服务端显式
+	// 拒绝，不再静默忽略）。成员定位用 group_id 路径参数 + 分页。
+	Queries       []string `protobuf:"bytes,2,rep,name=queries,proto3" json:"queries,omitempty"`
+	PageSize      int32    `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string   `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

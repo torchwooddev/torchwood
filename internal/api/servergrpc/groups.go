@@ -48,6 +48,10 @@ func (s *GroupsService) ListGroups(ctx context.Context, req *sharedv1.ListReques
 	if err := rejectListFilterOrderBy(req); err != nil {
 		return nil, err
 	}
+	// groups 面不消费查询过滤：显式拒绝（R12b，同 storage 法），不再静默忽略。
+	if err := rejectListQueries(req.GetQueries()); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
@@ -151,6 +155,11 @@ func (s *GroupsService) CreateMembership(ctx context.Context, req *serverv1.Crea
 }
 
 func (s *GroupsService) ListMemberships(ctx context.Context, req *serverv1.ListMembershipsRequest) (*serverv1.ListMembershipsResponse, error) {
+	// groups 面不消费查询过滤：显式拒绝（R12b，同 storage 法）；成员定位走
+	// group_id 路径参数。
+	if err := rejectListQueries(req.GetQueries()); err != nil {
+		return nil, err
+	}
 	projectID := s.projectID(ctx)
 	if projectID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing project context")
