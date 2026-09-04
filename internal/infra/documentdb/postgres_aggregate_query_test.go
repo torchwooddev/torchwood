@@ -85,3 +85,73 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 	}, aggs, "", bob)
 	require.NoError(t, err)
 }
+
+// TestCountAndAggregate_RejectNonFilterOperators（返工 R9）：整集语义对排序/
+// 分页算子显式拒绝（keyset-only 收敛后 count/aggregate 是最后两处静默 no-op，
+// 违背 §4.1 显式拒绝原则）。
+func TestCountAndAggregate_RejectNonFilterOperators(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
+	defer cleanup()
+
+	docDB := NewPostgresDocumentDB(db, nil)
+	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+		{ID: "views", Key: "views", Type: "integer"},
+	}, nil, []databases.Permission{{Type: "read", Role: "any"}}, true))
+
+	bob := databases.Principal{Roles: []string{"users", "user:u1"}}
+	aggs := []databases.AggregateSpec{{Function: databases.AggregateSum, Field: "views"}}
+	assertRejected := func(t *testing.T, err error) {
+		t.Helper()
+		require.Error(t, err)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Contains(t, status.Convert(err).Message(), "not supported on")
+	}
+
+	// count：orderAsc / limit / cursor / page token。
+	_, err := docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("title","x")`, `orderAsc("views")`},
+	}, bob)
+	assertRejected(t, err)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`limit(10)`},
+	}, bob)
+	assertRejected(t, err)
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries:   []string{`cursorAfter("doc-1")`},
+		PageToken: "ka:doc-1",
+	}, bob)
+	assertRejected(t, err)
+
+	// aggregate：orderDesc / limit / page token。
+	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`orderDesc("views")`},
+	}, aggs, "", bob)
+	assertRejected(t, err)
+	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("title","x")`, `limit(5)`},
+	}, aggs, "", bob)
+	assertRejected(t, err)
+	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
+		PageToken: "ka:doc-1",
+	}, aggs, "", bob)
+	assertRejected(t, err)
+
+	// 纯过滤不受影响（count 与 aggregate 均可走通）。
+	_, err = docDB.CountDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("title","x")`},
+	}, bob)
+	require.NoError(t, err)
+	_, err = docDB.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{
+		Queries: []string{`equal("title","x")`},
+	}, aggs, "", bob)
+	require.NoError(t, err)
+}

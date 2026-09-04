@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	"github.com/torchwooddev/torchwood/pkg/query"
 )
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
@@ -252,9 +253,10 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 		return 0, p.mapError(err)
 	}
 	// keyset-only（C2 收敛）：count 是过滤全集语义，offset() 无意义且原先
-	// 仅作深翻页上限校验——显式拒绝（不再静默忽略）。
-	if parsed.Offset != 0 {
-		return 0, p.mapError(status.Error(codes.InvalidArgument, "offset() is not supported; count is over the full filtered set"))
+	// 仅作深翻页上限校验——显式拒绝（不再静默忽略）。排序/分页算子同理
+	//（R9：静默 no-op 违背 §4.1 显式拒绝原则）。
+	if err := rejectNonFilterOperators(parsed, q.PageToken, "count"); err != nil {
+		return 0, p.mapError(err)
 	}
 	tbl := tableName(schema, collectionID)
 
@@ -361,6 +363,11 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 	if err != nil {
 		return nil, p.mapError(err)
 	}
+	// 整集语义只消费过滤算子：排序/分页算子显式拒绝（R9，§4.1 显式拒绝
+	// 原则——keyset-only 后这是最后两处静默 no-op）。
+	if err := rejectNonFilterOperators(parsed, q.PageToken, "aggregate"); err != nil {
+		return nil, p.mapError(err)
+	}
 	// 过滤/排序字段白名单与兄弟路径（List/Count）同源校验（R6）：未声明列
 	// 不落 PG 42703、search 需 fulltext 索引、$version 过 readiness 检查。
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
@@ -380,8 +387,7 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 			args = append(args, permArgs...)
 		}
 	}
-	// 聚合只消费过滤算子；排序/分页算子无意义（与 CountDocuments 同纪律，
-	// 排序在 buildAppwriteQuery 出口校验后丢弃）。
+	// 聚合只消费过滤算子；排序/分页已在 rejectNonFilterOperators 显式拒绝。
 	filterWhere, filterArgs, _, err := buildAppwriteQuery(parsed)
 	if err != nil {
 		return nil, p.mapError(err)
@@ -464,6 +470,18 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 		groups = append(groups, g)
 	}
 	return groups, nil
+}
+
+// rejectNonFilterOperators 拒绝对整集语义（count/aggregate）无意义的排序/
+// 分页算子（R9）：keyset-only 收敛后这是最后两处静默 no-op，违背 §4.1
+// 显式拒绝原则。kind 仅用于错误消息（"count"/"aggregate"）。
+func rejectNonFilterOperators(parsed *query.Query, pageToken, kind string) error {
+	if len(parsed.Orders) > 0 || parsed.Limit != 0 || parsed.Offset != 0 ||
+		parsed.CursorAfter != "" || parsed.CursorBefore != "" || pageToken != "" {
+		return status.Error(codes.InvalidArgument,
+			fmt.Sprintf("orders and pagination are not supported on %s; use list queries", kind))
+	}
+	return nil
 }
 
 // validColumnName 限制字段名为安全的小写标识符（防 SQL 注入）。
