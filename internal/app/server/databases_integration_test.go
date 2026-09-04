@@ -337,7 +337,7 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	groupPrincipal := databases.Principal{Roles: []string{"users", "user:alice", "group:t1"}}
 	upPerms, err := databases.ParsePermissionStrings([]string{"update:group:{id}"})
 	require.NoError(t, err)
-	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "docs", created.ID, nil, upPerms, nil, groupPrincipal, &created.Version, "")
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "docs", created.ID, nil, upPerms, nil, nil, groupPrincipal, &created.Version, "")
 	require.NoError(t, err)
 	require.Len(t, updated.Permissions, 1)
 	require.Equal(t, "update", updated.Permissions[0].Type)
@@ -351,7 +351,7 @@ func TestDatabases_CreateDocument_PermissionTemplates(t *testing.T) {
 	require.NoError(t, err)
 	ownUpPerms, err := databases.ParsePermissionStrings([]string{"update:user:{id}"})
 	require.NoError(t, err)
-	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "docs", readOnly.ID, nil, ownUpPerms, nil, userPrincipal, &readOnly.Version, "")
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "docs", readOnly.ID, nil, ownUpPerms, nil, nil, userPrincipal, &readOnly.Version, "")
 	require.Error(t, err)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }
@@ -579,23 +579,23 @@ func TestDatabases_Document_Increment(t *testing.T) {
 	require.NoError(t, err)
 
 	// +5 → 15
-	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 5}, principal, &created.Version, "")
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 5}, nil, principal, &created.Version, "")
 	require.NoError(t, err)
 	require.EqualValues(t, 15, updated.Data["views"])
 	require.Equal(t, "hello", updated.Data["title"], "increment 不覆盖其他字段")
 
 	// -3 → 12
-	updated, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": -3}, principal, &updated.Version, "")
+	updated, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": -3}, nil, principal, &updated.Version, "")
 	require.NoError(t, err)
 	require.EqualValues(t, 12, updated.Data["views"])
 
 	// 0 增量无字段可更新 → InvalidArgument（前端 Console 已过滤 0 增量）
-	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 0}, principal, &updated.Version, "")
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, map[string]int64{"views": 0}, nil, principal, &updated.Version, "")
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	// 空 data/permissions/increment 三选一校验
-	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, nil, principal, &updated.Version, "")
+	// 空 data/permissions/increment/array_updates 四选一校验
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "stats", created.ID, nil, nil, nil, nil, principal, &updated.Version, "")
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

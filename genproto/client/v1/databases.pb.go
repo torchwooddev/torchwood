@@ -125,7 +125,10 @@ type UpdateDocumentRequest struct {
 	// 用户集合强制 OCC：必须与当前行 _version 相等；未设置 = version_required。
 	Version *int64 `protobuf:"varint,7,opt,name=version,proto3,oneof" json:"version,omitempty"`
 	// 写幂等键，语义同 CreateDocumentRequest.request_id。
-	RequestId     *string `protobuf:"bytes,8,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	RequestId *string `protobuf:"bytes,8,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	// 数组列原子更新（§10.5 P0，仅 array=true 属性；与 data/increment 组合时
+	// 同列冲突 → InvalidArgument）。
+	ArrayUpdates  map[string]*v1.ArrayUpdate `protobuf:"bytes,9,rep,name=array_updates,json=arrayUpdates,proto3" json:"array_updates,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -214,6 +217,13 @@ func (x *UpdateDocumentRequest) GetRequestId() string {
 		return *x.RequestId
 	}
 	return ""
+}
+
+func (x *UpdateDocumentRequest) GetArrayUpdates() map[string]*v1.ArrayUpdate {
+	if x != nil {
+		return x.ArrayUpdates
+	}
+	return nil
 }
 
 type UpsertDocumentRequest struct {
@@ -866,7 +876,7 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\"\n" +
 	"\n" +
 	"request_id\x18\x06 \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
-	"\v_request_id\"\xc2\x03\n" +
+	"\v_request_id\"\x88\x05\n" +
 	"\x15UpdateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -878,10 +888,14 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"\tincrement\x18\x06 \x03(\v29.torchwood.client.v1.UpdateDocumentRequest.IncrementEntryR\tincrement\x12\x1d\n" +
 	"\aversion\x18\a \x01(\x03H\x00R\aversion\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"request_id\x18\b \x01(\tH\x01R\trequestId\x88\x01\x01\x1a<\n" +
+	"request_id\x18\b \x01(\tH\x01R\trequestId\x88\x01\x01\x12a\n" +
+	"\rarray_updates\x18\t \x03(\v2<.torchwood.client.v1.UpdateDocumentRequest.ArrayUpdatesEntryR\farrayUpdates\x1a<\n" +
 	"\x0eIncrementEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01B\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\x1aa\n" +
+	"\x11ArrayUpdatesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x126\n" +
+	"\x05value\x18\x02 \x01(\v2 .torchwood.shared.v1.ArrayUpdateR\x05value:\x028\x01B\n" +
 	"\n" +
 	"\b_versionB\r\n" +
 	"\v_request_id\"\xab\x02\n" +
@@ -989,7 +1003,7 @@ func file_client_v1_databases_proto_rawDescGZIP() []byte {
 	return file_client_v1_databases_proto_rawDescData
 }
 
-var file_client_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_client_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_client_v1_databases_proto_goTypes = []any{
 	(*CreateDocumentRequest)(nil),  // 0: torchwood.client.v1.CreateDocumentRequest
 	(*UpdateDocumentRequest)(nil),  // 1: torchwood.client.v1.UpdateDocumentRequest
@@ -1003,44 +1017,48 @@ var file_client_v1_databases_proto_goTypes = []any{
 	(*ListChangesRequest)(nil),     // 9: torchwood.client.v1.ListChangesRequest
 	(*ListChangesResponse)(nil),    // 10: torchwood.client.v1.ListChangesResponse
 	nil,                            // 11: torchwood.client.v1.UpdateDocumentRequest.IncrementEntry
-	(*structpb.Struct)(nil),        // 12: google.protobuf.Struct
-	(*v1.Query)(nil),               // 13: torchwood.shared.v1.Query
-	(*v1.Document)(nil),            // 14: torchwood.shared.v1.Document
-	(*v1.ListResponseMeta)(nil),    // 15: torchwood.shared.v1.ListResponseMeta
-	(*v1.Change)(nil),              // 16: torchwood.shared.v1.Change
-	(*v1.Empty)(nil),               // 17: torchwood.shared.v1.Empty
+	nil,                            // 12: torchwood.client.v1.UpdateDocumentRequest.ArrayUpdatesEntry
+	(*structpb.Struct)(nil),        // 13: google.protobuf.Struct
+	(*v1.Query)(nil),               // 14: torchwood.shared.v1.Query
+	(*v1.Document)(nil),            // 15: torchwood.shared.v1.Document
+	(*v1.ListResponseMeta)(nil),    // 16: torchwood.shared.v1.ListResponseMeta
+	(*v1.Change)(nil),              // 17: torchwood.shared.v1.Change
+	(*v1.ArrayUpdate)(nil),         // 18: torchwood.shared.v1.ArrayUpdate
+	(*v1.Empty)(nil),               // 19: torchwood.shared.v1.Empty
 }
 var file_client_v1_databases_proto_depIdxs = []int32{
-	12, // 0: torchwood.client.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
-	12, // 1: torchwood.client.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
+	13, // 0: torchwood.client.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
+	13, // 1: torchwood.client.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
 	11, // 2: torchwood.client.v1.UpdateDocumentRequest.increment:type_name -> torchwood.client.v1.UpdateDocumentRequest.IncrementEntry
-	12, // 3: torchwood.client.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
-	13, // 4: torchwood.client.v1.ListDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
-	14, // 5: torchwood.client.v1.ListDocumentsResponse.documents:type_name -> torchwood.shared.v1.Document
-	15, // 6: torchwood.client.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	13, // 7: torchwood.client.v1.CountDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
-	16, // 8: torchwood.client.v1.ListChangesResponse.changes:type_name -> torchwood.shared.v1.Change
-	0,  // 9: torchwood.client.v1.DatabasesService.CreateDocument:input_type -> torchwood.client.v1.CreateDocumentRequest
-	5,  // 10: torchwood.client.v1.DatabasesService.ListDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
-	3,  // 11: torchwood.client.v1.DatabasesService.GetDocument:input_type -> torchwood.client.v1.GetDocumentRequest
-	1,  // 12: torchwood.client.v1.DatabasesService.UpdateDocument:input_type -> torchwood.client.v1.UpdateDocumentRequest
-	2,  // 13: torchwood.client.v1.DatabasesService.UpsertDocument:input_type -> torchwood.client.v1.UpsertDocumentRequest
-	4,  // 14: torchwood.client.v1.DatabasesService.DeleteDocument:input_type -> torchwood.client.v1.DeleteDocumentRequest
-	7,  // 15: torchwood.client.v1.DatabasesService.CountDocuments:input_type -> torchwood.client.v1.CountDocumentsRequest
-	9,  // 16: torchwood.client.v1.DatabasesService.ListChanges:input_type -> torchwood.client.v1.ListChangesRequest
-	14, // 17: torchwood.client.v1.DatabasesService.CreateDocument:output_type -> torchwood.shared.v1.Document
-	6,  // 18: torchwood.client.v1.DatabasesService.ListDocuments:output_type -> torchwood.client.v1.ListDocumentsResponse
-	14, // 19: torchwood.client.v1.DatabasesService.GetDocument:output_type -> torchwood.shared.v1.Document
-	14, // 20: torchwood.client.v1.DatabasesService.UpdateDocument:output_type -> torchwood.shared.v1.Document
-	14, // 21: torchwood.client.v1.DatabasesService.UpsertDocument:output_type -> torchwood.shared.v1.Document
-	17, // 22: torchwood.client.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
-	8,  // 23: torchwood.client.v1.DatabasesService.CountDocuments:output_type -> torchwood.client.v1.CountDocumentsResponse
-	10, // 24: torchwood.client.v1.DatabasesService.ListChanges:output_type -> torchwood.client.v1.ListChangesResponse
-	17, // [17:25] is the sub-list for method output_type
-	9,  // [9:17] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	12, // 3: torchwood.client.v1.UpdateDocumentRequest.array_updates:type_name -> torchwood.client.v1.UpdateDocumentRequest.ArrayUpdatesEntry
+	13, // 4: torchwood.client.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
+	14, // 5: torchwood.client.v1.ListDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
+	15, // 6: torchwood.client.v1.ListDocumentsResponse.documents:type_name -> torchwood.shared.v1.Document
+	16, // 7: torchwood.client.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	14, // 8: torchwood.client.v1.CountDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
+	17, // 9: torchwood.client.v1.ListChangesResponse.changes:type_name -> torchwood.shared.v1.Change
+	18, // 10: torchwood.client.v1.UpdateDocumentRequest.ArrayUpdatesEntry.value:type_name -> torchwood.shared.v1.ArrayUpdate
+	0,  // 11: torchwood.client.v1.DatabasesService.CreateDocument:input_type -> torchwood.client.v1.CreateDocumentRequest
+	5,  // 12: torchwood.client.v1.DatabasesService.ListDocuments:input_type -> torchwood.client.v1.ListDocumentsRequest
+	3,  // 13: torchwood.client.v1.DatabasesService.GetDocument:input_type -> torchwood.client.v1.GetDocumentRequest
+	1,  // 14: torchwood.client.v1.DatabasesService.UpdateDocument:input_type -> torchwood.client.v1.UpdateDocumentRequest
+	2,  // 15: torchwood.client.v1.DatabasesService.UpsertDocument:input_type -> torchwood.client.v1.UpsertDocumentRequest
+	4,  // 16: torchwood.client.v1.DatabasesService.DeleteDocument:input_type -> torchwood.client.v1.DeleteDocumentRequest
+	7,  // 17: torchwood.client.v1.DatabasesService.CountDocuments:input_type -> torchwood.client.v1.CountDocumentsRequest
+	9,  // 18: torchwood.client.v1.DatabasesService.ListChanges:input_type -> torchwood.client.v1.ListChangesRequest
+	15, // 19: torchwood.client.v1.DatabasesService.CreateDocument:output_type -> torchwood.shared.v1.Document
+	6,  // 20: torchwood.client.v1.DatabasesService.ListDocuments:output_type -> torchwood.client.v1.ListDocumentsResponse
+	15, // 21: torchwood.client.v1.DatabasesService.GetDocument:output_type -> torchwood.shared.v1.Document
+	15, // 22: torchwood.client.v1.DatabasesService.UpdateDocument:output_type -> torchwood.shared.v1.Document
+	15, // 23: torchwood.client.v1.DatabasesService.UpsertDocument:output_type -> torchwood.shared.v1.Document
+	19, // 24: torchwood.client.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
+	8,  // 25: torchwood.client.v1.DatabasesService.CountDocuments:output_type -> torchwood.client.v1.CountDocumentsResponse
+	10, // 26: torchwood.client.v1.DatabasesService.ListChanges:output_type -> torchwood.client.v1.ListChangesResponse
+	19, // [19:27] is the sub-list for method output_type
+	11, // [11:19] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_client_v1_databases_proto_init() }
@@ -1058,7 +1076,7 @@ func file_client_v1_databases_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_client_v1_databases_proto_rawDesc), len(file_client_v1_databases_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

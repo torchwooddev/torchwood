@@ -69,11 +69,11 @@ func TestCreateDocument_GrantRequiresHeldRole(t *testing.T) {
 
 func TestUpdateDocument_VersionRequired(t *testing.T) {
 	core := New(newMemDocDB(), nil)
-	_, _, err := core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, nil, "", WriteOptions{})
+	_, _, err := core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, nil, databases.Principal{}, nil, "", WriteOptions{})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	// Phase 1 裁决②：显式 0 与缺省不同码——InvalidArgument / version_invalid。
 	zero := int64(0)
-	_, _, err = core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, databases.Principal{}, &zero, "", WriteOptions{})
+	_, _, err = core.UpdateDocument(context.Background(), "p", "app", "notes", "d1", map[string]any{"t": 1}, nil, nil, nil, databases.Principal{}, &zero, "", WriteOptions{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "version_invalid")
 }

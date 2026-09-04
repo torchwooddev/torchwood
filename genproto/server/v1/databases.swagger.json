@@ -795,6 +795,38 @@
             "collectionFormat": "multi"
           },
           {
+            "name": "query.filter.contains_any.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.contains_any.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.contains_all.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.contains_all.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
             "name": "query.page_size",
             "in": "query",
             "required": false,
@@ -1527,6 +1559,38 @@
             "collectionFormat": "multi"
           },
           {
+            "name": "query.filter.contains_any.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.contains_any.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.filter.contains_all.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.filter.contains_all.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
             "name": "query.page_size",
             "in": "query",
             "required": false,
@@ -2081,6 +2145,13 @@
         "request_id": {
           "type": "string",
           "title": "写幂等键，语义同 CreateDocumentRequest.request_id。"
+        },
+        "array_updates": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/v1ArrayUpdate"
+          },
+          "title": "数组列原子更新（§10.5 P0，仅 array=true 属性；与 data/increment 组合时\n同列冲突 → InvalidArgument）。"
         }
       }
     },
@@ -2214,6 +2285,34 @@
         }
       },
       "title": "单个聚合值（类型化，预决策 5）：integer 属性的 sum/min/max → int64_value\n（int64 精度，\u003e2^53 精确）；avg 恒 double_value；float 属性恒 double_value。\noneof 未设置 = 空集下的 avg/min/max（无值；sum 空集按属性类型返回 0）。\n旧 double value 字段已退役（POC 无兼容期）。"
+    },
+    "v1ArrayUpdate": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "$ref": "#/definitions/v1ArrayUpdateOp"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "title": "ArrayUpdate 是单个数组列的原子更新（UpdateDocumentRequest.array_updates\n的 map 值）。APPEND/PREPEND/REMOVE 要求 values \u003e= 1。"
+    },
+    "v1ArrayUpdateOp": {
+      "type": "string",
+      "enum": [
+        "ARRAY_UPDATE_OP_UNSPECIFIED",
+        "ARRAY_UPDATE_OP_APPEND",
+        "ARRAY_UPDATE_OP_PREPEND",
+        "ARRAY_UPDATE_OP_REMOVE",
+        "ARRAY_UPDATE_OP_UNIQUE"
+      ],
+      "default": "ARRAY_UPDATE_OP_UNSPECIFIED",
+      "description": "- ARRAY_UPDATE_OP_APPEND: APPEND 尾插：col = col || values。\n - ARRAY_UPDATE_OP_PREPEND: PREPEND 头插：col = values || col。\n - ARRAY_UPDATE_OP_REMOVE: REMOVE 差集移除：移空后为空数组（非 NULL）；NULL 列保持 NULL。\n - ARRAY_UPDATE_OP_UNIQUE: UNIQUE 去重（保持首次出现顺序）；values 被忽略。",
+      "title": "ArrayUpdateOp 是数组列的原子更新算子（§10.5 P0 写侧；仅 array=true 属性\n可用）。全部编译为单语句 SET 子句，与 data/increment 可组合，OCC 不变。"
     },
     "v1Attribute": {
       "type": "object",
@@ -2545,6 +2644,13 @@
           "$ref": "#/definitions/v1Comparison"
         },
         "not_search": {
+          "$ref": "#/definitions/v1Comparison"
+        },
+        "contains_any": {
+          "$ref": "#/definitions/v1Comparison",
+          "title": "数组算子（§10.5 P0）：仅 array=true 属性可用，服务端白名单校验。\ncontains_any 语义 = 交集非空（PG \u0026\u0026）；contains_all 语义 = 子集（PG @\u003e）。"
+        },
+        "contains_all": {
           "$ref": "#/definitions/v1Comparison"
         }
       },

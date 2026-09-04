@@ -158,14 +158,20 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 	return d.docDB.CreateCollection(ctx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
 }
 
-// validateAttribute 拒绝系统保留列（含 _version）以及 array=true。
-// 物理列是标量，catalog 不得写入 IsArray=true。
+// validateAttribute 拒绝系统保留列（含 _version/_acl——系统列不可为数组由此
+// 保持），并校验数组属性元素类型（阶段③-b 预决策 1：array=true 已合法，元素
+// 仅限标量子集；adapter 的 validateArrayAttribute 是第二道防线）。
 func (d *Databases) validateAttribute(attr databases.Attribute) error {
 	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
 	}
 	if attr.Array {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute %q: array is not supported", attr.Key))
+		switch strings.ToLower(attr.Type) {
+		case "string", "integer", "float", "boolean", "datetime":
+		default:
+			return status.Error(codes.InvalidArgument, fmt.Sprintf(
+				"attribute %q: array supports string, integer, float, boolean, datetime element types", attr.Key))
+		}
 	}
 	return nil
 }
@@ -481,6 +487,7 @@ func (d *Databases) UpdateDocument(
 	data map[string]any,
 	perms []databases.Permission,
 	increment map[string]int64,
+	arrayUpdates map[string]databases.ArrayUpdate,
 	principal databases.Principal,
 	version *int64,
 	requestID string,
@@ -488,7 +495,7 @@ func (d *Databases) UpdateDocument(
 	if err := d.ensureCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
 		return nil, false, err
 	}
-	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, requestID, documents.WriteOptions{
+	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, arrayUpdates, principal, version, requestID, documents.WriteOptions{
 		AllowPrivilegedGrant: allowPrivilegedGrant(principal),
 	})
 }

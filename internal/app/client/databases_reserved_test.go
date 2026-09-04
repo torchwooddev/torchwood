@@ -71,7 +71,7 @@ func TestClientDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 
 	updated, _, err := clientUC.UpdateDocument(userCtx, "app", "notes", "count", map[string]any{
 		"title": "Renamed note",
-	}, nil, nil, &created.Version, "")
+	}, nil, nil, nil, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "Renamed note", updated.Data["title"])
 

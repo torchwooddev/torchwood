@@ -34,6 +34,8 @@ export type FilterNode =
   | { notBetween: QueryComparison }
   | { isNull: QueryComparison }
   | { isNotNull: QueryComparison }
+  | { containsAny: QueryComparison }
+  | { containsAll: QueryComparison }
   | { and: FilterList }
   | { or: FilterList };
 
@@ -134,6 +136,18 @@ export function isNull(attribute: string): FilterNode {
 
 export function isNotNull(attribute: string): FilterNode {
   return { isNotNull: { attribute } };
+}
+
+/**
+ * 数组算子（§10.5 P0）：仅 array=true 属性可用（服务端按 catalog attrs
+ * 白名单校验）。containsAny = 交集非空（PG &&）；containsAll = 子集（PG @>）。
+ */
+export function containsAny(attribute: string, values: string[]): FilterNode {
+  return { containsAny: cmp(attribute, values) };
+}
+
+export function containsAll(attribute: string, values: string[]): FilterNode {
+  return { containsAll: cmp(attribute, values) };
 }
 
 /** and/or 组合（nil 节点由调用方自行过滤）。 */

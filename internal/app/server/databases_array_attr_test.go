@@ -12,35 +12,43 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestCreateAttribute_RejectsArray (D-5)：array=true 不得写入 catalog（物理列是标量）。
-// CreateCollection 属性列表同样拒绝，防止绕过 CreateAttribute。
-func TestCreateAttribute_RejectsArray(t *testing.T) {
+// TestCreateAttribute_ArrayElementWhitelist（阶段③-b 预决策 1，D-5 修订）：
+// array=true 已是合法属性（PG 原生 T[] 列），但元素类型仅限标量子集——
+// email/url/json 数组拒绝；CreateCollection 属性列表同口径。
+func TestCreateAttribute_ArrayElementWhitelist(t *testing.T) {
 	uc := NewDatabases(fakeProjectRepo{}, newFakeDocDB(), nil)
 	ctx := contexts.WithPrincipal(context.Background(), &shared.Principal{
 		ActorID: "key-1", ActorKind: shared.ActorKindService, Roles: []string{"keys"},
 		Permissions: []string{"databases.write"},
 	})
 
-	err := uc.CreateAttribute(ctx, "proj-1", "app", "coll", databases.Attribute{
-		Key:   "tags",
-		Type:  "string",
-		Array: true,
-	})
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, err.Error(), `attribute "tags": array is not supported`)
+	for _, elemType := range []string{"email", "url", "json"} {
+		err := uc.CreateAttribute(ctx, "proj-1", "app", "coll", databases.Attribute{
+			Key: "tags", Type: elemType, Array: true,
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err), "type=%s", elemType)
+		require.Contains(t, err.Error(), "array supports string, integer, float, boolean, datetime element types")
+	}
 
-	err = uc.CreateCollection(ctx, "proj-1", "app", "coll", "Coll", []databases.Attribute{
+	err := uc.CreateCollection(ctx, "proj-1", "app", "coll", "Coll", []databases.Attribute{
 		{Key: "title", Type: "string"},
-		{Key: "tags", Type: "string", Array: true},
+		{Key: "links", Type: "url", Array: true},
 	}, nil, nil, false)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, err.Error(), `attribute "tags": array is not supported`)
+	require.Contains(t, err.Error(), `attribute "links": array supports`)
 
-	require.NoError(t, uc.CreateAttribute(ctx, "proj-1", "app", "coll", databases.Attribute{
-		Key:  "title",
-		Type: "string",
-	}))
+	// 合法元素类型（五类）全通过 app 层校验（物理落库由集成测试覆盖）。
+	for _, elemType := range []string{"string", "integer", "float", "boolean", "datetime"} {
+		require.NoError(t, uc.CreateAttribute(ctx, "proj-1", "app", "coll", databases.Attribute{
+			Key: "tags", Type: elemType, Array: true,
+		}), "type=%s", elemType)
+	}
 	require.NoError(t, uc.CreateCollection(ctx, "proj-1", "app", "coll", "Coll", []databases.Attribute{
 		{Key: "title", Type: "string"},
+		{Key: "tags", Type: "string", Array: true},
 	}, nil, nil, false))
+
+	require.NoError(t, uc.CreateAttribute(ctx, "proj-1", "app", "coll", databases.Attribute{
+		Key: "title", Type: "string",
+	}))
 }

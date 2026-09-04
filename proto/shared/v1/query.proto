@@ -44,6 +44,10 @@ message Filter {
     Comparison not_starts_with = 19;
     Comparison not_ends_with = 20;
     Comparison not_search = 21;
+    // 数组算子（§10.5 P0）：仅 array=true 属性可用，服务端白名单校验。
+    // contains_any 语义 = 交集非空（PG &&）；contains_all 语义 = 子集（PG @>）。
+    Comparison contains_any = 22;
+    Comparison contains_all = 23;
   }
 }
 

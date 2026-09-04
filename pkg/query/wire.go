@@ -60,6 +60,8 @@ var wireArmByOp = map[string]string{
 	OpNotBetween:       "notBetween",
 	OpIsNull:           "isNull",
 	OpIsNotNull:        "isNotNull",
+	OpContainsAny:      "containsAny",
+	OpContainsAll:      "containsAll",
 	OpAnd:              "and",
 	OpOr:               "or",
 }

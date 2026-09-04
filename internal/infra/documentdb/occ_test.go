@@ -625,9 +625,10 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 	require.Equal(t, "int8", udtName)
 }
 
-// TestCreateAttribute_AdapterRejectsArray (D-5)：直调 adapter 也不得把
-// array=true 写入 catalog（物理列是标量）。CreateCollection attrs 同样拒绝。
-func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
+// TestCreateAttribute_AdapterArrayElementWhitelist（阶段③-b，D-5 修订）：
+// array=true 已是合法属性（PG 原生 T[] 列）——adapter 接受标量子集元素并
+// 落 catalog/物理列；email/url/json 元素类型仍拒（第二道防线，app 层同口径）。
+func TestCreateAttribute_AdapterArrayElementWhitelist(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -644,29 +645,39 @@ func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
 	err := docDB.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
 		ID: "tags", Key: "tags", Type: "string", Array: true,
 	})
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, err.Error(), `attribute "tags": array is not supported`)
+	require.NoError(t, err, "array=true 属性现已合法（阶段③-b 预决策 1）")
 
 	coll, err := docDB.GetCollection(ctx, projectID, "app", "docs")
 	require.NoError(t, err)
 	require.NotNil(t, coll)
+	found := false
 	for _, a := range coll.Attributes {
-		require.NotEqual(t, "tags", a.Key)
-		require.False(t, a.Array)
+		if a.Key == "tags" {
+			found = true
+			require.True(t, a.Array, "catalog 契约读回 array 字段")
+		}
 	}
+	require.True(t, found)
 	schema := testSchema(t, projectID, "app")
 	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
-	var n int
+	var udt string
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'tags'`,
-		schema, physical).Scan(&n))
-	require.Equal(t, 0, n)
+		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'tags'`,
+		schema, physical).Scan(&udt))
+	require.Equal(t, "_text", udt, "物理列形态 TEXT[]")
 
+	for _, elemType := range []string{"email", "url", "json"} {
+		err = docDB.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
+			ID: "bad", Key: "bad", Type: elemType, Array: true,
+		})
+		require.Equal(t, codes.InvalidArgument, status.Code(err), "type=%s", elemType)
+		require.Contains(t, err.Error(), "array supports string, integer, float, boolean, datetime")
+	}
 	err = docDB.CreateCollection(ctx, projectID, "app", "arr_coll", "Arr", []databases.Attribute{
-		{ID: "tags", Key: "tags", Type: "string", Array: true},
+		{ID: "bad", Key: "bad", Type: "json", Array: true},
 	}, nil, nil, true)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, err.Error(), `attribute "tags": array is not supported`)
+	require.Contains(t, err.Error(), "array supports string, integer, float, boolean, datetime")
 	coll, err = docDB.GetCollection(ctx, projectID, "app", "arr_coll")
 	require.NoError(t, err)
 	require.Nil(t, coll)

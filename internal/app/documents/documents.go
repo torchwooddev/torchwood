@@ -157,6 +157,7 @@ func (d *Documents) UpdateDocument(
 	data map[string]any,
 	perms []databases.Permission,
 	increment map[string]int64,
+	arrayUpdates map[string]databases.ArrayUpdate,
 	principal databases.Principal,
 	version *int64,
 	requestID string,
@@ -165,21 +166,22 @@ func (d *Documents) UpdateDocument(
 	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
 		return nil, false, err
 	}
-	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 {
-		return nil, false, status.Error(codes.InvalidArgument, "data, permissions, or increment is required")
+	if len(data) == 0 && len(perms) == 0 && len(increment) == 0 && len(arrayUpdates) == 0 {
+		return nil, false, status.Error(codes.InvalidArgument, "data, permissions, increment, or array_updates is required")
 	}
 	if err := ValidateDocumentPayload(data); err != nil {
 		return nil, false, err
 	}
 	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.UpdateDocument", principal,
 		documentFingerprintBody{
-			Database:    databaseID,
-			Collection:  collectionID,
-			Document:    documentID,
-			Data:        normalizeData(data),
-			Permissions: perms,
-			Increment:   increment,
-			Version:     version,
+			Database:     databaseID,
+			Collection:   collectionID,
+			Document:     documentID,
+			Data:         normalizeData(data),
+			Permissions:  perms,
+			Increment:    increment,
+			ArrayUpdates: arrayUpdates,
+			Version:      version,
 		},
 		func(ctx context.Context) (*databases.Document, error) {
 			effPerms := perms
@@ -195,9 +197,10 @@ func (d *Documents) UpdateDocument(
 				effData = map[string]any{}
 			}
 			updated, err := d.docDB.UpdateDocument(ctx, projectID, databaseID, collectionID, databases.DocumentUpdate{
-				Document:        databases.Document{ID: documentID, Data: effData},
-				Permissions:     effPerms,
-				Increment:       increment,
+				Document:      databases.Document{ID: documentID, Data: effData},
+				Permissions:   effPerms,
+				Increment:     increment,
+				ArrayUpdates:  arrayUpdates,
 				ExpectedVersion: *version,
 			}, principal)
 			if err != nil {

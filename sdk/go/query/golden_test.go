@@ -171,6 +171,10 @@ func sdkNeutralFilter(f *sharedv1.Filter) map[string]any {
 		op, attr, values = "search", e.Search.GetAttribute(), e.Search.GetValues()
 	case *sharedv1.Filter_NotSearch:
 		op, attr, values = "notSearch", e.NotSearch.GetAttribute(), e.NotSearch.GetValues()
+	case *sharedv1.Filter_ContainsAny:
+		op, attr, values = "containsAny", e.ContainsAny.GetAttribute(), e.ContainsAny.GetValues()
+	case *sharedv1.Filter_ContainsAll:
+		op, attr, values = "containsAll", e.ContainsAll.GetAttribute(), e.ContainsAll.GetValues()
 	case *sharedv1.Filter_Between:
 		op, attr, values = "between", e.Between.GetAttribute(), e.Between.GetValues()
 	case *sharedv1.Filter_NotBetween:

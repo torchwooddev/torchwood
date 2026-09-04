@@ -461,6 +461,10 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 		v := req.GetVersion()
 		version = &v
 	}
+	arrayUpdates, err := mapArrayUpdates(req.GetArrayUpdates())
+	if err != nil {
+		return nil, err
+	}
 	doc, replayed, err := s.databases.UpdateDocument(
 		ctx,
 		projectID,
@@ -470,6 +474,7 @@ func (s *DatabasesService) UpdateDocument(ctx context.Context, req *serverv1.Upd
 		updateData(req.GetData()),
 		perms,
 		req.GetIncrement(),
+		arrayUpdates,
 		dbPrincipal(ctx),
 		version,
 		requestIDFromMeta(ctx, req.GetRequestId()),
@@ -912,6 +917,35 @@ func updateData(s *structpb.Struct) map[string]any {
 		return map[string]any{}
 	}
 	return s.AsMap()
+}
+
+// mapArrayUpdates 把 proto 数组列原子更新映射为 domain 形态（阶段③-b
+// §10.5 P0 写侧）；UNSPECIFIED op → InvalidArgument。
+func mapArrayUpdates(in map[string]*sharedv1.ArrayUpdate) (map[string]databases.ArrayUpdate, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]databases.ArrayUpdate, len(in))
+	for k, v := range in {
+		if v == nil {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("array_updates[%s]: update is required", k))
+		}
+		var op string
+		switch v.GetOp() {
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_APPEND:
+			op = databases.ArrayUpdateOpAppend
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_PREPEND:
+			op = databases.ArrayUpdateOpPrepend
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_REMOVE:
+			op = databases.ArrayUpdateOpRemove
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_UNIQUE:
+			op = databases.ArrayUpdateOpUnique
+		default:
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("array_updates[%s]: op is required", k))
+		}
+		out[k] = databases.ArrayUpdate{Op: op, Values: v.GetValues()}
+	}
+	return out, nil
 }
 
 // parseOptionalPermissions parses explicit permission strings into Permission

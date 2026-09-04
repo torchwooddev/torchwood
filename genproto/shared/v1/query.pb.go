@@ -150,6 +150,8 @@ type Filter struct {
 	//	*Filter_NotStartsWith
 	//	*Filter_NotEndsWith
 	//	*Filter_NotSearch
+	//	*Filter_ContainsAny
+	//	*Filter_ContainsAll
 	Expr          isFilter_Expr `protobuf_oneof:"expr"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -381,6 +383,24 @@ func (x *Filter) GetNotSearch() *Comparison {
 	return nil
 }
 
+func (x *Filter) GetContainsAny() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_ContainsAny); ok {
+			return x.ContainsAny
+		}
+	}
+	return nil
+}
+
+func (x *Filter) GetContainsAll() *Comparison {
+	if x != nil {
+		if x, ok := x.Expr.(*Filter_ContainsAll); ok {
+			return x.ContainsAll
+		}
+	}
+	return nil
+}
+
 type isFilter_Expr interface {
 	isFilter_Expr()
 }
@@ -469,6 +489,16 @@ type Filter_NotSearch struct {
 	NotSearch *Comparison `protobuf:"bytes,21,opt,name=not_search,json=notSearch,proto3,oneof"`
 }
 
+type Filter_ContainsAny struct {
+	// 数组算子（§10.5 P0）：仅 array=true 属性可用，服务端白名单校验。
+	// contains_any 语义 = 交集非空（PG &&）；contains_all 语义 = 子集（PG @>）。
+	ContainsAny *Comparison `protobuf:"bytes,22,opt,name=contains_any,json=containsAny,proto3,oneof"`
+}
+
+type Filter_ContainsAll struct {
+	ContainsAll *Comparison `protobuf:"bytes,23,opt,name=contains_all,json=containsAll,proto3,oneof"`
+}
+
 func (*Filter_Eq) isFilter_Expr() {}
 
 func (*Filter_Ne) isFilter_Expr() {}
@@ -510,6 +540,10 @@ func (*Filter_NotStartsWith) isFilter_Expr() {}
 func (*Filter_NotEndsWith) isFilter_Expr() {}
 
 func (*Filter_NotSearch) isFilter_Expr() {}
+
+func (*Filter_ContainsAny) isFilter_Expr() {}
+
+func (*Filter_ContainsAll) isFilter_Expr() {}
 
 // Order is a single sort key. desc=false is ascending.
 type Order struct {
@@ -656,7 +690,7 @@ const file_shared_v1_query_proto_rawDesc = "" +
 	"\x06values\x18\x02 \x03(\tR\x06values\"C\n" +
 	"\n" +
 	"FilterList\x125\n" +
-	"\afilters\x18\x01 \x03(\v2\x1b.torchwood.shared.v1.FilterR\afilters\"\xf9\t\n" +
+	"\afilters\x18\x01 \x03(\v2\x1b.torchwood.shared.v1.FilterR\afilters\"\x85\v\n" +
 	"\x06Filter\x121\n" +
 	"\x02eq\x18\x01 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\x02eq\x121\n" +
 	"\x02ne\x18\x02 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\x02ne\x121\n" +
@@ -682,7 +716,9 @@ const file_shared_v1_query_proto_rawDesc = "" +
 	"\x0fnot_starts_with\x18\x13 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\rnotStartsWith\x12E\n" +
 	"\rnot_ends_with\x18\x14 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\vnotEndsWith\x12@\n" +
 	"\n" +
-	"not_search\x18\x15 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\tnotSearchB\x06\n" +
+	"not_search\x18\x15 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\tnotSearch\x12D\n" +
+	"\fcontains_any\x18\x16 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\vcontainsAny\x12D\n" +
+	"\fcontains_all\x18\x17 \x01(\v2\x1f.torchwood.shared.v1.ComparisonH\x00R\vcontainsAllB\x06\n" +
 	"\x04expr\"9\n" +
 	"\x05Order\x12\x1c\n" +
 	"\tattribute\x18\x01 \x01(\tR\tattribute\x12\x12\n" +
@@ -738,13 +774,15 @@ var file_shared_v1_query_proto_depIdxs = []int32{
 	0,  // 19: torchwood.shared.v1.Filter.not_starts_with:type_name -> torchwood.shared.v1.Comparison
 	0,  // 20: torchwood.shared.v1.Filter.not_ends_with:type_name -> torchwood.shared.v1.Comparison
 	0,  // 21: torchwood.shared.v1.Filter.not_search:type_name -> torchwood.shared.v1.Comparison
-	2,  // 22: torchwood.shared.v1.Query.filter:type_name -> torchwood.shared.v1.Filter
-	3,  // 23: torchwood.shared.v1.Query.orders:type_name -> torchwood.shared.v1.Order
-	24, // [24:24] is the sub-list for method output_type
-	24, // [24:24] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	0,  // 22: torchwood.shared.v1.Filter.contains_any:type_name -> torchwood.shared.v1.Comparison
+	0,  // 23: torchwood.shared.v1.Filter.contains_all:type_name -> torchwood.shared.v1.Comparison
+	2,  // 24: torchwood.shared.v1.Query.filter:type_name -> torchwood.shared.v1.Filter
+	3,  // 25: torchwood.shared.v1.Query.orders:type_name -> torchwood.shared.v1.Order
+	26, // [26:26] is the sub-list for method output_type
+	26, // [26:26] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_shared_v1_query_proto_init() }
@@ -774,6 +812,8 @@ func file_shared_v1_query_proto_init() {
 		(*Filter_NotStartsWith)(nil),
 		(*Filter_NotEndsWith)(nil),
 		(*Filter_NotSearch)(nil),
+		(*Filter_ContainsAny)(nil),
+		(*Filter_ContainsAll)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

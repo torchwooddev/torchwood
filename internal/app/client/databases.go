@@ -182,6 +182,7 @@ func (d *Databases) UpdateDocument(
 	data map[string]any,
 	perms []databases.Permission,
 	increment map[string]int64,
+	arrayUpdates map[string]databases.ArrayUpdate,
 	version *int64,
 	requestID string,
 ) (*databases.Document, bool, error) {
@@ -192,7 +193,7 @@ func (d *Databases) UpdateDocument(
 	if err := shared.UpdateDocumentVersionRequired(version); err != nil {
 		return nil, false, err
 	}
-	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, principal, version, requestID, documents.WriteOptions{})
+	return d.documentsCore().UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, data, perms, increment, arrayUpdates, principal, version, requestID, documents.WriteOptions{})
 }
 
 func (d *Databases) UpsertDocument(

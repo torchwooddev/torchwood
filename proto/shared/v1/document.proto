@@ -18,6 +18,27 @@ message Document {
   int64 version = 6;
 }
 
+// ArrayUpdateOp 是数组列的原子更新算子（§10.5 P0 写侧；仅 array=true 属性
+// 可用）。全部编译为单语句 SET 子句，与 data/increment 可组合，OCC 不变。
+enum ArrayUpdateOp {
+  ARRAY_UPDATE_OP_UNSPECIFIED = 0;
+  // APPEND 尾插：col = col || values。
+  ARRAY_UPDATE_OP_APPEND = 1;
+  // PREPEND 头插：col = values || col。
+  ARRAY_UPDATE_OP_PREPEND = 2;
+  // REMOVE 差集移除：移空后为空数组（非 NULL）；NULL 列保持 NULL。
+  ARRAY_UPDATE_OP_REMOVE = 3;
+  // UNIQUE 去重（保持首次出现顺序）；values 被忽略。
+  ARRAY_UPDATE_OP_UNIQUE = 4;
+}
+
+// ArrayUpdate 是单个数组列的原子更新（UpdateDocumentRequest.array_updates
+// 的 map 值）。APPEND/PREPEND/REMOVE 要求 values >= 1。
+message ArrayUpdate {
+  ArrayUpdateOp op = 1;
+  repeated string values = 2;
+}
+
 // Change 是一条已提交的文档写事件（阶段④ §4.5，:changes / last_seq 重放
 // 的出站形态）。seq 为 outbox 全局分配序（集合内分配序、可能有空洞——
 // 空洞 = 回滚事务，不丢事件）；delete 事件 data 为空（天然 tombstone：

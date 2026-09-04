@@ -23,6 +23,67 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ArrayUpdateOp 是数组列的原子更新算子（§10.5 P0 写侧；仅 array=true 属性
+// 可用）。全部编译为单语句 SET 子句，与 data/increment 可组合，OCC 不变。
+type ArrayUpdateOp int32
+
+const (
+	ArrayUpdateOp_ARRAY_UPDATE_OP_UNSPECIFIED ArrayUpdateOp = 0
+	// APPEND 尾插：col = col || values。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_APPEND ArrayUpdateOp = 1
+	// PREPEND 头插：col = values || col。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_PREPEND ArrayUpdateOp = 2
+	// REMOVE 差集移除：移空后为空数组（非 NULL）；NULL 列保持 NULL。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_REMOVE ArrayUpdateOp = 3
+	// UNIQUE 去重（保持首次出现顺序）；values 被忽略。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_UNIQUE ArrayUpdateOp = 4
+)
+
+// Enum value maps for ArrayUpdateOp.
+var (
+	ArrayUpdateOp_name = map[int32]string{
+		0: "ARRAY_UPDATE_OP_UNSPECIFIED",
+		1: "ARRAY_UPDATE_OP_APPEND",
+		2: "ARRAY_UPDATE_OP_PREPEND",
+		3: "ARRAY_UPDATE_OP_REMOVE",
+		4: "ARRAY_UPDATE_OP_UNIQUE",
+	}
+	ArrayUpdateOp_value = map[string]int32{
+		"ARRAY_UPDATE_OP_UNSPECIFIED": 0,
+		"ARRAY_UPDATE_OP_APPEND":      1,
+		"ARRAY_UPDATE_OP_PREPEND":     2,
+		"ARRAY_UPDATE_OP_REMOVE":      3,
+		"ARRAY_UPDATE_OP_UNIQUE":      4,
+	}
+)
+
+func (x ArrayUpdateOp) Enum() *ArrayUpdateOp {
+	p := new(ArrayUpdateOp)
+	*p = x
+	return p
+}
+
+func (x ArrayUpdateOp) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ArrayUpdateOp) Descriptor() protoreflect.EnumDescriptor {
+	return file_shared_v1_document_proto_enumTypes[0].Descriptor()
+}
+
+func (ArrayUpdateOp) Type() protoreflect.EnumType {
+	return &file_shared_v1_document_proto_enumTypes[0]
+}
+
+func (x ArrayUpdateOp) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ArrayUpdateOp.Descriptor instead.
+func (ArrayUpdateOp) EnumDescriptor() ([]byte, []int) {
+	return file_shared_v1_document_proto_rawDescGZIP(), []int{0}
+}
+
 // Document 是文档 RPC 的共享载荷。
 type Document struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
@@ -109,6 +170,60 @@ func (x *Document) GetVersion() int64 {
 	return 0
 }
 
+// ArrayUpdate 是单个数组列的原子更新（UpdateDocumentRequest.array_updates
+// 的 map 值）。APPEND/PREPEND/REMOVE 要求 values >= 1。
+type ArrayUpdate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Op            ArrayUpdateOp          `protobuf:"varint,1,opt,name=op,proto3,enum=torchwood.shared.v1.ArrayUpdateOp" json:"op,omitempty"`
+	Values        []string               `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArrayUpdate) Reset() {
+	*x = ArrayUpdate{}
+	mi := &file_shared_v1_document_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArrayUpdate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArrayUpdate) ProtoMessage() {}
+
+func (x *ArrayUpdate) ProtoReflect() protoreflect.Message {
+	mi := &file_shared_v1_document_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArrayUpdate.ProtoReflect.Descriptor instead.
+func (*ArrayUpdate) Descriptor() ([]byte, []int) {
+	return file_shared_v1_document_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ArrayUpdate) GetOp() ArrayUpdateOp {
+	if x != nil {
+		return x.Op
+	}
+	return ArrayUpdateOp_ARRAY_UPDATE_OP_UNSPECIFIED
+}
+
+func (x *ArrayUpdate) GetValues() []string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
 // Change 是一条已提交的文档写事件（阶段④ §4.5，:changes / last_seq 重放
 // 的出站形态）。seq 为 outbox 全局分配序（集合内分配序、可能有空洞——
 // 空洞 = 回滚事务，不丢事件）；delete 事件 data 为空（天然 tombstone：
@@ -133,7 +248,7 @@ type Change struct {
 
 func (x *Change) Reset() {
 	*x = Change{}
-	mi := &file_shared_v1_document_proto_msgTypes[1]
+	mi := &file_shared_v1_document_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -145,7 +260,7 @@ func (x *Change) String() string {
 func (*Change) ProtoMessage() {}
 
 func (x *Change) ProtoReflect() protoreflect.Message {
-	mi := &file_shared_v1_document_proto_msgTypes[1]
+	mi := &file_shared_v1_document_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -158,7 +273,7 @@ func (x *Change) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Change.ProtoReflect.Descriptor instead.
 func (*Change) Descriptor() ([]byte, []int) {
-	return file_shared_v1_document_proto_rawDescGZIP(), []int{1}
+	return file_shared_v1_document_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Change) GetSeq() int64 {
@@ -237,7 +352,10 @@ const file_shared_v1_document_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12 \n" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\x18\n" +
-	"\aversion\x18\x06 \x01(\x03R\aversion\"\xb9\x02\n" +
+	"\aversion\x18\x06 \x01(\x03R\aversion\"Y\n" +
+	"\vArrayUpdate\x122\n" +
+	"\x02op\x18\x01 \x01(\x0e2\".torchwood.shared.v1.ArrayUpdateOpR\x02op\x12\x16\n" +
+	"\x06values\x18\x02 \x03(\tR\x06values\"\xb9\x02\n" +
 	"\x06Change\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x03R\x03seq\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12\x14\n" +
@@ -249,7 +367,13 @@ const file_shared_v1_document_proto_rawDesc = "" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1c\n" +
 	"\ttruncated\x18\a \x01(\bR\ttruncated\x121\n" +
 	"\x04data\x18\b \x01(\v2\x1d.torchwood.shared.v1.DocumentR\x04data\x12%\n" +
-	"\x0etransaction_id\x18\t \x01(\tR\rtransactionIdB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
+	"\x0etransaction_id\x18\t \x01(\tR\rtransactionId*\xa1\x01\n" +
+	"\rArrayUpdateOp\x12\x1f\n" +
+	"\x1bARRAY_UPDATE_OP_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16ARRAY_UPDATE_OP_APPEND\x10\x01\x12\x1b\n" +
+	"\x17ARRAY_UPDATE_OP_PREPEND\x10\x02\x12\x1a\n" +
+	"\x16ARRAY_UPDATE_OP_REMOVE\x10\x03\x12\x1a\n" +
+	"\x16ARRAY_UPDATE_OP_UNIQUE\x10\x04B?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_document_proto_rawDescOnce sync.Once
@@ -263,24 +387,28 @@ func file_shared_v1_document_proto_rawDescGZIP() []byte {
 	return file_shared_v1_document_proto_rawDescData
 }
 
-var file_shared_v1_document_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_shared_v1_document_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_shared_v1_document_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_shared_v1_document_proto_goTypes = []any{
-	(*Document)(nil),              // 0: torchwood.shared.v1.Document
-	(*Change)(nil),                // 1: torchwood.shared.v1.Change
-	(*structpb.Struct)(nil),       // 2: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(ArrayUpdateOp)(0),            // 0: torchwood.shared.v1.ArrayUpdateOp
+	(*Document)(nil),              // 1: torchwood.shared.v1.Document
+	(*ArrayUpdate)(nil),           // 2: torchwood.shared.v1.ArrayUpdate
+	(*Change)(nil),                // 3: torchwood.shared.v1.Change
+	(*structpb.Struct)(nil),       // 4: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_shared_v1_document_proto_depIdxs = []int32{
-	2, // 0: torchwood.shared.v1.Document.data:type_name -> google.protobuf.Struct
-	3, // 1: torchwood.shared.v1.Document.created_at:type_name -> google.protobuf.Timestamp
-	3, // 2: torchwood.shared.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
-	3, // 3: torchwood.shared.v1.Change.created_at:type_name -> google.protobuf.Timestamp
-	0, // 4: torchwood.shared.v1.Change.data:type_name -> torchwood.shared.v1.Document
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	4, // 0: torchwood.shared.v1.Document.data:type_name -> google.protobuf.Struct
+	5, // 1: torchwood.shared.v1.Document.created_at:type_name -> google.protobuf.Timestamp
+	5, // 2: torchwood.shared.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
+	0, // 3: torchwood.shared.v1.ArrayUpdate.op:type_name -> torchwood.shared.v1.ArrayUpdateOp
+	5, // 4: torchwood.shared.v1.Change.created_at:type_name -> google.protobuf.Timestamp
+	1, // 5: torchwood.shared.v1.Change.data:type_name -> torchwood.shared.v1.Document
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_shared_v1_document_proto_init() }
@@ -293,13 +421,14 @@ func file_shared_v1_document_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shared_v1_document_proto_rawDesc), len(file_shared_v1_document_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   2,
+			NumEnums:      1,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_shared_v1_document_proto_goTypes,
 		DependencyIndexes: file_shared_v1_document_proto_depIdxs,
+		EnumInfos:         file_shared_v1_document_proto_enumTypes,
 		MessageInfos:      file_shared_v1_document_proto_msgTypes,
 	}.Build()
 	File_shared_v1_document_proto = out.File

@@ -31,6 +31,10 @@ const (
 	OpBetween          = "between"
 	OpNotBetween       = "notBetween"
 	OpIn               = "in"
+	// 数组算子（§10.5 P0）：仅 array=true 属性可用（服务端白名单校验）。
+	// containsAny = 交集非空；containsAll = 子集。值必须是数组。
+	OpContainsAny      = "containsAny"
+	OpContainsAll      = "containsAll"
 	OpAnd              = "and"
 	OpOr               = "or"
 )
@@ -250,7 +254,7 @@ func Parse(raw string) (*Query, error) {
 
 	case OpIn:
 		// Appwrite 语义：值必须是数组（in("status", ["a","b"])）。编译端
-		//（compilePredicate 的 OpIn）与 proto AST codec（Filter_In）均已支持，
+		// （compilePredicate 的 OpIn）与 proto AST codec（Filter_In）均已支持，
 		// 此处补齐 DSL 解析使双栈算子对齐。
 		if len(args) != 2 {
 			return nil, fmt.Errorf("in requires 2 args")
@@ -270,6 +274,29 @@ func Parse(raw string) (*Query, error) {
 			return nil, fmt.Errorf("in requires at least 1 value")
 		}
 		leaf := Filter{Op: OpIn, Attribute: attr, Values: values}
+		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
+
+	case OpContainsAny, OpContainsAll:
+		// 数组算子（§10.5 P0）：值必须是数组，与 in 同构
+		// （containsAny("tags",["a","b"])）。
+		if len(args) != 2 {
+			return nil, fmt.Errorf("%s requires 2 args", op)
+		}
+		attr, err := unquote(args[0])
+		if err != nil {
+			return nil, err
+		}
+		if !strings.HasPrefix(args[1], "[") {
+			return nil, fmt.Errorf("%s requires an array of values, e.g. %s(%q, [\"a\",\"b\"])", op, op, attr)
+		}
+		values, err := parseArray(args[1])
+		if err != nil {
+			return nil, err
+		}
+		if len(values) == 0 {
+			return nil, fmt.Errorf("%s requires at least 1 value", op)
+		}
+		leaf := Filter{Op: op, Attribute: attr, Values: values}
 		return &Query{Filters: []Filter{leaf}, Filter: &leaf}, nil
 
 	case OpBetween, OpNotBetween:

@@ -49,7 +49,7 @@ func TestBuildAppwriteQuery_EveryComparisonOperator(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			where, args, _, err := buildAppwriteQuery(&query.Query{Filter: tc.filter})
+			where, args, _, err := buildAppwriteQuery(&query.Query{Filter: tc.filter}, nil)
 			require.NoError(t, err)
 			require.Equal(t, tc.where, where)
 			if tc.args == nil {
@@ -63,7 +63,7 @@ func TestBuildAppwriteQuery_EveryComparisonOperator(t *testing.T) {
 
 // contains 族通配符转义在 not* 变体同样生效（escapeLikePattern 复用）。
 func TestBuildAppwriteQuery_NotLikeEscapesWildcards(t *testing.T) {
-	where, args, _, err := buildAppwriteQuery(&query.Query{Filter: query.NotContains("a", "50%_off")})
+	where, args, _, err := buildAppwriteQuery(&query.Query{Filter: query.NotContains("a", "50%_off")}, nil)
 	require.NoError(t, err)
 	require.Equal(t, `d."a" NOT ILIKE ? ESCAPE '\'`, where)
 	require.Equal(t, []any{`%50\%\_off%`}, args)
@@ -72,7 +72,7 @@ func TestBuildAppwriteQuery_NotLikeEscapesWildcards(t *testing.T) {
 func TestBuildAppwriteQuery_OrCompilesToSQLOr(t *testing.T) {
 	where, args, _, err := buildAppwriteQuery(&query.Query{
 		Filter: query.Or(query.Eq("status", "a"), query.Eq("status", "b")),
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Equal(t, `(d."status" = ? OR d."status" = ?)`, where)
 	require.Equal(t, []any{"a", "b"}, args)
@@ -83,16 +83,16 @@ func TestBuildAppwriteQuery_OrCompilesToSQLOr(t *testing.T) {
 // _id 收尾且与 cursor 续页路径同构（重复排序键的全序确定性 + keyset 各页
 // 同序；跨页不丢不重的机制保证）。
 func TestBuildAppwriteQuery_CustomOrderHasIDTiebreaker(t *testing.T) {
-	_, _, orderSQL, err := buildAppwriteQuery(&query.Query{Orders: []query.Order{{Attribute: "status"}}})
+	_, _, orderSQL, err := buildAppwriteQuery(&query.Query{Orders: []query.Order{{Attribute: "status"}}}, nil)
 	require.NoError(t, err)
 	require.Equal(t, `ORDER BY d."status" ASC, d._id ASC`, orderSQL)
 
-	_, _, orderSQL, err = buildAppwriteQuery(&query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}})
+	_, _, orderSQL, err = buildAppwriteQuery(&query.Query{Orders: []query.Order{{Attribute: "priority", Desc: true}}}, nil)
 	require.NoError(t, err)
 	require.Equal(t, `ORDER BY d."priority" DESC, d._id DESC`, orderSQL)
 
 	// 默认排序（无显式 orders）同样带 _id。
-	_, _, orderSQL, err = buildAppwriteQuery(&query.Query{Filter: query.Eq("status", "open")})
+	_, _, orderSQL, err = buildAppwriteQuery(&query.Query{Filter: query.Eq("status", "open")}, nil)
 	require.NoError(t, err)
 	require.Equal(t, `ORDER BY d._created_at DESC, d._id DESC`, orderSQL)
 }
@@ -111,14 +111,14 @@ func TestBuildAppwriteQuery_TotalFilterParamsLimit(t *testing.T) {
 
 	// 3 × 700 = 2100 > 2000 → InvalidArgument。
 	over := &query.Query{Filter: query.And(makeFilter(700), makeFilter(700), makeFilter(700))}
-	_, _, _, err := buildAppwriteQuery(over)
+	_, _, _, err := buildAppwriteQuery(over, nil)
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	// 3 × 600 = 1800 ≤ 2000 → 通过。
 	ok := &query.Query{Filter: query.And(makeFilter(600), makeFilter(600), makeFilter(600))}
-	where, args, _, err := buildAppwriteQuery(ok)
+	where, args, _, err := buildAppwriteQuery(ok, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, where)
 	require.Len(t, args, 1800)
@@ -127,7 +127,7 @@ func TestBuildAppwriteQuery_TotalFilterParamsLimit(t *testing.T) {
 func TestBuildAppwriteQuery_AndTree(t *testing.T) {
 	where, args, _, err := buildAppwriteQuery(&query.Query{
 		Filter: query.And(query.Eq("a", "1"), query.Eq("b", "2")),
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Equal(t, `(d."a" = ? AND d."b" = ?)`, where)
 	require.Equal(t, []any{"1", "2"}, args)
@@ -136,12 +136,114 @@ func TestBuildAppwriteQuery_AndTree(t *testing.T) {
 func TestBuildAppwriteQuery_EmptyValuesInvalidArgument(t *testing.T) {
 	_, _, _, err := buildAppwriteQuery(&query.Query{
 		Filter: &query.Filter{Op: query.OpGreaterThan, Attribute: "n"},
-	})
+	}, nil)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	_, _, _, err = buildAppwriteQuery(&query.Query{
 		Filter: &query.Filter{Op: query.OpEqual, Attribute: "a"},
-	})
+	}, nil)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// TestBuildAppwriteQuery_ArrayOperators（阶段③-b 预决策 2 门禁）：containsAny
+// 编译 &&（交集非空）、containsAll 编译 @>（子集），参数按列元素类型 cast
+//（pgTextArray 字面量 + ?::T[]）；arrayTypes 缺席（标量列/系统列/未声明列）
+// 编译期兜底拒绝（validateQueryFields 白名单先行）。
+func TestBuildAppwriteQuery_ArrayOperators(t *testing.T) {
+	arrTypes := map[string]string{"tags": "TEXT[]", "nums": "BIGINT[]"}
+
+	where, args, _, err := buildAppwriteQuery(&query.Query{
+		Filter: query.ContainsAny("tags", "a", "b"),
+	}, arrTypes)
+	require.NoError(t, err)
+	require.Equal(t, `d."tags" && ?::TEXT[]`, where)
+	require.Equal(t, []any{`{"a","b"}`}, args)
+
+	where, args, _, err = buildAppwriteQuery(&query.Query{
+		Filter: query.ContainsAll("nums", "1", "2", "3"),
+	}, arrTypes)
+	require.NoError(t, err)
+	require.Equal(t, `d."nums" @> ?::BIGINT[]`, where)
+	require.Equal(t, []any{`{"1","2","3"}`}, args)
+
+	// 标量列 / 未声明列 / 白名单缺席 → InvalidArgument（fail-closed 兜底）。
+	_, _, _, err = buildAppwriteQuery(&query.Query{Filter: query.ContainsAny("title", "a")}, arrTypes)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, _, _, err = buildAppwriteQuery(&query.Query{Filter: query.ContainsAll("tags", "a")}, nil)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// 空值 → InvalidArgument。
+	_, _, _, err = buildAppwriteQuery(&query.Query{
+		Filter: &query.Filter{Op: query.OpContainsAny, Attribute: "tags"},
+	}, arrTypes)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// TestBuildArrayParts（阶段③-b 预决策 3）：四写算子的 SET 表达式形态断言
+//（append/prepend 的 NULL 归一、remove 的空数组兜底、unique 的保序去重），
+// 与 data/increment 同 SET 子句组合、非法输入拒绝。
+func TestBuildArrayParts(t *testing.T) {
+	attrs := []databases.Attribute{
+		{Key: "tags", Type: "string", Array: true},
+		{Key: "nums", Type: "integer", Array: true},
+		{Key: "title", Type: "string"},
+	}
+
+	// append / prepend：COALESCE 把 NULL 列归一为空数组再拼接。
+	parts, args, err := buildArrayParts(map[string]databases.ArrayUpdate{
+		"tags": {Op: databases.ArrayUpdateOpAppend, Values: []string{"x"}},
+	}, nil, attrs)
+	require.NoError(t, err)
+	require.Equal(t, []string{`"tags" = COALESCE("tags", '{}'::TEXT[]) || ?::TEXT[]`}, parts)
+	require.Equal(t, []any{`{"x"}`}, args)
+
+	parts, args, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"nums": {Op: databases.ArrayUpdateOpPrepend, Values: []string{"1", "2"}},
+	}, nil, attrs)
+	require.NoError(t, err)
+	require.Equal(t, []string{`"nums" = ?::BIGINT[] || COALESCE("nums", '{}'::BIGINT[])`}, parts)
+	require.Equal(t, []any{`{"1","2"}`}, args)
+
+	// remove：CASE NULL 保持 + COALESCE 空数组兜底（移空后非 NULL）。
+	parts, args, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"tags": {Op: databases.ArrayUpdateOpRemove, Values: []string{"x"}},
+	}, nil, attrs)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		`"tags" = CASE WHEN "tags" IS NULL THEN NULL ELSE COALESCE((SELECT array_agg(e) FROM unnest("tags") e WHERE e <> ALL(?::TEXT[])), '{}'::TEXT[]) END`,
+	}, parts)
+	require.Equal(t, []any{`{"x"}`}, args)
+
+	// unique：保首次出现序去重（WITH ORDINALITY + min(o)），无参数。
+	parts, args, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"tags": {Op: databases.ArrayUpdateOpUnique},
+	}, nil, attrs)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		`"tags" = CASE WHEN "tags" IS NULL THEN NULL ELSE (SELECT array_agg(e ORDER BY o) FROM (SELECT e, min(o) AS o FROM unnest("tags") WITH ORDINALITY AS u(e, o) GROUP BY e) s) END`,
+	}, parts)
+	require.Empty(t, args)
+
+	// 拒绝面：标量列 / 未声明列 / data 同列冲突 / 未知 op / 空值。
+	_, _, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"title": {Op: databases.ArrayUpdateOpAppend, Values: []string{"x"}},
+	}, nil, attrs)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, _, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"ghost": {Op: databases.ArrayUpdateOpAppend, Values: []string{"x"}},
+	}, nil, attrs)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, _, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"tags": {Op: databases.ArrayUpdateOpAppend, Values: []string{"x"}},
+	}, map[string]any{"tags": []any{"y"}}, attrs)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, _, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"tags": {Op: "bogus", Values: []string{"x"}},
+	}, nil, attrs)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, _, err = buildArrayParts(map[string]databases.ArrayUpdate{
+		"tags": {Op: databases.ArrayUpdateOpAppend},
+	}, nil, attrs)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 

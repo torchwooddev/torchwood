@@ -40,7 +40,7 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		return p.mapError(err)
 	}
 	for _, attr := range attrs {
-		if err := rejectArrayAttribute(attr); err != nil {
+		if err := validateArrayAttribute(attr); err != nil {
 			return p.mapError(err)
 		}
 		if err := validatePhysicalNameLen("attribute key", attr.Key); err != nil {
@@ -105,7 +105,7 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 			return err
 		}
 		for _, idx := range idxs {
-			if err := p.createCollectionIndex(txCtx, schema, physical, idx); err != nil {
+			if err := p.createCollectionIndex(txCtx, schema, physical, idx, attrs); err != nil {
 				return err
 			}
 		}
@@ -372,8 +372,8 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
 	}
-	// 物理列是标量：不得把 IsArray=true 写入 catalog。
-	if err := rejectArrayAttribute(attr); err != nil {
+	// 物理列防线（app 层已校验）：array=true 仅限标量元素子集（阶段③-b）。
+	if err := validateArrayAttribute(attr); err != nil {
 		return err
 	}
 	// 长度二道防线（app 层已校验）：物理列名 ≤63（PG 截断防护）。
@@ -444,11 +444,17 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
 			return err
 		}
-		if err := p.createCollectionIndex(txCtx, schema, physical, idx); err != nil {
-			return err
-		}
+		// 先读 catalog 行：数组列的索引形态判定（GIN array_ops / unique 拒绝）
+		// 需要 attrs（阶段③-b 预决策 2）。
 		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
 		if err != nil {
+			return err
+		}
+		attrs, err := decodeAttributes(row.Attrs)
+		if err != nil {
+			return err
+		}
+		if err := p.createCollectionIndex(txCtx, schema, physical, idx, attrs); err != nil {
 			return err
 		}
 		idxs, err := decodeIndexes(row.Indexes)
@@ -750,7 +756,35 @@ func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, phy
 
 // createCollectionIndex 建物理索引：表与索引名前缀均用物理表名（idx_<phys>_<id>
 // 自然 ≤63，预决策 2）。
-func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, physical string, idx databases.Index) error {
+// 数组列（阶段③-b 预决策 2）：key 索引自动选 GIN array_ops（&&/@> 可走索引）；
+// unique 对数组列拒绝（PG 数组无唯一约束语义）；fulltext 对数组列拒绝
+//（search 编译 col::text 是整列文本投影，数组列语义误导）；数组列仅支持
+// 单列索引（GIN 多列混排非数组列需 btree_gin 扩展，不引入）。
+func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, physical string, idx databases.Index, attrs []databases.Attribute) error {
+	arrayAttrs := map[string]bool{}
+	for _, a := range attrs {
+		if a.Array {
+			arrayAttrs[a.Key] = true
+		}
+	}
+	hasArrayCol := false
+	for _, attr := range idx.Attributes {
+		if arrayAttrs[attr] {
+			hasArrayCol = true
+			break
+		}
+	}
+	if hasArrayCol {
+		switch strings.ToLower(idx.Type) {
+		case "unique":
+			return status.Error(codes.InvalidArgument, "unique indexes do not support array attributes")
+		case "fulltext":
+			return status.Error(codes.InvalidArgument, "fulltext indexes do not support array attributes")
+		}
+		if len(idx.Attributes) != 1 {
+			return status.Error(codes.InvalidArgument, "array attributes support single-column indexes only")
+		}
+	}
 	var plainCols, orderedCols []string
 	for i, attr := range idx.Attributes {
 		if !safeNameRe.MatchString(attr) {
@@ -783,7 +817,12 @@ func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, 
 				idxName, tableName(schema, physical), strings.Join(plainCols, " || ' ' || "))
 		}
 	default:
-		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, physical), strings.Join(orderedCols, ", "))
+		if hasArrayCol {
+			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin (%s array_ops)`,
+				idxName, tableName(schema, physical), plainCols[0])
+		} else {
+			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, physical), strings.Join(orderedCols, ", "))
+		}
 	}
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
 	return err
@@ -828,13 +867,22 @@ func validateIndexDefinition(idx databases.Index) error {
 	return nil
 }
 
-// rejectArrayAttribute 是 catalog 写入前的第二道防线：物理列是标量，
-// 不得把 IsArray=true 写入 catalog。
-func rejectArrayAttribute(attr databases.Attribute) error {
-	if attr.Array {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute %q: array is not supported", attr.Key))
+// validateArrayAttribute 是 catalog 写入前的第二道防线（阶段③-b 预决策 1）：
+// array=true 已是合法属性（PG 原生 T[] 列），但元素类型仅限标量子集
+// string/integer/float/boolean/datetime——email/url/json 不开放（app 层已校验，
+// 直调 adapter 亦不得绕过）。系统保留列仍由 ReservedAttributeKeys 先行拒绝，
+// "_acl 不可为数组" 由该检查保持。
+func validateArrayAttribute(attr databases.Attribute) error {
+	if !attr.Array {
+		return nil
 	}
-	return nil
+	switch strings.ToLower(attr.Type) {
+	case "string", "integer", "float", "boolean", "datetime":
+		return nil
+	default:
+		return status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"attribute %q: array supports string, integer, float, boolean, datetime element types", attr.Key))
+	}
 }
 
 func attributeColumnSQL(attr databases.Attribute) (string, error) {
@@ -842,7 +890,13 @@ func attributeColumnSQL(attr databases.Attribute) (string, error) {
 		return "", fmt.Errorf("invalid attribute key: %s", attr.Key)
 	}
 	name := quoteIdent(attr.Key)
+	// 阶段③-b 预决策 1：array=true 落地 PG 原生数组列 T[]（元素类型标量子集，
+	// validateArrayAttribute 已拦截其余）。数组列不带 DEFAULT（字面量按元素
+	// 类型格式化复杂，POC 不开放——缺省即 NULL，语义干净）。
 	dataType := pgTypeFor(attr.Type, attr.Size)
+	if attr.Array {
+		dataType = pgArrayTypeFor(attr.Type)
+	}
 	parts := []string{name, dataType}
 	if attr.Required {
 		parts = append(parts, "NOT NULL")
@@ -855,6 +909,24 @@ func attributeColumnSQL(attr databases.Attribute) (string, error) {
 		parts = append(parts, fmt.Sprintf("DEFAULT %s", def))
 	}
 	return strings.Join(parts, " "), nil
+}
+
+// pgArrayTypeFor 返回数组列的 PG 类型（DDL 列类型与 ?::T[] 参数 cast 单源）。
+// string 数组统一 TEXT[]（size 对数组元素不生效）；元素类型白名单见
+// validateArrayAttribute。
+func pgArrayTypeFor(t string) string {
+	switch strings.ToLower(t) {
+	case "integer":
+		return "BIGINT[]"
+	case "float":
+		return "DOUBLE PRECISION[]"
+	case "boolean":
+		return "BOOLEAN[]"
+	case "datetime":
+		return "TIMESTAMPTZ[]"
+	default:
+		return "TEXT[]"
+	}
 }
 
 func pgTypeFor(t string, size int) string {

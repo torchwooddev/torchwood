@@ -40,7 +40,7 @@ func TestCreateDocument_FormerReservedIDsAreRegularIDs(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, got.Data["a"])
 
-		updated, _, err := d.UpdateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 2}, nil, nil, principal, &created.Version, "")
+		updated, _, err := d.UpdateDocument(ctx, "p1", "db1", "coll1", id, map[string]any{"a": 2}, nil, nil, nil, principal, &created.Version, "")
 		require.NoError(t, err)
 		require.Equal(t, 2, updated.Data["a"])
 
@@ -88,7 +88,7 @@ func TestDatabases_ReservedIDDocumentCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "reserved", got.Data["title"])
 
-	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "renamed"}, nil, nil, principal, &created.Version, "")
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "count", map[string]any{"title": "renamed"}, nil, nil, nil, principal, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "renamed", updated.Data["title"])
 

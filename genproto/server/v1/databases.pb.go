@@ -1520,7 +1520,10 @@ type UpdateDocumentRequest struct {
 	// （DOCUMENT.VERSION_INVALID）。
 	Version *int64 `protobuf:"varint,7,opt,name=version,proto3,oneof" json:"version,omitempty"`
 	// 写幂等键，语义同 CreateDocumentRequest.request_id。
-	RequestId     *string `protobuf:"bytes,8,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	RequestId *string `protobuf:"bytes,8,opt,name=request_id,json=requestId,proto3,oneof" json:"request_id,omitempty"`
+	// 数组列原子更新（§10.5 P0，仅 array=true 属性；与 data/increment 组合时
+	// 同列冲突 → InvalidArgument）。
+	ArrayUpdates  map[string]*v1.ArrayUpdate `protobuf:"bytes,9,rep,name=array_updates,json=arrayUpdates,proto3" json:"array_updates,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1609,6 +1612,13 @@ func (x *UpdateDocumentRequest) GetRequestId() string {
 		return *x.RequestId
 	}
 	return ""
+}
+
+func (x *UpdateDocumentRequest) GetArrayUpdates() map[string]*v1.ArrayUpdate {
+	if x != nil {
+		return x.ArrayUpdates
+	}
+	return nil
 }
 
 type UpsertDocumentRequest struct {
@@ -3199,7 +3209,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\"\n" +
 	"\n" +
 	"request_id\x18\x06 \x01(\tH\x00R\trequestId\x88\x01\x01B\r\n" +
-	"\v_request_id\"\xc2\x03\n" +
+	"\v_request_id\"\x88\x05\n" +
 	"\x15UpdateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -3211,10 +3221,14 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\tincrement\x18\x06 \x03(\v29.torchwood.server.v1.UpdateDocumentRequest.IncrementEntryR\tincrement\x12\x1d\n" +
 	"\aversion\x18\a \x01(\x03H\x00R\aversion\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"request_id\x18\b \x01(\tH\x01R\trequestId\x88\x01\x01\x1a<\n" +
+	"request_id\x18\b \x01(\tH\x01R\trequestId\x88\x01\x01\x12a\n" +
+	"\rarray_updates\x18\t \x03(\v2<.torchwood.server.v1.UpdateDocumentRequest.ArrayUpdatesEntryR\farrayUpdates\x1a<\n" +
 	"\x0eIncrementEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01B\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\x1aa\n" +
+	"\x11ArrayUpdatesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x126\n" +
+	"\x05value\x18\x02 \x01(\v2 .torchwood.shared.v1.ArrayUpdateR\x05value:\x028\x01B\n" +
 	"\n" +
 	"\b_versionB\r\n" +
 	"\v_request_id\"\xab\x02\n" +
@@ -3427,7 +3441,7 @@ func file_server_v1_databases_proto_rawDescGZIP() []byte {
 }
 
 var file_server_v1_databases_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_server_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_server_v1_databases_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_server_v1_databases_proto_goTypes = []any{
 	(AggregateFunction)(0),              // 0: torchwood.server.v1.AggregateFunction
 	(TransactionOpType)(0),              // 1: torchwood.server.v1.TransactionOpType
@@ -3474,106 +3488,110 @@ var file_server_v1_databases_proto_goTypes = []any{
 	(*ListChangesRequest)(nil),          // 42: torchwood.server.v1.ListChangesRequest
 	(*ListChangesResponse)(nil),         // 43: torchwood.server.v1.ListChangesResponse
 	nil,                                 // 44: torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
-	nil,                                 // 45: torchwood.server.v1.TransactionOp.IncrementEntry
-	(*v1.ListResponseMeta)(nil),         // 46: torchwood.shared.v1.ListResponseMeta
-	(*timestamppb.Timestamp)(nil),       // 47: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),             // 48: google.protobuf.Struct
-	(*v1.Query)(nil),                    // 49: torchwood.shared.v1.Query
-	(*v1.Document)(nil),                 // 50: torchwood.shared.v1.Document
-	(*v1.Change)(nil),                   // 51: torchwood.shared.v1.Change
-	(*v1.ListRequest)(nil),              // 52: torchwood.shared.v1.ListRequest
-	(*v1.Empty)(nil),                    // 53: torchwood.shared.v1.Empty
+	nil,                                 // 45: torchwood.server.v1.UpdateDocumentRequest.ArrayUpdatesEntry
+	nil,                                 // 46: torchwood.server.v1.TransactionOp.IncrementEntry
+	(*v1.ListResponseMeta)(nil),         // 47: torchwood.shared.v1.ListResponseMeta
+	(*timestamppb.Timestamp)(nil),       // 48: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),             // 49: google.protobuf.Struct
+	(*v1.Query)(nil),                    // 50: torchwood.shared.v1.Query
+	(*v1.Document)(nil),                 // 51: torchwood.shared.v1.Document
+	(*v1.Change)(nil),                   // 52: torchwood.shared.v1.Change
+	(*v1.ArrayUpdate)(nil),              // 53: torchwood.shared.v1.ArrayUpdate
+	(*v1.ListRequest)(nil),              // 54: torchwood.shared.v1.ListRequest
+	(*v1.Empty)(nil),                    // 55: torchwood.shared.v1.Empty
 }
 var file_server_v1_databases_proto_depIdxs = []int32{
 	7,  // 0: torchwood.server.v1.ListDatabasesResponse.databases:type_name -> torchwood.server.v1.Database
-	46, // 1: torchwood.server.v1.ListDatabasesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	47, // 2: torchwood.server.v1.Database.created_at:type_name -> google.protobuf.Timestamp
-	47, // 3: torchwood.server.v1.Database.updated_at:type_name -> google.protobuf.Timestamp
+	47, // 1: torchwood.server.v1.ListDatabasesResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	48, // 2: torchwood.server.v1.Database.created_at:type_name -> google.protobuf.Timestamp
+	48, // 3: torchwood.server.v1.Database.updated_at:type_name -> google.protobuf.Timestamp
 	12, // 4: torchwood.server.v1.UpdateCollectionRequest.permissions:type_name -> torchwood.server.v1.PermissionsUpdate
 	14, // 5: torchwood.server.v1.ListCollectionsResponse.collections:type_name -> torchwood.server.v1.Collection
-	46, // 6: torchwood.server.v1.ListCollectionsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	47, // 6: torchwood.server.v1.ListCollectionsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
 	17, // 7: torchwood.server.v1.Collection.attributes:type_name -> torchwood.server.v1.Attribute
 	20, // 8: torchwood.server.v1.Collection.indexes:type_name -> torchwood.server.v1.Index
-	47, // 9: torchwood.server.v1.Collection.created_at:type_name -> google.protobuf.Timestamp
-	47, // 10: torchwood.server.v1.Collection.updated_at:type_name -> google.protobuf.Timestamp
-	48, // 11: torchwood.server.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
-	48, // 12: torchwood.server.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
+	48, // 9: torchwood.server.v1.Collection.created_at:type_name -> google.protobuf.Timestamp
+	48, // 10: torchwood.server.v1.Collection.updated_at:type_name -> google.protobuf.Timestamp
+	49, // 11: torchwood.server.v1.CreateDocumentRequest.data:type_name -> google.protobuf.Struct
+	49, // 12: torchwood.server.v1.UpdateDocumentRequest.data:type_name -> google.protobuf.Struct
 	44, // 13: torchwood.server.v1.UpdateDocumentRequest.increment:type_name -> torchwood.server.v1.UpdateDocumentRequest.IncrementEntry
-	48, // 14: torchwood.server.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
-	49, // 15: torchwood.server.v1.ListDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
-	50, // 16: torchwood.server.v1.ListDocumentsResponse.documents:type_name -> torchwood.shared.v1.Document
-	46, // 17: torchwood.server.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
-	49, // 18: torchwood.server.v1.CountDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
-	0,  // 19: torchwood.server.v1.AggregateSpec.function:type_name -> torchwood.server.v1.AggregateFunction
-	30, // 20: torchwood.server.v1.AggregateDocumentsRequest.aggregations:type_name -> torchwood.server.v1.AggregateSpec
-	49, // 21: torchwood.server.v1.AggregateDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
-	0,  // 22: torchwood.server.v1.AggregateValue.function:type_name -> torchwood.server.v1.AggregateFunction
-	32, // 23: torchwood.server.v1.AggregateGroup.values:type_name -> torchwood.server.v1.AggregateValue
-	33, // 24: torchwood.server.v1.AggregateDocumentsResponse.groups:type_name -> torchwood.server.v1.AggregateGroup
-	48, // 25: torchwood.server.v1.BulkUpdateDocumentsRequest.data:type_name -> google.protobuf.Struct
-	1,  // 26: torchwood.server.v1.TransactionOp.type:type_name -> torchwood.server.v1.TransactionOpType
-	48, // 27: torchwood.server.v1.TransactionOp.data:type_name -> google.protobuf.Struct
-	45, // 28: torchwood.server.v1.TransactionOp.increment:type_name -> torchwood.server.v1.TransactionOp.IncrementEntry
-	38, // 29: torchwood.server.v1.ExecuteTransactionsRequest.ops:type_name -> torchwood.server.v1.TransactionOp
-	2,  // 30: torchwood.server.v1.ExecuteTransactionsRequest.mode:type_name -> torchwood.server.v1.TransactionMode
-	3,  // 31: torchwood.server.v1.TransactionOpResult.status:type_name -> torchwood.server.v1.TransactionOpStatus
-	40, // 32: torchwood.server.v1.ExecuteTransactionsResponse.results:type_name -> torchwood.server.v1.TransactionOpResult
-	51, // 33: torchwood.server.v1.ListChangesResponse.changes:type_name -> torchwood.shared.v1.Change
-	4,  // 34: torchwood.server.v1.DatabasesService.CreateDatabase:input_type -> torchwood.server.v1.CreateDatabaseRequest
-	52, // 35: torchwood.server.v1.DatabasesService.ListDatabases:input_type -> torchwood.shared.v1.ListRequest
-	5,  // 36: torchwood.server.v1.DatabasesService.GetDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
-	5,  // 37: torchwood.server.v1.DatabasesService.DeleteDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
-	8,  // 38: torchwood.server.v1.DatabasesService.CreateCollection:input_type -> torchwood.server.v1.CreateCollectionRequest
-	9,  // 39: torchwood.server.v1.DatabasesService.ListCollections:input_type -> torchwood.server.v1.ListCollectionsRequest
-	10, // 40: torchwood.server.v1.DatabasesService.GetCollection:input_type -> torchwood.server.v1.GetCollectionRequest
-	10, // 41: torchwood.server.v1.DatabasesService.DeleteCollection:input_type -> torchwood.server.v1.GetCollectionRequest
-	11, // 42: torchwood.server.v1.DatabasesService.UpdateCollection:input_type -> torchwood.server.v1.UpdateCollectionRequest
-	15, // 43: torchwood.server.v1.DatabasesService.CreateAttribute:input_type -> torchwood.server.v1.CreateAttributeRequest
-	16, // 44: torchwood.server.v1.DatabasesService.DeleteAttribute:input_type -> torchwood.server.v1.DeleteAttributeRequest
-	18, // 45: torchwood.server.v1.DatabasesService.CreateIndex:input_type -> torchwood.server.v1.CreateIndexRequest
-	19, // 46: torchwood.server.v1.DatabasesService.DeleteIndex:input_type -> torchwood.server.v1.DeleteIndexRequest
-	21, // 47: torchwood.server.v1.DatabasesService.CreateDocument:input_type -> torchwood.server.v1.CreateDocumentRequest
-	26, // 48: torchwood.server.v1.DatabasesService.ListDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
-	24, // 49: torchwood.server.v1.DatabasesService.GetDocument:input_type -> torchwood.server.v1.GetDocumentRequest
-	22, // 50: torchwood.server.v1.DatabasesService.UpdateDocument:input_type -> torchwood.server.v1.UpdateDocumentRequest
-	23, // 51: torchwood.server.v1.DatabasesService.UpsertDocument:input_type -> torchwood.server.v1.UpsertDocumentRequest
-	25, // 52: torchwood.server.v1.DatabasesService.DeleteDocument:input_type -> torchwood.server.v1.DeleteDocumentRequest
-	28, // 53: torchwood.server.v1.DatabasesService.CountDocuments:input_type -> torchwood.server.v1.CountDocumentsRequest
-	31, // 54: torchwood.server.v1.DatabasesService.AggregateDocuments:input_type -> torchwood.server.v1.AggregateDocumentsRequest
-	35, // 55: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:input_type -> torchwood.server.v1.BulkUpdateDocumentsRequest
-	36, // 56: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:input_type -> torchwood.server.v1.BulkDeleteDocumentsRequest
-	39, // 57: torchwood.server.v1.DatabasesService.ExecuteTransactions:input_type -> torchwood.server.v1.ExecuteTransactionsRequest
-	42, // 58: torchwood.server.v1.DatabasesService.ListChanges:input_type -> torchwood.server.v1.ListChangesRequest
-	7,  // 59: torchwood.server.v1.DatabasesService.CreateDatabase:output_type -> torchwood.server.v1.Database
-	6,  // 60: torchwood.server.v1.DatabasesService.ListDatabases:output_type -> torchwood.server.v1.ListDatabasesResponse
-	7,  // 61: torchwood.server.v1.DatabasesService.GetDatabase:output_type -> torchwood.server.v1.Database
-	53, // 62: torchwood.server.v1.DatabasesService.DeleteDatabase:output_type -> torchwood.shared.v1.Empty
-	14, // 63: torchwood.server.v1.DatabasesService.CreateCollection:output_type -> torchwood.server.v1.Collection
-	13, // 64: torchwood.server.v1.DatabasesService.ListCollections:output_type -> torchwood.server.v1.ListCollectionsResponse
-	14, // 65: torchwood.server.v1.DatabasesService.GetCollection:output_type -> torchwood.server.v1.Collection
-	53, // 66: torchwood.server.v1.DatabasesService.DeleteCollection:output_type -> torchwood.shared.v1.Empty
-	14, // 67: torchwood.server.v1.DatabasesService.UpdateCollection:output_type -> torchwood.server.v1.Collection
-	17, // 68: torchwood.server.v1.DatabasesService.CreateAttribute:output_type -> torchwood.server.v1.Attribute
-	53, // 69: torchwood.server.v1.DatabasesService.DeleteAttribute:output_type -> torchwood.shared.v1.Empty
-	20, // 70: torchwood.server.v1.DatabasesService.CreateIndex:output_type -> torchwood.server.v1.Index
-	53, // 71: torchwood.server.v1.DatabasesService.DeleteIndex:output_type -> torchwood.shared.v1.Empty
-	50, // 72: torchwood.server.v1.DatabasesService.CreateDocument:output_type -> torchwood.shared.v1.Document
-	27, // 73: torchwood.server.v1.DatabasesService.ListDocuments:output_type -> torchwood.server.v1.ListDocumentsResponse
-	50, // 74: torchwood.server.v1.DatabasesService.GetDocument:output_type -> torchwood.shared.v1.Document
-	50, // 75: torchwood.server.v1.DatabasesService.UpdateDocument:output_type -> torchwood.shared.v1.Document
-	50, // 76: torchwood.server.v1.DatabasesService.UpsertDocument:output_type -> torchwood.shared.v1.Document
-	53, // 77: torchwood.server.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
-	29, // 78: torchwood.server.v1.DatabasesService.CountDocuments:output_type -> torchwood.server.v1.CountDocumentsResponse
-	34, // 79: torchwood.server.v1.DatabasesService.AggregateDocuments:output_type -> torchwood.server.v1.AggregateDocumentsResponse
-	37, // 80: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
-	37, // 81: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
-	41, // 82: torchwood.server.v1.DatabasesService.ExecuteTransactions:output_type -> torchwood.server.v1.ExecuteTransactionsResponse
-	43, // 83: torchwood.server.v1.DatabasesService.ListChanges:output_type -> torchwood.server.v1.ListChangesResponse
-	59, // [59:84] is the sub-list for method output_type
-	34, // [34:59] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	45, // 14: torchwood.server.v1.UpdateDocumentRequest.array_updates:type_name -> torchwood.server.v1.UpdateDocumentRequest.ArrayUpdatesEntry
+	49, // 15: torchwood.server.v1.UpsertDocumentRequest.data:type_name -> google.protobuf.Struct
+	50, // 16: torchwood.server.v1.ListDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
+	51, // 17: torchwood.server.v1.ListDocumentsResponse.documents:type_name -> torchwood.shared.v1.Document
+	47, // 18: torchwood.server.v1.ListDocumentsResponse.meta:type_name -> torchwood.shared.v1.ListResponseMeta
+	50, // 19: torchwood.server.v1.CountDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
+	0,  // 20: torchwood.server.v1.AggregateSpec.function:type_name -> torchwood.server.v1.AggregateFunction
+	30, // 21: torchwood.server.v1.AggregateDocumentsRequest.aggregations:type_name -> torchwood.server.v1.AggregateSpec
+	50, // 22: torchwood.server.v1.AggregateDocumentsRequest.query:type_name -> torchwood.shared.v1.Query
+	0,  // 23: torchwood.server.v1.AggregateValue.function:type_name -> torchwood.server.v1.AggregateFunction
+	32, // 24: torchwood.server.v1.AggregateGroup.values:type_name -> torchwood.server.v1.AggregateValue
+	33, // 25: torchwood.server.v1.AggregateDocumentsResponse.groups:type_name -> torchwood.server.v1.AggregateGroup
+	49, // 26: torchwood.server.v1.BulkUpdateDocumentsRequest.data:type_name -> google.protobuf.Struct
+	1,  // 27: torchwood.server.v1.TransactionOp.type:type_name -> torchwood.server.v1.TransactionOpType
+	49, // 28: torchwood.server.v1.TransactionOp.data:type_name -> google.protobuf.Struct
+	46, // 29: torchwood.server.v1.TransactionOp.increment:type_name -> torchwood.server.v1.TransactionOp.IncrementEntry
+	38, // 30: torchwood.server.v1.ExecuteTransactionsRequest.ops:type_name -> torchwood.server.v1.TransactionOp
+	2,  // 31: torchwood.server.v1.ExecuteTransactionsRequest.mode:type_name -> torchwood.server.v1.TransactionMode
+	3,  // 32: torchwood.server.v1.TransactionOpResult.status:type_name -> torchwood.server.v1.TransactionOpStatus
+	40, // 33: torchwood.server.v1.ExecuteTransactionsResponse.results:type_name -> torchwood.server.v1.TransactionOpResult
+	52, // 34: torchwood.server.v1.ListChangesResponse.changes:type_name -> torchwood.shared.v1.Change
+	53, // 35: torchwood.server.v1.UpdateDocumentRequest.ArrayUpdatesEntry.value:type_name -> torchwood.shared.v1.ArrayUpdate
+	4,  // 36: torchwood.server.v1.DatabasesService.CreateDatabase:input_type -> torchwood.server.v1.CreateDatabaseRequest
+	54, // 37: torchwood.server.v1.DatabasesService.ListDatabases:input_type -> torchwood.shared.v1.ListRequest
+	5,  // 38: torchwood.server.v1.DatabasesService.GetDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
+	5,  // 39: torchwood.server.v1.DatabasesService.DeleteDatabase:input_type -> torchwood.server.v1.GetDatabaseRequest
+	8,  // 40: torchwood.server.v1.DatabasesService.CreateCollection:input_type -> torchwood.server.v1.CreateCollectionRequest
+	9,  // 41: torchwood.server.v1.DatabasesService.ListCollections:input_type -> torchwood.server.v1.ListCollectionsRequest
+	10, // 42: torchwood.server.v1.DatabasesService.GetCollection:input_type -> torchwood.server.v1.GetCollectionRequest
+	10, // 43: torchwood.server.v1.DatabasesService.DeleteCollection:input_type -> torchwood.server.v1.GetCollectionRequest
+	11, // 44: torchwood.server.v1.DatabasesService.UpdateCollection:input_type -> torchwood.server.v1.UpdateCollectionRequest
+	15, // 45: torchwood.server.v1.DatabasesService.CreateAttribute:input_type -> torchwood.server.v1.CreateAttributeRequest
+	16, // 46: torchwood.server.v1.DatabasesService.DeleteAttribute:input_type -> torchwood.server.v1.DeleteAttributeRequest
+	18, // 47: torchwood.server.v1.DatabasesService.CreateIndex:input_type -> torchwood.server.v1.CreateIndexRequest
+	19, // 48: torchwood.server.v1.DatabasesService.DeleteIndex:input_type -> torchwood.server.v1.DeleteIndexRequest
+	21, // 49: torchwood.server.v1.DatabasesService.CreateDocument:input_type -> torchwood.server.v1.CreateDocumentRequest
+	26, // 50: torchwood.server.v1.DatabasesService.ListDocuments:input_type -> torchwood.server.v1.ListDocumentsRequest
+	24, // 51: torchwood.server.v1.DatabasesService.GetDocument:input_type -> torchwood.server.v1.GetDocumentRequest
+	22, // 52: torchwood.server.v1.DatabasesService.UpdateDocument:input_type -> torchwood.server.v1.UpdateDocumentRequest
+	23, // 53: torchwood.server.v1.DatabasesService.UpsertDocument:input_type -> torchwood.server.v1.UpsertDocumentRequest
+	25, // 54: torchwood.server.v1.DatabasesService.DeleteDocument:input_type -> torchwood.server.v1.DeleteDocumentRequest
+	28, // 55: torchwood.server.v1.DatabasesService.CountDocuments:input_type -> torchwood.server.v1.CountDocumentsRequest
+	31, // 56: torchwood.server.v1.DatabasesService.AggregateDocuments:input_type -> torchwood.server.v1.AggregateDocumentsRequest
+	35, // 57: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:input_type -> torchwood.server.v1.BulkUpdateDocumentsRequest
+	36, // 58: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:input_type -> torchwood.server.v1.BulkDeleteDocumentsRequest
+	39, // 59: torchwood.server.v1.DatabasesService.ExecuteTransactions:input_type -> torchwood.server.v1.ExecuteTransactionsRequest
+	42, // 60: torchwood.server.v1.DatabasesService.ListChanges:input_type -> torchwood.server.v1.ListChangesRequest
+	7,  // 61: torchwood.server.v1.DatabasesService.CreateDatabase:output_type -> torchwood.server.v1.Database
+	6,  // 62: torchwood.server.v1.DatabasesService.ListDatabases:output_type -> torchwood.server.v1.ListDatabasesResponse
+	7,  // 63: torchwood.server.v1.DatabasesService.GetDatabase:output_type -> torchwood.server.v1.Database
+	55, // 64: torchwood.server.v1.DatabasesService.DeleteDatabase:output_type -> torchwood.shared.v1.Empty
+	14, // 65: torchwood.server.v1.DatabasesService.CreateCollection:output_type -> torchwood.server.v1.Collection
+	13, // 66: torchwood.server.v1.DatabasesService.ListCollections:output_type -> torchwood.server.v1.ListCollectionsResponse
+	14, // 67: torchwood.server.v1.DatabasesService.GetCollection:output_type -> torchwood.server.v1.Collection
+	55, // 68: torchwood.server.v1.DatabasesService.DeleteCollection:output_type -> torchwood.shared.v1.Empty
+	14, // 69: torchwood.server.v1.DatabasesService.UpdateCollection:output_type -> torchwood.server.v1.Collection
+	17, // 70: torchwood.server.v1.DatabasesService.CreateAttribute:output_type -> torchwood.server.v1.Attribute
+	55, // 71: torchwood.server.v1.DatabasesService.DeleteAttribute:output_type -> torchwood.shared.v1.Empty
+	20, // 72: torchwood.server.v1.DatabasesService.CreateIndex:output_type -> torchwood.server.v1.Index
+	55, // 73: torchwood.server.v1.DatabasesService.DeleteIndex:output_type -> torchwood.shared.v1.Empty
+	51, // 74: torchwood.server.v1.DatabasesService.CreateDocument:output_type -> torchwood.shared.v1.Document
+	27, // 75: torchwood.server.v1.DatabasesService.ListDocuments:output_type -> torchwood.server.v1.ListDocumentsResponse
+	51, // 76: torchwood.server.v1.DatabasesService.GetDocument:output_type -> torchwood.shared.v1.Document
+	51, // 77: torchwood.server.v1.DatabasesService.UpdateDocument:output_type -> torchwood.shared.v1.Document
+	51, // 78: torchwood.server.v1.DatabasesService.UpsertDocument:output_type -> torchwood.shared.v1.Document
+	55, // 79: torchwood.server.v1.DatabasesService.DeleteDocument:output_type -> torchwood.shared.v1.Empty
+	29, // 80: torchwood.server.v1.DatabasesService.CountDocuments:output_type -> torchwood.server.v1.CountDocumentsResponse
+	34, // 81: torchwood.server.v1.DatabasesService.AggregateDocuments:output_type -> torchwood.server.v1.AggregateDocumentsResponse
+	37, // 82: torchwood.server.v1.DatabasesService.BulkUpdateDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
+	37, // 83: torchwood.server.v1.DatabasesService.BulkDeleteDocuments:output_type -> torchwood.server.v1.BulkDocumentsResponse
+	41, // 84: torchwood.server.v1.DatabasesService.ExecuteTransactions:output_type -> torchwood.server.v1.ExecuteTransactionsResponse
+	43, // 85: torchwood.server.v1.DatabasesService.ListChanges:output_type -> torchwood.server.v1.ListChangesResponse
+	61, // [61:86] is the sub-list for method output_type
+	36, // [36:61] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_server_v1_databases_proto_init() }
@@ -3603,7 +3621,7 @@ func file_server_v1_databases_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_server_v1_databases_proto_rawDesc), len(file_server_v1_databases_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   42,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

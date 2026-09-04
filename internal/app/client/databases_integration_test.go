@@ -80,7 +80,7 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 
 	updated, _, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
 		"title": "Updated note",
-	}, nil, nil, &created.Version, "")
+	}, nil, nil, nil, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "Updated note", updated.Data["title"])
 	require.Equal(t, int64(2), updated.Version)
@@ -291,7 +291,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	_, err = clientUC.GetDocument(otherCtx, projectID, "app", "notes", created.ID)
 	require.Equal(t, codes.NotFound, status.Code(err), "other user read should be not-found")
 
-	_, _, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil, &created.Version, "")
+	_, _, err = clientUC.UpdateDocument(otherCtx, "app", "notes", created.ID, map[string]any{"title": "hacked"}, nil, nil, nil, &created.Version, "")
 	require.Equal(t, codes.NotFound, status.Code(err), "other user update should be not-found")
 
 	_, err = clientUC.DeleteDocument(otherCtx, "app", "notes", created.ID, &created.Version, "")
@@ -304,7 +304,7 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 
 	updated, _, err := clientUC.UpdateDocument(userCtx, "app", "notes", created.ID, map[string]any{
 		"title": "Updated note",
-	}, nil, nil, &created.Version, "")
+	}, nil, nil, nil, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "Updated note", updated.Data["title"])
 

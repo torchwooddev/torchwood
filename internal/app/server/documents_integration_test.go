@@ -56,7 +56,7 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 
 	updated, _, err := uc.UpdateDocument(ctx, projectID, dbID, collID, created.ID, map[string]any{
 		"views": 99,
-	}, nil, nil, principal, &created.Version, "")
+	}, nil, nil, nil, principal, &created.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, float64(99), updated.Data["views"])
 	require.Equal(t, int64(2), updated.Version)
@@ -199,7 +199,7 @@ func TestDatabases_UpsertDocument_EmptyACESeed(t *testing.T) {
 
 	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
 		"email": "seed2@example.com",
-	}, nil, nil, principal, &got.Version, "")
+	}, nil, nil, nil, principal, &got.Version, "")
 	require.NoError(t, err)
 	require.Equal(t, "seed2@example.com", updated.Data["email"])
 
@@ -217,7 +217,7 @@ func TestDatabases_UpsertDocument_EmptyACESeed(t *testing.T) {
 
 	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "members", "m1", map[string]any{
 		"email": "seed3@example.com",
-	}, nil, nil, principal, &gotAgain.Version, "")
+	}, nil, nil, nil, principal, &gotAgain.Version, "")
 	require.NoError(t, err)
 }
 

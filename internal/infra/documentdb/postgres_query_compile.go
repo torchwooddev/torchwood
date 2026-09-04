@@ -48,8 +48,28 @@ var sensitiveQueryFields = map[string]map[string]struct{}{
 	"identities": {"provider_data": {}},
 }
 
+// arrayTypesOf 抽取集合声明属性中的数组列（key → PG 数组类型），供查询编译
+// 的数组算子（&& / @>）与白名单校验单源使用（阶段③-b 预决策 2）。
+func arrayTypesOf(coll *databases.Collection) map[string]string {
+	if coll == nil {
+		return nil
+	}
+	var out map[string]string
+	for _, attr := range coll.Attributes {
+		if attr.Array {
+			if out == nil {
+				out = make(map[string]string, len(coll.Attributes))
+			}
+			out[attr.Key] = pgArrayTypeFor(attr.Type)
+		}
+	}
+	return out
+}
+
 // validateQueryFields 校验非 System 查询路径（A7）：Filters/Orders/Selects 字段
-// 白名单（系统列 + 声明 attrs）、敏感列黑名单、search 的 fulltext 索引约束。
+// 白名单（系统列 + 声明 attrs）、敏感列黑名单、search 的 fulltext 索引约束、
+// containsAny/containsAll 的数组列约束（阶段③-b：仅 array=true 属性可用，
+// 标量列/系统列拒绝）。
 // _version 特判：系统集合拒绝（无此列）；用户集合列尚未 reconcile（缺列）时返回
 // version_column_unavailable，不得落 PG 未定义列错误（读路径不 ALTER）。
 // 物理表名（physical）供 _version readiness 检查；collectionID 保留逻辑名供
@@ -71,6 +91,7 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, ph
 			}
 		}
 	}
+	arrayTypes := arrayTypesOf(coll)
 
 	checkField := func(name string) error {
 		field := mapQueryField(name)
@@ -117,6 +138,13 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, ph
 			if _, ok := fulltextAttrs[field]; !ok {
 				fieldErr = status.Error(codes.InvalidArgument, fmt.Sprintf("search requires a fulltext index on: %s", f.Attribute))
 			}
+			return
+		}
+		if f.Op == query.OpContainsAny || f.Op == query.OpContainsAll {
+			field := mapQueryField(f.Attribute)
+			if _, ok := arrayTypes[field]; !ok {
+				fieldErr = status.Errorf(codes.InvalidArgument, "%s requires an array attribute: %s", f.Op, f.Attribute)
+			}
 		}
 	})
 	if fieldErr != nil {
@@ -160,19 +188,21 @@ func cloneQuery(src *query.Query) *query.Query {
 	return &cp
 }
 
-func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
+// buildAppwriteQuery 编译过滤树与排序。arrayTypes（key → PG 数组类型）供
+// containsAny/containsAll 编译 && / @> 与元素类型 cast（阶段③-b 预决策 2）。
+func buildAppwriteQuery(parsed *query.Query, arrayTypes map[string]string) (string, []any, string, error) {
 	var where string
 	var args []any
 	var err error
 	if parsed.Filter != nil {
-		where, args, err = compileFilter(parsed.Filter)
+		where, args, err = compileFilter(parsed.Filter, arrayTypes)
 	} else if len(parsed.Filters) > 0 {
 		children := make([]*query.Filter, len(parsed.Filters))
 		for i := range parsed.Filters {
 			f := parsed.Filters[i]
 			children[i] = &f
 		}
-		where, args, err = compileBool(children, "AND")
+		where, args, err = compileBool(children, "AND", arrayTypes)
 	}
 	if err != nil {
 		return "", nil, "", err
@@ -215,28 +245,28 @@ func buildAppwriteQuery(parsed *query.Query) (string, []any, string, error) {
 	return where, args, orderSQL, nil
 }
 
-func compileFilter(f *query.Filter) (string, []any, error) {
+func compileFilter(f *query.Filter, arrayTypes map[string]string) (string, []any, error) {
 	if f == nil {
 		return "", nil, nil
 	}
 	switch f.Op {
 	case query.OpAnd:
-		return compileBool(f.Children, "AND")
+		return compileBool(f.Children, "AND", arrayTypes)
 	case query.OpOr:
-		return compileBool(f.Children, "OR")
+		return compileBool(f.Children, "OR", arrayTypes)
 	default:
-		return compilePredicate(f)
+		return compilePredicate(f, arrayTypes)
 	}
 }
 
-func compileBool(children []*query.Filter, join string) (string, []any, error) {
+func compileBool(children []*query.Filter, join string, arrayTypes map[string]string) (string, []any, error) {
 	var parts []string
 	var args []any
 	for _, c := range children {
 		if c == nil {
 			continue
 		}
-		w, a, err := compileFilter(c)
+		w, a, err := compileFilter(c, arrayTypes)
 		if err != nil {
 			return "", nil, err
 		}
@@ -255,7 +285,7 @@ func compileBool(children []*query.Filter, join string) (string, []any, error) {
 	return "(" + strings.Join(parts, " "+join+" ") + ")", args, nil
 }
 
-func compilePredicate(f *query.Filter) (string, []any, error) {
+func compilePredicate(f *query.Filter, arrayTypes map[string]string) (string, []any, error) {
 	field := mapQueryField(f.Attribute)
 	if !safeNameRe.MatchString(field) {
 		return "", nil, fmt.Errorf("invalid query field: %s", f.Attribute)
@@ -332,6 +362,26 @@ func compilePredicate(f *query.Filter) (string, []any, error) {
 		return fmt.Sprintf("%s IS NULL", col), nil, nil
 	case query.OpIsNotNull:
 		return fmt.Sprintf("%s IS NOT NULL", col), nil, nil
+	case query.OpContainsAny, query.OpContainsAll:
+		// 数组算子（阶段③-b 预决策 2）：containsAny → &&（交集非空），
+		// containsAll → @>（子集）。参数按列元素类型显式 cast（pgTextArray
+		// 字面量 + ?::T[]）；arrayTypes 缺席（标量列/系统列）由
+		// validateQueryFields 白名单先行拒绝，此处兜底 fail-closed。
+		if len(f.Values) < 1 {
+			return "", nil, status.Errorf(codes.InvalidArgument, "%s requires at least 1 value", f.Op)
+		}
+		if len(f.Values) > maxFilterValues {
+			return "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf("filter values exceed maximum of %d", maxFilterValues))
+		}
+		arrType, ok := arrayTypes[field]
+		if !ok {
+			return "", nil, status.Errorf(codes.InvalidArgument, "%s requires an array attribute: %s", f.Op, f.Attribute)
+		}
+		op := "&&"
+		if f.Op == query.OpContainsAll {
+			op = "@>"
+		}
+		return fmt.Sprintf("%s %s ?::%s", col, op, arrType), []any{pgTextArray(f.Values)}, nil
 	case query.OpBetween:
 		if len(f.Values) != 2 {
 			return "", nil, fmt.Errorf("between requires 2 values")

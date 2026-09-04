@@ -124,7 +124,7 @@ func TestUpdateDocument_FiltersProtectedFields(t *testing.T) {
 		"email_verified": true,
 		"labels":         []string{"admin"},
 		"status":         "blocked",
-	}, nil, nil, &version, "")
+	}, nil, nil, nil, &version, "")
 	require.NoError(t, err)
 	require.Equal(t, map[string]any{
 		"title":          "new",

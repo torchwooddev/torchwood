@@ -511,6 +511,25 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	incParts, incArgs := buildIncrementParts(update.Increment)
 	setParts = append(setParts, incParts...)
 	args = append(args, incArgs...)
+	// 数组列原子更新（阶段③-b 预决策 3）：需要 catalog attrs 做白名单与
+	// 元素类型 cast，仅在使用时取一次集合。
+	var arrParts []string
+	var arrArgs []any
+	if len(update.ArrayUpdates) > 0 {
+		coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			return doc, err
+		}
+		if coll == nil {
+			return doc, status.Error(codes.NotFound, "collection not found")
+		}
+		arrParts, arrArgs, err = buildArrayParts(update.ArrayUpdates, doc.Data, coll.Attributes)
+		if err != nil {
+			return doc, err
+		}
+		setParts = append(setParts, arrParts...)
+		args = append(args, arrArgs...)
+	}
 	if len(setParts) == 0 && len(update.Permissions) == 0 {
 		return doc, fmt.Errorf("%w", databases.ErrNoFieldsToUpdate)
 	}
@@ -795,6 +814,9 @@ func (p *postgresDocumentDB) publishDocumentEvent(
 	})
 }
 
+// buildInsertParts 拼接数据列 INSERT 片段。数组值（阶段③-b）编码为 PG 数组
+// 字面量字符串，目标列类型由 INSERT VALUES 推断（text[]/bigint[] 等按列解析，
+// 与标量值的绑定路径同机制）。
 func buildInsertParts(doc databases.Document) (columns string, placeholders string, args []any) {
 	if len(doc.Data) == 0 {
 		return "", "", nil
@@ -806,6 +828,11 @@ func buildInsertParts(doc databases.Document) (columns string, placeholders stri
 			continue
 		}
 		cols = append(cols, quoteIdent(k))
+		if lit, isArr := pgArrayLiteral(v); isArr {
+			phs = append(phs, "?")
+			args = append(args, lit)
+			continue
+		}
 		phs = append(phs, "?")
 		args = append(args, v)
 	}
@@ -839,6 +866,12 @@ func conflictWhereClause(conflictColumns []string) string {
 func buildUpdateParts(doc databases.Document, updatedBy string) (setParts []string, args []any) {
 	for k, v := range doc.Data {
 		if !safeNameRe.MatchString(k) || strings.HasPrefix(k, "_") {
+			continue
+		}
+		// 数组值（阶段③-b）：整列替换语义，字面量 + 目标列推断（同 INSERT）。
+		if lit, isArr := pgArrayLiteral(v); isArr {
+			setParts = append(setParts, fmt.Sprintf("%s = ?", quoteIdent(k)))
+			args = append(args, lit)
 			continue
 		}
 		setParts = append(setParts, fmt.Sprintf("%s = ?", quoteIdent(k)))

@@ -667,5 +667,76 @@
     "sdk": {
       "error": "offset() is not supported"
     }
+  },
+  {
+    "dsl": [
+      "containsAny(\"tags\",[\"a\",\"b\"])"
+    ],
+    "ast": {
+      "filter": {
+        "op": "containsAny",
+        "attribute": "tags",
+        "values": [
+          "a",
+          "b"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "containsAll(\"nums\",[1,2,3])"
+    ],
+    "ast": {
+      "filter": {
+        "op": "containsAll",
+        "attribute": "nums",
+        "values": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    }
+  },
+  {
+    "dsl": [
+      "containsAny(\"tags\",\"a\")"
+    ],
+    "error": "containsAny requires an array of values"
+  },
+  {
+    "dsl": [
+      "containsAll(\"tags\",[])"
+    ],
+    "error": "containsAll requires at least 1 value"
+  },
+  {
+    "dsl": [
+      "equal(\"tags\",\"a\")",
+      "containsAny(\"tags\",[\"a\",\"b\"])"
+    ],
+    "ast": {
+      "filter": {
+        "op": "and",
+        "children": [
+          {
+            "op": "equal",
+            "attribute": "tags",
+            "values": [
+              "a"
+            ]
+          },
+          {
+            "op": "containsAny",
+            "attribute": "tags",
+            "values": [
+              "a",
+              "b"
+            ]
+          }
+        ]
+      }
+    }
   }
 ]

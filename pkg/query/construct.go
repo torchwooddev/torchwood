@@ -35,6 +35,16 @@ func In(attr string, values ...string) *Filter {
 	return &Filter{Op: OpIn, Attribute: attr, Values: values}
 }
 
+// ContainsAny / ContainsAll 是数组算子（§10.5 P0）：仅 array=true 属性可用，
+// 服务端按 catalog attrs 白名单校验后编译为 PG &&（交集非空）/ @>（子集）。
+func ContainsAny(attr string, values ...string) *Filter {
+	return &Filter{Op: OpContainsAny, Attribute: attr, Values: values}
+}
+
+func ContainsAll(attr string, values ...string) *Filter {
+	return &Filter{Op: OpContainsAll, Attribute: attr, Values: values}
+}
+
 func Contains(attr, value string) *Filter {
 	return &Filter{Op: OpContains, Attribute: attr, Values: []string{value}}
 }

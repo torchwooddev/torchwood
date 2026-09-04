@@ -57,6 +57,16 @@ func In(attr string, values ...string) *sharedv1.Filter {
 	return &sharedv1.Filter{Expr: &sharedv1.Filter_In{In: comparison(attr, values)}}
 }
 
+// ContainsAny / ContainsAll 是数组算子（§10.5 P0）：仅 array=true 属性可用，
+// 服务端编译为 PG &&（交集非空）/ @>（子集）。
+func ContainsAny(attr string, values ...string) *sharedv1.Filter {
+	return &sharedv1.Filter{Expr: &sharedv1.Filter_ContainsAny{ContainsAny: comparison(attr, values)}}
+}
+
+func ContainsAll(attr string, values ...string) *sharedv1.Filter {
+	return &sharedv1.Filter{Expr: &sharedv1.Filter_ContainsAll{ContainsAll: comparison(attr, values)}}
+}
+
 func Contains(attr, value string) *sharedv1.Filter {
 	return &sharedv1.Filter{Expr: &sharedv1.Filter_Contains{Contains: comparison(attr, []string{value})}}
 }
@@ -292,6 +302,31 @@ func FromDSL(parts ...string) (*sharedv1.Query, error) {
 				return nil, fmt.Errorf("in requires at least 1 value")
 			}
 			leaves = append(leaves, In(attr, values...))
+		case "containsAny", "containsAll":
+			// 数组算子（§10.5 P0）：与 in 同构，值必须是数组；仅 array=true
+			// 属性可用（服务端按 catalog attrs 白名单校验）。
+			if len(args) != 2 {
+				return nil, fmt.Errorf("%s requires 2 args", op)
+			}
+			attr, err := unquote(args[0])
+			if err != nil {
+				return nil, err
+			}
+			if !strings.HasPrefix(args[1], "[") {
+				return nil, fmt.Errorf("%s requires an array of values, e.g. %s(%q, [\"a\",\"b\"])", op, op, attr)
+			}
+			values, err := parseArray(args[1])
+			if err != nil {
+				return nil, err
+			}
+			if len(values) == 0 {
+				return nil, fmt.Errorf("%s requires at least 1 value", op)
+			}
+			if op == "containsAny" {
+				leaves = append(leaves, ContainsAny(attr, values...))
+			} else {
+				leaves = append(leaves, ContainsAll(attr, values...))
+			}
 		case "between", "notBetween":
 			if len(args) != 3 {
 				return nil, fmt.Errorf("%s requires 3 args", op)

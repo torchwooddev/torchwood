@@ -93,6 +93,10 @@ func filterFromProto(src *sharedv1.Filter, depth int, leaves *int) (*query.Filte
 		return comparisonFilter(query.OpNotEndsWith, e.NotEndsWith, leaves)
 	case *sharedv1.Filter_NotSearch:
 		return comparisonFilter(query.OpNotSearch, e.NotSearch, leaves)
+	case *sharedv1.Filter_ContainsAny:
+		return comparisonFilter(query.OpContainsAny, e.ContainsAny, leaves)
+	case *sharedv1.Filter_ContainsAll:
+		return comparisonFilter(query.OpContainsAll, e.ContainsAll, leaves)
 	case *sharedv1.Filter_And:
 		return boolFilter(query.OpAnd, e.And, depth, leaves)
 	case *sharedv1.Filter_Or:

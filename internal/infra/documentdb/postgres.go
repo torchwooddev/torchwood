@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -123,4 +124,43 @@ func pgTextArray(items []string) string {
 		parts = append(parts, `"`+strings.ReplaceAll(item, `"`, `""`)+`"`)
 	}
 	return `{` + strings.Join(parts, ",") + `}`
+}
+
+// pgArrayLiteral 把 data 通道（JSON 反序列化产物）中的数组值编码为 PG 数组
+// 字面量（阶段③-b）：元素引用与 pgTextArray 同源——PG 数组字面量解析先剥引号
+// 再按目标列元素类型转换，`{"1","2"}` 对 bigint[] 同样合法。标量类型（nil/
+// bool/int64/float64/string）按各自文本形态渲染。返回 false 表示 v 不是数组
+// （按原值绑定，PG 按目标列推断）。
+func pgArrayLiteral(v any) (string, bool) {
+	switch vv := v.(type) {
+	case []string:
+		return pgTextArray(vv), true
+	case []any:
+		parts := make([]string, 0, len(vv))
+		for _, e := range vv {
+			switch ev := e.(type) {
+			case string:
+				parts = append(parts, `"`+strings.ReplaceAll(ev, `"`, `""`)+`"`)
+			case bool:
+				if ev {
+					parts = append(parts, "t")
+				} else {
+					parts = append(parts, "f")
+				}
+			case int64:
+				parts = append(parts, strconv.FormatInt(ev, 10))
+			case int:
+				parts = append(parts, strconv.Itoa(ev))
+			case float64:
+				parts = append(parts, strconv.FormatFloat(ev, 'f', -1, 64))
+			case nil:
+				parts = append(parts, "NULL")
+			default:
+				return "", false
+			}
+		}
+		return `{` + strings.Join(parts, ",") + `}`, true
+	default:
+		return "", false
+	}
 }

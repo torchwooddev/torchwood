@@ -6,8 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
@@ -217,6 +221,81 @@ func buildIncrementParts(increment map[string]int64) (setParts []string, args []
 		args = append(args, delta)
 	}
 	return setParts, args
+}
+
+// buildArrayParts 编译数组列原子更新（阶段③-b 预决策 3，首期四算子）为单语句
+// SET 子句，与 data/increment 拼进同一 UPDATE：
+//
+//	append  → col = COALESCE(col, '{}'::T[]) || ?::T[]（NULL 列视为空数组）
+//	prepend → col = ?::T[] || COALESCE(col, '{}'::T[])
+//	remove  → 差集；移空后为空数组（非 NULL）；NULL 列保持 NULL
+//	unique  → 保首次出现序去重；NULL 列保持 NULL
+//
+// 校验（InvalidArgument）：键安全、列在 attrs 且 array=true、不与 data 同列
+//（同一 SET 子句同列双赋值歧义）、APPEND/PREPEND/REMOVE 要求 values >= 1。
+// SET 右侧的裸列名引用旧行值（UPDATE 语义），bulk 的 `UPDATE tbl AS d SET`
+// 下同样合法。
+func buildArrayParts(arrayUpdates map[string]databases.ArrayUpdate, data map[string]any, attrs []databases.Attribute) (setParts []string, args []any, err error) {
+	if len(arrayUpdates) == 0 {
+		return nil, nil, nil
+	}
+	attrByKey := make(map[string]databases.Attribute, len(attrs))
+	for _, a := range attrs {
+		attrByKey[a.Key] = a
+	}
+	keys := make([]string, 0, len(arrayUpdates))
+	for k := range arrayUpdates {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		upd := arrayUpdates[k]
+		if !safeNameRe.MatchString(k) || strings.HasPrefix(k, "_") {
+			return nil, nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid array update attribute: %s", k))
+		}
+		if _, dup := data[k]; dup {
+			return nil, nil, status.Errorf(codes.InvalidArgument, "attribute %q appears in both data and array_updates", k)
+		}
+		attr, ok := attrByKey[k]
+		if !ok {
+			return nil, nil, status.Errorf(codes.InvalidArgument, "array update on unknown attribute: %s", k)
+		}
+		if !attr.Array {
+			return nil, nil, status.Errorf(codes.InvalidArgument, "array update requires an array attribute: %s", k)
+		}
+		arrType := pgArrayTypeFor(attr.Type)
+		col := quoteIdent(k)
+		switch upd.Op {
+		case databases.ArrayUpdateOpAppend, databases.ArrayUpdateOpPrepend:
+			if len(upd.Values) < 1 {
+				return nil, nil, status.Errorf(codes.InvalidArgument, "%s on %q requires at least 1 value", upd.Op, k)
+			}
+			if upd.Op == databases.ArrayUpdateOpAppend {
+				setParts = append(setParts, fmt.Sprintf("%s = COALESCE(%s, '{}'::%s) || ?::%s", col, col, arrType, arrType))
+			} else {
+				setParts = append(setParts, fmt.Sprintf("%s = ?::%s || COALESCE(%s, '{}'::%s)", col, arrType, col, arrType))
+			}
+			args = append(args, pgTextArray(upd.Values))
+		case databases.ArrayUpdateOpRemove:
+			if len(upd.Values) < 1 {
+				return nil, nil, status.Errorf(codes.InvalidArgument, "remove on %q requires at least 1 value", k)
+			}
+			// 移空 → COALESCE 兜底空数组（预决策：移空后为空数组非 NULL）。
+			setParts = append(setParts, fmt.Sprintf(
+				`%s = CASE WHEN %s IS NULL THEN NULL ELSE COALESCE((SELECT array_agg(e) FROM unnest(%s) e WHERE e <> ALL(?::%s)), '{}'::%s) END`,
+				col, col, col, arrType, arrType))
+			args = append(args, pgTextArray(upd.Values))
+		case databases.ArrayUpdateOpUnique:
+			// WITH ORDINALITY + min(o) 分组 + array_agg(ORDER BY o)：精确保
+			// 首次出现序去重（DISTINCT 无法保序）。
+			setParts = append(setParts, fmt.Sprintf(
+				`%s = CASE WHEN %s IS NULL THEN NULL ELSE (SELECT array_agg(e ORDER BY o) FROM (SELECT e, min(o) AS o FROM unnest(%s) WITH ORDINALITY AS u(e, o) GROUP BY e) s) END`,
+				col, col, col))
+		default:
+			return nil, nil, status.Errorf(codes.InvalidArgument, "unsupported array update op: %s", upd.Op)
+		}
+	}
+	return setParts, args, nil
 }
 
 func (p *postgresDocumentDB) BulkUpdateDocuments(

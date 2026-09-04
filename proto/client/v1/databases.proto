@@ -168,6 +168,9 @@ message UpdateDocumentRequest {
   optional int64 version = 7;
   // 写幂等键，语义同 CreateDocumentRequest.request_id。
   optional string request_id = 8;
+  // 数组列原子更新（§10.5 P0，仅 array=true 属性；与 data/increment 组合时
+  // 同列冲突 → InvalidArgument）。
+  map<string, torchwood.shared.v1.ArrayUpdate> array_updates = 9;
 }
 
 message UpsertDocumentRequest {

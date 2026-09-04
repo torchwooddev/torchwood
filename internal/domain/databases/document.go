@@ -71,10 +71,30 @@ type CollectionPatch struct {
 	Disabled         *bool
 }
 
+// 数组列原子更新算子（阶段③-b §10.5 P0 写侧，首期四算子）。Intersect/Diff/
+// Insert/Filter 挂账转出 POC 前。
+const (
+	ArrayUpdateOpAppend  = "append"
+	ArrayUpdateOpPrepend = "prepend"
+	ArrayUpdateOpRemove  = "remove"
+	ArrayUpdateOpUnique  = "unique"
+)
+
+// ArrayUpdate 是单个数组列的原子更新（编译为单语句 SET 子句，与 data/
+// increment 可组合）。APPEND/PREPEND/REMOVE 要求 Values >= 1；UNIQUE 忽略
+// Values。仅 array=true 属性可用（adapter 按 catalog attrs 校验）。
+type ArrayUpdate struct {
+	Op     string
+	Values []string
+}
+
 type DocumentUpdate struct {
 	Document    Document
 	Permissions []Permission
 	Increment   map[string]int64
+	// ArrayUpdates 是数组列原子更新（阶段③-b）：键为属性 key，与 Document.Data
+	// 同列冲突由 adapter 拒绝（同一 SET 子句内同列双赋值歧义）。
+	ArrayUpdates map[string]ArrayUpdate
 	// ExpectedVersion：用户集合且 !SkipVersion 时必填，须等于当前行 _version。
 	ExpectedVersion int64
 	// SkipVersion：Bulk 内部循环、Upsert 更新支专用。仍执行 _version = _version + 1。
