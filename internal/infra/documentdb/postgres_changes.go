@@ -1,0 +1,146 @@
+// ChangeFeed 实现（阶段④ §4.5）：从 document_events_outbox 读某集合的
+// 已提交事件（outbox 行全部已 COMMIT——行存在即可读，与 published_at
+// 无关），按请求者可见性过滤（快照 ACL + 当前 principal，与 hub 扇出
+// 同语义，复用 events.VisibleTo），seq 升序返回。
+package documentdb
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
+	infraevents "github.com/torchwooddev/torchwood/internal/infra/events"
+)
+
+const (
+	// maxChangesLimit 是单次返回条数上限（:changes 契约）。
+	maxChangesLimit = 500
+	// defaultChangesLimit 是缺省条数。
+	defaultChangesLimit = 500
+	// changesScanBatch 是底层扫描页大小（可见性过滤在应用层做——不可见
+	// 行不占返回额度，需翻页继续扫描）。
+	changesScanBatch = 500
+	// maxChangesScanRows 是单次调用扫描行数硬上限（极端私有集合下防
+	// 无界扫描：全不可见时最多翻 maxChangesScanRows/changesScanBatch 页）。
+	maxChangesScanRows = 50000
+)
+
+// ListChanges 返回 collection 中 seq > SinceSeq 的已提交事件（可见性过滤
+// 后，seq 升序）。has_more = 仍有更多可见事件（客户端以末条 seq 续传）。
+// SinceSeq > 0 且早于该集合最老可用事件 → ErrResumeExpired。
+func (p *postgresDocumentDB) ListChanges(
+	ctx context.Context,
+	projectID, databaseID, collectionID string,
+	opts databases.ListChangesOptions,
+	principal databases.Principal,
+) ([]databases.DocumentChange, bool, error) {
+	if opts.Limit <= 0 {
+		opts.Limit = defaultChangesLimit
+	}
+	if opts.Limit > maxChangesLimit {
+		opts.Limit = maxChangesLimit
+	}
+	if opts.SinceSeq < 0 {
+		opts.SinceSeq = 0
+	}
+	topic := fmt.Sprintf("databases.%s.collections.%s", databaseID, collectionID)
+
+	if opts.SinceSeq > 0 {
+		if err := p.checkChangesCursor(ctx, topic, opts.SinceSeq); err != nil {
+			return nil, false, err
+		}
+	}
+
+	// 扫描多取一条可见事件：collect limit+1，截断到 limit，has_more 由
+	// 第 limit+1 条是否存在决定。
+	out := make([]databases.DocumentChange, 0, opts.Limit+1)
+	var lastSeq int64 = opts.SinceSeq
+	scanned := 0
+	for len(out) <= opts.Limit && scanned < maxChangesScanRows {
+		rows, err := p.scanChanges(ctx, topic, lastSeq, opts.DocumentID, changesScanBatch)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		scanned += len(rows)
+		for i := range rows {
+			lastSeq = rows[i].Seq
+			ev, err := infraevents.UnmarshalEnvelope(rows[i].Payload)
+			if err != nil {
+				// 坏载荷不可见地跳过（outbox 行存在但信封损坏——计数为
+				// 已消费游标，不阻塞续传）。
+				continue
+			}
+			if !domainevents.VisibleTo(ev.ACL, principal) {
+				continue
+			}
+			out = append(out, databases.DocumentChange{
+				Seq:           rows[i].Seq,
+				EventID:       ev.EventID,
+				Event:         ev.Event,
+				DocumentID:    ev.DocumentID,
+				Version:       ev.Version,
+				TransactionID: ev.TransactionID,
+				CreatedAt:     ev.CreatedAt,
+				Truncated:     ev.Truncated,
+				Data:          ev.Data,
+			})
+			if len(out) > opts.Limit {
+				break
+			}
+		}
+		if len(rows) < changesScanBatch {
+			break
+		}
+	}
+	hasMore := len(out) > opts.Limit
+	if hasMore {
+		out = out[:opts.Limit]
+	}
+	return out, hasMore, nil
+}
+
+// checkChangesCursor 判定续传游标是否仍在可用窗口内：SinceSeq 早于该
+// 集合最老可用事件（两者之间可能存在已被清理的行）→ ErrResumeExpired。
+// 集合无任何行时不判过期（返回空集是合法的「已追平」）。
+func (p *postgresDocumentDB) checkChangesCursor(ctx context.Context, topic string, sinceSeq int64) error {
+	var oldest *int64
+	if err := p.conn(ctx).NewSelect().TableExpr("document_events_outbox").
+		ColumnExpr("MIN(seq)").
+		Where("topic = ?", topic).
+		Scan(ctx, &oldest); err != nil {
+		return err
+	}
+	if oldest != nil && sinceSeq < *oldest {
+		return databases.ErrResumeExpired
+	}
+	return nil
+}
+
+// scanChanges 读一页原始行（不做可见性过滤），seq 升序。
+func (p *postgresDocumentDB) scanChanges(ctx context.Context, topic string, sinceSeq int64, documentID string, limit int) ([]outboxScanRow, error) {
+	q := p.conn(ctx).NewSelect().TableExpr("document_events_outbox").
+		Column("seq", "payload").
+		Where("topic = ?", topic).
+		Where("seq > ?", sinceSeq).
+		Order("seq ASC").
+		Limit(limit)
+	if documentID != "" {
+		q = q.Where("payload->>'document_id' = ?", documentID)
+	}
+	var rows []outboxScanRow
+	if err := q.Scan(ctx, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+type outboxScanRow struct {
+	Seq     int64         `bun:"seq"`
+	Payload []byte        `bun:"payload"`
+}
+
+var _ databases.ChangeFeed = (*postgresDocumentDB)(nil)

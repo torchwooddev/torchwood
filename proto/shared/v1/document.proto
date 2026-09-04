@@ -17,3 +17,22 @@ message Document {
   // 用户 collection 的 OCC `_version`；系统资源不经本字段。
   int64 version = 6;
 }
+
+// Change 是一条已提交的文档写事件（阶段④ §4.5，:changes / last_seq 重放
+// 的出站形态）。seq 为 outbox 全局分配序（集合内分配序、可能有空洞——
+// 空洞 = 回滚事务，不丢事件）；delete 事件 data 为空（天然 tombstone：
+// document_id + version 标识删除）。transaction_id 非空表示事件来自
+// execute-tx 原子批（批内事件顺序 = op 序）。
+message Change {
+  int64 seq = 1;
+  string event_id = 2;
+  // 事件名：databases.documents.create | update | delete。
+  string event = 3;
+  string document_id = 4;
+  int64 version = 5;
+  google.protobuf.Timestamp created_at = 6;
+  bool truncated = 7;
+  // 写后全文档（delete 事件缺省）。
+  Document data = 8;
+  string transaction_id = 9;
+}

@@ -686,6 +686,58 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *serverv1.Cou
 	return &serverv1.CountDocumentsResponse{Count: count}, nil
 }
 
+// ListChanges 事件补偿（阶段④ §4.5）：seq 升序、按请求者可见性过滤；
+// has_more 时以末条 seq 续传；游标过期 → FailedPrecondition
+// EVENTS.RESUME_EXPIRED（指引全量重拉）。
+func (s *DatabasesService) ListChanges(ctx context.Context, req *serverv1.ListChangesRequest) (*serverv1.ListChangesResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
+	if req.GetSinceSeq() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "since_seq must be >= 0")
+	}
+	changes, hasMore, err := s.databases.ListChanges(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(),
+		databases.ListChangesOptions{SinceSeq: req.GetSinceSeq(), Limit: int(req.GetLimit())}, dbPrincipal(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out, err := mapChanges(changes)
+	if err != nil {
+		return nil, err
+	}
+	return &serverv1.ListChangesResponse{Changes: out, HasMore: hasMore}, nil
+}
+
+// mapChanges 把领域 Change 映射为 wire 形态（Server/Client 两面共用语义，
+// 各自持有同形实现——genproto 包不同）。
+func mapChanges(changes []databases.DocumentChange) ([]*sharedv1.Change, error) {
+	out := make([]*sharedv1.Change, 0, len(changes))
+	for i := range changes {
+		c := &changes[i]
+		mapped := &sharedv1.Change{
+			Seq:           c.Seq,
+			EventId:       c.EventID,
+			Event:         c.Event,
+			DocumentId:    c.DocumentID,
+			Version:       c.Version,
+			TransactionId: c.TransactionID,
+			Truncated:     c.Truncated,
+			CreatedAt:     timestamppb.New(c.CreatedAt),
+		}
+		if c.Data != nil {
+			doc, err := mapDocument(c.Data)
+			if err != nil {
+				return nil, err
+			}
+			mapped.Data = doc
+		}
+		out = append(out, mapped)
+	}
+	return out, nil
+}
+
 // AggregateDocuments 在权限过滤后的可见行集上聚合（redesign §4.1；D1）。
 func (s *DatabasesService) AggregateDocuments(ctx context.Context, req *serverv1.AggregateDocumentsRequest) (*serverv1.AggregateDocumentsResponse, error) {
 	projectID := s.projectID(ctx)

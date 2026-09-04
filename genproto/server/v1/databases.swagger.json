@@ -393,6 +393,59 @@
         ]
       }
     },
+    "/v1/server/databases/{database_id}/collections/{collection_id}/changes": {
+      "get": {
+        "summary": "ListChanges 返回集合的已提交事件流（阶段④ §4.5 补偿 API）：seq 升序、\n按请求者可见性过滤（快照 ACL + 当前 principal）；delete 事件为天然\ntombstone（无 data）。since_seq 为续传游标（0 = 从最老可用事件起）；\n早于最老可用事件（EVENTS.RESUME_EXPIRED）时应全量重拉后重新续传。\nhas_more=true 时以末条 seq 作下一页 since_seq 续传。重放承诺窗 1h\n（published 行 24h 清理 \u003e\u003e 承诺窗）。",
+        "operationId": "DatabasesService_ListChanges",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/torchwoodserverv1ListChangesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/v1ErrorResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "database_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "since_seq",
+            "description": "续传游标：返回 seq \u003e since_seq 的事件。0 = 从最老可用事件起（缺省）；\n早于最老可用事件 → FailedPrecondition EVENTS.RESUME_EXPIRED。",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "limit",
+            "description": "单页条数，缺省/上限 500。",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
     "/v1/server/databases/{database_id}/collections/{collection_id}/documents": {
       "get": {
         "operationId": "DatabasesService_ListDocuments",
@@ -2055,6 +2108,22 @@
         }
       }
     },
+    "torchwoodserverv1ListChangesResponse": {
+      "type": "object",
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Change"
+          }
+        },
+        "has_more": {
+          "type": "boolean",
+          "title": "仍有更多可见事件：以 changes 末条 seq 作下一页 since_seq 续传。"
+        }
+      }
+    },
     "torchwoodserverv1ListDocumentsResponse": {
       "type": "object",
       "properties": {
@@ -2176,6 +2245,44 @@
           "format": "int64"
         }
       }
+    },
+    "v1Change": {
+      "type": "object",
+      "properties": {
+        "seq": {
+          "type": "string",
+          "format": "int64"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string",
+          "title": "事件名：databases.documents.create | update | delete。"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "format": "int64"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "data": {
+          "$ref": "#/definitions/v1Document",
+          "title": "写后全文档（delete 事件缺省）。"
+        },
+        "transaction_id": {
+          "type": "string"
+        }
+      },
+      "title": "Change 是一条已提交的文档写事件（阶段④ §4.5，:changes / last_seq 重放\n的出站形态）。seq 为 outbox 全局分配序（集合内分配序、可能有空洞——\n空洞 = 回滚事务，不丢事件）；delete 事件 data 为空（天然 tombstone：\ndocument_id + version 标识删除）。transaction_id 非空表示事件来自\nexecute-tx 原子批（批内事件顺序 = op 序）。"
     },
     "v1Collection": {
       "type": "object",

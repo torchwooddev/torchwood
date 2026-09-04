@@ -2,16 +2,24 @@ package client
 
 // Realtime 实现 /v1/realtime WebSocket 订阅（v2 设计 §4.2/§4.3，TS SDK
 // 对等能力）：hello 握手携带 Client JWT access token、subscribe/unsubscribe
-// 帧、服务端 30s ping 回 pong。JWT 到期服务端以 token_expired 关连接
-// （无连接内 refresh）：断线后刷新 access token → 重新 hello → 重订全部
-// 频道，不补历史；重连采用指数退避。version 跳号 / truncated 由调用方
-// 自行 GetDocument 补读。Realtime 不在 Server SDK 提供（API Key 不能连）。
+// 帧、服务端 30s ping 回 pong。断线自动重连：重订时携带该频道最后见到
+// 的 seq（last_seq，阶段④ §4.5），服务端先从 outbox 补发窗口内漏掉的
+// 事件再进入实时流；补不完（has_more）走 Databases().ListChanges 续传。
+// 服务端慢水位断开（close reason "resync:<seq>"）与 token 到期断开都
+// 走同一条重连路径。事件语义（B1）：seq 为集合内分配序、可能有空洞
+//（空洞 = 回滚事务，不丢事件）；同文档事件按 seq 全序；客户端必须按
+// event_id 幂等去重（at-least-once）。重连采用指数退避。
+// 游标早于重放窗口时服务端回 EVENTS.RESUME_EXPIRED：默认清空该频道
+// 游标按新订阅继续（漏掉的事件需要调用方全量重拉），可经
+// WithRealtimeResumeExpired 注入回调自定义处理。
+// Realtime 不在 Server SDK 提供（API Key 不能连）。
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +34,9 @@ const (
 
 	realtimeWriteTimeout = 10 * time.Second
 	realtimeHelloTimeout = 10 * time.Second
+
+	// resyncClosePrefix 是服务端慢水位断开 close reason 前缀（"resync:<seq>"）。
+	resyncClosePrefix = "resync:"
 )
 
 // RealtimeEvent 是一条实时事件（payload 为 Envelope.ClientPayload()，无 acl）。
@@ -48,6 +59,15 @@ func WithRealtimeBackoff(initial, max time.Duration) RealtimeOption {
 	}
 }
 
+// WithRealtimeResumeExpired 注入游标过期回调（EVENTS.RESUME_EXPIRED）：
+// channel 的增量窗口已不可续，调用方应全量重拉该集合并自行处置。
+// 默认行为：清空该频道游标，按新订阅（不补历史）继续。
+func WithRealtimeResumeExpired(fn func(channel string)) RealtimeOption {
+	return func(r *RealtimeConn) {
+		r.onResumeExpired = fn
+	}
+}
+
 // realtimeHelloFrame 是客户端首帧（§4.2）。
 type realtimeHelloFrame struct {
 	Type        string `json:"type"`
@@ -55,21 +75,25 @@ type realtimeHelloFrame struct {
 	AccessToken string `json:"access_token,omitempty"`
 }
 
-// realtimeInboundFrame 是客户端控制帧。
+// realtimeInboundFrame 是客户端控制帧。LastSeq > 0 时服务端先补发该频道
+// seq > last_seq 的窗口内事件（阶段④ §4.5）。
 type realtimeInboundFrame struct {
 	Type    string `json:"type"`
 	ID      string `json:"id,omitempty"`
 	Channel string `json:"channel,omitempty"`
+	LastSeq int64  `json:"last_seq,omitempty"`
 }
 
 // realtimeServerFrame 是服务端出站帧。
 type realtimeServerFrame struct {
-	Type    string         `json:"type"`
-	ID      string         `json:"id"`
-	Code    string         `json:"code"`
-	Message string         `json:"message"`
-	Channel string         `json:"channel"`
-	Payload map[string]any `json:"payload"`
+	Type      string         `json:"type"`
+	ID        string         `json:"id"`
+	Code      string         `json:"code"`
+	Message   string         `json:"message"`
+	Channel   string         `json:"channel"`
+	Payload   map[string]any `json:"payload"`
+	Replayed  int64          `json:"replayed"`
+	HasMore   bool           `json:"has_more"`
 }
 
 // RealtimeSubscription 是退订句柄。
@@ -84,19 +108,23 @@ func (s *RealtimeSubscription) Unsubscribe() {
 	s.rc.unsubscribe(s)
 }
 
-// RealtimeConn 是 /v1/realtime 的连接句柄（断线自动重连 + 重订）。
+// RealtimeConn 是 /v1/realtime 的连接句柄（断线自动重连 + 带 last_seq 重订）。
 type RealtimeConn struct {
 	client         *Client
 	url            string
 	backoffInitial time.Duration
 	backoffMax     time.Duration
 
-	mu     sync.Mutex
-	subs   map[string]map[*RealtimeSubscription]RealtimeHandler
-	subIDs map[string]string
-	subSeq int
-	conn   *websocket.Conn // 当前连接；nil 表示处于重连间隙
-	closed bool
+	mu       sync.Mutex
+	subs     map[string]map[*RealtimeSubscription]RealtimeHandler
+	subIDs   map[string]string
+	lastSeqs map[string]int64 // 频道 → 最后见到的 seq（重订续传游标）
+	subSeq   int
+	conn     *websocket.Conn // 当前连接；nil 表示处于重连间隙
+	closed   bool
+
+	// onResumeExpired 是 EVENTS.RESUME_EXPIRED 回调（nil = 默认清游标）。
+	onResumeExpired func(channel string)
 
 	writeMu sync.Mutex // coder/websocket 只允许单并发写
 	done    chan struct{}
@@ -122,6 +150,7 @@ func (c *Client) ConnectRealtime(ctx context.Context, httpEndpoint string, opts 
 		backoffMax:     defaultRealtimeBackoffMax,
 		subs:           make(map[string]map[*RealtimeSubscription]RealtimeHandler),
 		subIDs:         make(map[string]string),
+		lastSeqs:       make(map[string]int64),
 		done:           make(chan struct{}),
 	}
 	for _, o := range opts {
@@ -222,14 +251,17 @@ func (r *RealtimeConn) dial(ctx context.Context) error {
 }
 
 // run 是连接生命周期循环：读循环退出后（非主动关闭）刷新 token、
-// 退避重连并重订全部频道（不补历史）。
+// 退避重连并带 last_seq 重订全部频道（窗口内漏掉的事件由服务端补发）。
+// 慢水位断开（close reason "resync:<seq>"）零退避立即重连——服务端
+// 主动要求重同步；游标保留，重订即重放。
 func (r *RealtimeConn) run() {
 	attempt := 0
 	for {
-		r.readLoop()
+		readErr := r.readLoop()
 		if r.isClosed() {
 			return
 		}
+		resync := isResyncClose(readErr)
 		r.mu.Lock()
 		old := r.conn
 		r.conn = nil
@@ -239,15 +271,19 @@ func (r *RealtimeConn) run() {
 		}
 		r.client.forceRefreshToken(context.Background())
 
-		delay := r.backoffInitial << min(attempt, 20)
-		if delay > r.backoffMax {
-			delay = r.backoffMax
-		}
-		attempt++
-		select {
-		case <-r.done:
-			return
-		case <-time.After(delay):
+		if resync {
+			attempt = 0
+		} else {
+			delay := r.backoffInitial << min(attempt, 20)
+			if delay > r.backoffMax {
+				delay = r.backoffMax
+			}
+			attempt++
+			select {
+			case <-r.done:
+				return
+			case <-time.After(delay):
+			}
 		}
 		if err := r.dial(context.Background()); err != nil {
 			continue
@@ -257,18 +293,28 @@ func (r *RealtimeConn) run() {
 	}
 }
 
-// readLoop 逐帧处理服务端消息，直到连接断开。
-func (r *RealtimeConn) readLoop() {
+// isResyncClose 判定断线是否为服务端慢水位 resync 断开。
+func isResyncClose(err error) bool {
+	var ce websocket.CloseError
+	if !errors.As(err, &ce) {
+		return false
+	}
+	return strings.HasPrefix(ce.Reason, resyncClosePrefix)
+}
+
+// readLoop 逐帧处理服务端消息，直到连接断开；返回末次读错误（resync
+// close 判定用）。
+func (r *RealtimeConn) readLoop() error {
 	for {
 		r.mu.Lock()
 		conn := r.conn
 		r.mu.Unlock()
 		if conn == nil {
-			return
+			return nil
 		}
 		_, data, err := conn.Read(context.Background())
 		if err != nil {
-			return
+			return err
 		}
 		var f realtimeServerFrame
 		if err := json.Unmarshal(data, &f); err != nil {
@@ -279,15 +325,45 @@ func (r *RealtimeConn) readLoop() {
 			r.dispatch(f.Channel, f.Payload)
 		case "ping":
 			r.writeFrame(conn, &realtimeInboundFrame{Type: "pong"})
-		case "subscribed", "pong", "error":
-			// subscribed/pong 无需处理；订阅级 error（NOT_FOUND /
-			// RESOURCE_EXHAUSTED）连接保持，由调用方决定是否退订。
+		case "error":
+			if f.Code == "EVENTS.RESUME_EXPIRED" {
+				r.handleResumeExpired(f.Channel)
+				continue
+			}
+			// 其余订阅级 error（NOT_FOUND / RESOURCE_EXHAUSTED）连接保持，
+			// 由调用方决定是否退订。
+		case "subscribed":
+			// has_more=true：窗口内补发超上限，调用方应以最后见到的 seq
+			// 走 Databases().ListChanges 续传（SDK 不自动拉取——事件消费
+			// 语义属调用方）。
+		case "pong":
 		}
 	}
 }
 
-// dispatch 把事件分发给频道订阅者。
+// handleResumeExpired 处理游标过期：默认清空该频道游标（重订退化为
+// 新订阅，漏掉的事件由调用方全量重拉），有回调则转交。
+func (r *RealtimeConn) handleResumeExpired(channel string) {
+	r.mu.Lock()
+	fn := r.onResumeExpired
+	if fn == nil {
+		delete(r.lastSeqs, channel)
+	}
+	r.mu.Unlock()
+	if fn != nil {
+		fn(channel)
+	}
+}
+
+// dispatch 把事件分发给频道订阅者，并上抬该频道的 seq 游标。
 func (r *RealtimeConn) dispatch(channel string, payload map[string]any) {
+	if seq, ok := payloadNumber(payload, "seq"); ok {
+		r.mu.Lock()
+		if seq > r.lastSeqs[channel] {
+			r.lastSeqs[channel] = seq
+		}
+		r.mu.Unlock()
+	}
 	r.mu.Lock()
 	handlers := make([]RealtimeHandler, 0, len(r.subs[channel]))
 	for _, h := range r.subs[channel] {
@@ -300,22 +376,44 @@ func (r *RealtimeConn) dispatch(channel string, payload map[string]any) {
 	}
 }
 
-// resubscribeAll 重连成功后重订全部频道（复用原订阅 id，不补历史）。
+// payloadNumber 从 payload 取数值字段（JSON number → float64）。
+func payloadNumber(payload map[string]any, key string) (int64, bool) {
+	v, ok := payload[key]
+	if !ok {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case float64:
+		return int64(n), true
+	case json.Number:
+		i, err := strconv.ParseInt(n.String(), 10, 64)
+		return i, err == nil
+	}
+	return 0, false
+}
+
+// resubscribeAll 重连成功后带 last_seq 重订全部频道（复用原订阅 id）。
 func (r *RealtimeConn) resubscribeAll() {
 	r.mu.Lock()
 	conn := r.conn
-	channels := make([]string, 0, len(r.subs))
+	type pending struct {
+		channel  string
+		lastSeq  int64
+	}
+	list := make([]pending, 0, len(r.subs))
 	for ch := range r.subs {
-		channels = append(channels, ch)
+		list = append(list, pending{channel: ch, lastSeq: r.lastSeqs[ch]})
 	}
 	r.mu.Unlock()
-	for _, ch := range channels {
-		r.writeFrame(conn, &realtimeInboundFrame{Type: "subscribe", ID: r.subID(ch), Channel: ch})
+	for _, p := range list {
+		r.writeFrame(conn, &realtimeInboundFrame{
+			Type: "subscribe", ID: r.subID(p.channel), Channel: p.channel, LastSeq: p.lastSeq,
+		})
 	}
 }
 
-// Subscribe 订阅频道；连接已就绪时立即发送 subscribe 帧，否则重连后
-// 自动补订。返回退订句柄。
+// Subscribe 订阅频道；连接已就绪时立即发送 subscribe 帧（已知游标时携带
+// last_seq 请求窗口内补发），否则重连后自动补订。返回退订句柄。
 func (r *RealtimeConn) Subscribe(channel string, h RealtimeHandler) *RealtimeSubscription {
 	sub := &RealtimeSubscription{rc: r, channel: channel, handler: h}
 	r.mu.Lock()
@@ -326,12 +424,22 @@ func (r *RealtimeConn) Subscribe(channel string, h RealtimeHandler) *RealtimeSub
 	}
 	set[sub] = h
 	conn := r.conn
+	lastSeq := r.lastSeqs[channel]
 	first := len(set) == 1
 	r.mu.Unlock()
 	if first && conn != nil {
-		r.writeFrame(conn, &realtimeInboundFrame{Type: "subscribe", ID: r.subID(channel), Channel: channel})
+		r.writeFrame(conn, &realtimeInboundFrame{
+			Type: "subscribe", ID: r.subID(channel), Channel: channel, LastSeq: lastSeq,
+		})
 	}
 	return sub
+}
+
+// LastSeq 返回频道当前的续传游标（尚未收到事件为 0）。
+func (r *RealtimeConn) LastSeq(channel string) int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastSeqs[channel]
 }
 
 func (r *RealtimeConn) unsubscribe(s *RealtimeSubscription) {

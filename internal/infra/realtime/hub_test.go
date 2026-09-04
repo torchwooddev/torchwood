@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/domain/events"
+	"github.com/torchwooddev/torchwood/internal/domain/shared"
 )
 
 func testEnvelope() events.Envelope {
@@ -41,7 +42,7 @@ func testEnvelope() events.Envelope {
 }
 
 func newTestConn(id string, principal databases.Principal) *Conn {
-	return &Conn{ID: id, DocPrincipal: principal, Send: make(chan map[string]any, connSendBuffer)}
+	return &Conn{ID: id, DocPrincipal: principal, Send: make(chan map[string]any, shared.RealtimeSendBuffer)}
 }
 
 // TestHub_DispatchFiltersByVisibleTo：非 admin 按写前/写后 _perms 过滤；

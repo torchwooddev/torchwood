@@ -339,6 +339,63 @@ func (d *DatabasesService) AggregateDocuments(ctx context.Context, collectionID 
 	return d.c.databases.AggregateDocuments(ctx, req)
 }
 
+// ListChanges 拉取集合的已提交事件流（阶段④ §4.5 补偿 API）：seq 升序、
+// 按本 key 的可见性过滤。sinceSeq 为续传游标（0 = 从最老可用事件起）；
+// 返回变更列表与 has_more（以末条 Seq 作下一页 sinceSeq 续传）。
+// 游标早于重放窗口 → 错误域码 EVENTS.RESUME_EXPIRED（FailedPrecondition），
+// 此时应全量重拉（ListDocuments）后以最新事件 Seq 重新续传。
+// 事件语义：seq 集合内为分配序（跨文档不保证与提交序一致，且可能有
+// 空洞——空洞 = 回滚事务，不丢事件）；同文档事件严格按 seq 全序；
+// delete 事件 Data 为 nil（tombstone：document_id + version 标识删除）；
+// transaction_id 非空表示来自 execute-tx 原子批（批内顺序 = op 序）。
+// 客户端按 event_id 幂等去重（at-least-once）。
+func (d *DatabasesService) ListChanges(ctx context.Context, collectionID string, sinceSeq int64, limit int32) ([]*sharedv1.Change, bool, error) {
+	resp, err := d.c.databases.ListChanges(ctx, &serverv1.ListChangesRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		SinceSeq:     sinceSeq,
+		Limit:        limit,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return resp.Changes, resp.HasMore, nil
+}
+
+// ChangesPager 是 ListChanges 的续传迭代器：自动以末条 Seq 作下一页
+// sinceSeq，直至 has_more=false。
+type ChangesPager struct {
+	svc          *DatabasesService
+	collectionID string
+	limit        int32
+	sinceSeq     int64
+	done         bool
+}
+
+// NewChangesPager 创建变更流续传迭代器（limit<=0 时默认 500）。
+func (d *DatabasesService) NewChangesPager(collectionID string, sinceSeq int64, limit int32) *ChangesPager {
+	if limit <= 0 {
+		limit = 500
+	}
+	return &ChangesPager{svc: d, collectionID: collectionID, limit: limit, sinceSeq: sinceSeq}
+}
+
+// Next 拉取下一页；已到末尾返回 nil,nil。
+func (p *ChangesPager) Next(ctx context.Context) ([]*sharedv1.Change, error) {
+	if p.done {
+		return nil, nil
+	}
+	changes, hasMore, err := p.svc.ListChanges(ctx, p.collectionID, p.sinceSeq, p.limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(changes) > 0 {
+		p.sinceSeq = changes[len(changes)-1].GetSeq()
+	}
+	p.done = !hasMore
+	return changes, nil
+}
+
 // BulkUpdateDocuments 批量更新文档，返回受影响数量。
 func (d *DatabasesService) BulkUpdateDocuments(ctx context.Context, collectionID string, documentIDs []string, data map[string]any, permissions []string) (*serverv1.BulkDocumentsResponse, error) {
 	st, err := toStruct(data)

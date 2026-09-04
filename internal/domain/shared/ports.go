@@ -2,6 +2,7 @@ package shared
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
@@ -42,19 +43,78 @@ type RealtimeTransport interface {
 	Trim(ctx context.Context) error
 }
 
-// RealtimeFanout 仅存在于 cmd/server 进程：SUBSCRIBE 频道并写入
-// Hub（Hub.Dispatch → 标 outbox published_at）。宕机期间漏推不补历史。
+// RealtimeSendBuffer 是每连接发送缓冲（帧数，阶段④水位断开）：慢客户端
+// 落后超过该水位即带因断开（resync + last_seq），不再丢帧续命。
+const RealtimeSendBuffer = 1024
+
+// RealtimeFanout 仅存在于 cmd/server 进程：消费事件 Stream（每实例一
+// 消费组）并写入 Hub（Hub.Dispatch → 标 outbox published_at）。
 type RealtimeFanout interface {
 	Run(ctx context.Context) error
 }
 
 // RealtimeConn 是 Hub 侧的连接句柄。Send 只承载出站帧
 // （{"type":"event","channel":...,"payload":ClientPayload()}，无 acl）。
+// TrySend 是唯一入队路径：满水位触发 OnSlow（resync 断开）而非丢帧。
 type RealtimeConn struct {
 	ID            string
 	PlatformAdmin bool
 	DocPrincipal  databases.Principal
 	Send          chan map[string]any
+
+	// lastSeq 是该连接最后成功入队帧的 seq（单调上抬，resync close
+	// reason 的数据源；redispatch 重投旧事件不会使游标回退）。
+	lastSeq atomic.Int64
+	// slowClosed 置位后连接视为已断开（后续入队直接失败）。
+	slowClosed atomic.Bool
+	// OnSlow 由 handler 侧注入：满水位时被调用恰一次（参数 = lastSeq），
+	// 实现必须非阻塞。nil 时 TrySend 退化为旧丢帧语义（测试桩兼容）。
+	OnSlow func(lastSeq int64)
+}
+
+// TrySend 非阻塞入队一帧；成功入队后才上抬 lastSeq 游标（断开 reason 的
+// seq 必须是「确实已入队」的最后一帧——失败帧不计入，否则客户端从该
+// seq 续传会漏掉未投递帧）。返回 false 表示连接已慢断开（或本次触发
+// 断开）。OnSlow 为 nil（旧语义）时满载丢帧并返回 true——调用方以返回
+// 值区分「已入队」与「断开」，丢帧路径由调用方自行计数。
+func (c *RealtimeConn) TrySend(frame map[string]any, seq int64) bool {
+	if c.slowClosed.Load() {
+		return false
+	}
+	select {
+	case c.Send <- frame:
+		c.RaiseLastSeq(seq)
+		return true
+	default:
+		if c.OnSlow != nil {
+			if c.slowClosed.CompareAndSwap(false, true) {
+				c.OnSlow(c.lastSeq.Load())
+			}
+			return false
+		}
+		// 旧语义（无 OnSlow）：丢帧续命，连接保持。
+		return true
+	}
+}
+
+// SlowClosed 报告连接是否已被慢水位断开。
+func (c *RealtimeConn) SlowClosed() bool { return c.slowClosed.Load() }
+
+// LastSeq 返回连接游标（最后入队帧的 seq）。
+func (c *RealtimeConn) LastSeq() int64 { return c.lastSeq.Load() }
+
+// RaiseLastSeq 单调上抬游标（门控积压路径使用：帧尚未入 Send 但已确定
+// 会刷入，断开 reason 应覆盖）。
+func (c *RealtimeConn) RaiseLastSeq(seq int64) {
+	if seq <= 0 {
+		return
+	}
+	for {
+		cur := c.lastSeq.Load()
+		if seq <= cur || c.lastSeq.CompareAndSwap(cur, seq) {
+			return
+		}
+	}
 }
 
 // RealtimeHub 是 server 进程内订阅表端口（v2 设计 §4.5）：WS handler
@@ -67,4 +127,11 @@ type RealtimeHub interface {
 	Unsubscribe(channel, connID string)
 	// Remove 把 conn 从全部频道移除（连接关闭时调用）。
 	Remove(connID string)
+	// BeginReplay 把连接置为重放门控态（阶段④ last_seq）：Dispatch 到该
+	// 连接的帧积压在 backlog，不入 Send。必须在 Subscribe 之前调用——
+	// 保证「门控 → 订阅 → 查 outbox 补发」之间无漏帧窗口。
+	BeginReplay(conn *RealtimeConn)
+	// EndReplay 结束门控：调用方已把补发帧写入 Send 后，把 backlog 中
+	// 未见（seen 为补发批的 event_id 集）的帧按序刷入，连接回到实时态。
+	EndReplay(conn *RealtimeConn, seen map[string]struct{})
 }

@@ -307,6 +307,10 @@ func (*stubDocDB) ExecuteTransactions(context.Context, string, string, []databas
 	panic("ExecuteTransactions: not implemented in test fake")
 }
 
+func (*stubDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
+	panic("ListChanges: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*stubDocDB)(nil)
 
 func hashSecret(raw string) string {

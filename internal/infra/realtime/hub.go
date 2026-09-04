@@ -9,10 +9,6 @@ import (
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 )
 
-// connSendBuffer 是每连接发送缓冲（帧数）。慢客户端落后则丢事件，
-// 不阻塞 subscriber（重连不补历史）。
-const connSendBuffer = 64
-
 // dedupWindow 是 Hub 按 event_id 去重的时间窗（回收重放 / 崩溃重投
 // 的重复条目不再二次扇出；窗口覆盖 2min 兜底 + 30s idle 认领余量）。
 // var 而非 const：测试覆写缩短窗口验证刷新语义。
@@ -25,6 +21,21 @@ const dedupMax = 4096
 // 端口，连接句柄定义在 domain 层供 api 层握手代码使用）。
 type Conn = shared.RealtimeConn
 
+// replayGate 是单连接的 last_seq 重放门控状态（阶段④ §4.5）：
+// 门控期间 Dispatch 到该连接的帧积压在 backlog（保序），EndReplay 时
+// 去重（补发批已含的 event_id）后按序刷入 Send。
+type replayGate struct {
+	mu      sync.Mutex
+	active  bool
+	backlog []gatedFrame
+}
+
+type gatedFrame struct {
+	eventID string
+	frame   map[string]any
+	seq     int64
+}
+
 // Hub 是单进程内存订阅表：map[channel]map[connID]*Conn（v2 设计
 // §4.5）。只存在于 cmd/server 进程。
 type Hub struct {
@@ -34,6 +45,9 @@ type Hub struct {
 	channels map[string]map[string]*Conn
 	subCount int
 	dedup    map[string]time.Time
+
+	gateMu sync.Mutex
+	gates  map[string]*replayGate
 }
 
 // NewHub 构造 Hub。logger 可为 nil（回退 slog.Default）。
@@ -45,6 +59,7 @@ func NewHub(logger *slog.Logger) *Hub {
 		logger:   logger,
 		channels: make(map[string]map[string]*Conn),
 		dedup:    make(map[string]time.Time),
+		gates:    make(map[string]*replayGate),
 	}
 }
 
@@ -82,10 +97,9 @@ func (h *Hub) Unsubscribe(channel, connID string) {
 	RealtimeSubscriptions.Set(float64(h.subCount))
 }
 
-// Remove 把 conn 从全部频道移除（连接关闭时调用）。
+// Remove 把 conn 从全部频道移除（连接关闭时调用），并清理其门控状态。
 func (h *Hub) Remove(connID string) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	for ch, m := range h.channels {
 		if _, ok := m[connID]; ok {
 			delete(m, connID)
@@ -96,13 +110,62 @@ func (h *Hub) Remove(connID string) {
 		}
 	}
 	RealtimeSubscriptions.Set(float64(h.subCount))
+	h.mu.Unlock()
+
+	h.gateMu.Lock()
+	delete(h.gates, connID)
+	h.gateMu.Unlock()
+}
+
+// BeginReplay 置连接为门控态（幂等；必须先于 Subscribe 调用）。
+func (h *Hub) BeginReplay(conn *Conn) {
+	h.gateMu.Lock()
+	defer h.gateMu.Unlock()
+	g := h.gates[conn.ID]
+	if g == nil {
+		g = &replayGate{active: true}
+		h.gates[conn.ID] = g
+		return
+	}
+	g.mu.Lock()
+	g.active = true
+	g.mu.Unlock()
+}
+
+// EndReplay 结束门控并刷入 backlog：seen 为补发批已含的 event_id 集
+//（重复跳过），其余按积压序入 Send；满水位走 TrySend 的慢断开路径。
+func (h *Hub) EndReplay(conn *Conn, seen map[string]struct{}) {
+	h.gateMu.Lock()
+	g := h.gates[conn.ID]
+	if g != nil {
+		delete(h.gates, conn.ID)
+	}
+	h.gateMu.Unlock()
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.active = false
+	backlog := g.backlog
+	g.backlog = nil
+	g.mu.Unlock()
+
+	for _, f := range backlog {
+		if _, dup := seen[f.eventID]; dup {
+			continue
+		}
+		conn.TrySend(f.frame, f.seq)
+	}
 }
 
 // Dispatch 收**完整**信封（含 ev.ACL），按集合 + 文档两个频道扇出。
 // 连接只收 PlatformAdmin 旁路或 VisibleTo(ev.ACL) 通过的订阅者；
-// 入队帧只用 ev.ClientPayload()（剥掉 acl），发送 chan 满载则丢事件。
+// 入队帧只用 ev.ClientPayload()（剥掉 acl）。入队统一走 TrySend：
+// 满水位带因断开（resync + last_seq），不再丢帧（OnSlow 为 nil 的
+// 测试桩退化为旧丢帧语义）。
 // 经济事件（Domain 非空，v3 设计 §5.1/D17）：只扇出显式 Channel，无 acl——
 // 可见性由频道本身保证（订阅侧 parseChannel 派发表仅允许本人订阅）。
+// 门控中的连接：帧积压进 backlog（EndReplay 统一去重刷入）。
 func (h *Hub) Dispatch(ev events.Envelope) {
 	if !h.markSeen(ev.EventID) {
 		return // 重复 event_id（回收重放 / PEL 重投）
@@ -126,16 +189,35 @@ func (h *Hub) Dispatch(ev events.Envelope) {
 				continue
 			}
 			frame := map[string]any{"type": "event", "channel": ch, "payload": payload}
-			select {
-			case c.Send <- frame:
+			if g := h.gateOf(c.ID); g != nil {
+				g.mu.Lock()
+				if g.active {
+					g.backlog = append(g.backlog, gatedFrame{eventID: ev.EventID, frame: frame, seq: ev.Seq})
+					g.mu.Unlock()
+					// 门控积压同样上抬游标：断开 reason 覆盖已积压帧。
+					c.RaiseLastSeq(ev.Seq)
+					continue
+				}
+				g.mu.Unlock()
+			}
+			if c.TrySend(frame, ev.Seq) {
 				RealtimeEventsDeliveredTotal.WithLabelValues(ev.Event).Inc()
-			default:
-				RealtimeEventsDroppedTotal.WithLabelValues("slow_consumer").Inc()
-				h.logger.Warn("realtime slow consumer dropped event",
-					"event_id", ev.EventID, "connection_id", c.ID, "channel", ch)
+			} else if c.SlowClosed() {
+				RealtimeEventsDroppedTotal.WithLabelValues("slow_disconnect").Inc()
+				h.logger.Warn("realtime slow consumer disconnected for resync",
+					"event_id", ev.EventID, "connection_id", c.ID, "channel", ch,
+					"last_seq", c.LastSeq())
 			}
 		}
 	}
+}
+
+// gateOf 读取连接的门控状态（无锁读指针，active 判断在 g.mu 内）。
+func (h *Hub) gateOf(connID string) *replayGate {
+	h.gateMu.Lock()
+	g := h.gates[connID]
+	h.gateMu.Unlock()
+	return g
 }
 
 // markSeen 记录 event_id 并返回该事件是否首次出现（去重窗口内）。

@@ -27,6 +27,7 @@ const (
 	DatabasesService_UpsertDocument_FullMethodName = "/torchwood.client.v1.DatabasesService/UpsertDocument"
 	DatabasesService_DeleteDocument_FullMethodName = "/torchwood.client.v1.DatabasesService/DeleteDocument"
 	DatabasesService_CountDocuments_FullMethodName = "/torchwood.client.v1.DatabasesService/CountDocuments"
+	DatabasesService_ListChanges_FullMethodName    = "/torchwood.client.v1.DatabasesService/ListChanges"
 )
 
 // DatabasesServiceClient is the client API for DatabasesService service.
@@ -42,6 +43,10 @@ type DatabasesServiceClient interface {
 	UpsertDocument(ctx context.Context, in *UpsertDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	CountDocuments(ctx context.Context, in *CountDocumentsRequest, opts ...grpc.CallOption) (*CountDocumentsResponse, error)
+	// ListChanges 返回集合的已提交事件流（阶段④ §4.5 补偿 API，与 Server 面
+	// 同用例核心）：seq 升序、按请求者可见性过滤；delete 事件为天然
+	// tombstone。since_seq 为续传游标；has_more=true 时以末条 seq 续传。
+	ListChanges(ctx context.Context, in *ListChangesRequest, opts ...grpc.CallOption) (*ListChangesResponse, error)
 }
 
 type databasesServiceClient struct {
@@ -122,6 +127,16 @@ func (c *databasesServiceClient) CountDocuments(ctx context.Context, in *CountDo
 	return out, nil
 }
 
+func (c *databasesServiceClient) ListChanges(ctx context.Context, in *ListChangesRequest, opts ...grpc.CallOption) (*ListChangesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListChangesResponse)
+	err := c.cc.Invoke(ctx, DatabasesService_ListChanges_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabasesServiceServer is the server API for DatabasesService service.
 // All implementations must embed UnimplementedDatabasesServiceServer
 // for forward compatibility.
@@ -135,6 +150,10 @@ type DatabasesServiceServer interface {
 	UpsertDocument(context.Context, *UpsertDocumentRequest) (*v1.Document, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*v1.Empty, error)
 	CountDocuments(context.Context, *CountDocumentsRequest) (*CountDocumentsResponse, error)
+	// ListChanges 返回集合的已提交事件流（阶段④ §4.5 补偿 API，与 Server 面
+	// 同用例核心）：seq 升序、按请求者可见性过滤；delete 事件为天然
+	// tombstone。since_seq 为续传游标；has_more=true 时以末条 seq 续传。
+	ListChanges(context.Context, *ListChangesRequest) (*ListChangesResponse, error)
 	mustEmbedUnimplementedDatabasesServiceServer()
 }
 
@@ -165,6 +184,9 @@ func (UnimplementedDatabasesServiceServer) DeleteDocument(context.Context, *Dele
 }
 func (UnimplementedDatabasesServiceServer) CountDocuments(context.Context, *CountDocumentsRequest) (*CountDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CountDocuments not implemented")
+}
+func (UnimplementedDatabasesServiceServer) ListChanges(context.Context, *ListChangesRequest) (*ListChangesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListChanges not implemented")
 }
 func (UnimplementedDatabasesServiceServer) mustEmbedUnimplementedDatabasesServiceServer() {}
 func (UnimplementedDatabasesServiceServer) testEmbeddedByValue()                          {}
@@ -313,6 +335,24 @@ func _DatabasesService_CountDocuments_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabasesService_ListChanges_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListChangesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).ListChanges(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_ListChanges_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).ListChanges(ctx, req.(*ListChangesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DatabasesService_ServiceDesc is the grpc.ServiceDesc for DatabasesService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -347,6 +387,10 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CountDocuments",
 			Handler:    _DatabasesService_CountDocuments_Handler,
+		},
+		{
+			MethodName: "ListChanges",
+			Handler:    _DatabasesService_ListChanges_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

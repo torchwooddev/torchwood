@@ -310,6 +310,10 @@ func (usersCollectionGuardDocDB) ExecuteTransactions(context.Context, string, st
 	panic("ExecuteTransactions: not implemented in test fake")
 }
 
+func (usersCollectionGuardDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
+	panic("ListChanges: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = usersCollectionGuardDocDB{}
 
 func (r signupProjectRepo) DeleteProjectControlPlaneRows(context.Context, string) error { return nil }

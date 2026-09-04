@@ -48,6 +48,8 @@ var apiKeyScopeRules = map[string]apiKeyScopeRule{
 	"/torchwood.server.v1.DatabasesService/BulkUpdateDocuments": {"databases", "write"},
 	"/torchwood.server.v1.DatabasesService/BulkDeleteDocuments": {"databases", "write"},
 	"/torchwood.server.v1.DatabasesService/ExecuteTransactions": {"databases", "write"},
+	// ListChanges（阶段④ §4.5 补偿 API）：读语义——事件流按请求者可见性过滤。
+	"/torchwood.server.v1.DatabasesService/ListChanges": {"databases", "read"},
 	// UsersService
 	"/torchwood.server.v1.UsersService/CreateUser":         {"users", "write"},
 	"/torchwood.server.v1.UsersService/ListUsers":          {"users", "read"},

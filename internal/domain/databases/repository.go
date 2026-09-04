@@ -1,6 +1,9 @@
 package databases
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Catalog 是只读 catalog：不跑 DDL、不 Apply 项目迁移。
 type Catalog interface {
@@ -46,22 +49,59 @@ type Documents interface {
 	AggregateDocuments(ctx context.Context, projectID, databaseID, collectionID string, q Query, aggs []AggregateSpec, groupBy string, principal Principal) ([]AggregateGroup, error)
 	BulkUpdateDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, data map[string]any, perms []Permission, principal Principal) (int64, error)
 	BulkDeleteDocuments(ctx context.Context, projectID, databaseID, collectionID string, documentIDs []string, principal Principal) (int64, error)
-	// ExecuteTransactions 在单事务内顺序执行异构 op 批（事务内核 Phase 1，
-	// redesign §4.8）：按 (_tenant, doc) 排序预加 advisory 锁防批间死锁，
+// ExecuteTransactions 在单事务内顺序执行异构 op 批（事务内核 Phase 1，
+	// redesign §4.8）：按 (_tenant, doc) 排序预取 advisory 锁防批间死锁，
 	// 事件同事务且顺序 = op 序；ATOMIC 任一失败整批回滚（返回带 op index
 	// 的错误），PARTIAL 逐 op savepoint 容错、已成功不回滚。
 	ExecuteTransactions(ctx context.Context, projectID, databaseID string, ops []TransactionOp, mode TransactionMode, principal Principal) ([]TransactionOpResult, error)
 }
 
-// DocumentDB 嵌入三端口，现有注入点多数不用改签名。
+// DocumentChange 是一条已提交的文档写事件（:changes / last_seq 重放的
+// 出站形态，阶段④ §4.5）：seq 升序、按请求者可见性过滤；delete 事件
+// Data 为 nil（天然 tombstone：document_id + version 标识删除）。
+type DocumentChange struct {
+	Seq           int64
+	EventID       string
+	Event         string
+	DocumentID    string
+	Version       int64
+	TransactionID string // execute-tx 批标识（单文档路径为空）
+	CreatedAt     time.Time
+	Truncated     bool
+	Data          *Document
+}
+
+// ListChangesOptions 是变更流查询参数。
+type ListChangesOptions struct {
+	// SinceSeq 是续传游标：返回 seq > SinceSeq 的已提交事件。0 = 从最老
+	// 可用事件起（缺省，不判过期）；> 0 且早于该集合最老可用事件 →
+	// ErrResumeExpired（增量不完整，指引全量重拉）。
+	SinceSeq int64
+	// DocumentID 非空时仅返回该文档的事件（WS 文档频道重放用）。
+	DocumentID string
+	// Limit 是返回条数上限（1..500，0 = 默认 500；超过上限按上限截断）。
+	Limit int
+}
+
+// ChangeFeed 是事件补偿读取端口（阶段④ §4.5）：从 outbox 表读某集合的
+// 已提交事件，按请求者可见性过滤（快照 ACL + 当前 principal，与 hub
+// 扇出同语义）。返回 seq 升序的可见事件与 has_more（仍有更多可见事件，
+// 以末条 seq 续传）。
+type ChangeFeed interface {
+	ListChanges(ctx context.Context, projectID, databaseID, collectionID string, opts ListChangesOptions, principal Principal) ([]DocumentChange, bool, error)
+}
+
+// DocumentDB 嵌入四端口，现有注入点多数不用改签名。
 type DocumentDB interface {
 	Catalog
 	SchemaApplier
 	Documents
+	ChangeFeed
 }
 
 var (
-	_ Catalog       = (DocumentDB)(nil)
+	_ Catalog      = (DocumentDB)(nil)
 	_ SchemaApplier = (DocumentDB)(nil)
-	_ Documents     = (DocumentDB)(nil)
+	_ Documents    = (DocumentDB)(nil)
+	_ ChangeFeed   = (DocumentDB)(nil)
 )

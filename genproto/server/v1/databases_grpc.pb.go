@@ -44,6 +44,7 @@ const (
 	DatabasesService_BulkUpdateDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
 	DatabasesService_BulkDeleteDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
 	DatabasesService_ExecuteTransactions_FullMethodName = "/torchwood.server.v1.DatabasesService/ExecuteTransactions"
+	DatabasesService_ListChanges_FullMethodName         = "/torchwood.server.v1.DatabasesService/ListChanges"
 )
 
 // DatabasesServiceClient is the client API for DatabasesService service.
@@ -83,6 +84,13 @@ type DatabasesServiceClient interface {
 	// ATOMIC（默认）任一 op 失败整批回滚；PARTIAL 逐 op 独立执行（savepoint），
 	// 已成功不回滚，返回 per-op 结果。
 	ExecuteTransactions(ctx context.Context, in *ExecuteTransactionsRequest, opts ...grpc.CallOption) (*ExecuteTransactionsResponse, error)
+	// ListChanges 返回集合的已提交事件流（阶段④ §4.5 补偿 API）：seq 升序、
+	// 按请求者可见性过滤（快照 ACL + 当前 principal）；delete 事件为天然
+	// tombstone（无 data）。since_seq 为续传游标（0 = 从最老可用事件起）；
+	// 早于最老可用事件（EVENTS.RESUME_EXPIRED）时应全量重拉后重新续传。
+	// has_more=true 时以末条 seq 作下一页 since_seq 续传。重放承诺窗 1h
+	// （published 行 24h 清理 >> 承诺窗）。
+	ListChanges(ctx context.Context, in *ListChangesRequest, opts ...grpc.CallOption) (*ListChangesResponse, error)
 }
 
 type databasesServiceClient struct {
@@ -333,6 +341,16 @@ func (c *databasesServiceClient) ExecuteTransactions(ctx context.Context, in *Ex
 	return out, nil
 }
 
+func (c *databasesServiceClient) ListChanges(ctx context.Context, in *ListChangesRequest, opts ...grpc.CallOption) (*ListChangesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListChangesResponse)
+	err := c.cc.Invoke(ctx, DatabasesService_ListChanges_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabasesServiceServer is the server API for DatabasesService service.
 // All implementations must embed UnimplementedDatabasesServiceServer
 // for forward compatibility.
@@ -370,6 +388,13 @@ type DatabasesServiceServer interface {
 	// ATOMIC（默认）任一 op 失败整批回滚；PARTIAL 逐 op 独立执行（savepoint），
 	// 已成功不回滚，返回 per-op 结果。
 	ExecuteTransactions(context.Context, *ExecuteTransactionsRequest) (*ExecuteTransactionsResponse, error)
+	// ListChanges 返回集合的已提交事件流（阶段④ §4.5 补偿 API）：seq 升序、
+	// 按请求者可见性过滤（快照 ACL + 当前 principal）；delete 事件为天然
+	// tombstone（无 data）。since_seq 为续传游标（0 = 从最老可用事件起）；
+	// 早于最老可用事件（EVENTS.RESUME_EXPIRED）时应全量重拉后重新续传。
+	// has_more=true 时以末条 seq 作下一页 since_seq 续传。重放承诺窗 1h
+	// （published 行 24h 清理 >> 承诺窗）。
+	ListChanges(context.Context, *ListChangesRequest) (*ListChangesResponse, error)
 	mustEmbedUnimplementedDatabasesServiceServer()
 }
 
@@ -451,6 +476,9 @@ func (UnimplementedDatabasesServiceServer) BulkDeleteDocuments(context.Context, 
 }
 func (UnimplementedDatabasesServiceServer) ExecuteTransactions(context.Context, *ExecuteTransactionsRequest) (*ExecuteTransactionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExecuteTransactions not implemented")
+}
+func (UnimplementedDatabasesServiceServer) ListChanges(context.Context, *ListChangesRequest) (*ListChangesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListChanges not implemented")
 }
 func (UnimplementedDatabasesServiceServer) mustEmbedUnimplementedDatabasesServiceServer() {}
 func (UnimplementedDatabasesServiceServer) testEmbeddedByValue()                          {}
@@ -905,6 +933,24 @@ func _DatabasesService_ExecuteTransactions_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabasesService_ListChanges_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListChangesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).ListChanges(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_ListChanges_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).ListChanges(ctx, req.(*ListChangesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DatabasesService_ServiceDesc is the grpc.ServiceDesc for DatabasesService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1007,6 +1053,10 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExecuteTransactions",
 			Handler:    _DatabasesService_ExecuteTransactions_Handler,
+		},
+		{
+			MethodName: "ListChanges",
+			Handler:    _DatabasesService_ListChanges_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

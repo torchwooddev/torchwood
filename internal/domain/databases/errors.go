@@ -33,6 +33,10 @@ const (
 	// catalog DDL 乐观锁（阶段②包 B，redesign §4.4）：ddl_seq CAS 递增时
 	// 0 行受影响——并发 schema 变更先行提交，调用方应重读 catalog 后重试。
 	ErrCodeDDLConflict = "CATALOG.DDL_CONFLICT"
+	// 事件重放窗口过期（阶段④ §4.5）：since_seq/last_seq 早于该集合最老
+	// 可用事件（24h published 保留 >> 1h 重放承诺），无法保证增量完整——
+	// 指引客户端全量重拉后重新续传。
+	ErrCodeResumeExpired = "EVENTS.RESUME_EXPIRED"
 )
 
 // ErrorCodeRetryable 是域码静态可重试表：OCC 冲突可重读合并重试、资源耗尽
@@ -73,6 +77,8 @@ func ErrorDomainCode(err error) string {
 		return ErrCodeAggregateOverflow
 	case errors.Is(err, ErrDDLConflict):
 		return ErrCodeDDLConflict
+	case errors.Is(err, ErrResumeExpired):
+		return ErrCodeResumeExpired
 	}
 	return ""
 }
@@ -121,6 +127,11 @@ var ErrAggregateOverflow = errors.New("aggregate_overflow")
 // CAS 冲突非参数错误，对齐 IDEMPOTENCY.IN_PROGRESS 的 Aborted+retryable
 // 先例），retryable=true（调用方重读 catalog 后重试），redesign §4.4 / §11-G3。
 var ErrDDLConflict = errors.New("ddl_conflict")
+
+// ErrResumeExpired 是事件重放游标（since_seq / last_seq）早于该集合最老可用
+// 事件时返回的错误；映射为 FailedPrecondition / EVENTS.RESUME_EXPIRED，
+// 消息指引客户端放弃增量、全量重拉后重新续传（阶段④ §4.5）。
+var ErrResumeExpired = errors.New("resume_expired")
 
 // SimpleDocumentUpdate builds a DocumentUpdate for data and optional permission changes.
 func SimpleDocumentUpdate(doc Document, perms []Permission) DocumentUpdate {

@@ -123,6 +123,23 @@ func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID stri
 	return resp.Count, nil
 }
 
+// ListChanges 拉取集合的已提交事件流（阶段④ §4.5 补偿 API，语义详见
+// Realtime 连接的 last_seq 续传约定）：seq 升序、按当前用户可见性过滤；
+// has_more=true 时以末条 Seq 作下一页 sinceSeq 续传；游标早于重放窗口 →
+// EVENTS.RESUME_EXPIRED（全量重拉后重新续传）。delete 事件为 tombstone。
+func (d *DatabasesService) ListChanges(ctx context.Context, collectionID string, sinceSeq int64, limit int32) ([]*sharedv1.Change, bool, error) {
+	resp, err := d.c.databases.ListChanges(ctx, &clientv1.ListChangesRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		SinceSeq:     sinceSeq,
+		Limit:        limit,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return resp.Changes, resp.HasMore, nil
+}
+
 func toStruct(data map[string]any) (*structpb.Struct, error) {
 	if len(data) == 0 {
 		return nil, nil

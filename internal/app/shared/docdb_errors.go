@@ -38,6 +38,7 @@ var domainCodeGRPC = map[string]codes.Code{
 	databases.ErrCodeIdempotencyInProgress:    codes.Aborted,
 	databases.ErrCodeAggregateOverflow:        codes.InvalidArgument,
 	databases.ErrCodeDDLConflict:              codes.Aborted,
+	databases.ErrCodeResumeExpired:            codes.FailedPrecondition,
 }
 
 // domainCodeMessage 是域码的人类可读消息（与领域哨兵文案同源）。
@@ -59,6 +60,7 @@ var domainCodeMessage = map[string]string{
 	databases.ErrCodeIdempotencyInProgress:    "request with the same idempotency key is still in progress",
 	databases.ErrCodeAggregateOverflow:        databases.ErrAggregateOverflow.Error(),
 	databases.ErrCodeDDLConflict:              "concurrent schema modification conflict; re-read the collection and retry",
+	databases.ErrCodeResumeExpired:            "resume cursor predates the oldest available event; re-sync with a full listing and resume from the latest seq",
 }
 
 const errorInfoDomain = "torchwood.document"

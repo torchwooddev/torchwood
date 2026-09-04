@@ -109,6 +109,121 @@ func (x *Document) GetVersion() int64 {
 	return 0
 }
 
+// Change 是一条已提交的文档写事件（阶段④ §4.5，:changes / last_seq 重放
+// 的出站形态）。seq 为 outbox 全局分配序（集合内分配序、可能有空洞——
+// 空洞 = 回滚事务，不丢事件）；delete 事件 data 为空（天然 tombstone：
+// document_id + version 标识删除）。transaction_id 非空表示事件来自
+// execute-tx 原子批（批内事件顺序 = op 序）。
+type Change struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Seq     int64                  `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
+	EventId string                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	// 事件名：databases.documents.create | update | delete。
+	Event      string                 `protobuf:"bytes,3,opt,name=event,proto3" json:"event,omitempty"`
+	DocumentId string                 `protobuf:"bytes,4,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	Version    int64                  `protobuf:"varint,5,opt,name=version,proto3" json:"version,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Truncated  bool                   `protobuf:"varint,7,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// 写后全文档（delete 事件缺省）。
+	Data          *Document `protobuf:"bytes,8,opt,name=data,proto3" json:"data,omitempty"`
+	TransactionId string    `protobuf:"bytes,9,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Change) Reset() {
+	*x = Change{}
+	mi := &file_shared_v1_document_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Change) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Change) ProtoMessage() {}
+
+func (x *Change) ProtoReflect() protoreflect.Message {
+	mi := &file_shared_v1_document_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Change.ProtoReflect.Descriptor instead.
+func (*Change) Descriptor() ([]byte, []int) {
+	return file_shared_v1_document_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Change) GetSeq() int64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *Change) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *Change) GetEvent() string {
+	if x != nil {
+		return x.Event
+	}
+	return ""
+}
+
+func (x *Change) GetDocumentId() string {
+	if x != nil {
+		return x.DocumentId
+	}
+	return ""
+}
+
+func (x *Change) GetVersion() int64 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *Change) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *Change) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *Change) GetData() *Document {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *Change) GetTransactionId() string {
+	if x != nil {
+		return x.TransactionId
+	}
+	return ""
+}
+
 var File_shared_v1_document_proto protoreflect.FileDescriptor
 
 const file_shared_v1_document_proto_rawDesc = "" +
@@ -122,7 +237,19 @@ const file_shared_v1_document_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12 \n" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\x18\n" +
-	"\aversion\x18\x06 \x01(\x03R\aversionB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
+	"\aversion\x18\x06 \x01(\x03R\aversion\"\xb9\x02\n" +
+	"\x06Change\x12\x10\n" +
+	"\x03seq\x18\x01 \x01(\x03R\x03seq\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12\x14\n" +
+	"\x05event\x18\x03 \x01(\tR\x05event\x12\x1f\n" +
+	"\vdocument_id\x18\x04 \x01(\tR\n" +
+	"documentId\x12\x18\n" +
+	"\aversion\x18\x05 \x01(\x03R\aversion\x129\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1c\n" +
+	"\ttruncated\x18\a \x01(\bR\ttruncated\x121\n" +
+	"\x04data\x18\b \x01(\v2\x1d.torchwood.shared.v1.DocumentR\x04data\x12%\n" +
+	"\x0etransaction_id\x18\t \x01(\tR\rtransactionIdB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_document_proto_rawDescOnce sync.Once
@@ -136,21 +263,24 @@ func file_shared_v1_document_proto_rawDescGZIP() []byte {
 	return file_shared_v1_document_proto_rawDescData
 }
 
-var file_shared_v1_document_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_shared_v1_document_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_shared_v1_document_proto_goTypes = []any{
 	(*Document)(nil),              // 0: torchwood.shared.v1.Document
-	(*structpb.Struct)(nil),       // 1: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
+	(*Change)(nil),                // 1: torchwood.shared.v1.Change
+	(*structpb.Struct)(nil),       // 2: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
 }
 var file_shared_v1_document_proto_depIdxs = []int32{
-	1, // 0: torchwood.shared.v1.Document.data:type_name -> google.protobuf.Struct
-	2, // 1: torchwood.shared.v1.Document.created_at:type_name -> google.protobuf.Timestamp
-	2, // 2: torchwood.shared.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	2, // 0: torchwood.shared.v1.Document.data:type_name -> google.protobuf.Struct
+	3, // 1: torchwood.shared.v1.Document.created_at:type_name -> google.protobuf.Timestamp
+	3, // 2: torchwood.shared.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
+	3, // 3: torchwood.shared.v1.Change.created_at:type_name -> google.protobuf.Timestamp
+	0, // 4: torchwood.shared.v1.Change.data:type_name -> torchwood.shared.v1.Document
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_shared_v1_document_proto_init() }
@@ -164,7 +294,7 @@ func file_shared_v1_document_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shared_v1_document_proto_rawDesc), len(file_shared_v1_document_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -233,6 +233,20 @@ func (d *Databases) CountDocuments(ctx context.Context, projectID, databaseID, c
 	return d.documentsCore().CountDocuments(ctx, pid, databaseID, collectionID, q, principal)
 }
 
+// ListChanges 事件补偿入口（阶段④ §4.5，与 Server 面同用例核心）：守卫
+// 与 CountDocuments 同链；可见性过滤在 infra ChangeFeed。
+func (d *Databases) ListChanges(ctx context.Context, projectID, databaseID, collectionID string, opts databases.ListChangesOptions) ([]databases.DocumentChange, bool, error) {
+	pid, principal, err := d.ensureCollectionForRead(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return nil, false, err
+	}
+	changes, hasMore, err := d.documentsCore().DocumentDB().ListChanges(ctx, pid, databaseID, collectionID, opts, principal)
+	if err != nil {
+		return nil, false, shared.MapDocumentDBError(err)
+	}
+	return changes, hasMore, nil
+}
+
 func ownerDocumentPermissions(userID string) []databases.Permission {
 	userRole := fmt.Sprintf("user:%s", userID)
 	return []databases.Permission{

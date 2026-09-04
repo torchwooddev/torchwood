@@ -134,6 +134,13 @@ service DatabasesService {
       }
     };
   }
+
+  // ListChanges 返回集合的已提交事件流（阶段④ §4.5 补偿 API，与 Server 面
+  // 同用例核心）：seq 升序、按请求者可见性过滤；delete 事件为天然
+  // tombstone。since_seq 为续传游标；has_more=true 时以末条 seq 续传。
+  rpc ListChanges(ListChangesRequest) returns (ListChangesResponse) {
+    option (google.api.http) = { get: "/v1/databases/{database_id}/collections/{collection_id}/changes" };
+  }
 }
 
 message CreateDocumentRequest {
@@ -225,4 +232,22 @@ message CountDocumentsRequest {
 
 message CountDocumentsResponse {
   int64 count = 1;
+}
+
+// ListChangesRequest（阶段④ §4.5）：集合事件补偿查询。
+message ListChangesRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  // 续传游标：返回 seq > since_seq 的事件。0 = 从最老可用事件起（缺省）；
+  // 早于最老可用事件 → FailedPrecondition EVENTS.RESUME_EXPIRED。
+  int64 since_seq = 3;
+  // 单页条数，缺省/上限 500。
+  int32 limit = 4;
+  string project_id = 5;
+}
+
+message ListChangesResponse {
+  repeated shared.v1.Change changes = 1;
+  // 仍有更多可见事件：以 changes 末条 seq 作下一页 since_seq 续传。
+  bool has_more = 2;
 }

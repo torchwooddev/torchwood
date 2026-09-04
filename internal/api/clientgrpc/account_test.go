@@ -201,6 +201,10 @@ func (*fakeDocDB) ExecuteTransactions(context.Context, string, string, []databas
 	panic("ExecuteTransactions: not implemented in test fake")
 }
 
+func (*fakeDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
+	panic("ListChanges: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*fakeDocDB)(nil)
 
 // fakeProjectRepo 返回单个固定 project。

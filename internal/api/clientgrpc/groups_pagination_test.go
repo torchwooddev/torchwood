@@ -146,6 +146,10 @@ func (*clientGroupsDocDB) ExecuteTransactions(context.Context, string, string, [
 	panic("ExecuteTransactions: not implemented in test fake")
 }
 
+func (*clientGroupsDocDB) ListChanges(context.Context, string, string, string, databases.ListChangesOptions, databases.Principal) ([]databases.DocumentChange, bool, error) {
+	panic("ListChanges: not implemented in test fake")
+}
+
 var _ databases.DocumentDB = (*clientGroupsDocDB)(nil)
 
 func TestClientGRPC_ListGroups_EchoesNextPageToken(t *testing.T) {

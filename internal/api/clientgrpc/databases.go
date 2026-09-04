@@ -181,6 +181,46 @@ func (s *DatabasesService) CountDocuments(ctx context.Context, req *clientv1.Cou
 	return &clientv1.CountDocumentsResponse{Count: count}, nil
 }
 
+// ListChanges 事件补偿（阶段④ §4.5，与 Server 面同用例核心）。
+func (s *DatabasesService) ListChanges(ctx context.Context, req *clientv1.ListChangesRequest) (*clientv1.ListChangesResponse, error) {
+	projectID, err := resolveProjectID(ctx, req.GetProjectId())
+	if err != nil {
+		return nil, err
+	}
+	ctx = contexts.WithAuditResource(ctx, "databases/"+req.GetDatabaseId()+"/collections/"+req.GetCollectionId())
+	if req.GetSinceSeq() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "since_seq must be >= 0")
+	}
+	changes, hasMore, err := s.databases.ListChanges(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(),
+		databases.ListChangesOptions{SinceSeq: req.GetSinceSeq(), Limit: int(req.GetLimit())})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*sharedv1.Change, 0, len(changes))
+	for i := range changes {
+		c := &changes[i]
+		mapped := &sharedv1.Change{
+			Seq:           c.Seq,
+			EventId:       c.EventID,
+			Event:         c.Event,
+			DocumentId:    c.DocumentID,
+			Version:       c.Version,
+			TransactionId: c.TransactionID,
+			Truncated:     c.Truncated,
+			CreatedAt:     timestamppb.New(c.CreatedAt),
+		}
+		if c.Data != nil {
+			doc, err := mapClientDocument(c.Data)
+			if err != nil {
+				return nil, err
+			}
+			mapped.Data = doc
+		}
+		out = append(out, mapped)
+	}
+	return &clientv1.ListChangesResponse{Changes: out, HasMore: hasMore}, nil
+}
+
 func resolveProjectID(ctx context.Context, reqProjectID string) (string, error) {
 	if reqProjectID != "" {
 		return reqProjectID, nil

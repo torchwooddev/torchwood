@@ -589,6 +589,24 @@ func (d *Databases) AggregateDocuments(
 	return d.documentsCore().AggregateDocuments(ctx, projectID, databaseID, collectionID, q, aggs, groupBy, principal)
 }
 
+// ListChanges 事件补偿入口（阶段④ §4.5）：读语义守卫与 ListDocuments 同链；
+// 可见性过滤（快照 ACL + 当前 principal）在 infra ChangeFeed。
+func (d *Databases) ListChanges(
+	ctx context.Context,
+	projectID, databaseID, collectionID string,
+	opts databases.ListChangesOptions,
+	principal databases.Principal,
+) ([]databases.DocumentChange, bool, error) {
+	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
+		return nil, false, err
+	}
+	changes, hasMore, err := d.docDB.ListChanges(ctx, projectID, databaseID, collectionID, opts, principal)
+	if err != nil {
+		return nil, false, shared.MapDocumentDBError(err)
+	}
+	return changes, hasMore, nil
+}
+
 func (d *Databases) MapAttributeType(t string) string {
 	return strings.ToLower(t)
 }

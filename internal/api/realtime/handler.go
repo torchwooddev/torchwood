@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
+	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
 	"github.com/torchwooddev/torchwood/internal/domain/shared"
 	"github.com/torchwooddev/torchwood/internal/grpc/interceptor"
 	"github.com/torchwooddev/torchwood/internal/pkg/config"
@@ -40,12 +42,17 @@ const (
 
 // 出站错误码（与协议约定一致，客户端按码分支）。
 const (
-	errCodeUnauthenticated   = "UNAUTHENTICATED"
-	errCodeResourceExhausted = "RESOURCE_EXHAUSTED"
-	errCodeNotFound          = "NOT_FOUND"
-	errCodeInvalidArgument   = "INVALID_ARGUMENT"
-	errCodeInternal          = "INTERNAL"
+	errCodeUnauthenticated    = "UNAUTHENTICATED"
+	errCodeResourceExhausted  = "RESOURCE_EXHAUSTED"
+	errCodeNotFound           = "NOT_FOUND"
+	errCodeInvalidArgument    = "INVALID_ARGUMENT"
+	errCodeInternal           = "INTERNAL"
+	errCodeEventsResumeExpired = "EVENTS.RESUME_EXPIRED"
 )
+
+// maxReplayChanges 是 subscribe 带 last_seq 时单次补发上限（阶段④ §4.5）：
+// 超出则订阅确认帧带 has_more=true，客户端走 :changes 以末条 seq 续传。
+const maxReplayChanges = 500
 
 // CredentialValidator 是握手所需的凭证校验面（auth.Validator 满足；
 // 接口化便于单测）。
@@ -153,6 +160,9 @@ type inboundFrame struct {
 	Type    string `json:"type"`
 	ID      string `json:"id"`
 	Channel string `json:"channel"`
+	// LastSeq（阶段④ §4.5）：可选续传游标。> 0 时服务端先从 outbox 补发
+	// 该频道 seq > last_seq 的可见事件再进入实时流；0/缺省 = 纯实时订阅。
+	LastSeq int64 `json:"last_seq"`
 }
 
 // outboundFrame 是服务端出站帧（事件帧由 Hub 组装为 map 直写）。
@@ -163,6 +173,9 @@ type outboundFrame struct {
 	Message      string `json:"message,omitempty"`
 	ConnectionID string `json:"connection_id,omitempty"`
 	Channel      string `json:"channel,omitempty"`
+	// 重放摘要（阶段④）：subscribe 带 last_seq 时订阅确认帧携带。
+	Replayed int64 `json:"replayed,omitempty"`
+	HasMore  bool  `json:"has_more,omitempty"`
 }
 
 // connState 是一条 WS 连接的运行时状态。
@@ -178,10 +191,14 @@ type connState struct {
 	hubConn *shared.RealtimeConn
 	subs    map[string]struct{} // 已订阅频道（去重 + 计数）
 
-	lastPong atomic.Int64 // unix nano；hello_ok 后置初值
-	cancel   context.CancelFunc
+	// resyncCh（阶段④水位断开）：Hub 满水位触发 OnSlow → writeLoop 收款
+	// 后以 close reason "resync:<last_seq>" 断开；客户端重连带 last_seq
+	// 即天然 RESYNC（断开即重放，语义等价、协议更简——B4 简化）。
+	resyncCh   chan int64
+	lastPong   atomic.Int64 // unix nano；hello_ok 后置初值
+	cancel     context.CancelFunc
 	// expiryTimer 是 JWT 到期关连接定时器；连接提前断开时必须 Stop
-	// （P2-5：否则 timer 持有 conn 状态直至 token 到期，高 churn 下累积）。
+	//（P2-5：否则 timer 持有 conn 状态直至 token 到期，高 churn 下累积）。
 	expiryTimer *time.Timer
 	closeMu     sync.Mutex
 	closed      bool
@@ -197,6 +214,7 @@ func newConnState(principal *shared.Principal, projectID, quotaKey string, claim
 		docPrincipal:  principal.DocPrincipal(),
 		quotaKey:      quotaKey,
 		subs:          make(map[string]struct{}),
+		resyncCh:      make(chan int64, 1),
 	}
 	if claims != nil && claims.ExpiresAt > 0 {
 		st.expiresAt = time.Unix(claims.ExpiresAt, 0)
@@ -206,9 +224,18 @@ func newConnState(principal *shared.Principal, projectID, quotaKey string, claim
 		ID:            connID,
 		PlatformAdmin: st.platformAdmin,
 		DocPrincipal:  st.docPrincipal,
-		Send:          make(chan map[string]any, 64),
+		Send:          make(chan map[string]any, shared.RealtimeSendBuffer),
+		OnSlow:        func(lastSeq int64) { st.requestResync(lastSeq) },
 	}
 	return st
+}
+
+// requestResync 非阻塞投递慢断开信号（OnSlow 恰一次调用，容量 1 足够）。
+func (st *connState) requestResync(lastSeq int64) {
+	select {
+	case st.resyncCh <- lastSeq:
+	default:
+	}
 }
 
 // quotaKeyOf 生成连接配额键（v2 设计 §4.4）：
@@ -477,13 +504,19 @@ func (h *Handler) readLoop(ctx context.Context, c *websocket.Conn, st *connState
 	}
 }
 
-// writeLoop 消费 Hub 发送 chan 与 30s ping ticker。
+// writeLoop 消费 Hub 发送 chan、30s ping ticker 与 resync 信号。
+// 水位断开（阶段④）：Send 满载 → OnSlow → 此处以 close reason
+// "resync:<last_seq>" 主动断开；排空中的帧直接丢弃（客户端从 last_seq
+// 重放补齐，等价 RESYNC）。
 func (h *Handler) writeLoop(ctx context.Context, c *websocket.Conn, st *connState) {
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case lastSeq := <-st.resyncCh:
+			_ = c.Close(websocket.StatusPolicyViolation, fmt.Sprintf("resync:%d", lastSeq))
 			return
 		case frame := <-st.hubConn.Send:
 			data, err := json.Marshal(frame)
@@ -510,6 +543,12 @@ func (h *Handler) writeLoop(ctx context.Context, c *websocket.Conn, st *connStat
 // 文档主体通过一次 REST List 语义的 read 探测（一律 NOT_FOUND，防枚举）；
 // 文档频道：GetDocument 存在且当前 principal 可 read（一律 NOT_FOUND）。
 // 超 32 订返回 RESOURCE_EXHAUSTED，连接保持。
+//
+// last_seq 重放（阶段④ §4.5）：带 last_seq>0 的 databases 频道订阅走
+// 「门控 → 订阅 → outbox 补发 → 刷入 backlog」——补发帧先于实时帧、
+// 补发期间到达的实时帧去重后按序续在其后，无漏帧窗口。超出单次上限
+// （500）时订阅确认带 has_more=true（:changes 续传）；游标早于窗口 →
+// error 帧 EVENTS.RESUME_EXPIRED（订阅失败，连接保持）。
 func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *connState, f *inboundFrame) {
 	if len(st.subs) >= MaxSubscriptionsPerConn {
 		_ = h.writeFrame(ctx, c, &outboundFrame{
@@ -526,6 +565,13 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 		})
 		return
 	}
+	if f.LastSeq > 0 && parsed.kind != channelKindDatabases {
+		_ = h.writeFrame(ctx, c, &outboundFrame{
+			ID: f.ID, Type: "error", Code: errCodeInvalidArgument,
+			Message: "last_seq is only supported on databases channels",
+		})
+		return
+	}
 	if !h.channelAllowed(ctx, st, parsed) {
 		_ = h.writeFrame(ctx, c, &outboundFrame{
 			ID: f.ID, Type: "error", Code: errCodeNotFound,
@@ -533,13 +579,109 @@ func (h *Handler) handleSubscribe(ctx context.Context, c *websocket.Conn, st *co
 		})
 		return
 	}
+
+	ack := &outboundFrame{ID: f.ID, Type: "subscribed", Channel: f.Channel}
 	if _, dup := st.subs[f.Channel]; !dup {
 		st.subs[f.Channel] = struct{}{}
+		if f.LastSeq > 0 {
+			replayed, hasMore, err := h.subscribeWithReplay(ctx, st, parsed, f)
+			if err != nil {
+				delete(st.subs, f.Channel)
+				if errors.Is(err, databases.ErrResumeExpired) {
+					_ = h.writeFrame(ctx, c, &outboundFrame{
+						ID: f.ID, Type: "error", Code: errCodeEventsResumeExpired,
+						Message: "resume cursor predates the oldest available event; re-sync with a full listing and resume from the latest seq",
+					})
+					return
+				}
+				h.logger.Error("realtime replay failed",
+					"connection_id", st.id, "channel", f.Channel, "error", err)
+				_ = h.writeFrame(ctx, c, &outboundFrame{
+					ID: f.ID, Type: "error", Code: errCodeInternal,
+					Message: "replay failed",
+				})
+				return
+			}
+			ack.Replayed = replayed
+			ack.HasMore = hasMore
+			// 确认帧必须排在补发帧之后：经 Send 通道由 writeLoop 统一写
+			//（readLoop 直写与 writeLoop 并发，直写会抢在补发帧之前上线）。
+			st.hubConn.TrySend(map[string]any{
+				"type": "subscribed", "id": ack.ID, "channel": ack.Channel,
+				"replayed": ack.Replayed, "has_more": ack.HasMore,
+			}, 0)
+			return
+		}
 		h.hub.Subscribe(f.Channel, st.hubConn)
 	}
-	_ = h.writeFrame(ctx, c, &outboundFrame{
-		ID: f.ID, Type: "subscribed", Channel: f.Channel,
-	})
+	_ = h.writeFrame(ctx, c, ack)
+}
+
+// subscribeWithReplay 执行带 last_seq 的订阅（调用方已校验频道合法且非
+// 重复订阅）：BeginReplay → Subscribe → ListChanges 补发 → EndReplay。
+// 补发帧先入 Send；补发期间 Dispatch 到达的实时帧在 backlog 中去重
+//（event_id 已在补发批）后续序刷入。
+func (h *Handler) subscribeWithReplay(ctx context.Context, st *connState, ch parsedChannel, f *inboundFrame) (int64, bool, error) {
+	// 门控必须先于 Subscribe：否则订阅生效到门控生效之间的 Dispatch
+	// 会直接入 Send，插到补发帧之前造成乱序。
+	h.hub.BeginReplay(st.hubConn)
+	h.hub.Subscribe(f.Channel, st.hubConn)
+
+	docID := ""
+	if ch.docID != "" {
+		docID = ch.docID
+	}
+	changes, hasMore, err := h.docDB.ListChanges(ctx, st.projectID, ch.dbID, ch.collID,
+		databases.ListChangesOptions{SinceSeq: f.LastSeq, DocumentID: docID, Limit: maxReplayChanges},
+		st.docPrincipal)
+	if err != nil {
+		// 失败路径：解除订阅并保持门控清理（EndReplay 空 seen 即清空）。
+		h.hub.Unsubscribe(f.Channel, st.hubConn.ID)
+		h.hub.EndReplay(st.hubConn, nil)
+		return 0, false, err
+	}
+
+	seen := make(map[string]struct{}, len(changes))
+	for i := range changes {
+		change := changes[i]
+		seen[change.EventID] = struct{}{}
+		frame := map[string]any{
+			"type":    "event",
+			"channel": f.Channel,
+			"payload": changePayload(st.projectID, ch, change),
+		}
+		if !st.hubConn.TrySend(frame, change.Seq) {
+			// 补发即触发水位：连接已在断开路径上（writeLoop 会发 resync
+			// close），后续补发无意义；仍完成 EndReplay 清理门控。
+			break
+		}
+	}
+	h.hub.EndReplay(st.hubConn, seen)
+	return int64(len(seen)), hasMore, nil
+}
+
+// changePayload 把领域 Change 映射为与实时事件帧同形的 payload
+//（Envelope.ClientPayload 语义：无 acl，seq/transaction_id 透出）。
+func changePayload(projectID string, ch parsedChannel, c databases.DocumentChange) map[string]any {
+	m := map[string]any{
+		"event_id":       c.EventID,
+		"event":          c.Event,
+		"project_id":     projectID,
+		"database_id":    ch.dbID,
+		"collection_id":  ch.collID,
+		"document_id":    c.DocumentID,
+		"version":        c.Version,
+		"created_at":     c.CreatedAt.UTC().Format(time.RFC3339),
+		"truncated":      c.Truncated,
+		"seq":            c.Seq,
+	}
+	if c.TransactionID != "" {
+		m["transaction_id"] = c.TransactionID
+	}
+	if c.Data != nil {
+		m["data"] = domainevents.DocumentPayload(c.Data)
+	}
+	return m
 }
 
 // channelAllowed 判定频道可订。databases：集合/文档存在且可读；
