@@ -75,6 +75,8 @@ func (r *outboxRepo) ReplayDeadLetter(ctx context.Context, eventID, projectID st
 			return err
 		}
 		ch := dead.Channel
+		// 列白名单：seq 为 GENERATED ALWAYS AS IDENTITY（000028），重放
+		// 插入同样不得显式提供。
 		if _, err := r.db.Conn(txCtx).NewInsert().Model(&model.DocumentEventsOutbox{
 			EventID:     dead.EventID,
 			ProjectID:   dead.ProjectID,
@@ -84,7 +86,8 @@ func (r *outboxRepo) ReplayDeadLetter(ctx context.Context, eventID, projectID st
 			CreatedAt:   dead.CreatedAt,
 			AvailableAt: time.Now(),
 			Attempts:    0,
-		}).On("CONFLICT (event_id) DO NOTHING").Exec(txCtx); err != nil {
+		}).Column("event_id", "project_id", "topic", "channel", "payload", "created_at", "available_at", "attempts").
+			On("CONFLICT (event_id) DO NOTHING").Exec(txCtx); err != nil {
 			return err
 		}
 		_, err := r.db.Conn(txCtx).NewDelete().Model((*model.DocumentEventsOutboxDead)(nil)).Where("event_id = ?", eventID).Exec(txCtx)

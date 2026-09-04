@@ -78,11 +78,10 @@ func (o *eventOutbox) Publish(ctx context.Context, ev domainevents.Envelope) err
 		}).Column("event_id", "project_id", "topic", "channel", "payload", "created_at", "available_at").Exec(ctx); err != nil {
 			return err
 		}
-		// 同事务发唤醒信号（阶段④）：worker 的专属 LISTEN 连接收款后立即
-		// 领取，替代 200ms 轮询成为主路径。空载荷；回滚事务不发信号
-		//（NOTIFY 随事务丢弃），与行可见性一致。
-		_, err := o.db.Conn(ctx).ExecContext(ctx, `SELECT pg_notify(?, '')`, outboxNotifyChannel)
-		return err
+		// 唤醒信号由 000028 的 AFTER INSERT 触发器发出（同事务、随 commit
+		// 投递、同事务多次自动合并）——应用侧零额外语句，Bulk 语句数预算
+		//（R5-P2-6）不受事件路径影响。
+		return nil
 	}
 	if clients.InTx(ctx) {
 		return insert(ctx)
