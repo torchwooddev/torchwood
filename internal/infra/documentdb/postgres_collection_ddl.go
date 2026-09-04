@@ -81,19 +81,30 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		if err := p.ensureSchemaAndPerms(txCtx, schema); err != nil {
 			return err
 		}
-		if _, _, err := p.insertCollectionMetadata(txCtx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity); err != nil {
+		physical, _, err := p.insertCollectionMetadata(txCtx, projectID, databaseID, collectionID, name, attrs, idxs, perms, documentSecurity)
+		if err != nil {
+			return err
+		}
+		// 分配后的物理名是索引名的实际前缀段（idx_<phys>_<id> 自然 ≤63，
+		// 预决策 2）；sentinel 物理名 = 逻辑名，直调防线由此保留。
+		for _, idx := range idxs {
+			if err := validateIndexNameLen(physical, idx.ID); err != nil {
+				return err
+			}
+		}
+		if err := validateIndexNameLen(physical, "tenant_created"); err != nil {
 			return err
 		}
 		isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-		if err := p.createCollectionTable(txCtx, schema, collectionID, internalID, attrs, isSystem); err != nil {
+		if err := p.createCollectionTable(txCtx, schema, physical, internalID, attrs, isSystem); err != nil {
 			return err
 		}
 		// CREATE TABLE IF NOT EXISTS 不会给存量表补列；DDL 路径一次 reconcile。
-		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
+		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
 			return err
 		}
 		for _, idx := range idxs {
-			if err := p.createCollectionIndex(txCtx, schema, collectionID, idx); err != nil {
+			if err := p.createCollectionIndex(txCtx, schema, physical, idx); err != nil {
 				return err
 			}
 		}
@@ -252,7 +263,7 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 }
 
 func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return p.mapError(err)
 	}
@@ -261,7 +272,8 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DELETE FROM %s WHERE _tenant = ? AND _collection = ?`, permsTableName(schema)), internalID, collectionID); err != nil {
 			return err
 		}
-		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, collectionID))); err != nil {
+		// 物理表按服务端分配名 DROP（逻辑/物理名解耦，预决策 2）。
+		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, physical))); err != nil {
 			return err
 		}
 		// F4-2：物理表删除后同步清理 catalog 行（attrs/indexes 合一行随行消
@@ -278,7 +290,17 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 	}
 	// 权限替换与字段更新同一事务（任一失败整体回滚，避免"权限已换、
 	// 元数据未更"的半更新）；权限-only 变更同样刷 updated_at（审计列统一）。
+	// ddl_seq CAS（阶段②包 B，预决策 6）：并发 schema 变更先行提交 → 0 行
+	// 受影响 → ErrDDLConflict（CATALOG.DDL_CONFLICT，retryable）。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+		// 空 patch（无权限、无字段）保持 no-op，不读行、不刷审计列。
+		if patch.Permissions == nil && patch.Name == "" && patch.DocumentSecurity == nil && patch.Disabled == nil {
+			return nil
+		}
+		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
+		if err != nil {
+			return err
+		}
 		var sets []string
 		var args []any
 		if patch.Permissions != nil {
@@ -301,19 +323,31 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 			sets = append(sets, "disabled = ?")
 			args = append(args, *patch.Disabled)
 		}
-		// 空 patch（无权限、无字段）保持 no-op，不刷审计列。
-		if patch.Permissions == nil && len(sets) == 0 {
-			return nil
-		}
-		sets = append(sets, "updated_at = ?")
-		args = append(args, time.Now(), projectID, databaseID, collectionID)
-		_, err := p.conn(txCtx).ExecContext(txCtx,
+		sets = append(sets, "updated_at = ?", "ddl_seq = ddl_seq + 1")
+		args = append(args, time.Now(), projectID, databaseID, collectionID, row.DDLSeq)
+		res, err := p.conn(txCtx).ExecContext(txCtx,
 			`UPDATE catalog_collections SET `+strings.Join(sets, ", ")+
-				` WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
+				` WHERE project_id = ? AND database_id = ? AND collection_id = ? AND ddl_seq = ?`,
 			args...,
 		)
-		return err
+		if err != nil {
+			return err
+		}
+		return requireCASApplied(res)
 	}))
+}
+
+// requireCASApplied 校验 ddl_seq CAS UPDATE 的受影响行数；0 行 = 并发 schema
+// 变更先行提交（预决策 6）。
+func requireCASApplied(res sql.Result) error {
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("%w: concurrent schema modification", databases.ErrDDLConflict)
+	}
+	return nil
 }
 
 // loadCollectionRow 取 catalog_collections 合一行；行缺失 → NotFound（含
@@ -348,7 +382,7 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if err := validatePhysicalNameLen("attribute key", attr.Key); err != nil {
 		return err
 	}
-	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return p.mapError(err)
 	}
@@ -358,10 +392,10 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
+		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
 			return err
 		}
-		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s`, tableName(schema, collectionID), colSQL)); err != nil {
+		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s`, tableName(schema, physical), colSQL)); err != nil {
 			return err
 		}
 		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
@@ -385,10 +419,13 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		if err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).ExecContext(txCtx,
-			`UPDATE catalog_collections SET attrs = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
-			attrsJSON, projectID, databaseID, collectionID)
-		return err
+		res, err := p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET attrs = ?, updated_at = ?, ddl_seq = ddl_seq + 1 WHERE project_id = ? AND database_id = ? AND collection_id = ? AND ddl_seq = ?`,
+			attrsJSON, time.Now(), projectID, databaseID, collectionID, row.DDLSeq)
+		if err != nil {
+			return err
+		}
+		return requireCASApplied(res)
 	}))
 }
 
@@ -400,16 +437,16 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 	if err := validateIndexNameLen(collectionID, idx.ID); err != nil {
 		return p.mapError(err)
 	}
-	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return p.mapError(err)
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		if err := p.reconcileVersionColumn(txCtx, schema, collectionID, isSystem); err != nil {
+		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
 			return err
 		}
-		if err := p.createCollectionIndex(txCtx, schema, collectionID, idx); err != nil {
+		if err := p.createCollectionIndex(txCtx, schema, physical, idx); err != nil {
 			return err
 		}
 		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
@@ -430,10 +467,13 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 		if err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).ExecContext(txCtx,
-			`UPDATE catalog_collections SET indexes = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
-			idxsJSON, projectID, databaseID, collectionID)
-		return err
+		res, err := p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET indexes = ?, updated_at = ?, ddl_seq = ddl_seq + 1 WHERE project_id = ? AND database_id = ? AND collection_id = ? AND ddl_seq = ?`,
+			idxsJSON, time.Now(), projectID, databaseID, collectionID, row.DDLSeq)
+		if err != nil {
+			return err
+		}
+		return requireCASApplied(res)
 	}))
 }
 
@@ -467,7 +507,9 @@ func (p *postgresDocumentDB) ensurePermsTable(ctx context.Context, schema string
 	return err
 }
 
-func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, collectionID string, tenant int64, attrs []databases.Attribute, isSystem bool) error {
+// createCollectionTable 建集合物理表（physical = 服务端分配的物理表名；
+// sentinel 系统集合 = 逻辑名，指向 tw_<project> 静态表）。
+func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, physical string, tenant int64, attrs []databases.Attribute, isSystem bool) error {
 	cols := []string{
 		"_id TEXT NOT NULL",
 		fmt.Sprintf("_tenant BIGINT NOT NULL DEFAULT %d", tenant),
@@ -491,12 +533,12 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 	existed := false
 	if !isSystem {
 		var err error
-		existed, err = p.collectionTableExists(ctx, schema, collectionID)
+		existed, err = p.collectionTableExists(ctx, schema, physical)
 		if err != nil {
 			return err
 		}
 	}
-	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n\t\t%s\n\t)", tableName(schema, collectionID), strings.Join(cols, ",\n\t\t"))
+	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n\t\t%s\n\t)", tableName(schema, physical), strings.Join(cols, ",\n\t\t"))
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
 	createdHere := !isSystem && !existed
 	if err != nil && isUniqueViolation(err) {
@@ -511,32 +553,32 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 	}
 	// 本事务新建且带 _version：打标，避免同事务写路径把未提交列写入 cache。
 	if createdHere {
-		p.markVersionAlterTx(ctx, schema, collectionID)
+		p.markVersionAlterTx(ctx, schema, physical)
 	}
 	// R5-J3-1（D-P1-3）：用户集合默认时间索引——新建即建，存量表经
 	// IF NOT EXISTS 幂等（系统表跳过，与 _version 列的处理一致）。
 	if !isSystem {
-		if err := p.ensureTenantCreatedIndex(ctx, schema, collectionID); err != nil {
+		if err := p.ensureTenantCreatedIndex(ctx, schema, physical); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *postgresDocumentDB) collectionTableExists(ctx context.Context, schema, collectionID string) (bool, error) {
+func (p *postgresDocumentDB) collectionTableExists(ctx context.Context, schema, physical string) (bool, error) {
 	var exists bool
 	err := p.conn(ctx).QueryRowContext(ctx,
 		`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)`,
-		schema, collectionID,
+		schema, physical,
 	).Scan(&exists)
 	return exists, err
 }
 
 // markVersionAlterTx 记录"本事务内新建 _version 列"的键。增长模型：每条
-// DDL 事务一条（txid|schema.collection），随 txid 单调累积、进程生命周期内
+// DDL 事务一条（txid|schema.物理表名），随 txid 单调累积、进程生命周期内
 // 不清理——量级为每集合创建/加列各一次（远小于业务写路径），可接受。
-func (p *postgresDocumentDB) markVersionAlterTx(ctx context.Context, schema, collectionID string) {
-	key := schema + "." + collectionID
+func (p *postgresDocumentDB) markVersionAlterTx(ctx context.Context, schema, physical string) {
+	key := schema + "." + physical
 	alterKey := p.txid(ctx) + "|" + key
 	if alterKey != "|"+key {
 		p.versionAlterTx.Store(alterKey, struct{}{})
@@ -545,11 +587,11 @@ func (p *postgresDocumentDB) markVersionAlterTx(ctx context.Context, schema, col
 
 // requireVersionColumn 供文档写路径使用：只检查 _version 是否为 bigint，**不 ALTER**。
 // 缺列 → ErrVersionColumnUnavailable；类型冲突 → ErrVersionColumnConflict。
-func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
+func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, physical string, isSystem bool) error {
 	if isSystem {
 		return nil
 	}
-	ready, err := p.versionColumnReady(ctx, schema, collectionID)
+	ready, err := p.versionColumnReady(ctx, schema, physical)
 	if err != nil {
 		return err
 	}
@@ -571,19 +613,20 @@ func (p *postgresDocumentDB) requireVersionColumn(ctx context.Context, schema, c
 // 缓存：仅非事务内见到已提交的 int8 才写入 versionColumns。事务内 CREATE TABLE /
 // ALTER 新建的列只打 versionAlterTx，不写 versionColumns（回滚会撤销列）。
 // 文档写路径不得调用本函数：ADD COLUMN 是 AccessExclusiveLock。
+// 键以物理表名为准（逻辑/物理名解耦后同名逻辑集合不串缓存）。
 //
 // R5-J3-1：入口先幂等补建默认时间索引（ensureTenantCreatedIndex）——本函数
 // 是用户集合所有 DDL touch（CreateCollection/CreateAttribute/CreateIndex）
 // 的汇聚点，存量集合在下次任意 DDL touch 时自动获得该索引；放在 versionColumns
 // 缓存短路之前，保证每次 touch 都对账（IF NOT EXISTS 已存在时仅 catalog 查找）。
-func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema, collectionID string, isSystem bool) error {
+func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema, physical string, isSystem bool) error {
 	if isSystem {
 		return nil
 	}
-	if err := p.ensureTenantCreatedIndex(ctx, schema, collectionID); err != nil {
+	if err := p.ensureTenantCreatedIndex(ctx, schema, physical); err != nil {
 		return err
 	}
-	key := schema + "." + collectionID
+	key := schema + "." + physical
 	if _, ok := p.versionColumns.Load(key); ok {
 		return nil
 	}
@@ -594,7 +637,7 @@ func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema,
 			return nil
 		}
 	}
-	udtName, err := p.versionColumnType(ctx, schema, collectionID)
+	udtName, err := p.versionColumnType(ctx, schema, physical)
 	switch {
 	case err == nil && udtName == "int8":
 		// 事务内可能是本事务 CREATE TABLE 刚加的列，回滚会撤销，不得缓存。
@@ -603,13 +646,13 @@ func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema,
 		}
 		return nil
 	case errors.Is(err, sql.ErrNoRows):
-		tbl := tableName(schema, collectionID)
+		tbl := tableName(schema, physical)
 		if _, err := p.conn(ctx).ExecContext(ctx,
 			fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS _version BIGINT NOT NULL DEFAULT 1`, tbl),
 		); err != nil {
 			return fmt.Errorf("add version column: %w", err)
 		}
-		p.markVersionAlterTx(ctx, schema, collectionID)
+		p.markVersionAlterTx(ctx, schema, physical)
 		return nil
 	case err != nil:
 		return err
@@ -617,7 +660,7 @@ func (p *postgresDocumentDB) reconcileVersionColumn(ctx context.Context, schema,
 		// 用户属性占用了 _version 且类型不是 bigint：拒绝 OCC，禁止拼接
 		// _version = _version + 1（会撞类型错误或静默截断）。
 		slog.Error("version column exists with unsupported type; OCC disabled fail-closed",
-			"schema", schema, "collection", collectionID, "udt_name", udtName)
+			"schema", schema, "table", physical, "udt_name", udtName)
 		return databases.ErrVersionColumnConflict
 	}
 }
@@ -634,11 +677,11 @@ func (p *postgresDocumentDB) txid(ctx context.Context) string {
 
 // versionColumnType 查询 information_schema 中 _version 列的 udt_name；
 // 列不存在返回 (sql.ErrNoRows, "")。
-func (p *postgresDocumentDB) versionColumnType(ctx context.Context, schema, collectionID string) (string, error) {
+func (p *postgresDocumentDB) versionColumnType(ctx context.Context, schema, physical string) (string, error) {
 	var udtName string
 	err := p.conn(ctx).QueryRowContext(ctx,
 		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = '_version'`,
-		schema, collectionID,
+		schema, physical,
 	).Scan(&udtName)
 	return udtName, err
 }
@@ -654,8 +697,8 @@ func (p *postgresDocumentDB) versionColumnType(ctx context.Context, schema, coll
 // 缓存与 reconcileVersionColumn 不同：文档写总在事务内，见到事务开始前已存在的
 // int8 必须缓存，否则每次写都查 information_schema。本事务 CREATE TABLE / ALTER
 // 新建的列（versionAlterTx）只放行 SQL、不写 versionColumns。
-func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, collectionID string) (bool, error) {
-	key := schema + "." + collectionID
+func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, physical string) (bool, error) {
+	key := schema + "." + physical
 	if _, ok := p.versionColumns.Load(key); ok {
 		return true, nil
 	}
@@ -666,7 +709,7 @@ func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, col
 			return true, nil
 		}
 	}
-	udtName, err := p.versionColumnType(ctx, schema, collectionID)
+	udtName, err := p.versionColumnType(ctx, schema, physical)
 	switch {
 	case err == nil && udtName == "int8":
 		p.versionColumns.Store(key, struct{}{})
@@ -681,7 +724,9 @@ func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, col
 	}
 }
 
-func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, collectionID string, idx databases.Index) error {
+// createCollectionIndex 建物理索引：表与索引名前缀均用物理表名（idx_<phys>_<id>
+// 自然 ≤63，预决策 2）。
+func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, physical string, idx databases.Index) error {
 	var plainCols, orderedCols []string
 	for i, attr := range idx.Attributes {
 		if !safeNameRe.MatchString(attr) {
@@ -695,11 +740,11 @@ func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, 
 		}
 		orderedCols = append(orderedCols, quoted+order)
 	}
-	idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, idx.ID))
+	idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", physical, idx.ID))
 	var sql string
 	switch strings.ToLower(idx.Type) {
 	case "unique":
-		sql = fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, collectionID), strings.Join(orderedCols, ", "))
+		sql = fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, physical), strings.Join(orderedCols, ", "))
 	case "fulltext":
 		// W-E：查询编译为 to_tsvector('simple', "col"::text)（compilePredicate），
 		// 索引表达式必须与之逐字对齐才可被 GIN 命中，否则 search 退化为
@@ -708,28 +753,28 @@ func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, 
 		// GIN 忽略 order——用 plainCols（此前拼入 DESC 会产生语法错误 DDL）。
 		if len(plainCols) == 1 {
 			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s::text))`,
-				idxName, tableName(schema, collectionID), plainCols[0])
+				idxName, tableName(schema, physical), plainCols[0])
 		} else {
 			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s))`,
-				idxName, tableName(schema, collectionID), strings.Join(plainCols, " || ' ' || "))
+				idxName, tableName(schema, physical), strings.Join(plainCols, " || ' ' || "))
 		}
 	default:
-		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, collectionID), strings.Join(orderedCols, ", "))
+		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, physical), strings.Join(orderedCols, ", "))
 	}
 	_, err := p.conn(ctx).ExecContext(ctx, sql)
 	return err
 }
 
 // ensureTenantCreatedIndex 为用户集合幂等补建默认时间索引
-// `idx_<coll>_tenant_created ON <tbl>(_tenant, _created_at, _id)`（R5-J3-1，
+// `idx_<phys>_tenant_created ON <tbl>(_tenant, _created_at, _id)`（R5-J3-1，
 // D-P1-3）：列表默认排序 `ORDER BY _created_at DESC, _id DESC` 与 keyset 谓词
 // `(d._created_at, d._id) < (?, ?)` 均消费该序，缺索引时大集合每页全表扫描
-// +排序。PG b-tree 可反向扫描，服务 DESC 无需 DESC 关键字。索引命名与
-// createCollectionIndex 的 `idx_<coll>_<id>` 方案一致（63 字节截断风险同面，
-// 不单独处理）；IF NOT EXISTS 幂等，DDL 路径重复执行仅一次 catalog 查找。
-func (p *postgresDocumentDB) ensureTenantCreatedIndex(ctx context.Context, schema, collectionID string) error {
-	idxName := quoteIdent(fmt.Sprintf("idx_%s_tenant_created", collectionID))
-	sql := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (_tenant, _created_at, _id)`, idxName, tableName(schema, collectionID))
+// +排序。PG b-tree 可反向扫描，服务 DESC 无需 DESC 关键字。索引名前缀段
+// 用物理表名（与 createCollectionIndex 的 `idx_<phys>_<id>` 方案一致，自然
+// ≤63）；IF NOT EXISTS 幂等，DDL 路径重复执行仅一次 catalog 查找。
+func (p *postgresDocumentDB) ensureTenantCreatedIndex(ctx context.Context, schema, physical string) error {
+	idxName := quoteIdent(fmt.Sprintf("idx_%s_tenant_created", physical))
+	sql := fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (_tenant, _created_at, _id)`, idxName, tableName(schema, physical))
 	if _, err := p.conn(ctx).ExecContext(ctx, sql); err != nil {
 		return fmt.Errorf("create tenant_created index: %w", err)
 	}

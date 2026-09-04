@@ -45,7 +45,7 @@ func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, data
 // createDocument 是 CreateDocument 的事务体：数据行与 _perms 写入在同一事务内，
 // 任一步失败整体回滚，避免权限写入失败时文档数据 fail-open。
 func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return doc, err
 	}
@@ -54,9 +54,9 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 	} else if err := validateDocID(doc.ID); err != nil {
 		return doc, err
 	}
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, physical, isSystem); err != nil {
 		return doc, err
 	}
 
@@ -164,13 +164,13 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 // 攻击者的预查发生在受害者提交之后（取锁后重查命中行），按 update
 // 权限拒绝，无法再借 create 权限改写他人行；权限替换与读回同事务。
 func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, conflictCols, conflictColumns []string, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return doc, err
 	}
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, physical, isSystem); err != nil {
 		return doc, err
 	}
 
@@ -330,11 +330,11 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 	if err := validateDocID(docID); err != nil {
 		return nil, p.mapError(err)
 	}
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return nil, p.mapError(err)
 	}
-	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, collectionID)), docID, internalID)
+	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, physical)), docID, internalID)
 	doc, err := scanDocumentJSON(row)
 	if err != nil {
 		return nil, p.mapError(err)
@@ -379,12 +379,12 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 	if err := validateDocID(doc.ID); err != nil {
 		return doc, err
 	}
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return doc, err
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, physical, isSystem); err != nil {
 		return doc, err
 	}
 	occ := false
@@ -417,7 +417,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 			return doc, err
 		}
 	}
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 	updatedBy := userIDFromPrincipal(principal)
 	setParts, args := buildUpdateParts(doc, updatedBy)
 	incParts, incArgs := buildIncrementParts(update.Increment)
@@ -519,12 +519,12 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 // 事务内，删除失败时不会残留权限行。用户集合（非系统）强制 OCC：
 // ExpectedVersion 必填且须等于当前行 _version（行锁下比较，防止竞态）。
 func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return err
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, physical, isSystem); err != nil {
 		return err
 	}
 	if !principal.BypassesDocumentACL() && isWriteProtectedSystemCollection(databaseID, collectionID) {
@@ -538,7 +538,7 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 		// 的 version 与 acl 都基于写前状态。
 		var currentVersion int64
 		err := p.conn(ctx).QueryRowContext(ctx,
-			fmt.Sprintf(`SELECT _version FROM %s WHERE _id = ? AND _tenant = ? FOR UPDATE`, tableName(schema, collectionID)),
+			fmt.Sprintf(`SELECT _version FROM %s WHERE _id = ? AND _tenant = ? FOR UPDATE`, tableName(schema, physical)),
 			docID, internalID,
 		).Scan(&currentVersion)
 		if err != nil {
@@ -566,7 +566,7 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 			if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
 				return err
 			}
-			if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, collectionID)), docID, internalID); err != nil {
+			if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, physical)), docID, internalID); err != nil {
 				return err
 			}
 			return p.publishDocumentEvent(ctx, projectID, databaseID, collectionID, docID,
@@ -576,7 +576,7 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 	if err := p.clearPermissions(ctx, schema, collectionID, docID, internalID); err != nil {
 		return err
 	}
-	_, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, collectionID)), docID, internalID)
+	_, err = p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE _id = ? AND _tenant = ?`, tableName(schema, physical)), docID, internalID)
 	return err
 }
 

@@ -165,6 +165,38 @@ func (p *postgresDocumentDB) businessSchema(projectID, databaseID string) (strin
 	return schema, nil
 }
 
+// resolvePhysicalTable 把 (project, database, collection) 解析为行查询/DDL 的
+// 物理寻址（internalID, schema, 物理表名）。阶段②包 B（redesign §4.2 标识符
+// 治理，预决策 4）：
+//   - sentinel 直通逻辑名（物理表即 tw_<project> 静态表，零额外查询）；
+//   - 业务库单条 catalog 点查取 physical_name——不依赖 GetCollection 返回的
+//     coll 对象，System/bypass 聚合与列表路径（跳过 GetCollection）同样可用；
+//   - 行缺失 → NotFound（物理名是内部实现细节，物理表与 catalog 行同生共死）。
+//
+// 热路径代价 = 业务库 +1 次主键点查（sentinel 零）；进程内缓存按预决策 4
+// 挂账未做（评估后置）。
+func (p *postgresDocumentDB) resolvePhysicalTable(ctx context.Context, projectID, databaseID, collectionID string) (int64, string, string, error) {
+	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	if err != nil {
+		return 0, "", "", err
+	}
+	if databaseID == ident.ProjectDataPlaneID {
+		return internalID, schema, collectionID, nil
+	}
+	var physical string
+	err = p.conn(ctx).NewSelect().Model((*model.DocumentCollection)(nil)).
+		Column("physical_name").
+		Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).
+		Scan(ctx, &physical)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, "", "", status.Error(codes.NotFound, "collection not found")
+		}
+		return 0, "", "", p.mapError(err)
+	}
+	return internalID, schema, physical, nil
+}
+
 func tableName(schema, collectionID string) string {
 	return quoteIdent(schema) + "." + quoteIdent(collectionID)
 }

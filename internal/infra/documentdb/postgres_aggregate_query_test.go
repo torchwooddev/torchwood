@@ -67,7 +67,7 @@ func TestAggregateDocuments_QueryFieldWhitelist(t *testing.T) {
 	// ③b 用户集合未 reconcile（DROP _version 列模拟）→ version_column_unavailable
 	//（读路径以 status 消息承载哨兵文案，与 List 路径同语义），不落 PG 42703。
 	schema := testSchema(t, projectID, "app")
-	_, err = db.ExecContext(ctx, `ALTER TABLE `+tableName(schema, "posts")+` DROP COLUMN _version`)
+	_, err = db.ExecContext(ctx, `ALTER TABLE `+tableName(schema, testPhysicalName(t, ctx, db, projectID, "app", "posts"))+` DROP COLUMN _version`)
 	require.NoError(t, err)
 	fresh := NewPostgresDocumentDB(db, nil)
 	_, err = fresh.AggregateDocuments(ctx, projectID, "app", "posts", databases.Query{

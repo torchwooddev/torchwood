@@ -30,13 +30,17 @@ const (
 	// 聚合（单 AST 会话·预决策 5）：integer 聚合超出 int64 范围
 	//（SUM(bigint)::int8 溢出，PG 22003）。
 	ErrCodeAggregateOverflow = "AGGREGATE.OVERFLOW"
+	// catalog DDL 乐观锁（阶段②包 B，redesign §4.4）：ddl_seq CAS 递增时
+	// 0 行受影响——并发 schema 变更先行提交，调用方应重读 catalog 后重试。
+	ErrCodeDDLConflict = "CATALOG.DDL_CONFLICT"
 )
 
 // ErrorCodeRetryable 是域码静态可重试表：OCC 冲突可重读合并重试、资源耗尽
 // 可退避重试、幂等执行中稍后重试；参数/权限/存在性类错误重试无意义。
 func ErrorCodeRetryable(code string) bool {
 	switch code {
-	case ErrCodeVersionConflict, ErrCodeExhausted, ErrCodeIdempotencyInProgress:
+	case ErrCodeVersionConflict, ErrCodeExhausted, ErrCodeIdempotencyInProgress,
+		ErrCodeDDLConflict:
 		return true
 	}
 	return false
@@ -67,6 +71,8 @@ func ErrorDomainCode(err error) string {
 		return ErrCodeIdempotencyKeyConflict
 	case errors.Is(err, ErrAggregateOverflow):
 		return ErrCodeAggregateOverflow
+	case errors.Is(err, ErrDDLConflict):
+		return ErrCodeDDLConflict
 	}
 	return ""
 }
@@ -109,6 +115,11 @@ var ErrVersionColumnUnavailable = errors.New("version_column_unavailable")
 // ErrAggregateOverflow 是 integer 属性聚合结果超出 int64 范围时返回的错误
 //（SUM(bigint)::int8 溢出）；映射为 InvalidArgument / AGGREGATE.OVERFLOW。
 var ErrAggregateOverflow = errors.New("aggregate_overflow")
+
+// ErrDDLConflict 是 catalog 元数据写路径的 ddl_seq CAS 失败（并发 schema 变更
+// 先行提交，0 行受影响）；映射为 InvalidArgument / CATALOG.DDL_CONFLICT，
+// retryable（调用方重读 catalog 后重试），redesign §4.4 / §11-G3。
+var ErrDDLConflict = errors.New("ddl_conflict")
 
 // SimpleDocumentUpdate builds a DocumentUpdate for data and optional permission changes.
 func SimpleDocumentUpdate(doc Document, perms []Permission) DocumentUpdate {

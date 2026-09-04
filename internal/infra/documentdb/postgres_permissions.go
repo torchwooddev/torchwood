@@ -423,12 +423,12 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 		}
 	}
 	ids := dedupeIDs(documentIDs)
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return 0, err
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, physical, isSystem); err != nil {
 		return 0, err
 	}
 	// 写保护系统集合防线与单条 updateDocument 一致：owner（user:<docID>）
@@ -473,7 +473,7 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 	// 单条 UPDATE ... IN ... RETURNING to_jsonb(d.*)：写后快照一步取回（与
 	// GetDocument 的行→JSON 扫描同语义）；RETURNING 行数不足说明有文档不
 	// 存在（权限已全过）→ ErrDocumentNotFound 整体回滚。
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 	byID := make(map[string]*databases.Document, len(ids))
 	if err := eachIDChunk(ids, bulkInChunk, func(chunk []string) error {
 		sqlArgs := make([]any, 0, len(args)+len(chunk)+1)
@@ -587,12 +587,12 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 		}
 	}
 	ids := dedupeIDs(documentIDs)
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return 0, err
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.requireVersionColumn(ctx, schema, collectionID, isSystem); err != nil {
+	if err := p.requireVersionColumn(ctx, schema, physical, isSystem); err != nil {
 		return 0, err
 	}
 	// 写保护系统集合防线：delete 路径无 owner 例外（与 deleteDocument 一致）。
@@ -609,7 +609,7 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 			return 0, err
 		}
 	}
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 	// 写前 _version（FOR UPDATE 批量锁行，保留单条路径的行锁语义）：事件
 	// version 与 acl 都基于写前状态；有文档不存在 → 整体回滚。
 	versions := make(map[string]int64, len(ids))
@@ -697,7 +697,7 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 	if !safeNameRe.MatchString(key) {
 		return p.mapError(fmt.Errorf("invalid attribute key: %s", key))
 	}
-	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return p.mapError(err)
 	}
@@ -715,7 +715,7 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 			return err
 		}
 		// B8：同事务清理依赖该属性的索引，避免幽灵索引指向已删列（与属性
-		// 是否存在无关，命中引用即清）。
+		// 是否存在无关，命中引用即清）。索引名前缀段用物理表名。
 		keptIdxs := make([]databases.Index, 0, len(idxs))
 		idxsChanged := false
 		for _, idx := range idxs {
@@ -724,7 +724,7 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 				continue
 			}
 			idxsChanged = true
-			idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, idx.ID))
+			idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", physical, idx.ID))
 			if _, err := p.conn(txCtx).ExecContext(txCtx,
 				fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
 			); err != nil {
@@ -732,7 +732,7 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 			}
 		}
 		if _, err := p.conn(txCtx).ExecContext(txCtx,
-			fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, collectionID), quoteIdent(key)),
+			fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, physical), quoteIdent(key)),
 		); err != nil {
 			return err
 		}
@@ -757,10 +757,13 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		if err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).ExecContext(txCtx,
-			`UPDATE catalog_collections SET attrs = ?, indexes = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
-			attrsJSON, idxsJSON, projectID, databaseID, collectionID)
-		return err
+		res, err := p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET attrs = ?, indexes = ?, updated_at = ?, ddl_seq = ddl_seq + 1 WHERE project_id = ? AND database_id = ? AND collection_id = ? AND ddl_seq = ?`,
+			attrsJSON, idxsJSON, time.Now(), projectID, databaseID, collectionID, row.DDLSeq)
+		if err != nil {
+			return err
+		}
+		return requireCASApplied(res)
 	}))
 }
 
@@ -768,14 +771,14 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
 		return p.mapError(err)
 	}
-	_, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return p.mapError(err)
 	}
 	// R02-P1-1：DROP INDEX 与 catalog 元数据删除包进同一事务，任一步失败
 	// 整体回滚，避免"物理索引已删而 catalog 仍记录"。
 	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", collectionID, indexID))
+		idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", physical, indexID))
 		if _, err := p.conn(txCtx).ExecContext(txCtx,
 			fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
 		); err != nil {
@@ -806,9 +809,12 @@ func (p *postgresDocumentDB) DeleteIndex(ctx context.Context, projectID, databas
 		if err != nil {
 			return err
 		}
-		_, err = p.conn(txCtx).ExecContext(txCtx,
-			`UPDATE catalog_collections SET indexes = ? WHERE project_id = ? AND database_id = ? AND collection_id = ?`,
-			idxsJSON, projectID, databaseID, collectionID)
-		return err
+		res, err := p.conn(txCtx).ExecContext(txCtx,
+			`UPDATE catalog_collections SET indexes = ?, updated_at = ?, ddl_seq = ddl_seq + 1 WHERE project_id = ? AND database_id = ? AND collection_id = ? AND ddl_seq = ?`,
+			idxsJSON, time.Now(), projectID, databaseID, collectionID, row.DDLSeq)
+		if err != nil {
+			return err
+		}
+		return requireCASApplied(res)
 	}))
 }

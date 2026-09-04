@@ -1550,15 +1550,17 @@ func TestCreateCollection_DefaultTimeIndex(t *testing.T) {
 
 	schema := testSchema(t, projectID, "app")
 	defaultIndexExists := func(coll string) bool {
+		phys := testPhysicalName(t, ctx, db, projectID, "app", coll)
 		var n int
 		require.NoError(t, db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM pg_indexes WHERE schemaname = ? AND tablename = ? AND indexname = ?`,
-			schema, coll, fmt.Sprintf("idx_%s_tenant_created", coll)).Scan(&n))
+			schema, phys, fmt.Sprintf("idx_%s_tenant_created", phys)).Scan(&n))
 		return n == 1
 	}
 	dropDefaultIndex := func(coll string) {
+		phys := testPhysicalName(t, ctx, db, projectID, "app", coll)
 		_, err := db.ExecContext(ctx, fmt.Sprintf(`DROP INDEX %s`,
-			quoteIdent(schema)+"."+quoteIdent(fmt.Sprintf("idx_%s_tenant_created", coll))))
+			quoteIdent(schema)+"."+quoteIdent(fmt.Sprintf("idx_%s_tenant_created", phys))))
 		require.NoError(t, err)
 	}
 
@@ -2337,7 +2339,7 @@ func TestListDocuments_SameCreatedAtPaginationStable(t *testing.T) {
 	// 拉平 _created_at：全部改为同一时间戳，使默认排序只能依赖 _id tiebreaker。
 	ts := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
 	_, err := db.ExecContext(ctx, fmt.Sprintf(
-		`UPDATE %s SET _created_at = ?`, tableName(testSchema(t, projectID, "app"), "docs")), ts)
+		`UPDATE %s SET _created_at = ?`, tableName(testSchema(t, projectID, "app"), testPhysicalName(t, ctx, db, projectID, "app", "docs"))), ts)
 	require.NoError(t, err)
 
 	var got []string
@@ -2512,9 +2514,11 @@ func TestCreateIndex_FulltextAlignment(t *testing.T) {
 
 	// 物理索引表达式必须与查询编译逐字对齐（to_tsvector('simple', body::text)），
 	// 否则 GIN 不命中、search 退化为全表逐行 to_tsvector。
+	postsPhys := testPhysicalName(t, ctx, db, projectID, "app", "posts")
 	var indexdef string
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_posts_body_ft'`).Scan(&indexdef))
+		`SELECT indexdef FROM pg_indexes WHERE indexname = ?`,
+		fmt.Sprintf("idx_%s_body_ft", postsPhys)).Scan(&indexdef))
 	require.Contains(t, indexdef, "to_tsvector")
 	require.Contains(t, indexdef, "(body)::text",
 		"fulltext 索引表达式须与 compilePredicate 的查询表达式一致（::text 对齐）")

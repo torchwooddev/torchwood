@@ -16,7 +16,7 @@ import (
 )
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return nil, p.mapError(err)
 	}
@@ -24,7 +24,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	if err != nil {
 		return nil, p.mapError(err)
 	}
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 
 	// 非 System 路径显式获取集合一次（coll==nil → NotFound，行为从 403 收紧为 404），
 	// 复用给权限过滤与字段白名单校验；System 信任路径零额外查询（跳过白名单）。
@@ -54,7 +54,7 @@ func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, datab
 	}
 
 	if coll != nil {
-		if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
+		if err := p.validateQueryFields(ctx, schema, physical, parsed, coll, collectionID, isSystem); err != nil {
 			return nil, p.mapError(err)
 		}
 	}
@@ -345,7 +345,7 @@ func decodeKeysetToken(token string) (id, kind string, ok bool) {
 }
 
 func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return 0, p.mapError(err)
 	}
@@ -360,7 +360,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 	if err := rejectNonFilterOperators(parsed, "count"); err != nil {
 		return 0, p.mapError(err)
 	}
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	var coll *databases.Collection
@@ -387,7 +387,7 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 		}
 	}
 	if coll != nil {
-		if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
+		if err := p.validateQueryFields(ctx, schema, physical, parsed, coll, collectionID, isSystem); err != nil {
 			return 0, p.mapError(err)
 		}
 	}
@@ -429,11 +429,11 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 		return nil, p.mapError(status.Error(codes.InvalidArgument, "invalid group_by field name"))
 	}
 
-	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return nil, p.mapError(err)
 	}
-	tbl := tableName(schema, collectionID)
+	tbl := tableName(schema, physical)
 
 	// 白名单校验（与旧 SumDocumentField 同纪律）：聚合目标 ∈ 声明属性且为
 	// integer/float；group_by ∈ 声明属性（任意类型，键按 text 序列化）。
@@ -473,7 +473,7 @@ func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, 
 	// 过滤/排序字段白名单与兄弟路径（List/Count）同源校验（R6）：未声明列
 	// 不落 PG 42703、search 需 fulltext 索引、$version 过 readiness 检查。
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	if err := p.validateQueryFields(ctx, schema, parsed, coll, collectionID, isSystem); err != nil {
+	if err := p.validateQueryFields(ctx, schema, physical, parsed, coll, collectionID, isSystem); err != nil {
 		return nil, p.mapError(err)
 	}
 

@@ -52,8 +52,10 @@ var sensitiveQueryFields = map[string]map[string]struct{}{
 // 白名单（系统列 + 声明 attrs）、敏感列黑名单、search 的 fulltext 索引约束。
 // _version 特判：系统集合拒绝（无此列）；用户集合列尚未 reconcile（缺列）时返回
 // version_column_unavailable，不得落 PG 未定义列错误（读路径不 ALTER）。
-// SystemPrincipal 路径不调用本函数（信任内部调用，零额外元数据查询）。
-func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema string, parsed *query.Query, coll *databases.Collection, collectionID string, isSystem bool) error {
+// 物理表名（physical）供 _version readiness 检查；collectionID 保留逻辑名供
+// 系统集合敏感列黑名单。SystemPrincipal 路径不调用本函数（信任内部调用，
+// 零额外元数据查询）。
+func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, physical string, parsed *query.Query, coll *databases.Collection, collectionID string, isSystem bool) error {
 	allowed := make(map[string]struct{}, len(systemQueryFields)+len(coll.Attributes))
 	for _, f := range systemQueryFields {
 		allowed[f] = struct{}{}
@@ -83,7 +85,7 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema str
 			// 用户集合：列尚未 reconcile → version_column_unavailable；
 			// 列已存在但非 bigint → version_column_conflict。
 			// 均不落 PG 42703；不得改写成对常量 1 的比较（equal("$version", 2) 会静默语义错误）。
-			ready, err := p.versionColumnReady(ctx, schema, collectionID)
+			ready, err := p.versionColumnReady(ctx, schema, physical)
 			if err != nil {
 				return err
 			}

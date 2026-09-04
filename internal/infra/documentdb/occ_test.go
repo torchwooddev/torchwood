@@ -286,9 +286,9 @@ func TestSystemCollection_NoVersionColumn(t *testing.T) {
 	require.NoError(t, docDB.DeleteDocument(ctx, projectID, databases.SystemDatabaseID, "users", userDoc.ID, databases.DeleteOptions{}, databases.SystemPrincipal))
 }
 
-// TestVersionColumn_CreateCollectionReconcilesLegacyTable：存量用户表（无 _version）
-// 读路径缺列视为 1、不 ALTER；$version 在 reconcile 前 unavailable；
-// CreateCollection 一次补列后 OCC 可用。
+// TestVersionColumn_CreateCollectionReconcilesLegacyTable：物理解耦后"存量表"
+// = catalog 登记的物理表缺 _version（带外 DROP 模拟）——读路径缺列视为 1、
+// 不 ALTER；DDL touch（CreateAttribute）一次补列后 OCC 可用。
 func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -299,41 +299,37 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	projectID, internalID, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
-	schema := testSchema(t, projectID, "app")
-	_, err := db.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
-		_id TEXT NOT NULL,
-		_tenant BIGINT NOT NULL,
-		"title" TEXT,
-		_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		_created_by TEXT,
-		_updated_by TEXT,
-		PRIMARY KEY (_tenant, _id))`, tableName(schema, "docs")))
-	require.NoError(t, err)
-
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
-
-	_, err = db.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s (_id, _tenant) VALUES ('legacy', ?)`, tableName(schema, "docs")), internalID)
-	require.NoError(t, err)
-
-	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", "legacy", databases.SystemPrincipal)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), got.Version, "存量表读路径缺列视为 1")
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "读路径不得 ALTER")
-
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, []databases.Permission{
 		{Type: "create", Role: "users"},
 		{Type: "read", Role: "any"},
 	}, true))
-	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, "docs"), "CreateCollection 必须给存量表补 _version")
+	schema := testSchema(t, projectID, "app")
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 
-	updated, err := docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
+		`INSERT INTO %s (_id, _tenant) VALUES ('legacy', ?)`, tableName(schema, physical)), internalID)
+	require.NoError(t, err)
+	// 带外摘列模拟存量表（无 _version）。
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, physical)))
+	require.NoError(t, err)
+
+	fresh := NewPostgresDocumentDB(db, nil)
+	got, err := fresh.GetDocument(ctx, projectID, "app", "docs", "legacy", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), got.Version, "存量表读路径缺列视为 1")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "读路径不得 ALTER")
+
+	// DDL touch（CreateAttribute）经 reconcile 一次补列。
+	require.NoError(t, fresh.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
+		ID: "extra", Key: "extra", Type: "string", Size: 64,
+	}))
+	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, physical), "DDL touch 必须给存量表补 _version")
+
+	updated, err := fresh.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{
 			ID:   "legacy",
 			Data: map[string]any{"title": "t"},
@@ -344,7 +340,7 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	require.Equal(t, int64(2), updated.Version, "reconcile 后更新 version 1→2")
 
 	listPrincipal := databases.Principal{Roles: []string{"users", "user:u1"}}
-	list, err := docDB.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+	list, err := fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		AST: &query.Query{Filter: query.Eq("$version", "2")},
 	}, listPrincipal)
 	require.NoError(t, err)
@@ -352,8 +348,9 @@ func TestVersionColumn_CreateCollectionReconcilesLegacyTable(t *testing.T) {
 	require.Equal(t, "legacy", list.Documents[0].ID)
 }
 
-// TestVersionColumn_TypeConflictFailClosed：存量用户表已有非 bigint _version 列
-// （用户属性抢占）→ 写路径拒绝 OCC（version_column_conflict），禁止类型错误的 +1。
+// TestVersionColumn_TypeConflictFailClosed：物理表 _version 被非 bigint 列抢占
+// （用户属性抢占，带外 ALTER 模拟）→ 写路径拒绝 OCC（version_column_conflict），
+// 禁止类型错误的 +1。
 func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -364,35 +361,33 @@ func TestVersionColumn_TypeConflictFailClosed(t *testing.T) {
 	projectID, _, cleanup := testutil.CreateTestProjectThrough(ctx, db, 8)
 	defer cleanup()
 
-	// 模拟存量表：_version 被 TEXT 列抢占。
-	schema := testSchema(t, projectID, "app")
-	_, err := db.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema)))
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
-		_id TEXT NOT NULL,
-		_tenant BIGINT NOT NULL,
-		_version TEXT NOT NULL DEFAULT 'v0',
-		_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		_created_by TEXT,
-		_updated_by TEXT,
-		PRIMARY KEY (_tenant, _id))`, tableName(schema, "docs")))
-	require.NoError(t, err)
-
 	docDB := NewPostgresDocumentDB(db, nil)
 	require.NoError(t, docDB.CreateDatabase(ctx, projectID, "app", "Application DB"))
-	err = docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true)
-	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "CreateCollection 遇非 bigint _version 必须 fail-closed")
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", nil, nil, nil, true))
+	schema := testSchema(t, projectID, "app")
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 
-	_, err = docDB.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+	// 带外把 _version 抢占为 TEXT。
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, physical)))
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE %s ADD COLUMN _version TEXT NOT NULL DEFAULT 'v0'`, tableName(schema, physical)))
+	require.NoError(t, err)
+
+	fresh := NewPostgresDocumentDB(db, nil)
+	_, err = fresh.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
 		Data: map[string]any{"title": "x"},
 	}, nil, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "写路径遇非 bigint _version 必须 fail-closed")
 
+	err = fresh.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{ID: "n", Key: "n", Type: "integer"})
+	require.ErrorIs(t, err, databases.ErrVersionColumnConflict, "DDL touch 遇非 bigint _version 必须 fail-closed")
+
 	var udtName string
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,
-		schema).Scan(&udtName))
+		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = '_version'`,
+		schema, physical).Scan(&udtName))
 	require.Equal(t, "text", udtName)
 }
 
@@ -422,20 +417,21 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 	}, true))
 
 	schema := testSchema(t, projectID, "app")
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 	_, err := db.ExecContext(ctx, fmt.Sprintf(
-		`INSERT INTO %s (_id, _tenant, "title") VALUES ('d1', ?, 't1')`, tableName(schema, "docs")), internalID)
+		`INSERT INTO %s (_id, _tenant, "title") VALUES ('d1', ?, 't1')`, tableName(schema, physical)), internalID)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, physical)))
 	require.NoError(t, err)
 
 	// 新实例：避免旧进程 cache 把已 DROP 的列当成就绪。
 	fresh := NewPostgresDocumentDB(db, nil)
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "DROP 后列必须不存在")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "DROP 后列必须不存在")
 
 	got, err := fresh.GetDocument(ctx, projectID, "app", "docs", "d1", databases.SystemPrincipal)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), got.Version, "读路径缺列视为 1")
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "读路径不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "读路径不得 ALTER")
 
 	listPrincipal := databases.Principal{Roles: []string{"users", "user:u1"}}
 	_, err = fresh.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
@@ -453,39 +449,39 @@ func TestVersionColumn_WritePathDoesNotAlter(t *testing.T) {
 		ExpectedVersion: 1,
 	}, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable, "写路径缺列必须 fail-closed，不得 ALTER")
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "写路径不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "写路径不得 ALTER")
 
 	_, err = fresh.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
 		ID:   "d2",
 		Data: map[string]any{"title": "n"},
 	}, nil, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "CreateDocument 不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "CreateDocument 不得 ALTER")
 
 	err = fresh.DeleteDocument(ctx, projectID, "app", "docs", "d1", databases.DeleteOptions{ExpectedVersion: 1}, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "DeleteDocument 不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "DeleteDocument 不得 ALTER")
 
 	_, err = fresh.UpsertDocument(ctx, projectID, "app", "docs", databases.Document{
 		ID:   "d3",
 		Data: map[string]any{"title": "up"},
 	}, []string{"title"}, nil, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "UpsertDocument 不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "UpsertDocument 不得 ALTER")
 
 	_, err = fresh.BulkUpdateDocuments(ctx, projectID, "app", "docs", []string{"d1"},
 		map[string]any{"title": "bulk"}, nil, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "BulkUpdate 不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "BulkUpdate 不得 ALTER")
 
 	_, err = fresh.BulkDeleteDocuments(ctx, projectID, "app", "docs", []string{"d1"}, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable)
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "BulkDelete 不得 ALTER")
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical), "BulkDelete 不得 ALTER")
 
 	require.NoError(t, fresh.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{
 		ID: "views", Key: "views", Type: "integer",
 	}))
-	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, "docs"), "CreateAttribute 必须给存量表补 _version")
+	require.Equal(t, 1, versionColumnCount(t, ctx, db, schema, physical), "CreateAttribute 必须给存量表补 _version")
 
 	updated, err := fresh.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
 		Document: databases.Document{
@@ -537,12 +533,20 @@ func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
 	require.Error(t, err)
 
 	schema := testSchema(t, projectID, "app")
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"), "回滚后不得残留 _version 列")
+	// 回滚后 catalog 行与物理表同时撤销（元数据与 DDL 同事务）。
+	var tblCount int
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name <> '_perms'`, schema).Scan(&tblCount))
+	require.Zero(t, tblCount, "回滚后不得残留物理表")
+	rolledBack, err := docDB.GetCollection(ctx, projectID, "app", "docs")
+	require.NoError(t, err)
+	require.Nil(t, rolledBack, "回滚后不得残留 catalog 行")
 
 	require.NoError(t, docDB.CreateCollection(ctx, projectID, "app", "docs", "Docs", []databases.Attribute{
 		{ID: "title", Key: "title", Type: "string", Size: 256},
 	}, nil, nil, true))
-	_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, "docs")))
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`ALTER TABLE %s DROP COLUMN _version`, tableName(schema, physical)))
 	require.NoError(t, err)
 
 	_, err = docDB.UpdateDocument(ctx, projectID, "app", "docs", databases.DocumentUpdate{
@@ -550,7 +554,7 @@ func TestVersionColumn_CreateTableInTxDoesNotPoisonCache(t *testing.T) {
 		ExpectedVersion: 1,
 	}, databases.SystemPrincipal)
 	require.ErrorIs(t, err, databases.ErrVersionColumnUnavailable, "回滚后 cache 不得把已撤销列当就绪")
-	require.Zero(t, versionColumnCount(t, ctx, db, schema, "docs"))
+	require.Zero(t, versionColumnCount(t, ctx, db, schema, physical))
 }
 
 // TestQueryVersion_TypeConflictFailClosed (F4)：读路径遇非 bigint _version 列
@@ -573,11 +577,12 @@ func TestQueryVersion_TypeConflictFailClosed(t *testing.T) {
 	}, true))
 
 	schema := testSchema(t, projectID, "app")
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 	_, err := db.ExecContext(ctx, fmt.Sprintf(
-		`ALTER TABLE %s ALTER COLUMN _version DROP DEFAULT`, tableName(schema, "docs")))
+		`ALTER TABLE %s ALTER COLUMN _version DROP DEFAULT`, tableName(schema, physical)))
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, fmt.Sprintf(
-		`ALTER TABLE %s ALTER COLUMN _version TYPE TEXT USING _version::text`, tableName(schema, "docs")))
+		`ALTER TABLE %s ALTER COLUMN _version TYPE TEXT USING _version::text`, tableName(schema, physical)))
 	require.NoError(t, err)
 
 	fresh := NewPostgresDocumentDB(db, nil)
@@ -612,10 +617,11 @@ func TestCreateAttribute_AdapterRejectsReservedColumns(t *testing.T) {
 
 	// 列未被改动：_version 仍为 bigint（未退化成用户属性）。
 	schema := testSchema(t, projectID, "app")
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 	var udtName string
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = '_version'`,
-		schema).Scan(&udtName))
+		`SELECT udt_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = '_version'`,
+		schema, physical).Scan(&udtName))
 	require.Equal(t, "int8", udtName)
 }
 
@@ -649,10 +655,11 @@ func TestCreateAttribute_AdapterRejectsArray(t *testing.T) {
 		require.False(t, a.Array)
 	}
 	schema := testSchema(t, projectID, "app")
+	physical := testPhysicalName(t, ctx, db, projectID, "app", "docs")
 	var n int
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'docs' AND column_name = 'tags'`,
-		schema).Scan(&n))
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'tags'`,
+		schema, physical).Scan(&n))
 	require.Equal(t, 0, n)
 
 	err = docDB.CreateCollection(ctx, projectID, "app", "arr_coll", "Arr", []databases.Attribute{
