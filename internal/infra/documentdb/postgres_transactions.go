@@ -43,7 +43,8 @@ func (p *postgresDocumentDB) ExecuteTransactions(
 	}
 
 	var results []databases.TransactionOpResult
-	err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	// E1：RLS/GUC 一次注入（批首身份 = 请求 principal）、逐 op 判定。
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
 		// 批间死锁防护：对批内全部 op 目标（排序后）预取事务级 advisory 锁。
 		if err := p.lockTxTargets(txCtx, projectID, databaseID, ops); err != nil {
 			return err

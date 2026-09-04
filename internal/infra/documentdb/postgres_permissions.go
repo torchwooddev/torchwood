@@ -11,7 +11,6 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
-	"github.com/torchwooddev/torchwood/internal/infra/clients"
 )
 
 func (p *postgresDocumentDB) ensureCollectionAccessible(coll *databases.Collection, principal databases.Principal) error {
@@ -195,17 +194,18 @@ func (p *postgresDocumentDB) BulkUpdateDocuments(
 	if len(documentIDs) == 0 {
 		return 0, nil
 	}
-	// 已在外层事务中（上层 RunInTx）时不嵌套，直接复用外层事务；
-	// 否则整体包在单个事务里，中途失败整体回滚（行为从"部分成功"收紧为"原子"）。
-	if clients.InTx(ctx) {
-		return p.bulkUpdateDocuments(ctx, projectID, databaseID, collectionID, documentIDs, data, perms, principal)
-	}
+	// 整体包在带执行身份的单个事务里（A1：每请求一事务），中途失败整体回滚
+	//（行为从"部分成功"收紧为"原子"）。
 	var affected int64
-	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
 		n, err := p.bulkUpdateDocuments(txCtx, projectID, databaseID, collectionID, documentIDs, data, perms, principal)
+		if err != nil {
+			return err
+		}
 		affected = n
-		return err
-	}); err != nil {
+		return nil
+	})
+	if err != nil {
 		return 0, p.mapError(err)
 	}
 	return affected, nil
@@ -449,15 +449,16 @@ func (p *postgresDocumentDB) BulkDeleteDocuments(
 	if len(documentIDs) == 0 {
 		return 0, nil
 	}
-	if clients.InTx(ctx) {
-		return p.bulkDeleteDocuments(ctx, projectID, databaseID, collectionID, documentIDs, principal)
-	}
 	var affected int64
-	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
 		n, err := p.bulkDeleteDocuments(txCtx, projectID, databaseID, collectionID, documentIDs, principal)
+		if err != nil {
+			return err
+		}
 		affected = n
-		return err
-	}); err != nil {
+		return nil
+	})
+	if err != nil {
 		return 0, p.mapError(err)
 	}
 	return affected, nil

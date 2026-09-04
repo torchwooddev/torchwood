@@ -19,24 +19,20 @@ import (
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	domainevents "github.com/torchwooddev/torchwood/internal/domain/events"
-	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/pkg/idgen"
 )
 
 func (p *postgresDocumentDB) CreateDocument(ctx context.Context, projectID, databaseID, collectionID string, doc databases.Document, perms []databases.Permission, principal databases.Principal) (databases.Document, error) {
-	if clients.InTx(ctx) {
-		docOut, err := p.createDocument(ctx, projectID, databaseID, collectionID, doc, perms, principal)
-		return docOut, p.mapError(err)
-	}
 	var out databases.Document
-	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
 		created, err := p.createDocument(txCtx, projectID, databaseID, collectionID, doc, perms, principal)
 		if err != nil {
 			return err
 		}
 		out = created
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return out, p.mapError(err)
 	}
 	return out, nil
@@ -149,19 +145,16 @@ func (p *postgresDocumentDB) UpsertDocument(ctx context.Context, projectID, data
 		}
 		conflictCols = append(conflictCols, quoteIdent(col))
 	}
-	if clients.InTx(ctx) {
-		docOut, err := p.upsertDocument(ctx, projectID, databaseID, collectionID, doc, conflictCols, conflictColumns, perms, principal)
-		return docOut, p.mapError(err)
-	}
 	var out databases.Document
-	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
 		upserted, err := p.upsertDocument(txCtx, projectID, databaseID, collectionID, doc, conflictCols, conflictColumns, perms, principal)
 		if err != nil {
 			return err
 		}
 		out = upserted
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return out, p.mapError(err)
 	}
 	return out, nil
@@ -344,12 +337,29 @@ func conflictLockKey(values []any) string {
 }
 
 func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) (*databases.Document, error) {
-	if err := validateDocID(docID); err != nil {
+	var doc *databases.Document
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+		got, err := p.getDocument(txCtx, projectID, databaseID, collectionID, docID, principal)
+		if err != nil {
+			return err
+		}
+		doc = got
+		return nil
+	})
+	if err != nil {
 		return nil, p.mapError(err)
+	}
+	return doc, nil
+}
+
+// getDocument 是 GetDocument 的事务体（A1：读同走显式事务承载 GUC 注入）。
+func (p *postgresDocumentDB) getDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, principal databases.Principal) (*databases.Document, error) {
+	if err := validateDocID(docID); err != nil {
+		return nil, err
 	}
 	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, err
 	}
 	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, physical)), docID, internalID)
 	doc, err := scanDocumentJSON(row)
@@ -375,19 +385,16 @@ func (p *postgresDocumentDB) GetDocument(ctx context.Context, projectID, databas
 }
 
 func (p *postgresDocumentDB) UpdateDocument(ctx context.Context, projectID, databaseID, collectionID string, update databases.DocumentUpdate, principal databases.Principal) (databases.Document, error) {
-	if clients.InTx(ctx) {
-		docOut, err := p.updateDocument(ctx, projectID, databaseID, collectionID, update, principal)
-		return docOut, p.mapError(err)
-	}
 	var out databases.Document
-	if err := p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
 		updated, err := p.updateDocument(txCtx, projectID, databaseID, collectionID, update, principal)
 		if err != nil {
 			return err
 		}
 		out = updated
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return out, p.mapError(err)
 	}
 	return out, nil
@@ -536,13 +543,7 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 }
 
 func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
-	if err := validateDocID(docID); err != nil {
-		return p.mapError(err)
-	}
-	if clients.InTx(ctx) {
-		return p.mapError(p.deleteDocument(ctx, projectID, databaseID, collectionID, docID, opts, principal))
-	}
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
 		return p.deleteDocument(txCtx, projectID, databaseID, collectionID, docID, opts, principal)
 	}))
 }
@@ -551,6 +552,9 @@ func (p *postgresDocumentDB) DeleteDocument(ctx context.Context, projectID, data
 // 行内，阶段③包 A——无跨表清理步骤）。用户集合（非系统）强制 OCC：
 // ExpectedVersion 必填且须等于当前行 _version（行锁下比较，防止竞态）。
 func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, databaseID, collectionID, docID string, opts databases.DeleteOptions, principal databases.Principal) error {
+	if err := validateDocID(docID); err != nil {
+		return err
+	}
 	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return err

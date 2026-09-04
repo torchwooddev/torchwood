@@ -78,7 +78,7 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	// DDL 与 catalog 元数据包进同一事务（PG 支持事务内 DDL），任一步失败
 	// 整体回滚，避免"物理表建成而元数据缺失"。元数据先行（预留物理名），
 	// 物理名碰撞在 INSERT 上换名重试，DDL 失败随回滚释放预留名。
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if err := p.ensureSchema(txCtx, schema); err != nil {
 			return err
 		}
@@ -268,7 +268,7 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 	if err != nil {
 		return p.mapError(err)
 	}
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		// 物理表按服务端分配名 DROP（逻辑/物理名解耦，预决策 2）；_acl 内嵌表内
 		//（阶段③包 A），DROP 即随行消亡，无跨表权限残留可清理。
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, physical))); err != nil {
@@ -290,7 +290,7 @@ func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, da
 	// 元数据未更"的半更新）；权限-only 变更同样刷 updated_at（审计列统一）。
 	// ddl_seq CAS（阶段②包 B，预决策 6）：并发 schema 变更先行提交 → 0 行
 	// 受影响 → ErrDDLConflict（CATALOG.DDL_CONFLICT，retryable）。
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		// 空 patch（无权限、无字段）保持 no-op，不读行、不刷审计列。
 		if patch.Permissions == nil && patch.Name == "" && patch.DocumentSecurity == nil && patch.Disabled == nil {
 			return nil
@@ -389,7 +389,7 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		return p.mapError(err)
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
 			return err
 		}
@@ -440,7 +440,7 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 		return p.mapError(err)
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
 			return err
 		}
@@ -475,9 +475,25 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 	}))
 }
 
+// ensureSchema 确保 schema 存在（阶段③包 B：仅当本调用真正创建时顺带授权——
+// USAGE 给 tw_app/tw_system；tw_owner 是创建者自有全权。sentinel 项目数据面
+// schema 由 projectschema 0012 授权，此处已存在即跳过，避免非 owner GRANT 报错）。
 func (p *postgresDocumentDB) ensureSchema(ctx context.Context, schema string) error {
-	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
+	var exists bool
+	if err := p.conn(ctx).QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = ?)`, schema,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA %s`, quoteIdent(schema))); err != nil {
 		return fmt.Errorf("create schema: %w", err)
+	}
+	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
+		`GRANT USAGE ON SCHEMA %s TO %s, %s`, quoteIdent(schema), clients.RoleApp, clients.RoleSystem)); err != nil {
+		return fmt.Errorf("grant schema usage: %w", err)
 	}
 	return nil
 }
@@ -544,6 +560,19 @@ func (p *postgresDocumentDB) createCollectionTable(ctx context.Context, schema, 
 		if err := p.ensureACLIndex(ctx, schema, physical); err != nil {
 			return err
 		}
+	}
+	// RBAC 授权（阶段③包 B）：tw_owner 建表即授权——tw_app 运行时 DML、
+	// tw_system 旁路全权（表级；包 C 起收紧为列级 GRANT 排除 _tenant 写 +
+	// RLS policy）。
+	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
+		`GRANT SELECT, INSERT, UPDATE, DELETE ON %s TO %s`,
+		tableName(schema, physical), clients.RoleApp)); err != nil {
+		return fmt.Errorf("grant table to app role: %w", err)
+	}
+	if _, err := p.conn(ctx).ExecContext(ctx, fmt.Sprintf(
+		`GRANT ALL ON %s TO %s`,
+		tableName(schema, physical), clients.RoleSystem)); err != nil {
+		return fmt.Errorf("grant table to system role: %w", err)
 	}
 	return nil
 }

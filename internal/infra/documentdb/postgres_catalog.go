@@ -26,9 +26,9 @@ func (p *postgresDocumentDB) CreateDatabase(ctx context.Context, projectID, id, 
 	// R02-P1-2：schema 与 catalog 元数据包进同一事务，任一步失败整体回滚，
 	// 避免"schema 已建而元数据缺失"。catalog 已全局化（public 两表），建库
 	// 不再依赖项目数据面 schema；_perms 表已退役（阶段③包 A，_acl 内嵌行内）。
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
-		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, quoteIdent(schema))); err != nil {
-			return fmt.Errorf("create schema: %w", err)
+	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
+		if err := p.ensureSchema(txCtx, schema); err != nil {
+			return err
 		}
 		m := &model.DocumentDatabase{
 			ProjectID:  projectID,
@@ -74,7 +74,7 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 	if err != nil {
 		return p.mapError(err)
 	}
-	return p.mapError(p.db.RunInTx(ctx, func(txCtx context.Context) error {
+	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
 			return err
 		}

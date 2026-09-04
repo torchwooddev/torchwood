@@ -1,4 +1,5 @@
 // 文档查询面：List/Count/Sum 与 keyset 分页 token（ka:/kb:，W-D）。
+// 阶段③包 B：三个入口经 withDocumentTx 包进带 GUC 注入的只读事务（A1）。
 package documentdb
 
 import (
@@ -16,9 +17,25 @@ import (
 )
 
 func (p *postgresDocumentDB) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
-	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
+	var out *databases.DocumentList
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+		list, err := p.listDocuments(txCtx, projectID, databaseID, collectionID, q, principal)
+		if err != nil {
+			return err
+		}
+		out = list
+		return nil
+	})
 	if err != nil {
 		return nil, p.mapError(err)
+	}
+	return out, nil
+}
+
+func (p *postgresDocumentDB) listDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (*databases.DocumentList, error) {
+	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return nil, err
 	}
 	parsed, err := astFrom(q)
 	if err != nil {
@@ -343,9 +360,22 @@ func decodeKeysetToken(token string) (id, kind string, ok bool) {
 }
 
 func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
+	var total int64
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+		n, err := p.countDocuments(txCtx, projectID, databaseID, collectionID, q, principal)
+		if err != nil {
+			return err
+		}
+		total = n
+		return nil
+	})
+	return total, p.mapError(err)
+}
+
+func (p *postgresDocumentDB) countDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {
 	internalID, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
-		return 0, p.mapError(err)
+		return 0, err
 	}
 	parsed, err := astFrom(q)
 	if err != nil {
@@ -410,6 +440,22 @@ func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, data
 // 数值属性（integer/float，System 主体一视同仁，防拼入任意列名）；group_by
 // 须为已声明属性。空集语义：sum=0（COALESCE）、avg/min/max 无值（Value=nil）。
 func (p *postgresDocumentDB) AggregateDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, aggs []databases.AggregateSpec, groupBy string, principal databases.Principal) ([]databases.AggregateGroup, error) {
+	var groups []databases.AggregateGroup
+	err := p.withDocumentTx(ctx, execIdentityFor(principal), func(txCtx context.Context) error {
+		gs, err := p.aggregateDocuments(txCtx, projectID, databaseID, collectionID, q, aggs, groupBy, principal)
+		if err != nil {
+			return err
+		}
+		groups = gs
+		return nil
+	})
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+	return groups, nil
+}
+
+func (p *postgresDocumentDB) aggregateDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, aggs []databases.AggregateSpec, groupBy string, principal databases.Principal) ([]databases.AggregateGroup, error) {
 	if len(aggs) == 0 {
 		return nil, p.mapError(status.Error(codes.InvalidArgument, "aggregations is required"))
 	}
