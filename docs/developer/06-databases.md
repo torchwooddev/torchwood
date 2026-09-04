@@ -104,7 +104,7 @@ CREATE TABLE tw_shop_app._perms (
 );
 ```
 
-目录位于 **public 全局两表**（`catalog_databases` → `catalog_collections` 合一行，attrs/indexes/permissions 为 JSONB 列，含 `physical_name`/`ddl_seq`）。`DeleteCollection` 同步清理 `_perms` 行，防同名重建泄漏。**ddl_seq 乐观锁**（redesign §4.4）：五个元数据写路径（UpdateCollection/CreateAttribute/CreateIndex/DeleteAttribute/DeleteIndex）CAS 递增（`UPDATE ... WHERE ddl_seq = ?`），0 行 → `CATALOG.DDL_CONFLICT`（InvalidArgument，retryable——调用方重读 catalog 后重试）；`schema_version` 仅立列（演进状态机挂账 §4.6）。**索引名** `idx_<物理名>_<索引ID>`：物理名 ≤10 字符使组合长度自然 ≤63（截断类缺陷机制性不可达）；逻辑名上的组合校验保留（防 adapter 直调）。
+目录位于 **public 全局两表**（`catalog_databases` → `catalog_collections` 合一行，attrs/indexes/permissions 为 JSONB 列，含 `physical_name`/`ddl_seq`）。`DeleteCollection` 同步清理 `_perms` 行，防同名重建泄漏。**ddl_seq 乐观锁**（redesign §4.4）：五个元数据写路径（UpdateCollection/CreateAttribute/CreateIndex/DeleteAttribute/DeleteIndex）CAS 递增（`UPDATE ... WHERE ddl_seq = ?`），0 行 → `CATALOG.DDL_CONFLICT`（Aborted+retryable，R12 裁决：CAS 冲突非参数错误，对齐 IDEMPOTENCY.IN_PROGRESS 先例——调用方重读 catalog 后重试）；`schema_version` 仅立列（演进状态机挂账 §4.6）。**索引名** `idx_<物理名>_<索引ID>`：物理名 ≤10 字符使组合长度自然 ≤63（截断类缺陷机制性不可达）；逻辑名上的组合校验保留（防 adapter 直调）。
 
 ## 5 Attribute / Index 动态管理
 

@@ -117,8 +117,9 @@ var ErrVersionColumnUnavailable = errors.New("version_column_unavailable")
 var ErrAggregateOverflow = errors.New("aggregate_overflow")
 
 // ErrDDLConflict 是 catalog 元数据写路径的 ddl_seq CAS 失败（并发 schema 变更
-// 先行提交，0 行受影响）；映射为 InvalidArgument / CATALOG.DDL_CONFLICT，
-// retryable（调用方重读 catalog 后重试），redesign §4.4 / §11-G3。
+// 先行提交，0 行受影响）；映射为 Aborted / CATALOG.DDL_CONFLICT（R12 裁决：
+// CAS 冲突非参数错误，对齐 IDEMPOTENCY.IN_PROGRESS 的 Aborted+retryable
+// 先例），retryable=true（调用方重读 catalog 后重试），redesign §4.4 / §11-G3。
 var ErrDDLConflict = errors.New("ddl_conflict")
 
 // SimpleDocumentUpdate builds a DocumentUpdate for data and optional permission changes.

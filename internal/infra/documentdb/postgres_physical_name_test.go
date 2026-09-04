@@ -255,7 +255,7 @@ func TestDDLSeq_IncrementAcrossDDLPaths(t *testing.T) {
 }
 
 // TestDDLSeq_ConcurrentConflict：悬挂事务持旧 ddl_seq，另一 DDL 先行提交后
-// CAS 0 行 → ErrDDLConflict（CATALOG.DDL_CONFLICT / InvalidArgument / retryable）。
+// CAS 0 行 → ErrDDLConflict（CATALOG.DDL_CONFLICT / Aborted / retryable）。
 func TestDDLSeq_ConcurrentConflict(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -302,9 +302,10 @@ func TestDDLSeq_ConcurrentConflict(t *testing.T) {
 	err := <-done
 	require.ErrorIs(t, err, databases.ErrDDLConflict)
 
-	// 域码映射：InvalidArgument / CATALOG.DDL_CONFLICT / retryable=true。
+	// 域码映射：Aborted（R12 裁决：CAS 冲突非参数错误，对齐
+	// IDEMPOTENCY.IN_PROGRESS 先例）/ CATALOG.DDL_CONFLICT / retryable=true。
 	mapped := shared.MapDocumentDBError(err)
-	require.Equal(t, codes.InvalidArgument, status.Code(mapped))
+	require.Equal(t, codes.Aborted, status.Code(mapped))
 	st := status.Convert(mapped)
 	var info *errdetails.ErrorInfo
 	for _, d := range st.Details() {

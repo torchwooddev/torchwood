@@ -37,7 +37,7 @@ var domainCodeGRPC = map[string]codes.Code{
 	databases.ErrCodeIdempotencyKeyConflict:   codes.InvalidArgument,
 	databases.ErrCodeIdempotencyInProgress:    codes.Aborted,
 	databases.ErrCodeAggregateOverflow:        codes.InvalidArgument,
-	databases.ErrCodeDDLConflict:              codes.InvalidArgument,
+	databases.ErrCodeDDLConflict:              codes.Aborted,
 }
 
 // domainCodeMessage 是域码的人类可读消息（与领域哨兵文案同源）。
