@@ -78,21 +78,30 @@ type CollectionPatch struct {
 	Disabled         *bool
 }
 
-// 数组列原子更新算子（阶段③-b §10.5 P0 写侧，首期四算子）。Intersect/Diff/
-// Insert/Filter 挂账转出 POC 前。
+// 数组列原子更新算子（阶段③-b §10.5 P0 写侧；Intersect/Diff/Insert/Filter
+// 补齐于转出 POC B1）。查询侧不对应对齐：Appwrite 的 arrayIntersect/arrayDiff
+// 是写侧算子，查询布尔谓词由 containsAny/containsAll 承担（无新增查询算子）。
 const (
-	ArrayUpdateOpAppend  = "append"
-	ArrayUpdateOpPrepend = "prepend"
-	ArrayUpdateOpRemove  = "remove"
-	ArrayUpdateOpUnique  = "unique"
+	ArrayUpdateOpAppend    = "append"
+	ArrayUpdateOpPrepend   = "prepend"
+	ArrayUpdateOpRemove    = "remove"
+	ArrayUpdateOpUnique    = "unique"
+	ArrayUpdateOpIntersect = "intersect"
+	ArrayUpdateOpDiff      = "diff"
+	ArrayUpdateOpInsert    = "insert"
+	ArrayUpdateOpFilter    = "filter"
 )
 
 // ArrayUpdate 是单个数组列的原子更新（编译为单语句 SET 子句，与 data/
-// increment 可组合）。APPEND/PREPEND/REMOVE 要求 Values >= 1；UNIQUE 忽略
-// Values。仅 array=true 属性可用（adapter 按 catalog attrs 校验）。
+// increment 可组合）。APPEND/PREPEND/REMOVE/INTERSECT/DIFF/FILTER 要求
+// Values >= 1；INSERT 要求 Values 恰 1；UNIQUE 忽略 Values。仅 array=true
+// 属性可用（adapter 按 catalog attrs 校验）。
 type ArrayUpdate struct {
 	Op     string
 	Values []string
+	// Index 是 INSERT 的插入位置（0 基，Appwrite 对齐；越界 = 尾插）。
+	// nil = 未设置（INSERT → InvalidArgument；其余 op 忽略）。
+	Index *int32
 }
 
 type DocumentUpdate struct {

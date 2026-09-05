@@ -228,3 +228,103 @@ func TestExecuteTransactions_Validation(t *testing.T) {
 	}, databases.TransactionMode("weird"), txKeys)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
+
+// 转出 POC B1：execute-tx op 的 array_updates——update op 数组原子更新与
+// increment 同语句组合；仅 update 消费（其余类型忽略）；ATOMIC 失败回滚；
+// PARTIAL 记录 per-op 结果。
+func TestExecuteTransactions_ArrayUpdates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	docDB, projectID, dbID := setupTxTest(t)
+	require.NoError(t, docDB.CreateCollection(ctx, projectID, dbID, "items", "Items", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 128},
+		{ID: "views", Key: "views", Type: "integer"},
+		{ID: "tags", Key: "tags", Type: "string", Array: true},
+	}, nil, []databases.Permission{
+		{Type: "create", Role: "keys"},
+		{Type: "read", Role: "keys"},
+		{Type: "update", Role: "keys"},
+		{Type: "delete", Role: "keys"},
+	}, true))
+	seed := []databases.Permission{{Type: "read", Role: "keys"}, {Type: "update", Role: "keys"}}
+	v1 := int64(1)
+
+	// create + update（array append + intersect on 第二列 + increment 同语句）同批。
+	results, err := docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpCreate, CollectionID: "items", DocumentID: "i1",
+			Data: map[string]any{"title": "one", "tags": []any{"a"}, "views": int64(0)}, Permissions: seed},
+		{Type: databases.TransactionOpUpdate, CollectionID: "items", DocumentID: "i1",
+			Increment:       map[string]int64{"views": 3},
+			ArrayUpdates:    map[string]databases.ArrayUpdate{"tags": {Op: databases.ArrayUpdateOpAppend, Values: []string{"b", "c"}}},
+			ExpectedVersion: &v1},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.True(t, results[0].OK)
+	require.True(t, results[1].OK)
+	require.Equal(t, int64(2), results[1].Version)
+
+	got, err := docDB.GetDocument(ctx, projectID, dbID, "items", "i1", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, []any{"a", "b", "c"}, got.Data["tags"])
+	require.Equal(t, float64(3), got.Data["views"])
+
+	// ATOMIC：op 数组更新命中未知属性 → InvalidArgument 整批回滚（首个 op 不留痕）。
+	_, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpCreate, CollectionID: "items", DocumentID: "i2",
+			Data: map[string]any{"title": "two"}, Permissions: seed},
+		{Type: databases.TransactionOpUpdate, CollectionID: "items", DocumentID: "i1",
+			ArrayUpdates: map[string]databases.ArrayUpdate{"nope": {Op: databases.ArrayUpdateOpAppend, Values: []string{"x"}}}},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.Error(t, err)
+	oe := databases.AsOpError(err)
+	require.NotNil(t, oe)
+	require.Equal(t, 1, oe.Index)
+	gone, err := docDB.GetDocument(ctx, projectID, dbID, "items", "i2", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Nil(t, gone, "ATOMIC 回滚后批内前序 op 不得留痕")
+
+	// ATOMIC：数组更新与 data 同列冲突 → op 级 InvalidArgument。
+	stale := int64(2)
+	_, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpUpdate, CollectionID: "items", DocumentID: "i1",
+			Data:         map[string]any{"tags": []any{"dup"}},
+			ArrayUpdates: map[string]databases.ArrayUpdate{"tags": {Op: databases.ArrayUpdateOpAppend, Values: []string{"x"}}},
+			ExpectedVersion: &stale},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	// ATOMIC：OCC 不匹配（携带数组更新）→ version_conflict 整批回滚，数组不变。
+	_, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpUpdate, CollectionID: "items", DocumentID: "i1",
+			ArrayUpdates:    map[string]databases.ArrayUpdate{"tags": {Op: databases.ArrayUpdateOpIntersect, Values: []string{"zzz"}}},
+			ExpectedVersion: &v1}, // 旧版本
+	}, databases.TransactionModeAtomic, txKeys)
+	require.ErrorIs(t, err, databases.ErrVersionMismatch)
+	unchanged, err := docDB.GetDocument(ctx, projectID, dbID, "items", "i1", databases.SystemPrincipal)
+	require.NoError(t, err)
+	require.Equal(t, []any{"a", "b", "c"}, unchanged.Data["tags"])
+
+	// PARTIAL：数组更新 op 失败记录 per-op 结果，后续 op 继续。
+	results, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpUpdate, CollectionID: "items", DocumentID: "i1",
+			ArrayUpdates: map[string]databases.ArrayUpdate{"tags": {Op: databases.ArrayUpdateOpInsert, Values: []string{"v"}}}}, // 缺 index
+		{Type: databases.TransactionOpCreate, CollectionID: "items", DocumentID: "i3",
+			Data: map[string]any{"title": "three"}, Permissions: seed},
+	}, databases.TransactionModePartial, txKeys)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.False(t, results[0].OK, "insert 缺 index 的 op 应失败")
+	require.Contains(t, results[0].ErrMessage, "requires index")
+	require.True(t, results[1].OK)
+
+	// 非法 op 名（filter 为受限合法名，bogus 不是）→ InvalidArgument。
+	_, err = docDB.ExecuteTransactions(ctx, projectID, dbID, []databases.TransactionOp{
+		{Type: databases.TransactionOpUpdate, CollectionID: "items", DocumentID: "i1",
+			ArrayUpdates: map[string]databases.ArrayUpdate{"tags": {Op: "bogus"}}},
+	}, databases.TransactionModeAtomic, txKeys)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}

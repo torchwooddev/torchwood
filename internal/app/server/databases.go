@@ -704,6 +704,11 @@ func (d *Databases) ExecuteTransactions(
 		if err := documents.ValidateDocumentPayload(op.Data); err != nil {
 			return nil, false, violation("data", "%v", err)
 		}
+		// 数组原子更新上限（redesign §11-J H2 + 转出 POC B1）：进事务前拒绝；
+		// 列白名单/同列冲突等语义校验在 adapter 依 catalog attrs 进行。
+		if err := documents.ValidateArrayUpdates(op.ArrayUpdates); err != nil {
+			return nil, false, violation("array_updates", "%v", err)
+		}
 		// create/upsert 空 ACE 种子与单文档 API 同语义（防锁死；update/delete 的
 		// 空 permissions 语义是"不变更文档 ACL"，不种子）。
 		// grant 豁免严格 per-op（Phase 1 裁决③）：种子 op 仅豁免自身——种子是

@@ -118,9 +118,10 @@ func (p *postgresDocumentDB) executeTxOp(
 			return "", 0, databases.ErrVersionInvalid
 		}
 		update := databases.DocumentUpdate{
-			Document:    databases.Document{ID: op.DocumentID, Data: op.Data},
-			Permissions: op.Permissions,
-			Increment:   op.Increment,
+			Document:     databases.Document{ID: op.DocumentID, Data: op.Data},
+			Permissions:  op.Permissions,
+			Increment:    op.Increment,
+			ArrayUpdates: op.ArrayUpdates, // 转出 POC B1：execute-tx op 数组原子更新（buildArrayParts 同源）
 		}
 		if op.ExpectedVersion != nil {
 			update.ExpectedVersion = *op.ExpectedVersion

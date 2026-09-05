@@ -123,11 +123,11 @@ func validateACL(perms []databases.Permission) error {
 		shared.FieldViolation{Field: "permissions", Description: fmt.Sprintf("permissions has %d access control entries, exceeds the %d-entry limit", len(perms), MaxDocumentACL)})
 }
 
-// validateArrayUpdates 校验数组原子更新请求的 op 合法性与 values 元素数上限
+// ValidateArrayUpdates 校验数组原子更新请求的 op 合法性与 values 元素数上限
 // （redesign §11-J H2；列白名单/同列冲突等语义校验在 adapter 依 catalog attrs
 // 进行）。UNIQUE 忽略 values，但同一请求通道统一封顶。键排序保证多键超限时
-// 报错确定性。
-func validateArrayUpdates(arrayUpdates map[string]databases.ArrayUpdate) error {
+// 报错确定性。导出供 Server execute-tx 包装层 per-op 校验复用（转出 POC B1）。
+func ValidateArrayUpdates(arrayUpdates map[string]databases.ArrayUpdate) error {
 	keys := make([]string, 0, len(arrayUpdates))
 	for k := range arrayUpdates {
 		keys = append(keys, k)
@@ -281,7 +281,7 @@ func (d *Documents) UpdateDocument(
 	if err := validateACL(perms); err != nil {
 		return nil, false, err
 	}
-	if err := validateArrayUpdates(arrayUpdates); err != nil {
+	if err := ValidateArrayUpdates(arrayUpdates); err != nil {
 		return nil, false, err
 	}
 	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.UpdateDocument", principal,

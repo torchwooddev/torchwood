@@ -282,6 +282,133 @@ func TestArrayColumns_WriteOperators(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
+// TestArrayColumns_WriteOperatorsSetFamily：转出 POC B1 四算子——intersect
+//（交集去重保 col 首次出现序）/ diff（差集保序不去重，与 remove 同构）/
+// filter（受限形态 = remove 等价）/ insert（0 基定点插入，越界尾插）。
+// NULL 列语义锁定：读改写类（intersect/diff/filter）保真，添加类（insert）
+// 归一为空数组；校验拒绝（insert index 缺省/负值/values≠1，交集差集过滤
+// values=0）；BIGINT[] cast 路径；与 increment 同语句组合；OCC 拒绝不落变更。
+func TestArrayColumns_WriteOperatorsSetFamily(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	docDB, projectID := setupArrayCollection(ctx, t)
+	principal := databases.Principal{Roles: []string{"any"}}
+
+	create := func(id string, data map[string]any) {
+		t.Helper()
+		_, err := docDB.CreateDocument(ctx, projectID, "app", "items", databases.Document{ID: id, Data: data}, anyPerms(), databases.SystemPrincipal)
+		require.NoError(t, err)
+	}
+	updateTags := func(id string, upd databases.ArrayUpdate, version int64) databases.Document {
+		t.Helper()
+		updated, err := docDB.UpdateDocument(ctx, projectID, "app", "items", databases.DocumentUpdate{
+			Document:        databases.Document{ID: id},
+			ArrayUpdates:    map[string]databases.ArrayUpdate{"tags": upd},
+			ExpectedVersion: version,
+		}, principal)
+		require.NoError(t, err)
+		return updated
+	}
+
+	// intersect：{b,a,b,c} ∩ {a,b,z} → {b,a}（去重 + col 首次出现序，非参数序）。
+	create("si", map[string]any{"title": "si", "tags": []any{"b", "a", "b", "c"}})
+	updated := updateTags("si", databases.ArrayUpdate{Op: databases.ArrayUpdateOpIntersect, Values: []string{"a", "b", "z"}}, 1)
+	require.Equal(t, []any{"b", "a"}, updated.Data["tags"])
+	// 交集移空 → 空数组（非 NULL）。
+	updated = updateTags("si", databases.ArrayUpdate{Op: databases.ArrayUpdateOpIntersect, Values: []string{"zzz"}}, updated.Version)
+	require.Equal(t, []any{}, updated.Data["tags"])
+
+	// diff：{b,a,b,c} - {b} → {a,c}（保序）；未命中值不去重（{a,c} - {zzz} 原样）。
+	create("sd", map[string]any{"title": "sd", "tags": []any{"b", "a", "b", "c"}})
+	updated = updateTags("sd", databases.ArrayUpdate{Op: databases.ArrayUpdateOpDiff, Values: []string{"b"}}, 1)
+	require.Equal(t, []any{"a", "c"}, updated.Data["tags"])
+	updated = updateTags("sd", databases.ArrayUpdate{Op: databases.ArrayUpdateOpDiff, Values: []string{"zzz"}}, updated.Version)
+	require.Equal(t, []any{"a", "c"}, updated.Data["tags"])
+
+	// filter（受限形态）：与 remove 等价——移除等于任一 values 的元素。
+	create("sf", map[string]any{"title": "sf", "tags": []any{"x", "y", "x", "z"}})
+	updated = updateTags("sf", databases.ArrayUpdate{Op: databases.ArrayUpdateOpFilter, Values: []string{"x", "q"}}, 1)
+	require.Equal(t, []any{"y", "z"}, updated.Data["tags"])
+	// 移空 → 空数组。
+	updated = updateTags("sf", databases.ArrayUpdate{Op: databases.ArrayUpdateOpFilter, Values: []string{"y", "z"}}, updated.Version)
+	require.Equal(t, []any{}, updated.Data["tags"])
+
+	// insert：0 基定点插入，其后元素顺移；index == len 与越界均尾插。
+	create("sn", map[string]any{"title": "sn", "tags": []any{"a", "c"}})
+	updated = updateTags("sn", databases.ArrayUpdate{Op: databases.ArrayUpdateOpInsert, Values: []string{"x"}, Index: int32p(1)}, 1)
+	require.Equal(t, []any{"a", "x", "c"}, updated.Data["tags"])
+	updated = updateTags("sn", databases.ArrayUpdate{Op: databases.ArrayUpdateOpInsert, Values: []string{"p"}, Index: int32p(0)}, updated.Version)
+	require.Equal(t, []any{"p", "a", "x", "c"}, updated.Data["tags"])
+	updated = updateTags("sn", databases.ArrayUpdate{Op: databases.ArrayUpdateOpInsert, Values: []string{"q"}, Index: int32p(4)}, updated.Version)
+	require.Equal(t, []any{"p", "a", "x", "c", "q"}, updated.Data["tags"])
+	updated = updateTags("sn", databases.ArrayUpdate{Op: databases.ArrayUpdateOpInsert, Values: []string{"z"}, Index: int32p(99)}, updated.Version)
+	require.Equal(t, []any{"p", "a", "x", "c", "q", "z"}, updated.Data["tags"])
+
+	// NULL 列：intersect/diff/filter 保真（保持 NULL），insert 归一为单元素数组。
+	create("snull", map[string]any{"title": "snull"})
+	nullDoc, err := docDB.GetDocument(ctx, projectID, "app", "items", "snull", principal)
+	require.NoError(t, err)
+	require.Nil(t, nullDoc.Data["tags"])
+	updated = updateTags("snull", databases.ArrayUpdate{Op: databases.ArrayUpdateOpIntersect, Values: []string{"a"}}, nullDoc.Version)
+	require.Nil(t, updated.Data["tags"], "intersect 对 NULL 列保真")
+	updated = updateTags("snull", databases.ArrayUpdate{Op: databases.ArrayUpdateOpDiff, Values: []string{"a"}}, updated.Version)
+	require.Nil(t, updated.Data["tags"], "diff 对 NULL 列保真")
+	updated = updateTags("snull", databases.ArrayUpdate{Op: databases.ArrayUpdateOpFilter, Values: []string{"a"}}, updated.Version)
+	require.Nil(t, updated.Data["tags"], "filter 对 NULL 列保真")
+	updated = updateTags("snull", databases.ArrayUpdate{Op: databases.ArrayUpdateOpInsert, Values: []string{"v"}, Index: int32p(0)}, updated.Version)
+	require.Equal(t, []any{"v"}, updated.Data["tags"], "insert 对 NULL 列归一为空数组")
+
+	// 数值数组（BIGINT[] cast 路径）：intersect 去重 + 与 increment 同语句组合。
+	create("sn1", map[string]any{"title": "n1", "nums": []any{int64(1), 2, 2, 3}, "views": int64(0)})
+	gotN, err := docDB.GetDocument(ctx, projectID, "app", "items", "sn1", principal)
+	require.NoError(t, err)
+	updated, err = docDB.UpdateDocument(ctx, projectID, "app", "items", databases.DocumentUpdate{
+		Document:        databases.Document{ID: "sn1"},
+		Increment:       map[string]int64{"views": 5},
+		ArrayUpdates:    map[string]databases.ArrayUpdate{"nums": {Op: databases.ArrayUpdateOpIntersect, Values: []string{"2", "9"}}},
+		ExpectedVersion: gotN.Version,
+	}, principal)
+	require.NoError(t, err)
+	require.Equal(t, []any{float64(2)}, updated.Data["nums"])
+	require.Equal(t, float64(5), updated.Data["views"])
+
+	// OCC 不匹配：intersect 被拒且不落变更。
+	_, err = docDB.UpdateDocument(ctx, projectID, "app", "items", databases.DocumentUpdate{
+		Document:        databases.Document{ID: "sn1"},
+		ArrayUpdates:    map[string]databases.ArrayUpdate{"nums": {Op: databases.ArrayUpdateOpIntersect, Values: []string{"7"}}},
+		ExpectedVersion: gotN.Version, // 旧版本
+	}, principal)
+	require.ErrorIs(t, err, databases.ErrVersionMismatch)
+	final, err := docDB.GetDocument(ctx, projectID, "app", "items", "sn1", principal)
+	require.NoError(t, err)
+	require.Equal(t, []any{float64(2)}, final.Data["nums"], "OCC 拒绝后数组不得变化")
+
+	// 校验拒绝：insert 的 index/values 约束与集合类 values >= 1（语义校验先于
+	// OCC 判定，版本取当前值即可）。
+	cur, err := docDB.GetDocument(ctx, projectID, "app", "items", "sn", principal)
+	require.NoError(t, err)
+	for name, upd := range map[string]databases.ArrayUpdate{
+		"insert 缺 index":     {Op: databases.ArrayUpdateOpInsert, Values: []string{"v"}},
+		"insert 负 index":     {Op: databases.ArrayUpdateOpInsert, Values: []string{"v"}, Index: int32p(-1)},
+		"insert 多 values":    {Op: databases.ArrayUpdateOpInsert, Values: []string{"u", "v"}, Index: int32p(0)},
+		"intersect 空 values": {Op: databases.ArrayUpdateOpIntersect},
+		"diff 空 values":      {Op: databases.ArrayUpdateOpDiff},
+		"filter 空 values":    {Op: databases.ArrayUpdateOpFilter},
+	} {
+		_, err := docDB.UpdateDocument(ctx, projectID, "app", "items", databases.DocumentUpdate{
+			Document:        databases.Document{ID: "sn"},
+			ArrayUpdates:    map[string]databases.ArrayUpdate{"tags": upd},
+			ExpectedVersion: cur.Version,
+		}, principal)
+		require.Equal(t, codes.InvalidArgument, status.Code(err), "case=%s", name)
+	}
+}
+
+// int32p 是 insert 算子 0 基 index 的便捷构造。
+func int32p(v int32) *int32 { return &v }
+
 // TestArrayColumns_IndexForms：数组列 key 索引自动 GIN array_ops；unique 与
 // fulltext 对数组列拒绝；多列含数组列拒绝。
 func TestArrayColumns_IndexForms(t *testing.T) {

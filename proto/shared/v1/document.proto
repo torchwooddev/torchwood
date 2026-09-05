@@ -20,6 +20,8 @@ message Document {
 
 // ArrayUpdateOp 是数组列的原子更新算子（§10.5 P0 写侧；仅 array=true 属性
 // 可用）。全部编译为单语句 SET 子句，与 data/increment 可组合，OCC 不变。
+// NULL 列语义：添加类（APPEND/PREPEND/INSERT）视为空数组（归一），读改写类
+//（REMOVE/UNIQUE/INTERSECT/DIFF/FILTER）保持 NULL。
 enum ArrayUpdateOp {
   ARRAY_UPDATE_OP_UNSPECIFIED = 0;
   // APPEND 尾插：col = col || values。
@@ -30,13 +32,32 @@ enum ArrayUpdateOp {
   ARRAY_UPDATE_OP_REMOVE = 3;
   // UNIQUE 去重（保持首次出现顺序）；values 被忽略。
   ARRAY_UPDATE_OP_UNIQUE = 4;
+  // INTERSECT 交集（转出 POC B1）：保留 col 中属于 values 的元素，去重并保持
+  // col 首次出现顺序；移空后为空数组（非 NULL）；NULL 列保持 NULL。
+  // 要求 values >= 1。
+  ARRAY_UPDATE_OP_INTERSECT = 5;
+  // DIFF 差集（转出 POC B1）：移除 col 中属于 values 的元素（保序、不去重，
+  // 与 REMOVE 同构——独立命名对齐 Appwrite arrayDiff）；移空后为空数组
+  //（非 NULL）；NULL 列保持 NULL。要求 values >= 1。
+  ARRAY_UPDATE_OP_DIFF = 6;
+  // INSERT 定点插入（转出 POC B1）：在 index（0 基，Appwrite 对齐）处插入
+  // values[0]，其后元素顺移；index >= len（越界）= 尾插；NULL 列视为空数组。
+  // 要求 values 恰 1 且 index 已设置且 >= 0，否则 InvalidArgument。
+  ARRAY_UPDATE_OP_INSERT = 7;
+  // FILTER 受限形态（转出 POC B1）：移除等于任一 values 的元素（行为与
+  // REMOVE 等价）；条件表达式形态不支持（避免引入表达式求值）。要求
+  // values >= 1；NULL 列保持 NULL。
+  ARRAY_UPDATE_OP_FILTER = 8;
 }
 
 // ArrayUpdate 是单个数组列的原子更新（UpdateDocumentRequest.array_updates
-// 的 map 值）。APPEND/PREPEND/REMOVE 要求 values >= 1。
+// 的 map 值）。APPEND/PREPEND/REMOVE/INTERSECT/DIFF/FILTER 要求 values >= 1；
+// INSERT 要求 values 恰 1；UNIQUE 忽略 values。
 message ArrayUpdate {
   ArrayUpdateOp op = 1;
   repeated string values = 2;
+  // insert 专用：插入位置（0 基；越界 = 尾插；缺省或 < 0 → InvalidArgument）。
+  optional int32 index = 3;
 }
 
 // Change 是一条已提交的文档写事件（阶段④ §4.5，:changes / last_seq 重放

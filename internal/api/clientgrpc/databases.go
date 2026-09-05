@@ -296,7 +296,8 @@ func updateData(s *structpb.Struct) map[string]any {
 }
 
 // mapArrayUpdates 把 proto 数组列原子更新映射为 domain 形态（阶段③-b
-// §10.5 P0 写侧）；UNSPECIFIED op → InvalidArgument。
+// §10.5 P0 写侧；Intersect/Diff/Insert/Filter 补齐于转出 POC B1）；
+// UNSPECIFIED op → InvalidArgument。
 func mapArrayUpdates(in map[string]*sharedv1.ArrayUpdate) (map[string]databases.ArrayUpdate, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -316,10 +317,23 @@ func mapArrayUpdates(in map[string]*sharedv1.ArrayUpdate) (map[string]databases.
 			op = databases.ArrayUpdateOpRemove
 		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_UNIQUE:
 			op = databases.ArrayUpdateOpUnique
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_INTERSECT:
+			op = databases.ArrayUpdateOpIntersect
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_DIFF:
+			op = databases.ArrayUpdateOpDiff
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_INSERT:
+			op = databases.ArrayUpdateOpInsert
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_FILTER:
+			op = databases.ArrayUpdateOpFilter
 		default:
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("array_updates[%s]: op is required", k))
 		}
-		out[k] = databases.ArrayUpdate{Op: op, Values: v.GetValues()}
+		upd := databases.ArrayUpdate{Op: op, Values: v.GetValues()}
+		if v.Index != nil {
+			idx := v.GetIndex()
+			upd.Index = &idx
+		}
+		out[k] = upd
 	}
 	return out, nil
 }

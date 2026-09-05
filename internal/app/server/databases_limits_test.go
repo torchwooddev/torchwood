@@ -88,3 +88,24 @@ func TestExecuteTransactions_ACLTooLarge(t *testing.T) {
 	require.Contains(t, err.Error(), "DOCUMENT.ACL_TOO_LARGE")
 	require.Contains(t, err.Error(), "ops[0].permissions")
 }
+
+// TestExecuteTransactions_ArrayUpdatesTooLarge（redesign §11-J H2 + 转出 POC
+// B1）：事务 op 的 array_updates values 超 1000 元素在进事务前拒绝，
+// DOCUMENT.TOO_LARGE 且 BadRequest violations 定位到 ops[N].array_updates
+//（ValidateArrayUpdates 与单文档 Update 通道同源）。
+func TestExecuteTransactions_ArrayUpdatesTooLarge(t *testing.T) {
+	d := &Databases{projectRepo: fakeProjectRepo{}, docDB: attrsDocDB{fakeDocDB: newFakeDocDB()}}
+	d.docs = documents.New(d.docDB, nil)
+	ctx := platformAdminCtx(context.Background())
+
+	values := make([]string, documents.MaxArrayElements+1)
+	_, _, err := d.ExecuteTransactions(ctx, "p1", "db1", []databases.TransactionOp{
+		{Type: databases.TransactionOpUpdate, CollectionID: "coll1", DocumentID: "d1",
+			ArrayUpdates: map[string]databases.ArrayUpdate{
+				"tags": {Op: databases.ArrayUpdateOpAppend, Values: values},
+			}},
+	}, databases.TransactionModeAtomic, databases.Principal{PlatformAdmin: true}, "")
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, err.Error(), "DOCUMENT.TOO_LARGE")
+	require.Contains(t, err.Error(), "ops[0].array_updates")
+}

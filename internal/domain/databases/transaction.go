@@ -60,6 +60,9 @@ type TransactionOp struct {
 	Data            map[string]any
 	Permissions     []Permission
 	Increment       map[string]int64
+	// ArrayUpdates 是数组列原子更新（转出 POC B1）：仅 update op 消费，
+	// 语义与 DocumentUpdate.ArrayUpdates 同源（buildArrayParts 单语句 SET）。
+	ArrayUpdates    map[string]ArrayUpdate
 	ExpectedVersion *int64 // 设置 → CAS；未设置 → 盲写 +1（LWW，仅 update）；0 → InvalidArgument
 	ConflictColumns []string
 }

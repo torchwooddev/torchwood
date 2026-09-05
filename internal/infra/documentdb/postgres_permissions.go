@@ -223,18 +223,27 @@ func buildIncrementParts(increment map[string]int64) (setParts []string, args []
 	return setParts, args
 }
 
-// buildArrayParts 编译数组列原子更新（阶段③-b 预决策 3，首期四算子）为单语句
-// SET 子句，与 data/increment 拼进同一 UPDATE：
+// buildArrayParts 编译数组列原子更新（阶段③-b 预决策 3；Intersect/Diff/
+// Insert/Filter 补齐于转出 POC B1）为单语句 SET 子句，与 data/increment 拼进
+// 同一 UPDATE：
 //
-//	append  → col = COALESCE(col, '{}'::T[]) || ?::T[]（NULL 列视为空数组）
-//	prepend → col = ?::T[] || COALESCE(col, '{}'::T[])
-//	remove  → 差集；移空后为空数组（非 NULL）；NULL 列保持 NULL
-//	unique  → 保首次出现序去重；NULL 列保持 NULL
+//	append    → col = COALESCE(col, '{}'::T[]) || ?::T[]（NULL 列视为空数组）
+//	prepend   → col = ?::T[] || COALESCE(col, '{}'::T[])
+//	remove    → 差集；移空后为空数组（非 NULL）；NULL 列保持 NULL
+//	unique    → 保首次出现序去重；NULL 列保持 NULL
+//	intersect → col ∩ values（去重、保 col 首次出现序）；移空后空数组；NULL 保真
+//	diff      → col 减 values（保序、不去重，与 remove 同构）；NULL 保真
+//	insert    → 定点插入（0 基 index；越界 = 尾插；NULL 列视为空数组）
+//	filter    → 受限形态 = 移除等于任一 values（与 remove 等价）；NULL 保真
 //
+// 添加类算子（append/prepend/insert）对 NULL 列归一（视为空数组），读改写类
+//（remove/unique/intersect/diff/filter）保真——NULL 列保持 NULL。
 // 校验（InvalidArgument）：键安全、列在 attrs 且 array=true、不与 data 同列
-//（同一 SET 子句同列双赋值歧义）、APPEND/PREPEND/REMOVE 要求 values >= 1。
+//（同一 SET 子句同列双赋值歧义）、APPEND/PREPEND/REMOVE/INTERSECT/DIFF/
+// FILTER 要求 values >= 1、INSERT 要求 values 恰 1 且 index 已设置且 >= 0。
 // SET 右侧的裸列名引用旧行值（UPDATE 语义），bulk 的 `UPDATE tbl AS d SET`
-// 下同样合法。
+// 下同样合法。insert 无 PG 内建（array_insert 未进 PG 18）——以 unnest
+// WITH ORDINALITY + UNION ALL 重排等价实现（position 越界自然退化为尾插）。
 func buildArrayParts(arrayUpdates map[string]databases.ArrayUpdate, data map[string]any, attrs []databases.Attribute) (setParts []string, args []any, err error) {
 	if len(arrayUpdates) == 0 {
 		return nil, nil, nil
@@ -276,9 +285,9 @@ func buildArrayParts(arrayUpdates map[string]databases.ArrayUpdate, data map[str
 				setParts = append(setParts, fmt.Sprintf("%s = ?::%s || COALESCE(%s, '{}'::%s)", col, arrType, col, arrType))
 			}
 			args = append(args, pgTextArray(upd.Values))
-		case databases.ArrayUpdateOpRemove:
+		case databases.ArrayUpdateOpRemove, databases.ArrayUpdateOpDiff, databases.ArrayUpdateOpFilter:
 			if len(upd.Values) < 1 {
-				return nil, nil, status.Errorf(codes.InvalidArgument, "remove on %q requires at least 1 value", k)
+				return nil, nil, status.Errorf(codes.InvalidArgument, "%s on %q requires at least 1 value", upd.Op, k)
 			}
 			// 移空 → COALESCE 兜底空数组（预决策：移空后为空数组非 NULL）。
 			setParts = append(setParts, fmt.Sprintf(
@@ -291,6 +300,35 @@ func buildArrayParts(arrayUpdates map[string]databases.ArrayUpdate, data map[str
 			setParts = append(setParts, fmt.Sprintf(
 				`%s = CASE WHEN %s IS NULL THEN NULL ELSE (SELECT array_agg(e ORDER BY o) FROM (SELECT e, min(o) AS o FROM unnest(%s) WITH ORDINALITY AS u(e, o) GROUP BY e) s) END`,
 				col, col, col))
+		case databases.ArrayUpdateOpIntersect:
+			if len(upd.Values) < 1 {
+				return nil, nil, status.Errorf(codes.InvalidArgument, "intersect on %q requires at least 1 value", k)
+			}
+			// 交集去重保原序：仅保留 col 中属于 values 的元素，min(o) 折叠
+			// 重复（首次出现序）；移空 → 空数组。
+			setParts = append(setParts, fmt.Sprintf(
+				`%s = CASE WHEN %s IS NULL THEN NULL ELSE COALESCE((SELECT array_agg(e ORDER BY o) FROM (SELECT e, min(o) AS o FROM unnest(%s) WITH ORDINALITY AS u(e, o) WHERE e = ANY(?::%s) GROUP BY e) s), '{}'::%s) END`,
+				col, col, col, arrType, arrType))
+			args = append(args, pgTextArray(upd.Values))
+		case databases.ArrayUpdateOpInsert:
+			if len(upd.Values) != 1 {
+				return nil, nil, status.Errorf(codes.InvalidArgument, "insert on %q requires exactly 1 value", k)
+			}
+			if upd.Index == nil {
+				return nil, nil, status.Errorf(codes.InvalidArgument, "insert on %q requires index", k)
+			}
+			if *upd.Index < 0 {
+				return nil, nil, status.Errorf(codes.InvalidArgument, "insert on %q requires a non-negative index", k)
+			}
+			// 0 基 index → 1 基 position = index + 1；越界（position > len+1）
+			// 时旧行全部落在新元素之前，ORDER BY o 自然退化为尾插（append）。
+			// 单元素绑定按元素类型 cast（pgArrayTypeFor 是 T[] 形态，去 [] 后缀）。
+			pos := int64(*upd.Index) + 1
+			elemType := strings.TrimSuffix(arrType, "[]")
+			setParts = append(setParts, fmt.Sprintf(
+				`%s = (SELECT array_agg(e ORDER BY o) FROM (SELECT e, CASE WHEN o >= ? THEN o + 1 ELSE o END AS o FROM unnest(COALESCE(%s, '{}'::%s)) WITH ORDINALITY AS u(e, o) UNION ALL SELECT ?::%s AS e, ? AS o) s)`,
+				col, col, arrType, elemType))
+			args = append(args, pos, upd.Values[0], pos)
 		default:
 			return nil, nil, status.Errorf(codes.InvalidArgument, "unsupported array update op: %s", upd.Op)
 		}
