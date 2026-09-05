@@ -201,8 +201,8 @@ func SignRolesSig(keyHex string, tenant int64, roles string, now time.Time) stri
 }
 
 // SyncRolesSigKey 把进程内派生的 roles 签名密钥落进 public.tw_secrets
-//（迁移 000029），供 tw_roles() 验签——server/worker 启动钩子（bootkit）调用，
-// 以 authenticator（表 owner）身份执行。
+//（迁移 000029 + 000031 双钥槽位），供 tw_roles() 验签——server/worker
+// 启动钩子（bootkit）调用，以 authenticator（表 owner）身份执行。
 //
 // 双钥轮换（转出 POC 门禁 A4）：新钥落 current 位，旧 current 降级 previous
 //（而非覆盖删除），previous 至多保留紧邻上一把（third 条直接删）。滚动重启
