@@ -251,7 +251,8 @@ func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID strin
 }
 
 // DocumentsPager 是 ListDocuments 的 AIP-158 分页迭代器（P3-15）。
-// 自动处理 page_token 续拉，直至 next_page_token 为空。
+// 自动处理 page_token 续拉，直至 next_page_token 为空。vector_search（KNN，
+// B2）同样支持：服务端发放 kvc: 距离游标，Next 透传续拉、跨页不重不漏。
 type DocumentsPager struct {
 	svc          *DatabasesService
 	collectionID string
@@ -335,9 +336,9 @@ func (d *DatabasesService) CountDocuments(ctx context.Context, collectionID stri
 
 // AggregateDocuments 在权限过滤后的可见行集上聚合（sum/avg/min/max +
 // 可选单键 groupBy；groupBy 空 = 不分组）。q 为 typed AST 过滤
-//（与 ListDocuments 同形；排序/分页算子无意义）。
+// （与 ListDocuments 同形；排序/分页算子无意义）。
 // 结果类型化：integer 属性的 sum/min/max → AggregateValue_Int64Value
-//（int64 精确，>2^53 可靠）；avg 与 float 属性 → AggregateValue_DoubleValue。
+// （int64 精确，>2^53 可靠）；avg 与 float 属性 → AggregateValue_DoubleValue。
 // 注意：文档 Data 的 number 通道是 double——业务值可能超过 2^53 时，
 // 属性请用 integer（聚合 int64 通道）或 string 承载。
 func (d *DatabasesService) AggregateDocuments(ctx context.Context, collectionID string, q *sharedv1.Query, aggregations []*serverv1.AggregateSpec, groupBy string) (*serverv1.AggregateDocumentsResponse, error) {
@@ -449,6 +450,21 @@ func (d *DatabasesService) ExecuteTransactions(ctx context.Context, ops []*serve
 		Ops:        ops,
 		Mode:       mode,
 	})
+}
+
+// ExportCollectionSchema 导出集合契约的 JSON Schema 2020-12 文档（B10，
+// redesign §4.1 Agent 面 / §10.1）：响应 .Schema 即完整 JSON 文档（用户属性
+// 类型映射 + required + 系统字段 readOnly 注释）。as 为导出形态，现阶段仅
+// "jsonschema"（空串同义缺省）；集合不存在返回 codes.NotFound。
+func (d *DatabasesService) ExportCollectionSchema(ctx context.Context, collectionID, as string) (*serverv1.ExportCollectionSchemaResponse, error) {
+	req := &serverv1.ExportCollectionSchemaRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+	}
+	if as != "" {
+		req.As = &as
+	}
+	return d.c.databases.ExportCollectionSchema(ctx, req)
 }
 
 // UseDatabase 返回绑定指定 databaseID 的文档服务副本。

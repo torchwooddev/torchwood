@@ -641,6 +641,10 @@ func transactionOpFromProto(in *serverv1.TransactionOp) (databases.TransactionOp
 	if err != nil {
 		return databases.TransactionOp{}, err
 	}
+	arrayUpdates, err := mapArrayUpdates(in.GetArrayUpdates())
+	if err != nil {
+		return databases.TransactionOp{}, err
+	}
 	op := databases.TransactionOp{
 		Type:            typ,
 		CollectionID:    in.GetCollectionId(),
@@ -648,6 +652,7 @@ func transactionOpFromProto(in *serverv1.TransactionOp) (databases.TransactionOp
 		Data:            updateData(in.GetData()),
 		Permissions:     perms,
 		Increment:       in.GetIncrement(),
+		ArrayUpdates:    arrayUpdates,
 		ConflictColumns: in.GetConflictColumns(),
 	}
 	if in.ExpectedVersion != nil {
@@ -737,6 +742,34 @@ func (s *DatabasesService) ListChanges(ctx context.Context, req *serverv1.ListCh
 		return nil, err
 	}
 	return &serverv1.ListChangesResponse{Changes: out, HasMore: hasMore, NextSinceSeq: nextSinceSeq}, nil
+}
+
+// ExportCollectionSchema 导出集合契约的 JSON Schema 2020-12 文档（B10，
+// redesign §4.1 Agent 面 / §10.1）。`as` 缺省 jsonschema；未知形态 →
+// InvalidArgument（域码 violations 定位）。
+func (s *DatabasesService) ExportCollectionSchema(ctx context.Context, req *serverv1.ExportCollectionSchemaRequest) (*serverv1.ExportCollectionSchemaResponse, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
+	as := req.GetAs()
+	if as == "" {
+		as = "jsonschema"
+	}
+	if as != "jsonschema" {
+		return nil, shared.DomainStatusWithViolations(databases.ErrCodeInvalidArgument,
+			shared.FieldViolation{Field: "as", Description: fmt.Sprintf("unsupported export format %q (only %q)", as, "jsonschema")})
+	}
+	doc, err := s.databases.ExportCollectionSchema(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId())
+	if err != nil {
+		return nil, err
+	}
+	st, err := structpb.NewStruct(doc)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "schema is not serializable")
+	}
+	return &serverv1.ExportCollectionSchemaResponse{Schema: st}, nil
 }
 
 // mapChanges 把领域 Change 映射为 wire 形态（Server/Client 两面共用语义，
@@ -952,7 +985,8 @@ func updateData(s *structpb.Struct) map[string]any {
 }
 
 // mapArrayUpdates 把 proto 数组列原子更新映射为 domain 形态（阶段③-b
-// §10.5 P0 写侧）；UNSPECIFIED op → InvalidArgument。
+// §10.5 P0 写侧；Intersect/Diff/Insert/Filter 补齐于转出 POC B1）；
+// UNSPECIFIED op → InvalidArgument。
 func mapArrayUpdates(in map[string]*sharedv1.ArrayUpdate) (map[string]databases.ArrayUpdate, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -972,10 +1006,23 @@ func mapArrayUpdates(in map[string]*sharedv1.ArrayUpdate) (map[string]databases.
 			op = databases.ArrayUpdateOpRemove
 		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_UNIQUE:
 			op = databases.ArrayUpdateOpUnique
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_INTERSECT:
+			op = databases.ArrayUpdateOpIntersect
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_DIFF:
+			op = databases.ArrayUpdateOpDiff
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_INSERT:
+			op = databases.ArrayUpdateOpInsert
+		case sharedv1.ArrayUpdateOp_ARRAY_UPDATE_OP_FILTER:
+			op = databases.ArrayUpdateOpFilter
 		default:
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("array_updates[%s]: op is required", k))
 		}
-		out[k] = databases.ArrayUpdate{Op: op, Values: v.GetValues()}
+		upd := databases.ArrayUpdate{Op: op, Values: v.GetValues()}
+		if v.Index != nil {
+			idx := v.GetIndex()
+			upd.Index = &idx
+		}
+		out[k] = upd
 	}
 	return out, nil
 }

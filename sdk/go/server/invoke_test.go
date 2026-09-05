@@ -53,8 +53,10 @@ func TestInvokeJSONBadJSON(t *testing.T) {
 //
 // 快照历史：v0.1.0 时点 = 112（2026-08-24，Round4 J3-4 收紧，此前为 >60 下限）；
 // 113 → 114（2026-09-04，databases.proto 新增 AggregateDocuments）；
-// 114 → 115（2026-09-04，databases.proto 新增 ListChanges——阶段④事件补偿）。
-const expectedServerMethodCount = 115
+// 114 → 115（2026-09-04，databases.proto 新增 ListChanges——阶段④事件补偿）；
+// 115 → 116（2026-09-05，databases.proto 新增 ExportCollectionSchema——B10
+// 集合契约 JSON Schema 导出，wrapper：DatabasesService.ExportCollectionSchema）。
+const expectedServerMethodCount = 116
 
 // TestInvokeJSONCompleteness 遍历 protoregistry.GlobalFiles 中 torchwood.server.v1
 // 包的全部方法（排除 APIKeysService），断言每个方法都能被解析并用空 JSON 构造

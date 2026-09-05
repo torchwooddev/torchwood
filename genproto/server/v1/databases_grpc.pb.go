@@ -20,31 +20,32 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DatabasesService_CreateDatabase_FullMethodName      = "/torchwood.server.v1.DatabasesService/CreateDatabase"
-	DatabasesService_ListDatabases_FullMethodName       = "/torchwood.server.v1.DatabasesService/ListDatabases"
-	DatabasesService_GetDatabase_FullMethodName         = "/torchwood.server.v1.DatabasesService/GetDatabase"
-	DatabasesService_DeleteDatabase_FullMethodName      = "/torchwood.server.v1.DatabasesService/DeleteDatabase"
-	DatabasesService_CreateCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/CreateCollection"
-	DatabasesService_ListCollections_FullMethodName     = "/torchwood.server.v1.DatabasesService/ListCollections"
-	DatabasesService_GetCollection_FullMethodName       = "/torchwood.server.v1.DatabasesService/GetCollection"
-	DatabasesService_DeleteCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/DeleteCollection"
-	DatabasesService_UpdateCollection_FullMethodName    = "/torchwood.server.v1.DatabasesService/UpdateCollection"
-	DatabasesService_CreateAttribute_FullMethodName     = "/torchwood.server.v1.DatabasesService/CreateAttribute"
-	DatabasesService_DeleteAttribute_FullMethodName     = "/torchwood.server.v1.DatabasesService/DeleteAttribute"
-	DatabasesService_CreateIndex_FullMethodName         = "/torchwood.server.v1.DatabasesService/CreateIndex"
-	DatabasesService_DeleteIndex_FullMethodName         = "/torchwood.server.v1.DatabasesService/DeleteIndex"
-	DatabasesService_CreateDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/CreateDocument"
-	DatabasesService_ListDocuments_FullMethodName       = "/torchwood.server.v1.DatabasesService/ListDocuments"
-	DatabasesService_GetDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/GetDocument"
-	DatabasesService_UpdateDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/UpdateDocument"
-	DatabasesService_UpsertDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/UpsertDocument"
-	DatabasesService_DeleteDocument_FullMethodName      = "/torchwood.server.v1.DatabasesService/DeleteDocument"
-	DatabasesService_CountDocuments_FullMethodName      = "/torchwood.server.v1.DatabasesService/CountDocuments"
-	DatabasesService_AggregateDocuments_FullMethodName  = "/torchwood.server.v1.DatabasesService/AggregateDocuments"
-	DatabasesService_BulkUpdateDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
-	DatabasesService_BulkDeleteDocuments_FullMethodName = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
-	DatabasesService_ExecuteTransactions_FullMethodName = "/torchwood.server.v1.DatabasesService/ExecuteTransactions"
-	DatabasesService_ListChanges_FullMethodName         = "/torchwood.server.v1.DatabasesService/ListChanges"
+	DatabasesService_CreateDatabase_FullMethodName         = "/torchwood.server.v1.DatabasesService/CreateDatabase"
+	DatabasesService_ListDatabases_FullMethodName          = "/torchwood.server.v1.DatabasesService/ListDatabases"
+	DatabasesService_GetDatabase_FullMethodName            = "/torchwood.server.v1.DatabasesService/GetDatabase"
+	DatabasesService_DeleteDatabase_FullMethodName         = "/torchwood.server.v1.DatabasesService/DeleteDatabase"
+	DatabasesService_CreateCollection_FullMethodName       = "/torchwood.server.v1.DatabasesService/CreateCollection"
+	DatabasesService_ListCollections_FullMethodName        = "/torchwood.server.v1.DatabasesService/ListCollections"
+	DatabasesService_GetCollection_FullMethodName          = "/torchwood.server.v1.DatabasesService/GetCollection"
+	DatabasesService_DeleteCollection_FullMethodName       = "/torchwood.server.v1.DatabasesService/DeleteCollection"
+	DatabasesService_UpdateCollection_FullMethodName       = "/torchwood.server.v1.DatabasesService/UpdateCollection"
+	DatabasesService_CreateAttribute_FullMethodName        = "/torchwood.server.v1.DatabasesService/CreateAttribute"
+	DatabasesService_DeleteAttribute_FullMethodName        = "/torchwood.server.v1.DatabasesService/DeleteAttribute"
+	DatabasesService_CreateIndex_FullMethodName            = "/torchwood.server.v1.DatabasesService/CreateIndex"
+	DatabasesService_DeleteIndex_FullMethodName            = "/torchwood.server.v1.DatabasesService/DeleteIndex"
+	DatabasesService_CreateDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/CreateDocument"
+	DatabasesService_ListDocuments_FullMethodName          = "/torchwood.server.v1.DatabasesService/ListDocuments"
+	DatabasesService_GetDocument_FullMethodName            = "/torchwood.server.v1.DatabasesService/GetDocument"
+	DatabasesService_UpdateDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/UpdateDocument"
+	DatabasesService_UpsertDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/UpsertDocument"
+	DatabasesService_DeleteDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/DeleteDocument"
+	DatabasesService_CountDocuments_FullMethodName         = "/torchwood.server.v1.DatabasesService/CountDocuments"
+	DatabasesService_AggregateDocuments_FullMethodName     = "/torchwood.server.v1.DatabasesService/AggregateDocuments"
+	DatabasesService_BulkUpdateDocuments_FullMethodName    = "/torchwood.server.v1.DatabasesService/BulkUpdateDocuments"
+	DatabasesService_BulkDeleteDocuments_FullMethodName    = "/torchwood.server.v1.DatabasesService/BulkDeleteDocuments"
+	DatabasesService_ExecuteTransactions_FullMethodName    = "/torchwood.server.v1.DatabasesService/ExecuteTransactions"
+	DatabasesService_ListChanges_FullMethodName            = "/torchwood.server.v1.DatabasesService/ListChanges"
+	DatabasesService_ExportCollectionSchema_FullMethodName = "/torchwood.server.v1.DatabasesService/ExportCollectionSchema"
 )
 
 // DatabasesServiceClient is the client API for DatabasesService service.
@@ -91,6 +92,14 @@ type DatabasesServiceClient interface {
 	// has_more=true 时以末条 seq 作下一页 since_seq 续传。重放承诺窗 1h
 	// （published 行 24h 清理 >> 承诺窗）。
 	ListChanges(ctx context.Context, in *ListChangesRequest, opts ...grpc.CallOption) (*ListChangesResponse, error)
+	// ExportCollectionSchema 导出集合契约的 JSON Schema 2020-12 形态（B10，
+	// redesign §4.1 Agent 面 / §10.1）：从 catalog attrs（契约单一事实源）生成
+	// 类型映射、required、系统字段注释；Agent 机器读取后合成/校验文档载荷。
+	// REST 形态 GET .../collections/{collection_id}:exportSchema?as=jsonschema
+	// （custom verb 与 documents:count 同惯例——网关按路径路由，无法以 ?as=
+	// 区分与 GetCollection 同形的裸路径，故 `as` 挂在本动词上，缺省即
+	// jsonschema）。
+	ExportCollectionSchema(ctx context.Context, in *ExportCollectionSchemaRequest, opts ...grpc.CallOption) (*ExportCollectionSchemaResponse, error)
 }
 
 type databasesServiceClient struct {
@@ -351,6 +360,16 @@ func (c *databasesServiceClient) ListChanges(ctx context.Context, in *ListChange
 	return out, nil
 }
 
+func (c *databasesServiceClient) ExportCollectionSchema(ctx context.Context, in *ExportCollectionSchemaRequest, opts ...grpc.CallOption) (*ExportCollectionSchemaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportCollectionSchemaResponse)
+	err := c.cc.Invoke(ctx, DatabasesService_ExportCollectionSchema_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatabasesServiceServer is the server API for DatabasesService service.
 // All implementations must embed UnimplementedDatabasesServiceServer
 // for forward compatibility.
@@ -395,6 +414,14 @@ type DatabasesServiceServer interface {
 	// has_more=true 时以末条 seq 作下一页 since_seq 续传。重放承诺窗 1h
 	// （published 行 24h 清理 >> 承诺窗）。
 	ListChanges(context.Context, *ListChangesRequest) (*ListChangesResponse, error)
+	// ExportCollectionSchema 导出集合契约的 JSON Schema 2020-12 形态（B10，
+	// redesign §4.1 Agent 面 / §10.1）：从 catalog attrs（契约单一事实源）生成
+	// 类型映射、required、系统字段注释；Agent 机器读取后合成/校验文档载荷。
+	// REST 形态 GET .../collections/{collection_id}:exportSchema?as=jsonschema
+	// （custom verb 与 documents:count 同惯例——网关按路径路由，无法以 ?as=
+	// 区分与 GetCollection 同形的裸路径，故 `as` 挂在本动词上，缺省即
+	// jsonschema）。
+	ExportCollectionSchema(context.Context, *ExportCollectionSchemaRequest) (*ExportCollectionSchemaResponse, error)
 	mustEmbedUnimplementedDatabasesServiceServer()
 }
 
@@ -479,6 +506,9 @@ func (UnimplementedDatabasesServiceServer) ExecuteTransactions(context.Context, 
 }
 func (UnimplementedDatabasesServiceServer) ListChanges(context.Context, *ListChangesRequest) (*ListChangesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListChanges not implemented")
+}
+func (UnimplementedDatabasesServiceServer) ExportCollectionSchema(context.Context, *ExportCollectionSchemaRequest) (*ExportCollectionSchemaResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExportCollectionSchema not implemented")
 }
 func (UnimplementedDatabasesServiceServer) mustEmbedUnimplementedDatabasesServiceServer() {}
 func (UnimplementedDatabasesServiceServer) testEmbeddedByValue()                          {}
@@ -951,6 +981,24 @@ func _DatabasesService_ListChanges_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatabasesService_ExportCollectionSchema_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExportCollectionSchemaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).ExportCollectionSchema(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_ExportCollectionSchema_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).ExportCollectionSchema(ctx, req.(*ExportCollectionSchemaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DatabasesService_ServiceDesc is the grpc.ServiceDesc for DatabasesService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1057,6 +1105,10 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListChanges",
 			Handler:    _DatabasesService_ListChanges_Handler,
+		},
+		{
+			MethodName: "ExportCollectionSchema",
+			Handler:    _DatabasesService_ExportCollectionSchema_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

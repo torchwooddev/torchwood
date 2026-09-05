@@ -97,6 +97,20 @@ export class ServerDatabasesService {
     );
   }
 
+  /**
+   * 导出集合契约的 JSON Schema 2020-12 文档（B10，redesign §4.1/§10.1）。
+   * 返回值即 schema 文档本体（$schema/$id/properties/required；系统字段
+   * 以 readOnly 注释）。集合不存在抛 NotFound。
+   */
+  async exportCollectionSchema(databaseId: string, collectionId: string): Promise<Record<string, unknown>> {
+    const res = await this.http.request<{ schema: Record<string, unknown> }>(
+      "GET",
+      `/v1/server/databases/${databaseId}/collections/${collectionId}:exportSchema`,
+      { auth: "apiKey" }
+    );
+    return res.schema ?? {};
+  }
+
   async updateCollection(
     databaseId: string,
     collectionId: string,

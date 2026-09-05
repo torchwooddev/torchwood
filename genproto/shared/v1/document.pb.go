@@ -25,6 +25,8 @@ const (
 
 // ArrayUpdateOp 是数组列的原子更新算子（§10.5 P0 写侧；仅 array=true 属性
 // 可用）。全部编译为单语句 SET 子句，与 data/increment 可组合，OCC 不变。
+// NULL 列语义：添加类（APPEND/PREPEND/INSERT）视为空数组（归一），读改写类
+// （REMOVE/UNIQUE/INTERSECT/DIFF/FILTER）保持 NULL。
 type ArrayUpdateOp int32
 
 const (
@@ -37,6 +39,22 @@ const (
 	ArrayUpdateOp_ARRAY_UPDATE_OP_REMOVE ArrayUpdateOp = 3
 	// UNIQUE 去重（保持首次出现顺序）；values 被忽略。
 	ArrayUpdateOp_ARRAY_UPDATE_OP_UNIQUE ArrayUpdateOp = 4
+	// INTERSECT 交集（转出 POC B1）：保留 col 中属于 values 的元素，去重并保持
+	// col 首次出现顺序；移空后为空数组（非 NULL）；NULL 列保持 NULL。
+	// 要求 values >= 1。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_INTERSECT ArrayUpdateOp = 5
+	// DIFF 差集（转出 POC B1）：移除 col 中属于 values 的元素（保序、不去重，
+	// 与 REMOVE 同构——独立命名对齐 Appwrite arrayDiff）；移空后为空数组
+	// （非 NULL）；NULL 列保持 NULL。要求 values >= 1。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_DIFF ArrayUpdateOp = 6
+	// INSERT 定点插入（转出 POC B1）：在 index（0 基，Appwrite 对齐）处插入
+	// values[0]，其后元素顺移；index >= len（越界）= 尾插；NULL 列视为空数组。
+	// 要求 values 恰 1 且 index 已设置且 >= 0，否则 InvalidArgument。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_INSERT ArrayUpdateOp = 7
+	// FILTER 受限形态（转出 POC B1）：移除等于任一 values 的元素（行为与
+	// REMOVE 等价）；条件表达式形态不支持（避免引入表达式求值）。要求
+	// values >= 1；NULL 列保持 NULL。
+	ArrayUpdateOp_ARRAY_UPDATE_OP_FILTER ArrayUpdateOp = 8
 )
 
 // Enum value maps for ArrayUpdateOp.
@@ -47,6 +65,10 @@ var (
 		2: "ARRAY_UPDATE_OP_PREPEND",
 		3: "ARRAY_UPDATE_OP_REMOVE",
 		4: "ARRAY_UPDATE_OP_UNIQUE",
+		5: "ARRAY_UPDATE_OP_INTERSECT",
+		6: "ARRAY_UPDATE_OP_DIFF",
+		7: "ARRAY_UPDATE_OP_INSERT",
+		8: "ARRAY_UPDATE_OP_FILTER",
 	}
 	ArrayUpdateOp_value = map[string]int32{
 		"ARRAY_UPDATE_OP_UNSPECIFIED": 0,
@@ -54,6 +76,10 @@ var (
 		"ARRAY_UPDATE_OP_PREPEND":     2,
 		"ARRAY_UPDATE_OP_REMOVE":      3,
 		"ARRAY_UPDATE_OP_UNIQUE":      4,
+		"ARRAY_UPDATE_OP_INTERSECT":   5,
+		"ARRAY_UPDATE_OP_DIFF":        6,
+		"ARRAY_UPDATE_OP_INSERT":      7,
+		"ARRAY_UPDATE_OP_FILTER":      8,
 	}
 )
 
@@ -171,11 +197,14 @@ func (x *Document) GetVersion() int64 {
 }
 
 // ArrayUpdate 是单个数组列的原子更新（UpdateDocumentRequest.array_updates
-// 的 map 值）。APPEND/PREPEND/REMOVE 要求 values >= 1。
+// 的 map 值）。APPEND/PREPEND/REMOVE/INTERSECT/DIFF/FILTER 要求 values >= 1；
+// INSERT 要求 values 恰 1；UNIQUE 忽略 values。
 type ArrayUpdate struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Op            ArrayUpdateOp          `protobuf:"varint,1,opt,name=op,proto3,enum=torchwood.shared.v1.ArrayUpdateOp" json:"op,omitempty"`
-	Values        []string               `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Op     ArrayUpdateOp          `protobuf:"varint,1,opt,name=op,proto3,enum=torchwood.shared.v1.ArrayUpdateOp" json:"op,omitempty"`
+	Values []string               `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
+	// insert 专用：插入位置（0 基；越界 = 尾插；缺省或 < 0 → InvalidArgument）。
+	Index         *int32 `protobuf:"varint,3,opt,name=index,proto3,oneof" json:"index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -222,6 +251,13 @@ func (x *ArrayUpdate) GetValues() []string {
 		return x.Values
 	}
 	return nil
+}
+
+func (x *ArrayUpdate) GetIndex() int32 {
+	if x != nil && x.Index != nil {
+		return *x.Index
+	}
+	return 0
 }
 
 // Change 是一条已提交的文档写事件（阶段④ §4.5，:changes / last_seq 重放
@@ -352,10 +388,12 @@ const file_shared_v1_document_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12 \n" +
 	"\vpermissions\x18\x05 \x03(\tR\vpermissions\x12\x18\n" +
-	"\aversion\x18\x06 \x01(\x03R\aversion\"Y\n" +
+	"\aversion\x18\x06 \x01(\x03R\aversion\"~\n" +
 	"\vArrayUpdate\x122\n" +
 	"\x02op\x18\x01 \x01(\x0e2\".torchwood.shared.v1.ArrayUpdateOpR\x02op\x12\x16\n" +
-	"\x06values\x18\x02 \x03(\tR\x06values\"\xb9\x02\n" +
+	"\x06values\x18\x02 \x03(\tR\x06values\x12\x19\n" +
+	"\x05index\x18\x03 \x01(\x05H\x00R\x05index\x88\x01\x01B\b\n" +
+	"\x06_index\"\xb9\x02\n" +
 	"\x06Change\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x03R\x03seq\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12\x14\n" +
@@ -367,13 +405,17 @@ const file_shared_v1_document_proto_rawDesc = "" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1c\n" +
 	"\ttruncated\x18\a \x01(\bR\ttruncated\x121\n" +
 	"\x04data\x18\b \x01(\v2\x1d.torchwood.shared.v1.DocumentR\x04data\x12%\n" +
-	"\x0etransaction_id\x18\t \x01(\tR\rtransactionId*\xa1\x01\n" +
+	"\x0etransaction_id\x18\t \x01(\tR\rtransactionId*\x92\x02\n" +
 	"\rArrayUpdateOp\x12\x1f\n" +
 	"\x1bARRAY_UPDATE_OP_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16ARRAY_UPDATE_OP_APPEND\x10\x01\x12\x1b\n" +
 	"\x17ARRAY_UPDATE_OP_PREPEND\x10\x02\x12\x1a\n" +
 	"\x16ARRAY_UPDATE_OP_REMOVE\x10\x03\x12\x1a\n" +
-	"\x16ARRAY_UPDATE_OP_UNIQUE\x10\x04B?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
+	"\x16ARRAY_UPDATE_OP_UNIQUE\x10\x04\x12\x1d\n" +
+	"\x19ARRAY_UPDATE_OP_INTERSECT\x10\x05\x12\x18\n" +
+	"\x14ARRAY_UPDATE_OP_DIFF\x10\x06\x12\x1a\n" +
+	"\x16ARRAY_UPDATE_OP_INSERT\x10\a\x12\x1a\n" +
+	"\x16ARRAY_UPDATE_OP_FILTER\x10\bB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_document_proto_rawDescOnce sync.Once
@@ -416,6 +458,7 @@ func file_shared_v1_document_proto_init() {
 	if File_shared_v1_document_proto != nil {
 		return
 	}
+	file_shared_v1_document_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

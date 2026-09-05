@@ -198,6 +198,17 @@ service DatabasesService {
   rpc ListChanges(ListChangesRequest) returns (ListChangesResponse) {
     option (google.api.http) = { get: "/v1/server/databases/{database_id}/collections/{collection_id}/changes" };
   }
+
+  // ExportCollectionSchema 导出集合契约的 JSON Schema 2020-12 形态（B10，
+  // redesign §4.1 Agent 面 / §10.1）：从 catalog attrs（契约单一事实源）生成
+  // 类型映射、required、系统字段注释；Agent 机器读取后合成/校验文档载荷。
+  // REST 形态 GET .../collections/{collection_id}:exportSchema?as=jsonschema
+  //（custom verb 与 documents:count 同惯例——网关按路径路由，无法以 ?as=
+  // 区分与 GetCollection 同形的裸路径，故 `as` 挂在本动词上，缺省即
+  // jsonschema）。
+  rpc ExportCollectionSchema(ExportCollectionSchemaRequest) returns (ExportCollectionSchemaResponse) {
+    option (google.api.http) = { get: "/v1/server/databases/{database_id}/collections/{collection_id}:exportSchema" };
+  }
 }
 
 message CreateDatabaseRequest {
@@ -540,6 +551,8 @@ enum TransactionMode {
 //   - permissions：create/upsert 非空时作为文档 ACL（空则种子创建者私有，
 //     与单文档 API 同语义）；update/delete 非空时替换、空则不变更；
 //   - increment：仅 update 消费（原子增量）；其余类型忽略；
+//   - array_updates：仅 update 消费（数组列原子更新，语义同
+//     UpdateDocumentRequest.array_updates）；其余类型忽略；
 //   - expected_version：仅 update/delete 消费（见下方三态注释；upsert 忽略
 //     ——upsert 恒为盲写 +1 的 LWW 契约）；
 //   - conflict_columns：仅 upsert 消费，必须无序命中集合一个 unique 索引。
@@ -558,6 +571,9 @@ message TransactionOp {
   optional int64 expected_version = 7;
   // upsert 专用：必须无序命中集合一个 unique 索引（其余 op 类型忽略）。
   repeated string conflict_columns = 8;
+  // 数组列原子更新（转出 POC B1；仅 update 消费，语义与同列冲突校验同
+  // UpdateDocumentRequest.array_updates；其余 op 类型忽略）。
+  map<string, torchwood.shared.v1.ArrayUpdate> array_updates = 9;
 }
 
 message ExecuteTransactionsRequest {
@@ -614,4 +630,22 @@ message ListChangesResponse {
   // 扫描上限退出 = 越过已判不可见块的扫描位置（连续他人私有事件块后
   // 的可见事件不漏失）。
   int64 next_since_seq = 3;
+}
+
+// ExportCollectionSchemaRequest（B10 §4.1）：集合契约的 JSON Schema 导出。
+message ExportCollectionSchemaRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  // 导出形态：缺省/空串 = "jsonschema"（现阶段唯一取值）；其他值 →
+  // InvalidArgument。未来新形态经同一动词以本字段扩展。
+  optional string as = 3;
+}
+
+// ExportCollectionSchemaResponse：schema 即完整 JSON Schema 2020-12 文档
+//（$schema / $id / title / type=object / properties / required；用户属性由
+// catalog attrs 类型映射生成；_id/_version/_acl 等系统字段以 readOnly 属性
+// 注释；deprecated 关键字保留给 Options.deprecated 标记的属性）。物理表名
+// 不出现在文档任何位置。
+message ExportCollectionSchemaResponse {
+  google.protobuf.Struct schema = 1;
 }

@@ -1499,9 +1499,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "index": {
+          "type": "integer",
+          "format": "int32",
+          "title": "insert 专用：插入位置（0 基；越界 = 尾插；缺省或 \u003c 0 → InvalidArgument）。"
         }
       },
-      "title": "ArrayUpdate 是单个数组列的原子更新（UpdateDocumentRequest.array_updates\n的 map 值）。APPEND/PREPEND/REMOVE 要求 values \u003e= 1。"
+      "title": "ArrayUpdate 是单个数组列的原子更新（UpdateDocumentRequest.array_updates\n的 map 值）。APPEND/PREPEND/REMOVE/INTERSECT/DIFF/FILTER 要求 values \u003e= 1；\nINSERT 要求 values 恰 1；UNIQUE 忽略 values。"
     },
     "v1ArrayUpdateOp": {
       "type": "string",
@@ -1510,11 +1515,15 @@
         "ARRAY_UPDATE_OP_APPEND",
         "ARRAY_UPDATE_OP_PREPEND",
         "ARRAY_UPDATE_OP_REMOVE",
-        "ARRAY_UPDATE_OP_UNIQUE"
+        "ARRAY_UPDATE_OP_UNIQUE",
+        "ARRAY_UPDATE_OP_INTERSECT",
+        "ARRAY_UPDATE_OP_DIFF",
+        "ARRAY_UPDATE_OP_INSERT",
+        "ARRAY_UPDATE_OP_FILTER"
       ],
       "default": "ARRAY_UPDATE_OP_UNSPECIFIED",
-      "description": "- ARRAY_UPDATE_OP_APPEND: APPEND 尾插：col = col || values。\n - ARRAY_UPDATE_OP_PREPEND: PREPEND 头插：col = values || col。\n - ARRAY_UPDATE_OP_REMOVE: REMOVE 差集移除：移空后为空数组（非 NULL）；NULL 列保持 NULL。\n - ARRAY_UPDATE_OP_UNIQUE: UNIQUE 去重（保持首次出现顺序）；values 被忽略。",
-      "title": "ArrayUpdateOp 是数组列的原子更新算子（§10.5 P0 写侧；仅 array=true 属性\n可用）。全部编译为单语句 SET 子句，与 data/increment 可组合，OCC 不变。"
+      "description": "- ARRAY_UPDATE_OP_APPEND: APPEND 尾插：col = col || values。\n - ARRAY_UPDATE_OP_PREPEND: PREPEND 头插：col = values || col。\n - ARRAY_UPDATE_OP_REMOVE: REMOVE 差集移除：移空后为空数组（非 NULL）；NULL 列保持 NULL。\n - ARRAY_UPDATE_OP_UNIQUE: UNIQUE 去重（保持首次出现顺序）；values 被忽略。\n - ARRAY_UPDATE_OP_INTERSECT: INTERSECT 交集（转出 POC B1）：保留 col 中属于 values 的元素，去重并保持\ncol 首次出现顺序；移空后为空数组（非 NULL）；NULL 列保持 NULL。\n要求 values \u003e= 1。\n - ARRAY_UPDATE_OP_DIFF: DIFF 差集（转出 POC B1）：移除 col 中属于 values 的元素（保序、不去重，\n与 REMOVE 同构——独立命名对齐 Appwrite arrayDiff）；移空后为空数组\n（非 NULL）；NULL 列保持 NULL。要求 values \u003e= 1。\n - ARRAY_UPDATE_OP_INSERT: INSERT 定点插入（转出 POC B1）：在 index（0 基，Appwrite 对齐）处插入\nvalues[0]，其后元素顺移；index \u003e= len（越界）= 尾插；NULL 列视为空数组。\n要求 values 恰 1 且 index 已设置且 \u003e= 0，否则 InvalidArgument。\n - ARRAY_UPDATE_OP_FILTER: FILTER 受限形态（转出 POC B1）：移除等于任一 values 的元素（行为与\nREMOVE 等价）；条件表达式形态不支持（避免引入表达式求值）。要求\nvalues \u003e= 1；NULL 列保持 NULL。",
+      "title": "ArrayUpdateOp 是数组列的原子更新算子（§10.5 P0 写侧；仅 array=true 属性\n可用）。全部编译为单语句 SET 子句，与 data/increment 可组合，OCC 不变。\nNULL 列语义：添加类（APPEND/PREPEND/INSERT）视为空数组（归一），读改写类\n（REMOVE/UNIQUE/INTERSECT/DIFF/FILTER）保持 NULL。"
     },
     "v1Change": {
       "type": "object",
@@ -1817,7 +1826,7 @@
           "title": "KNN 算子（会话 #10）：非 filter 节点，见 VectorSearch。"
         }
       },
-      "title": "Query is the single wire form of document list/count/aggregate filters\n(C7: the server consumes no query strings; the Appwrite DSL survives only\nas client-side sugar in SDKs/tools). page_token is the authoritative pager\n(K-20); page_size is the page bound.\nvector_search（会话 #10）：KNN 一次一个；与 filter 可组合（AND），与\norders/page_token 互斥（排序由距离承载；多页 KNN 挂账）——服务端显式\n拒绝非法组合，字段本身保留。"
+      "title": "Query is the single wire form of document list/count/aggregate filters\n(C7: the server consumes no query strings; the Appwrite DSL survives only\nas client-side sugar in SDKs/tools). page_token is the authoritative pager\n(K-20); page_size is the page bound.\nvector_search（会话 #10；B2 多页）：KNN 一次一个；与 filter 可组合（AND），\n与 orders 互斥（排序由距离承载）。page_token 合法 = 续页：服务端发放\nkvc: 距离游标（(dist,_id) keyset 语义，跨页不重不漏），同请求参数 +\ntoken 翻页；page_size 即 k。非法组合（orders、异族 token）服务端显式拒绝。"
     },
     "v1VectorSearch": {
       "type": "object",
@@ -1841,7 +1850,7 @@
           "title": "距离阈值：仅保留 top-k 中距离 \u003c= max_distance 的行（服务端在 top-k\n结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，\n原型 2 实证）。缺省无阈值。"
         }
       },
-      "title": "VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子）。\n不是 filter 树节点：距离不可作布尔谓词——排序由距离承载，limit 即 k\n（top-k 可见近邻，iterative scan 语义：迭代搜索直至凑满 k 个满足全部\n过滤条件的行）。values 须与目标 vector 属性 dims 等长。目标列必须\n声明为 vector 属性且存在与 metric 匹配的 hnsw 索引（显式拒绝原则，\n与 search 需 fulltext 索引同款纪律）。DSL 字符串不支持 vector_search\n（向量不该手写，SDK typed builder only）。"
+      "title": "VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子；B2 多页）。\n不是 filter 树节点：距离不可作布尔谓词——排序由距离承载，limit 即 k\n（top-k 可见近邻，iterative scan 语义：迭代搜索直至凑满 k 个满足全部\n过滤条件的行）。values 须与目标 vector 属性 dims 等长。目标列必须\n声明为 vector 属性且存在与 metric 匹配的 hnsw 索引（显式拒绝原则，\n与 search 需 fulltext 索引同款纪律）。DSL 字符串不支持 vector_search\n（向量不该手写，SDK typed builder only）。多页：配合 Query.page_token\n的 kvc: 游标翻页（首页不带 token）；max_distance 在每一页独立生效。"
     }
   },
   "securityDefinitions": {

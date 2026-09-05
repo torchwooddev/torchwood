@@ -85,6 +85,7 @@ const RPC_TO_METHOD: Record<string, Record<string, string>> = {
     GetCollection: "getCollection",
     DeleteCollection: "deleteCollection",
     UpdateCollection: "updateCollection",
+    ExportCollectionSchema: "exportCollectionSchema",
     CreateAttribute: "createAttribute",
     DeleteAttribute: "deleteAttribute",
     CreateIndex: "createIndex",
