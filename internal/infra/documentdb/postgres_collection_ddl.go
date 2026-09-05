@@ -46,6 +46,9 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		if err := validateArrayAttribute(attr); err != nil {
 			return p.mapError(err)
 		}
+		if err := validateVectorAttribute(attr); err != nil {
+			return p.mapError(err)
+		}
 		if err := validatePhysicalNameLen("attribute key", attr.Key); err != nil {
 			return p.mapError(err)
 		}
@@ -73,7 +76,8 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	// DDL 与 catalog 元数据包进同一事务（PG 支持事务内 DDL），任一步失败
 	// 整体回滚，避免"物理表建成而元数据缺失"。元数据先行（预留物理名），
 	// 物理名碰撞在 INSERT 上换名重试，DDL 失败随回滚释放预留名。
-	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
+	var physicalName string
+	txErr := p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if err := p.ensureSchema(txCtx, schema); err != nil {
 			return err
 		}
@@ -81,6 +85,7 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 		if err != nil {
 			return err
 		}
+		physicalName = physical
 		// 分配后的物理名是索引名的实际前缀段（idx_<phys>_<id> 自然 ≤63，
 		// 预决策 2）；sentinel 物理名 = 逻辑名，直调防线由此保留。
 		for _, idx := range idxs {
@@ -105,7 +110,12 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 			}
 		}
 		return nil
-	}))
+	})
+	if txErr == nil && physicalName != "" {
+		// vector 列缓存（会话 #10）：DDL 提交后刷新（事务内不缓存，回滚撤销）。
+		p.storeVectorColumns(schema, physicalName, attrs)
+	}
+	return p.mapError(txErr)
 }
 
 // insertCollectionMetadata 写入 catalog_collections 合一行（含物理名预留与
@@ -263,7 +273,7 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 	if err != nil {
 		return p.mapError(err)
 	}
-	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
+	delErr := p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		// 物理表按服务端分配名 DROP（逻辑/物理名解耦，预决策 2）；_acl 内嵌表内
 		//（阶段③包 A），DROP 即随行消亡，无跨表权限残留可清理。
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP TABLE IF EXISTS %s CASCADE`, tableName(schema, physical))); err != nil {
@@ -274,7 +284,12 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentCollection)(nil)).
 			Where("project_id = ? AND database_id = ? AND collection_id = ?", projectID, databaseID, collectionID).Exec(txCtx)
 		return err
-	}))
+	})
+	if delErr == nil {
+		// vector 列缓存（会话 #10）：表已删，清键防陈旧维度残留。
+		p.dropVectorColumns(schema, physical)
+	}
+	return p.mapError(delErr)
 }
 
 func (p *postgresDocumentDB) UpdateCollection(ctx context.Context, projectID, databaseID, collectionID string, patch databases.CollectionPatch) error {
@@ -371,6 +386,10 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 	if err := validateArrayAttribute(attr); err != nil {
 		return err
 	}
+	// vector 属性第二道防线（会话 #10）：dims 域、array/default 拒绝。
+	if err := validateVectorAttribute(attr); err != nil {
+		return err
+	}
 	// 长度二道防线（app 层已校验）：物理列名 ≤63（PG 截断防护）。
 	if err := validatePhysicalNameLen("attribute key", attr.Key); err != nil {
 		return err
@@ -384,12 +403,20 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		return p.mapError(err)
 	}
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
-	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
+	txErr := p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
 			return err
 		}
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s`, tableName(schema, physical), colSQL)); err != nil {
 			return err
+		}
+		// ADD COLUMN 之后重刷列级 GRANT（会话 #10）：reconcileVersionColumn 的
+		// 授权清单在加列前生成，新列（含 vector）若无 INSERT/UPDATE 列授权，
+		// tw_app 的后续写入会 42501——既有滞后缺陷随 vector 列一并修复。
+		if !isSystem {
+			if err := p.refreshColumnGrants(txCtx, schema, physical); err != nil {
+				return err
+			}
 		}
 		row, err := p.loadCollectionRow(txCtx, projectID, databaseID, collectionID)
 		if err != nil {
@@ -418,8 +445,24 @@ func (p *postgresDocumentDB) CreateAttribute(ctx context.Context, projectID, dat
 		if err != nil {
 			return err
 		}
-		return requireCASApplied(res)
-	}))
+		if err := requireCASApplied(res); err != nil {
+			return err
+		}
+		// vector 列缓存：事务内不写（回滚撤销），提交后由调用点刷新。
+		return nil
+	})
+	if txErr == nil {
+		// catalog attrs 已含新列；vectorColumns 缓存重建（无 vector 列时也
+		// 覆盖为空 map，保证与已提交态一致）。
+		row, err := p.loadCollectionRow(ctx, projectID, databaseID, collectionID)
+		if err == nil {
+			attrs, derr := decodeAttributes(row.Attrs)
+			if derr == nil {
+				p.storeVectorColumns(schema, physical, attrs)
+			}
+		}
+	}
+	return p.mapError(txErr)
 }
 
 func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, idx databases.Index) error {
@@ -880,6 +923,39 @@ func validateArrayAttribute(attr databases.Attribute) error {
 	}
 }
 
+// vectorDimsRange 是 vector 属性的维度合法域（会话 #10 预决策 1）：
+// 2..2000——pgvector HNSW 索引可容纳的维度上限。
+const (
+	vectorDimsMin = 2
+	vectorDimsMax = 2000
+)
+
+// validateVectorAttribute 是 vector 属性的第二道防线（app 层已校验）：
+// dims 必填且在合法域；array=true 与 default 对 vector 拒绝（无向量缺省
+// 语义、vector[] 无对应物理形态——pgvector 数组列不开放）。
+func validateVectorAttribute(attr databases.Attribute) error {
+	if strings.ToLower(attr.Type) != "vector" {
+		if attr.Dims != 0 {
+			return status.Error(codes.InvalidArgument, fmt.Sprintf(
+				"attribute %q: dims is only valid for vector attributes", attr.Key))
+		}
+		return nil
+	}
+	if attr.Dims < vectorDimsMin || attr.Dims > vectorDimsMax {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"attribute %q: vector requires dims between %d and %d", attr.Key, vectorDimsMin, vectorDimsMax))
+	}
+	if attr.Array {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"attribute %q: vector attributes do not support array", attr.Key))
+	}
+	if attr.Default != nil {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"attribute %q: vector attributes do not support default_value", attr.Key))
+	}
+	return nil
+}
+
 func attributeColumnSQL(attr databases.Attribute) (string, error) {
 	if !safeNameRe.MatchString(attr.Key) {
 		return "", fmt.Errorf("invalid attribute key: %s", attr.Key)
@@ -888,9 +964,14 @@ func attributeColumnSQL(attr databases.Attribute) (string, error) {
 	// 阶段③-b 预决策 1：array=true 落地 PG 原生数组列 T[]（元素类型标量子集，
 	// validateArrayAttribute 已拦截其余）。数组列不带 DEFAULT（字面量按元素
 	// 类型格式化复杂，POC 不开放——缺省即 NULL，语义干净）。
+	// vector 列（会话 #10）：pgvector 原生 VECTOR(dims)；default_value 由
+	// validateVectorAttribute 拒绝，此处无 DEFAULT 分支。
 	dataType := pgTypeFor(attr.Type, attr.Size)
 	if attr.Array {
 		dataType = pgArrayTypeFor(attr.Type)
+	}
+	if strings.ToLower(attr.Type) == "vector" {
+		dataType = fmt.Sprintf("VECTOR(%d)", attr.Dims)
 	}
 	parts := []string{name, dataType}
 	if attr.Required {

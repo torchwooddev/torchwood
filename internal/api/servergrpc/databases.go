@@ -297,6 +297,7 @@ func (s *DatabasesService) CreateAttribute(ctx context.Context, req *serverv1.Cr
 		Size:     int(req.GetSize()),
 		Required: req.GetRequired(),
 		Array:    req.GetArray(),
+		Dims:     int(req.GetDims()),
 	}
 	if req.GetDefaultValue() != "" {
 		attr.Default = req.GetDefaultValue()
@@ -304,7 +305,7 @@ func (s *DatabasesService) CreateAttribute(ctx context.Context, req *serverv1.Cr
 	if err := s.databases.CreateAttribute(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), attr); err != nil {
 		return nil, err
 	}
-	return &serverv1.Attribute{
+	out := &serverv1.Attribute{
 		Id:           attr.ID,
 		Key:          attr.Key,
 		Type:         attr.Type,
@@ -312,7 +313,12 @@ func (s *DatabasesService) CreateAttribute(ctx context.Context, req *serverv1.Cr
 		Required:     attr.Required,
 		Array:        attr.Array,
 		DefaultValue: req.GetDefaultValue(),
-	}, nil
+	}
+	if attr.Dims != 0 {
+		dims := int32(attr.Dims)
+		out.Dims = &dims
+	}
+	return out, nil
 }
 
 func (s *DatabasesService) CreateIndex(ctx context.Context, req *serverv1.CreateIndexRequest) (*serverv1.Index, error) {
@@ -866,6 +872,10 @@ func mapCollection(c *databases.Collection) *serverv1.Collection {
 		}
 		if a.Default != nil {
 			attr.DefaultValue = fmt.Sprint(a.Default)
+		}
+		if a.Dims != 0 {
+			dims := int32(a.Dims)
+			attr.Dims = &dims
 		}
 		out.Attributes = append(out.Attributes, attr)
 	}

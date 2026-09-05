@@ -161,6 +161,9 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 // validateAttribute 拒绝系统保留列（含 _version/_acl——系统列不可为数组由此
 // 保持），并校验数组属性元素类型（阶段③-b 预决策 1：array=true 已合法，元素
 // 仅限标量子集；adapter 的 validateArrayAttribute 是第二道防线）。
+// vector 属性（会话 #10 预决策 1）：dims 必填且 2..2000（pgvector 可索引
+// 上限）；default_value 与 array=true 对 vector 拒绝（无向量缺省语义；
+// vector[] 无对应物理形态）。
 func (d *Databases) validateAttribute(attr databases.Attribute) error {
 	if _, ok := databases.ReservedAttributeKeys[attr.Key]; ok {
 		return status.Error(codes.InvalidArgument, fmt.Sprintf("attribute key %q is reserved", attr.Key))
@@ -172,6 +175,19 @@ func (d *Databases) validateAttribute(attr databases.Attribute) error {
 			return status.Error(codes.InvalidArgument, fmt.Sprintf(
 				"attribute %q: array supports string, integer, float, boolean, datetime element types", attr.Key))
 		}
+	}
+	if strings.ToLower(attr.Type) == "vector" {
+		if attr.Dims < 2 || attr.Dims > 2000 {
+			return status.Error(codes.InvalidArgument, fmt.Sprintf(
+				"attribute %q: vector requires dims between 2 and 2000", attr.Key))
+		}
+		if attr.Default != nil {
+			return status.Error(codes.InvalidArgument, fmt.Sprintf(
+				"attribute %q: vector attributes do not support default_value", attr.Key))
+		}
+	} else if attr.Dims != 0 {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"attribute %q: dims is only valid for vector attributes", attr.Key))
 	}
 	return nil
 }
@@ -737,11 +753,11 @@ func (d *Databases) ValidateAttributeType(t string) error {
 		return status.Error(codes.InvalidArgument, "type is required")
 	}
 	switch strings.ToLower(t) {
-	case "string", "integer", "float", "boolean", "datetime", "email", "url", "json":
+	case "string", "integer", "float", "boolean", "datetime", "email", "url", "json", "vector":
 		return nil
 	default:
 		return status.Error(codes.InvalidArgument,
-			fmt.Sprintf("invalid attribute type %q (allowed: string, integer, float, boolean, datetime, email, url, json)", t))
+			fmt.Sprintf("invalid attribute type %q (allowed: string, integer, float, boolean, datetime, email, url, json, vector)", t))
 	}
 }
 

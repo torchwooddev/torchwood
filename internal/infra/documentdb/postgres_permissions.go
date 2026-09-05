@@ -474,7 +474,14 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 	// 同一 data 组装 SET 子句（与 updateDocument 三分支一致：data 非空 →
 	// 字段 + 审计列；仅权限变更 → 只刷审计列；两者皆空 → ErrNoFieldsToUpdate）。
 	updatedBy := userIDFromPrincipal(principal)
-	setParts, args := buildUpdateParts(databases.Document{Data: data}, updatedBy)
+	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
+	if err != nil {
+		return 0, err
+	}
+	setParts, args, err := buildUpdateParts(databases.Document{Data: data}, updatedBy, vectorCols)
+	if err != nil {
+		return 0, err
+	}
 	if len(setParts) == 0 && len(perms) == 0 {
 		return 0, fmt.Errorf("%w", databases.ErrNoFieldsToUpdate)
 	}
@@ -495,9 +502,10 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 		// 每次成功写 +1（含权限-only 更新；SkipVersion 同样 +1）。
 		setParts = append(setParts, "_version = _version + 1")
 	}
-	// 单条 UPDATE ... IN ... RETURNING to_jsonb(d.*)：写后快照一步取回（与
-	// GetDocument 的行→JSON 扫描同语义，_acl 含在载荷内顺带回填）；RETURNING
-	// 行数不足说明有文档不存在（权限已全过）→ ErrDocumentNotFound 整体回滚。
+	// 单条 UPDATE ... IN ... RETURNING：写后快照一步取回（与 GetDocument 的
+	// 行→JSON 扫描同语义，_acl 含在载荷内顺带回填；vector 列投影覆盖为 JSON
+	// 数组，与读回契约一致）；RETURNING 行数不足说明有文档不存在（权限已全
+	// 过）→ ErrDocumentNotFound 整体回滚。
 	byID := make(map[string]*databases.Document, len(ids))
 	if err := eachIDChunk(ids, bulkInChunk, func(chunk []string) error {
 		sqlArgs := make([]any, 0, len(args)+len(chunk)+1)
@@ -507,8 +515,8 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 		}
 		sqlArgs = append(sqlArgs, internalID)
 		rows, err := p.conn(ctx).QueryContext(ctx, fmt.Sprintf(
-			`UPDATE %s AS d SET %s WHERE d._id IN (%s) AND d._tenant = ? RETURNING to_jsonb(d.*) AS doc`,
-			tbl, strings.Join(setParts, ", "), inPlaceholders(len(chunk))),
+			`UPDATE %s AS d SET %s WHERE d._id IN (%s) AND d._tenant = ? RETURNING %s AS doc`,
+			tbl, strings.Join(setParts, ", "), inPlaceholders(len(chunk)), vectorProjection(vectorCols)),
 			sqlArgs...)
 		if err != nil {
 			if isUniqueViolation(err) {

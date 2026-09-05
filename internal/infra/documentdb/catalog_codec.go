@@ -25,6 +25,7 @@ type attributeJSON struct {
 	Required bool           `json:"required,omitempty"`
 	Array    bool           `json:"array,omitempty"`
 	Default  any            `json:"default,omitempty"`
+	Dims     int            `json:"dims,omitempty"`
 	Options  map[string]any `json:"options,omitempty"`
 }
 
@@ -33,6 +34,9 @@ type indexJSON struct {
 	Type       string   `json:"type"`
 	Attributes []string `json:"attributes"`
 	Orders     []string `json:"orders,omitempty"`
+	// Metric 是 hnsw 索引的距离度量（会话 #10）：COSINE | L2 | INNER_PRODUCT；
+	// 其余索引类型省略。
+	Metric string `json:"metric,omitempty"`
 }
 
 type permissionJSON struct {
@@ -54,6 +58,7 @@ func encodeAttributes(attrs []databases.Attribute) (string, error) {
 			Required: a.Required,
 			Array:    a.Array,
 			Default:  a.Default,
+			Dims:     a.Dims,
 			Options:  a.Options,
 		})
 	}
@@ -82,6 +87,7 @@ func decodeAttributes(raw string) ([]databases.Attribute, error) {
 			Required: a.Required,
 			Array:    a.Array,
 			Default:  a.Default,
+			Dims:     a.Dims,
 			Options:  a.Options,
 		})
 	}
@@ -99,6 +105,7 @@ func encodeIndexes(idxs []databases.Index) (string, error) {
 			Type:       i.Type,
 			Attributes: i.Attributes,
 			Orders:     i.Orders,
+			Metric:     i.DistanceMetric,
 		})
 	}
 	b, err := json.Marshal(out)
@@ -119,10 +126,11 @@ func decodeIndexes(raw string) ([]databases.Index, error) {
 	out := make([]databases.Index, 0, len(in))
 	for _, i := range in {
 		out = append(out, databases.Index{
-			ID:         i.ID,
-			Type:       i.Type,
-			Attributes: i.Attributes,
-			Orders:     i.Orders,
+			ID:             i.ID,
+			Type:           i.Type,
+			Attributes:     i.Attributes,
+			Orders:         i.Orders,
+			DistanceMetric: i.Metric,
 		})
 	}
 	return out, nil

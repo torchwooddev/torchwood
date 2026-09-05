@@ -92,6 +92,10 @@ type postgresDocumentDB struct {
 	// CREATE TABLE 带列或 ALTER ADD 都会打标，避免 versionColumnReady 把未提交列写入 cache。
 	// DDL / catalog reconcile 才写此标记，不在文档写热路径。
 	versionAlterTx sync.Map // "txid|schema.collection" -> struct{}
+	// vectorColumns 缓存集合的 vector 列清单（"schema.physical" -> attr key
+	// -> dims，会话 #10）。写路径的字面量编码/维度校验与读回投影覆盖都消费；
+	// DDL 路径维护，miss 时点查 catalog attrs。
+	vectorColumns sync.Map // "schema.physical" -> map[string]int
 }
 
 func NewPostgresDocumentDB(db *clients.Database, pub shared.EventPublisher) databases.DocumentDB {

@@ -284,6 +284,9 @@ message CreateAttributeRequest {
   bool required = 6;
   bool array = 7;
   string default_value = 8;
+  // 向量维度（会话 #10 §10.5 P0）：仅 type=vector 必填，2..2000
+  //（pgvector 可索引上限）；非 vector 类型不得设置。
+  optional int32 dims = 9;
 }
 
 message DeleteAttributeRequest {
@@ -300,6 +303,8 @@ message Attribute {
   bool required = 5;
   bool array = 6;
   string default_value = 7;
+  // 向量维度：仅 vector 类型非零（其余类型省略）。
+  optional int32 dims = 8;
 }
 
 message CreateIndexRequest {

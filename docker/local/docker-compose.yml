@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:18-alpine
+    # pgvector 官方镜像（会话 #10：vector 列 + HNSW 索引）。锁 0.8.6（≥0.8
+    # 才有 iterative scan），PG 主版本与原 postgres:18 一致。
+    image: pgvector/pgvector:0.8.6-pg18
     container_name: torchwood-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-torchwood}

@@ -9,19 +9,26 @@ import (
 type Attribute struct {
 	ID       string
 	Key      string
-	Type     string // string, integer, float, boolean, datetime, email, url, json
+	Type     string // string, integer, float, boolean, datetime, email, url, json, vector
 	Size     int
 	Required bool
 	Default  any
 	Array    bool
-	Options  map[string]any
+	// Dims 是 vector 属性的维度（会话 #10）：仅 type=vector 非零，
+	// 合法域 2..2000（pgvector 可索引上限）。维度变更 = 新列 + 数据重灌
+	//（换模型即换列名，不走 schema 演进状态机）。
+	Dims    int
+	Options map[string]any
 }
 
 type Index struct {
 	ID         string
-	Type       string // key, unique, fulltext
+	Type       string // key, unique, fulltext, hnsw
 	Attributes []string
 	Orders     []string
+	// DistanceMetric 是 hnsw 索引的距离度量（会话 #10）：COSINE | L2 |
+	// INNER_PRODUCT。仅 hnsw 类型非空；缺省 COSINE（app 层归一）。
+	DistanceMetric string
 }
 
 type Permission struct {

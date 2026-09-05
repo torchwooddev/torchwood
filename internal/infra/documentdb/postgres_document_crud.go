@@ -77,7 +77,14 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 		}
 	}
 
-	columns, placeholders, args := buildInsertParts(doc)
+	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
+	if err != nil {
+		return doc, err
+	}
+	columns, placeholders, args, err := buildInsertParts(doc, vectorCols)
+	if err != nil {
+		return doc, err
+	}
 	createdBy := userIDFromPrincipal(principal)
 	if createdBy != "" {
 		if columns != "" {
@@ -263,7 +270,14 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	//   - 命中目标：普通 UPDATE（RLS UPDATE USING 裁决文档级 update）。
 	//（语义变化：与并发普通 Create 撞唯一键时不再转 update 支，报 DuplicateKey
 	// 可重试——窗口极窄，记入文档。）
-	columns, placeholders, args := buildInsertParts(doc)
+	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
+	if err != nil {
+		return doc, err
+	}
+	columns, placeholders, args, err := buildInsertParts(doc, vectorCols)
+	if err != nil {
+		return doc, err
+	}
 	createdBy := userIDFromPrincipal(principal)
 	if createdBy != "" {
 		if columns != "" {
@@ -301,7 +315,10 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 	} else {
 		// 更新支：数据 + 审计列盲写（不做 OCC），用户集合 _version +1；_acl 不进
 		// 主语句（SELECT policy 新行复检），走随后的 tw_system 第二语句。
-		setParts, setArgs := buildUpdateParts(doc, userIDFromPrincipal(principal))
+		setParts, setArgs, err := buildUpdateParts(doc, userIDFromPrincipal(principal), vectorCols)
+		if err != nil {
+			return doc, err
+		}
 		if len(setParts) == 0 {
 			return doc, status.Error(codes.InvalidArgument, "no fields to upsert")
 		}
@@ -396,7 +413,11 @@ func (p *postgresDocumentDB) getDocument(ctx context.Context, projectID, databas
 	if err != nil {
 		return nil, err
 	}
-	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, tableName(schema, physical)), docID, internalID)
+	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
+	if err != nil {
+		return nil, err
+	}
+	row := p.conn(ctx).QueryRowContext(ctx, fmt.Sprintf(`SELECT %s AS doc FROM %s d WHERE d._id = ? AND d._tenant = ?`, vectorProjection(vectorCols), tableName(schema, physical)), docID, internalID)
 	doc, err := scanDocumentJSON(row)
 	if err != nil {
 		return nil, p.mapError(err)
@@ -494,7 +515,14 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 		}
 	}
 	updatedBy := userIDFromPrincipal(principal)
-	setParts, args := buildUpdateParts(doc, updatedBy)
+	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
+	if err != nil {
+		return doc, err
+	}
+	setParts, args, err := buildUpdateParts(doc, updatedBy, vectorCols)
+	if err != nil {
+		return doc, err
+	}
 	incParts, incArgs := buildIncrementParts(update.Increment)
 	setParts = append(setParts, incParts...)
 	args = append(args, incArgs...)
@@ -790,15 +818,30 @@ func (p *postgresDocumentDB) publishDocumentEvent(
 
 // buildInsertParts 拼接数据列 INSERT 片段。数组值（阶段③-b）编码为 PG 数组
 // 字面量字符串，目标列类型由 INSERT VALUES 推断（text[]/bigint[] 等按列解析，
-// 与标量值的绑定路径同机制）。
-func buildInsertParts(doc databases.Document) (columns string, placeholders string, args []any) {
+// 与标量值的绑定路径同机制）；vector 值（会话 #10）编码为 pgvector 字面量 +
+// ?::vector 绑定（列类型信息由 vectorCols 提供，nil = 无 vector 列）。
+func buildInsertParts(doc databases.Document, vectorCols map[string]int) (columns string, placeholders string, args []any, err error) {
 	if len(doc.Data) == 0 {
-		return "", "", nil
+		return "", "", nil, nil
 	}
 	var cols []string
 	var phs []string
 	for k, v := range doc.Data {
 		if !safeNameRe.MatchString(k) || strings.HasPrefix(k, "_") {
+			continue
+		}
+		if dims, isVec := vectorCols[k]; isVec {
+			if verr := validateVectorValue(k, v, dims); verr != nil {
+				return "", "", nil, verr
+			}
+			lit, ok := pgVectorLiteral(v)
+			if !ok {
+				return "", "", nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
+					"attribute %q: vector value must be a JSON array of numbers", k))
+			}
+			cols = append(cols, quoteIdent(k))
+			phs = append(phs, "?::vector")
+			args = append(args, lit)
 			continue
 		}
 		cols = append(cols, quoteIdent(k))
@@ -810,7 +853,7 @@ func buildInsertParts(doc databases.Document) (columns string, placeholders stri
 		phs = append(phs, "?")
 		args = append(args, v)
 	}
-	return strings.Join(cols, ", "), strings.Join(phs, ", "), args
+	return strings.Join(cols, ", "), strings.Join(phs, ", "), args, nil
 }
 
 // conflictArgs extracts the conflict column values from doc.Data in
@@ -837,9 +880,23 @@ func conflictWhereClause(conflictColumns []string) string {
 	return strings.Join(parts, " AND ")
 }
 
-func buildUpdateParts(doc databases.Document, updatedBy string) (setParts []string, args []any) {
+func buildUpdateParts(doc databases.Document, updatedBy string, vectorCols map[string]int) (setParts []string, args []any, err error) {
 	for k, v := range doc.Data {
 		if !safeNameRe.MatchString(k) || strings.HasPrefix(k, "_") {
+			continue
+		}
+		// vector 值（会话 #10）：字面量 + ::vector cast + 维度校验（同 INSERT）。
+		if dims, isVec := vectorCols[k]; isVec {
+			if verr := validateVectorValue(k, v, dims); verr != nil {
+				return nil, nil, verr
+			}
+			lit, ok := pgVectorLiteral(v)
+			if !ok {
+				return nil, nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
+					"attribute %q: vector value must be a JSON array of numbers", k))
+			}
+			setParts = append(setParts, fmt.Sprintf("%s = ?::vector", quoteIdent(k)))
+			args = append(args, lit)
 			continue
 		}
 		// 数组值（阶段③-b）：整列替换语义，字面量 + 目标列推断（同 INSERT）。
@@ -852,7 +909,7 @@ func buildUpdateParts(doc databases.Document, updatedBy string) (setParts []stri
 		args = append(args, v)
 	}
 	if len(setParts) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	setParts = append(setParts, "_updated_at = ?")
 	args = append(args, time.Now())
@@ -860,7 +917,7 @@ func buildUpdateParts(doc databases.Document, updatedBy string) (setParts []stri
 		setParts = append(setParts, quoteIdent("_updated_by")+" = ?")
 		args = append(args, updatedBy)
 	}
-	return setParts, args
+	return setParts, args, nil
 }
 
 // userIDFromPrincipal extracts the first "user:"-prefixed role ID from the

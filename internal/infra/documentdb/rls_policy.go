@@ -85,15 +85,23 @@ func (p *postgresDocumentDB) ensureCollectionRLS(ctx context.Context, schema, ph
 		`ALTER TABLE %s ENABLE ROW LEVEL SECURITY; ALTER TABLE %s FORCE ROW LEVEL SECURITY`, tbl, tbl)); err != nil {
 		return fmt.Errorf("enable row level security: %w", err)
 	}
+	return p.refreshColumnGrants(ctx, schema, physical)
+}
+
+// refreshColumnGrants 重刷列级 GRANT（会话 #10 从 ensureCollectionRLS 抽出）：
+// 列清单读 information_schema，授权形态为 REVOKE ALL 后按清单重授（幂等重建
+// ——存量表的旧授权形态在 DDL touch 时被矫正）。CreateAttribute 在 ADD COLUMN
+// 之后调用，使新列（含 vector）立即获得 INSERT/UPDATE 列授权。
+func (p *postgresDocumentDB) refreshColumnGrants(ctx context.Context, schema, physical string) error {
+	tbl := tableName(schema, physical)
 	// 列级 GRANT（预决策 6 + R13a + R16 ③）：SELECT 全列（WHERE _tenant 过滤
 	// 与 to_jsonb(d.*) 载荷需要）；INSERT 授数据列 + 除 _tenant 外系统列（含
-	// _acl——create/upsert 插入支的 _acl 随行携带：新行无旧行、可见性校验不
-	// 适用，内容治理在 app 层授予校验，信任等价于"自己创建的内容"）；UPDATE
+	// _acl——create/upsert 插入支的 _acl 随行携带：新行无旧行、可见性校验
+	// 不适用，内容治理在 app 层授予校验，信任等价于"自己创建的内容"）；UPDATE
 	// 排除 _acl——_acl 的变更通道唯一化为 tw_set_document_acl（000029，SECURITY
 	// DEFINER owner=tw_system，函数内租户绑定 + 可见性校验），应用身份直改
 	// _acl 的旁路从 UPDATE 列权限上封死（非自锁变更可过 SELECT policy 新行
-	// 复检，必须不可达）。列清单读 information_schema；授权形态为 REVOKE ALL
-	// 后按清单重授（幂等重建——存量表的旧授权形态在 DDL touch 时被矫正）。
+	// 复检，必须不可达）。
 	cols, err := p.tableColumns(ctx, schema, physical)
 	if err != nil {
 		return err

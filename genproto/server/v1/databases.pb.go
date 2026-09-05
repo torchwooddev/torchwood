@@ -954,15 +954,18 @@ func (x *Collection) GetIsSystem() bool {
 }
 
 type CreateAttributeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	Type          string                 `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
-	Size          int32                  `protobuf:"varint,5,opt,name=size,proto3" json:"size,omitempty"`
-	Required      bool                   `protobuf:"varint,6,opt,name=required,proto3" json:"required,omitempty"`
-	Array         bool                   `protobuf:"varint,7,opt,name=array,proto3" json:"array,omitempty"`
-	DefaultValue  string                 `protobuf:"bytes,8,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	Key          string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Type         string                 `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
+	Size         int32                  `protobuf:"varint,5,opt,name=size,proto3" json:"size,omitempty"`
+	Required     bool                   `protobuf:"varint,6,opt,name=required,proto3" json:"required,omitempty"`
+	Array        bool                   `protobuf:"varint,7,opt,name=array,proto3" json:"array,omitempty"`
+	DefaultValue string                 `protobuf:"bytes,8,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	// 向量维度（会话 #10 §10.5 P0）：仅 type=vector 必填，2..2000
+	// （pgvector 可索引上限）；非 vector 类型不得设置。
+	Dims          *int32 `protobuf:"varint,9,opt,name=dims,proto3,oneof" json:"dims,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1053,6 +1056,13 @@ func (x *CreateAttributeRequest) GetDefaultValue() string {
 	return ""
 }
 
+func (x *CreateAttributeRequest) GetDims() int32 {
+	if x != nil && x.Dims != nil {
+		return *x.Dims
+	}
+	return 0
+}
+
 type DeleteAttributeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -1114,14 +1124,16 @@ func (x *DeleteAttributeRequest) GetKey() string {
 }
 
 type Attribute struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
-	Size          int32                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
-	Required      bool                   `protobuf:"varint,5,opt,name=required,proto3" json:"required,omitempty"`
-	Array         bool                   `protobuf:"varint,6,opt,name=array,proto3" json:"array,omitempty"`
-	DefaultValue  string                 `protobuf:"bytes,7,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Key          string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Type         string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Size         int32                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	Required     bool                   `protobuf:"varint,5,opt,name=required,proto3" json:"required,omitempty"`
+	Array        bool                   `protobuf:"varint,6,opt,name=array,proto3" json:"array,omitempty"`
+	DefaultValue string                 `protobuf:"bytes,7,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	// 向量维度：仅 vector 类型非零（其余类型省略）。
+	Dims          *int32 `protobuf:"varint,8,opt,name=dims,proto3,oneof" json:"dims,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1203,6 +1215,13 @@ func (x *Attribute) GetDefaultValue() string {
 		return x.DefaultValue
 	}
 	return ""
+}
+
+func (x *Attribute) GetDims() int32 {
+	if x != nil && x.Dims != nil {
+		return *x.Dims
+	}
+	return 0
 }
 
 type CreateIndexRequest struct {
@@ -3153,7 +3172,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x11document_security\x18\t \x01(\bR\x10documentSecurity\x12\x1a\n" +
 	"\bdisabled\x18\n" +
 	" \x01(\bR\bdisabled\x12\x1b\n" +
-	"\tis_system\x18\v \x01(\bR\bisSystem\"\xef\x01\n" +
+	"\tis_system\x18\v \x01(\bR\bisSystem\"\x91\x02\n" +
 	"\x16CreateAttributeRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -3163,12 +3182,14 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x04size\x18\x05 \x01(\x05R\x04size\x12\x1a\n" +
 	"\brequired\x18\x06 \x01(\bR\brequired\x12\x14\n" +
 	"\x05array\x18\a \x01(\bR\x05array\x12#\n" +
-	"\rdefault_value\x18\b \x01(\tR\fdefaultValue\"p\n" +
+	"\rdefault_value\x18\b \x01(\tR\fdefaultValue\x12\x17\n" +
+	"\x04dims\x18\t \x01(\x05H\x00R\x04dims\x88\x01\x01B\a\n" +
+	"\x05_dims\"p\n" +
 	"\x16DeleteAttributeRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x10\n" +
-	"\x03key\x18\x03 \x01(\tR\x03key\"\xac\x01\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\"\xce\x01\n" +
 	"\tAttribute\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x12\n" +
@@ -3176,7 +3197,9 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x04size\x18\x04 \x01(\x05R\x04size\x12\x1a\n" +
 	"\brequired\x18\x05 \x01(\bR\brequired\x12\x14\n" +
 	"\x05array\x18\x06 \x01(\bR\x05array\x12#\n" +
-	"\rdefault_value\x18\a \x01(\tR\fdefaultValue\"\xb6\x01\n" +
+	"\rdefault_value\x18\a \x01(\tR\fdefaultValue\x12\x17\n" +
+	"\x04dims\x18\b \x01(\x05H\x00R\x04dims\x88\x01\x01B\a\n" +
+	"\x05_dims\"\xb6\x01\n" +
 	"\x12CreateIndexRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -3601,6 +3624,8 @@ func file_server_v1_databases_proto_init() {
 	}
 	file_server_v1_databases_proto_msgTypes[4].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[7].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[11].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[13].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[17].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[18].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[19].OneofWrappers = []any{}

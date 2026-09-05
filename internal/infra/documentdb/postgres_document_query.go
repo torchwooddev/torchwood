@@ -205,7 +205,13 @@ func (p *postgresDocumentDB) listDocuments(ctx context.Context, projectID, datab
 		}
 	}
 
-	querySQL := fmt.Sprintf(`SELECT to_jsonb(d.*) AS doc FROM %s d WHERE %s %s LIMIT ?`, tbl, strings.Join(whereParts, " AND "), orderSQL)
+	// vector 列（会话 #10）：读回投影逐列覆盖为 JSON 数组（原型 3：to_jsonb
+	// 对 vector 输出字符串，Data 契约要求 JSON 数组）。
+	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+	querySQL := fmt.Sprintf(`SELECT %s AS doc FROM %s d WHERE %s %s LIMIT ?`, vectorProjection(vectorCols), tbl, strings.Join(whereParts, " AND "), orderSQL)
 	args = append(args, limit)
 
 	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, args...)
