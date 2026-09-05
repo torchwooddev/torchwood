@@ -23,6 +23,7 @@
 | [12-sdk.md](12-sdk.md) | 官方 SDK：TypeScript SDK（包结构、入口类、Client/Server API、错误处理、demo）与 Go SDK（client/server 子包、InvokeJSON） | SDK 用户 / Agent 集成方 |
 | [13-operations.md](13-operations.md) | 部署与运维：运行形态、构建发布、生产配置要点（含 setup token）、健康检查、备份与升级 | 运维 / 部署负责人 |
 | [14-agent-tools.md](14-agent-tools.md) | Agent 默认工具箱：18 个 overlay 动词映射现有 Server RPC；完整 API 仍是 187 RPC（Client 61 + Server 116 + Console 10），不含 API key 管理 | Agent / SDK 集成方 |
+| [15-exit-poc.md](15-exit-poc.md) | 转出 POC 检查单：发布前门禁（A 门禁 10 / B 功能债 13 / C 决策 7）——A 区清零前不得对外发布；转出后挂账的活跃清单 | 维护者 / 发布负责人 |
 
 ## 推荐阅读路径
 
