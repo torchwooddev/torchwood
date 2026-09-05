@@ -68,3 +68,4 @@
 ## 特别约定
 - 对话和文档优先使用简体中文。
 - 管理后台通过 `/console/` 路径访问，由 Go server 嵌入并 serve。
+- 对外发布（真实存量用户）前过 `docs/developer/15-exit-poc.md` 转出 POC 门禁（A 区清零；挂账的活跃清单以该文件为准）。

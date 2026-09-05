@@ -1,0 +1,236 @@
+# 15 转出 POC 检查单（发布前门禁）
+
+> 面向：DocumentDB POC → **对外发布 / 有真实存量用户**的转出门禁。POC 定义见 `docs/design/documentdb-redesign.md` 状态头：无兼容义务、本地/测试数据可随时重建、各阶段直切不留回退。
+> 成文：2026-09-05 会话 #11，对 redesign 全文、`db/migrations/*.sql` 注释、`docs/developer/06-databases.md`、`AGENTS.md`、git log 近 10 个会话与 `CHANGELOG.md` 做穷尽盘点后收拢而成。**本文件是转出门禁与挂账的单一事实源（活跃文档）**；redesign §6 各完成状态段的挂账清单为 2026-09-05 快照，此后新增与闭环只更新本文。
+> 分区规则：**A 门禁区**——阻塞对外发布，清零前不得发布；**B 非阻塞功能债区**——不阻发布，按产品节奏排期；**C 决策确认区**——无需实现，需产品拍板并把决议回写本文。
+> 每条四要素：**出处**（可回溯锚点）｜**要做什么**｜**完成判据**（可验证语句，能写出对应测试/命令/检查动作）｜**建议归属**。标〔新发现〕的条目为会话 #11 盘点相对种子清单新收拢的**既有**挂账（出处早已存在，非新发明）。
+
+## 0 门禁使用方式
+
+1. **触发定义**：任一情形即触发本门禁——公网开放注册、SDK 包管理器发布新版本（npm `@torchwood/sdk` / Go module tag）、或出现不可要求重建数据的真实存量部署。
+2. **过门禁 = A 区全部条目满足完成判据**：在对应条目下追加闭环证据（commit 哈希 / 测试名 / 命令输出摘要 / 决议链接 + 日期）。B/C 区不阻塞；C 区条目允许"拍板后维持现状"，但必须有决议记录。
+3. **新增挂账进本单**：阻塞发布的进 A；不阻塞的功能债进 B；纯产品决策进 C。措辞纪律：完成判据必须可验证，禁止"评估/考虑/研究"类虚词——需要评估的议题一律入 C 区并写明决策问题。
+
+## A 门禁区（阻塞对外发布，10 条）
+
+### A1 存量列授权全量 reconcile 扫描
+
+- **出处**：redesign §6 阶段③-a 完成状态（"转出 POC 检查项：启动/迁移路径加一次全量列授权 reconcile 扫描——存量表旧授权形态现依赖 DDL touch 矫正"）；会话 #10 复审裁决（CreateAttribute 列级 GRANT 滞后的存量修复 `refreshColumnGrants`，影响全部属性类型，32f9660）；`internal/infra/documentdb/rls_policy.go:91` 注释。
+- **要做什么**：在启动或迁移路径增加一次性全量扫描：遍历 catalog 全部业务集合物理表，按 R13a/R16 终态口径（SELECT 全列；INSERT 数据列 + 除 `_tenant` 外系统列含 `_acl`；UPDATE 排除 `_tenant`/`_acl`）重刷列级 GRANT，不再依赖 DDL touch 逐表矫正。R13a/R16 连带：终态口径以 ③-b 收口形态为准（INSERT 恢复 `_acl`、UPDATE 双向排除）。
+- **完成判据**：构造一张列授权故意偏离终态的表（手工 REVOKE/GRANT），执行扫描后 `information_schema.column_privileges` 与 `refreshColumnGrants` 幂等重建的结果一致；扫描入口（启动钩子或迁移步骤）有集成测试锁定，且空库扫描为 no-op。
+- **建议归属**：documentdb DDL/权限会话（`infra/documentdb`）。
+
+### A2 非 superuser 应用 DSN
+
+- **出处**：redesign §6 阶段③-a 挂账 + §6 总览（"转出 POC 检查项两条"）；06-databases 不变量 #14（"DSN 用户为 superuser 时绕过 policy——已知豁免面；生产应配非 superuser 应用账号，A6 runbook 化"）；迁移 000026（authenticator = DSN 用户，GRANT 三角色 membership）。
+- **要做什么**：生产部署的应用 DSN 换为非 superuser 专用 authenticator（仅具 000026 所需 membership 与库级权限，无 BYPASSRLS 无 superuser）；部署文档写明创建步骤；测试面补一组非 superuser DSN 的迁移 + 运行验证。
+- **完成判据**：`docs/developer/13-operations.md` 含创建非 superuser authenticator 的可复制 SQL 与验证命令（`SELECT rolsuper FROM pg_roles WHERE rolname=...` 返回 false）；以该 DSN 完成一次 `db:migrate` + 冒烟测试并留记录；`configs/config.yaml.template` 与部署示例不再示范 superuser 凭据。
+- **建议归属**：部署/运维（configs + 13-operations）。
+
+### A3 vector 扩展 superuser 安装引导（runbook）
+
+- **出处**：迁移 000030 头注释（"vector 不是 trusted extension，CREATE EXTENSION 需 superuser……转出 POC 前的部署方案需把'扩展安装走 superuser 引导步骤'写进 runbook"）；redesign §6 会话 #10（"runbook 化并入转出 POC 检查单"）。
+- **要做什么**：runbook 写明 pgvector 安装形态：镜像预装（`pgvector/pgvector:0.8.6-pg18` 基座，docker/local 与 CI 已同步）或 superuser 引导步骤（DBA/引导容器执行 `CREATE EXTENSION vector`）；明确非 superuser 迁移身份下 000030 的行为（前置检查给出可读错误或引导后执行）。
+- **完成判据**：13-operations 有独立小节覆盖"非 superuser 部署下启用 vector"的步骤 + 验证 SQL（`SELECT extversion FROM pg_extension WHERE extname='vector'`）；在一个非 superuser 迁移身份的环境中按步骤走通一次并留记录（本文条目下附命令输出摘要）。
+- **建议归属**：部署/运维（docker/local + 13-operations）。
+
+### A4 roles_sig 双密钥轮换窗口
+
+- **出处**：redesign §3.2 GUC 伪造面（"单密钥 + 滚动重启轮换（双钥窗口挂账转出 POC 前）"）；迁移 000029 注释同文；`internal/infra/clients/tx.go:204`（"本函数覆盖旧行即完成换钥（单密钥，双钥窗口挂账转出 POC 前）"）。
+- **要做什么**：二选一并记录决议：① 实现双钥（`tw_secrets` 支持 current/previous 两把，`tw_sig_match` 任一命中，滚动窗口内换钥零停机）；② 显式决策接受滚动重启窗口（写清换钥期间旧进程签发 sig 与新密钥的 fail-closed 行为及可接受的时长界）。
+- **完成判据**：方案①——双钥落地 + "换钥后旧 sig 在 60s 窗口内仍验签通过、窗口外拒绝"的集成测试；方案②——redesign §3.2 或 06-databases 不变量 #14 记录决策句（含重启窗口语义），并有"sig 失配 → 零角色 fail-closed"的既有测试引用（`roles_sig_test.go`）作为影响面佐证。
+- **建议归属**：infra/clients（roles_sig）会话。
+
+### A5 redesign 状态头义务：重审"直接切换"表述并补存量迁移方案
+
+- **出处**：redesign 状态头（"转出 POC 前需重审本文所有'直接切换'类表述并补迁移方案"）；§6 末段（"'每阶段附回退方案'的要求在转出 POC 时再引入"）；§11-A4（双读迁移期 policy 数据源决议"预置于转出 POC 后的阶段③方案"）；§11-G2（存量四表迁移任务：幂等/断点续跑/EnsureCatalog 语义切换点）。〔新发现〕状态头"设计提案，未实施"与 `AGENTS.md` 数据库约定同句均已过时（§6 已宣告 2026-09-05 全量闭环），随本条一并修正。
+- **要做什么**：对 POC 期全部直切点逐项补存量升级路径，至少覆盖：`_perms`→`_acl` 回填与切换（A4 预置决议的落地）、每项目 catalog 四表→全局两表的存量迁移器（G2）、客户端契约断裂的版本策略联动（offset token 失效、`queries` DSL 字段 reserved、`filter/order_by` reserved——归 A10）、000029 类"原地修订不可重放"迁移在存量库的处置、错误码直换是否需要旧码映射。产出迁移方案文档，每项写明"重建 or 迁移"与步骤。
+- **完成判据**：存在一份覆盖上述直切点的迁移方案文档（redesign 附录或独立文档），每个直切点有可执行步骤或显式"无需迁移（理由）"；redesign 状态头与 AGENTS.md 的"未实施"过时表述已修正；方案经过一次评审（登记评审 commit）。
+- **建议归属**：文档会话（redesign 维护）+ documentdb 各专项。
+
+### A6 并行测试基建（CI 可靠性门禁）
+
+- **出处**：redesign §6 演进路径总览剩余挂账（"并行测试基建（SetupTestDB 争用 + 迁移循环集群级角色竞态：DROP ROLE 撞并行库中 tw_owner 对象，串行绿）"）；06-databases §12（`internal/testutil/db.go:SetupTestDB`、`migrations_cycle_test.go`）。
+- **要做什么**：修复两处并行不可用根因：① SetupTestDB 的隔离库创建/清理在多包并行下的争用；② 迁移循环 down 的 000026 `DROP ROLE`（集群级对象）与并行库中 tw_owner 持有对象的竞态。
+- **完成判据**：`go test ./... -p 4` 在 CI 规格环境连续 3 次全绿、无重试无 flake；testutil 文档注明并行安全契约。
+- **建议归属**：testutil/CI 会话。
+
+### A7 绝对 P99 基准门禁
+
+- **出处**：06-databases §12（rls_policy_test "10 万行 RLS 开/关相对基准（4.9x，阈值 30x；**绝对 P99 门禁转出 POC 后上 CI 机器基准**）"）；redesign §11-I1（百万行集合 × policy 查询 P99 门禁、EXPLAIN 计划断言自动化——EXPLAIN InitPlan 门禁已常驻）。
+- **要做什么**：在 CI 专用基准规格上建立绝对 P99 门禁：百万行级、policy 开启的列表/点查路径，阈值按机器基准定档写入 CI 配置；现有相对基准保留为快速回归。
+- **完成判据**：CI 存在基准 job，失败条件为 P99 超过配置中的数值阈值（非口头约定）；首次全量运行的基线数值记录在本文或 13-operations。
+- **建议归属**：CI 基准（documentdb 测试）会话。
+
+### A8 000026 down 的跨库角色残留 DBA 处置流程
+
+- **出处**：迁移 `000026_rbac_roles.down.sql` 头注释（"角色是集群级对象，跨库残留需 DBA 处置——与 golang-migrate 单库作用域一致"）。
+- **要做什么**：runbook 写明回滚 000026 时其他库中 tw_owner/tw_app/tw_system 的残留对象与成员关系的探测和清理方法（pg_roles/pg_shdepend 探测、逐库 REASSIGN OWNED/DROP OWNED 清单）。
+- **完成判据**：13-operations 含可复制的探测查询与逐库清理步骤；在同一集群双迁移库沙箱演练一次 down 并记录输出（本文条目下附摘要）。
+- **建议归属**：DBA runbook（13-operations）。
+
+### A9 locale=C 的产品期决策
+
+- **出处**：redesign §6 会话 #10（"镜像基座 glibc vs musl 的 collation 翻转连带修复：initdb 锁 `locale=C` 字节序，产品期语言学排序另行决策"）；commit 61ac141。
+- **要做什么**：确认产品是否存在语言学排序需求（用户可见的 string 列 ORDER BY 语义，如中文按拼音）；如需要——定 ICU/libc locale 选型与集群初始化参数并评估存量重建影响；如不需要——记录"维持 locale=C"决策。
+- **完成判据**：决策记录落在本文（含需求证据或"无需求"结论）；若改 locale：docker/local 与部署文档同步 + 中英文排序语义对比测试；若维持：一条显式决策句 + 06-databases 或 13-operations 注明 string 排序为字节序。
+- **建议归属**：部署决策（docker/local + 运维）。
+
+### A10 SDK 发版策略
+
+- **出处**：`CHANGELOG.md`（npm `@torchwood/sdk` v0.1.0 已发布、sdk/go v0.1.2 tag、`.github/workflows/release.yml`）；redesign 状态头（POC 含义：proto/API 直接破坏性修改）——POC 期间 proto 已发生 reserved 级断裂（`queries` 双栈退役、`ListRequest.filter/order_by` 退役等），**已发布 SDK 与服务端契约已分叉**。
+- **要做什么**：确定转出时的版本策略：TS/Go SDK 下一版本号（0.x 语义下 minor 携带破坏性 vs 升 1.0 前冻结契约）、破坏性变更的 migration note 义务、服务端与 SDK 的兼容矩阵（是否承诺 N-1）。
+- **完成判据**：版本策略决议写入 `sdk/README.md` 或 CHANGELOG（含版本号规则与兼容承诺语句）；下一个 SDK 版本发布时附迁移说明，内容对照 A5 的客户端契约断裂清单。
+- **建议归属**：SDK 发版（release.yml + CHANGELOG）。
+
+## B 非阻塞功能债区（13 条）
+
+### B1 数组算子补全
+
+- **出处**：redesign §6 总览（"数组算子补全（Intersect/Diff/Insert/Filter、TransactionOp 数组）"）；06-databases §6（"Intersect/Diff/Insert/Filter 挂账转出 POC 前"）；`internal/domain/databases/document.go:82`。
+- **要做什么**：补齐数组写侧算子 Intersect/Diff/Insert/Filter（与现有四算子同形态：单语句 SET、NULL 语义定义、OCC 不变）+ TransactionOp 的数组算子支持。
+- **完成判据**：四算子各有语义测试（含 NULL 列与空数组行为）；execute-tx 数组 op 路径有集成测试；typed builder/SDK 与 06-databases §6 同步。
+- **建议归属**：documentdb 数组会话。
+
+### B2 多页 KNN
+
+- **出处**：redesign §10.5 P0 挂账行（"多页 KNN"）；`pkg/query/proto/proto.go:52`、`internal/infra/documentdb/postgres_document_query.go:399`（无续页 token，`pageToken` 拒绝）。
+- **要做什么**：KNN 结果多页游标（基于距离 + `_id` 的 keyset 语义），解除"无下一页"限制。
+- **完成判据**：`vectorSearch` + `pageToken` 组合可用且跨页不重不漏（确定性用例锁定）；与 filter 组合、与 orders 互斥的语义测试更新；proto/双面 SDK/06-databases 同步。
+- **建议归属**：documentdb KNN。
+
+### B3 C5 在线 DDL（从未实施的显式欠账）
+
+- **出处**：redesign §2-C5（一律 CONCURRENTLY + 独立事务 + `lock_timeout=2s` 重试 + catalog 两阶段状态机 building→active + 后台 reconcile 对账 + `torchwood admin schema repair` CLI）；§6 会话 #10 偏差②（"CONCURRENTLY 通道不存在——prompt 引用了 C5 目标态当现状，**C5 的在线 DDL 机器从未实施**，现显式入挂账"）；§4.4 漂移防护（reconcile catalog ↔ pg_catalog：缺列/INVALID 索引/幽灵表 + 告警）。
+- **要做什么**：实现在线索引通道（CREATE INDEX CONCURRENTLY 独立事务 + lock_timeout 重试 + catalog 索引两阶段状态机）与后台 reconcile/repair CLI（与 A1 的列授权扫描共用遍历骨架）。
+- **完成判据**：大表建索引期间并发读写不被阻塞（持锁注入用例通过）；building→active 状态机有中断恢复用例（building 残留可重入）；repair CLI 对注入的缺列/INVALID 索引/幽灵表三类漂移各有修复测试。
+- **建议归属**：documentdb DDL 专项会话。
+
+### B4 schema 演进状态机与 §4.6 契约〔新发现〕
+
+- **出处**：redesign §4.6（Schema 演进契约表：收紧/改类型走迁移任务 validate→rewrite→commit、删列两段 deprecated→retired）；§11-C1-C3/C5（"维持随对应阶段设计稿细化"——从未细化实施）；迁移 000025 注释与 06-databases §4（"`schema_version` 仅立列，演进状态机挂账 §4.6"）。
+- **要做什么**：设计并实施 schema_version 演进状态机：migrating 期间读写矩阵、backfill 限速与失败恢复、unique 索引遇存量重复的 validate 报告、删列 deprecated→retired 生命周期。
+- **完成判据**：§4.6 表每一行要么有实现 + 测试，要么有修订后的契约文档；`schema_version` 不再"仅立列"（被状态机消费，或显式退役并记录）。
+- **建议归属**：documentdb DDL 专项（与 B3 同会话）。
+
+### B5 export / import / snapshot_seq 闭合
+
+- **出处**：redesign §6 总览挂账（export/snapshot_seq）；§10.1 批量与同步（snapshot+changes 闭合：export 返回 `snapshot_seq`，`:changes?since_seq=snapshot_seq` 无缝续接）；§4.7（COPY 流式 NDJSON + catalog 快照、`pg_dump -n tw_<project>` runbook）；〔新发现〕§9.3 教训 4（"import/export 的 NDJSON 面要先行（补 import）"——当前 export/import 均未实现）。
+- **要做什么**：实现 `torchwood export --project`（流式 NDJSON + catalog 快照 + snapshot_seq）与 import；文档化 pg_dump 项目级备份 runbook；snapshot_seq 与 `:changes` 续接语义入契约。
+- **完成判据**：export→drop→import 往返一致性测试（行数/内容/catalog 对照）；export 产出含 snapshot_seq 且 `:changes?since_seq=<snapshot_seq>` 无缝续接（一致性窗口用例）；13-operations 有备份/恢复小节。
+- **建议归属**：export/import 专项会话。
+
+### B6 孤儿消费组 XGROUP DESTROY 治理
+
+- **出处**：redesign §6 阶段④完成状态（"孤儿消费组 XGROUP DESTROY 治理挂账"）；§4.5（组名 hostname:pid，重启即新组从 `$` 起步）。
+- **要做什么**：worker 周期清理无成员且闲置超阈值的消费组，防组无限累积。
+- **完成判据**：集成测试——伪造闲置组后触发清理、活跃组（有成员/PEL 未超时）不被删；清理行为有日志/指标可观测。
+- **建议归属**：events/realtime worker。
+
+### B7 vector 配套暴露：ef_search 与调参
+
+- **出处**：redesign §6 会话 #10（ef_search 挂账）；§10.5 P0 挂账行（ef_search/迭代调参暴露；〔新发现〕halfvec/sparsevec、embedding 接入同列挂账）；06-databases §6（"挂账转出 POC 前评估 ef_search/hnsw.iterative_scan 调参暴露"——注意：暴露本身是功能项归 B，是否暴露的拍板以决议记录闭环）。
+- **要做什么**：将 ef_search（及 hnsw.iterative_scan 相关节流参数）暴露为查询级/集合级可调项（默认值 + 上限防滥用）；按需排期 halfvec/sparsevec 列类型与 embedding 接入。DSL 字符串形态维持拒绝（既定决策，重审归 C 区惯例）。
+- **完成判据**：二选一闭环——实现：ef_search 可配置 + 召回/延迟对比测试佐证默认值 + 06-databases 同步；或决策不暴露：本文记录决议句（近重复簇召回边界维持文档化现状）。
+- **建议归属**：vector 后续会话。
+
+### B8 encodeTokenData 不可达兜底清理
+
+- **出处**：redesign §6 清扫会话 #9 记录项（"encodeTokenData 的 marshal 失败兜底仍产出不可解码的 v1:offset 形态（不可达路径，语义自不一致但无害，随下次触碰 crud 时顺手清理）"）。
+- **要做什么**：清理该兜底分支——marshal 失败应返回错误，不再产出坏 token。
+- **完成判据**：`pkg/crud` EncodePageToken 的 marshal 错误路径返回 error，且有注入 marshal 失败的单测。
+- **建议归属**：pkg/crud 顺手清理（任何触碰 crud 的会话）。
+
+### B9 `_version` 列锁死完整版收口
+
+- **出处**：redesign §9.2 采纳表（列级 GRANT"锁死 `_acl`/`_version`/`_tenant`；必须从一开始只按列授予"）vs §6 ③-b A6 表述修正（"`_acl` 锁死（经函数唯一通道）；`_version` 不锁列（CAS 守卫已足）"）——两处口径不一致，终态未留档。
+- **要做什么**：拍板并收口：接受"不锁列"（勘误 §9.2 采纳表）或翻案实现锁列；redesign 与 06-databases 措辞对齐。
+- **完成判据**：两份文档同口径（矛盾句消除）；若翻案锁列：列授权 + golden 测试更新。
+- **建议归属**：文档勘误（或 documentdb DDL 会话，若翻案）。
+
+### B10 Agent 面契约补全〔新发现〕
+
+- **出处**：redesign §4.1 Agent 面（`GET …/collections/{c}?as=jsonschema` 导出 JSON Schema 2020-12；`GET /.well-known/torchwood` 资源/算子/错误码目录）；§10.1（`:query?dry_run=true` explain（D3 未决）、OCC 冲突错误体带 `current_version`、on-behalf-of 委托（F2））。代码检索确认 as=jsonschema / well-known / dry_run / current_version 均未实现；已落地项不受此条影响（429 RetryInfo 精确退避、`api:apikey` 限流维度、`_created_by` 落 `key:<keyID>`）。
+- **要做什么**：按 §4.1/§10.1 落地 Agent 面承诺：JSON Schema 导出、well-known 目录、（D3 契约定稿后的）dry_run、OCC current_version、（F2 形态定稿后的）on-behalf-of。
+- **完成判据**：每个子项有 API + 测试 + 09-api-guide/14-agent-tools 文档；未排期子项在本条登记状态（做/不做 + 理由）。
+- **建议归属**：Agent 面会话（api/proto + documentdb）。
+
+### B11 H2 上限族 enforcement〔新发现〕
+
+- **出处**：redesign §11-J H2 决议数值（`_acl` ≤64 ACE；数组 ≤1000 元素；每集合列数软限 200；object 嵌套 ≤8 层）——检索确认无 enforcement（H1 的 1MiB/256KiB 已落地，见 06-databases §6 写入载荷上限）。
+- **要做什么**：在 app 校验层落地 H2 上限族（写入/DDL 前置拒绝 + 明确域码）。
+- **完成判据**：四个上限各有超限拒绝测试（含域码断言）；06-databases 输入上限小节同步。
+- **建议归属**：app/documents 校验会话。
+
+### B12 量化预警线 SLO 指标〔新发现〕
+
+- **出处**：redesign §3.1 缓解 3 / §4.7（`pg_class` 计数、pg_dump 时长、迁移重放耗时纳入 SLO 指标；超限触发多集群分片规划）；§11-A3（policy × 集合规模对 plan cache/relcache 的影响观察项）。
+- **要做什么**：三类规模指标接入 metrics/SLO（exporter 或控制面聚合），配阈值告警；A3 观察项随指标可评估。
+- **完成判据**：metrics 端点暴露三指标 + 告警规则入库；阈值及其来源（§3.1 社区阈值：几百 schema 舒适、1–2 千起劣化）写入 13-operations。
+- **建议归属**：运维可观测会话。
+
+### B13 低优先级小债打包〔新发现〕
+
+四件既有挂账，优先级低、可各自独立闭环：
+
+- **a. upsert 预锁冲突值键**（§4.8 Phase 1 裁决④："可选改进（预锁冲突值键）挂账"）。判据：死锁注入用例下 execute-tx/upsert 批内无 PG 死锁中止，或记录"依赖 PG 死锁检测 + 幂等重试"的维持决策。归属：documentdb 事务。
+- **b. realtime 扇出掩码缓存**（§4.3/§11-J A5：预计算"频道×角色集→放行"短 TTL 缓存，纯性能优化未实施）。判据：扇出压测数据证明需要后实施，或记录"维持逐订阅者判定"。归属：realtime。
+- **c. 物理名进程内缓存**（§6 阶段②挂账 + `internal/infra/documentdb/postgres_catalog.go:145`："业务库热路径 +1 主键点查……挂账未做（评估后置）"）。判据：基准证明点查开销可忽略则记录关闭，否则实现缓存 + 失效桥接测试。归属：documentdb catalog。
+- **d. data_ref 版本化读取**（§4.5："原 data_ref = GET ?version=N 撤回……挂账远期版本化读取"）。判据：需求出现时立专项并在本条链接；无需求则维持登记。归属：远期专项。
+
+## C 决策确认区（7 条）
+
+### C1 collectionID 字符集放宽
+
+- **出处**：redesign §4.2（"原草图的 `[a-z0-9-]` ≤36 挂账待需求信号：snake_case 与属性键习惯一致，且避免 `_perms`/realtime 频道约定动荡"）；06-databases 不变量 #9；§6 阶段②挂账。
+- **决策问题**：是否放宽 collectionID 至 `[a-z0-9-]` ≤36——真实用户对连字符 ID 的需求是否存在；放宽对 realtime 频道约定与逻辑名组合校验的连带。
+- **完成判据**：决议回写本文（放宽→B 区立条：校验/文档/测试更新；维持→记录"维持 snake_case"并关闭）。
+- **建议归属**：产品 + pkg/ident 校验。
+
+### C2 users 面 typed AST 化
+
+- **出处**：redesign §6 阶段①剩余记录项（"users/storage 等静态表面遗留的 DSL 消费为 §0 边界邻居，归阶段②收敛"）；§6 阶段②完成状态（storage + groups queries 显式拒绝、users 面独立 DSL 契约注释——收敛未完成，users 面仍消费 DSL）。
+- **决策问题**：users 面查询是否统一到 typed AST（与文档面单栈对齐），或长期维持独立 DSL 契约。
+- **完成判据**：决议回写本文（AST 化→B 区立条；维持→06-databases 注明长期边界 + 理由句）。
+- **建议归属**：users 面/API 会话。
+
+### C3 dedicated 供给档位
+
+- **出处**：redesign §9.3 教训 1（"吸收 dedicated 供给档位：同一 API 面下提供独享库（可 resize/replicate），把规模问题变成计费问题而不是接口问题"）。
+- **决策问题**：是否提供 dedicated 数据库档位及计费形态；与 §3.1 多集群分片出口的关系。
+- **完成判据**：产品决议回写本文（做→排期与计费方案链接；不做→理由句）。
+- **建议归属**：产品/计费。
+
+### C4 NULLS LAST 游标
+
+- **出处**：redesign §4.1（"NULLS LAST 谓词改写仅在需求出现时评估"）；06-databases §9 预决策 4（NULL 排序键限制：cursor 行含 NULL 键拒绝、数据行 NULL 键续页被跳过——先 isNull/isNotNull 过滤）。
+- **决策问题**：NULL 密集排序列的分页是否需要 NULLS LAST 谓词改写；当前过滤绕行是否够用。
+- **完成判据**：决议回写本文（做→B 区立条并附行比较 × NULL 组合正确性测试方案；不做→维持现状句）。
+- **建议归属**：query 会话。
+
+### C5 native 数据库独立产品（泄压阀）
+
+- **出处**：redesign §10.4 承诺对价（"重度 SQL 用户 → 远期评估'原生数据库'独立产品（资源池隔离、不共用文档面信任模型）；触发器：当高级用户索取 SQL 的诉求成为规模化声音时按优先序评估，而非直接开口"）。
+- **决策问题**：是否/何时启动 native 产品立项（裸库上无 ACL/审计/配额故事的提前量）。
+- **完成判据**：触发器状态与决议回写本文（未触发→记录"监控中"；触发→立项文档链接）。
+- **建议归属**：产品远期。
+
+### C6 Agent 间隔离与默认种子语义〔新发现〕
+
+- **出处**：redesign §10.2-2（"Agent 间零隔离：全体 key 共享 `keys` 角色……任一 key 可改其他 key 创建的一切文档。per-key 角色落地前，至少应把默认种子收敛为创建者 key 私有"）；§10.1 信任边界（"`key:{keyID}` 成为一等可授予角色……空 ACE 种子从'全体 keys 可写'改为'创建者 key 私有'，随 §3.1 的 keys 默认写权定调一并决策"）。代码锚点：`internal/app/server/databases.go` `creatorSeedRole`（空 ACE 种子绑首个常规角色——API key 主体即共享 `keys` 角色，非 `key:<id>`）。
+- **决策问题**：对外发布是否接受"项目内全体 API key 互通"语义；若不接受，per-key 角色与种子收敛的排期。
+- **完成判据**：决议回写本文（接受→契约文档明示共享语义；不接受→B 区立条：per-key 角色 + 种子收敛 + golden 测试）。
+- **建议归属**：产品 + auth/权限会话。
+
+### C7 多集群分片排期承诺〔新发现〕
+
+- **出处**：redesign §9.3 教训 5（"§3.1 的多集群分片出口要有排期承诺，不能永远停在预警线"——Appwrite #6968 无回应即关闭的反面教训）；§3.1 缓解 4 / §11-G1（project→cluster 路由抽象，catalog 定位 cluster 内全局）。
+- **决策问题**：分片出口的触发阈值与排期承诺（结合 B12 预警线指标定档）。
+- **完成判据**：决议回写本文，含触发条件与时间窗（或"按指标触发、暂无日历排期"的显式承诺句）。
+- **建议归属**：产品/架构。
+
+## 附：条目统计与闭环纪律
+
+- **分区统计**（2026-09-05 成文时点）：A 区 10 条、B 区 13 条、C 区 7 条，合计 30 条；其中标〔新发现〕8 条（A5 并入 1、B4/B10/B11/B12/B13 独立 5、C6/C7 独立 2——B5/B7 各并入 1 处子项）。
+- **闭环纪律**：满足完成判据后在条目下追加证据行（`闭环：<日期>｜<commit/测试/决议链接>｜<摘要>`）；A 区全部闭环前，发布流程（release workflow）不得执行对外发布步骤。
+- **与 redesign §6 的关系**：redesign §6 挂账清单为 2026-09-05 快照；本文件为活跃清单，后续新挂账一律登记于此。
