@@ -16,7 +16,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 )
 
@@ -43,7 +42,7 @@ func TestMigrations_UpDownUpCycle(t *testing.T) {
 	wantLatest := latestMigrationVersion(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
-	adminDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
+	adminDB := newAdminDB(adminDSN)
 	defer func() { _ = adminDB.Close() }()
 
 	// 建库 + up→down→up 全程持集群级 lifecycle 锁（并行安全契约见 db.go 包注释）。
@@ -67,7 +66,7 @@ func runMigrationCycle(ctx context.Context, t *testing.T, adminDB *bun.DB, baseD
 		defer cleanupCancel()
 		// adminDB 已随测试函数 defer 关闭，删库自建连接；外层锁此时已释放，
 		// 删库段自行持锁（与 SetupTestDB 的建库/迁移/删库段互斥）。
-		cleanupDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(AdminDSN()))), pgdialect.New())
+		cleanupDB := newAdminDB(AdminDSN())
 		defer func() { _ = cleanupDB.Close() }()
 		if err := runInDBLifecycleLock(cleanupCtx, cleanupDB, func(ctx context.Context) error {
 			return retryOnClusterContention(ctx, func() error {

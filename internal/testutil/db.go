@@ -54,44 +54,11 @@ var testDBSeq atomic.Uint64
 // 避免 pg_database 行级 AccessExclusiveLock 争用与连接数打满（A6 根因①）。
 const testDBLifecycleLockKey = int64(0x7477_6C69_665F_6462) // "twlif_db"
 
-// runInDBLifecycleLock 在集群级 advisory lock 下执行 fn（见包注释并行安全契约）。
-// 连接建立与取锁本身也受集群过载影响（admin 池建连被拒 / 读超时），一并纳入
-// 瞬时错误重试，每次重试重新取连接。锁绑定单一连接，fn 返回后解锁；解锁使用
-// 独立短超时 ctx，不受外层 ctx 耗尽影响，保证锁必然释放。
-func runInDBLifecycleLock(ctx context.Context, admin *bun.DB, fn func(ctx context.Context) error) error {
-	var conn *sql.Conn
-	if err := retryOnClusterContention(ctx, func() error {
-		if conn != nil {
-			_ = conn.Close()
-			conn = nil
-		}
-		c, err := admin.DB.Conn(ctx) // 内嵌 *sql.DB：原生 Conn，bun.Conn 包装不适合跨重试持柄
-		if err != nil {
-			return err
-		}
-		conn = c
-		// 原生 *sql.Conn 不经 bun 的 `?`→`$n` 重写，pgdriver 只认 `$n` 占位符。
-		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", testDBLifecycleLockKey); err != nil {
-			return fmt.Errorf("acquire test db lifecycle lock: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("acquire admin conn for lifecycle lock: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
-	defer func() {
-		unlockCtx, unlockCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer unlockCancel()
-		_, _ = conn.ExecContext(unlockCtx, "SELECT pg_advisory_unlock($1)", testDBLifecycleLockKey)
-	}()
-	return fn(ctx)
-}
+// testDBRetryAttempts 是建库/删库段对集群瞬时过载的最大重试次数（不含初次）。
+const testDBRetryAttempts = 5
 
-// testDBRetryAttempts 是建库/删库段对集群瞬时过载的最大重试次数（含初次共 4 次）。
-const testDBRetryAttempts = 3
-
-// retryOnClusterContention 对瞬时过载类错误做指数退避重试（250ms/500ms/1s），
-// 非瞬时错误立即返回（见包注释并行安全契约）。
+// retryOnClusterContention 对瞬时过载类错误做指数退避重试
+// （250ms/500ms/1s/2s/4s），非瞬时错误立即返回（见包注释并行安全契约）。
 func retryOnClusterContention(ctx context.Context, fn func() error) error {
 	var err error
 	for attempt := 0; ; attempt++ {
@@ -105,6 +72,66 @@ func retryOnClusterContention(ctx context.Context, fn func() error) error {
 		case <-time.After(time.Duration(250<<attempt) * time.Millisecond):
 		}
 	}
+}
+
+// newAdminDB 建读超时 10s 的 admin 连接池：admin 侧只跑短语句
+// （CREATE/DROP DATABASE、pg_terminate_backend、advisory lock），拥堵时
+// 快速失败进入重试而非长时间挂读（长读超时会让一次尝试吞掉整个重试预算）。
+// 池不设 MaxOpenConns：持 lifecycle 锁的连接与 fn 内语句（如 cleanup 的
+// 删库段）并发取用同一池，上限 1 会自锁。
+func newAdminDB(adminDSN string) *bun.DB {
+	sqldb := sql.OpenDB(pgdriver.NewConnector(
+		pgdriver.WithDSN(adminDSN),
+		pgdriver.WithReadTimeout(10*time.Second),
+	))
+	return bun.NewDB(sqldb, pgdialect.New())
+}
+
+// runInDBLifecycleLock 在集群级 advisory lock 下执行 fn（见包注释并行安全契约）。
+// 取锁用 pg_try_advisory_lock 轮询而非阻塞版 pg_advisory_lock：阻塞等待在
+// pgdriver 里是一次长读，排队超过读超时会断连报 i/o timeout；try 版每次
+// 往返毫秒级，等待循环由 ctx 控制总预算。连接建立纳入瞬时错误重试；解锁
+// 使用独立短超时 ctx，不受外层 ctx 耗尽影响，保证锁必然释放。
+func runInDBLifecycleLock(ctx context.Context, admin *bun.DB, fn func(ctx context.Context) error) error {
+	var conn *sql.Conn
+	if err := retryOnClusterContention(ctx, func() error {
+		if conn != nil {
+			_ = conn.Close()
+			conn = nil
+		}
+		c, err := admin.DB.Conn(ctx) // 内嵌 *sql.DB：原生 Conn，bun.Conn 包装不适合跨重试持柄
+		if err != nil {
+			return err
+		}
+		conn = c
+		return nil
+	}); err != nil {
+		return fmt.Errorf("acquire admin conn for lifecycle lock: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+	defer func() {
+		unlockCtx, unlockCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer unlockCancel()
+		_, _ = conn.ExecContext(unlockCtx, "SELECT pg_advisory_unlock($1)", testDBLifecycleLockKey)
+	}()
+
+	// 原生 *sql.Conn 不经 bun 的 `?`→`$n` 重写，pgdriver 只认 `$n` 占位符。
+	for {
+		var acquired bool
+		err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", testDBLifecycleLockKey).Scan(&acquired)
+		if err != nil {
+			return fmt.Errorf("acquire test db lifecycle lock: %w", err)
+		}
+		if acquired {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("acquire test db lifecycle lock: %w", ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return fn(ctx)
 }
 
 // isTransientClusterError 判断是否为单 PG 实例被并行测试打满时的瞬时错误
@@ -197,7 +224,7 @@ func SetupTestDB(t *testing.T) *clients.Database {
 		t.Fatalf("parse test dsn: %v", err)
 	}
 
-	adminDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
+	adminDB := newAdminDB(adminDSN)
 	defer func() { _ = adminDB.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -228,7 +255,7 @@ func SetupTestDB(t *testing.T) *clients.Database {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cleanupCancel()
-		cleanupDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
+		cleanupDB := newAdminDB(adminDSN)
 		defer func() { _ = cleanupDB.Close() }()
 		err := runInDBLifecycleLock(cleanupCtx, cleanupDB, func(ctx context.Context) error {
 			return retryOnClusterContention(ctx, func() error {
