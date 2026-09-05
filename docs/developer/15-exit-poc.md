@@ -169,6 +169,13 @@
 - **要做什么**：按 §4.1/§10.1 落地 Agent 面承诺：JSON Schema 导出、well-known 目录、（D3 契约定稿后的）dry_run、OCC current_version、（F2 形态定稿后的）on-behalf-of。
 - **完成判据**：每个子项有 API + 测试 + 09-api-guide/14-agent-tools 文档；未排期子项在本条登记状态（做/不做 + 理由）。
 - **建议归属**：Agent 面会话（api/proto + documentdb）。
+- **闭环（2026-09-05，Agent 面会话；5 子项中 3 项落地、2 项依赖未决留待）**：
+  ① **JSON Schema 导出**：`DatabasesService/ExportCollectionSchema`（REST `GET .../collections/{c}:exportSchema?as=jsonschema`，custom verb 与 `documents:count` 同惯例——网关按路径路由无法以 `?as=` 区分与 GetCollection 同形的裸路径，`as` 挂在动词上缺省 jsonschema），从 catalog attrs 生成 JSON Schema 2020-12（类型映射矩阵/required/系统字段 readOnly 注释/`deprecated` 关键字经 `Options.deprecated` 通道保留），物理名不出现；测试=类型映射矩阵 + 文档形态（纯函数）+ catalog 往返/NotFound/sentinel 拒绝（集成）+ handler `as` 白名单；文档=14-agent-tools §2 注。
+  ② **well-known 目录**：`GET /.well-known/torchwood`（纯 HTTP 面，gateway mux HandlePath，公开端点）——算子全集（23 条，proto oneof 字段同步断言）、域码表 + retryable（构造期直读新增 `databases.ErrorCodeCatalog()`，零漂移）、databases 面 26 动词 REST 形态 + scope（`auth.APIKeyScopeRules` 直取）；四重防漂移测试；文档同上。
+  ③ **OCC 冲突带 current_version**：`DOCUMENT.VERSION_CONFLICT` 的 ErrorInfo metadata 携带 `current_version=<探测 SELECT 读到的当前 _version>`（domain 新增 `VersionConflictError` 载荷类型，infra update/delete 三处冲突点零额外查询携带，app `MapDocumentDBError` 提取入 metadata）；测试=映射单测 + infra 两路 ErrorAs + app/server 端到端 metadata=="1" 且取值合并重试成功；文档同上。
+  ④ **dry_run（:query?dry_run=true explain）——留待**：依赖 D3 契约定稿（explain 输出形态未决），D3 拍板后随查询契约专项落地。
+  ⑤ **on-behalf-of 委托——留待**：依赖 F2 形态定稿（委托凭证/语义未决），F2 拍板后随认证专项落地。
+  Commits：165abbd（current_version）→ 9606198（jsonschema）→ aab38ef（well-known）。
 
 ### B11 H2 上限族 enforcement〔新发现〕
 
