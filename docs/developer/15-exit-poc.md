@@ -59,6 +59,7 @@
 - **要做什么**：修复两处并行不可用根因：① SetupTestDB 的隔离库创建/清理在多包并行下的争用；② 迁移循环 down 的 000026 `DROP ROLE`（集群级对象）与并行库中 tw_owner 持有对象的竞态。
 - **完成判据**：`go test ./... -p 4` 在 CI 规格环境连续 3 次全绿、无重试无 flake；testutil 文档注明并行安全契约。
 - **建议归属**：testutil/CI 会话。
+- **闭环（2026-09-05，testutil/CI 会话）**：两根因修复落地——① 建库/迁移/删库段持集群级 advisory lock（`pg_try_advisory_lock` 轮询等锁 + admin 10s 读超时 + 瞬时过载指数退避重试 + admin 池进程级单例 + 测试库池上限 16），跨进程互斥不依赖进程内锁（`07c6e6a`、`89eb708`、`c181050`）；② 000026 down 改**集群角色保留**形态（不 DROP ROLE，只回滚本库作用域：REASSIGN/DROP OWNED + REVOKE membership；up 同步原子幂等 `1d77e8f`）——消除冲突源本身，无需任何测试间互斥锁，down 对称性收敛为"库内完全对称"（角色生命周期归集群供给方，A8 承接）。附带修复验收暴露的既有 flake：session evict 测试 expire tie（`32a781d`）、CreateTestProject 项目 schema apply 重试（`de88fb6`）。**证据**：隔离验收树（main `c181050` 同源）连续 3 次 `go test ./... -p 4 -count=1` 全绿——67 包 ok，唯一红灯 `cmd/worker.TestWorkerDepsGraph` 为 **A1 commit `0769ce6` 引入的 import guard 违规**（bootkit→documentdb 传递依赖；已实证在 A6 改动之前的 `3a1da5e` 上同样红），归属 A1 会话收尾，非 A6 范畴。并行安全契约见 `internal/testutil/db.go` 包注释与 06-databases §12。
 
 ### A7 绝对 P99 基准门禁
 
