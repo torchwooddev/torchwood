@@ -93,7 +93,7 @@ docker run --env-file .env -p 9099:9099 -p 9060:9060 torchwood:1.0.0-xxx-yyy
 |------|----------|------|
 | JWT secret | `TORCHWOOD_SECURITY_JWT_SECRET` | ≥32 字符，含弱子串（`change-me`/`secret`/`torchwood`/`minioadmin`）拒绝启动；`access_ttl` 默认 `15m`、`refresh_ttl` 默认 `7d` |
 | Setup token | `TORCHWOOD_SECURITY_SETUP_TOKEN` | 未设置时首次 `SignUp` 被拒（`internal/app/console/setup.go`），生成：`openssl rand -hex 32` |
-| DB 连接串 | `TORCHWOOD_DATA_DATABASE_SOURCE` | Postgres DSN；`task db:migrate` 优先读同一变量 |
+| DB 连接串 | `TORCHWOOD_DATA_DATABASE_SOURCE` | Postgres DSN；`task db:migrate` 优先读同一变量。运行态必须为非 superuser authenticator（§4.5），迁移作业用 owner 引导账号 |
 | S3 凭据 | `TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID` / `TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY` | 生产务必覆盖本地 `minioadmin` |
 | API Key 头 | `security.api_key.header` | 默认 `x-api-key` |
 
@@ -126,7 +126,102 @@ security:
 
 `random`/`sequence` 等需读项目设置的策略会先取 `settings.idgen.*`（30s 缓存），**读取失败（DB 抖动）宁可报错也不静默回退**到平台默认——否则会破坏全局唯一性/顺序语义。现象为 `resolve idgen strategy` 错误伴随 `/v1/health` 的 postgres `unavailable`，DB 恢复后自愈。
 
+### 4.5 应用 DSN 与权限：非 superuser authenticator（转出 POC 门禁 A2）
+
+生产部署采用**双账号形态**（PostgREST authenticator 模式，06-databases 不变量 #14）：
+
+| 账号 | 身份 | 用途 | 不出现在 |
+|------|------|------|----------|
+| **owner 引导账号**（如 compose/CI 的 `POSTGRES_USER`） | superuser（initdb/bootstrap 创建） | 仅 `task db:migrate` 与扩展引导（§6.6） | 运行时配置 |
+| **`tw_authenticator`** | 非 superuser、无 BYPASSRLS/CREATEDB/CREATEROLE | server/worker 运行态 DSN（`data.database.source`） | 迁移作业 |
+
+本地 compose 的 `POSTGRES_USER` 是基础设施引导账号这一事实保留（initdb 创建，本地开发照旧）；**运行时配置不再示范/使用它**。
+
+#### 为什么运行 DSN 不能是 superuser（反例）
+
+文档面的权限判定唯一执行点是每集合物理表上的 RLS policy（`tw_visible`，`internal/infra/documentdb/rls_policy.go`）。superuser 隐式 BYPASSRLS，**绕过全部 policy**：每请求 `SET LOCAL ROLE` + `app.roles` 注入、roles_sig 验签（000029）、"漏注入 → 恒 false"的 fail-closed 语义全部失效，任何 SQL 逃逸直接升级为跨租户全量读写 + 任意 DDL。因此 superuser 只允许出现在迁移/引导作业，运行态一律用下面的非 superuser authenticator。
+
+#### 一次性引导（owner 引导账号执行；可复制 SQL）
+
+```sql
+-- ① 登录账号：非 superuser、无任何特权位（密码走密管/环境注入，勿落库明文）
+CREATE ROLE tw_authenticator LOGIN PASSWORD '<强随机口令>'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION;
+
+-- ② 000026 授权面：三角色 membership（每请求 SET LOCAL ROLE 的变色龙源头）
+GRANT tw_owner, tw_app, tw_system TO tw_authenticator;
+
+-- ③ 库级权限：CONNECT + CREATE（tw_<project.id> schema 供给——
+--    projectschema.Apply 以 base identity CREATE SCHEMA，对齐 000026 对 tw_owner 的 CREATE ON DATABASE）
+GRANT CONNECT, CREATE ON DATABASE <数据库名> TO tw_authenticator;
+GRANT USAGE ON SCHEMA public TO tw_authenticator;
+
+-- ④ 控制面静态表 DML（边界邻居面，base identity 直查的表）：public 全表
+--    排除 catalog 两表（仅经角色可达，与 000026 授权面一致）与 tw_secrets（⑤ 单独授）
+DO $do$ DECLARE t text; BEGIN
+    FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+        AND tablename NOT IN ('catalog_databases', 'catalog_collections', 'tw_secrets')
+    LOOP
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO tw_authenticator', t);
+    END LOOP;
+END $do$;
+
+-- ④' projectschema 静态迁移的 FK 面（000002/000004/000005/000006/000007 的
+--    REFERENCES public.projects(id)：建外键要求被引用表上的 REFERENCES 权限）
+GRANT REFERENCES ON public.projects TO tw_authenticator;
+
+-- ⑤ roles_sig 密钥落库面（bootkit RolesSigKeySyncHook → clients.SyncRolesSigKey
+--    的降级/落位/裁剪四语句，门禁 A4）：需要全量四权，残余风险见下节
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tw_secrets TO tw_authenticator;
+```
+
+后续新迁移新增 public 表时，需以 owner 身份补授（或预建 `ALTER DEFAULT PRIVILEGES FOR ROLE <owner引导账号> IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tw_authenticator;`）。
+
+#### 验证命令
+
+```sql
+-- rolsuper 必须 false（A2 完成判据核心语句）；五个特权位应全为 f
+SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls, rolreplication
+FROM pg_roles WHERE rolname = 'tw_authenticator';
+
+-- 000026 membership 恰好三行
+SELECT r.rolname FROM pg_auth_members m
+JOIN pg_roles r ON r.oid = m.roleid
+JOIN pg_roles a ON a.oid = m.member
+WHERE a.rolname = 'tw_authenticator' ORDER BY 1;
+-- 期望：tw_app / tw_owner / tw_system
+```
+
+```bash
+# SET ROLE 三角色可达性（psql 以 authenticator 连接，各返回对应 current_user）
+psql "<authenticator DSN>" -c "SET ROLE tw_owner; SELECT current_user; RESET ROLE;" \
+  -c "SET ROLE tw_app; SELECT current_user; RESET ROLE;" \
+  -c "SET ROLE tw_system; SELECT current_user; RESET ROLE;"
+
+# 反例①：untrusted 扩展安装是 superuser 引导面——在迁移前的空库上必须被拒
+#（vector 已随 000030 装好后 IF NOT EXISTS 会幂等跳过权限检查，注意别用它自证）
+psql "<authenticator DSN>" -d <未迁移的空库> -c "CREATE EXTENSION vector;"
+# 期望：ERROR: permission denied to create extension "vector"
+
+# 反例②：控制面 DDL 面归属——public schema 禁建（PG15 起 public 无 PUBLIC CREATE）
+psql "<authenticator DSN>" -c "CREATE TABLE public.tw_nope (x int);"
+# 期望：ERROR: permission denied for schema public
+```
+
+实测记录（2026-09-05，本地 docker `pgvector/pgvector:0.8.6-pg18`）：临时库按序应用全部 30 个 up 迁移（psql）后按上述 SQL 引导，`rolsuper=f` 五特权位全 f、membership 三行、`SET ROLE` 三角色可达、两反例如期报错；以该账号完成 roles_sig 密钥落库 + 建项目/业务库/集合 + 文档读写（tw_system 写、tw_app+sig RLS 读）冒烟。集成测试锁定：`internal/testutil/nonsuperuser_test.go::TestNonSuperuserAuthenticator_MigrateAndSmoke`（PASS，count=1）。
+
+#### 授权面边界与残余风险（迁移账号 vs 运行账号）
+
+- **迁移账号（owner）独占的引导面**：`CREATE EXTENSION vector`（000030，非 trusted）；`GRANT CREATE ON SCHEMA public TO tw_system` 与 `ALTER FUNCTION ... OWNER TO tw_system`（000029）；`GRANT tw_owner, tw_app, tw_system TO CURRENT_USER`（000026，authenticator 无 ADMIN OPTION 无法自授）。authenticator 跑迁移会在最早的 `CREATE TABLE public` 处即失败（PG15 起 public schema 无 PUBLIC CREATE）——数据库自身强制这一边界。
+- **运行账号（authenticator）的授权面**：0026 三角色 membership（业务文档 DDL 走 `tw_owner`、读写走 `tw_app`、内部旁路走 `tw_system`，均在事务内 `SET LOCAL ROLE`）；public 静态表 DML（控制面边界邻居面）；`CREATE ON DATABASE`（项目 schema 供给）；`REFERENCES ON projects`（静态迁移 FK）；`tw_secrets` 四权（roles_sig 落库）。
+- **残余风险（tw_secrets 四权，A4 连带）**：`clients.SyncRolesSigKey` 的双钥四语句（降级 previous/落位 current/裁剪 third，注释见 `internal/infra/clients/tx.go`）以运行 DSN 执行，其中子查询与冲突位读使 **SELECT 不可省**——DSN 账号可读 roles_sig 密钥（000029 "tw_app 不可读防自签"的防线对 base identity 失效：持 SQL 会话者可伪造 `app.roles` GUC）并可删钥（fail-closed DoS）。这是"密钥落库挂在运行时启动钩子"形态下的必然代价，消除路径是把密钥落库改为部署期 owner 账号一次性作业（需代码变更，挂账 `docs/developer/15-exit-poc.md` A2 闭环注记）。相较 superuser DSN 的全域旁路（policy 绕过 + 任意 DDL + 集群级操作），该残余面显著收窄且不含 RLS 旁路。
+
+#### 撤销与重建
+
+回收 authenticator：逐库 `DROP OWNED BY tw_authenticator;`（撤销其对象特权；authenticator 名下的项目 schema 随其库/项目删除路径处理）后 `DROP ROLE tw_authenticator;`（membership 随之撤销）。角色是集群级对象，多库部署逐库处理（与 §6.6/A8 的跨库处置纪律一致）。
+
 ---
+
 
 ## 5. 健康检查与可观测
 
@@ -166,6 +261,8 @@ task db:migrate
 ```
 
 DSN 优先级：`TORCHWOOD_DATA_DATABASE_SOURCE` → `postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable`（可用 `POSTGRES_USER/PASSWORD/HOST/PORT/DB` 覆盖，`Taskfile.yml:48`）。发布前先迁移再启动新进程。
+
+**双账号契约（§4.5）**：迁移 DSN 必须是 **owner 引导账号**（superuser/bootstrap）——`CREATE EXTENSION vector`（§6.6）与 public schema 建表等引导面只有它可执行，authenticator 跑迁移会在最早期即失败（fail-safe）；生产中迁移作业与 server/worker 运行时的 `TORCHWOOD_DATA_DATABASE_SOURCE` 分别注入，运行态配置永不使用引导账号。
 
 ### 6.2 首次引导（bootstrap）
 

@@ -60,6 +60,10 @@ security:
 
 data:
   database:
+    # 运行态 DSN 必须是非 superuser authenticator 账号（tw_authenticator，
+    # 创建 SQL 与验证见 docs/developer/13-operations.md §4.5）——superuser 会
+    # 绕过文档面 RLS policy（fail-closed 失效）。迁移/扩展引导用 owner 引导
+    # 账号（仅部署期 migrate 作业注入该环境变量，不写入运行时配置）。
     source: ""              # env: TORCHWOOD_DATA_DATABASE_SOURCE
     debug: false
     slow_query_threshold: "500ms"   # 慢查询日志阈值；"0" 禁用；env: TORCHWOOD_DATA_DATABASE_SLOW_QUERY_THRESHOLD

@@ -27,6 +27,7 @@
 - **要做什么**：生产部署的应用 DSN 换为非 superuser 专用 authenticator（仅具 000026 所需 membership 与库级权限，无 BYPASSRLS 无 superuser）；部署文档写明创建步骤；测试面补一组非 superuser DSN 的迁移 + 运行验证。
 - **完成判据**：`docs/developer/13-operations.md` 含创建非 superuser authenticator 的可复制 SQL 与验证命令（`SELECT rolsuper FROM pg_roles WHERE rolname=...` 返回 false）；以该 DSN 完成一次 `db:migrate` + 冒烟测试并留记录；`configs/config.yaml.template` 与部署示例不再示范 superuser 凭据。
 - **建议归属**：部署/运维（configs + 13-operations）。
+- **闭环**：2026-09-05｜13-operations §4.5「应用 DSN 与权限」+ §6.1 双账号注记（同 commit：`internal/testutil/nonsuperuser_test.go`、config 模板/quickstart/README/11-testing 去示范）｜双账号契约成文：迁移/扩展引导 = owner 引导账号（superuser，承担 000030/000029/000026 引导面），运行态 = `tw_authenticator`（非 superuser，五特权位全 f；授权面 = 000026 三角色 membership + CONNECT/CREATE + public 静态表 DML + `REFERENCES ON projects` + `tw_secrets` SELECT,INSERT,UPDATE,DELETE）。实测（本地 `pgvector/pgvector:0.8.6-pg18`）：临时库按序应用全部 30 个 up 迁移后按 §4.5 SQL 引导，`rolsuper=f`、membership 三行、`SET ROLE` 三角色可达、authenticator 装 untrusted 扩展/建 public 表均被拒（后者与 A3 探针一致）；集成测试 `TestNonSuperuserAuthenticator_MigrateAndSmoke` 以 authenticator 完成 roles_sig 落库 + 建项目/业务库/集合 + 文档写读（tw_system 写、tw_app+sig RLS 读）冒烟全绿。**残余风险注记（A4 连带）**：`tw_secrets` 四权是 SyncRolesSigKey 双钥四语句运行态落库的必要授权——DSN 账号可读 roles_sig 密钥（000029 "tw_app 不可读防自签"防线对 base identity 失效，可伪造 `app.roles` GUC）；消除路径 = 密钥落库改部署期 owner 一次性作业（代码变更），转出前未实施则在本文复核或入 B 区。
 
 ### A3 vector 扩展 superuser 安装引导（runbook）
 
@@ -42,6 +43,7 @@
 - **要做什么**：二选一并记录决议：① 实现双钥（`tw_secrets` 支持 current/previous 两把，`tw_sig_match` 任一命中，滚动窗口内换钥零停机）；② 显式决策接受滚动重启窗口（写清换钥期间旧进程签发 sig 与新密钥的 fail-closed 行为及可接受的时长界）。
 - **完成判据**：方案①——双钥落地 + "换钥后旧 sig 在 60s 窗口内仍验签通过、窗口外拒绝"的集成测试；方案②——redesign §3.2 或 06-databases 不变量 #14 记录决策句（含重启窗口语义），并有"sig 失配 → 零角色 fail-closed"的既有测试引用（`roles_sig_test.go`）作为影响面佐证。
 - **建议归属**：infra/clients（roles_sig）会话。
+- **闭环（方案①双钥实现）**：2026-09-05｜commit 3a1da5e（Go 平移逻辑 + 集成测试；迁移载体修正与本回写同提交）｜`tw_secrets` 双钥槽位：`is_current` 布尔 + `(purpose, key_hex)` 主键 + 部分唯一索引 `tw_secrets_single_current`（每 purpose 至多一把 current 的表级约束），`tw_sig_match` 改 EXISTS 任一钥命中——过期判定先于钥匹配，previous 命中无法给窗口外 sig 续命；Go 侧 `SyncRolesSigKey` 四语句平移（previous 位目标钥先移除（回滚场景提回 current）→ 旧 current 降级 → 新钥落 current（同钥重启幂等 no-op）→ third 条直接删（updated_at+key_hex 决胜保留紧邻上一把），行数不变量 ≤2，单次往返隐式事务全或无）。**载体选 000031 前向补丁而非 000029 原地修订**：遵 A5 方案 §6"已应用的迁移文件永不原地修订"规则方向（A5 规划的 `000031_roles_sig_r16_reconcile` 编号被本迁移占用，实施立项时顺延并以当前函数面为重放内容），存量库 `db:migrate` 原地升级无需重建，down 侧双行收敛保留 current。60s 窗口语义与 R16（tenant|roles|exp 消息、tenant 绑定、可见性门）不变。集成测试 `TestRolesSig_DualKeyRotationWindow` 锁定验收判据：换钥后旧钥 sig 在 60s 窗口内验签通过（previous 命中，`tw_roles`/`tw_tenant`/RLS 可见全链路不降级）、窗口外（exp 过期）旧钥 sig 拒绝、G3 二次换钥后两代前 sig 拒绝（行数回到 2）、同钥重启幂等、第二条 current 直插被表级约束拒绝；既有 `TestRolesSig_FailClosed`（三态 fail-closed）、`TestSetDocumentACL_TenantBinding`/`_VisibilityGate`/`_InjectionSurface`、`TestRolesSig_LegitPathRegression` 于 000031 载体重跑全绿。
 
 ### A5 redesign 状态头义务：重审"直接切换"表述并补存量迁移方案
 

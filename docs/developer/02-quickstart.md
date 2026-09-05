@@ -30,16 +30,19 @@
 
 `.env` 覆盖键：`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`/`POSTGRES_PORT`/`REDIS_PORT`/`MINIO_API_PORT`/`MINIO_CONSOLE_PORT` 等。
 
-应用侧连接走 `TORCHWOOD_` 前缀（`internal/pkg/config/config.proto:8` + `bind.go:14`）：
+应用侧连接走 `TORCHWOOD_` 前缀（`internal/pkg/config/config.proto:8` + `bind.go:14`）。**应用 DSN 使用非 superuser authenticator**（`docker/local` 的 `POSTGRES_USER` 是 initdb 引导账号，仅用于 bootstrap/迁移，见 `13-operations.md` §4.5 双账号契约）：
 
 ```env
-TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
+# 运行态：非 superuser authenticator（完成下方「步骤 2.5」一次性引导后可用；生产换强口令并走密管）
+TORCHWOOD_DATA_DATABASE_SOURCE=postgres://tw_authenticator:dev-only-auth-pass@127.0.0.1:5432/torchwood?sslmode=disable
 TORCHWOOD_DATA_REDIS_PASSWORD=
 TORCHWOOD_SECURITY_JWT_SECRET=dev-only-0123456789abcdef-0123456789abcdef  # ≥32 字符，含弱子串拒绝启动（cmd/server/provides.go:85）
 TORCHWOOD_SECURITY_SETUP_TOKEN=dev-setup-0123456789abcdef0123456789abcdef # 首个管理员引导令牌，未配则注册被拒
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
 TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
 TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
+# 测试 DSN 保持引导账号：testutil 建隔离库 + 跑全量迁移是 owner 引导面
+#（§4.5 双账号契约的迁移侧；非 superuser 运行态形态由 TestNonSuperuserAuthenticator_MigrateAndSmoke 锁定）
 TORCHWOOD_TEST_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/TORCHWOOD_test?sslmode=disable
 TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/postgres?sslmode=disable
 ```
@@ -71,6 +74,33 @@ task db:migrate     # migrate -path ./db/migrations -database <DSN> up
 ```
 
 DSN 优先 `TORCHWOOD_DATA_DATABASE_SOURCE`，否则由 `POSTGRES_*` 拼接（`Taskfile.yml:49`）。跨 `Taskfile` 的 `.env` 自动加载（`dotenv: ['.env']`）。
+
+> **双账号注意（§4.5/§6.1）**：迁移必须用 **owner 引导账号**（`torchwood/torchwood`）。若 `.env` 的 `TORCHWOOD_DATA_DATABASE_SOURCE` 已换成 authenticator（上方示例值），迁移时临时用引导账号覆盖：`TORCHWOOD_DATA_DATABASE_SOURCE="postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable" task db:migrate`（Task 环境变量优先于 dotenv）。
+
+### 步骤 2.5 — 创建 authenticator（迁移之后、启动之前）
+
+迁移完成后一次性引导（**顺序不可颠倒**：DO 块的静态表授权只覆盖「引导时已存在」的 public 表，先引导后迁移会漏授新表）：
+
+```bash
+docker exec -i torchwood-postgres psql -U torchwood -d torchwood <<'SQL'
+CREATE ROLE tw_authenticator LOGIN PASSWORD 'dev-only-auth-pass'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION;
+GRANT tw_owner, tw_app, tw_system TO tw_authenticator;
+GRANT CONNECT, CREATE ON DATABASE torchwood TO tw_authenticator;
+GRANT USAGE ON SCHEMA public TO tw_authenticator;
+DO $do$ DECLARE t text; BEGIN
+    FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+        AND tablename NOT IN ('catalog_databases', 'catalog_collections', 'tw_secrets')
+    LOOP
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO tw_authenticator', t);
+    END LOOP;
+END $do$;
+GRANT REFERENCES ON public.projects TO tw_authenticator;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tw_secrets TO tw_authenticator;
+SQL
+```
+
+验证 `rolsuper=false` 与完整 SQL 见 `13-operations.md` §4.5；后续迁移新增 public 表后需补授（§4.5 的 default privileges 建议）。
 
 ### 步骤 3 — 安装工具与依赖
 

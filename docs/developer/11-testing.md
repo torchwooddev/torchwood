@@ -62,7 +62,7 @@ test:
 | `TORCHWOOD_TEST_DATABASE_SOURCE` | `postgres://torchwood:torchwood@127.0.0.1:5432/TORCHWOOD_test?sslmode=disable` | 测试 DSN 模板，**库名会被替换** |
 | `TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE` | `postgres://torchwood:torchwood@127.0.0.1:5432/postgres?sslmode=disable` | 维护库 DSN（建库/删库） |
 
-无硬编码回退，缺失时 `SetupTestDB` 直接 `t.Fatal` 提示 `run via task test`（`testutil/db.go:48`）。
+无硬编码回退，缺失时 `SetupTestDB` 直接 `t.Fatal` 提示 `run via task test`（`testutil/db.go:48`）。两个测试 DSN 保持 **owner 引导账号**（superuser）：testutil 的建隔离库 + 跑全量迁移是 §4.5 双账号契约的迁移侧（`CREATE EXTENSION vector`、public 建表、membership GRANT 都是引导面）；非 superuser 运行态形态由 `TestNonSuperuserAuthenticator_MigrateAndSmoke`（`testutil/nonsuperuser_test.go`，门禁 A2）以独立临时库端到端锁定——owner 跑迁移 + 建 authenticator，再以 authenticator 完成 roles_sig 同步、项目/业务库/集合创建与文档读写冒烟，并断言 `rolsuper=false`。
 
 ### 3.2 `SetupTestDB(t)` 生命周期（`testutil/db.go:43`）
 

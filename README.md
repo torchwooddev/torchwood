@@ -49,7 +49,9 @@ cp .env.example .env
 Key vars (`TORCHWOOD_` prefix, see `internal/pkg/config/config.proto` + `internal/pkg/config/bind.go`):
 
 ```env
-TORCHWOOD_DATA_DATABASE_SOURCE=postgres://torchwood:torchwood@127.0.0.1:5432/torchwood?sslmode=disable
+# Runtime DSN: non-superuser authenticator (see docs/developer/13-operations.md §4.5;
+# run its bootstrap SQL against the compose DB before first server start)
+TORCHWOOD_DATA_DATABASE_SOURCE=postgres://tw_authenticator:<password>@127.0.0.1:5432/torchwood?sslmode=disable
 TORCHWOOD_SECURITY_JWT_SECRET=dev-only-0123456789abcdef-0123456789abcdef  # >=32 chars, no weak substrings
 TORCHWOOD_SECURITY_SETUP_TOKEN=dev-setup-0123456789abcdef0123456789abcdef
 TORCHWOOD_STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
@@ -57,12 +59,12 @@ TORCHWOOD_STORAGE_S3_ACCESS_KEY_ID=minioadmin
 TORCHWOOD_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
 ```
 
-Generate strong random values for `JWT_SECRET`/`SETUP_TOKEN` in production (`openssl rand -hex 32`). Without `SETUP_TOKEN`, first-admin registration is rejected.
+Generate strong random values for `JWT_SECRET`/`SETUP_TOKEN` in production (`openssl rand -hex 32`). Without `SETUP_TOKEN`, first-admin registration is rejected. The compose `POSTGRES_USER` is an initdb bootstrap (superuser) account: it belongs to the migrate/bootstrap side only, never the runtime config (dual-account contract, `docs/developer/13-operations.md` §4.5).
 
 ### 3. Migrate
 
 ```bash
-task db:migrate
+task db:migrate   # run with the bootstrap (superuser) DSN — see §4.5
 ```
 
 ### 4. Toolchain & codegen
