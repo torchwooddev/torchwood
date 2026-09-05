@@ -29,6 +29,27 @@ type Index struct {
 	// DistanceMetric 是 hnsw 索引的距离度量（会话 #10）：COSINE | L2 |
 	// INNER_PRODUCT。仅 hnsw 类型非空；缺省 COSINE（app 层归一）。
 	DistanceMetric string
+	// Status 是在线 DDL 两阶段状态机的索引状态（转出 POC B3，redesign §2-C5）：
+	// active（可用）| building（CONCURRENTLY 构建中）| failed（构建失败，残留
+	// 已清理，可重入）。空串 = active——建集合时的既有索引（新表无并发读者，
+	// 事务内建）与 B3 之前的存量 catalog 行均落缺省形态。
+	Status string
+}
+
+// 索引两阶段状态机状态值（catalog indexes JSONB 的 status 字段，codec omitempty
+// ——active 缺省不落盘，存量行零迁移）。
+const (
+	IndexStatusActive   = "active"
+	IndexStatusBuilding = "building"
+	IndexStatusFailed   = "failed"
+)
+
+// StatusOrDefault 归一索引状态：空串（存量行/事务内建的缺省形态）视为 active。
+func (i Index) StatusOrDefault() string {
+	if i.Status == "" {
+		return IndexStatusActive
+	}
+	return i.Status
 }
 
 type Permission struct {

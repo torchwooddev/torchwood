@@ -481,6 +481,61 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 	if err != nil {
 		return p.mapError(err)
 	}
+	// sentinel 系统集合（静态平面，测试面）：走既有事务内通道（无 RLS/无并发
+	// 读者语义，CONCURRENTLY 无意义）；生产入口已拒绝系统集合建索引。
+	if databaseID == ident.ProjectDataPlaneID {
+		return p.createIndexInTx(ctx, projectID, databaseID, collectionID, schema, physical, idx)
+	}
+	// 用户集合（B3 在线通道，预决策 1）：两阶段状态机——存量表有并发读者，
+	// 事务内 CREATE INDEX 持 SHARE 锁会阻塞全部读写，CONCURRENTLY 不能在事务
+	// 内运行，故拆 事务A(building) → 事务外 CIC → 事务B(active|failed)。
+	// 注：事务 A 纯 catalog DML（postgres_online_ddl.go 注释）；存量表自愈
+	//（默认索引/RLS/列授权）由 reconcile 扫描承担，不再搭车 DDL touch。
+	if _, err := p.indexBeginBuilding(ctx, projectID, databaseID, collectionID, idx); err != nil {
+		return p.mapError(err)
+	}
+	// 形态约束（vector/数组/hnsw/fulltext）在 CIC 前以事务内通道同源校验一次
+	//（buildIndexStatement 与事务内通道共用；此处 dry-run 形态校验用——真实
+	// 执行在事务外）。校验失败直接落 failed，不等 CIC 在独立连接上碰壁。
+	attrs, defErr := p.collectionAttrsForIndex(ctx, projectID, databaseID, collectionID)
+	if defErr == nil {
+		if _, defErr = buildIndexStatement(schema, physical, idx, attrs, false); defErr != nil {
+			_, _ = p.indexSetStatus(ctx, projectID, databaseID, collectionID, idx.ID, databases.IndexStatusFailed)
+			return p.mapError(defErr)
+		}
+	}
+	if err := p.createIndexConcurrently(ctx, schema, physical, idx, attrs); err != nil {
+		// 失败清理：CIC 残留的 INVALID 索引必须删（pg 语义不清除），catalog
+		// 置 failed（reconcile/repair 可重入）。两步各自尽力——清理失败仅记日志。
+		if _, dropErr := p.execOwnerStatement(ctx, dropIndexStatement(schema, physicalIndexName(physical, idx.ID))); dropErr != nil {
+			slog.Error("drop invalid index after failed concurrent build",
+				"schema", schema, "table", physical, "index", idx.ID, "error", dropErr)
+		}
+		if _, markErr := p.indexSetStatus(ctx, projectID, databaseID, collectionID, idx.ID, databases.IndexStatusFailed); markErr != nil {
+			slog.Error("mark index failed after failed concurrent build",
+				"schema", schema, "table", physical, "index", idx.ID, "error", markErr)
+		}
+		return p.mapError(err)
+	}
+	// 事务 B：active。条目被并发 DeleteIndex 移除时（found=false），物理索引
+	// 已被对方 IF EXISTS 语义"删除未遂"——此处补删对齐。
+	found, err := p.indexSetStatus(ctx, projectID, databaseID, collectionID, idx.ID, databases.IndexStatusActive)
+	if err != nil {
+		// CAS 冲突等：物理索引有效但 catalog 未推进——reconcile 会按 valid+building
+		// 分流补账；返回原错误保语义。
+		return p.mapError(err)
+	}
+	if !found {
+		if _, dropErr := p.execOwnerStatement(ctx, dropIndexStatement(schema, physicalIndexName(physical, idx.ID))); dropErr != nil {
+			slog.Warn("drop orphaned index after concurrent delete",
+				"schema", schema, "table", physical, "index", idx.ID, "error", dropErr)
+		}
+	}
+	return nil
+}
+
+// createIndexInTx 是 sentinel 系统集合的既有事务内通道（B3 前行为原样保留）。
+func (p *postgresDocumentDB) createIndexInTx(ctx context.Context, projectID, databaseID, collectionID, schema, physical string, idx databases.Index) error {
 	isSystem := databases.IsSystemCollection(projectID, databaseID, collectionID)
 	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if err := p.reconcileVersionColumn(txCtx, schema, physical, isSystem); err != nil {
@@ -521,6 +576,27 @@ func (p *postgresDocumentDB) CreateIndex(ctx context.Context, projectID, databas
 		}
 		return requireCASApplied(res)
 	}))
+}
+
+// collectionAttrsForIndex 读 catalog attrs（在线通道的形态判定输入）。
+func (p *postgresDocumentDB) collectionAttrsForIndex(ctx context.Context, projectID, databaseID, collectionID string) ([]databases.Attribute, error) {
+	row, err := p.loadCollectionRow(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	return decodeAttributes(row.Attrs)
+}
+
+// execOwnerStatement 以 tw_owner 身份执行单条语句（事务外清理路径：DROP
+// INDEX 等幂等 DDL；独立短事务）。
+func (p *postgresDocumentDB) execOwnerStatement(ctx context.Context, stmt string) (sql.Result, error) {
+	var res sql.Result
+	err := p.withOwnerTx(ctx, func(txCtx context.Context) error {
+		var err error
+		res, err = p.conn(txCtx).ExecContext(txCtx, stmt)
+		return err
+	})
+	return res, err
 }
 
 // ensureSchema 确保 schema 存在（阶段③包 B：仅当本调用真正创建时顺带授权——
@@ -796,113 +872,25 @@ func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, phy
 	}
 }
 
-// createCollectionIndex 建物理索引：表与索引名前缀均用物理表名（idx_<phys>_<id>
-// 自然 ≤63，预决策 2）。
+// createCollectionIndex 建物理索引（事务内通道，预决策 1：仅建集合时的既有
+// 索引与 sentinel 系统集合走此路径——新表无并发读者，CONCURRENTLY 无意义）。
+// 表与索引名前缀均用物理表名（idx_<phys>_<id> 自然 ≤63，预决策 2）。
 // 数组列（阶段③-b 预决策 2）：key 索引自动选 GIN array_ops（&&/@> 可走索引）；
 // unique 对数组列拒绝（PG 数组无唯一约束语义）；fulltext 对数组列拒绝
 //（search 编译 col::text 是整列文本投影，数组列语义误导）；数组列仅支持
 // 单列索引（GIN 多列混排非数组列需 btree_gin 扩展，不引入）。
 // hnsw（会话 #10 预决策 2）：目标列必须是声明的 vector 属性（非 vector 列/
 // 系统列拒绝）；opclass 按 metric 映射（cosine/l2/ip）；同列可建多 metric
-// 索引（索引 ID 唯一即可）；unique/fulltext 对 vector 列拒绝。走与现有索引
-// 相同的事务内 CREATE INDEX IF NOT EXISTS 通道（DDL 与 catalog CAS 同事务
-// 原子；仓库无 CONCURRENTLY 通道——事务外建索引换不来原子性，保持一致）。
+// 索引（索引 ID 唯一即可）；unique/fulltext 对 vector 列拒绝。
+// SQL 表达式构建单源于 buildIndexStatement（B3：事务内/CONCURRENTLY 两通道
+// 共享同一构建器，防形态漂移）；存量表的用户索引走 postgres_online_ddl.go
+// 的两阶段 CONCURRENTLY 通道。
 func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, physical string, idx databases.Index, attrs []databases.Attribute) error {
-	vectorAttrs := map[string]int{}
-	arrayAttrs := map[string]bool{}
-	for _, a := range attrs {
-		if strings.ToLower(a.Type) == "vector" {
-			vectorAttrs[a.Key] = a.Dims
-		}
-		if a.Array {
-			arrayAttrs[a.Key] = true
-		}
+	stmt, err := buildIndexStatement(schema, physical, idx, attrs, false)
+	if err != nil {
+		return err
 	}
-	hasArrayCol := false
-	hasVectorCol := false
-	for _, attr := range idx.Attributes {
-		if arrayAttrs[attr] {
-			hasArrayCol = true
-		}
-		if _, ok := vectorAttrs[attr]; ok {
-			hasVectorCol = true
-		}
-	}
-	// vector 列与数组列互斥的索引形态约束（会话 #10）：vector 列只配 hnsw；
-	// hnsw 只配 vector 列。
-	if hasVectorCol || strings.ToLower(idx.Type) == "hnsw" {
-		if strings.ToLower(idx.Type) != "hnsw" {
-			return status.Error(codes.InvalidArgument,
-				fmt.Sprintf("%s indexes do not support vector attributes", idx.Type))
-		}
-		if !hasVectorCol {
-			return status.Error(codes.InvalidArgument,
-				"hnsw indexes require a vector attribute")
-		}
-		if hasArrayCol {
-			return status.Error(codes.InvalidArgument, "hnsw indexes do not support array attributes")
-		}
-	}
-	if hasArrayCol {
-		switch strings.ToLower(idx.Type) {
-		case "unique":
-			return status.Error(codes.InvalidArgument, "unique indexes do not support array attributes")
-		case "fulltext":
-			return status.Error(codes.InvalidArgument, "fulltext indexes do not support array attributes")
-		}
-		if len(idx.Attributes) != 1 {
-			return status.Error(codes.InvalidArgument, "array attributes support single-column indexes only")
-		}
-	}
-	var plainCols, orderedCols []string
-	for i, attr := range idx.Attributes {
-		if !safeNameRe.MatchString(attr) {
-			return fmt.Errorf("invalid index attribute: %s", attr)
-		}
-		quoted := quoteIdent(attr)
-		plainCols = append(plainCols, quoted)
-		order := ""
-		if i < len(idx.Orders) && strings.EqualFold(idx.Orders[i], "desc") {
-			order = " DESC"
-		}
-		orderedCols = append(orderedCols, quoted+order)
-	}
-	idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", physical, idx.ID))
-	var sql string
-	switch strings.ToLower(idx.Type) {
-	case "unique":
-		sql = fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, physical), strings.Join(orderedCols, ", "))
-	case "fulltext":
-		// W-E：查询编译为 to_tsvector('simple', "col"::text)（compilePredicate），
-		// 索引表达式必须与之逐字对齐才可被 GIN 命中，否则 search 退化为
-		// 全表逐行 to_tsvector。单列限制见 validateIndexDefinition；多列仅
-		// 存量 catalog 重建可达（新创建已被入口校验拒绝），保留旧拼接表达式。
-		// GIN 忽略 order——用 plainCols（此前拼入 DESC 会产生语法错误 DDL）。
-		if len(plainCols) == 1 {
-			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s::text))`,
-				idxName, tableName(schema, physical), plainCols[0])
-		} else {
-			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s))`,
-				idxName, tableName(schema, physical), strings.Join(plainCols, " || ' ' || "))
-		}
-	case "hnsw":
-		// 会话 #10 预决策 2：三 metric opclass；同列多 metric 索引各自独立
-		//（idx_<phys>_<id> 唯一性由索引 ID 承载）。
-		opClass, err := hnswOpClass(idx.DistanceMetric)
-		if err != nil {
-			return err
-		}
-		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING hnsw (%s %s)`,
-			idxName, tableName(schema, physical), plainCols[0], opClass)
-	default:
-		if hasArrayCol {
-			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin (%s array_ops)`,
-				idxName, tableName(schema, physical), plainCols[0])
-		} else {
-			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (%s)`, idxName, tableName(schema, physical), strings.Join(orderedCols, ", "))
-		}
-	}
-	_, err := p.conn(ctx).ExecContext(ctx, sql)
+	_, err = p.conn(ctx).ExecContext(ctx, stmt)
 	return err
 }
 

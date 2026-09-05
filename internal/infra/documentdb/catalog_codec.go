@@ -37,6 +37,9 @@ type indexJSON struct {
 	// Metric 是 hnsw 索引的距离度量（会话 #10）：COSINE | L2 | INNER_PRODUCT；
 	// 其余索引类型省略。
 	Metric string `json:"metric,omitempty"`
+	// Status 是在线 DDL 两阶段状态机的索引状态（B3）：active 缺省省略——
+	// 建集合时的既有索引与 B3 前的存量行不带该字段，解码归一 active，零迁移。
+	Status string `json:"status,omitempty"`
 }
 
 type permissionJSON struct {
@@ -106,6 +109,7 @@ func encodeIndexes(idxs []databases.Index) (string, error) {
 			Attributes: i.Attributes,
 			Orders:     i.Orders,
 			Metric:     i.DistanceMetric,
+			Status:     i.Status,
 		})
 	}
 	b, err := json.Marshal(out)
@@ -131,6 +135,7 @@ func decodeIndexes(raw string) ([]databases.Index, error) {
 			Attributes:     i.Attributes,
 			Orders:         i.Orders,
 			DistanceMetric: i.Metric,
+			Status:         i.Status,
 		})
 	}
 	return out, nil
