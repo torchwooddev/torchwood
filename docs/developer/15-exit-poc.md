@@ -113,6 +113,7 @@
 - **要做什么**：KNN 结果多页游标（基于距离 + `_id` 的 keyset 语义），解除"无下一页"限制。
 - **完成判据**：`vectorSearch` + `pageToken` 组合可用且跨页不重不漏（确定性用例锁定）；与 filter 组合、与 orders 互斥的语义测试更新；proto/双面 SDK/06-databases 同步。
 - **建议归属**：documentdb KNN。
+- **闭环（2026-09-05，documentdb KNN 会话）**：`kvc:` 距离游标（`kvc:<dist_hex16>:<docID>`，pgvector float8 距离的比特定长 hex 精确往返，负距离/inner_product 原生支持；空 docID 特形 = "该距离起点"）+ **完整距离组切页**（首页 HNSW×iterative scan 取 k+1 行：第 k+1 行证明第 k 行距离组无越页 tie 时满页发射，tie 组不完整即整组顺延、游标落组起点——防"发射 tie 真子集 + 阈值游标"漏行）+ **续页 (dist,_id) 精确全序扫描**（`ORDER BY dist,_id` + `(dist=$d AND _id>$id) OR (dist>$d)` 阈值——HNSW 索引只承载距离单键序、同距组内跨查询不稳定，仅阈值谓词会丢 tie 行，续页放弃 HNSW 换结构化不重不漏）。**内积方向**：`<#>` 为负内积，"越大越好"取负后"越小越近"，与 cosine/L2 统一距离升序、阈值方向三 metric 一致。`maxDistance` 每页独立后置过滤（续页仍受约束）。`vector_search`+`orders` 维持互斥、+`pageToken` 放开（`pkg/query/proto` codec，token 形态校验在 infra fail-closed）。测试：`TestVectorSearch_Pagination_DeterministicStitch`（三 metric 确定性几何，多页拼接 == 单页大 k 全序、距离严格递增且逐一相等）、`_TieGroup`（5 同距 + 1 远行不重不漏——朴素阈值形态在此丢 2 行的杀手用例）、`_FilterSparseVisibility`（filter + RLS 稀疏可见行 6/6，首页 HNSW×iterative scan 与续页精确×RLS 两段覆盖）、`_MaxDistance`（续页受阈、滤空收尾）、`_RejectedTokens`（ka:/kb: 异族/垃圾/NaN/非法 docID 拒绝）+ `TestKNNCursorTokenRoundtrip` + `TestFromProto_VectorSearchCombinations`。proto/Go/TS SDK 注释与 06-databases §6/§12 同步。
 
 ### B3 C5 在线 DDL（从未实施的显式欠账）
 
