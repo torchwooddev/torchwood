@@ -116,7 +116,7 @@ tw_visible = tw_can('read') ∨ tw_can('update') ∨ tw_can('delete')   -- 能�
 - **聚合**（2026-09-04 已落地，单 AST 会话完成类型化升级）：`documents:aggregate` 支持 sum/avg/min/max + 单键 group_by；**聚合一律在权限过滤后的可见行集上执行**（D1 规范的落地形态）；结果契约 **oneof 类型化**——integer 属性的 sum/min/max 返回 int64（`SUM(bigint)::int8` + 溢出拒绝 `AGGREGATE.OVERFLOW`），avg 恒 double，float 属性恒 double；**Data 维持 proto Struct double（2^53 精度界，文档化：int64 > 2^53 的业务值用 string 属性承载）**；排序/分页算子显式拒绝（R9/R9b）。
 - **错误**：`{code, retryable, violations[], doc_url}`，域码稳定 snake_case（如 `DOCUMENT.VERSION_CONFLICT`）静态映射 gRPC code；infra 错误必须带 `error_id`，禁止裸 "document database error"。
 - **Agent 面**：`GET …/collections/{c}?as=jsonschema` 导出 JSON Schema 2020-12；`GET /.well-known/torchwood` 资源/算子/错误码目录。
-- **类型系统**：标量（string/int64/float64/bool/datetime/email/url/uuid/enum）+ `array<T>`（PG 原生数组）+ `vector`（pgvector，可选）+ `object`（jsonb + JSON Schema 子集校验，首期不建内部索引）；`relation` 远期。
+- **类型系统**：标量（string/int64/float64/bool/datetime/email/url/uuid/enum）+ `array<T>`（PG 原生数组）+ **`vector(dims)`（已落地：pgvector ≥0.8 原生列 + `hnsw` 索引 + `vector_search` 算子——SQL 形态定稿（R18 偏差①）：距离为 SELECT 平行列 + `ORDER BY col <op> $vec LIMIT k`（cosine `<=>`/L2 `<->`/inner `<#>`），**max_distance 为 top-k 后置过滤**（距离谓词进 WHERE 会使规划器放弃 HNSW——10 万行实证；top-k ⊇ 全部 ≤ 阈值行，语义等价）；iterative scan `strict_order` 经 SET LOCAL 事务内启用（GUC 默认 off）；读回 Data 契约 = JSON 数组（`::text::jsonb` 投影覆盖））** + `object`（jsonb + JSON Schema 子集校验，首期不建内部索引）；`relation` 远期。
 
 ```json
 POST …/documents:query
@@ -264,6 +264,8 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 
 **清扫会话 #9（2026-09-05，1ee21ae/da38153/7ab7cef）**：死代码与过渡代码清扫，净删 −1684 行——pkg/crud 脚手架（cursor token 全家/玩具 checksum/未用构造器）、DecodePageToken 未签名旧格式回退、projectschema cut 迁移机器（copy.go 456 行 + staging 探测；**sentinel 分支的 EnsureCatalog 调用联动删除**——testutil fixture 停 000008 保 sys_* staging 名，保留该调用会令 000009 rename 与播种表撞名；生产不可达，仅测试面依赖）、**`ListRequest.filter/order_by` reserved 退役（W-K 终结：字段存在唯一意义是被拒的过渡态清零）**、Seed 更名去 Legacy。验证期顺带修复两笔存量：outbox 信封 ACL 截断 O(n²)（events 6min→12s）、并发 upsert 竞态断言对齐（③-a 分支化后 attacker 路径产出 ErrDuplicateKey 而非 ErrPermissionDenied——安全不变量不变，姊妹用例本已双认）。记录项：encodeTokenData 的 marshal 失败兜底仍产出不可解码的 v1:offset 形态（不可达路径，语义自不一致但无害，随下次触碰 crud 时顺手清理）。
 
+**vector 专项会话 #10（2026-09-05，201ed36..61ac141）——§10.5 P0 全清**：三个原型结论——① pgvector 0.8.6-pg18 镜像（compose/CI 同步；**vector 非 trusted extension，安装需 superuser——runbook 化并入转出 POC 检查单**；镜像基座 glibc vs musl 的 collation 翻转连带修复：initdb 锁 `locale=C` 字节序，产品期语言学排序另行决策）；② **iterative scan 为契约被实证**（iterative OFF = 先取全局 top-k 再滤（1/5 行），ON（strict_order）= k 个可见近邻全召回且与 ground truth 同序同距）；③ to_jsonb(vector) 输出字符串，投影 `::text::jsonb` 覆盖保证 Data=JSON 数组。复审裁决六项全接受：偏差①（max_distance 后置过滤，等价性证明核验成立）、HNSW 近重复簇召回边界（近似索引固有，文档化 + ef_search 挂账）、**偏差②（CONCURRENTLY 通道不存在——prompt 引用了 C5 目标态当现状，C5 的在线 DDL 机器从未实施，现显式入挂账）**、locale=C、非 trusted runbook、CreateAttribute 列级 GRANT 滞后的存量修复（refreshColumnGrants，影响全部属性类型）。**§10.5 P0 至此全清**（向量/数组/`_created_by` 三项均落地）。
+
 POC 阶段各阶段**直接切换、不留兼容回退**：阶段③的 `_perms → _acl` 无需双读灰度（直接重建），阶段②无需存量四表迁移任务；"每阶段附回退方案"的要求在转出 POC 时再引入。阶段①②可先行单独收割正确性收益（当前评审的 P1/P2 大多在①②③消除）。
 
 **实施前评审登记（2026-09-03，对照代码全量核验后）**：包 0 修复清单的全部代码锚点经逐项核实成立。两点实施补充：① 标识符静态上限（POC 期 collectionID ≤40 / attr key ≤63 / 索引 ID ≤40）**不能单独封死索引名截断**——`idx_<coll>_<id>` 拼接最长 85 字节仍超 PG 63，须叠加组合校验 `4 + len(collID) + 1 + len(idxID) ≤ 63`（阶段②逻辑/物理名解耦后该组合约束随物理名分配自然消失）；② 域错误码一律点分格式 `NAMESPACE.SNAKE_CODE`（如 `DOCUMENT.TOO_LARGE`），单下划线写法为笔误。
@@ -386,7 +388,7 @@ DocumentsDB 的量化限制参照：每请求 100 条 query、每条 4096 字符
 
 | 优先级 | 缺口 | 现状（torchwood） | 参照（Appwrite） | 说明 |
 |---|---|---|---|---|
-| **P0** | **向量近邻查询** | 重设计采纳 `vector` 列但 §4.1 算子集**无 KNN 算子**——列落地即死列 | VectorsDB 独立产品线（HNSW + 内置 embedding） | 需 `knn(attr, query_vec, k, metric)` 算子 + HNSW 索引联动 + 距离排序/阈值过滤；AI-Native 定位下第一优先 |
+| **P0** | ~~**向量近邻查询**~~ **已落地（2026-09-05 会话 #10）**：`vector(dims)` 属性（pgvector ≥0.8，dims 2..2000）+ `hnsw` 索引（三 metric opclass，同列多 metric 共在）+ `vector_search` 一等算子（limit=k、距离平行列回传、与 filter 组合/与 orders·分页互斥、须匹配 metric 的 hnsw 索引）——**同事务同 RLS 管辖**（iterative scan `strict_order` 经 SET LOCAL 事务内启用；稀疏可见行 5/5 全召回对 1/5 的灵魂差异已测试锁定） | 曾：无 KNN 算子，列落地即死列 | VectorsDB 独立产品线（无文档级权限） | 挂账：多页 KNN、ef_search/迭代调参暴露（**已知边界：近重复不可见簇 + 极低可见率下 iterative scan 仍可能 < k——HNSW 近似索引固有边界，已文档化**）、halfvec/sparsevec、embedding 接入、DSL 字符串形态 |
 | **P0** | ~~**数组查询/写侧算子**~~ **已落地（2026-09-04 会话 #8）**：查询 `containsAny/containsAll`（`&&/@>`，仅 array 属性）+ 写侧 `APPEND/PREPEND/REMOVE/UNIQUE` 四算子（单语句 SET，NULL 语义：append/prepend 归一、remove/unique 保真） | 曾：无配套算子 | Appwrite 全集参照 | 挂账：Intersect/Diff/Insert/Filter、TransactionOp 数组算子、数组列多列索引（需 btree_gin，已拒） |
 | **P0** | **`_created_by/_updated_by` 不可查询** | 系统字段白名单只有 `_id/_created_at/_updated_at/_version` | 系统字段可查 | "查我创建的文档"不可表达；**现架构即刻可修**（`systemQueryFields` 加两列） |
 | **P1** | ~~`not*` 取反变体家族~~ **已落地（2026-09-04 单 AST 会话）** | 曾无 notBetween/notContains 等 | 全套 not* 变体 + 通用 NOT 移出算子集（作者收敛，见 §4.1） | 算子级取反可走索引；DSL/proto 双栈不对称随 C7 落地一并消解 |
