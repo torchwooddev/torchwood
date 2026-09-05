@@ -169,8 +169,8 @@ const rolesSigTTL = 60 * time.Second
 var rolesSigKeyHex atomic.Value // string
 
 // InitRolesSigKey 以主密钥（security.jwt.secret）进程内派生 roles 签名密钥
-//（hex）。组合根启动期调用（server/worker 各自一次），随后由启动钩子
-// UPSERT 进 public.tw_secrets 供 tw_roles() 验签（documentdb.SyncRolesSigKey）。
+//（hex）。组合根启动期调用（server/worker 各自一次），随后由启动钩子落库
+// public.tw_secrets 供 tw_roles() 验签（documentdb.SyncRolesSigKey）。
 func InitRolesSigKey(master string) error {
 	if strings.TrimSpace(master) == "" {
 		return fmt.Errorf("roles sig signing requires a non-empty master secret")
@@ -190,7 +190,9 @@ func RolesSigKeyHex() (string, bool) {
 
 // SignRolesSig 生成 app.roles_sig 的值："<exp_unix>|<hexmac>"，mac =
 // HMAC-SHA256(keyHex, tenant + "|" + roles + "|" + exp)（R16 ①：消息覆盖
-// tenant，跨租户伪造在验签层死锁）。exp 由 now+TTL 起算。
+// tenant，跨租户伪造在验签层死锁）。exp 由 now+TTL 起算。keyHex 取进程内
+// 派生钥（RolesSigKeyHex），经 SyncRolesSigKey 落库为 tw_secrets 的 current
+// 位——签名恒用 current，验证侧（tw_sig_match）再兼容 previous。
 func SignRolesSig(keyHex string, tenant int64, roles string, now time.Time) string {
 	exp := now.Add(rolesSigTTL).Unix()
 	mac := hmac.New(sha256.New, []byte(keyHex))
@@ -198,20 +200,42 @@ func SignRolesSig(keyHex string, tenant int64, roles string, now time.Time) stri
 	return strconv.FormatInt(exp, 10) + "|" + hex.EncodeToString(mac.Sum(nil))
 }
 
-// SyncRolesSigKey 把进程内派生的 roles 签名密钥 UPSERT 进 public.tw_secrets
+// SyncRolesSigKey 把进程内派生的 roles 签名密钥落进 public.tw_secrets
 //（迁移 000029），供 tw_roles() 验签——server/worker 启动钩子（bootkit）调用，
-// 以 authenticator（表 owner）身份执行。滚动轮换：改 security.jwt.secret 后
-// 重启，本函数覆盖旧行即完成换钥（单密钥，双钥窗口挂账转出 POC 前）。
+// 以 authenticator（表 owner）身份执行。
+//
+// 双钥轮换（转出 POC 门禁 A4）：新钥落 current 位，旧 current 降级 previous
+//（而非覆盖删除），previous 至多保留紧邻上一把（third 条直接删）。滚动重启
+// 换钥期间，旧进程签发的 sig 在 60s TTL 窗口内经 previous 验签通过、窗口外
+//（exp 过期）依旧拒绝——消除单钥覆盖式换钥的权限面降级窗口。同钥重启幂等
+//（current 已是目标钥时整体 no-op）；回滚场景（目标钥躺在 previous 位）把
+// 该钥提回 current。四条语句经 simple protocol 单次往返执行，构成隐式事务
+//（全或无）。
 func SyncRolesSigKey(ctx context.Context, db *Database) error {
 	keyHex, ok := RolesSigKeyHex()
 	if !ok {
 		return errors.New("roles sig key not initialized (call InitRolesSigKey first)")
 	}
-	if _, err := db.Conn(ctx).ExecContext(ctx,
-		`INSERT INTO public.tw_secrets (purpose, key_hex) VALUES (?, ?)
-		 ON CONFLICT (purpose) DO UPDATE SET key_hex = EXCLUDED.key_hex, updated_at = NOW()`,
-		RolesSigPurpose, keyHex,
-	); err != nil {
+	p := RolesSigPurpose
+	// ① 目标钥若躺在 previous 位（回滚场景）先移除——将被重插为 current；
+	// ② 旧 current（异钥）降级 previous；
+	// ③ 新钥落 current 位（同钥重启幂等跳过）；
+	// ④ third 条直接删：previous 仅保留最新一条（updated_at 降序 + key_hex
+	//    决胜，确定性保留），行数不变量 ≤2。
+	if _, err := db.Conn(ctx).ExecContext(ctx, `
+DELETE FROM public.tw_secrets WHERE purpose = ? AND NOT is_current AND key_hex = ?;
+UPDATE public.tw_secrets SET is_current = FALSE, updated_at = NOW()
+ WHERE purpose = ? AND is_current AND key_hex <> ?;
+INSERT INTO public.tw_secrets (purpose, key_hex, is_current)
+ SELECT ?, ?, TRUE
+ WHERE NOT EXISTS (SELECT 1 FROM public.tw_secrets
+                   WHERE purpose = ? AND key_hex = ? AND is_current);
+DELETE FROM public.tw_secrets
+ WHERE purpose = ? AND NOT is_current
+   AND key_hex <> COALESCE((SELECT key_hex FROM public.tw_secrets
+                            WHERE purpose = ? AND NOT is_current
+                            ORDER BY updated_at DESC, key_hex DESC LIMIT 1), '');
+`, p, keyHex, p, keyHex, p, keyHex, p, keyHex, p, p); err != nil {
 		return fmt.Errorf("sync roles sig key: %w", err)
 	}
 	return nil
