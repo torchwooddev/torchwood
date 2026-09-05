@@ -337,9 +337,47 @@ DSN 优先级：`TORCHWOOD_DATA_DATABASE_SOURCE` → `postgres://torchwood:torch
 
 | 数据 | 位置 | 建议 |
 |------|------|------|
-| 元数据 + 动态文档 | Postgres（`postgres_data`） | `pg_dump` 或卷快照，需覆盖全部 `tw_*` schema |
+| 元数据 + 动态文档 | Postgres（`postgres_data`） | `pg_dump` 或卷快照，需覆盖全部 `tw_*` schema；项目级逻辑备份用 `torchwood admin export`（§6.3.1） |
 | 对象 | MinIO（`minio_data`） | `mc mirror` 到异地 S3 或卷快照 |
 | Redis（`redis_data`） | 仅队列/缓存/ID | 丢失可由 `worker` 启动对账兜底（超 1h 标 `failed`） |
+
+#### 6.3.1 项目级备份与恢复：`torchwood admin export` / `import`（转出 POC 门禁 B5）
+
+`cmd/client` 的 admin 子命令**直连元数据库**（不经 API 面/gRPC；POC 运维工具属性）：
+
+```bash
+# 导出项目文档面：catalog 快照 + 每集合全行 NDJSON（to_jsonb 形态，含 _acl/_version）+ snapshot_seq
+bin/torchwood admin export --project <project_id> --out /backup/p1 \
+  --dsn "$TORCHWOOD_DATA_DATABASE_SOURCE"        # 缺省读 TORCHWOOD_DATA_DATABASE_SOURCE
+
+# 产物布局
+#   /backup/p1/manifest.json                 快照与索引（最后写出；无 manifest = 半成品，导入器拒收）
+#   /backup/p1/data/collection-NNNNNN.ndjson 每集合一个文件，行 = to_jsonb(d.*)
+
+# 恢复（目标项目须已存在——项目行/静态平面属控制面，不在文档面往返范围；
+# 对 manifest 中每个集合先清位 DROP TABLE + 删 catalog 行再重建重灌，可重跑幂等）
+bin/torchwood admin import --project <project_id> --in /backup/p1 --dsn "$TORCHWOOD_DATA_DATABASE_SOURCE"
+```
+
+**snapshot_seq 与增量续接**：导出在单一 `REPEATABLE READ` 快照事务内读取 outbox 全局 `max(seq)`（snapshot_seq）、catalog 两表与全部集合行——快照后提交的写入不在导出行中、其 seq 必大于 snapshot_seq。因此恢复后执行 `:changes?since_seq=<snapshot_seq>`（`import` 结束输出 ResumeHint）即无缝续接导出后的增量（文档 create/update/delete 事件，tombstone 语义见 `:changes` 契约），本地副本/下游可精确收敛；outbox 表在 `public`，不受 `DROP SCHEMA` 影响，重放窗口即 outbox 保留窗口。
+
+**物理名策略**：导入**沿用导出的 physical_name**（`c_<base32(8)>`），数据文件按逻辑 (database, collection) 寻址；集合表经与在线 `CreateCollection` 相同的 DDL 汇聚点重建（`_version` 列、默认时间索引、`_acl` GIN、RLS policy + FORCE、列级 GRANT 全走现役代码路径），行导入以 `tw_system` 身份直写（`_acl`/`_version`/时间戳原样保真，分批事务）。
+
+**工具身份要求**：运行账号需三角色 membership（`tw_system` 读行/写行、`tw_owner` DDL/catalog，同 §4.5 的 authenticator 形态即可）；vector 列恢复要求目标库已启用 pgvector（§6.6）。
+
+#### 6.3.2 与 `pg_dump -n tw_<project>` 的对照
+
+| 维度 | `torchwood admin export/import`（逻辑备份，推荐日常项目级） | `pg_dump -n tw_<project>_<db>`（schema 级） |
+|------|------|------|
+| 范围 | 一项目跨**全部业务库**（catalog 行 + 数据行） | 单个两段式 schema 的物理对象；多库项目需逐 schema dump，且 catalog 行在 `public`，**不在** dump 内 |
+| 恢复方式 | `import` 重建 catalog + 表 + 行（幂等清位重灌） | 需手工处理 catalog 两表的配套行，否则同名库/集合无法重建（F4-2） |
+| `_acl`/RLS | 行内 `_acl` 原样保真，RLS/列授权由现役 DDL 路径重建 | policy/GRANT 随 dump 还原，但对象属主/角色名需目标库一致 |
+| 物理名 | 沿用导出值（数据文件与物理名解耦） | 原样还原（含物理名） |
+| 增量续接 | snapshot_seq + `:changes` 闭合 | 无（配合逻辑复制/触发器自建） |
+| 适用场景 | 项目迁移、重建路径（`poc-to-release-migration.md` A5）、单项目时间点备份 | 整库快速快照、schema 结构审计、DBA 习惯的全量兜底 |
+
+运行级建议：全实例物理兜底用 `pg_dump -Fc`（全库，覆盖 `public` 控制面与全部 `tw_*`），项目级/跨实例搬迁用 export/import；两者不互斥（§5.1 的 `pg_dump` 计时指标继续作为规模预警信号）。
+
 
 ### 6.4 升级
 
