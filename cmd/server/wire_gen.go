@@ -56,7 +56,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	}
 	database := clients.NewDatabase(dataClients)
 	repository := bunrepo.NewProjectRepository(database)
-	onStartHooks := bootkit.NewOnStarts(repository, database, logger)
+	v := NewGrantsReconcileHook(database, logger)
+	onStartHooks := bootkit.NewOnStarts(repository, database, logger, v)
 	onStopHooks := bootkit.NewOnStops()
 	apiKeyRepository := bunrepo.NewAPIKeyRepository(database)
 	adminRepository := bunrepo.NewAdminRepository(database)
@@ -133,14 +134,14 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	healthService := servergrpc.NewHealthService(checkers, buildInfo)
 	schemaManager := NewSchemaManager(database, documentDB)
 	purger := storage.NewObjectPurger(objectStore)
-	v := NewProjectsOptions(purger, appConfig)
-	projects := server.NewProjects(repository, documentDB, database, schemaManager, adminProjectRepository, v...)
+	v2 := NewProjectsOptions(purger, appConfig)
+	projects := server.NewProjects(repository, documentDB, database, schemaManager, adminProjectRepository, v2...)
 	projectsService := servergrpc.NewProjectsService(projects)
 	uploadSessionStore := storage.NewRedisUploadSessionStore(redisClient)
 	bucketRepository := bunrepo.NewBucketRepository(database)
 	fileRepository := bunrepo.NewFileRepository(database)
-	v2 := NewStorageOptions()
-	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository, v2...)
+	v3 := NewStorageOptions()
+	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository, v3...)
 	storageService := servergrpc.NewStorageService(storageStorage)
 	users := server.NewUsers(repository, sessionService, database, userRepository, sessionRepository, groupRepository, membershipRepository)
 	usersService := servergrpc.NewUsersService(users)
@@ -216,9 +217,9 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	v3 := NewComponents(grpcServer, grpcGatewayServer, realtimeSubscriberService, metricsServer)
-	v4 := bootkit.NewComponentBuilders()
-	bootstrap := boot.New(onStartHooks, onStopHooks, v3, v4)
+	v4 := NewComponents(grpcServer, grpcGatewayServer, realtimeSubscriberService, metricsServer)
+	v5 := bootkit.NewComponentBuilders()
+	bootstrap := boot.New(onStartHooks, onStopHooks, v4, v5)
 	return bootstrap, func() {
 		cleanup()
 	}, nil

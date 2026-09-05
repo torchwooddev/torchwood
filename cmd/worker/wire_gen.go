@@ -41,7 +41,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	}
 	database := clients.NewDatabase(dataClients)
 	repository := bunrepo.NewProjectRepository(database)
-	onStartHooks := bootkit.NewOnStarts(repository, database, logger)
+	v := NewGrantsReconcileHook()
+	onStartHooks := bootkit.NewOnStarts(repository, database, logger, v)
 	onStopHooks := bootkit.NewOnStops()
 	executor := functions.NewDockerExecutor(appConfig)
 	functionRepo := bunrepo.NewFunctionRepository(database)
@@ -59,8 +60,8 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	uploadSessionStore := storage.NewRedisUploadSessionStore(client)
 	bucketRepository := bunrepo.NewBucketRepository(database)
 	fileRepository := bunrepo.NewFileRepository(database)
-	v := NewStorageOptions()
-	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository, v...)
+	v2 := NewStorageOptions()
+	storageStorage := storage2.NewStorage(appConfig, repository, objectStore, uploadSessionStore, bucketRepository, fileRepository, v2...)
 	mainChunkCleaner := NewChunkCleaner(storageStorage, logger)
 	streamTrimmer := NewStreamTrimmer(sharedQueue, logger)
 	realtimeTransport := realtime.NewStreamTransport(client)
@@ -92,9 +93,9 @@ func wireBootstrap(app lynx.App) (*boot.Bootstrap, func(), error) {
 	statementRepo := bunrepo.NewBillingStatementRepository(database)
 	billingBilling := billing2.NewBilling(redisCounter, usageRepo, statementRepo, repository, fileRepository, logger)
 	usageRollupWorker := NewUsageRollupWorker(billingBilling, logger)
-	v2 := NewComponents(worker, mainChunkCleaner, streamTrimmer, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
-	v3 := bootkit.NewComponentBuilders()
-	bootstrap := boot.New(onStartHooks, onStopHooks, v2, v3)
+	v3 := NewComponents(worker, mainChunkCleaner, streamTrimmer, outboxWorkerService, paymentCloser, assetExpirer, subscriptionBiller, usageRollupWorker)
+	v4 := bootkit.NewComponentBuilders()
+	bootstrap := boot.New(onStartHooks, onStopHooks, v3, v4)
 	return bootstrap, func() {
 		cleanup()
 	}, nil

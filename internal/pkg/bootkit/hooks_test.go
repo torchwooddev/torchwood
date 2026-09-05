@@ -46,10 +46,16 @@ func TestCollectionGrantsReconcileHook_WiredInOnStarts(t *testing.T) {
 		fmt.Sprintf(`GRANT UPDATE (_acl) ON %s TO tw_app`, tbl))
 	require.NoError(t, err, "偏离播种：R13a 旧形态多授")
 
-	// 接线断言：三钩子装配（schema ensure / roles sig / grants reconcile）。
+	// 接线断言：grants reconcile 以闭包注入（R15 集中复审：bootkit 不 import
+	// documentdb——reconcile 实现移至 cmd/server 组合根，经 NewOnStarts 可选
+	// 参数注入；此处以直调 documentdb 的闭包复现 server 侧注入形态）。
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	hooks := NewOnStarts(nil, db, logger)
-	require.Len(t, hooks, 3, "NewOnStarts 必须包含列授权 reconcile 钩子（A1 接线锁定）")
+	reconcile := func(ctx context.Context) error {
+		_, err := documentdb.ReconcileCollectionColumnGrants(ctx, db)
+		return err
+	}
+	hooks := NewOnStarts(nil, db, logger, reconcile)
+	require.Len(t, hooks, 3, "NewOnStarts 必须包含注入的 reconcile 钩子（A1 接线锁定）")
 	for i, hook := range hooks {
 		require.NoError(t, hook(ctx), "hook %d", i)
 	}

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"log/slog"
+
 	"github.com/google/wire"
 	"github.com/lynx-go/lynx"
 	"github.com/lynx-go/lynx/boot"
@@ -43,6 +46,7 @@ var ProviderSet = wire.NewSet(
 	bootkit.NewComponentBuilders,
 	bootkit.NewOnStarts,
 	bootkit.NewOnStops,
+	NewGrantsReconcileHook,
 	NewAppConfig,
 	NewComponents,
 	NewBuildInfo,
@@ -126,6 +130,33 @@ func NewSchemaManager(db *clients.Database, docDB databases.DocumentDB) *project
 		m.SetInvalidator(inv.InvalidateInternalIDCache)
 	}
 	return m
+}
+
+// NewGrantsReconcileHook 产出启动期存量列授权全量 reconcile 闭包（门禁 A1，
+// docs/developer/15-exit-poc.md）：遍历 catalog 全部业务集合物理表，按
+// R13a/R16 终态口径逐表幂等重建列级 GRANT。挂在 server 侧——worker 不碰
+// 文档层（import guard TestWorkerDepsGraph 守此边界），故经 NewOnStarts 的
+// 可选参数注入而非 bootkit 共享装配。失败语义同 bootkit 既有钩子：单表失败
+// 不阻断启动（documentdb 内部日志 + 失败计数指标），OnStart 先于监听。
+func NewGrantsReconcileHook(db *clients.Database, logger *slog.Logger) func(context.Context) error {
+	return func(ctx context.Context) error {
+		if db == nil {
+			return nil
+		}
+		res, err := documentdb.ReconcileCollectionColumnGrants(ctx, db)
+		if err != nil {
+			if logger != nil {
+				logger.Error("collection column grants reconcile: catalog enumeration failed", "error", err)
+			}
+			return nil
+		}
+		if logger != nil {
+			logger.Info("collection column grants reconcile done",
+				"scanned", res.Scanned, "reconciled", res.Reconciled,
+				"missing", res.Missing, "failed", res.Failed)
+		}
+		return nil
+	}
 }
 
 // NewProjectsOptions 装配项目用例的生产选项（Round4 J5-2）：注入对象存储

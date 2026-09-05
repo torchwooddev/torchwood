@@ -11,7 +11,6 @@ import (
 	"github.com/lynx-go/lynx/boot"
 	"github.com/torchwooddev/torchwood/internal/domain/projects"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
-	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 )
 
@@ -27,14 +26,18 @@ func NewComponentBuilders() []lynx.ServiceFactory {
 
 // NewOnStarts 注册启动钩子集：项目 schema 确保钩子（对全部项目幂等 EnsureAll）、
 // roles 签名密钥同步钩子（把进程内派生的 roles 签名密钥 UPSERT 进
-// tw_secrets，阶段③-b 包 C：tw_roles() 验签依赖）与存量列授权全量 reconcile
-// 钩子（门禁 A1）。cmd/server 与 cmd/worker 共享本装配。
-func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Logger) boot.OnStartHooks {
-	return boot.OnStartHooks{
+// tw_secrets，阶段③-b 包 C：tw_roles() 验签依赖）与调用方注入的可选扩展钩子。
+// grantsReconcile 由组合根注入（cmd/server 传 documentdb 列授权全量 reconcile
+// 闭包，门禁 A1；cmd/worker 传 nil——worker 不碰文档层，import guard 守此边界）。
+func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Logger, grantsReconcile func(context.Context) error) boot.OnStartHooks {
+	hooks := boot.OnStartHooks{
 		ProjectSchemaEnsureHook(repo, db, logger),
 		RolesSigKeySyncHook(db, logger),
-		CollectionGrantsReconcileHook(db, logger),
 	}
+	if grantsReconcile != nil {
+		hooks = append(hooks, lynx.HookFunc(grantsReconcile))
+	}
+	return hooks
 }
 
 // NewOnStops 返回空钩子集：底层资源清理不进 Lynx（见 cmd/*/main.go 注释，
@@ -90,35 +93,8 @@ func RolesSigKeySyncHook(db *clients.Database, logger *slog.Logger) lynx.HookFun
 	}
 }
 
-// CollectionGrantsReconcileHook 返回启动期存量列授权全量 reconcile 钩子
-//（转出 POC 门禁 A1，docs/developer/15-exit-poc.md）：遍历 catalog 全部业务
-// 集合物理表，按 R13a/R16 终态口径逐表幂等重建列级 GRANT（refreshColumnGrants），
-// 矫正只靠 DDL touch 收敛的存量旧授权形态。挂在 ProjectSchemaEnsureHook 之后：
-// catalog 表属 public 全局迁移，本就无需项目 schema 就绪，排序仅保持装配可读。
-//
-// 失败语义：单表失败不阻断启动（钩子恒返回 nil）——documentdb 扫描内部已按
-// "日志 + 失败计数指标" 告警，扫不掉的表由下一次 DDL touch 或下次启动重试；
-// 仅 catalog 清单不可读时内部同样记 Error 后照常放行（授权漂移是存量风险，
-// 不值得为它挡住整个服务可用性）。OnStart 在服务监听之前串行执行，流量进入
-// 时扫描已完成——矫正先于暴露。
-func CollectionGrantsReconcileHook(db *clients.Database, logger *slog.Logger) lynx.HookFunc {
-	return func(ctx context.Context) error {
-		if db == nil {
-			return nil
-		}
-		res, err := documentdb.ReconcileCollectionColumnGrants(ctx, db)
-		if err != nil {
-			if logger != nil {
-				logger.Error("collection column grants reconcile: catalog enumeration failed",
-					"error", err)
-			}
-			return nil
-		}
-		if logger != nil {
-			logger.Info("collection column grants reconcile done",
-				"scanned", res.Scanned, "reconciled", res.Reconciled,
-				"missing", res.Missing, "failed", res.Failed)
-		}
-		return nil
-	}
-}
+// （CollectionGrantsReconcileHook 已移至 cmd/server 组合根：列授权全量
+// reconcile 是 documentdb 域职责（门禁 A1），bootkit 为 server/worker 共享
+// 装配包，直接实现会把 documentdb 拖进 worker 的依赖闭包（import guard
+// TestWorkerDepsGraph 守此边界）。server 侧经 NewOnStarts 的 grantsReconcile
+// 参数注入闭包，worker 传 nil。）

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 
 	"github.com/google/wire"
@@ -51,6 +52,7 @@ var ProviderSet = wire.NewSet(
 	bootkit.NewComponentBuilders,
 	bootkit.NewOnStarts,
 	bootkit.NewOnStops,
+	NewGrantsReconcileHook,
 	NewAppConfig,
 	NewComponents,
 	NewWorker,
@@ -93,6 +95,12 @@ var ProviderSet = wire.NewSet(
 	infrastorage.ProviderSet,
 	realtime.NewStreamTransport,
 )
+
+// NewGrantsReconcileHook 返回 nil：列授权全量 reconcile（门禁 A1）是
+// documentdb 域职责，仅 server 侧执行——worker 的依赖闭包不得包含
+// documentdb（import guard TestWorkerDepsGraph 守此边界），经 NewOnStarts
+// 的可选参数注入 nil 即跳过该钩子。
+func NewGrantsReconcileHook() func(context.Context) error { return nil }
 
 func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	var c config.AppConfig
