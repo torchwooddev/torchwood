@@ -41,6 +41,11 @@ const (
 	// outboxStatementTimeout 是每条 DB 语句的独立超时（W-H per-语句 deadline，
 	// 防单条慢查询卡住轮询；事务整体取 2*statement）。
 	outboxStatementTimeout = 5 * time.Second
+	// outboxIdleGroupAfter 是孤儿消费组判定的闲置阈值（B6，redesign §4.5
+	// 挂账）：组名 = 实例 ID（hostname:pid），实例崩溃/重启后旧组无人认领。
+	// 消费组的位点/成员/PEL 全部静默超过该时长的组由周期清理销毁，防组
+	// 无限累积（ >> cleanup 周期，保证每轮销毁的是"真孤儿"）。
+	outboxIdleGroupAfter = time.Hour
 )
 
 // outbox 领取与投递指标（前缀 torchwood_，注册到默认注册表，
@@ -65,10 +70,17 @@ var (
 		Name: "torchwood_outbox_dead",
 		Help: "Number of rows in document_events_outbox_dead.",
 	})
+	// realtimeIdleGroupsDestroyed 是累计销毁的闲置孤儿消费组数（B6：清理
+	// 行为可观测；非零说明存在实例崩溃/重建留下的旧组被回收）。
+	realtimeIdleGroupsDestroyed = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "torchwood_realtime_idle_groups_destroyed_total",
+		Help: "Total idle consumer groups destroyed from the realtime events stream.",
+	})
 )
 
 func init() {
-	prometheus.MustRegister(outboxPending, outboxPublishTotal, outboxPublishLag, outboxDead)
+	prometheus.MustRegister(outboxPending, outboxPublishTotal, outboxPublishLag, outboxDead,
+		realtimeIdleGroupsDestroyed)
 }
 
 // OutboxWorker 领取 document_events_outbox 并把完整信封 XADD 到
@@ -202,9 +214,17 @@ func (w *OutboxWorker) claim(ctx context.Context) ([]model.DocumentEventsOutbox,
 	return rows, nil
 }
 
+// idleGroupSweeper 是 shared.RealtimeTransport 的可选扩展（B6）：销毁投递
+// Stream 上闲置孤儿消费组。realtime.streamTransport 实现之；测试桩可不必
+// 实现（断言失败即跳过，不阻塞 worker 装配）。
+type idleGroupSweeper interface {
+	SweepIdleGroups(ctx context.Context, idle time.Duration) ([]string, error)
+}
+
 // cleanupOnce 删除超过保留窗口的已发布行与死信行（表无限增长治理），
 // 并对投递 Stream 做周期 XTRIM（B3：MAXLEN ~ 100k，未投递条目不受影响——
-// XADD 不带 MAXLEN，裁剪只发生在低频清理路径）。
+// XADD 不带 MAXLEN，裁剪只发生在低频清理路径）；最后销毁闲置孤儿消费组
+//（B6：组名 = 实例 ID，实例崩溃/重启后旧组无人认领，周期回收防无限累积）。
 func (w *OutboxWorker) cleanupOnce(ctx context.Context) {
 	func() {
 		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
@@ -245,6 +265,25 @@ func (w *OutboxWorker) cleanupOnce(ctx context.Context) {
 		defer cancel()
 		if err := w.transport.Trim(ctx2); err != nil && ctx.Err() == nil {
 			w.logger.Error("realtime stream trim failed", "error", err)
+		}
+	}()
+	func() {
+		sweeper, ok := w.transport.(idleGroupSweeper)
+		if !ok {
+			return
+		}
+		ctx2, cancel := context.WithTimeout(ctx, outboxStatementTimeout)
+		defer cancel()
+		destroyed, err := sweeper.SweepIdleGroups(ctx2, outboxIdleGroupAfter)
+		switch {
+		case err != nil:
+			if ctx.Err() == nil {
+				w.logger.Error("realtime idle group sweep failed", "error", err)
+			}
+		case len(destroyed) > 0:
+			realtimeIdleGroupsDestroyed.Add(float64(len(destroyed)))
+			w.logger.Info("realtime idle consumer groups destroyed",
+				"groups", destroyed, "idle_after", outboxIdleGroupAfter.String())
 		}
 	}()
 }

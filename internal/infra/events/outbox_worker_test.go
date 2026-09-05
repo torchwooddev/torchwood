@@ -1,8 +1,10 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/torchwooddev/torchwood/internal/infra/bun/model"
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/internal/testutil"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // recordingTransport 记录 Enqueue 收到的信封（测试 transport 桩）。
@@ -166,4 +169,87 @@ func fetchOutboxRow(t *testing.T, db *clients.Database, ctx context.Context, eve
 		return nil
 	}
 	return &row
+}
+
+// sweepTransport 在 recordingTransport 上扩展 B6 的可选清理能力（与
+// realtime.streamTransport 同构：SweepIdleGroups 不在端口接口内，经类型
+// 断言发现）。
+type sweepTransport struct {
+	recordingTransport
+	calls     int
+	idle      time.Duration
+	destroyed []string
+	fail      error
+}
+
+func (t *sweepTransport) SweepIdleGroups(_ context.Context, idle time.Duration) ([]string, error) {
+	t.calls++
+	t.idle = idle
+	if t.fail != nil {
+		return nil, t.fail
+	}
+	return t.destroyed, nil
+}
+
+// TestOutboxWorker_CleanupSweepsIdleGroups：cleanupOnce 周期触发孤儿消费组
+// 清理（B6），以 outboxIdleGroupAfter 为闲置阈值；销毁组名走 Info 日志 +
+// torchwood_realtime_idle_groups_destroyed_total 指标（可观测判据）。
+func TestOutboxWorker_CleanupSweepsIdleGroups(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	var logBuf bytes.Buffer
+	rec := &sweepTransport{destroyed: []string{"crashed-host:1234"}}
+	db := testutil.SetupTestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	w := NewOutboxWorker(db, rec, slog.New(slog.NewTextHandler(&logBuf, nil)))
+
+	before := promtestutil.ToFloat64(realtimeIdleGroupsDestroyed)
+	w.cleanupOnce(context.Background())
+
+	require.Equal(t, 1, rec.calls, "cleanupOnce 必须触发一轮消费组清理")
+	require.Equal(t, outboxIdleGroupAfter, rec.idle, "闲置阈值必须是 outboxIdleGroupAfter")
+	require.Equal(t, before+1, promtestutil.ToFloat64(realtimeIdleGroupsDestroyed),
+		"销毁组数必须累计进指标")
+	logs := logBuf.String()
+	require.Contains(t, logs, "realtime idle consumer groups destroyed")
+	require.Contains(t, logs, "crashed-host:1234", "销毁组名必须可观测")
+}
+
+// TestOutboxWorker_CleanupSweepFailure：清理失败只记 Error 日志，不影响
+// cleanupOnce 其余步骤，指标不涨。
+func TestOutboxWorker_CleanupSweepFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	var logBuf bytes.Buffer
+	rec := &sweepTransport{fail: errors.New("xinfo failed")}
+	db := testutil.SetupTestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	w := NewOutboxWorker(db, rec, slog.New(slog.NewTextHandler(&logBuf, nil)))
+
+	before := promtestutil.ToFloat64(realtimeIdleGroupsDestroyed)
+	w.cleanupOnce(context.Background())
+
+	require.Equal(t, 1, rec.calls)
+	require.Equal(t, before, promtestutil.ToFloat64(realtimeIdleGroupsDestroyed))
+	require.Contains(t, logBuf.String(), "realtime idle group sweep failed")
+	require.Contains(t, logBuf.String(), "xinfo failed")
+}
+
+// TestOutboxWorker_CleanupWithoutSweeper：不支持清理能力的 transport（测试
+// 桩形态）类型断言失败即跳过，cleanupOnce 其余清理照常执行。
+func TestOutboxWorker_CleanupWithoutSweeper(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	rec := &recordingTransport{}
+	db := testutil.SetupTestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+	w := NewOutboxWorker(db, rec, nil)
+
+	// 指标为全局计数器（跨测试共享），断言走差值：无 sweeper 不得新增。
+	before := promtestutil.ToFloat64(realtimeIdleGroupsDestroyed)
+	require.NotPanics(t, func() { w.cleanupOnce(context.Background()) })
+	require.Equal(t, before, promtestutil.ToFloat64(realtimeIdleGroupsDestroyed))
 }
