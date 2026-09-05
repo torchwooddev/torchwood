@@ -1,4 +1,5 @@
-// 文档查询面：List/Count/Sum 与 keyset 分页 token（ka:/kb:，W-D）。
+// 文档查询面：List/Count/Sum 与 keyset 分页 token（ka:/kb:，W-D）；KNN 距离
+// 游标（kvc:，B2 多页 KNN）。
 // 阶段③包 B：三个入口经 withDocumentTx 包进带 GUC 注入的只读事务（A1）。
 package documentdb
 
@@ -7,6 +8,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -275,16 +279,19 @@ func (p *postgresDocumentDB) listDocuments(ctx context.Context, projectID, datab
 	}, nil
 }
 
-// listDocumentsKNN 是 vector_search 的查询管道（会话 #10 包 C）。调用前提：
-// validateQueryFields 已通过（vector 属性 + hnsw 索引 metric 匹配 + 维度等长
-// + 与 orders/page_token 互斥在 codec 层拒绝）。whereParts/args 已含
+// listDocumentsKNN 是 vector_search 的查询管道（会话 #10 包 C；B2 多页 KNN）。
+// 调用前提：validateQueryFields 已通过（vector 属性 + hnsw 索引 metric 匹配
+// + 维度等长 + 与 orders 互斥在 codec 层拒绝）。whereParts/args 已含
 // _tenant、sentinel 权限谓词与普通 filter（AND 组合）。
 //
-// SQL 形态：SELECT <proj>, (col <op> $vec) AS __dist ... WHERE <filters>
+// 首页 SQL 形态：SELECT <proj>, (col <op> $vec) AS __dist ... WHERE <filters>
 // ORDER BY col <op> $vec LIMIT k。RLS policy（tw_visible）作为 securityQuals
 // 隐式过滤参与 iterative scan（GUC strict_order，原型 2 验证：1000 行 5 行
 // 可见仍返回 5/5 正确近邻；off 时仅 1/5——"先取全局 k 再滤"）。strict_order
 // 保序（distances 回传与文档顺序一致；relaxed_order 需外层重排，不采用）。
+//
+// 多页（B2）：pageToken 携带 kvc: 距离游标时走续页管道——(dist,_id) 精确
+// 全序扫描 + 阈值谓词（见 knnContinuationSQL）。
 func (p *postgresDocumentDB) listDocumentsKNN(ctx context.Context, projectID, databaseID, collectionID, schema, physical, tbl string, parsed *query.Query, whereParts []string, args []any) (*databases.DocumentList, error) {
 	vs := parsed.VectorSearch
 	// limit 即 k（预决策 3）：page_size/limit 语义合并，缺省 25（§4.1），
@@ -299,9 +306,25 @@ func (p *postgresDocumentDB) listDocumentsKNN(ctx context.Context, projectID, da
 	if k > maxQueryLimit {
 		k = maxQueryLimit
 	}
+	// KNN 分支先于普通 list 的 offset 拒绝执行，此处补同款显式拒绝。
+	if parsed.Offset != 0 {
+		return nil, p.mapError(status.Error(codes.InvalidArgument, "offset() is not supported on vector_search; use kvc page tokens"))
+	}
+	// 续页游标：kvc: 前缀族（B2）；ka:/kb: keyset token 与垃圾 token 一律
+	// InvalidArgument（keyset token 的续传键是排序键值，与距离序不兼容）。
+	var cursor *knnCursor
+	if parsed.PageToken != "" {
+		c, ok := decodeKNNCursor(parsed.PageToken)
+		if !ok {
+			return nil, p.mapError(status.Error(codes.InvalidArgument,
+				"invalid page token: vector_search pagination requires the kvc: cursor issued by the previous page"))
+		}
+		cursor = &c
+	}
 
 	// iterative scan 是执行期语义而非可选优化——不开则 RLS×KNN 召回错误。
 	// SET LOCAL：事务级生效，与 app.roles GUC 同零残留模式（原型 2 验证）。
+	// 续页为精确全序扫描（不依赖 HNSW），SET LOCAL 无害且保持单一代价路径。
 	if _, err := p.conn(ctx).ExecContext(ctx, `SET LOCAL hnsw.iterative_scan = 'strict_order'`); err != nil {
 		return nil, fmt.Errorf("enable iterative scan: %w", err)
 	}
@@ -318,29 +341,163 @@ func (p *postgresDocumentDB) listDocumentsKNN(ctx context.Context, projectID, da
 	if err != nil {
 		return nil, err
 	}
-	// 占位符出现顺序 = SELECT 的距离表达式 → WHERE（_tenant/权限/filter）→
-	// ORDER BY 的距离表达式 → LIMIT，参数严格按此序装配（原型期曾按
-	// whereArgs→vec→vec→k 装配导致错位：internalID 被绑进 ::vector 报
-	// 42846）。
-	knnArgs := make([]any, 0, len(args)+3)
-	knnArgs = append(knnArgs, vecArg)
-	knnArgs = append(knnArgs, args...)
-	knnArgs = append(knnArgs, vecArg, k)
-	querySQL := fmt.Sprintf(
-		`SELECT %s AS doc, %s AS __dist FROM %s d WHERE %s ORDER BY %s LIMIT ?`,
-		vectorProjection(vectorCols), distExpr, tbl,
-		strings.Join(whereParts, " AND "), distExpr)
 
+	var raw []knnRow
+
+	if cursor == nil {
+		// 首页：HNSW + iterative scan（会话 #10 原管道）。多取一行（k+1）：
+		// 第 k+1 行的距离用来证明第 k 行所在距离组是否"完整"（无越页 tie）
+		// ——完整则满页发射 k 行，仅边界 tie 组跨页时短页（见下）。
+		// 占位符出现顺序 = SELECT 的距离表达式 → WHERE（_tenant/权限/filter）→
+		// ORDER BY 的距离表达式 → LIMIT，参数严格按此序装配（原型期曾按
+		// whereArgs→vec→vec→k 装配导致错位：internalID 被绑进 ::vector 报
+		// 42846）。
+		knnArgs := make([]any, 0, len(args)+3)
+		knnArgs = append(knnArgs, vecArg)
+		knnArgs = append(knnArgs, args...)
+		knnArgs = append(knnArgs, vecArg, k+1)
+		querySQL := fmt.Sprintf(
+			`SELECT %s AS doc, %s AS __dist FROM %s d WHERE %s ORDER BY %s LIMIT ?`,
+			vectorProjection(vectorCols), distExpr, tbl,
+			strings.Join(whereParts, " AND "), distExpr)
+
+		raw, err = p.scanKNNRows(ctx, querySQL, knnArgs)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// 续页：精确全序扫描（B2 形态 A）。HNSW 索引只能承载距离单键序，
+		// 同距离 tie 组内的跨查询顺序不稳定——仅阈值谓词（无全序）会在 tie
+		// 组跨页边界丢行；ORDER BY 距离+_id 全序使续页 = 全局 (dist,_id) 序
+		// 的严格切片，不重不漏由结构保证。代价是续页放弃 HNSW（Seq Scan 精确
+		// 求值），单页 KNN（绝大多数场景）不受影响。
+		// 子查询形态：外层阈值/排序消费投影别名，距离表达式只绑一次向量
+		//（首页路径的占位符错位教训，见上）。占位符顺序 = 内层 SELECT 向量 →
+		// 内层 WHERE（_tenant/权限/filter）→ 外层阈值（dist,id,dist）→ LIMIT。
+		querySQL := fmt.Sprintf(
+			`SELECT sub.doc, sub.__dist FROM (SELECT %s AS doc, %s AS __dist, d._id AS __id FROM %s d WHERE %s) sub `+
+				`WHERE (sub.__dist = ?::float8 AND sub.__id > ?) OR (sub.__dist > ?::float8) `+
+				`ORDER BY sub.__dist ASC, sub.__id ASC LIMIT ?`,
+			vectorProjection(vectorCols), distExpr, tbl,
+			strings.Join(whereParts, " AND "))
+		knnArgs := make([]any, 0, len(args)+6)
+		knnArgs = append(knnArgs, vecArg)
+		knnArgs = append(knnArgs, args...)
+		// 空 id（首页 tie-trim 全裁发放的起点游标）→ `_id > ''` 恒真，
+		// 阈值退化为 dist >= cursor.dist。
+		knnArgs = append(knnArgs, cursor.dist, cursor.id, cursor.dist, k)
+
+		raw, err = p.scanKNNRows(ctx, querySQL, knnArgs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 发射装配：max_distance 后置过滤（原型 2 实证：距离谓词进 WHERE 会使
+	// 规划器放弃 HNSW 索引扫描；top-k 结果上过滤语义等价——top-k ⊇ 全部
+	// ≤ 阈值行）。raw 按距离升序，超阈值必为后缀，可提前截断。
+	docs := make([]databases.Document, 0, len(raw))
+	dists := make([]float64, 0, len(raw))
+	next := ""
+	if cursor == nil {
+		// (dist,_id) 稳定视图：HNSW 对同距离 tie 的输出序任意，切页边界与
+		// 游标选取需要确定性视图。此排序只影响 tie 组内的发射顺序——边界
+		// 之前的行全量发射、边界 tie 组全量顺延（见下），组内顺序不影响
+		// 不重不漏。
+		sort.Slice(raw, func(i, j int) bool {
+			if raw[i].dist != raw[j].dist {
+				return raw[i].dist < raw[j].dist
+			}
+			return raw[i].doc.ID < raw[j].doc.ID
+		})
+		// 完整距离组切页（B2）：发射前缀 raw[:L]，L 是 ≤ k 的最大"完整距离
+		// 组"边界——每组是否完整（不含越页 tie）由组后首行证明：HNSW 对同距
+		// tie 组的取舍任意，发射其中任意真子集都会让 (dist,_id) 阈值游标漏掉
+		// 未发射的同距行，故 tie 组只能整组发射或整组顺延。取 k+1 行使常规
+		// 情形（距离互异）满页发射 k 行；取尽（len(raw) ≤ k）时所有组自然完整。
+		L := 0
+		for L < len(raw) {
+			e := L
+			for e < len(raw) && raw[e].dist == raw[L].dist {
+				e++
+			}
+			if e > k {
+				break
+			}
+			L = e
+			if L == k {
+				break
+			}
+		}
+		for _, r := range raw[:L] {
+			if vs.MaxDistance != nil && r.dist > *vs.MaxDistance {
+				break
+			}
+			docs = append(docs, r.doc)
+			dists = append(dists, r.dist)
+		}
+		// 游标：最后发射行（组内全量发射 → 严格大于阈值即不重不漏）；边界
+		// tie 组整组顺延时 L 不动在组前，游标取该组起点（id = ""）→ 下一页
+		// 以 dist >= d 组起点精确重取（含组内全部行）。整组顺延且首组即溢出
+		//（L == 0）时零发射 + 起点游标；max_distance 滤空发射集（整页超阈）
+		// 时后续必然全超阈，直接收尾不发游标。
+		if L < len(raw) && L > 0 && len(docs) > 0 {
+			next = encodeKNNCursor(dists[len(dists)-1], docs[len(docs)-1].ID)
+		} else if L == 0 && len(raw) > 0 && (vs.MaxDistance == nil || raw[0].dist <= *vs.MaxDistance) {
+			next = encodeKNNCursor(raw[0].dist, "")
+		}
+	} else {
+		for _, r := range raw {
+			if vs.MaxDistance != nil && r.dist > *vs.MaxDistance {
+				break
+			}
+			docs = append(docs, r.doc)
+			dists = append(dists, r.dist)
+		}
+		// 续页为精确全序：满页发严格游标。发射空集时（整页超 max_distance）
+		// 后续必然全超阈，直接收尾。
+		if len(raw) == k && len(docs) > 0 {
+			next = encodeKNNCursor(dists[len(dists)-1], docs[len(docs)-1].ID)
+		}
+	}
+
+	// select 投影裁剪（与普通 list 同语义）。
+	if len(parsed.Selects) > 0 {
+		selected := make(map[string]struct{}, len(parsed.Selects))
+		for _, s := range parsed.Selects {
+			selected[mapQueryField(s)] = struct{}{}
+		}
+		for i := range docs {
+			for kk := range docs[i].Data {
+				if _, ok := selected[kk]; !ok {
+					delete(docs[i].Data, kk)
+				}
+			}
+		}
+	}
+	return &databases.DocumentList{
+		Documents: docs,
+		// KNN 无精确 total（top-k 语义非全集计数）；NextPageToken = kvc: 距离
+		// 游标（B2）。
+		Distances:     dists,
+		NextPageToken: next,
+	}, nil
+}
+
+// knnRow 是 KNN 查询的一行（文档 + 距离）。
+type knnRow struct {
+	doc  databases.Document
+	dist float64
+}
+
+// scanKNNRows 执行 KNN 查询并扫描 (doc, dist) 行（投影列序两处 SQL 一致）。
+func (p *postgresDocumentDB) scanKNNRows(ctx context.Context, querySQL string, knnArgs []any) ([]knnRow, error) {
 	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, knnArgs...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	type knnRow struct {
-		doc  databases.Document
-		dist float64
-	}
 	var out []knnRow
 	for rows.Next() {
 		var raw []byte
@@ -360,45 +517,7 @@ func (p *postgresDocumentDB) listDocumentsKNN(ctx context.Context, projectID, da
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	// max_distance 后置过滤（原型 2 实证：距离谓词进 WHERE 会使规划器放弃
-	// HNSW 索引扫描；top-k 结果上过滤语义等价——top-k ⊇ 全部 ≤ 阈值行）。
-	filtered := out
-	if vs.MaxDistance != nil {
-		filtered = filtered[:0]
-		for _, r := range out {
-			if r.dist <= *vs.MaxDistance {
-				filtered = append(filtered, r)
-			}
-		}
-	}
-
-	docs := make([]databases.Document, 0, len(filtered))
-	dists := make([]float64, 0, len(filtered))
-	for _, r := range filtered {
-		docs = append(docs, r.doc)
-		dists = append(dists, r.dist)
-	}
-	// select 投影裁剪（与普通 list 同语义）。
-	if len(parsed.Selects) > 0 {
-		selected := make(map[string]struct{}, len(parsed.Selects))
-		for _, s := range parsed.Selects {
-			selected[mapQueryField(s)] = struct{}{}
-		}
-		for i := range docs {
-			for k := range docs[i].Data {
-				if _, ok := selected[k]; !ok {
-					delete(docs[i].Data, k)
-				}
-			}
-		}
-	}
-	return &databases.DocumentList{
-		Documents: docs,
-		// KNN 无精确 total（top-k 语义非全集计数）；无续页 token（多页 KNN
-		// 挂账，预决策 3）。
-		Distances: dists,
-	}, nil
+	return out, nil
 }
 
 // sortKey 是一个排序键（物理列 + 方向）；keyset 谓词与 ORDER BY 同源消费。
@@ -502,6 +621,52 @@ func decodeKeysetToken(token string) (id, kind string, ok bool) {
 		return before, "before", true
 	}
 	return "", "", false
+}
+
+// knnCursor 是 vector_search 的续页游标（B2 多页 KNN）：天然续传键 =
+// (距离, _id) 二元组。与 ka:/kb: keyset token 并列的新前缀族 kvc:。
+const knnCursorPrefix = "kvc:"
+
+// knnCursor 是 kvc: token 解码后的续传位置。id 为空 = "该距离起点"形态
+//（首页 tie-trim 全裁时发放），谓词退化为 dist >= dist。
+type knnCursor struct {
+	dist float64
+	id   string
+}
+
+// encodeKNNCursor 编码 kvc:<dist_hex16>:<docID>。距离用 float8 比特模式的
+// 定长 16 位十六进制编码——精确往返、无浮点十进制解析歧义，负距离
+//（inner_product 的 <#> 值域 (-inf,0]）原生支持。pgvector 距离算子返回
+// float8，扫描值与谓词绑定值同源同型，等值比较无歧义。docID 允许 ':'
+//（docIDRe），编码侧无歧义（hex 段定长），解码侧 Cut 取首段。
+func encodeKNNCursor(dist float64, docID string) string {
+	return knnCursorPrefix + fmt.Sprintf("%016x", math.Float64bits(dist)) + ":" + docID
+}
+
+// decodeKNNCursor 解码 kvc: token；非本前缀族 / hex 段非法 / NaN / docID
+// 不合法（validateDocID）一律 ok=false，由调用方统一 InvalidArgument。
+// token 无需防篡改（与 ka:/kb: 同纪律）：越权由查询 ACL 过滤兜底。
+func decodeKNNCursor(token string) (knnCursor, bool) {
+	rest, ok := strings.CutPrefix(token, knnCursorPrefix)
+	if !ok {
+		return knnCursor{}, false
+	}
+	hexPart, id, _ := strings.Cut(rest, ":")
+	if len(hexPart) != 16 {
+		return knnCursor{}, false
+	}
+	bits, err := strconv.ParseUint(hexPart, 16, 64)
+	if err != nil {
+		return knnCursor{}, false
+	}
+	dist := math.Float64frombits(bits)
+	if math.IsNaN(dist) {
+		return knnCursor{}, false
+	}
+	if id != "" && validateDocID(id) != nil {
+		return knnCursor{}, false
+	}
+	return knnCursor{dist: dist, id: id}, true
 }
 
 func (p *postgresDocumentDB) CountDocuments(ctx context.Context, projectID, databaseID, collectionID string, q databases.Query, principal databases.Principal) (int64, error) {

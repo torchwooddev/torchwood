@@ -48,16 +48,12 @@ func FromProto(src *sharedv1.Query) (*query.Query, error) {
 		}
 		out.Orders = append(out.Orders, query.Order{Attribute: o.GetAttribute(), Desc: o.GetDesc()})
 	}
-	// KNN 组合约束（会话 #10 预决策 3）：与 orders/page_token 互斥——排序由
-	// 距离承载；多页 KNN 挂账（cursor 续页拒绝）。page_size = k 是唯一分页
-	// 形态（limit 即 k），允许保留。
-	if out.VectorSearch != nil {
-		if len(out.Orders) > 0 {
-			return nil, fmt.Errorf("vector_search cannot be combined with orders; distance carries the ordering")
-		}
-		if out.PageToken != "" {
-			return nil, fmt.Errorf("vector_search does not support page tokens; multi-page KNN is not supported")
-		}
+	// KNN 组合约束（会话 #10 预决策 3；B2 放开 page_token）：与 orders 互斥
+	// ——排序由距离承载。page_token 合法（多页 KNN，B2）：续页 token 是
+	// kvc: 距离游标，形态与归属校验在 infra 管道（documentdb）执行——codec
+	// 无 schema 上下文，只做透传。page_size = k。
+	if out.VectorSearch != nil && len(out.Orders) > 0 {
+		return nil, fmt.Errorf("vector_search cannot be combined with orders; distance carries the ordering")
 	}
 	if err := out.Validate(); err != nil {
 		return nil, err

@@ -49,9 +49,10 @@ export interface QueryOrder {
 export type DistanceMetric = "COSINE" | "L2" | "INNER_PRODUCT";
 
 /**
- * 向量近邻查询（会话 #10 §10.5 P0）：非 filter 树节点——距离承载排序，
- * pageSize 即 k（top-k 可见近邻）。attribute 须为声明的 vector 属性且
- * 存在 metric 匹配的 hnsw 索引；与 orders/pageToken 互斥（服务端拒绝）。
+ * 向量近邻查询（会话 #10 §10.5 P0；B2 多页）：非 filter 树节点——距离承载
+ * 排序，pageSize 即 k（top-k 可见近邻）。attribute 须为声明的 vector 属性且
+ * 存在 metric 匹配的 hnsw 索引；与 orders 互斥（服务端拒绝）。多页翻页：
+ * 同 Query 以 pageToken 携带服务端发放的 kvc: 距离游标（跨页不重不漏）。
  * DSL 字符串不支持 vector_search（向量不该手写，typed builder only）。
  */
 export interface VectorSearch {

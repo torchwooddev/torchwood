@@ -152,9 +152,11 @@ func keepNonNil(children []*sharedv1.Filter) []*sharedv1.Filter {
 }
 
 // ---------------------------------------------------------------------------
-// VectorSearch（KNN 算子，会话 #10）：非 filter 节点——距离承载排序，
-// limit 即 k（top-k 可见近邻）。DSL 字符串不支持 vector_search（向量
-// 不该手写，typed builder only）；与 orders/pageToken 互斥（服务端拒绝）。
+// VectorSearch（KNN 算子，会话 #10；B2 多页）：非 filter 节点——距离承载
+// 排序，limit 即 k（top-k 可见近邻）。DSL 字符串不支持 vector_search（向量
+// 不该手写，typed builder only）；与 orders 互斥（服务端拒绝）。多页翻页：
+// 同 Query 以 PageToken 携带服务端发放的 kvc: 距离游标（Builder.PageToken
+// / DocumentsPager 均可透传）。
 // ---------------------------------------------------------------------------
 
 // VectorSearchBuilder 链式构造 shared.v1.VectorSearch。
@@ -231,8 +233,9 @@ func (b *Builder) Filter(f *sharedv1.Filter) *Builder {
 	return b
 }
 
-// VectorSearch 设置 KNN 算子（会话 #10；与 OrderAsc/OrderDesc/PageToken
-// 互斥——服务端显式拒绝非法组合）。PageSize 即 k。
+// VectorSearch 设置 KNN 算子（会话 #10；B2 多页：可与 PageToken 组合翻页，
+// 服务端发放 kvc: 距离游标；与 OrderAsc/OrderDesc 互斥——服务端显式拒绝
+// 非法组合）。PageSize 即 k。
 func (b *Builder) VectorSearch(v *sharedv1.VectorSearch) *Builder {
 	b.q.VectorSearch = v
 	return b

@@ -182,3 +182,39 @@ func TestFromProto_DepthLimit(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, ast.Filter)
 }
+
+// vectorSearch 返回带 attribute/values 的 VectorSearch（测试捷径）。
+func vectorSearch(attr string, values ...float64) *sharedv1.VectorSearch {
+	return &sharedv1.VectorSearch{Attribute: attr, Values: values, Metric: sharedv1.DistanceMetric_DISTANCE_METRIC_COSINE}
+}
+
+// KNN 组合约束（B2 更新）：与 orders 互斥（距离承载排序）；page_token 放开
+// ——多页 KNN 由服务端发放 kvc: 距离游标，codec 透传（形态校验在 infra）。
+func TestFromProto_VectorSearchCombinations(t *testing.T) {
+	// orders + vector_search：拒绝。
+	_, err := FromProto(&sharedv1.Query{
+		VectorSearch: vectorSearch("emb", 1, 0, 0),
+		Orders:       []*sharedv1.Order{{Attribute: "$createdAt"}},
+	})
+	require.ErrorContains(t, err, "cannot be combined with orders")
+
+	// page_token + vector_search：合法（B2 多页 KNN）。
+	ast, err := FromProto(&sharedv1.Query{
+		VectorSearch: vectorSearch("emb", 1, 0, 0),
+		PageSize:     5,
+		PageToken:    "kvc:3ff0000000000000:doc-1",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ast.VectorSearch)
+	require.Equal(t, "kvc:3ff0000000000000:doc-1", ast.PageToken)
+
+	// filter + vector_search + page_token：可组合（AND）。
+	ast, err = FromProto(&sharedv1.Query{
+		Filter:       &sharedv1.Filter{Expr: &sharedv1.Filter_Eq{Eq: comparison("grp", "hit")}},
+		VectorSearch: vectorSearch("emb", 1, 0, 0),
+		PageToken:    "kvc:3ff0000000000000:doc-1",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ast.VectorSearch)
+	require.NotNil(t, ast.Filter)
+}

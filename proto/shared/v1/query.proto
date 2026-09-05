@@ -17,13 +17,14 @@ enum DistanceMetric {
   DISTANCE_METRIC_INNER_PRODUCT = 3;
 }
 
-// VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子）。
+// VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子；B2 多页）。
 // 不是 filter 树节点：距离不可作布尔谓词——排序由距离承载，limit 即 k
 //（top-k 可见近邻，iterative scan 语义：迭代搜索直至凑满 k 个满足全部
 // 过滤条件的行）。values 须与目标 vector 属性 dims 等长。目标列必须
 // 声明为 vector 属性且存在与 metric 匹配的 hnsw 索引（显式拒绝原则，
 // 与 search 需 fulltext 索引同款纪律）。DSL 字符串不支持 vector_search
-//（向量不该手写，SDK typed builder only）。
+//（向量不该手写，SDK typed builder only）。多页：配合 Query.page_token
+// 的 kvc: 游标翻页（首页不带 token）；max_distance 在每一页独立生效。
 message VectorSearch {
   string attribute = 1;
   repeated double values = 2;
@@ -91,9 +92,10 @@ message Order {
 // (C7: the server consumes no query strings; the Appwrite DSL survives only
 // as client-side sugar in SDKs/tools). page_token is the authoritative pager
 // (K-20); page_size is the page bound.
-// vector_search（会话 #10）：KNN 一次一个；与 filter 可组合（AND），与
-// orders/page_token 互斥（排序由距离承载；多页 KNN 挂账）——服务端显式
-// 拒绝非法组合，字段本身保留。
+// vector_search（会话 #10；B2 多页）：KNN 一次一个；与 filter 可组合（AND），
+// 与 orders 互斥（排序由距离承载）。page_token 合法 = 续页：服务端发放
+// kvc: 距离游标（(dist,_id) keyset 语义，跨页不重不漏），同请求参数 +
+// token 翻页；page_size 即 k。非法组合（orders、异族 token）服务端显式拒绝。
 message Query {
   Filter filter = 1;
   repeated Order orders = 2;
