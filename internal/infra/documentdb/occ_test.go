@@ -117,6 +117,10 @@ func TestUpdateDocument_VersionMismatch(t *testing.T) {
 		ExpectedVersion: 99,
 	}, occPrincipal())
 	require.ErrorIs(t, err, databases.ErrVersionMismatch)
+	// B10 §10.1：冲突错误携带探测 SELECT 读到的当前 _version（=1，零额外查询）。
+	var vc *databases.VersionConflictError
+	require.ErrorAs(t, err, &vc)
+	require.Equal(t, int64(1), vc.CurrentVersion)
 
 	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, databases.SystemPrincipal)
 	require.NoError(t, err)
@@ -169,6 +173,10 @@ func TestDeleteDocument_VersionMismatch(t *testing.T) {
 
 	err = docDB.DeleteDocument(ctx, projectID, "app", "docs", created.ID, databases.DeleteOptions{ExpectedVersion: 99}, occPrincipal())
 	require.ErrorIs(t, err, databases.ErrVersionMismatch)
+	// B10 §10.1：delete 预读路径同样携带当前 _version（=1）。
+	var vc *databases.VersionConflictError
+	require.ErrorAs(t, err, &vc)
+	require.Equal(t, int64(1), vc.CurrentVersion)
 
 	got, err := docDB.GetDocument(ctx, projectID, "app", "docs", created.ID, databases.SystemPrincipal)
 	require.NoError(t, err)

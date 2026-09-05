@@ -95,6 +95,14 @@ func DomainStatus(domainCode string) error {
 	return withErrorInfo(st, domainCode, nil).Err()
 }
 
+// DomainStatusWithMetadata 是 DomainStatus 的 metadata 扩展通道：extra 键值
+// 并入 ErrorInfo metadata（redesign §10.1：OCC 冲突错误体带 current_version
+// ——Agent 直接取该值合并重试）。
+func DomainStatusWithMetadata(domainCode string, extra map[string]string) error {
+	st := status.New(domainCodeGRPC[domainCode], domainCode+": "+domainCodeMessage[domainCode])
+	return withErrorInfo(st, domainCode, extra).Err()
+}
+
 // FieldViolation 描述一个违规字段（google.rpc.BadRequest.FieldViolation 的
 // 薄包装；field 为请求字段路径，如 "ops[3].expected_version"、"data.blob"）。
 type FieldViolation struct {
@@ -189,6 +197,15 @@ func MapDocumentDBError(err error) error {
 		return MapIdentError(err)
 	}
 	if code := databases.ErrorDomainCode(err); code != "" {
+		// OCC 冲突（redesign §10.1）：infra 以 *VersionConflictError 携带探测
+		// 读到的当前 _version，此处提取后塞进 ErrorInfo metadata 的
+		// current_version（Agent 免额外读回即可合并重试）。
+		var vc *databases.VersionConflictError
+		if errors.As(err, &vc) {
+			return DomainStatusWithMetadata(code, map[string]string{
+				"current_version": strconv.FormatInt(vc.CurrentVersion, 10),
+			})
+		}
 		return DomainStatus(code)
 	}
 	var gs interface{ GRPCStatus() *status.Status }

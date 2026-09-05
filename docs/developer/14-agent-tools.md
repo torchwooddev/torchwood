@@ -42,6 +42,8 @@
 | `get_health` | `Health.Check` | `/torchwood.server.v1.HealthService/Check` | 无入参（`ACCESS_PUBLIC`） |
 
 > 上传分片、OAuth 回调、Realtime WebSocket 为自定义 HTTP，不在本表，也不可经 `InvokeJSON` 调用。完整字段以 `tools.go:42` 的 `InputNotes` 与对应 proto 为准。
+>
+> **OCC 冲突合并重试**（redesign §10.1）：`update_document` / `delete_document` 撞版本时返回 `DOCUMENT.VERSION_CONFLICT`（FailedPrecondition，retryable=true），错误体 ErrorInfo metadata 携带 `current_version=<当前 _version>`（探测读到的实际值，零额外查询）——Agent 直接取该值重放合并重试，不必先 GET 文档。
 
 ---
 

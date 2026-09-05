@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
 	"github.com/torchwooddev/torchwood/internal/infra/bun/bunrepo"
 	"github.com/torchwooddev/torchwood/internal/infra/documentdb"
 	"github.com/torchwooddev/torchwood/internal/testutil"
 	"github.com/torchwooddev/torchwood/pkg/query"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // TestDatabases_DocumentCRUD covers P1 Sprint 1 document API use cases.
@@ -233,4 +234,66 @@ func requirePermsMatchRoles(t *testing.T, perms []databases.Permission, role str
 	for _, typ := range []string{"read", "update", "delete"} {
 		require.Equalf(t, role, got[typ], "permission %s:%s missing creator seed", typ, role)
 	}
+}
+
+// TestDatabases_UpdateDocument_OCCConflictCarriesCurrentVersion（B10，redesign
+// §10.1）：OCC 冲突响应的 ErrorInfo metadata 携带 current_version 且等于探测
+// 时的实际 _version——Agent 直接取该值合并重试，无需额外读回。
+func TestDatabases_UpdateDocument_OCCConflictCarriesCurrentVersion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	ctx := platformAdminCtx(context.Background())
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	docDB := documentdb.NewPostgresDocumentDB(db, nil)
+	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
+	principal := databases.Principal{Roles: []string{"keys"}}
+
+	require.NoError(t, uc.CreateDatabase(ctx, projectID, "app", "Application DB"))
+	require.NoError(t, uc.CreateCollection(ctx, projectID, "app", "posts", "Posts", []databases.Attribute{
+		{ID: "title", Key: "title", Type: "string", Size: 256},
+	}, nil, nil, true))
+
+	created, _, err := uc.CreateDocument(ctx, projectID, "app", "posts", "d1", map[string]any{
+		"title": "v1",
+	}, nil, principal, "")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), created.Version)
+
+	// 过期版本 99 → VERSION_CONFLICT，metadata.current_version = "1"。
+	stale := int64(99)
+	_, _, err = uc.UpdateDocument(ctx, projectID, "app", "posts", "d1", map[string]any{
+		"title": "stale",
+	}, nil, nil, nil, principal, &stale, "")
+	require.Error(t, err)
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+
+	st := status.Convert(err)
+	require.Contains(t, st.Message(), databases.ErrCodeVersionConflict)
+	var info *errdetails.ErrorInfo
+	for _, d := range st.Details() {
+		if i, ok := d.(*errdetails.ErrorInfo); ok {
+			info = i
+		}
+	}
+	require.NotNil(t, info, "错误体必须携带 ErrorInfo")
+	require.Equal(t, databases.ErrCodeVersionConflict, info.Reason)
+	require.Contains(t, info.Metadata, "current_version", "冲突错误体必须带 current_version")
+	require.Equal(t, "1", info.Metadata["current_version"])
+
+	// 冲突未覆盖并发写：行仍是 v1；取实际值合并重试成功。
+	got, err := uc.GetDocument(ctx, projectID, "app", "posts", "d1", principal)
+	require.NoError(t, err)
+	require.Equal(t, "v1", got.Data["title"])
+	updated, _, err := uc.UpdateDocument(ctx, projectID, "app", "posts", "d1", map[string]any{
+		"title": "v1-merged",
+	}, nil, nil, nil, principal, &got.Version, "")
+	require.NoError(t, err)
+	require.Equal(t, "v1-merged", updated.Data["title"])
 }

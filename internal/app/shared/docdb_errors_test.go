@@ -112,6 +112,36 @@ func TestMapDocumentDBError_OCCVersionErrors(t *testing.T) {
 	require.NoError(t, UpdateDocumentVersionRequired(&one))
 }
 
+// TestMapDocumentDBError_OCCVersionConflictCurrentVersion（B10 §10.1）：
+// *VersionConflictError 经包装链提取后，ErrorInfo metadata 携带
+// current_version（Agent 直接取该值合并重试）；裸 ErrVersionMismatch 哨兵
+// 路径行为不变（无 current_version 键）。
+func TestMapDocumentDBError_OCCVersionConflictCurrentVersion(t *testing.T) {
+	conflict := &databases.VersionConflictError{CurrentVersion: 7}
+	require.True(t, errors.Is(conflict, databases.ErrVersionMismatch), "哨兵判定保持等价")
+	mapped := MapDocumentDBError(fmt.Errorf("update document: %w", conflict))
+	require.Equal(t, codes.FailedPrecondition, status.Code(mapped))
+
+	var info *errdetails.ErrorInfo
+	for _, d := range status.Convert(mapped).Details() {
+		if i, ok := d.(*errdetails.ErrorInfo); ok {
+			info = i
+		}
+	}
+	require.NotNil(t, info)
+	require.Equal(t, databases.ErrCodeVersionConflict, info.Reason)
+	require.Equal(t, "7", info.Metadata["current_version"])
+	require.Equal(t, "true", info.Metadata["retryable"])
+
+	// 裸哨兵：无 current_version 键（旧行为不变）。
+	plain := MapDocumentDBError(fmt.Errorf("update document: %w", databases.ErrVersionMismatch))
+	for _, d := range status.Convert(plain).Details() {
+		if i, ok := d.(*errdetails.ErrorInfo); ok {
+			require.NotContains(t, i.Metadata, "current_version")
+		}
+	}
+}
+
 func TestMapDocumentDBError_Ident(t *testing.T) {
 	mapped := MapDocumentDBError(ident.ErrInvalidSchemaResourceID)
 	require.Equal(t, codes.InvalidArgument, status.Code(mapped))

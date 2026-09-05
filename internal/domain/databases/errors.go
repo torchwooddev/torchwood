@@ -115,6 +115,20 @@ var ErrVersionInvalid = errors.New("version_invalid")
 // 映射为 FailedPrecondition / version_mismatch。
 var ErrVersionMismatch = errors.New("version_mismatch")
 
+// VersionConflictError 是 ErrVersionMismatch 的载荷形态：OCC 冲突时附带探测
+// SELECT 读到的当前 _version（redesign §10.1：冲突错误体带 current_version——
+// Agent 直接取该值合并重试，无需额外读回）。经 errors.As 从包装链提取后由
+// app 层 MapDocumentDBError 塞进 ErrorInfo metadata；errors.Is 对
+// ErrVersionMismatch 哨兵保持等价，既有判定路径零改动。
+type VersionConflictError struct {
+	CurrentVersion int64
+}
+
+func (e *VersionConflictError) Error() string { return ErrVersionMismatch.Error() }
+
+// Is 使 *VersionConflictError 与 ErrVersionMismatch 哨兵双向可判定。
+func (e *VersionConflictError) Is(target error) bool { return target == ErrVersionMismatch }
+
 // ErrVersionColumnConflict 是存量用户表已有非 bigint 的 _version 列（用户属性抢占）
 // 时返回的错误，OCC fail-closed；映射为 FailedPrecondition / version_column_conflict。
 var ErrVersionColumnConflict = errors.New("version_column_conflict")

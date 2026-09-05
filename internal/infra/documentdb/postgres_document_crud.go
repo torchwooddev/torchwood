@@ -604,7 +604,9 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 				return doc, err
 			}
 			if occ && existsVersion != update.ExpectedVersion {
-				return doc, databases.ErrVersionMismatch
+				// B10 §10.1：冲突携带探测读到的当前 _version（零额外查询），
+				// app 层塞进 ErrorInfo metadata 的 current_version。
+				return doc, &databases.VersionConflictError{CurrentVersion: existsVersion}
 			}
 			return doc, ErrPermissionDenied
 		}
@@ -700,14 +702,14 @@ func (p *postgresDocumentDB) deleteDocument(ctx context.Context, projectID, data
 			}
 			return err
 		}
-		if !opts.SkipVersion {
-			if opts.ExpectedVersion <= 0 {
-				return databases.ErrVersionRequired
+			if !opts.SkipVersion {
+				if opts.ExpectedVersion <= 0 {
+					return databases.ErrVersionRequired
+				}
+				if currentVersion != opts.ExpectedVersion {
+					return &databases.VersionConflictError{CurrentVersion: currentVersion}
+				}
 			}
-			if currentVersion != opts.ExpectedVersion {
-				return databases.ErrVersionMismatch
-			}
-		}
 		// 分叉：有 publisher 时删除后带删除前 version 发 delete 事件；无
 		// publisher 走下方公共路径。删除行数校验：可见（预读已过 SELECT
 		// policy）且 OCC 守卫命中时 0 行 ⇒ 并发改写（VersionMismatch）或
@@ -759,7 +761,7 @@ func (p *postgresDocumentDB) execDeleteVersioned(ctx context.Context, tbl, docID
 				return perr
 			}
 			if cur != expected {
-				return databases.ErrVersionMismatch
+				return &databases.VersionConflictError{CurrentVersion: cur}
 			}
 		}
 		return ErrPermissionDenied
