@@ -48,7 +48,8 @@ task dev:worker       # go run ./cmd/worker
 - 均挂 `postgres_data`/`redis_data`/`minio_data` 卷；
 - 生产可将 `storage.provider: "s3"` 指向任意 S3 兼容服务；
 - 环境变量均支持 `${POSTGRES_USER:-torchwood}` 等覆盖（见 `compose` 中 `environment` 与 `ports` 模板）；
-- PostgreSQL 为 pgvector 预装基座（vector 非 trusted extension，启用路径与验证见 §6.6）。
+- PostgreSQL 为 pgvector 预装基座（vector 非 trusted extension，启用路径与验证见 §6.6）；
+- **字符串排序语义（locale=C，现状注记）**：compose 与 CI 显式 `POSTGRES_INITDB_ARGS="--locale=C"`（61ac141；Debian/glibc 基座默认 `en_US.utf8` 与原 musl 基座行为不一致，锁 C 恢复跨镜像/跨平台确定性）——**string 列的 `ORDER BY`/范围比较 = UTF-8 码点字节序**，非语言学序（中文不按拼音、`'Z'<'a'` 大小写混排）；等值与 equal/filter 语义不受影响。决策背景与选项见 `docs/developer/15-exit-poc.md` A9（推荐维持 C，待拍板）。initdb 参数仅首次建库生效，已有卷不受影响；改 locale 须整库 dump→重建→restore 并 REINDEX 全部 text 索引。
 
 ---
 

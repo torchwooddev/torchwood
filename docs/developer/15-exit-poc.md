@@ -77,6 +77,13 @@
 - **要做什么**：确认产品是否存在语言学排序需求（用户可见的 string 列 ORDER BY 语义，如中文按拼音）；如需要——定 ICU/libc locale 选型与集群初始化参数并评估存量重建影响；如不需要——记录"维持 locale=C"决策。
 - **完成判据**：决策记录落在本文（含需求证据或"无需求"结论）；若改 locale：docker/local 与部署文档同步 + 中英文排序语义对比测试；若维持：一条显式决策句 + 06-databases 或 13-operations 注明 string 排序为字节序。
 - **建议归属**：部署决策（docker/local + 运维）。
+- **决策 memo（2026-09-05 成文，拍板材料）**：
+  - **背景**：vector 专项把镜像基座从 `postgres:18-alpine`（musl）换为 `pgvector/pgvector:0.8.6-pg18`（Debian/glibc）时 collation 语义翻转——Debian initdb 默认 `en_US.utf8`（真 glibc 语言学序），musl 的同名 locale 是字节序伪装（实证：`'s-plain' > 's4'` 在 glibc en_US.utf8 为真、C/musl 为假，sessions 驱逐测试平局保留随之翻转）。61ac141 在 docker/local 与 CI 显式 `POSTGRES_INITDB_ARGS="--locale=C"` 锁字节序，恢复跨镜像/跨平台确定性；已有卷不受影响（initdb 仅首次建库生效）。
+  - **影响面**：仅用户可见 string 列的 `ORDER BY`/范围比较——C locale 下按 UTF-8 码点字节序（中文非拼音序、`'Z'<'a'` 大小写混排、标点位置与词典不同）；等值与 equal/filter 完全不受影响（字节序自洽且 btree 索引有序）；BaaS 负载的排序键多为时间/数值/`_id`（查询编译的 `orders[]` + `_id` tiebreaker 主路径，见 06-databases §6），字符串词典序集中在"按名称列清单"等长尾场景。
+  - **选项**：① **维持 `locale=C`**——确定性跨镜像/跨平台/跨 glibc·ICU 版本，免疫 collation 版本漂移引发的 btree 索引逻辑损坏（collation 变更后 PG 要求 REINDEX；自托管集群无法约束用户基座的 libc/ICU 版本）；多语言中立（不预设任何一种语言的词典序）；代价：中文等自然语言排序不合词典直觉。② **ICU**（`initdb --locale-provider=icu` 或列级 `COLLATE`）——语言学正确（zh 默认拼音序）；代价：引入 ICU 版本钉扎与基座依赖、跨平台不再逐字节一致、**存量集群改 locale 必须重建**（见下）、且集群级单一 locale 天然无法服务多语言租户——语言学排序本质是 per-用户/per-列需求，正确产品形态是未来把 `collate` 做成属性/列级可选项，而非改集群默认。
+  - **推荐**：**①维持 `locale=C`**，并在产品/运维文档注明"string 排序 = UTF-8 码点字节序"（13-operations §2 已完成现状注记；本条目拍板后在该决策句下闭环）；真实语言学需求出现需求信号时，按"列级 `collate` 属性选项"立 B 区条目，不动集群 locale。
+  - **若拍板②（改 locale）的存量重建影响**：initdb 参数仅建库时生效——存量集群切换必须 dump → 重 initdb → restore，或逐列 `ALTER TABLE … COLLATE` + 全部 text btree 索引 REINDEX（否则索引静默损坏）；docker/local、CI、部署文档、13-operations 需四处同步；中英文排序语义对比测试补齐；glibc `en_US.utf8` 时代建立的本地卷本就处于"需重建对齐"状态（61ac141 已知）。
+  - **待维护者拍板句**：torchwood 产品期是否存在语言学排序需求？推荐决议——**维持 `locale=C`（string 列排序 = UTF-8 码点字节序），语言学排序需求由未来列级 `collate` 选项承载**。决议回写本条目。
 
 ### A10 SDK 发版策略
 
