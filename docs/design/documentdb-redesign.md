@@ -65,7 +65,7 @@
 | 6 | 列表 = 单条同一语义 | 同一 policy 服务一切查询路径 | ✓（单源化的机制保证） |
 | 7 | Upsert 冲突行按 update 检查 | ON CONFLICT 同时受 INSERT WITH CHECK 与 UPDATE USING 约束，失败**报错**不静默跳过 | ≈ 略收紧（拟插入行也须过 create 检查，语义从"分叉"变"交集"） |
 | 8 | 系统/平台管理员旁路 | 独立 `tw_system BYPASSRLS` 连接角色（绝不编码进 GUC 或 policy 白名单） | ✓ |
-| 9 | 元数据列保护（防伪造 `_acl`/`_version`） | 列级 GRANT（只授数据列；表级与列级权限是并集，必须从一开始就只按列授予） | ✓ |
+| 9 | 元数据列保护（防伪造 `_acl`/`_version`） | 列级 GRANT（只授数据列；表级与列级权限是并集，必须从一开始就只按列授予）；A6 勘误（2026-09-05）：仅 `_tenant` 锁列，`_acl` 经 `tw_set_document_acl` 唯一通道，`_version` 不锁列（CAS 守卫已足，见 §6 ③-b A6 表述修正） | ✓ |
 | 10 | ~~"可 update 不可 read"（现状 D3 决策）~~ | PG 规定 UPDATE/DELETE 的行必须**同时**通过 SELECT policy（AND 叠加） | **已消解**（2026-09-03 维护者决策：接受"可 update/delete 就能 read"），见下 |
 | 11 | Get 不可见 → 404（防枚举） | RLS 静默过滤天然产出"不可见=不存在"，与现状一致 | ✓ |
 | 12 | 授予治理（不可授未持有角色/any 写） | 不属 RLS 职责（RLS 管 ACL 上的数据访问，不管 ACL 变更权；`_acl` 列已被列级 GRANT 锁死） | 留应用层 |
@@ -158,7 +158,7 @@ CREATE TABLE tw_shop_app.c_ab12cd34 (
 CREATE INDEX … ON tw_shop_app.c_ab12cd34 USING gin (_acl);
 ALTER TABLE tw_shop_app.c_ab12cd34 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tw_shop_app.c_ab12cd34 FORCE ROW LEVEL SECURITY;
--- policy 四条（模板见 4.3）；列级 GRANT 只授数据列（_acl/_version/_tenant 锁死）
+-- policy 四条（模板见 4.3）；列级 GRANT 只授数据列（_tenant 锁死；_acl 经 tw_set_document_acl 唯一通道；_version 不锁列——CAS 已足，A6 勘误）
 ```
 
 - **标识符治理（2026-09-04 落地形态）**：逻辑 ID 与物理名解耦——**collectionID 字符集维持 `^[a-zA-Z_][a-zA-Z0-9_]*$` ≤40 不放宽**（原草图的 `[a-z0-9-]` ≤36 挂账待需求信号：snake_case 与属性键习惯一致，且避免 `_perms`/realtime 频道约定动荡）、属性 key ≤63、索引 ID ≤40；物理名 `c_<base32(8)>` 服务端分配（碰撞重试），截断/碰撞类缺陷机制性不可达；`_perms._collection` 与 realtime 频道保持逻辑 ID；**物理名不出现在任何 API 响应**（内部实现细节）。
@@ -253,7 +253,7 @@ CREATE POLICY p_delete ON ... FOR DELETE USING (tw_can delete);
 | ② catalog 全局化 + 标识符治理 | 全局 catalog 上线（含 default/数组契约）；collectionID/属性 key/索引 ID 长度上限；新集合物理名服务端分配 | 中 |
 
 **阶段②完成状态（2026-09-04 会话 #5 复审并经 #5-R 返工后收口）**：**整体落地**——public 全局 catalog 两表（JSONB 合一，GetCollection 3 查询→1；default 类型化往返闭环，包 0-4 的旧记录项就此消解）；物理名解耦（`c_<base32(8)>` 分配、DDL/行查询全物理名、`_perms`/频道保持逻辑 ID、物理名零 API 泄漏；索引名组合长度对物理名自然满足）；ddl_seq CAS 五写路径 + `CATALOG.DDL_CONFLICT`（**Aborted + retryable**，R12a 裁决落地：CAS 冲突非参数错误，对齐 `IDEMPOTENCY.IN_PROGRESS` 先例）；projectschema 四表退役（000001 no-op + 000011 DROP）；静态表面显式化（storage + **groups**（R12b）queries 拒绝、users 面独立 DSL 契约注释）。复审：9 判断点 8 接受 + 1 纠正（R12 两小项已落地：`cacbe87`/`60dfe41`）。挂账：物理名进程内缓存评估（业务库热路径 +1 主键点查）；collectionID 字符集放宽待需求。
-| ③ 权限内嵌 + RLS 判定 | **③-a（会话 #6 已落地）**：`_acl` 内嵌直切（无双读）、`tw_can/tw_coll_allows/tw_visible/tw_roles` 单源函数（000027）、RLS policy 四条 + FORCE + 列级 GRANT + DB 角色分层（000026）、GUC/每请求一事务（A1）、错误映射定稿（§3.2 勘误块）；**③-b（后续）**：array 列与算子、Functions 事务上下文（内核 Phase 2）、roles_sig HMAC、`_acl/_version` 完整列级锁死与 SECURITY DEFINER ACL 函数 | 中 |
+| ③ 权限内嵌 + RLS 判定 | **③-a（会话 #6 已落地）**：`_acl` 内嵌直切（无双读）、`tw_can/tw_coll_allows/tw_visible/tw_roles` 单源函数（000027）、RLS policy 四条 + FORCE + 列级 GRANT + DB 角色分层（000026）、GUC/每请求一事务（A1）、错误映射定稿（§3.2 勘误块）；**③-b（后续）**：array 列与算子、Functions 事务上下文（内核 Phase 2）、roles_sig HMAC、`_acl` 变更通道唯一化与 SECURITY DEFINER ACL 函数（原"`_acl/_version` 完整列级锁死"经 A6 表述修正收敛：`_acl` 经函数唯一通道、`_version` 不锁列——CAS 已足，见下总览） | 中 |
 
 **阶段③-a 完成状态（2026-09-04 会话 #6 复审，d2f2713..c5d7551）**：**权限内核换轴整体落地**——`_perms` 退役、`_acl TEXT[]` 内嵌 + GIN（权限随 `to_jsonb(d.*)` 免费回填，B6 批量 IN 查询删除）；RLS 为判定执行点（应用层 `listPermissionFilter`/`checkDocumentPermission` 双实现退役；三处 PG 18 实证勘误见 §3.2 落地勘误块：`_acl` 第二语句/自锁保留、upsert 拆 ON CONFLICT 分支裁决、delete 单语句 CAS）；连接模型 = **单一变色龙身份 + `SET LOCAL ROLE` 三选一 + `set_config('app.roles')` 合并注入**（A1 原型结论：BYPASSRLS 经 SET ROLE 按 current_user 生效，无需独立 system DSN；loopback 每请求一事务合并注入 1.37ms vs 未合并 3.33ms vs autocommit 290µs，合并已采纳）；列级 GRANT 务实版（仅 `_tenant` 锁死；**`_acl` 经 R13a 从 tw_app 的 UPDATE 列授权移除，变更通道收敛为单一 choke point（tw_system 第二语句，列权限 + 代码路径双侧强制）**；INSERT 保留 `_acl`——create 单语句必需且无新行复检面）；A1 范围 = 文档面（静态 bun 表面维持 authenticator 本身份，无 RLS 无注入）；门禁（EXPLAIN InitPlan 形态断言 + 10 万行 RLS 开/关相对基准 4.9x < 30x 阈值）；golden 矩阵函数级+行为级双层。**R13a 已落地（`e85b897`）——阶段③-a 正式收口。**挂账：③-b 全部内容；测试 DSN superuser 豁免面（生产配非 superuser 应用账号，已入 06-databases 不变量 #14 + runbook）；**转出 POC 检查项：启动/迁移路径加一次全量列授权 reconcile 扫描**（存量表旧授权形态现依赖 DDL touch 矫正，测试库每次重建无此面，真实存量环境需要一次性扫齐）。
 | ④ 事件 Stream 化 | outbox seq + NOTIFY 触发器唤醒 + Redis Stream 消费组位点 + last_seq 重放/`:changes` 补偿 + 水位带因断开 | 中 |
@@ -315,7 +315,7 @@ POC 阶段各阶段**直接切换、不留兼容回退**：阶段③的 `_perms 
 |---|---|---|
 | RLS per-command policy | **采用（判定执行点）** | 语义映射见 §3.2（唯一冲突已由"可写即可读"决策消解）；性能纪律：InitPlan 化 + STABLE + GIN + EXPLAIN 门禁（实测裸 policy 100 万行 1840ms → 0.21ms） |
 | `SET LOCAL` GUC 身份注入 | **采用** | PostgREST/Supabase 同款管道（每请求一事务 + `set_config(..., true)` fail-closed）；直连通道永不信任 `app.*` |
-| 列级 GRANT | **采用** | 锁死 `_acl`/`_version`/`_tenant`；必须从一开始只按列授予（表级+列级是并集，无法事后挖洞） |
+| 列级 GRANT | **采用（终态口径勘误，B9，2026-09-05）** | `_tenant` 列锁死；`_acl` 经 `tw_set_document_acl` 唯一通道（R13a/R16，INSERT/UPDATE 列授权双向排除）；`_version` **不锁列**——`UPDATE … WHERE _version = ?` 的 CAS 守卫已保证并发安全，写错版本只令语句自身失败（自伤不伤人），列级锁死边际收益为零（裁决见 §6 ③-b A6 表述修正）。仍必须从一开始只按列授予（表级+列级是并集，无法事后挖洞） |
 | pgvector | **采用（尽快）** | typed 列模型的独占加分项：向量检索与文档同事务、同 RLS/GRANT 管辖，直接强化 AI/Agent-Native |
 | PostgREST / Hasura（整体） | **不采用** | 双真相源 + 把 schema 管理权让渡给反射层；抄走其鉴权管道与"单请求编译为单 SQL + prepared statement" |
 | schema-per-project（现状布局） | **维持 + 量化预警线** | 社区阈值：几百 schema 舒适、1–2 千起劣化（pg_dump 24h+、relcache、autovacuum XID 风险）；超限走多集群分片而非改共享表 |
