@@ -13,5 +13,8 @@ func NewAdminCmd(g *globalFlags) *cobra.Command {
 	// tw_system 旁路身份与 catalog/outbox 直读，POC 运维工具属性允许直连；
 	// 不接 globalFlags（无 server 地址依赖），DSN 走 --dsn/环境变量。
 	cmd.AddCommand(newAdminExportCmd(), newAdminImportCmd())
+	// B3 schema 漂移对账（缺列/INVALID 索引/幽灵表修复，redesign §4.4）：
+	// 与启动钩子后台 reconcile 同源逻辑，支持 --dry-run。
+	cmd.AddCommand(newAdminSchemaCmd())
 	return cmd
 }

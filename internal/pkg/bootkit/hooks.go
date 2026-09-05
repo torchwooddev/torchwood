@@ -24,9 +24,10 @@ func NewComponentBuilders() []lynx.ServiceFactory {
 	return nil
 }
 
-// GrantsReconcileHook / ScaleMetricsHook 是组合根注入的扩展启动钩子类型
-// （门禁 A1 / B12）：wire 无法区分两个同型 func(context.Context) error 参数，
-// 故以命名类型分流——语义同底层签名，nil 表示跳过。
+// GrantsReconcileHook / ScaleMetricsHook / SchemaReconcileHook 是组合根注入
+// 的扩展启动钩子类型（门禁 A1 / B12 / B3）：wire 无法区分多个同型
+// func(context.Context) error 参数，故以命名类型分流——语义同底层签名，
+// nil 表示跳过。
 type (
 	// GrantsReconcileHook 是启动期列授权全量 reconcile 闭包（cmd/server 注入，
 	// cmd/worker 传 nil）。
@@ -34,15 +35,20 @@ type (
 	// ScaleMetricsHook 是启动期规模预警线表计数采集闭包（cmd/server 注入，
 	// cmd/worker 传 nil）。
 	ScaleMetricsHook func(context.Context) error
+	// SchemaReconcileHook 是启动期 schema 漂移对账闭包（门禁 B3：缺列/
+	// INVALID·failed 索引/幽灵表三类漂移自动修复 + 告警；cmd/server 注入，
+	// cmd/worker 传 nil——边界论证同 GrantsReconcileHook）。
+	SchemaReconcileHook func(context.Context) error
 )
 
 // NewOnStarts 注册启动钩子集：项目 schema 确保钩子（对全部项目幂等 EnsureAll）、
 // roles 签名密钥同步钩子（把进程内派生的 roles 签名密钥 UPSERT 进
 // tw_secrets，阶段③-b 包 C：tw_roles() 验签依赖）与调用方注入的可选扩展钩子。
-// grantsReconcile 与 scaleMetrics 由组合根注入（cmd/server 分别传 documentdb
-// 列授权全量 reconcile 闭包（门禁 A1）与规模预警线表计数采集闭包（门禁 B12）；
-// cmd/worker 传 nil——worker 不碰文档层，import guard 守此边界）。
-func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Logger, grantsReconcile GrantsReconcileHook, scaleMetrics ScaleMetricsHook) boot.OnStartHooks {
+// grantsReconcile / scaleMetrics / schemaReconcile 由组合根注入（cmd/server
+// 分别传 documentdb 列授权全量 reconcile（门禁 A1）、规模预警线表计数采集
+// （门禁 B12）与 schema 漂移对账（门禁 B3）闭包；cmd/worker 传 nil——worker
+// 不碰文档层，import guard 守此边界）。
+func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Logger, grantsReconcile GrantsReconcileHook, scaleMetrics ScaleMetricsHook, schemaReconcile SchemaReconcileHook) boot.OnStartHooks {
 	hooks := boot.OnStartHooks{
 		ProjectSchemaEnsureHook(repo, db, logger),
 		RolesSigKeySyncHook(db, logger),
@@ -52,6 +58,9 @@ func NewOnStarts(repo projects.Repository, db *clients.Database, logger *slog.Lo
 	}
 	if scaleMetrics != nil {
 		hooks = append(hooks, lynx.HookFunc(scaleMetrics))
+	}
+	if schemaReconcile != nil {
+		hooks = append(hooks, lynx.HookFunc(schemaReconcile))
 	}
 	return hooks
 }

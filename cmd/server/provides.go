@@ -49,6 +49,7 @@ var ProviderSet = wire.NewSet(
 	bootkit.NewOnStops,
 	NewGrantsReconcileHook,
 	NewScaleMetricsHook,
+	NewSchemaReconcileHook,
 	NewAppConfig,
 	NewComponents,
 	NewBuildInfo,
@@ -165,6 +166,34 @@ func NewGrantsReconcileHook(db *clients.Database, logger *slog.Logger) bootkit.G
 // DDL 缓慢变化，小时级刷新足够追上预警线（>500/>1500，见 13-operations.md
 // §5.1）；单次采集是 pg_class × pg_namespace 的单语句聚合，开销可忽略。
 const scaleMetricsRefreshInterval = time.Hour
+
+// NewSchemaReconcileHook 产出启动期 schema 漂移对账闭包（门禁 B3，redesign
+// §4.4）：遍历全局 catalog 全部业务集合，扫三类漂移（缺列 / INVALID·failed
+// 索引含 building 超时残留的中断恢复 / 幽灵表）自动修复 + 告警，默认索引
+// 缺失经 CONCURRENTLY 通道补齐。挂在 server 侧——worker 不碰文档层（import
+// guard TestWorkerDepsGraph 守此边界），经 NewOnStarts 注入。失败语义同
+// NewGrantsReconcileHook：单集合失败不阻断启动（documentdb 内部日志 + 失败
+// 计数指标），OnStart 先于监听。
+func NewSchemaReconcileHook(db *clients.Database, logger *slog.Logger) bootkit.SchemaReconcileHook {
+	return func(ctx context.Context) error {
+		if db == nil {
+			return nil
+		}
+		report, err := documentdb.ReconcileSchemaDrift(ctx, db, documentdb.SchemaReconcileOptions{})
+		if err != nil {
+			if logger != nil {
+				logger.Error("schema drift reconcile: catalog enumeration failed", "error", err)
+			}
+			return nil
+		}
+		if logger != nil {
+			logger.Info("schema drift reconcile done",
+				"scanned", report.Scanned, "fixed", report.Fixed,
+				"failed", report.Failed, "duration", report.Duration)
+		}
+		return nil
+	}
+}
 
 // NewScaleMetricsHook 产出启动期规模预警线表计数采集闭包（门禁 B12，
 // docs/developer/15-exit-poc.md；redesign §3.1 缓解 3 / §4.7）：对当前库执行

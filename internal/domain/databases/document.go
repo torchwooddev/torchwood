@@ -19,6 +19,25 @@ type Attribute struct {
 	//（换模型即换列名，不走 schema 演进状态机）。
 	Dims    int
 	Options map[string]any
+	// Status 是 schema 演进两段删列/迁移的生命周期状态（转出 POC B4，§4.6）：
+	// active（可用）| deprecated（读屏蔽写拒收，可回滚）| retired（物理已删，
+	// 不可逆）。空串 = active——存量 catalog 行零迁移。
+	Status string
+}
+
+// 属性生命周期状态值（catalog attrs JSONB 的 status 字段，codec omitempty）。
+const (
+	AttrStatusActive     = "active"
+	AttrStatusDeprecated = "deprecated"
+	AttrStatusRetired    = "retired"
+)
+
+// StatusOrDefault 归一属性状态：空串（存量行缺省形态）视为 active。
+func (a Attribute) StatusOrDefault() string {
+	if a.Status == "" {
+		return AttrStatusActive
+	}
+	return a.Status
 }
 
 type Index struct {

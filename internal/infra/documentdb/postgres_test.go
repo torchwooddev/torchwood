@@ -1577,14 +1577,21 @@ func TestCreateCollection_DefaultTimeIndex(t *testing.T) {
 	// 新建用户集合：pg_indexes 中存在默认时间索引。
 	require.True(t, defaultIndexExists("idxdocs"), "新建用户集合应默认建 (_tenant,_created_at,_id) 索引")
 
-	// 存量补建：DROP 模拟旧版本建的集合，CreateIndex touch 后经 reconcile 路径自动补回。
+	// 存量补建（B3 语义收窄）：CreateIndex 是在线通道（纯 catalog DML +
+	// 事务外 CIC），不再搭车默认索引自愈——锁型 DDL（非并发 CREATE INDEX
+	// 取 SHARE 锁）会阻塞并发读写，与在线通道目的相悖；自愈移交 schema
+	// 漂移对账（CONCURRENTLY 通道补齐）。
 	dropDefaultIndex("idxdocs")
 	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", "idxdocs", databases.Index{
 		ID: "n_key", Type: "key", Attributes: []string{"n"},
 	}))
-	require.True(t, defaultIndexExists("idxdocs"), "存量集合在 DDL touch（CreateIndex）时幂等补建")
-
-	// 存量补建：CreateAttribute touch 同样补回；重复 touch 幂等不报错。
+	require.False(t, defaultIndexExists("idxdocs"),
+		"在线通道 CreateIndex 不再触发默认索引自愈（B3 语义收窄）")
+	_, err := ReconcileSchemaDrift(ctx, db, SchemaReconcileOptions{})
+	require.NoError(t, err)
+	require.True(t, defaultIndexExists("idxdocs"), "schema 漂移对账经 CONCURRENTLY 补建默认索引")
+	// CreateAttribute touch 保持既有自愈（AccessExclusive 通道，无并发读者
+	// 承诺，补建无害）。
 	dropDefaultIndex("idxdocs")
 	require.NoError(t, docDB.CreateAttribute(ctx, projectID, "app", "idxdocs", databases.Attribute{ID: "m", Key: "m", Type: "integer"}))
 	require.True(t, defaultIndexExists("idxdocs"), "存量集合在 DDL touch（CreateAttribute）时幂等补建")

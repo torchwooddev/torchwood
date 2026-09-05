@@ -27,6 +27,9 @@ type attributeJSON struct {
 	Default  any            `json:"default,omitempty"`
 	Dims     int            `json:"dims,omitempty"`
 	Options  map[string]any `json:"options,omitempty"`
+	// Status 是 schema 演进生命周期状态（B4）：active 缺省省略——存量行不带
+	// 该字段，解码归一 active，零迁移。
+	Status string `json:"status,omitempty"`
 }
 
 type indexJSON struct {
@@ -63,6 +66,7 @@ func encodeAttributes(attrs []databases.Attribute) (string, error) {
 			Default:  a.Default,
 			Dims:     a.Dims,
 			Options:  a.Options,
+			Status:   a.Status,
 		})
 	}
 	b, err := json.Marshal(out)
@@ -92,6 +96,7 @@ func decodeAttributes(raw string) ([]databases.Attribute, error) {
 			Default:  a.Default,
 			Dims:     a.Dims,
 			Options:  a.Options,
+			Status:   a.Status,
 		})
 	}
 	return out, nil

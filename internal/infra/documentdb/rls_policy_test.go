@@ -477,8 +477,9 @@ func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
 		return err
 	}), "INSERT 携带 _acl 必须放行（R16 ③ 恢复）")
 
-	// reconcile 矫正：模拟存量表旧授权形态（UPDATE 含 _acl），DDL touch
-	// 后恢复锁死。
+	// reconcile 矫正：模拟存量表旧授权形态（UPDATE 含 _acl），列授权全量
+	// 扫描（门禁 A1 入口）后恢复锁死。（B3 语义收窄：CreateIndex 改在线
+	// 通道后不再搭车 ensureCollectionRLS 自愈——授权矫正统一归 A1 扫描。）
 	_, err = db.ExecContext(ctx, fmt.Sprintf(`GRANT UPDATE (_acl) ON %s TO tw_app`, tbl))
 	require.NoError(t, err)
 	require.NoError(t, updateACLAsApp(), "模拟旧授权形态下直改放行（对照组，确认矫正必要性）")
@@ -486,12 +487,11 @@ func TestRLS_Behavior_ACLColumnLockedToSystemPath(t *testing.T) {
 	_, err = db.ExecContext(ctx, fmt.Sprintf(
 		`UPDATE %s SET _acl = '{read:user:alice,update:user:alice}' WHERE _id = 'a1'`, tbl))
 	require.NoError(t, err)
-	// DDL touch（任意汇聚路径触发 ensureCollectionRLS 的 REVOKE 重授）。
-	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", "docs", databases.Index{
-		ID: "r13a_touch", Type: "key", Attributes: []string{"title"},
-	}))
+	// 列授权全量 reconcile（A1：refreshColumnGrants 幂等重建）。
+	_, err = ReconcileCollectionColumnGrants(ctx, db)
+	require.NoError(t, err)
 	err = updateACLAsApp()
-	require.Error(t, err, "DDL touch 后旧授权形态必须被矫正（REVOKE ALL → 按清单重授）")
+	require.Error(t, err, "A1 扫描后旧授权形态必须被矫正（REVOKE ALL → 按清单重授）")
 	require.Contains(t, err.Error(), "42501")
 
 	// 自锁路径回归：tw_app 经 updateDocument 替换 _acl（tw_set_document_acl

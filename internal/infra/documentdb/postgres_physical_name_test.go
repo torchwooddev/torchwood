@@ -237,13 +237,15 @@ func TestDDLSeq_IncrementAcrossDDLPaths(t *testing.T) {
 	require.Equal(t, int64(2), seq())
 	require.NoError(t, docDB.CreateAttribute(ctx, projectID, "app", "docs", databases.Attribute{ID: "m", Key: "m", Type: "integer"}))
 	require.Equal(t, int64(3), seq())
+	// B3 在线通道：CreateIndex 拆两阶段（事务 A building → 事务 B active），
+	// 各 CAS 递增一次——共 +2。
 	require.NoError(t, docDB.CreateIndex(ctx, projectID, "app", "docs", databases.Index{ID: "m_key", Type: "key", Attributes: []string{"m"}}))
-	require.Equal(t, int64(4), seq())
+	require.Equal(t, int64(5), seq(), "CreateIndex 两阶段各 +1（building + active）")
 	// 先删索引再删属性（DeleteAttribute 会级联清理引用该属性的索引）。
 	require.NoError(t, docDB.DeleteIndex(ctx, projectID, "app", "docs", "m_key"))
-	require.Equal(t, int64(5), seq())
-	require.NoError(t, docDB.DeleteAttribute(ctx, projectID, "app", "docs", "m"))
 	require.Equal(t, int64(6), seq())
+	require.NoError(t, docDB.DeleteAttribute(ctx, projectID, "app", "docs", "m"))
+	require.Equal(t, int64(7), seq())
 }
 
 // TestDDLSeq_ConcurrentConflict：悬挂事务持旧 ddl_seq，另一 DDL 先行提交后

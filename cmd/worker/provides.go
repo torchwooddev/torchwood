@@ -53,6 +53,7 @@ var ProviderSet = wire.NewSet(
 	bootkit.NewOnStops,
 	NewGrantsReconcileHook,
 	NewScaleMetricsHook,
+	NewSchemaReconcileHook,
 	NewAppConfig,
 	NewComponents,
 	NewWorker,
@@ -105,6 +106,11 @@ func NewGrantsReconcileHook() bootkit.GrantsReconcileHook { return nil }
 // NewScaleMetricsHook 返回 nil：规模预警线表计数采集（门禁 B12）同属
 // documentdb 域职责，仅 server 侧执行——边界论证同 NewGrantsReconcileHook。
 func NewScaleMetricsHook() bootkit.ScaleMetricsHook { return nil }
+
+// NewSchemaReconcileHook 返回 nil：schema 漂移对账（门禁 B3，缺列/INVALID
+// 索引/幽灵表修复）同属 documentdb 域职责，仅 server 侧执行——边界论证同
+// NewGrantsReconcileHook。
+func NewSchemaReconcileHook() bootkit.SchemaReconcileHook { return nil }
 
 func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	var c config.AppConfig
