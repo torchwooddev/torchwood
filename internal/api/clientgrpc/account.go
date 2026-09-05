@@ -523,10 +523,14 @@ func (s *AccountService) ListLogs(ctx context.Context, req *clientv1.ListLogsReq
 	info := crud.BuildPaginationInfo(params, 0, hasMore)
 	var nextToken, prevToken string
 	if info.HasNext {
-		nextToken = crud.EncodePageToken(info.NextOffset)
+		if nextToken, err = crud.EncodePageToken(info.NextOffset); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 	if info.HasPrevious {
-		prevToken = crud.EncodePageToken(info.PreviousOffset)
+		if prevToken, err = crud.EncodePageToken(info.PreviousOffset); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 	out := make([]*clientv1.LogEntry, 0, len(page))
 	for i := range page {

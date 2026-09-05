@@ -55,7 +55,11 @@ func (r *outboxRepo) ListDeadLetters(ctx context.Context, projectID string, page
 	info := crud.BuildPaginationInfo(params, total, hasMore)
 	var nextToken string
 	if info.HasNext {
-		nextToken = crud.EncodePageToken(info.NextOffset)
+		token, err := crud.EncodePageToken(info.NextOffset)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		nextToken = token
 	}
 	return out, int64(total), nextToken, nil
 }

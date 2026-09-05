@@ -263,7 +263,11 @@ func (p *postgresDocumentDB) ListCollections(ctx context.Context, projectID, dat
 	}
 	meta := databases.ListMeta{TotalCount: total}
 	if offset+len(ms) < int(total) {
-		meta.NextPageToken = crud.EncodePageToken(offset + len(ms))
+		token, err := crud.EncodePageToken(offset + len(ms))
+		if err != nil {
+			return nil, databases.ListMeta{}, status.Error(codes.Internal, err.Error())
+		}
+		meta.NextPageToken = token
 	}
 	return out, meta, nil
 }

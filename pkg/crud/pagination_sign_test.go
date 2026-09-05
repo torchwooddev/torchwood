@@ -3,6 +3,7 @@ package crud
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -37,7 +38,8 @@ func TestInitPageTokenSigningRejectsEmptyMaster(t *testing.T) {
 func TestSignedTokenRoundTrip(t *testing.T) {
 	resetSigning(t, "master-secret-for-tests-0123456789")
 
-	token := EncodePageToken(250)
+	token, err := EncodePageToken(250)
+	require.NoError(t, err)
 	offset, err := DecodePageToken(token)
 	require.NoError(t, err)
 	require.Equal(t, 250, offset)
@@ -50,7 +52,8 @@ func TestSignedTokenRoundTrip(t *testing.T) {
 func TestTamperedOffsetRejected(t *testing.T) {
 	resetSigning(t, "master-secret-for-tests-0123456789")
 
-	token := EncodePageToken(20)
+	token, err := EncodePageToken(20)
+	require.NoError(t, err)
 	data, err := decodeTokenData(token)
 	require.NoError(t, err)
 	data.Offset = 999999 // 攻击者篡改深翻页
@@ -68,17 +71,19 @@ func TestTamperedOffsetRejected(t *testing.T) {
 func TestCrossEnvironmentTokenRejectedWhenSigningEnabled(t *testing.T) {
 	// 未启用签名的进程签发的 token，带到已启用签名的进程必须被拒。
 	resetSigning(t, "")
-	unsigned := EncodePageToken(30)
+	unsigned, err := EncodePageToken(30)
+	require.NoError(t, err)
 	resetSigning(t, "another-master-secret-0123456789abcdef")
 
-	_, err := DecodePageToken(unsigned)
+	_, err = DecodePageToken(unsigned)
 	require.ErrorContains(t, err, "signature missing")
 }
 
 func TestUnsignedTokenAcceptedWithoutSigning(t *testing.T) {
 	// 灰度兼容：未启用签名的进程仍接受历史未签名 token。
 	resetSigning(t, "")
-	token := EncodePageToken(40)
+	token, err := EncodePageToken(40)
+	require.NoError(t, err)
 	offset, err := DecodePageToken(token)
 	require.NoError(t, err)
 	require.Equal(t, 40, offset)
@@ -87,11 +92,12 @@ func TestUnsignedTokenAcceptedWithoutSigning(t *testing.T) {
 func TestParseListParamsRejectsOffsetBeyondMax(t *testing.T) {
 	resetSigning(t, "master-secret-for-tests-0123456789")
 
-	token := EncodePageToken(MaxQueryOffset + 1)
-	_, err := ParseListParams(10, token, "", "")
+	token, err := EncodePageToken(MaxQueryOffset + 1)
+	require.NoError(t, err)
+	_, err = ParseListParams(10, token, "", "")
 	require.ErrorContains(t, err, "exceeds the maximum")
 
-	ok, err := ParseListParams(10, EncodePageToken(MaxQueryOffset), "", "")
+	ok, err := ParseListParams(10, mustEncodePageToken(t, MaxQueryOffset), "", "")
 	require.NoError(t, err)
 	require.Equal(t, MaxQueryOffset, ok.Offset)
 }
@@ -133,7 +139,50 @@ func mintBoundToken(offset int, pageSize int32, filter, orderBy string) string {
 		FilterDigest: FilterDigest(filter),
 	}
 	seal(&data)
-	return encodeTokenData(data)
+	token, err := encodeTokenData(data)
+	if err != nil {
+		panic(err) // 测试铸造：marshal 路径实际不可失败
+	}
+	return token
+}
+
+// mustEncodePageToken 测试内断言式编码（EncodePageToken 的 marshal 路径
+// 实际不可失败）。
+func mustEncodePageToken(t *testing.T, offset int) string {
+	t.Helper()
+	token, err := EncodePageToken(offset)
+	require.NoError(t, err)
+	return token
+}
+
+// TestEncodePageToken_MarshalFailure：B8 判据——marshal 错误路径返回 error，
+// 不再产出不可解码的 "v1:offset" 兜底形态。经 pageTokenMarshal 注入必败
+// marshaler（PageTokenData 的 json.Marshal 实际不可失败，注入是唯一触达路径）。
+func TestEncodePageToken_MarshalFailure(t *testing.T) {
+	resetSigning(t, "")
+	orig := pageTokenMarshal
+	pageTokenMarshal = func(v any) ([]byte, error) {
+		return nil, errors.New("injected marshal failure")
+	}
+	t.Cleanup(func() { pageTokenMarshal = orig })
+
+	token, err := EncodePageToken(7)
+	require.ErrorContains(t, err, "injected marshal failure")
+	require.Empty(t, token, "marshal 失败不得产出坏 token")
+
+	// 签名进程同路径：SignPageToken 先于 encodeTokenData 走同一 marshaler。
+	resetSigning(t, "master-secret-for-tests-0123456789")
+	token, err = EncodePageToken(7)
+	require.ErrorContains(t, err, "injected marshal failure")
+	require.Empty(t, token)
+
+	// 恢复后 round-trip 正常（确认注入已清理、签名链路完好；t.Cleanup 兜底幂等）。
+	pageTokenMarshal = orig
+	token, err = EncodePageToken(7)
+	require.NoError(t, err)
+	offset, err := DecodePageToken(token)
+	require.NoError(t, err)
+	require.Equal(t, 7, offset)
 }
 
 func TestLegacyColonTokenRejected(t *testing.T) {

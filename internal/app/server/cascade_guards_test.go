@@ -102,7 +102,11 @@ func (f *fakeDocDB) ListDocuments(_ context.Context, _, _, collectionID string, 
 	}
 	next := ""
 	if end < len(matched) {
-		next = crud.EncodePageToken(end)
+		token, err := crud.EncodePageToken(end)
+		if err != nil {
+			return nil, err
+		}
+		next = token
 	}
 	return &databases.DocumentList{
 		Documents:     append([]databases.Document{}, matched[offset:end]...),

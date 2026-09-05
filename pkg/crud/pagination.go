@@ -16,9 +16,6 @@ const (
 	// PageTokenVersion is the current version of page token format
 	PageTokenVersion = "v1"
 
-	// PageTokenSeparator separates parts of the page token
-	PageTokenSeparator = ":"
-
 	// DefaultTokenTTL is the default time-to-live for page tokens
 	DefaultTokenTTL = 24 * time.Hour
 
@@ -41,6 +38,11 @@ const (
 // 时编码退化为未签名 token、带签名的 token 解码被拒——保证灰度发布期间旧
 // token 兼容，同时新签发 token 在任何配置正确的进程中都可验证。
 var pageTokenSecret atomic.Value // string
+
+// pageTokenMarshal 是 token 编码链路的序列化入口（var 仅为测试注入必败
+// marshaler——PageTokenData 的 json.Marshal 实际不可失败，B8 判据要求该
+// 错误路径可测）。
+var pageTokenMarshal = json.Marshal
 
 // InitPageTokenSigning 启用页 token 的 HMAC 签名与验签。master 为部署主密钥
 // （security.jwt.secret）；实际签名密钥经 HMAC-SHA256(master, purpose) 派生，
@@ -96,7 +98,10 @@ type PageTokenData struct {
 // EncodePageToken creates a page token from offset
 // This is a simplified version following AIP-158.
 // 已启用签名时（InitPageTokenSigning）token 附带 HMAC，客户端无法伪造偏移。
-func EncodePageToken(offset int) string {
+// marshal 失败返回 error（B8：历史上的 "v1:offset" 兜底产物自签名全进程启用
+// 后已不可解码，兜底即语义自不一致；PageTokenData 的 marshal 实际不可失败，
+// 错误路径仅供注入式单测与防御）。
+func EncodePageToken(offset int) (string, error) {
 	data := PageTokenData{
 		Version: PageTokenVersion,
 		Mode:    TokenModeLegacy,
@@ -118,7 +123,7 @@ func SignPageToken(data *PageTokenData, secret string) (string, error) {
 	}
 	canonical := *data
 	canonical.Sig = ""
-	raw, err := json.Marshal(canonical)
+	raw, err := pageTokenMarshal(canonical)
 	if err != nil {
 		return "", err
 	}
@@ -146,15 +151,14 @@ func VerifyPageTokenSignature(data *PageTokenData, secret string) error {
 }
 
 // encodeTokenData encodes token data to base64 string
-func encodeTokenData(data PageTokenData) string {
-	jsonBytes, err := json.Marshal(data)
+func encodeTokenData(data PageTokenData) (string, error) {
+	jsonBytes, err := pageTokenMarshal(data)
 	if err != nil {
-		// Fallback to simple format
-		return fmt.Sprintf("%s%s%d", PageTokenVersion, PageTokenSeparator, data.Offset)
+		return "", fmt.Errorf("marshal page token data: %w", err)
 	}
 
 	// Base64 encode the JSON
-	return base64.URLEncoding.EncodeToString(jsonBytes)
+	return base64.URLEncoding.EncodeToString(jsonBytes), nil
 }
 
 // DecodePageToken decodes a page token and returns the offset

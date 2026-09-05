@@ -677,7 +677,11 @@ func paginateBuckets(items []storage.Bucket, pageSize int32, pageToken string) (
 	}
 	next := ""
 	if end < len(items) {
-		next = crud.EncodePageToken(end)
+		token, err := crud.EncodePageToken(end)
+		if err != nil {
+			return nil, 0, "", status.Error(codes.Internal, err.Error())
+		}
+		next = token
 	}
 	return items[offset:end], total, next, nil
 }
@@ -705,7 +709,11 @@ func paginateFiles(items []storage.File, pageSize int32, pageToken string) ([]st
 	}
 	next := ""
 	if end < len(items) {
-		next = crud.EncodePageToken(end)
+		token, err := crud.EncodePageToken(end)
+		if err != nil {
+			return nil, 0, "", status.Error(codes.Internal, err.Error())
+		}
+		next = token
 	}
 	return items[offset:end], total, next, nil
 }

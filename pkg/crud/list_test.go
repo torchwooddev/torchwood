@@ -41,7 +41,7 @@ func TestParseListParams(t *testing.T) {
 		{
 			name:       "with page token",
 			pageSize:   50,
-			pageToken:  EncodePageToken(100),
+			pageToken:  mustEncodePageToken(t, 100),
 			wantSize:   50,
 			wantOffset: 100,
 			wantErr:    false,
@@ -89,7 +89,11 @@ func TestEncodeDecodePageToken(t *testing.T) {
 
 	for _, offset := range offsets {
 		t.Run("", func(t *testing.T) {
-			token := EncodePageToken(offset)
+			token, err := EncodePageToken(offset)
+			if err != nil {
+				t.Errorf("EncodePageToken() error = %v", err)
+				return
+			}
 			decoded, err := DecodePageToken(token)
 
 			if err != nil {
@@ -319,7 +323,7 @@ func TestParseListRequest(t *testing.T) {
 		{
 			name:      "valid request with page token",
 			pageSize:  50,
-			pageToken: EncodePageToken(100),
+			pageToken: mustEncodePageToken(t, 100),
 			wantErr:   false,
 		},
 		{

@@ -182,7 +182,11 @@ func (r *UserRepository) List(ctx context.Context, projectID string, f domainuse
 		out.Users[i] = mapUserToDomain(&ms[i])
 	}
 	if len(ms) > 0 && int64(offset+len(ms)) < out.TotalCount {
-		out.NextPageToken = crud.EncodePageToken(offset + len(ms))
+		token, err := crud.EncodePageToken(offset + len(ms))
+		if err != nil {
+			return nil, err
+		}
+		out.NextPageToken = token
 	}
 	return out, nil
 }

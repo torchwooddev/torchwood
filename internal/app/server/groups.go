@@ -578,7 +578,11 @@ func paginateDocuments(docs []databases.Document, pageSize int32, pageToken stri
 	page := docs[offset:end]
 	next := ""
 	if end < len(docs) {
-		next = crud.EncodePageToken(end)
+		token, err := crud.EncodePageToken(end)
+		if err != nil {
+			return nil, 0, "", status.Error(codes.Internal, err.Error())
+		}
+		next = token
 	}
 	return page, total, next, nil
 }

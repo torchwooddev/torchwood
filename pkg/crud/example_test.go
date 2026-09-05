@@ -34,7 +34,10 @@ func Example_pagination() {
 
 	// After getting results, generate next page token
 	resultCount := 50
-	nextToken := EncodePageToken(offset + resultCount)
+	nextToken, err := EncodePageToken(offset + resultCount)
+	if err != nil {
+		panic(err)
+	}
 	fmt.Printf("Next page token: %s\n", nextToken)
 
 	// Second page request using token

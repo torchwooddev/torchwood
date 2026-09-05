@@ -42,10 +42,14 @@ func (s *ProjectsService) ListProjects(ctx context.Context, req *sharedv1.ListRe
 	}
 	var nextToken, prevToken string
 	if info.HasNext {
-		nextToken = crud.EncodePageToken(info.NextOffset)
+		if nextToken, err = crud.EncodePageToken(info.NextOffset); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 	if info.HasPrevious {
-		prevToken = crud.EncodePageToken(info.PreviousOffset)
+		if prevToken, err = crud.EncodePageToken(info.PreviousOffset); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 	resp := &serverv1.ListProjectsResponse{
 		Projects: make([]*serverv1.Project, len(list)),
