@@ -1225,15 +1225,18 @@ func (x *Attribute) GetDims() int32 {
 }
 
 type CreateIndexRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
-	CollectionId  string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
-	Id            string                 `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
-	Type          string                 `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
-	Attributes    []string               `protobuf:"bytes,5,rep,name=attributes,proto3" json:"attributes,omitempty"`
-	Orders        []string               `protobuf:"bytes,6,rep,name=orders,proto3" json:"orders,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseId   string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
+	CollectionId string                 `protobuf:"bytes,2,opt,name=collection_id,json=collectionId,proto3" json:"collection_id,omitempty"`
+	Id           string                 `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
+	Type         string                 `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
+	Attributes   []string               `protobuf:"bytes,5,rep,name=attributes,proto3" json:"attributes,omitempty"`
+	Orders       []string               `protobuf:"bytes,6,rep,name=orders,proto3" json:"orders,omitempty"`
+	// 距离度量（会话 #10）：COSINE | L2 | INNER_PRODUCT，仅 type=hnsw 必填
+	// （缺省按 COSINE 归一）；其余索引类型不得设置。
+	DistanceMetric *string `protobuf:"bytes,7,opt,name=distance_metric,json=distanceMetric,proto3,oneof" json:"distance_metric,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CreateIndexRequest) Reset() {
@@ -1308,6 +1311,13 @@ func (x *CreateIndexRequest) GetOrders() []string {
 	return nil
 }
 
+func (x *CreateIndexRequest) GetDistanceMetric() string {
+	if x != nil && x.DistanceMetric != nil {
+		return *x.DistanceMetric
+	}
+	return ""
+}
+
 type DeleteIndexRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DatabaseId    string                 `protobuf:"bytes,1,opt,name=database_id,json=databaseId,proto3" json:"database_id,omitempty"`
@@ -1369,13 +1379,15 @@ func (x *DeleteIndexRequest) GetIndexId() string {
 }
 
 type Index struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
-	Attributes    []string               `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty"`
-	Orders        []string               `protobuf:"bytes,4,rep,name=orders,proto3" json:"orders,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type       string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Attributes []string               `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty"`
+	Orders     []string               `protobuf:"bytes,4,rep,name=orders,proto3" json:"orders,omitempty"`
+	// 距离度量：仅 hnsw 类型非空（COSINE | L2 | INNER_PRODUCT）。
+	DistanceMetric *string `protobuf:"bytes,5,opt,name=distance_metric,json=distanceMetric,proto3,oneof" json:"distance_metric,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Index) Reset() {
@@ -1434,6 +1446,13 @@ func (x *Index) GetOrders() []string {
 		return x.Orders
 	}
 	return nil
+}
+
+func (x *Index) GetDistanceMetric() string {
+	if x != nil && x.DistanceMetric != nil {
+		return *x.DistanceMetric
+	}
+	return ""
 }
 
 type CreateDocumentRequest struct {
@@ -3199,7 +3218,7 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\x05array\x18\x06 \x01(\bR\x05array\x12#\n" +
 	"\rdefault_value\x18\a \x01(\tR\fdefaultValue\x12\x17\n" +
 	"\x04dims\x18\b \x01(\x05H\x00R\x04dims\x88\x01\x01B\a\n" +
-	"\x05_dims\"\xb6\x01\n" +
+	"\x05_dims\"\xf8\x01\n" +
 	"\x12CreateIndexRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -3209,19 +3228,23 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\n" +
 	"attributes\x18\x05 \x03(\tR\n" +
 	"attributes\x12\x16\n" +
-	"\x06orders\x18\x06 \x03(\tR\x06orders\"u\n" +
+	"\x06orders\x18\x06 \x03(\tR\x06orders\x12,\n" +
+	"\x0fdistance_metric\x18\a \x01(\tH\x00R\x0edistanceMetric\x88\x01\x01B\x12\n" +
+	"\x10_distance_metric\"u\n" +
 	"\x12DeleteIndexRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
 	"\rcollection_id\x18\x02 \x01(\tR\fcollectionId\x12\x19\n" +
-	"\bindex_id\x18\x03 \x01(\tR\aindexId\"c\n" +
+	"\bindex_id\x18\x03 \x01(\tR\aindexId\"\xa5\x01\n" +
 	"\x05Index\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1e\n" +
 	"\n" +
 	"attributes\x18\x03 \x03(\tR\n" +
 	"attributes\x12\x16\n" +
-	"\x06orders\x18\x04 \x03(\tR\x06orders\"\x80\x02\n" +
+	"\x06orders\x18\x04 \x03(\tR\x06orders\x12,\n" +
+	"\x0fdistance_metric\x18\x05 \x01(\tH\x00R\x0edistanceMetric\x88\x01\x01B\x12\n" +
+	"\x10_distance_metric\"\x80\x02\n" +
 	"\x15CreateDocumentRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +
@@ -3626,6 +3649,8 @@ func file_server_v1_databases_proto_init() {
 	file_server_v1_databases_proto_msgTypes[7].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[11].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[13].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[14].OneofWrappers = []any{}
+	file_server_v1_databases_proto_msgTypes[16].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[17].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[18].OneofWrappers = []any{}
 	file_server_v1_databases_proto_msgTypes[19].OneofWrappers = []any{}

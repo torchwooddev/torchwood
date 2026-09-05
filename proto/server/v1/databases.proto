@@ -314,6 +314,9 @@ message CreateIndexRequest {
   string type = 4;
   repeated string attributes = 5;
   repeated string orders = 6;
+  // 距离度量（会话 #10）：COSINE | L2 | INNER_PRODUCT，仅 type=hnsw 必填
+  //（缺省按 COSINE 归一）；其余索引类型不得设置。
+  optional string distance_metric = 7;
 }
 
 message DeleteIndexRequest {
@@ -327,6 +330,8 @@ message Index {
   string type = 2;
   repeated string attributes = 3;
   repeated string orders = 4;
+  // 距离度量：仅 hnsw 类型非空（COSINE | L2 | INNER_PRODUCT）。
+  optional string distance_metric = 5;
 }
 
 message CreateDocumentRequest {

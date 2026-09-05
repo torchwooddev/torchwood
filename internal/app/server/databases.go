@@ -772,10 +772,10 @@ func (d *Databases) ValidateIndex(idx databases.Index) error {
 		return status.Error(codes.InvalidArgument, "type is required")
 	}
 	switch strings.ToLower(idx.Type) {
-	case "key", "unique", "fulltext":
+	case "key", "unique", "fulltext", "hnsw":
 	default:
 		return status.Error(codes.InvalidArgument,
-			fmt.Sprintf("invalid index type %q (allowed: key, unique, fulltext)", idx.Type))
+			fmt.Sprintf("invalid index type %q (allowed: key, unique, fulltext, hnsw)", idx.Type))
 	}
 	if len(idx.Attributes) == 0 {
 		return status.Error(codes.InvalidArgument, "attributes is required")
@@ -783,6 +783,31 @@ func (d *Databases) ValidateIndex(idx databases.Index) error {
 	for _, attr := range idx.Attributes {
 		if err := d.ValidateIdentifier(attr); err != nil {
 			return status.Error(codes.InvalidArgument, fmt.Sprintf("invalid index attribute %q", attr))
+		}
+	}
+	// hnsw 索引（会话 #10 预决策 2）：单列；metric ∈ COSINE|L2|INNER_PRODUCT
+	//（缺省 COSINE 归一——handler 落库前统一归一大写形态）；orders 无意义拒绝；
+	// 非 hnsw 设置 metric 拒绝。vector 列约束（目标列必须是声明的 vector 属性）
+	// 在 adapter 的 createCollectionIndex 二道防线（需 catalog attrs）。
+	metric := idx.DistanceMetric
+	if strings.ToLower(idx.Type) == "hnsw" {
+		if len(idx.Attributes) != 1 {
+			return status.Error(codes.InvalidArgument, "hnsw index requires exactly one attribute")
+		}
+		if len(idx.Orders) > 0 {
+			return status.Error(codes.InvalidArgument, "hnsw index does not support orders")
+		}
+		if metric == "" {
+			metric = "COSINE"
+		}
+	} else if metric != "" {
+		return status.Error(codes.InvalidArgument, "distance_metric is only valid for hnsw indexes")
+	}
+	if metric != "" {
+		switch strings.ToUpper(metric) {
+		case "COSINE", "L2", "INNER_PRODUCT":
+		default:
+			return status.Error(codes.InvalidArgument, "distance_metric must be COSINE, L2, or INNER_PRODUCT")
 		}
 	}
 	return nil

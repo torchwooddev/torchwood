@@ -2023,6 +2023,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "distance_metric": {
+          "type": "string",
+          "title": "距离度量（会话 #10）：COSINE | L2 | INNER_PRODUCT，仅 type=hnsw 必填\n（缺省按 COSINE 归一）；其余索引类型不得设置。"
         }
       }
     },
@@ -2687,6 +2691,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "distance_metric": {
+          "type": "string",
+          "title": "距离度量：仅 hnsw 类型非空（COSINE | L2 | INNER_PRODUCT）。"
         }
       }
     },

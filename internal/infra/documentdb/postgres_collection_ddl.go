@@ -798,18 +798,45 @@ func (p *postgresDocumentDB) versionColumnReady(ctx context.Context, schema, phy
 // unique 对数组列拒绝（PG 数组无唯一约束语义）；fulltext 对数组列拒绝
 //（search 编译 col::text 是整列文本投影，数组列语义误导）；数组列仅支持
 // 单列索引（GIN 多列混排非数组列需 btree_gin 扩展，不引入）。
+// hnsw（会话 #10 预决策 2）：目标列必须是声明的 vector 属性（非 vector 列/
+// 系统列拒绝）；opclass 按 metric 映射（cosine/l2/ip）；同列可建多 metric
+// 索引（索引 ID 唯一即可）；unique/fulltext 对 vector 列拒绝。走与现有索引
+// 相同的事务内 CREATE INDEX IF NOT EXISTS 通道（DDL 与 catalog CAS 同事务
+// 原子；仓库无 CONCURRENTLY 通道——事务外建索引换不来原子性，保持一致）。
 func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, physical string, idx databases.Index, attrs []databases.Attribute) error {
+	vectorAttrs := map[string]int{}
 	arrayAttrs := map[string]bool{}
 	for _, a := range attrs {
+		if strings.ToLower(a.Type) == "vector" {
+			vectorAttrs[a.Key] = a.Dims
+		}
 		if a.Array {
 			arrayAttrs[a.Key] = true
 		}
 	}
 	hasArrayCol := false
+	hasVectorCol := false
 	for _, attr := range idx.Attributes {
 		if arrayAttrs[attr] {
 			hasArrayCol = true
-			break
+		}
+		if _, ok := vectorAttrs[attr]; ok {
+			hasVectorCol = true
+		}
+	}
+	// vector 列与数组列互斥的索引形态约束（会话 #10）：vector 列只配 hnsw；
+	// hnsw 只配 vector 列。
+	if hasVectorCol || strings.ToLower(idx.Type) == "hnsw" {
+		if strings.ToLower(idx.Type) != "hnsw" {
+			return status.Error(codes.InvalidArgument,
+				fmt.Sprintf("%s indexes do not support vector attributes", idx.Type))
+		}
+		if !hasVectorCol {
+			return status.Error(codes.InvalidArgument,
+				"hnsw indexes require a vector attribute")
+		}
+		if hasArrayCol {
+			return status.Error(codes.InvalidArgument, "hnsw indexes do not support array attributes")
 		}
 	}
 	if hasArrayCol {
@@ -854,6 +881,15 @@ func (p *postgresDocumentDB) createCollectionIndex(ctx context.Context, schema, 
 			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin(to_tsvector('simple', %s))`,
 				idxName, tableName(schema, physical), strings.Join(plainCols, " || ' ' || "))
 		}
+	case "hnsw":
+		// 会话 #10 预决策 2：三 metric opclass；同列多 metric 索引各自独立
+		//（idx_<phys>_<id> 唯一性由索引 ID 承载）。
+		opClass, err := hnswOpClass(idx.DistanceMetric)
+		if err != nil {
+			return err
+		}
+		sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING hnsw (%s %s)`,
+			idxName, tableName(schema, physical), plainCols[0], opClass)
 	default:
 		if hasArrayCol {
 			sql = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s USING gin (%s array_ops)`,
@@ -895,12 +931,42 @@ func (p *postgresDocumentDB) ensureACLIndex(ctx context.Context, schema, physica
 	return nil
 }
 
+// hnswOpClass 映射距离度量到 pgvector HNSW opclass（会话 #10 预决策 2）。
+func hnswOpClass(metric string) (string, error) {
+	switch strings.ToUpper(metric) {
+	case "", "COSINE":
+		return "vector_cosine_ops", nil
+	case "L2":
+		return "vector_l2_ops", nil
+	case "INNER_PRODUCT":
+		return "vector_ip_ops", nil
+	default:
+		return "", status.Error(codes.InvalidArgument,
+			fmt.Sprintf("hnsw distance_metric must be COSINE, L2, or INNER_PRODUCT, got %q", metric))
+	}
+}
+
 // validateIndexDefinition 拒绝与查询编译器不相容的索引定义：fulltext 查询
 // 按单列 to_tsvector("col"::text) 编译，多列拼接索引的表达式与任何单字段
 // 查询都不匹配——索引永不命中，只会误导用户以为 search 有索引支撑。
+// hnsw（会话 #10）：单列 + metric 白名单 + orders 拒绝（app 层同语义校验，
+// 此处是直调 adapter 的第二道防线）。
 func validateIndexDefinition(idx databases.Index) error {
-	if strings.ToLower(idx.Type) == "fulltext" && len(idx.Attributes) != 1 {
-		return status.Error(codes.InvalidArgument, "fulltext index requires exactly one attribute")
+	switch strings.ToLower(idx.Type) {
+	case "fulltext":
+		if len(idx.Attributes) != 1 {
+			return status.Error(codes.InvalidArgument, "fulltext index requires exactly one attribute")
+		}
+	case "hnsw":
+		if len(idx.Attributes) != 1 {
+			return status.Error(codes.InvalidArgument, "hnsw index requires exactly one attribute")
+		}
+		if len(idx.Orders) > 0 {
+			return status.Error(codes.InvalidArgument, "hnsw index does not support orders")
+		}
+		if _, err := hnswOpClass(idx.DistanceMetric); err != nil {
+			return err
+		}
 	}
 	return nil
 }

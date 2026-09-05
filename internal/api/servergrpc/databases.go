@@ -3,6 +3,7 @@ package servergrpc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	serverv1 "github.com/torchwooddev/torchwood/genproto/server/v1"
 	sharedv1 "github.com/torchwooddev/torchwood/genproto/shared/v1"
@@ -333,15 +334,27 @@ func (s *DatabasesService) CreateIndex(ctx context.Context, req *serverv1.Create
 		Attributes: req.GetAttributes(),
 		Orders:     req.GetOrders(),
 	}
+	// hnsw 的 metric 缺省 COSINE 归一（大写形态落 catalog——vector_search 的
+	// 索引前置校验按大写比对）。
+	if strings.ToLower(idx.Type) == "hnsw" {
+		idx.DistanceMetric = strings.ToUpper(req.GetDistanceMetric())
+		if idx.DistanceMetric == "" {
+			idx.DistanceMetric = "COSINE"
+		}
+	}
 	if err := s.databases.CreateIndex(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), idx); err != nil {
 		return nil, err
 	}
-	return &serverv1.Index{
+	out := &serverv1.Index{
 		Id:         idx.ID,
 		Type:       idx.Type,
 		Attributes: idx.Attributes,
 		Orders:     idx.Orders,
-	}, nil
+	}
+	if idx.DistanceMetric != "" {
+		out.DistanceMetric = &idx.DistanceMetric
+	}
+	return out, nil
 }
 
 func (s *DatabasesService) DeleteAttribute(ctx context.Context, req *serverv1.DeleteAttributeRequest) (*sharedv1.Empty, error) {
@@ -880,12 +893,16 @@ func mapCollection(c *databases.Collection) *serverv1.Collection {
 		out.Attributes = append(out.Attributes, attr)
 	}
 	for _, i := range c.Indexes {
-		out.Indexes = append(out.Indexes, &serverv1.Index{
+		idx := &serverv1.Index{
 			Id:         i.ID,
 			Type:       i.Type,
 			Attributes: i.Attributes,
 			Orders:     i.Orders,
-		})
+		}
+		if i.DistanceMetric != "" {
+			idx.DistanceMetric = &i.DistanceMetric
+		}
+		out.Indexes = append(out.Indexes, idx)
 	}
 	return out
 }
