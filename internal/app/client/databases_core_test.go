@@ -83,7 +83,7 @@ func TestResolveReadPrincipal_AdminNotGuest(t *testing.T) {
 		Roles:           []string{"member", shared.RoleConsole},
 		IsPlatformAdmin: true,
 	})
-	_, _, _, err := d.ListDocuments(ctx, "p1", "app", "posts", databases.Query{})
+	_, err := d.ListDocuments(ctx, "p1", "app", "posts", databases.Query{})
 	require.NoError(t, err)
 	require.True(t, rec.lastListPrincipal.PlatformAdmin)
 	require.NotEqual(t, databases.GuestPrincipal, rec.lastListPrincipal)
@@ -97,7 +97,7 @@ func TestListDocuments_GuestPrincipal(t *testing.T) {
 		docDB:       catalog,
 		docs:        documents.New(rec, nil),
 	}
-	_, _, _, err := d.ListDocuments(context.Background(), "p1", "app", "posts", databases.Query{})
+	_, err := d.ListDocuments(context.Background(), "p1", "app", "posts", databases.Query{})
 	require.NoError(t, err)
 	require.Equal(t, databases.GuestPrincipal, rec.lastListPrincipal)
 }

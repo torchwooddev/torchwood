@@ -205,22 +205,24 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	page1, total1, next, err := uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+	page1res, err := uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		Queries:  []string{`orderAsc("$id")`, `limit(10)`},
 		PageSize: 10,
 	}, principal)
 	require.NoError(t, err)
+	page1, total1, next := page1res.Documents, page1res.TotalCount, page1res.NextPageToken
 	require.Equal(t, int64(total), total1)
 	require.Len(t, page1, 10)
 	require.NotEmpty(t, next)
 	ids1 := docIDsOf(page1)
 
-	page2, total2, next2, err := uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+	page2res, err := uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		Queries:   []string{`orderAsc("$id")`, `limit(10)`},
 		PageSize:  10,
 		PageToken: next,
 	}, principal)
 	require.NoError(t, err)
+	page2, total2, next2 := page2res.Documents, page2res.TotalCount, page2res.NextPageToken
 	// R5 J3-2（C2 阶段①收敛后对 keyset 续页生效）：续页不再执行精确 COUNT
 	//（total=0=unknown，proto 合法语义）；精确 total 仅首页返回。
 	require.Equal(t, int64(0), total2)
@@ -234,7 +236,7 @@ func TestDatabases_ListDocuments_NextPageToken(t *testing.T) {
 	// keyset-only（C2 阶段①）：首页 token 必为 ka:/kb: 形态；offset() 算子
 	// 与旧 offset 族 token 一律拒绝。
 	require.Contains(t, next, "ka:")
-	_, _, _, err = uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
+	_, err = uc.ListDocuments(ctx, projectID, "app", "docs", databases.Query{
 		AST: &query.Query{Orders: []query.Order{{Attribute: "$id"}}, PageSize: 10, Offset: 10},
 	}, principal)
 	require.Error(t, err)

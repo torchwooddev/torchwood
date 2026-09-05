@@ -160,10 +160,10 @@ func (d *Databases) ListDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
 	q databases.Query,
-) ([]databases.Document, int64, string, error) {
+) (*documents.ListDocumentsResult, error) {
 	pid, principal, err := d.ensureCollectionForRead(ctx, projectID, databaseID, collectionID)
 	if err != nil {
-		return nil, 0, "", err
+		return nil, err
 	}
 	return d.documentsCore().ListDocuments(ctx, pid, databaseID, collectionID, q, principal)
 }

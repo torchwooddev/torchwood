@@ -21,6 +21,142 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// DistanceMetric 是向量近邻查询的距离度量（会话 #10，与 hnsw 索引的
+// distance_metric 同一枚举域）。
+type DistanceMetric int32
+
+const (
+	DistanceMetric_DISTANCE_METRIC_UNSPECIFIED DistanceMetric = 0
+	// 余弦距离（PG <=>，HNSW vector_cosine_ops）。缺省即 COSINE。
+	DistanceMetric_DISTANCE_METRIC_COSINE DistanceMetric = 1
+	// 欧氏距离（PG <->，HNSW vector_l2_ops）。
+	DistanceMetric_DISTANCE_METRIC_L2 DistanceMetric = 2
+	// 内积负值（PG <#>，HNSW vector_ip_ops；pgvector 以负内积为"距离"，
+	// 值域 (-inf, 0]，越小越近）。
+	DistanceMetric_DISTANCE_METRIC_INNER_PRODUCT DistanceMetric = 3
+)
+
+// Enum value maps for DistanceMetric.
+var (
+	DistanceMetric_name = map[int32]string{
+		0: "DISTANCE_METRIC_UNSPECIFIED",
+		1: "DISTANCE_METRIC_COSINE",
+		2: "DISTANCE_METRIC_L2",
+		3: "DISTANCE_METRIC_INNER_PRODUCT",
+	}
+	DistanceMetric_value = map[string]int32{
+		"DISTANCE_METRIC_UNSPECIFIED":   0,
+		"DISTANCE_METRIC_COSINE":        1,
+		"DISTANCE_METRIC_L2":            2,
+		"DISTANCE_METRIC_INNER_PRODUCT": 3,
+	}
+)
+
+func (x DistanceMetric) Enum() *DistanceMetric {
+	p := new(DistanceMetric)
+	*p = x
+	return p
+}
+
+func (x DistanceMetric) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DistanceMetric) Descriptor() protoreflect.EnumDescriptor {
+	return file_shared_v1_query_proto_enumTypes[0].Descriptor()
+}
+
+func (DistanceMetric) Type() protoreflect.EnumType {
+	return &file_shared_v1_query_proto_enumTypes[0]
+}
+
+func (x DistanceMetric) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DistanceMetric.Descriptor instead.
+func (DistanceMetric) EnumDescriptor() ([]byte, []int) {
+	return file_shared_v1_query_proto_rawDescGZIP(), []int{0}
+}
+
+// VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子）。
+// 不是 filter 树节点：距离不可作布尔谓词——排序由距离承载，limit 即 k
+// （top-k 可见近邻，iterative scan 语义：迭代搜索直至凑满 k 个满足全部
+// 过滤条件的行）。values 须与目标 vector 属性 dims 等长。目标列必须
+// 声明为 vector 属性且存在与 metric 匹配的 hnsw 索引（显式拒绝原则，
+// 与 search 需 fulltext 索引同款纪律）。DSL 字符串不支持 vector_search
+// （向量不该手写，SDK typed builder only）。
+type VectorSearch struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Attribute string                 `protobuf:"bytes,1,opt,name=attribute,proto3" json:"attribute,omitempty"`
+	Values    []float64              `protobuf:"fixed64,2,rep,packed,name=values,proto3" json:"values,omitempty"`
+	Metric    DistanceMetric         `protobuf:"varint,3,opt,name=metric,proto3,enum=torchwood.shared.v1.DistanceMetric" json:"metric,omitempty"`
+	// 距离阈值：仅保留 top-k 中距离 <= max_distance 的行（服务端在 top-k
+	// 结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，
+	// 原型 2 实证）。缺省无阈值。
+	MaxDistance   *float64 `protobuf:"fixed64,4,opt,name=max_distance,json=maxDistance,proto3,oneof" json:"max_distance,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VectorSearch) Reset() {
+	*x = VectorSearch{}
+	mi := &file_shared_v1_query_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VectorSearch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VectorSearch) ProtoMessage() {}
+
+func (x *VectorSearch) ProtoReflect() protoreflect.Message {
+	mi := &file_shared_v1_query_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VectorSearch.ProtoReflect.Descriptor instead.
+func (*VectorSearch) Descriptor() ([]byte, []int) {
+	return file_shared_v1_query_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *VectorSearch) GetAttribute() string {
+	if x != nil {
+		return x.Attribute
+	}
+	return ""
+}
+
+func (x *VectorSearch) GetValues() []float64 {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+func (x *VectorSearch) GetMetric() DistanceMetric {
+	if x != nil {
+		return x.Metric
+	}
+	return DistanceMetric_DISTANCE_METRIC_UNSPECIFIED
+}
+
+func (x *VectorSearch) GetMaxDistance() float64 {
+	if x != nil && x.MaxDistance != nil {
+		return *x.MaxDistance
+	}
+	return 0
+}
+
 // Comparison is a leaf predicate: attribute plus zero or more values.
 // Value arity per operator: eq/ne/lt/lte/gt/gte/in/contains/starts_with/
 // ends_with/search >= 1; between/not_between exactly 2; is_null/is_not_null 0.
@@ -34,7 +170,7 @@ type Comparison struct {
 
 func (x *Comparison) Reset() {
 	*x = Comparison{}
-	mi := &file_shared_v1_query_proto_msgTypes[0]
+	mi := &file_shared_v1_query_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +182,7 @@ func (x *Comparison) String() string {
 func (*Comparison) ProtoMessage() {}
 
 func (x *Comparison) ProtoReflect() protoreflect.Message {
-	mi := &file_shared_v1_query_proto_msgTypes[0]
+	mi := &file_shared_v1_query_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +195,7 @@ func (x *Comparison) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Comparison.ProtoReflect.Descriptor instead.
 func (*Comparison) Descriptor() ([]byte, []int) {
-	return file_shared_v1_query_proto_rawDescGZIP(), []int{0}
+	return file_shared_v1_query_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Comparison) GetAttribute() string {
@@ -86,7 +222,7 @@ type FilterList struct {
 
 func (x *FilterList) Reset() {
 	*x = FilterList{}
-	mi := &file_shared_v1_query_proto_msgTypes[1]
+	mi := &file_shared_v1_query_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -98,7 +234,7 @@ func (x *FilterList) String() string {
 func (*FilterList) ProtoMessage() {}
 
 func (x *FilterList) ProtoReflect() protoreflect.Message {
-	mi := &file_shared_v1_query_proto_msgTypes[1]
+	mi := &file_shared_v1_query_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -111,7 +247,7 @@ func (x *FilterList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilterList.ProtoReflect.Descriptor instead.
 func (*FilterList) Descriptor() ([]byte, []int) {
-	return file_shared_v1_query_proto_rawDescGZIP(), []int{1}
+	return file_shared_v1_query_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *FilterList) GetFilters() []*Filter {
@@ -159,7 +295,7 @@ type Filter struct {
 
 func (x *Filter) Reset() {
 	*x = Filter{}
-	mi := &file_shared_v1_query_proto_msgTypes[2]
+	mi := &file_shared_v1_query_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -171,7 +307,7 @@ func (x *Filter) String() string {
 func (*Filter) ProtoMessage() {}
 
 func (x *Filter) ProtoReflect() protoreflect.Message {
-	mi := &file_shared_v1_query_proto_msgTypes[2]
+	mi := &file_shared_v1_query_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -184,7 +320,7 @@ func (x *Filter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Filter.ProtoReflect.Descriptor instead.
 func (*Filter) Descriptor() ([]byte, []int) {
-	return file_shared_v1_query_proto_rawDescGZIP(), []int{2}
+	return file_shared_v1_query_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Filter) GetExpr() isFilter_Expr {
@@ -556,7 +692,7 @@ type Order struct {
 
 func (x *Order) Reset() {
 	*x = Order{}
-	mi := &file_shared_v1_query_proto_msgTypes[3]
+	mi := &file_shared_v1_query_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -568,7 +704,7 @@ func (x *Order) String() string {
 func (*Order) ProtoMessage() {}
 
 func (x *Order) ProtoReflect() protoreflect.Message {
-	mi := &file_shared_v1_query_proto_msgTypes[3]
+	mi := &file_shared_v1_query_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -581,7 +717,7 @@ func (x *Order) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Order.ProtoReflect.Descriptor instead.
 func (*Order) Descriptor() ([]byte, []int) {
-	return file_shared_v1_query_proto_rawDescGZIP(), []int{3}
+	return file_shared_v1_query_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Order) GetAttribute() string {
@@ -602,6 +738,9 @@ func (x *Order) GetDesc() bool {
 // (C7: the server consumes no query strings; the Appwrite DSL survives only
 // as client-side sugar in SDKs/tools). page_token is the authoritative pager
 // (K-20); page_size is the page bound.
+// vector_search（会话 #10）：KNN 一次一个；与 filter 可组合（AND），与
+// orders/page_token 互斥（排序由距离承载；多页 KNN 挂账）——服务端显式
+// 拒绝非法组合，字段本身保留。
 type Query struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Filter    *Filter                `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
@@ -609,14 +748,16 @@ type Query struct {
 	PageSize  int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	// Projection: server trims the returned Data to these fields.
-	Select        []string `protobuf:"bytes,5,rep,name=select,proto3" json:"select,omitempty"`
+	Select []string `protobuf:"bytes,5,rep,name=select,proto3" json:"select,omitempty"`
+	// KNN 算子（会话 #10）：非 filter 节点，见 VectorSearch。
+	VectorSearch  *VectorSearch `protobuf:"bytes,6,opt,name=vector_search,json=vectorSearch,proto3" json:"vector_search,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Query) Reset() {
 	*x = Query{}
-	mi := &file_shared_v1_query_proto_msgTypes[4]
+	mi := &file_shared_v1_query_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -628,7 +769,7 @@ func (x *Query) String() string {
 func (*Query) ProtoMessage() {}
 
 func (x *Query) ProtoReflect() protoreflect.Message {
-	mi := &file_shared_v1_query_proto_msgTypes[4]
+	mi := &file_shared_v1_query_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -641,7 +782,7 @@ func (x *Query) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Query.ProtoReflect.Descriptor instead.
 func (*Query) Descriptor() ([]byte, []int) {
-	return file_shared_v1_query_proto_rawDescGZIP(), []int{4}
+	return file_shared_v1_query_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Query) GetFilter() *Filter {
@@ -679,11 +820,24 @@ func (x *Query) GetSelect() []string {
 	return nil
 }
 
+func (x *Query) GetVectorSearch() *VectorSearch {
+	if x != nil {
+		return x.VectorSearch
+	}
+	return nil
+}
+
 var File_shared_v1_query_proto protoreflect.FileDescriptor
 
 const file_shared_v1_query_proto_rawDesc = "" +
 	"\n" +
-	"\x15shared/v1/query.proto\x12\x13torchwood.shared.v1\"B\n" +
+	"\x15shared/v1/query.proto\x12\x13torchwood.shared.v1\"\xba\x01\n" +
+	"\fVectorSearch\x12\x1c\n" +
+	"\tattribute\x18\x01 \x01(\tR\tattribute\x12\x16\n" +
+	"\x06values\x18\x02 \x03(\x01R\x06values\x12;\n" +
+	"\x06metric\x18\x03 \x01(\x0e2#.torchwood.shared.v1.DistanceMetricR\x06metric\x12&\n" +
+	"\fmax_distance\x18\x04 \x01(\x01H\x00R\vmaxDistance\x88\x01\x01B\x0f\n" +
+	"\r_max_distance\"B\n" +
 	"\n" +
 	"Comparison\x12\x1c\n" +
 	"\tattribute\x18\x01 \x01(\tR\tattribute\x12\x16\n" +
@@ -722,14 +876,20 @@ const file_shared_v1_query_proto_rawDesc = "" +
 	"\x04expr\"9\n" +
 	"\x05Order\x12\x1c\n" +
 	"\tattribute\x18\x01 \x01(\tR\tattribute\x12\x12\n" +
-	"\x04desc\x18\x02 \x01(\bR\x04desc\"\xc4\x01\n" +
+	"\x04desc\x18\x02 \x01(\bR\x04desc\"\x8c\x02\n" +
 	"\x05Query\x123\n" +
 	"\x06filter\x18\x01 \x01(\v2\x1b.torchwood.shared.v1.FilterR\x06filter\x122\n" +
 	"\x06orders\x18\x02 \x03(\v2\x1a.torchwood.shared.v1.OrderR\x06orders\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\x12\x16\n" +
-	"\x06select\x18\x05 \x03(\tR\x06selectB?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
+	"\x06select\x18\x05 \x03(\tR\x06select\x12F\n" +
+	"\rvector_search\x18\x06 \x01(\v2!.torchwood.shared.v1.VectorSearchR\fvectorSearch*\x88\x01\n" +
+	"\x0eDistanceMetric\x12\x1f\n" +
+	"\x1bDISTANCE_METRIC_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16DISTANCE_METRIC_COSINE\x10\x01\x12\x16\n" +
+	"\x12DISTANCE_METRIC_L2\x10\x02\x12!\n" +
+	"\x1dDISTANCE_METRIC_INNER_PRODUCT\x10\x03B?Z=github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1b\x06proto3"
 
 var (
 	file_shared_v1_query_proto_rawDescOnce sync.Once
@@ -743,46 +903,51 @@ func file_shared_v1_query_proto_rawDescGZIP() []byte {
 	return file_shared_v1_query_proto_rawDescData
 }
 
-var file_shared_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_shared_v1_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_shared_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_shared_v1_query_proto_goTypes = []any{
-	(*Comparison)(nil), // 0: torchwood.shared.v1.Comparison
-	(*FilterList)(nil), // 1: torchwood.shared.v1.FilterList
-	(*Filter)(nil),     // 2: torchwood.shared.v1.Filter
-	(*Order)(nil),      // 3: torchwood.shared.v1.Order
-	(*Query)(nil),      // 4: torchwood.shared.v1.Query
+	(DistanceMetric)(0),  // 0: torchwood.shared.v1.DistanceMetric
+	(*VectorSearch)(nil), // 1: torchwood.shared.v1.VectorSearch
+	(*Comparison)(nil),   // 2: torchwood.shared.v1.Comparison
+	(*FilterList)(nil),   // 3: torchwood.shared.v1.FilterList
+	(*Filter)(nil),       // 4: torchwood.shared.v1.Filter
+	(*Order)(nil),        // 5: torchwood.shared.v1.Order
+	(*Query)(nil),        // 6: torchwood.shared.v1.Query
 }
 var file_shared_v1_query_proto_depIdxs = []int32{
-	2,  // 0: torchwood.shared.v1.FilterList.filters:type_name -> torchwood.shared.v1.Filter
-	0,  // 1: torchwood.shared.v1.Filter.eq:type_name -> torchwood.shared.v1.Comparison
-	0,  // 2: torchwood.shared.v1.Filter.ne:type_name -> torchwood.shared.v1.Comparison
-	0,  // 3: torchwood.shared.v1.Filter.lt:type_name -> torchwood.shared.v1.Comparison
-	0,  // 4: torchwood.shared.v1.Filter.lte:type_name -> torchwood.shared.v1.Comparison
-	0,  // 5: torchwood.shared.v1.Filter.gt:type_name -> torchwood.shared.v1.Comparison
-	0,  // 6: torchwood.shared.v1.Filter.gte:type_name -> torchwood.shared.v1.Comparison
-	0,  // 7: torchwood.shared.v1.Filter.in:type_name -> torchwood.shared.v1.Comparison
-	0,  // 8: torchwood.shared.v1.Filter.contains:type_name -> torchwood.shared.v1.Comparison
-	0,  // 9: torchwood.shared.v1.Filter.starts_with:type_name -> torchwood.shared.v1.Comparison
-	0,  // 10: torchwood.shared.v1.Filter.ends_with:type_name -> torchwood.shared.v1.Comparison
-	0,  // 11: torchwood.shared.v1.Filter.search:type_name -> torchwood.shared.v1.Comparison
-	1,  // 12: torchwood.shared.v1.Filter.and:type_name -> torchwood.shared.v1.FilterList
-	1,  // 13: torchwood.shared.v1.Filter.or:type_name -> torchwood.shared.v1.FilterList
-	0,  // 14: torchwood.shared.v1.Filter.between:type_name -> torchwood.shared.v1.Comparison
-	0,  // 15: torchwood.shared.v1.Filter.is_null:type_name -> torchwood.shared.v1.Comparison
-	0,  // 16: torchwood.shared.v1.Filter.is_not_null:type_name -> torchwood.shared.v1.Comparison
-	0,  // 17: torchwood.shared.v1.Filter.not_between:type_name -> torchwood.shared.v1.Comparison
-	0,  // 18: torchwood.shared.v1.Filter.not_contains:type_name -> torchwood.shared.v1.Comparison
-	0,  // 19: torchwood.shared.v1.Filter.not_starts_with:type_name -> torchwood.shared.v1.Comparison
-	0,  // 20: torchwood.shared.v1.Filter.not_ends_with:type_name -> torchwood.shared.v1.Comparison
-	0,  // 21: torchwood.shared.v1.Filter.not_search:type_name -> torchwood.shared.v1.Comparison
-	0,  // 22: torchwood.shared.v1.Filter.contains_any:type_name -> torchwood.shared.v1.Comparison
-	0,  // 23: torchwood.shared.v1.Filter.contains_all:type_name -> torchwood.shared.v1.Comparison
-	2,  // 24: torchwood.shared.v1.Query.filter:type_name -> torchwood.shared.v1.Filter
-	3,  // 25: torchwood.shared.v1.Query.orders:type_name -> torchwood.shared.v1.Order
-	26, // [26:26] is the sub-list for method output_type
-	26, // [26:26] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	0,  // 0: torchwood.shared.v1.VectorSearch.metric:type_name -> torchwood.shared.v1.DistanceMetric
+	4,  // 1: torchwood.shared.v1.FilterList.filters:type_name -> torchwood.shared.v1.Filter
+	2,  // 2: torchwood.shared.v1.Filter.eq:type_name -> torchwood.shared.v1.Comparison
+	2,  // 3: torchwood.shared.v1.Filter.ne:type_name -> torchwood.shared.v1.Comparison
+	2,  // 4: torchwood.shared.v1.Filter.lt:type_name -> torchwood.shared.v1.Comparison
+	2,  // 5: torchwood.shared.v1.Filter.lte:type_name -> torchwood.shared.v1.Comparison
+	2,  // 6: torchwood.shared.v1.Filter.gt:type_name -> torchwood.shared.v1.Comparison
+	2,  // 7: torchwood.shared.v1.Filter.gte:type_name -> torchwood.shared.v1.Comparison
+	2,  // 8: torchwood.shared.v1.Filter.in:type_name -> torchwood.shared.v1.Comparison
+	2,  // 9: torchwood.shared.v1.Filter.contains:type_name -> torchwood.shared.v1.Comparison
+	2,  // 10: torchwood.shared.v1.Filter.starts_with:type_name -> torchwood.shared.v1.Comparison
+	2,  // 11: torchwood.shared.v1.Filter.ends_with:type_name -> torchwood.shared.v1.Comparison
+	2,  // 12: torchwood.shared.v1.Filter.search:type_name -> torchwood.shared.v1.Comparison
+	3,  // 13: torchwood.shared.v1.Filter.and:type_name -> torchwood.shared.v1.FilterList
+	3,  // 14: torchwood.shared.v1.Filter.or:type_name -> torchwood.shared.v1.FilterList
+	2,  // 15: torchwood.shared.v1.Filter.between:type_name -> torchwood.shared.v1.Comparison
+	2,  // 16: torchwood.shared.v1.Filter.is_null:type_name -> torchwood.shared.v1.Comparison
+	2,  // 17: torchwood.shared.v1.Filter.is_not_null:type_name -> torchwood.shared.v1.Comparison
+	2,  // 18: torchwood.shared.v1.Filter.not_between:type_name -> torchwood.shared.v1.Comparison
+	2,  // 19: torchwood.shared.v1.Filter.not_contains:type_name -> torchwood.shared.v1.Comparison
+	2,  // 20: torchwood.shared.v1.Filter.not_starts_with:type_name -> torchwood.shared.v1.Comparison
+	2,  // 21: torchwood.shared.v1.Filter.not_ends_with:type_name -> torchwood.shared.v1.Comparison
+	2,  // 22: torchwood.shared.v1.Filter.not_search:type_name -> torchwood.shared.v1.Comparison
+	2,  // 23: torchwood.shared.v1.Filter.contains_any:type_name -> torchwood.shared.v1.Comparison
+	2,  // 24: torchwood.shared.v1.Filter.contains_all:type_name -> torchwood.shared.v1.Comparison
+	4,  // 25: torchwood.shared.v1.Query.filter:type_name -> torchwood.shared.v1.Filter
+	5,  // 26: torchwood.shared.v1.Query.orders:type_name -> torchwood.shared.v1.Order
+	1,  // 27: torchwood.shared.v1.Query.vector_search:type_name -> torchwood.shared.v1.VectorSearch
+	28, // [28:28] is the sub-list for method output_type
+	28, // [28:28] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_shared_v1_query_proto_init() }
@@ -790,7 +955,8 @@ func file_shared_v1_query_proto_init() {
 	if File_shared_v1_query_proto != nil {
 		return
 	}
-	file_shared_v1_query_proto_msgTypes[2].OneofWrappers = []any{
+	file_shared_v1_query_proto_msgTypes[0].OneofWrappers = []any{}
+	file_shared_v1_query_proto_msgTypes[3].OneofWrappers = []any{
 		(*Filter_Eq)(nil),
 		(*Filter_Ne)(nil),
 		(*Filter_Lt)(nil),
@@ -820,13 +986,14 @@ func file_shared_v1_query_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shared_v1_query_proto_rawDesc), len(file_shared_v1_query_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   5,
+			NumEnums:      1,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_shared_v1_query_proto_goTypes,
 		DependencyIndexes: file_shared_v1_query_proto_depIdxs,
+		EnumInfos:         file_shared_v1_query_proto_enumTypes,
 		MessageInfos:      file_shared_v1_query_proto_msgTypes,
 	}.Build()
 	File_shared_v1_query_proto = out.File

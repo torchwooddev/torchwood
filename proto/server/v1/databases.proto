@@ -414,6 +414,11 @@ message ListDocumentsRequest {
 message ListDocumentsResponse {
   repeated shared.v1.Document documents = 1;
   shared.v1.ListResponseMeta meta = 2;
+  // KNN 距离回传（会话 #10 预决策 4）：与 documents 平行的第 i 项是第 i 个
+  // 文档到查询向量的距离（metric 语义：cosine/L2 ∈ [0, +inf)，inner_product
+  // 为负内积 ∈ (-inf, 0]）。仅 vector_search 查询时填充；不污染 Document.Data、
+  // 不持久化、不进事件。max_distance 后置过滤后的行不再出现。
+  repeated double distances = 3;
 }
 
 // CountDocumentsRequest 独立于 ListDocumentsRequest（P3-9）：不暴露无效分页参数（page_size/page_token）。

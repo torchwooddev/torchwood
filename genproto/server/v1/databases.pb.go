@@ -1973,9 +1973,14 @@ func (x *ListDocumentsRequest) GetQuery() *v1.Query {
 }
 
 type ListDocumentsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Documents     []*v1.Document         `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
-	Meta          *v1.ListResponseMeta   `protobuf:"bytes,2,opt,name=meta,proto3" json:"meta,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Documents []*v1.Document         `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
+	Meta      *v1.ListResponseMeta   `protobuf:"bytes,2,opt,name=meta,proto3" json:"meta,omitempty"`
+	// KNN 距离回传（会话 #10 预决策 4）：与 documents 平行的第 i 项是第 i 个
+	// 文档到查询向量的距离（metric 语义：cosine/L2 ∈ [0, +inf)，inner_product
+	// 为负内积 ∈ (-inf, 0]）。仅 vector_search 查询时填充；不污染 Document.Data、
+	// 不持久化、不进事件。max_distance 后置过滤后的行不再出现。
+	Distances     []float64 `protobuf:"fixed64,3,rep,packed,name=distances,proto3" json:"distances,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2020,6 +2025,13 @@ func (x *ListDocumentsResponse) GetDocuments() []*v1.Document {
 func (x *ListDocumentsResponse) GetMeta() *v1.ListResponseMeta {
 	if x != nil {
 		return x.Meta
+	}
+	return nil
+}
+
+func (x *ListDocumentsResponse) GetDistances() []float64 {
+	if x != nil {
+		return x.Distances
 	}
 	return nil
 }
@@ -3315,10 +3327,11 @@ const file_server_v1_databases_proto_rawDesc = "" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x05 \x01(\tR\tpageToken\x120\n" +
-	"\x05query\x18\x06 \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryJ\x04\b\x03\x10\x04R\aqueries\"\x8f\x01\n" +
+	"\x05query\x18\x06 \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryJ\x04\b\x03\x10\x04R\aqueries\"\xad\x01\n" +
 	"\x15ListDocumentsResponse\x12;\n" +
 	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.shared.v1.DocumentR\tdocuments\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\x9e\x01\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\x12\x1c\n" +
+	"\tdistances\x18\x03 \x03(\x01R\tdistances\"\x9e\x01\n" +
 	"\x15CountDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +

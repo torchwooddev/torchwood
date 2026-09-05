@@ -220,6 +220,9 @@ message ListDocumentsRequest {
 message ListDocumentsResponse {
   repeated shared.v1.Document documents = 1;
   shared.v1.ListResponseMeta meta = 2;
+  // KNN 距离回传（会话 #10）：与 documents 平行，语义同 server 面的
+  // ListDocumentsResponse.distances（仅 vector_search 查询时填充）。
+  repeated double distances = 3;
 }
 
 // CountDocumentsRequest 独立于 ListDocumentsRequest（P3-9）：不暴露无效分页参数（page_size/page_token）。

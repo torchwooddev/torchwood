@@ -136,3 +136,32 @@ func vectorProjection(vectorCols map[string]int) string {
 	}
 	return "to_jsonb(d.*) || jsonb_build_object(" + strings.Join(parts, ", ") + ")"
 }
+
+// distanceOp 映射 metric 到 pgvector KNN 操作符（会话 #10 预决策 3）：
+// cosine <=> / L2 <-> / inner <#>（pgvector 以负内积为"距离"，值越小越近）。
+func distanceOp(metric string) (string, error) {
+	switch normalizeMetric(metric) {
+	case MetricCosineName:
+		return "<=>", nil
+	case "L2":
+		return "<->", nil
+	case "INNER_PRODUCT":
+		return "<#>", nil
+	default:
+		return "", status.Error(codes.InvalidArgument,
+			fmt.Sprintf("distance metric must be COSINE, L2, or INNER_PRODUCT, got %q", metric))
+	}
+}
+
+// MetricCosineName 是归一后的余弦度量名（与 pkg/query.MetricCosine 同值；
+// 独立常量避免 documentdb 反向依赖 pkg/query 的约定漂移）。
+const MetricCosineName = "COSINE"
+
+// pgVectorFloatLiteral 把 KNN 查询向量编码为 pgvector 字面量（绑定参数）。
+func pgVectorFloatLiteral(values []float64) string {
+	parts := make([]string, 0, len(values))
+	for _, v := range values {
+		parts = append(parts, strconv.FormatFloat(v, 'g', -1, 64))
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}

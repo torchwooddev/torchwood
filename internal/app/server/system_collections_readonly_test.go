@@ -123,7 +123,7 @@ func TestSystemCollections_DocumentAPIRejectsSentinel(t *testing.T) {
 	uc := NewDatabases(bunrepo.NewProjectRepository(db), docDB, nil)
 	keysPrincipal := databases.Principal{Roles: []string{"keys"}}
 
-	_, _, _, err := uc.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{}, keysPrincipal)
+	_, err := uc.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{}, keysPrincipal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = uc.GetDocument(ctx, projectID, databases.SystemDatabaseID, "users", "user-1", keysPrincipal)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))

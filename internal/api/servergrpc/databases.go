@@ -431,10 +431,11 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	if err != nil {
 		return nil, err
 	}
-	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q, dbPrincipal(ctx))
+	result, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q, dbPrincipal(ctx))
 	if err != nil {
 		return nil, err
 	}
+	docs := result.Documents
 	out := make([]*sharedv1.Document, len(docs))
 	for i := range docs {
 		mapped, err := mapDocument(&docs[i])
@@ -445,7 +446,10 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *serverv1.List
 	}
 	return &serverv1.ListDocumentsResponse{
 		Documents: out,
-		Meta:      &sharedv1.ListResponseMeta{PageSize: ast.PageSize, TotalCount: int32(total), NextPageToken: next},
+		Meta:      &sharedv1.ListResponseMeta{PageSize: ast.PageSize, TotalCount: int32(result.TotalCount), NextPageToken: result.NextPageToken},
+		// KNN 距离回传（会话 #10 预决策 4）：与 documents 平行，仅
+		// vector_search 查询非空（max_distance 后置过滤后的行）。
+		Distances: result.Distances,
 	}, nil
 }
 

@@ -36,7 +36,7 @@ func TestClientDatabases_SystemCollectionAPIRejectsSentinel(t *testing.T) {
 	serverUC := appserver.NewDatabases(projectRepo, docDB, nil)
 	clientUC := NewDatabases(projectRepo, docDB, nil)
 
-	_, _, _, err := clientUC.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{})
+	_, err := clientUC.ListDocuments(ctx, projectID, databases.SystemDatabaseID, "groups", databases.Query{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	account := NewTestAccount(testConfig(), projectRepo, db)

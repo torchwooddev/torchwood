@@ -125,6 +125,10 @@ type DocumentList struct {
 	Documents     []Document
 	TotalCount    int64
 	NextPageToken string
+	// Distances 是 KNN 查询的距离回传（会话 #10 预决策 4）：与 Documents
+	// 平行，仅 vector_search 查询时非空。不污染 Document.Data、不持久化、
+	// 不进事件。
+	Distances []float64
 }
 
 type Collection struct {

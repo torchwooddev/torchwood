@@ -115,15 +115,24 @@ func (d *Documents) CreateDocument(
 		})
 }
 
+// ListDocumentsResult 是列表查询的出站聚合：Distances 仅 vector_search
+//（KNN）查询非空（与 Documents 平行；会话 #10 预决策 4）。
+type ListDocumentsResult struct {
+	Documents     []databases.Document
+	TotalCount    int64
+	NextPageToken string
+	Distances     []float64
+}
+
 func (d *Documents) ListDocuments(
 	ctx context.Context,
 	projectID, databaseID, collectionID string,
 	q databases.Query,
 	principal databases.Principal,
-) ([]databases.Document, int64, string, error) {
+) (*ListDocumentsResult, error) {
 	ast, err := ResolveQuery(q)
 	if err != nil {
-		return nil, 0, "", err
+		return nil, err
 	}
 	list, err := d.docDB.ListDocuments(ctx, projectID, databaseID, collectionID, databases.Query{
 		AST:       ast,
@@ -131,9 +140,14 @@ func (d *Documents) ListDocuments(
 		PageToken: ast.PageToken,
 	}, principal)
 	if err != nil {
-		return nil, 0, "", shared.MapDocumentDBError(err)
+		return nil, shared.MapDocumentDBError(err)
 	}
-	return list.Documents, list.TotalCount, list.NextPageToken, nil
+	return &ListDocumentsResult{
+		Documents:     list.Documents,
+		TotalCount:    list.TotalCount,
+		NextPageToken: list.NextPageToken,
+		Distances:     list.Distances,
+	}, nil
 }
 
 func (d *Documents) GetDocument(

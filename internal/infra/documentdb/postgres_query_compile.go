@@ -66,6 +66,61 @@ func arrayTypesOf(coll *databases.Collection) map[string]string {
 	return out
 }
 
+// vectorColumnsFromColl 抽取集合声明属性中的 vector 列（key → dims）。
+func vectorColumnsFromColl(coll *databases.Collection) map[string]int {
+	if coll == nil {
+		return nil
+	}
+	var out map[string]int
+	for _, attr := range coll.Attributes {
+		if strings.ToLower(attr.Type) == "vector" {
+			if out == nil {
+				out = make(map[string]int, len(coll.Attributes))
+			}
+			out[attr.Key] = attr.Dims
+		}
+	}
+	return out
+}
+
+// validateVectorSearch 是 KNN 算子的前置校验（会话 #10 预决策 3，显式拒绝
+// 原则）：目标列必须是声明的 vector 属性（维度等长）、且存在与请求 metric
+// 匹配的 hnsw 索引（无索引/metric 不符 → InvalidArgument——search 需
+// fulltext 索引的同款纪律）。
+func validateVectorSearch(coll *databases.Collection, vs *query.VectorSearch) error {
+	if vs == nil {
+		return nil
+	}
+	dims, ok := vectorColumnsFromColl(coll)[vs.Attribute]
+	if !ok {
+		return status.Error(codes.InvalidArgument,
+			fmt.Sprintf("vector_search requires a vector attribute: %s", vs.Attribute))
+	}
+	if len(vs.Values) != dims {
+		return status.Error(codes.InvalidArgument,
+			fmt.Sprintf("vector_search on %s has %d dimensions, expected %d", vs.Attribute, len(vs.Values), dims))
+	}
+	for _, idx := range coll.Indexes {
+		if !strings.EqualFold(idx.Type, "hnsw") || len(idx.Attributes) == 0 || idx.Attributes[0] != vs.Attribute {
+			continue
+		}
+		if strings.EqualFold(normalizeMetric(idx.DistanceMetric), vs.Metric) {
+			return nil
+		}
+	}
+	return status.Error(codes.InvalidArgument,
+		fmt.Sprintf("vector_search with metric %s requires an hnsw index on %s with the same distance_metric", vs.Metric, vs.Attribute))
+}
+
+// normalizeMetric 把 metric 归一为大写（缺省 COSINE——catalog 落库已归一，
+// 此处兼容直写 catalog 的存量小写形态）。
+func normalizeMetric(m string) string {
+	if strings.ToUpper(m) == "" {
+		return "COSINE"
+	}
+	return strings.ToUpper(m)
+}
+
 // validateQueryFields 校验非 System 查询路径（A7）：Filters/Orders/Selects 字段
 // 白名单（系统列 + 声明 attrs）、敏感列黑名单、search 的 fulltext 索引约束、
 // containsAny/containsAll 的数组列约束（阶段③-b：仅 array=true 属性可用，
@@ -92,6 +147,10 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, ph
 		}
 	}
 	arrayTypes := arrayTypesOf(coll)
+	vectorTypes := vectorColumnsFromColl(coll)
+	if err := validateVectorSearch(coll, parsed.VectorSearch); err != nil {
+		return err
+	}
 
 	checkField := func(name string) error {
 		field := mapQueryField(name)
@@ -133,6 +192,16 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, ph
 			fieldErr = err
 			return
 		}
+		// vector 属性（会话 #10 预决策 3）：距离不可作布尔谓词——普通 filter
+		// 仅放行 isNull/isNotNull；其余算子（eq/lt/contains...）对 vector 列
+		// 无可编译语义，显式拒绝。
+		if _, isVec := vectorTypes[mapQueryField(f.Attribute)]; isVec {
+			if f.Op != query.OpIsNull && f.Op != query.OpIsNotNull {
+				fieldErr = status.Errorf(codes.InvalidArgument,
+					"vector attribute %s only supports isNull/isNotNull filters; use vector_search for KNN", f.Attribute)
+				return
+			}
+		}
 		if f.Op == query.OpSearch {
 			field := mapQueryField(f.Attribute)
 			if _, ok := fulltextAttrs[field]; !ok {
@@ -153,6 +222,10 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, ph
 	for _, o := range parsed.Orders {
 		if err := checkField(o.Attribute); err != nil {
 			return err
+		}
+		if _, isVec := vectorTypes[mapQueryField(o.Attribute)]; isVec {
+			return status.Errorf(codes.InvalidArgument,
+				"vector attribute %s cannot be an order key; vector_search carries the ordering", o.Attribute)
 		}
 	}
 	for _, s := range parsed.Selects {

@@ -84,13 +84,13 @@ func TestListCountDocuments_EmptyComparisonValues(t *testing.T) {
 	core := New(newMemDocDB(), nil)
 	ctx := context.Background()
 	emptyGt := databases.Query{AST: &query.Query{Filter: &query.Filter{Op: query.OpGreaterThan, Attribute: "n"}}}
-	_, _, _, err := core.ListDocuments(ctx, "p", "app", "notes", emptyGt, databases.Principal{})
+	_, err := core.ListDocuments(ctx, "p", "app", "notes", emptyGt, databases.Principal{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = core.CountDocuments(ctx, "p", "app", "notes", emptyGt, databases.Principal{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	emptyEq := databases.Query{AST: &query.Query{Filter: &query.Filter{Op: query.OpEqual, Attribute: "title"}}}
-	_, _, _, err = core.ListDocuments(ctx, "p", "app", "notes", emptyEq, databases.Principal{})
+	_, err = core.ListDocuments(ctx, "p", "app", "notes", emptyEq, databases.Principal{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = core.CountDocuments(ctx, "p", "app", "notes", emptyEq, databases.Principal{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))

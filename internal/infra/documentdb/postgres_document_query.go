@@ -88,6 +88,16 @@ func (p *postgresDocumentDB) listDocuments(ctx context.Context, projectID, datab
 		args = append(args, filterArgs...)
 	}
 
+	// KNN 分支（会话 #10 包 C，预决策 3/4/6）：iterative scan 语义 = 返回
+	// k 个满足全部过滤（policy + filter）的近邻——SET LOCAL 开启（GUC 默认
+	// off，原型 2 实证 off 时"先取全局 k 再滤"召回错误；事务级注入零残留）。
+	// max_distance 不进 WHERE（原型 2 实证距离谓词使规划器放弃 HNSW 索引），
+	// 在 top-k 结果上后置过滤（语义等价：top-k ⊇ 全部 ≤ 阈值的可见行）。
+	// 距离随行返回（distances 与 documents 平行），不污染 Data/事件。
+	if parsed.VectorSearch != nil {
+		return p.listDocumentsKNN(ctx, projectID, databaseID, collectionID, schema, physical, tbl, parsed, whereParts, args)
+	}
+
 	// 页大小归一（C7/R9b）：astFrom 已把请求级 page_size 并进 AST，此处读
 	// 归一结果；0/负数回退默认 50，上限 clamp（maxQueryLimit）。
 	limit := parsed.Limit
@@ -262,6 +272,132 @@ func (p *postgresDocumentDB) listDocuments(ctx context.Context, projectID, datab
 		Documents:     docs,
 		TotalCount:    total,
 		NextPageToken: next,
+	}, nil
+}
+
+// listDocumentsKNN 是 vector_search 的查询管道（会话 #10 包 C）。调用前提：
+// validateQueryFields 已通过（vector 属性 + hnsw 索引 metric 匹配 + 维度等长
+// + 与 orders/page_token 互斥在 codec 层拒绝）。whereParts/args 已含
+// _tenant、sentinel 权限谓词与普通 filter（AND 组合）。
+//
+// SQL 形态：SELECT <proj>, (col <op> $vec) AS __dist ... WHERE <filters>
+// ORDER BY col <op> $vec LIMIT k。RLS policy（tw_visible）作为 securityQuals
+// 隐式过滤参与 iterative scan（GUC strict_order，原型 2 验证：1000 行 5 行
+// 可见仍返回 5/5 正确近邻；off 时仅 1/5——"先取全局 k 再滤"）。strict_order
+// 保序（distances 回传与文档顺序一致；relaxed_order 需外层重排，不采用）。
+func (p *postgresDocumentDB) listDocumentsKNN(ctx context.Context, projectID, databaseID, collectionID, schema, physical, tbl string, parsed *query.Query, whereParts []string, args []any) (*databases.DocumentList, error) {
+	vs := parsed.VectorSearch
+	// limit 即 k（预决策 3）：page_size/limit 语义合并，缺省 25（§4.1），
+	// 上限 maxQueryLimit。
+	k := parsed.Limit
+	if k == 0 {
+		k = int(parsed.PageSize)
+	}
+	if k <= 0 {
+		k = 25
+	}
+	if k > maxQueryLimit {
+		k = maxQueryLimit
+	}
+
+	// iterative scan 是执行期语义而非可选优化——不开则 RLS×KNN 召回错误。
+	// SET LOCAL：事务级生效，与 app.roles GUC 同零残留模式（原型 2 验证）。
+	if _, err := p.conn(ctx).ExecContext(ctx, `SET LOCAL hnsw.iterative_scan = 'strict_order'`); err != nil {
+		return nil, fmt.Errorf("enable iterative scan: %w", err)
+	}
+
+	op, err := distanceOp(vs.Metric)
+	if err != nil {
+		return nil, err
+	}
+	vecArg := pgVectorFloatLiteral(vs.Values)
+	distExpr := fmt.Sprintf(`d.%s %s ?::vector`, quoteIdent(vs.Attribute), op)
+
+	// 投影：全部 vector 列转 JSON 数组（目标列与非目标列一致契约）。
+	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
+	if err != nil {
+		return nil, err
+	}
+	// 占位符出现顺序 = SELECT 的距离表达式 → WHERE（_tenant/权限/filter）→
+	// ORDER BY 的距离表达式 → LIMIT，参数严格按此序装配（原型期曾按
+	// whereArgs→vec→vec→k 装配导致错位：internalID 被绑进 ::vector 报
+	// 42846）。
+	knnArgs := make([]any, 0, len(args)+3)
+	knnArgs = append(knnArgs, vecArg)
+	knnArgs = append(knnArgs, args...)
+	knnArgs = append(knnArgs, vecArg, k)
+	querySQL := fmt.Sprintf(
+		`SELECT %s AS doc, %s AS __dist FROM %s d WHERE %s ORDER BY %s LIMIT ?`,
+		vectorProjection(vectorCols), distExpr, tbl,
+		strings.Join(whereParts, " AND "), distExpr)
+
+	rows, err := p.conn(ctx).QueryContext(ctx, querySQL, knnArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	type knnRow struct {
+		doc  databases.Document
+		dist float64
+	}
+	var out []knnRow
+	for rows.Next() {
+		var raw []byte
+		var dist float64
+		if err := rows.Scan(&raw, &dist); err != nil {
+			return nil, err
+		}
+		doc, err := parseDocumentJSON(raw)
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			continue
+		}
+		out = append(out, knnRow{doc: *doc, dist: dist})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// max_distance 后置过滤（原型 2 实证：距离谓词进 WHERE 会使规划器放弃
+	// HNSW 索引扫描；top-k 结果上过滤语义等价——top-k ⊇ 全部 ≤ 阈值行）。
+	filtered := out
+	if vs.MaxDistance != nil {
+		filtered = filtered[:0]
+		for _, r := range out {
+			if r.dist <= *vs.MaxDistance {
+				filtered = append(filtered, r)
+			}
+		}
+	}
+
+	docs := make([]databases.Document, 0, len(filtered))
+	dists := make([]float64, 0, len(filtered))
+	for _, r := range filtered {
+		docs = append(docs, r.doc)
+		dists = append(dists, r.dist)
+	}
+	// select 投影裁剪（与普通 list 同语义）。
+	if len(parsed.Selects) > 0 {
+		selected := make(map[string]struct{}, len(parsed.Selects))
+		for _, s := range parsed.Selects {
+			selected[mapQueryField(s)] = struct{}{}
+		}
+		for i := range docs {
+			for k := range docs[i].Data {
+				if _, ok := selected[k]; !ok {
+					delete(docs[i].Data, k)
+				}
+			}
+		}
+	}
+	return &databases.DocumentList{
+		Documents: docs,
+		// KNN 无精确 total（top-k 语义非全集计数）；无续页 token（多页 KNN
+		// 挂账，预决策 3）。
+		Distances: dists,
 	}, nil
 }
 
@@ -680,8 +816,14 @@ func (p *postgresDocumentDB) aggregateDocuments(ctx context.Context, projectID, 
 // rejectNonFilterOperators 拒绝对整集语义（count/aggregate）无意义的排序/
 // 分页算子（R9 + R9b）。R9b 归一：分页字段（page_size/page_token）在
 // astFrom 已并进 AST，此处只查 AST——typed AST 的分页字段不再漏拦。
+// vector_search 同拒（会话 #10）：KNN 的 limit 即 k 是 top-k 语义，与
+// 整集计数/聚合语义不相容（可见行计数用普通 filter 即可）。
 // kind 仅用于错误消息（"count"/"aggregate"）。
 func rejectNonFilterOperators(parsed *query.Query, kind string) error {
+	if parsed.VectorSearch != nil {
+		return status.Error(codes.InvalidArgument,
+			fmt.Sprintf("vector_search is not supported on %s; it is a top-k operator for list queries", kind))
+	}
 	if len(parsed.Orders) > 0 || parsed.PageSize != 0 || parsed.PageToken != "" ||
 		parsed.Limit != 0 || parsed.Offset != 0 ||
 		parsed.CursorAfter != "" || parsed.CursorBefore != "" {

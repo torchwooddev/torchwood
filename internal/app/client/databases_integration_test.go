@@ -85,10 +85,10 @@ func TestClientDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, "Updated note", updated.Data["title"])
 	require.Equal(t, int64(2), updated.Version)
 
-	list, total, _, err := clientUC.ListDocuments(userCtx, projectID, "app", "notes", databases.Query{})
+	listRes, err := clientUC.ListDocuments(userCtx, projectID, "app", "notes", databases.Query{})
 	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
-	require.Len(t, list, 1)
+	require.Equal(t, int64(1), listRes.TotalCount)
+	require.Len(t, listRes.Documents, 1)
 
 	_, delErr := clientUC.DeleteDocument(userCtx, "app", "notes", created.ID, &updated.Version, "")
 	require.NoError(t, delErr)
@@ -193,11 +193,11 @@ func TestClientDatabases_GuestPublicRead(t *testing.T) {
 	}, nil, databases.SystemPrincipal)
 	require.NoError(t, err)
 
-	list, total, _, err := clientUC.ListDocuments(ctx, projectID, "app", "posts", databases.Query{})
+	listRes, err := clientUC.ListDocuments(ctx, projectID, "app", "posts", databases.Query{})
 	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
-	require.Len(t, list, 1)
-	require.Equal(t, "Public post", list[0].Data["title"])
+	require.Equal(t, int64(1), listRes.TotalCount)
+	require.Len(t, listRes.Documents, 1)
+	require.Equal(t, "Public post", listRes.Documents[0].Data["title"])
 
 	lockedUC := appserver.NewDatabases(projectRepo, docDB, nil)
 	require.NoError(t, lockedUC.CreateCollection(adminCtx(ctx), projectID, "app", "private", "Private", []databases.Attribute{
@@ -275,10 +275,10 @@ func TestClientDatabases_PrivateDocumentEnforced(t *testing.T) {
 	_, err = clientUC.GetDocument(ctx, projectID, "app", "notes", created.ID)
 	require.Equal(t, codes.NotFound, status.Code(err), "anonymous read of private doc should be not-found")
 
-	anonList, anonTotal, _, err := clientUC.ListDocuments(ctx, projectID, "app", "notes", databases.Query{})
+	anonRes, err := clientUC.ListDocuments(ctx, projectID, "app", "notes", databases.Query{})
 	require.NoError(t, err)
-	require.Zero(t, anonTotal)
-	require.Empty(t, anonList)
+	require.Zero(t, anonRes.TotalCount)
+	require.Empty(t, anonRes.Documents)
 
 	// 他用户：读不可见 = 不存在（NotFound）；改/删同理（阶段③包 C：policy
 	// 静默过滤 + 存在性探测，NotFound 取代 PermissionDenied）。

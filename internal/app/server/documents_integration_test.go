@@ -61,12 +61,12 @@ func TestDatabases_DocumentCRUD(t *testing.T) {
 	require.Equal(t, float64(99), updated.Data["views"])
 	require.Equal(t, int64(2), updated.Version)
 
-	list, total, _, err := uc.ListDocuments(ctx, projectID, dbID, collID, databases.Query{
+	listRes, err := uc.ListDocuments(ctx, projectID, dbID, collID, databases.Query{
 		AST: &query.Query{Filter: query.Eq("title", "Hello Torchwood"), Orders: []query.Order{{Attribute: "$createdAt", Desc: true}}},
 	}, principal)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
-	require.Len(t, list, 1)
+	require.Equal(t, int64(1), listRes.TotalCount)
+	require.Len(t, listRes.Documents, 1)
 
 	count, err := uc.CountDocuments(ctx, projectID, dbID, collID, databases.Query{AST: &query.Query{Filter: query.Eq("title", "Hello Torchwood")}}, principal)
 	require.NoError(t, err)

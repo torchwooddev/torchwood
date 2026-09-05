@@ -63,10 +63,11 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *clientv1.List
 	if err != nil {
 		return nil, err
 	}
-	docs, total, next, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q)
+	result, err := s.databases.ListDocuments(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), q)
 	if err != nil {
 		return nil, err
 	}
+	docs := result.Documents
 	out := make([]*sharedv1.Document, len(docs))
 	for i := range docs {
 		mapped, err := mapClientDocument(&docs[i])
@@ -77,7 +78,8 @@ func (s *DatabasesService) ListDocuments(ctx context.Context, req *clientv1.List
 	}
 	return &clientv1.ListDocumentsResponse{
 		Documents: out,
-		Meta:      &sharedv1.ListResponseMeta{PageSize: ast.PageSize, TotalCount: int32(total), NextPageToken: next},
+		Meta:      &sharedv1.ListResponseMeta{PageSize: ast.PageSize, TotalCount: int32(result.TotalCount), NextPageToken: result.NextPageToken},
+		Distances: result.Distances,
 	}, nil
 }
 

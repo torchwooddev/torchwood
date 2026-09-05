@@ -554,9 +554,12 @@ func (x *ListDocumentsRequest) GetQuery() *v1.Query {
 }
 
 type ListDocumentsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Documents     []*v1.Document         `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
-	Meta          *v1.ListResponseMeta   `protobuf:"bytes,2,opt,name=meta,proto3" json:"meta,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Documents []*v1.Document         `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
+	Meta      *v1.ListResponseMeta   `protobuf:"bytes,2,opt,name=meta,proto3" json:"meta,omitempty"`
+	// KNN 距离回传（会话 #10）：与 documents 平行，语义同 server 面的
+	// ListDocumentsResponse.distances（仅 vector_search 查询时填充）。
+	Distances     []float64 `protobuf:"fixed64,3,rep,packed,name=distances,proto3" json:"distances,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -601,6 +604,13 @@ func (x *ListDocumentsResponse) GetDocuments() []*v1.Document {
 func (x *ListDocumentsResponse) GetMeta() *v1.ListResponseMeta {
 	if x != nil {
 		return x.Meta
+	}
+	return nil
+}
+
+func (x *ListDocumentsResponse) GetDistances() []float64 {
+	if x != nil {
+		return x.Distances
 	}
 	return nil
 }
@@ -940,10 +950,11 @@ const file_client_v1_databases_proto_rawDesc = "" +
 	"page_token\x18\x05 \x01(\tR\tpageToken\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x06 \x01(\tR\tprojectId\x120\n" +
-	"\x05query\x18\a \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryJ\x04\b\x03\x10\x04R\aqueries\"\x8f\x01\n" +
+	"\x05query\x18\a \x01(\v2\x1a.torchwood.shared.v1.QueryR\x05queryJ\x04\b\x03\x10\x04R\aqueries\"\xad\x01\n" +
 	"\x15ListDocumentsResponse\x12;\n" +
 	"\tdocuments\x18\x01 \x03(\v2\x1d.torchwood.shared.v1.DocumentR\tdocuments\x129\n" +
-	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\"\xbd\x01\n" +
+	"\x04meta\x18\x02 \x01(\v2%.torchwood.shared.v1.ListResponseMetaR\x04meta\x12\x1c\n" +
+	"\tdistances\x18\x03 \x03(\x01R\tdistances\"\xbd\x01\n" +
 	"\x15CountDocumentsRequest\x12\x1f\n" +
 	"\vdatabase_id\x18\x01 \x01(\tR\n" +
 	"databaseId\x12#\n" +

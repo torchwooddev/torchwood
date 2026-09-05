@@ -4,6 +4,36 @@ package torchwood.shared.v1;
 
 option go_package = "github.com/torchwooddev/torchwood/genproto/shared/v1;sharedv1";
 
+// DistanceMetric 是向量近邻查询的距离度量（会话 #10，与 hnsw 索引的
+// distance_metric 同一枚举域）。
+enum DistanceMetric {
+  DISTANCE_METRIC_UNSPECIFIED = 0;
+  // 余弦距离（PG <=>，HNSW vector_cosine_ops）。缺省即 COSINE。
+  DISTANCE_METRIC_COSINE = 1;
+  // 欧氏距离（PG <->，HNSW vector_l2_ops）。
+  DISTANCE_METRIC_L2 = 2;
+  // 内积负值（PG <#>，HNSW vector_ip_ops；pgvector 以负内积为"距离"，
+  // 值域 (-inf, 0]，越小越近）。
+  DISTANCE_METRIC_INNER_PRODUCT = 3;
+}
+
+// VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子）。
+// 不是 filter 树节点：距离不可作布尔谓词——排序由距离承载，limit 即 k
+//（top-k 可见近邻，iterative scan 语义：迭代搜索直至凑满 k 个满足全部
+// 过滤条件的行）。values 须与目标 vector 属性 dims 等长。目标列必须
+// 声明为 vector 属性且存在与 metric 匹配的 hnsw 索引（显式拒绝原则，
+// 与 search 需 fulltext 索引同款纪律）。DSL 字符串不支持 vector_search
+//（向量不该手写，SDK typed builder only）。
+message VectorSearch {
+  string attribute = 1;
+  repeated double values = 2;
+  DistanceMetric metric = 3;
+  // 距离阈值：仅保留 top-k 中距离 <= max_distance 的行（服务端在 top-k
+  // 结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，
+// 原型 2 实证）。缺省无阈值。
+  optional double max_distance = 4;
+}
+
 // Comparison is a leaf predicate: attribute plus zero or more values.
 // Value arity per operator: eq/ne/lt/lte/gt/gte/in/contains/starts_with/
 // ends_with/search >= 1; between/not_between exactly 2; is_null/is_not_null 0.
@@ -61,6 +91,9 @@ message Order {
 // (C7: the server consumes no query strings; the Appwrite DSL survives only
 // as client-side sugar in SDKs/tools). page_token is the authoritative pager
 // (K-20); page_size is the page bound.
+// vector_search（会话 #10）：KNN 一次一个；与 filter 可组合（AND），与
+// orders/page_token 互斥（排序由距离承载；多页 KNN 挂账）——服务端显式
+// 拒绝非法组合，字段本身保留。
 message Query {
   Filter filter = 1;
   repeated Order orders = 2;
@@ -68,4 +101,6 @@ message Query {
   string page_token = 4;
   // Projection: server trims the returned Data to these fields.
   repeated string select = 5;
+  // KNN 算子（会话 #10）：非 filter 节点，见 VectorSearch。
+  VectorSearch vector_search = 6;
 }

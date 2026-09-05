@@ -88,10 +88,10 @@ func TestListDocuments_KeepsDocumentVersion(t *testing.T) {
 	rec := newMemDocDB()
 	rec.docs["users/u1"] = databases.Document{ID: "u1", Version: 7, Data: map[string]any{"email": "a@b.c"}}
 	core := New(rec, nil)
-	list, total, _, err := core.ListDocuments(context.Background(), "p", "app", "users", databases.Query{}, databases.SystemPrincipal)
+	result, err := core.ListDocuments(context.Background(), "p", "app", "users", databases.Query{}, databases.SystemPrincipal)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
-	require.Equal(t, int64(7), list[0].Version)
+	require.Equal(t, int64(1), result.TotalCount)
+	require.Equal(t, int64(7), result.Documents[0].Version)
 }
 
 func TestUpsertDocument_ConflictColumnsRequired(t *testing.T) {

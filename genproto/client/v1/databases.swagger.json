@@ -484,6 +484,45 @@
               "type": "string"
             },
             "collectionFormat": "multi"
+          },
+          {
+            "name": "query.vector_search.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.vector_search.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.vector_search.metric",
+            "description": " - DISTANCE_METRIC_COSINE: 余弦距离（PG \u003c=\u003e，HNSW vector_cosine_ops）。缺省即 COSINE。\n - DISTANCE_METRIC_L2: 欧氏距离（PG \u003c-\u003e，HNSW vector_l2_ops）。\n - DISTANCE_METRIC_INNER_PRODUCT: 内积负值（PG \u003c#\u003e，HNSW vector_ip_ops；pgvector 以负内积为\"距离\"，\n值域 (-inf, 0]，越小越近）。",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DISTANCE_METRIC_UNSPECIFIED",
+              "DISTANCE_METRIC_COSINE",
+              "DISTANCE_METRIC_L2",
+              "DISTANCE_METRIC_INNER_PRODUCT"
+            ],
+            "default": "DISTANCE_METRIC_UNSPECIFIED"
+          },
+          {
+            "name": "query.vector_search.max_distance",
+            "description": "距离阈值：仅保留 top-k 中距离 \u003c= max_distance 的行（服务端在 top-k\n结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，\n原型 2 实证）。缺省无阈值。",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
           }
         ],
         "tags": [
@@ -1128,6 +1167,45 @@
             "collectionFormat": "multi"
           },
           {
+            "name": "query.vector_search.attribute",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "query.vector_search.values",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "query.vector_search.metric",
+            "description": " - DISTANCE_METRIC_COSINE: 余弦距离（PG \u003c=\u003e，HNSW vector_cosine_ops）。缺省即 COSINE。\n - DISTANCE_METRIC_L2: 欧氏距离（PG \u003c-\u003e，HNSW vector_l2_ops）。\n - DISTANCE_METRIC_INNER_PRODUCT: 内积负值（PG \u003c#\u003e，HNSW vector_ip_ops；pgvector 以负内积为\"距离\"，\n值域 (-inf, 0]，越小越近）。",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DISTANCE_METRIC_UNSPECIFIED",
+              "DISTANCE_METRIC_COSINE",
+              "DISTANCE_METRIC_L2",
+              "DISTANCE_METRIC_INNER_PRODUCT"
+            ],
+            "default": "DISTANCE_METRIC_UNSPECIFIED"
+          },
+          {
+            "name": "query.vector_search.max_distance",
+            "description": "距离阈值：仅保留 top-k 中距离 \u003c= max_distance 的行（服务端在 top-k\n结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，\n原型 2 实证）。缺省无阈值。",
+            "in": "query",
+            "required": false,
+            "type": "number",
+            "format": "double"
+          },
+          {
             "name": "project_id",
             "in": "query",
             "required": false,
@@ -1399,6 +1477,14 @@
         },
         "meta": {
           "$ref": "#/definitions/v1ListResponseMeta"
+        },
+        "distances": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "title": "KNN 距离回传（会话 #10）：与 documents 平行，语义同 server 面的\nListDocumentsResponse.distances（仅 vector_search 查询时填充）。"
         }
       }
     },
@@ -1482,6 +1568,18 @@
         }
       },
       "description": "Comparison is a leaf predicate: attribute plus zero or more values.\nValue arity per operator: eq/ne/lt/lte/gt/gte/in/contains/starts_with/\nends_with/search \u003e= 1; between/not_between exactly 2; is_null/is_not_null 0."
+    },
+    "v1DistanceMetric": {
+      "type": "string",
+      "enum": [
+        "DISTANCE_METRIC_UNSPECIFIED",
+        "DISTANCE_METRIC_COSINE",
+        "DISTANCE_METRIC_L2",
+        "DISTANCE_METRIC_INNER_PRODUCT"
+      ],
+      "default": "DISTANCE_METRIC_UNSPECIFIED",
+      "description": "- DISTANCE_METRIC_COSINE: 余弦距离（PG \u003c=\u003e，HNSW vector_cosine_ops）。缺省即 COSINE。\n - DISTANCE_METRIC_L2: 欧氏距离（PG \u003c-\u003e，HNSW vector_l2_ops）。\n - DISTANCE_METRIC_INNER_PRODUCT: 内积负值（PG \u003c#\u003e，HNSW vector_ip_ops；pgvector 以负内积为\"距离\"，\n值域 (-inf, 0]，越小越近）。",
+      "title": "DistanceMetric 是向量近邻查询的距离度量（会话 #10，与 hnsw 索引的\ndistance_metric 同一枚举域）。"
     },
     "v1Document": {
       "type": "object",
@@ -1713,9 +1811,37 @@
             "type": "string"
           },
           "description": "Projection: server trims the returned Data to these fields."
+        },
+        "vector_search": {
+          "$ref": "#/definitions/v1VectorSearch",
+          "title": "KNN 算子（会话 #10）：非 filter 节点，见 VectorSearch。"
         }
       },
-      "description": "Query is the single wire form of document list/count/aggregate filters\n(C7: the server consumes no query strings; the Appwrite DSL survives only\nas client-side sugar in SDKs/tools). page_token is the authoritative pager\n(K-20); page_size is the page bound."
+      "title": "Query is the single wire form of document list/count/aggregate filters\n(C7: the server consumes no query strings; the Appwrite DSL survives only\nas client-side sugar in SDKs/tools). page_token is the authoritative pager\n(K-20); page_size is the page bound.\nvector_search（会话 #10）：KNN 一次一个；与 filter 可组合（AND），与\norders/page_token 互斥（排序由距离承载；多页 KNN 挂账）——服务端显式\n拒绝非法组合，字段本身保留。"
+    },
+    "v1VectorSearch": {
+      "type": "object",
+      "properties": {
+        "attribute": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "metric": {
+          "$ref": "#/definitions/v1DistanceMetric"
+        },
+        "max_distance": {
+          "type": "number",
+          "format": "double",
+          "title": "距离阈值：仅保留 top-k 中距离 \u003c= max_distance 的行（服务端在 top-k\n结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，\n原型 2 实证）。缺省无阈值。"
+        }
+      },
+      "title": "VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子）。\n不是 filter 树节点：距离不可作布尔谓词——排序由距离承载，limit 即 k\n（top-k 可见近邻，iterative scan 语义：迭代搜索直至凑满 k 个满足全部\n过滤条件的行）。values 须与目标 vector 属性 dims 等长。目标列必须\n声明为 vector 属性且存在与 metric 匹配的 hnsw 索引（显式拒绝原则，\n与 search 需 fulltext 索引同款纪律）。DSL 字符串不支持 vector_search\n（向量不该手写，SDK typed builder only）。"
     }
   },
   "securityDefinitions": {

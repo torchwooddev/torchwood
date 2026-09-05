@@ -26,6 +26,13 @@ func FromProto(src *sharedv1.Query) (*query.Query, error) {
 		PageToken: src.GetPageToken(),
 		Selects:   append([]string{}, src.GetSelect()...),
 	}
+	if vs := src.GetVectorSearch(); vs != nil {
+		v, err := vectorSearchFromProto(vs, &leaves)
+		if err != nil {
+			return nil, err
+		}
+		out.VectorSearch = v
+	}
 	if filter != nil && filter.Op != query.OpAnd && filter.Op != query.OpOr {
 		out.Filters = []query.Filter{*filter}
 	} else if filter != nil && filter.Op == query.OpAnd {
@@ -41,10 +48,58 @@ func FromProto(src *sharedv1.Query) (*query.Query, error) {
 		}
 		out.Orders = append(out.Orders, query.Order{Attribute: o.GetAttribute(), Desc: o.GetDesc()})
 	}
+	// KNN 组合约束（会话 #10 预决策 3）：与 orders/page_token 互斥——排序由
+	// 距离承载；多页 KNN 挂账（cursor 续页拒绝）。page_size = k 是唯一分页
+	// 形态（limit 即 k），允许保留。
+	if out.VectorSearch != nil {
+		if len(out.Orders) > 0 {
+			return nil, fmt.Errorf("vector_search cannot be combined with orders; distance carries the ordering")
+		}
+		if out.PageToken != "" {
+			return nil, fmt.Errorf("vector_search does not support page tokens; multi-page KNN is not supported")
+		}
+	}
 	if err := out.Validate(); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// vectorSearchFromProto 解码 KNN 算子：metric 枚举映射（UNSPECIFIED →
+// COSINE 缺省）；维度非空由服务端按 catalog dims 校验（codec 无 schema）。
+func vectorSearchFromProto(src *sharedv1.VectorSearch, leaves *int) (*query.VectorSearch, error) {
+	if src.GetAttribute() == "" {
+		return nil, fmt.Errorf("vector_search attribute is required")
+	}
+	if len(src.GetValues()) == 0 {
+		return nil, fmt.Errorf("vector_search requires at least 1 value")
+	}
+	metric := query.MetricCosine
+	switch src.GetMetric() {
+	case sharedv1.DistanceMetric_DISTANCE_METRIC_UNSPECIFIED, sharedv1.DistanceMetric_DISTANCE_METRIC_COSINE:
+	case sharedv1.DistanceMetric_DISTANCE_METRIC_L2:
+		metric = query.MetricL2
+	case sharedv1.DistanceMetric_DISTANCE_METRIC_INNER_PRODUCT:
+		metric = query.MetricInnerProduct
+	default:
+		return nil, fmt.Errorf("unsupported distance metric: %v", src.GetMetric())
+	}
+	if leaves != nil {
+		*leaves++
+		if *leaves > query.MaxQueries {
+			return nil, fmt.Errorf("filter node count exceeds maximum of %d", query.MaxQueries)
+		}
+	}
+	v := &query.VectorSearch{
+		Attribute: src.GetAttribute(),
+		Values:    append([]float64{}, src.GetValues()...),
+		Metric:    metric,
+	}
+	if src.MaxDistance != nil {
+		md := src.GetMaxDistance()
+		v.MaxDistance = &md
+	}
+	return v, nil
 }
 
 func filterFromProto(src *sharedv1.Filter, depth int, leaves *int) (*query.Filter, error) {

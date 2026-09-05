@@ -479,9 +479,9 @@ func (d *Databases) ListDocuments(
 	projectID, databaseID, collectionID string,
 	q databases.Query,
 	principal databases.Principal,
-) ([]databases.Document, int64, string, error) {
+) (*documents.ListDocumentsResult, error) {
 	if err := d.ensureReadableCollection(ctx, projectID, databaseID, collectionID, principal); err != nil {
-		return nil, 0, "", err
+		return nil, err
 	}
 	return d.documentsCore().ListDocuments(ctx, projectID, databaseID, collectionID, q, principal)
 }

@@ -61,6 +61,24 @@ type Order struct {
 	Desc      bool
 }
 
+// VectorSearch 是 KNN 算子（会话 #10 §10.5 P0）：非 filter 树节点——距离
+// 排序承载顺序，limit 即 k。Metric 是归一后的大写形态（COSINE|L2|
+// INNER_PRODUCT）；MaxDistance nil = 无阈值（指针保留 presence——
+// inner_product 的距离是负内积，阈值 0/负值均为合法语义，不可用零哨兵）。
+type VectorSearch struct {
+	Attribute   string
+	Values      []float64
+	Metric      string
+	MaxDistance *float64
+}
+
+// Supported distance metrics（与 proto DistanceMetric / hnsw 索引同枚举域）。
+const (
+	MetricCosine      = "COSINE"
+	MetricL2          = "L2"
+	MetricInnerProduct = "INNER_PRODUCT"
+)
+
 // Query is the parsed AST: Filter tree + Orders + page.
 // Parse / ParseMany are Appwrite-string codecs into this model.
 // Filters is the implicit-AND leaf list produced by the codec (same as
@@ -70,6 +88,7 @@ type Query struct {
 	Filters      []Filter
 	Orders       []Order
 	Selects      []string
+	VectorSearch *VectorSearch
 	Limit        int
 	Offset       int
 	CursorAfter  string
@@ -84,7 +103,7 @@ func (q *Query) IsActive() bool {
 		return false
 	}
 	return q.Filter != nil || len(q.Filters) > 0 || len(q.Orders) > 0 ||
-		len(q.Selects) > 0 || q.Limit != 0 || q.Offset != 0 ||
+		len(q.Selects) > 0 || q.VectorSearch != nil || q.Limit != 0 || q.Offset != 0 ||
 		q.CursorAfter != "" || q.CursorBefore != "" ||
 		q.PageSize != 0 || q.PageToken != ""
 }
