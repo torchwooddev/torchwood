@@ -88,6 +88,30 @@ func ErrorDomainCode(err error) string {
 	return ""
 }
 
+// allDomainCodes 是全部域码的静态清单（redesign §4.1 域码目录的单一事实源）。
+// 新增域码时必须同步登记此处；与 app/shared domainCodeGRPC 的双向一致由
+// docdb_errors_test 防漂移断言锁定（漏登记即测试红）。
+var allDomainCodes = []string{
+	ErrCodePermissionDenied, ErrCodeAlreadyExists, ErrCodeNotFound,
+	ErrCodeNoFieldsToUpdate, ErrCodeVersionRequired, ErrCodeVersionInvalid,
+	ErrCodeVersionConflict, ErrCodeVersionColumnConflict, ErrCodeVersionColumnUnavailable,
+	ErrCodeInvalidArgument, ErrCodeTooLarge, ErrCodeACLTooLarge,
+	ErrCodeAttributeUnserializable, ErrCodeExhausted,
+	ErrCodeIdempotencyKeyConflict, ErrCodeIdempotencyInProgress,
+	ErrCodeAggregateOverflow, ErrCodeDDLConflict, ErrCodeColumnLimitExceeded,
+	ErrCodeResumeExpired,
+}
+
+// ErrorCodeCatalog 返回全部域码 → retryable 的目录（B10 可发现性：
+// `GET /.well-known/torchwood` 错误码段的单一事实源；Agent 机器判定恢复路径）。
+func ErrorCodeCatalog() map[string]bool {
+	out := make(map[string]bool, len(allDomainCodes))
+	for _, code := range allDomainCodes {
+		out[code] = ErrorCodeRetryable(code)
+	}
+	return out
+}
+
 // ErrPermissionDenied is returned when the caller lacks document-level permission.
 var ErrPermissionDenied = errors.New("permission denied")
 
@@ -138,7 +162,7 @@ var ErrVersionColumnConflict = errors.New("version_column_conflict")
 var ErrVersionColumnUnavailable = errors.New("version_column_unavailable")
 
 // ErrAggregateOverflow 是 integer 属性聚合结果超出 int64 范围时返回的错误
-//（SUM(bigint)::int8 溢出）；映射为 InvalidArgument / AGGREGATE.OVERFLOW。
+// （SUM(bigint)::int8 溢出）；映射为 InvalidArgument / AGGREGATE.OVERFLOW。
 var ErrAggregateOverflow = errors.New("aggregate_overflow")
 
 // ErrDDLConflict 是 catalog 元数据写路径的 ddl_seq CAS 失败（并发 schema 变更

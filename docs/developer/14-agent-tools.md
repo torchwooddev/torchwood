@@ -44,6 +44,8 @@
 > 上传分片、OAuth 回调、Realtime WebSocket 为自定义 HTTP，不在本表，也不可经 `InvokeJSON` 调用。完整字段以 `tools.go:42` 的 `InputNotes` 与对应 proto 为准。
 >
 > **OCC 冲突合并重试**（redesign §10.1）：`update_document` / `delete_document` 撞版本时返回 `DOCUMENT.VERSION_CONFLICT`（FailedPrecondition，retryable=true），错误体 ErrorInfo metadata 携带 `current_version=<当前 _version>`（探测读到的实际值，零额外查询）——Agent 直接取该值重放合并重试，不必先 GET 文档。
+>
+> **契约发现面（B10，redesign §4.1）**：① `GET /v1/server/databases/{database_id}/collections/{collection_id}:exportSchema?as=jsonschema`（等价 `Databases.ExportCollectionSchema`）导出集合契约的 **JSON Schema 2020-12** 文档——catalog attrs 类型映射（string/email/url/datetime → string(+format)；integer/float/boolean；json → object；vector → array<number> 定长 minItems/maxItems=dims；array=true → array+items）、`required`、系统字段（`_id`/`_version`/`_acl` 等）以 readOnly 注释；Agent 据此合成/校验文档载荷。② `GET /.well-known/torchwood` 为机器可读目录：查询算子全集（canonical 名 + proto 字段 + 值数量约束 + array_only 标注）、域码表（code + retryable，与 `databases.ErrorCodeCatalog()` 同源）、databases 面 26 个动词的 REST 形态与 scope 清单——Agent 接入先读目录再选动词，不再依赖口口相传。
 
 ---
 
