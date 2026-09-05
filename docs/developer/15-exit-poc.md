@@ -19,6 +19,7 @@
 - **要做什么**：在启动或迁移路径增加一次性全量扫描：遍历 catalog 全部业务集合物理表，按 R13a/R16 终态口径（SELECT 全列；INSERT 数据列 + 除 `_tenant` 外系统列含 `_acl`；UPDATE 排除 `_tenant`/`_acl`）重刷列级 GRANT，不再依赖 DDL touch 逐表矫正。R13a/R16 连带：终态口径以 ③-b 收口形态为准（INSERT 恢复 `_acl`、UPDATE 双向排除）。
 - **完成判据**：构造一张列授权故意偏离终态的表（手工 REVOKE/GRANT），执行扫描后 `information_schema.column_privileges` 与 `refreshColumnGrants` 幂等重建的结果一致；扫描入口（启动钩子或迁移步骤）有集成测试锁定，且空库扫描为 no-op。
 - **建议归属**：documentdb DDL/权限会话（`infra/documentdb`）。
+- **闭环**：2026-09-05｜commit 0769ce6｜扫描入口选启动钩子（迁移路径是纯 SQL 文件，Go 侧 reconcile 无挂载点；OnStart 先于监听，矫正先于流量暴露）：`documentdb.ReconcileCollectionColumnGrants` 遍历全局 catalog 业务集合（sentinel 排除、ORDER BY 全键保证跨进程锁序），逐表经 tw_owner 事务执行 `refreshColumnGrants` 幂等重建（扫描执行体与门禁判据对照物同源；policy 重建仍留 DDL touch 路径）；`bootkit.CollectionGrantsReconcileHook` 注册进 `NewOnStarts`（server/worker 共享）。单表失败不中断全量（幽灵 catalog 行跳过计数 + Warn 日志 + `torchwood_documentdb_grants_reconcile_failures_total` 指标），空库 no-op。集成测试锁定：`TestGrantsReconcile_DeviationRestored`（偏离种子 = REVOKE SELECT、REVOKE UPDATE(title)、GRANT UPDATE(_acl)、GRANT INSERT(_tenant) → 扫描 → column_privileges 与从未偏离的对照集合逐行一致 + 二次扫描零增量 + 功能级 42501 抽验）、`TestGrantsReconcile_EmptyCatalogNoOp`、`TestCollectionGrantsReconcileHook_WiredInOnStarts`（接线断言 `NewOnStarts` 三钩子）。实测稳态扫描 ≈8.8ms/表（本地单实例，含每表一个 tw_owner 事务），千表量级启动开销个位数秒。
 
 ### A2 非 superuser 应用 DSN
 
