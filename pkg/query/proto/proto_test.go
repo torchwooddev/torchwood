@@ -218,3 +218,22 @@ func TestFromProto_VectorSearchCombinations(t *testing.T) {
 	require.NotNil(t, ast.VectorSearch)
 	require.NotNil(t, ast.Filter)
 }
+
+// ef_search（B7）的 presence 语义：缺省不设位；设置后值透传（取值域校验在
+// infra 管道，codec 只透传"是否设置"）。
+func TestFromProto_VectorSearchEfSearchPresence(t *testing.T) {
+	ast, err := FromProto(&sharedv1.Query{VectorSearch: vectorSearch("emb", 1, 0, 0)})
+	require.NoError(t, err)
+	require.NotNil(t, ast.VectorSearch)
+	require.Nil(t, ast.VectorSearch.EfSearch, "unset ef_search must stay nil")
+
+	ef := int32(200)
+	ast, err = FromProto(&sharedv1.Query{
+		VectorSearch: &sharedv1.VectorSearch{
+			Attribute: "emb", Values: []float64{1, 0, 0}, EfSearch: &ef,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ast.VectorSearch.EfSearch)
+	require.Equal(t, ef, *ast.VectorSearch.EfSearch)
+}

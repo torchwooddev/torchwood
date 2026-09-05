@@ -95,7 +95,12 @@ type VectorSearch struct {
 	// 距离阈值：仅保留 top-k 中距离 <= max_distance 的行（服务端在 top-k
 	// 结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，
 	// 原型 2 实证）。缺省无阈值。
-	MaxDistance   *float64 `protobuf:"fixed64,4,opt,name=max_distance,json=maxDistance,proto3,oneof" json:"max_distance,omitempty"`
+	MaxDistance *float64 `protobuf:"fixed64,4,opt,name=max_distance,json=maxDistance,proto3,oneof" json:"max_distance,omitempty"`
+	// HNSW 搜索广度（B7）：本次查询事务内 `SET LOCAL hnsw.ef_search = N`。
+	// 缺省不注入（pgvector 缺省 40，行为与未提供本字段时逐字节一致）。
+	// 合法域 [1,500]：≤0 / >500 一律 InvalidArgument（显式拒绝，上限防滥用
+	// ——ef_search 越大单查询访存越多）。近重复簇边界召回不足时调大。
+	EfSearch      *int32 `protobuf:"varint,5,opt,name=ef_search,json=efSearch,proto3,oneof" json:"ef_search,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -154,6 +159,13 @@ func (x *VectorSearch) GetMetric() DistanceMetric {
 func (x *VectorSearch) GetMaxDistance() float64 {
 	if x != nil && x.MaxDistance != nil {
 		return *x.MaxDistance
+	}
+	return 0
+}
+
+func (x *VectorSearch) GetEfSearch() int32 {
+	if x != nil && x.EfSearch != nil {
+		return *x.EfSearch
 	}
 	return 0
 }
@@ -833,13 +845,16 @@ var File_shared_v1_query_proto protoreflect.FileDescriptor
 
 const file_shared_v1_query_proto_rawDesc = "" +
 	"\n" +
-	"\x15shared/v1/query.proto\x12\x13torchwood.shared.v1\"\xba\x01\n" +
+	"\x15shared/v1/query.proto\x12\x13torchwood.shared.v1\"\xea\x01\n" +
 	"\fVectorSearch\x12\x1c\n" +
 	"\tattribute\x18\x01 \x01(\tR\tattribute\x12\x16\n" +
 	"\x06values\x18\x02 \x03(\x01R\x06values\x12;\n" +
 	"\x06metric\x18\x03 \x01(\x0e2#.torchwood.shared.v1.DistanceMetricR\x06metric\x12&\n" +
-	"\fmax_distance\x18\x04 \x01(\x01H\x00R\vmaxDistance\x88\x01\x01B\x0f\n" +
-	"\r_max_distance\"B\n" +
+	"\fmax_distance\x18\x04 \x01(\x01H\x00R\vmaxDistance\x88\x01\x01\x12 \n" +
+	"\tef_search\x18\x05 \x01(\x05H\x01R\befSearch\x88\x01\x01B\x0f\n" +
+	"\r_max_distanceB\f\n" +
+	"\n" +
+	"_ef_search\"B\n" +
 	"\n" +
 	"Comparison\x12\x1c\n" +
 	"\tattribute\x18\x01 \x01(\tR\tattribute\x12\x16\n" +

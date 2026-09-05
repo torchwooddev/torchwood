@@ -33,6 +33,11 @@ message VectorSearch {
   // 结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，
 // 原型 2 实证）。缺省无阈值。
   optional double max_distance = 4;
+  // HNSW 搜索广度（B7）：本次查询事务内 `SET LOCAL hnsw.ef_search = N`。
+  // 缺省不注入（pgvector 缺省 40，行为与未提供本字段时逐字节一致）。
+  // 合法域 [1,500]：≤0 / >500 一律 InvalidArgument（显式拒绝，上限防滥用
+  // ——ef_search 越大单查询访存越多）。近重复簇边界召回不足时调大。
+  optional int32 ef_search = 5;
 }
 
 // Comparison is a leaf predicate: attribute plus zero or more values.

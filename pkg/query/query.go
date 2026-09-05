@@ -65,11 +65,14 @@ type Order struct {
 // 排序承载顺序，limit 即 k。Metric 是归一后的大写形态（COSINE|L2|
 // INNER_PRODUCT）；MaxDistance nil = 无阈值（指针保留 presence——
 // inner_product 的距离是负内积，阈值 0/负值均为合法语义，不可用零哨兵）。
+// EfSearch nil = 不注入（pgvector 缺省 40；B7 查询级调参，服务端校验
+// [1,500]——指针保留 presence，缺省行为与未提供时逐字节一致）。
 type VectorSearch struct {
 	Attribute   string
 	Values      []float64
 	Metric      string
 	MaxDistance *float64
+	EfSearch    *int32
 }
 
 // Supported distance metrics（与 proto DistanceMetric / hnsw 索引同枚举域）。

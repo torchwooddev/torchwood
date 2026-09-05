@@ -328,6 +328,16 @@ func (p *postgresDocumentDB) listDocumentsKNN(ctx context.Context, projectID, da
 	if _, err := p.conn(ctx).ExecContext(ctx, `SET LOCAL hnsw.iterative_scan = 'strict_order'`); err != nil {
 		return nil, fmt.Errorf("enable iterative scan: %w", err)
 	}
+	// ef_search 查询级调参（B7）：仅调用方显式设置时注入（缺省不 emit 任何
+	// 语句——行为与未提供字段时逐字节一致，pgvector 缺省 40）。取值域已在
+	// validateVectorSearch 前置拒绝（[1,500]），此处按 int 字面量拼接安全
+	//（SET LOCAL 不接受绑定参数）；同事务内生效、随事务消失零残留。
+	if vs.EfSearch != nil {
+		if _, err := p.conn(ctx).ExecContext(ctx,
+			fmt.Sprintf(`SET LOCAL hnsw.ef_search = '%d'`, *vs.EfSearch)); err != nil {
+			return nil, fmt.Errorf("set hnsw.ef_search: %w", err)
+		}
+	}
 
 	op, err := distanceOp(vs.Metric)
 	if err != nil {

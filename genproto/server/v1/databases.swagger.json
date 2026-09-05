@@ -876,6 +876,14 @@
             "required": false,
             "type": "number",
             "format": "double"
+          },
+          {
+            "name": "query.vector_search.ef_search",
+            "description": "HNSW 搜索广度（B7）：本次查询事务内 `SET LOCAL hnsw.ef_search = N`。\n缺省不注入（pgvector 缺省 40，行为与未提供本字段时逐字节一致）。\n合法域 [1,500]：≤0 / \u003e500 一律 InvalidArgument（显式拒绝，上限防滥用\n——ef_search 越大单查询访存越多）。近重复簇边界召回不足时调大。",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
           }
         ],
         "tags": [
@@ -1679,6 +1687,14 @@
             "required": false,
             "type": "number",
             "format": "double"
+          },
+          {
+            "name": "query.vector_search.ef_search",
+            "description": "HNSW 搜索广度（B7）：本次查询事务内 `SET LOCAL hnsw.ef_search = N`。\n缺省不注入（pgvector 缺省 40，行为与未提供本字段时逐字节一致）。\n合法域 [1,500]：≤0 / \u003e500 一律 InvalidArgument（显式拒绝，上限防滥用\n——ef_search 越大单查询访存越多）。近重复簇边界召回不足时调大。",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
           }
         ],
         "tags": [
@@ -3093,6 +3109,11 @@
           "type": "number",
           "format": "double",
           "title": "距离阈值：仅保留 top-k 中距离 \u003c= max_distance 的行（服务端在 top-k\n结果上后置过滤——距离谓词进 WHERE 会使规划器放弃 HNSW 索引扫描，\n原型 2 实证）。缺省无阈值。"
+        },
+        "ef_search": {
+          "type": "integer",
+          "format": "int32",
+          "title": "HNSW 搜索广度（B7）：本次查询事务内 `SET LOCAL hnsw.ef_search = N`。\n缺省不注入（pgvector 缺省 40，行为与未提供本字段时逐字节一致）。\n合法域 [1,500]：≤0 / \u003e500 一律 InvalidArgument（显式拒绝，上限防滥用\n——ef_search 越大单查询访存越多）。近重复簇边界召回不足时调大。"
         }
       },
       "title": "VectorSearch 是向量近邻查询（会话 #10 §10.5 P0：KNN 一等算子；B2 多页）。\n不是 filter 树节点：距离不可作布尔谓词——排序由距离承载，limit 即 k\n（top-k 可见近邻，iterative scan 语义：迭代搜索直至凑满 k 个满足全部\n过滤条件的行）。values 须与目标 vector 属性 dims 等长。目标列必须\n声明为 vector 属性且存在与 metric 匹配的 hnsw 索引（显式拒绝原则，\n与 search 需 fulltext 索引同款纪律）。DSL 字符串不支持 vector_search\n（向量不该手写，SDK typed builder only）。多页：配合 Query.page_token\n的 kvc: 游标翻页（首页不带 token）；max_distance 在每一页独立生效。"

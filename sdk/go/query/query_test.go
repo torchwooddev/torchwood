@@ -118,6 +118,22 @@ func TestBuilder_Chain(t *testing.T) {
 	require.Equal(t, []string{"$id", "title"}, q.GetSelect())
 	require.Equal(t, int32(25), q.GetPageSize())
 	require.Equal(t, "ka:doc-9", q.GetPageToken())
+
+	// VectorSearch 构造器（B7）：ef_search 缺省不设位（presence 语义——服务端
+	// 维持 pgvector 缺省 40），EfSearch 设置后透传。
+	defaultVS := VectorSearch("emb", 1, 0, 0).Build()
+	require.Nil(t, defaultVS.EfSearch, "default builder must not emit ef_search")
+	require.Nil(t, defaultVS.MaxDistance)
+	tuned := VectorSearch("emb", 1, 0, 0).
+		MetricL2().
+		MaxDistance(0.5).
+		EfSearch(200).
+		Build()
+	require.NotNil(t, tuned.EfSearch)
+	require.Equal(t, int32(200), tuned.GetEfSearch())
+	require.NotNil(t, tuned.GetMaxDistance())
+	require.Equal(t, float64(0.5), tuned.GetMaxDistance())
+	require.Equal(t, sharedv1.DistanceMetric_DISTANCE_METRIC_L2, tuned.GetMetric())
 }
 
 // TestFromDSL_EveryOperator：DSL sugar 覆盖全部算子（文法与 pkg/query 同源）。

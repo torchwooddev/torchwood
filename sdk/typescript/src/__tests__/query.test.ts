@@ -16,6 +16,11 @@ describe("query builders", () => {
     assert.deepEqual(full.values, [1, 0, 0]);
     assert.equal(full.metric, "INNER_PRODUCT");
     assert.equal(full.maxDistance, -0.2); // inner_product 阈值可为 0/负
+
+    // B7：efSearch 缺省不出现（服务端维持 pgvector 缺省 40），设置后透传。
+    assert.ok(!("efSearch" in base), "default builder must not emit efSearch");
+    const tuned = vectorSearch("emb", [1, 0, 0]).efSearch(200).build();
+    assert.equal(tuned.efSearch, 200);
   });
 
   it("既有构造器形态不变（回归）", () => {

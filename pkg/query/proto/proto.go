@@ -95,6 +95,12 @@ func vectorSearchFromProto(src *sharedv1.VectorSearch, leaves *int) (*query.Vect
 		md := src.GetMaxDistance()
 		v.MaxDistance = &md
 	}
+	// ef_search（B7）presence 透传；取值域 [1,500] 由服务端（infra 管道，
+	// schema 上下文所在）显式拒绝——codec 只保留"是否设置"的语义。
+	if src.EfSearch != nil {
+		ef := src.GetEfSearch()
+		v.EfSearch = &ef
+	}
 	return v, nil
 }
 

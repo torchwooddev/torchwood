@@ -86,10 +86,23 @@ func vectorColumnsFromColl(coll *databases.Collection) map[string]int {
 // validateVectorSearch 是 KNN 算子的前置校验（会话 #10 预决策 3，显式拒绝
 // 原则）：目标列必须是声明的 vector 属性（维度等长）、且存在与请求 metric
 // 匹配的 hnsw 索引（无索引/metric 不符 → InvalidArgument——search 需
-// fulltext 索引的同款纪律）。
+// fulltext 索引的同款纪律）。ef_search（B7）合法域 [1,500]：≤0 非法
+//（pgvector 要求 ≥1），>500 超防滥用上限——一律 InvalidArgument 显式拒绝
+//（不用静默 clamp：R9 显式拒绝原则，静默改写让调用方误以为请求值生效）。
 func validateVectorSearch(coll *databases.Collection, vs *query.VectorSearch) error {
 	if vs == nil {
 		return nil
+	}
+	if vs.EfSearch != nil {
+		ef := *vs.EfSearch
+		if ef < 1 {
+			return status.Error(codes.InvalidArgument,
+				fmt.Sprintf("vector_search ef_search must be >= 1, got %d", ef))
+		}
+		if ef > maxEfSearch {
+			return status.Errorf(codes.InvalidArgument,
+				"vector_search ef_search %d exceeds maximum of %d", ef, maxEfSearch)
+		}
 	}
 	dims, ok := vectorColumnsFromColl(coll)[vs.Attribute]
 	if !ok {

@@ -60,6 +60,12 @@ export interface VectorSearch {
   values: number[];
   metric?: DistanceMetric;
   maxDistance?: number;
+  /**
+   * HNSW 搜索广度（B7）：本次查询的 hnsw.ef_search，合法域 [1,500]
+   * （≤0 / >500 服务端 InvalidArgument）。缺省不发送——服务端维持 pgvector
+   * 缺省 40。近重复簇边界召回不足时调大（代价：延迟随 ef 增长）。
+   */
+  efSearch?: number;
 }
 
 /** shared.v1.Query 的 JSON 形态（POST documents:list 的 body 即此对象）。 */
@@ -201,6 +207,11 @@ export function vectorSearch(attribute: string, values: number[]) {
     /** 距离阈值：仅保留 top-k 中距离 <= max 的行。 */
     maxDistance(max: number) {
       v.maxDistance = max;
+      return this;
+    },
+    /** HNSW 搜索广度（B7）：hnsw.ef_search，合法域 [1,500]；缺省不发送（服务端用 pgvector 缺省 40）。 */
+    efSearch(n: number) {
+      v.efSearch = n;
       return this;
     },
     build(): VectorSearch {
