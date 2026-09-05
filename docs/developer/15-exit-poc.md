@@ -59,7 +59,7 @@
 - **要做什么**：修复两处并行不可用根因：① SetupTestDB 的隔离库创建/清理在多包并行下的争用；② 迁移循环 down 的 000026 `DROP ROLE`（集群级对象）与并行库中 tw_owner 持有对象的竞态。
 - **完成判据**：`go test ./... -p 4` 在 CI 规格环境连续 3 次全绿、无重试无 flake；testutil 文档注明并行安全契约。
 - **建议归属**：testutil/CI 会话。
-- **闭环（2026-09-05，testutil/CI 会话）**：两根因修复落地——① 建库/迁移/删库段持集群级 advisory lock（`pg_try_advisory_lock` 轮询等锁 + admin 10s 读超时 + 瞬时过载指数退避重试 + admin 池进程级单例 + 测试库池上限 16），跨进程互斥不依赖进程内锁（`07c6e6a`、`89eb708`、`c181050`）；② 000026 down 改**集群角色保留**形态（不 DROP ROLE，只回滚本库作用域：REASSIGN/DROP OWNED + REVOKE membership；up 同步原子幂等 `1d77e8f`）——消除冲突源本身，无需任何测试间互斥锁，down 对称性收敛为"库内完全对称"（角色生命周期归集群供给方，A8 承接）。附带修复验收暴露的既有 flake：session evict 测试 expire tie（`32a781d`）、CreateTestProject 项目 schema apply 重试（`de88fb6`）。**证据**：隔离验收树（main `c181050` 同源）连续 3 次 `go test ./... -p 4 -count=1` 全绿——67 包 ok，唯一红灯 `cmd/worker.TestWorkerDepsGraph` 为 **A1 commit `0769ce6` 引入的 import guard 违规**（bootkit→documentdb 传递依赖；已实证在 A6 改动之前的 `3a1da5e` 上同样红），归属 A1 会话收尾，非 A6 范畴。并行安全契约见 `internal/testutil/db.go` 包注释与 06-databases §12。
+- **闭环（2026-09-05，testutil/CI 会话）**：两根因修复落地——① 建库/迁移/删库段持集群级 advisory lock（`pg_try_advisory_lock` 轮询等锁 + admin 10s 读超时 + 瞬时过载指数退避重试 + admin 池进程级单例 + 测试库池上限 16），跨进程互斥不依赖进程内锁（`07c6e6a`、`89eb708`、`c181050`）；② 000026 down 改**集群角色保留**形态（不 DROP ROLE，只回滚本库作用域：REASSIGN/DROP OWNED + REVOKE membership；up 同步原子幂等 `1d77e8f`）——消除冲突源本身，无需任何测试间互斥锁，down 对称性收敛为"库内完全对称"（角色生命周期归集群供给方，A8 承接）。附带修复验收暴露的既有 flake：session evict 测试 expire tie（`32a781d`）、CreateTestProject 项目 schema apply 重试（`de88fb6`）。**证据**：隔离验收树（main `c181050` 同源）连续 3 次 `go test ./... -p 4 -count=1` 全绿——67 包 ok，唯一红灯 `cmd/worker.TestWorkerDepsGraph` 为 **A1 commit `0769ce6` 引入的 import guard 违规**（bootkit→documentdb 传递依赖；已实证在 A6 改动之前的 `3a1da5e` 上同样红），归属 A1 会话收尾。该红灯已由集中复审修复（7014f26）：reconcile 钩子移出 bootkit 共享装配，经 NewOnStarts 可选闭包注入（server 注入实现、worker 传 nil），全量 -p 4 复跑确认恢复。并行安全契约见 `internal/testutil/db.go` 包注释与 06-databases §12。
 
 ### A7 绝对 P99 基准门禁
 
@@ -68,10 +68,10 @@
 - **完成判据**：CI 存在基准 job，失败条件为 P99 超过配置中的数值阈值（非口头约定）；首次全量运行的基线数值记录在本文或 13-operations。
 - **建议归属**：CI 基准（documentdb 测试）会话。
 
-### A8 000026 down 的跨库角色残留 DBA 处置流程
+### A8 RBAC 角色生命周期 runbook（集群供给与清理）
 
-- **出处**：迁移 `000026_rbac_roles.down.sql` 头注释（"角色是集群级对象，跨库残留需 DBA 处置——与 golang-migrate 单库作用域一致"）。
-- **要做什么**：runbook 写明回滚 000026 时其他库中 tw_owner/tw_app/tw_system 的残留对象与成员关系的探测和清理方法（pg_roles/pg_shdepend 探测、逐库 REASSIGN OWNED/DROP OWNED 清单）。
+- **出处**：迁移 000026（A6 ② 修订后为**集群角色保留**形态：down 不 DROP ROLE，只回滚本库作用域——REASSIGN/DROP OWNED + REVOKE membership；up 幂等创建。角色生命周期归集群供给方，见迁移头注释与 06-databases §12）。
+- **要做什么**：runbook 写明 RBAC 角色的集群供给（部署期幂等创建）与常规清理流程（pg_roles/pg_shdepend 探测角色名下对象、逐库 REASSIGN OWNED/DROP OWNED 清单）——A6 修订后 down 已无跨库竞态，本条从"down 撞 2BP01 的处置"转为常规生命周期流程。
 - **完成判据**：13-operations 含可复制的探测查询与逐库清理步骤；在同一集群双迁移库沙箱演练一次 down 并记录输出（本文条目下附摘要）。
 - **建议归属**：DBA runbook（13-operations）。
 
