@@ -183,6 +183,7 @@
 - **要做什么**：三类规模指标接入 metrics/SLO（exporter 或控制面聚合），配阈值告警；A3 观察项随指标可评估。
 - **完成判据**：metrics 端点暴露三指标 + 告警规则入库；阈值及其来源（§3.1 社区阈值：几百 schema 舒适、1–2 千起劣化）写入 13-operations。
 - **建议归属**：运维可观测会话。
+- **闭环（2026-09-05，运维可观测会话）**：7cf457c｜三指标落地——`torchwood_documentdb_tables_total{kind=project_schema|catalog|business}`（`pg_class`×`pg_namespace` 单语句聚合，`internal/infra/documentdb/scale_metrics.go`，server 启动钩子同步一次 + 小时级刷新，`cmd/server` `NewScaleMetricsHook` 经 `bootkit.NewOnStarts` 注入，A1 同形态；分片后每集群各自扫各自库）；`torchwood_documentdb_pgdump_duration_seconds`（进程内指标骨架恒 0，打点契约 = 外部 cron 经 Pushgateway/文本文件 collector 上报，13-operations §5.1 含脚本示例——POC 不做进程内 pg_dump 调度器，避免与关停排水/健康探测耦合）；`torchwood_documentdb_schema_migrate_duration_seconds`（`projectschema/migrator.go` `applyUpTo` 埋点，缓存命中直通不刷新，最近一次 Apply 语义）。阈值与告警规则入库 13-operations §5.1（表计数 >500/>1500 对齐 §3.1 社区阈值几百舒适/1–2 千劣化；pg_dump >1h/4h 对齐社区 24h+ 劣化谱系的早期档；迁移重放 >60s/项目经验基线），告警语义 = 触发多集群分片规划评估（§3.1/§11-G1，排期承诺挂 C7）；§11-A3 观察项随指标可评估。测试：`scale_metrics_test.go`（三平面计数与 pg_class 独立复核一致 + 增量敏感性 + nil 防御 + pg_dump 骨架）、`migrator_test.go` `TestApply_MigrateDurationGauge`（缓存直通不刷新/重放刷正）、`bootkit/hooks_test.go` `TestScaleMetricsHook_WiredInOnStarts`（钩子接线锁定，A1 测试共存）；documentdb/projectschema/bootkit `-p 2` 全绿。
 
 ### B13 低优先级小债打包〔新发现〕
 
