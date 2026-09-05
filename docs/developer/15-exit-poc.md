@@ -33,6 +33,7 @@
 - **要做什么**：runbook 写明 pgvector 安装形态：镜像预装（`pgvector/pgvector:0.8.6-pg18` 基座，docker/local 与 CI 已同步）或 superuser 引导步骤（DBA/引导容器执行 `CREATE EXTENSION vector`）；明确非 superuser 迁移身份下 000030 的行为（前置检查给出可读错误或引导后执行）。
 - **完成判据**：13-operations 有独立小节覆盖"非 superuser 部署下启用 vector"的步骤 + 验证 SQL（`SELECT extversion FROM pg_extension WHERE extname='vector'`）；在一个非 superuser 迁移身份的环境中按步骤走通一次并留记录（本文条目下附命令输出摘要）。
 - **建议归属**：部署/运维（docker/local + 13-operations）。
+- **闭环**：2026-09-05｜13-operations §6.6（同 commit 附全部命令输出）｜镜像基座（docker/local + CI 均为 `pgvector/pgvector:0.8.6-pg18`）superuser 迁移身份下验证 SQL 返回 `vector | 0.8.6`（路径一实测）；临时库 `vector_probe`（owner=非 superuser，`rolsuper=f`）实测路径二：未预装直接执行报 `ERROR: permission denied to create extension "vector"`（HINT: Must be superuser to create this extension.），superuser 预装后同一身份重跑 `CREATE EXTENSION IF NOT EXISTS vector` 输出 `NOTICE: extension "vector" already exists, skipping` 幂等通过、验证 SQL 有输出；探针库/角色已 DROP 清理。
 
 ### A4 roles_sig 双密钥轮换窗口
 

@@ -2,7 +2,7 @@
 
 > 基于当前实现编写（以 `cmd/server/main.go`、`Taskfile.yml`、`docker/local/docker-compose.yml`、`internal/pkg/config/config.proto`、`internal/infra/health/checks.go` 为准）。
 > 关联：`docs/developer/11-testing.md`（测试与门禁）、`AGENTS.md`。
-> 修订记录：2026-08-23 重写（核对 Lynx 三进程、compose 三件套、`task build` 含 `console:build`、`TORCHWOOD_SECURITY_*`、`TORCHWOOD_ENV` 排水、`/healthz`/`/metrics`/`migrate`/`backup`）。
+> 修订记录：2026-08-23 重写（核对 Lynx 三进程、compose 三件套、`task build` 含 `console:build`、`TORCHWOOD_SECURITY_*`、`TORCHWOOD_ENV` 排水、`/healthz`/`/metrics`/`migrate`/`backup`）；2026-09-05 增补 §6.6 vector（pgvector）启用 runbook（转出门禁 A3：镜像预装/superuser 引导两路径 + 验证 SQL + 实测记录），§2 镜像行同步 pgvector 基座。
 
 ---
 
@@ -41,13 +41,14 @@ task dev:worker       # go run ./cmd/worker
 
 | 依赖 | 镜像 | 端口 | 用途 | 健康检查 |
 |------|------|------|------|----------|
-| PostgreSQL | `postgres:18-alpine` | `5432` | 元数据静态表（`bun` + `golang-migrate`）与动态文档层 | `pg_isready` |
+| PostgreSQL | `pgvector/pgvector:0.8.6-pg18`（pgvector 预装基座，锁 0.8.6 + PG18） | `5432` | 元数据静态表（`bun` + `golang-migrate`）与动态文档层（含 vector 列/HNSW） | `pg_isready` |
 | Redis | `redis:7-alpine` | `6379` | 队列/上传会话/ID 生成 | `redis-cli ping` |
 | MinIO | `minio:RELEASE.2024-11-07T00-52-20Z` | `9000`/`9001` | S3 兼容对象存储 | `exec 3<>/dev/tcp/127.0.0.1/9000` |
 
 - 均挂 `postgres_data`/`redis_data`/`minio_data` 卷；
 - 生产可将 `storage.provider: "s3"` 指向任意 S3 兼容服务；
-- 环境变量均支持 `${POSTGRES_USER:-torchwood}` 等覆盖（见 `compose` 中 `environment` 与 `ports` 模板）。
+- 环境变量均支持 `${POSTGRES_USER:-torchwood}` 等覆盖（见 `compose` 中 `environment` 与 `ports` 模板）；
+- PostgreSQL 为 pgvector 预装基座（vector 非 trusted extension，启用路径与验证见 §6.6）。
 
 ---
 
@@ -188,3 +189,75 @@ DSN 优先级：`TORCHWOOD_DATA_DATABASE_SOURCE` → `postgres://torchwood:torch
 - Console 旧页面：`task console:build && task build`；
 - 慢查询无日志：确认阈值非 `"0"` 且级别 ≥ Warn；
 - 首次引导被拒：确认 `TORCHWOOD_SECURITY_SETUP_TOKEN` 已设且进程已重启。
+
+### 6.6 启用 vector（pgvector）
+
+vector 属性类型（`VECTOR(dims)` 列、HNSW 索引、`vectorSearch` 算子）依赖 pgvector 扩展；迁移 `db/migrations/000030_pgvector.up.sql` 在元数据库执行 `CREATE EXTENSION IF NOT EXISTS vector;`。**vector 非 trusted extension**：非 superuser 即使身为库 owner 也会被拒（permission denied），因此启用方式取决于迁移执行身份，按下述两条路径二选一。当前架构为单 PG database 多 schema（控制面 `public` + 项目/文档面均走 `CREATE SCHEMA`，`internal/infra/projectschema/migrator.go:85`），故只需对 `TORCHWOOD_DATA_DATABASE_SOURCE` 指向的这一个库启用一次。
+
+**验证 SQL**（两路径通用，连接目标库执行，任意身份可查）：
+
+```sql
+SELECT extname, extversion FROM pg_extension WHERE extname='vector';
+-- 期望 1 行：vector | 0.8.6；返回 0 行 = 本库未启用
+```
+
+**路径一（推荐）：pgvector 预装镜像 + superuser 迁移身份**
+
+适用于 docker/local、CI，以及迁移 DSN 即镜像 bootstrap 超管（`POSTGRES_USER` 创建的角色）的自管部署。`pgvector/pgvector:0.8.6-pg18`（docker/local 与 `.github/workflows/ci.yml` 已统一）把扩展文件预装进镜像，000030 由迁移身份直接执行成功，无额外步骤。
+
+实测记录（2026-09-05，本地 compose）：
+
+```text
+$ docker exec torchwood-postgres psql -U torchwood -d torchwood \
+    -c "SELECT current_user, usesuper FROM pg_user WHERE usename=current_user;" \
+    -c "SELECT extname, extversion FROM pg_extension WHERE extname='vector';"
+ current_user | usesuper
+--------------+----------
+ torchwood    | t
+(1 row)
+
+ extname | extversion
+---------+------------
+ vector  | 0.8.6
+(1 row)
+```
+
+**路径二：自备 PG 实例，迁移身份为非 superuser（authenticator 形态）**
+
+前提确认——迁移用户应为库 owner 且非 superuser（期望返回 `f`）：
+
+```sql
+SELECT rolsuper FROM pg_roles WHERE rolname = '<迁移用户>';   -- 期望 f
+```
+
+- **第 1 步（每库一次）**：由 DBA 或一次性引导容器以 superuser 在目标库执行 `CREATE EXTENSION IF NOT EXISTS vector;`；
+- **第 2 步**：非 superuser 迁移身份照常 `task db:migrate`。000030 命中 `IF NOT EXISTS` 幂等分支，输出 `NOTICE: extension "vector" already exists, skipping` 后继续，迁移不报错。
+
+实测记录（2026-09-05，临时库 `vector_probe`，owner 为非 superuser 登录角色 `tw_migrator_probe`；验证完成后 `DROP DATABASE`/`DROP ROLE` 清理，主库无残留）。命令与输出摘要（按语句归纳）：
+
+```text
+-- 场景 a：未预装，非 superuser 迁移身份直接执行 000030 语句（失败形态）
+$ psql -U tw_migrator_probe -d vector_probe -c "CREATE EXTENSION IF NOT EXISTS vector;"
+ERROR:  permission denied to create extension "vector"
+HINT:  Must be superuser to create this extension.
+
+-- 场景 b：superuser 预装后，同一非 superuser 身份重跑同一语句
+$ psql -U torchwood -d vector_probe -c "CREATE EXTENSION IF NOT EXISTS vector;"
+CREATE EXTENSION
+$ psql -U tw_migrator_probe -d vector_probe -c "CREATE EXTENSION IF NOT EXISTS vector;"
+CREATE EXTENSION
+NOTICE:  extension "vector" already exists, skipping
+$ psql -U tw_migrator_probe -d vector_probe \
+    -c "SELECT extname, extversion FROM pg_extension WHERE extname='vector';"
+ extname | extversion
+---------+------------
+ vector  | 0.8.6
+(1 row)
+```
+
+**失败自诊断**（`task db:migrate` 在 000030 失败时按报错形态分流）：
+
+| 报错形态 | 原因 | 处置 |
+|----------|------|------|
+| `permission denied to create extension "vector"`（HINT: Must be superuser to create this extension.） | 迁移身份非 superuser 且目标库未启用扩展（场景 a 实测形态） | 走路径二第 1 步，superuser 预装后重跑迁移；golang-migrate 失败事务已回滚、版本记录未推进，重放安全 |
+| `extension "vector" is not available`（HINT: The extension must first be installed on the system where PostgreSQL is running.） | PG 实例基座不含 pgvector 扩展文件（本会话以不存在扩展名实测同形态报错） | 换 pgvector 预装基座（如 `pgvector/pgvector:0.8.6-pg18`）或按 pgvector 官方文档为实例安装扩展文件，之后仍走路径二第 1 步 |
