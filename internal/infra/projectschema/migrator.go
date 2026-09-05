@@ -9,10 +9,31 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/torchwooddev/torchwood/internal/infra/clients"
 	"github.com/torchwooddev/torchwood/pkg/ident"
 )
+
+// SchemaMigrateDurationSeconds 记录最近一次项目 schema 迁移 Apply 的耗时
+// （秒；就绪缓存命中直通不经过 applyUpTo，不刷新本指标）。量化预警线三
+// 指标之一（转出 POC 门禁 B12，redesign §3.1 缓解 3 / §4.7）：迁移重放耗时
+// 是 schema-per-project 规模劣化的直接观测量（每项目 DDL 对象随业务库/集合
+// 数线性增长，重放时间随之劣化），超限告警语义 = 触发多集群分片规划评估
+// （阈值与来源见 docs/developer/13-operations.md §5.1）。语义为"最近一次
+// Apply"（含 advisory 锁等待与迁移事务本体，成功与失败都刷新——失败的重放
+// 时长同样是规模信号）；EnsureAll 多路并行时为最后写赢。
+var SchemaMigrateDurationSeconds = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "torchwood_documentdb_schema_migrate_duration_seconds",
+	Help: "Duration of the most recent per-project schema migration Apply (cache-miss path only; " +
+		"includes advisory-lock wait and the migration transaction).",
+})
+
+func init() {
+	prometheus.MustRegister(SchemaMigrateDurationSeconds)
+}
 
 //go:embed migrations/*.up.sql
 var migrationFS embed.FS
@@ -76,6 +97,9 @@ func applyUpTo(ctx context.Context, db *clients.Database, projectID string, maxV
 	}
 	quoted := quoteIdent(schema)
 	var failedVersion int64
+	// B12 埋点：计时覆盖 advisory 锁等待 + 迁移事务本体（success 与 failure
+	// 都刷新——失败重放的耗时同样是规模信号；缓存命中不进本函数）。
+	start := time.Now()
 	err = db.RunInTx(ctx, func(txCtx context.Context) error {
 		if _, err := db.Conn(txCtx).ExecContext(txCtx,
 			`SELECT pg_advisory_xact_lock(hashtext('tw_schema'), hashtext(?))`, projectID); err != nil {
@@ -146,6 +170,7 @@ CREATE TABLE IF NOT EXISTS %s.schema_migrations (
 	if err != nil && failedVersion > 0 {
 		markDirtyStandalone(ctx, db, quoted, failedVersion)
 	}
+	SchemaMigrateDurationSeconds.Set(time.Since(start).Seconds())
 	return err
 }
 

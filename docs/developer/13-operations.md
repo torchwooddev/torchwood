@@ -235,7 +235,7 @@ psql "<authenticator DSN>" -c "CREATE TABLE public.tw_nope (x int);"
 | `/healthz/readiness` | Lynx 驱动：全健康 200 / 任一失败 503 |
 | `grpc.health.v1.Health` | gRPC 侧 10s 轮询快照 |
 
-**Metrics**：`internal/infra/server/metrics.go` 独立 HTTP，`GET /metrics`（`promhttp.Handler()`），`server.metrics.addr`（默认 `127.0.0.1:9040`），当前仅 runtime 采集器，无自定义业务指标。
+**Metrics**：`internal/infra/server/metrics.go` 独立 HTTP，`GET /metrics`（`promhttp.Handler()`），`server.metrics.addr`（默认 `127.0.0.1:9040`）。除 runtime 采集器外还有自定义业务指标（realtime Hub/Stream、documentdb 列授权 reconcile、projectschema ensure——规模预警线三指标见 §5.1）。
 
 **日志**：统一 `slog`（`lynx` + `lynxzap`），`--log-level` 控制；gateway 请求日志为 `Debug`（`lynxhttp.WithRequestLog(true)`，`grpc_gateway.go`），`RequestURL` 含完整 query（含 OAuth code），生产开 debug 前需评估；认证拒绝由 `internal/grpc/interceptor/jwt.go:logAuthFailure` 输出 Warn（无 token 明文）。
 
@@ -249,6 +249,71 @@ psql "<authenticator DSN>" -c "CREATE TABLE public.tw_nope (x int);"
 | `data.database.debug: true` | 全量 SQL Debug（覆盖阈值） |
 
 环境覆盖：`TORCHWOOD_DATA_DATABASE_SLOW_QUERY_THRESHOLD`；`e.Query` 为含内联参数的格式化 SQL，可能含 PII。
+
+### 5.1 规模预警线（schema-per-project SLO，转出 POC 门禁 B12）
+
+出处：redesign §3.1 缓解 3 / §4.7——schema-per-project 布局需要量化预警线，超限触发**多集群分片规划评估**（project → cluster 路由抽象，§11-G1 决议：catalog 定位 cluster 内全局；排期承诺见 15-exit-poc.md C7），不改存储形态、不动产品语义。§11-A3 的观察项（policy × 集合规模对 plan cache/relcache 的影响）随本组指标可评估。
+
+#### 指标与采集形态
+
+| 指标 | 形态 | 语义 | 采集点 |
+|------|------|------|--------|
+| `torchwood_documentdb_tables_total{kind}` | GaugeVec | `pg_class` × `pg_namespace` 聚合物理表计数（relkind r/p）。`kind=catalog`=public 控制面+全局 catalog；`kind=project_schema`=一段式 `tw_<project.id>` 静态平面；`kind=business`=两段式 `tw_<p>_<db>` 业务文档面 | server 启动钩子同步采集一次 + 进程内小时级刷新（`cmd/server` `NewScaleMetricsHook` → `documentdb.CollectScaleMetrics`，单语句系统目录聚合） |
+| `torchwood_documentdb_pgdump_duration_seconds` | Gauge（骨架） | 最近一次全库 `pg_dump` 耗时。**打点契约在进程外**：外部 cron/运维脚本执行 `pg_dump` 计时后经 **Prometheus Pushgateway** 或 node_exporter **文本文件 collector** 上报；应用内 `/metrics` 序列恒 0（占位），告警规则应作用于 Pushgateway/textfile 侧的同名序列。未来若内置调度器，经 `documentdb.ObservePgDumpDuration` 填充 | 外部 cron（见下方契约） |
+| `torchwood_documentdb_schema_migrate_duration_seconds` | Gauge | 最近一次项目 schema 迁移 Apply 耗时（就绪缓存命中直通不刷新；含 advisory 锁等待与迁移事务，成功/失败都刷新；EnsureAll 多路并行时最后写赢） | `internal/infra/projectschema/migrator.go` `applyUpTo` 埋点 |
+
+**pg_dump 上报契约**（选型说明：pg_dump 是重 IO 会话级作业，放 server 进程内调度会与关停排水/健康探测耦合，POC 阶段不做调度器——由运维脚本持有节奏，Prometheus 侧消费其结果）：
+
+```bash
+# cron 示例：全库逻辑备份计时后推 Pushgateway（job 名区分来源）
+/usr/bin/time -f '%e' -o /tmp/pgdump_secs \
+  pg_dump "$TORCHWOOD_DATA_DATABASE_SOURCE" -Fc -f /backup/torchwood.dump
+cat <<EOF | curl --data-binary @- http://pushgateway:9091/metrics/job/torchwood-pgdump/instance/$(hostname)
+torchwood_documentdb_pgdump_duration_seconds $(cat /tmp/pgdump_secs)
+EOF
+```
+
+文本文件 collector 等价形态：`echo "torchwood_documentdb_pgdump_duration_seconds $(cat /tmp/pgdump_secs)" > /var/lib/node_exporter/textfile/pgdump.prom`。两种形态二选一；告警表达式相同（指标名一致，靠 `job`/`instance` label 区分来源）。
+
+#### 阈值与告警规则
+
+| 指标 | Warn | Crit | 阈值来源 |
+|------|------|------|----------|
+| `torchwood_documentdb_tables_total{kind="project_schema",kind="business"}`（按集群合计，`catalog` 为基线不参与） | > 500 | > 1500 | redesign §3.1 社区阈值：几百 schema 舒适、1–2 千起劣化（pg_dump 24h+、relcache 膨胀、autovacuum XID 风险）。表计数是 schema 数的先行量（一个全新项目 schema 携带 ~17 张静态/账务表，每业务库每集合再 +1），500/1500 对齐社区谱系的两档 |
+| `torchwood_documentdb_pgdump_duration_seconds` | > 3600（1h） | > 14400（4h） | §3.1 记录的社区劣化谱系终点是 pg_dump 24h+（Appwrite 规模），取其 1/24 与 1/6 作为早期信号档；本地基线（健康库）应为分钟级，超 1h 即显著劣化 |
+| `torchwood_documentdb_schema_migrate_duration_seconds` | > 60（/项目） | > 300 | 经验基线：健康库上全项目迁移集（17 个迁移文件）重放为亚秒级；60s≈两个数量级劣化，通常意味 advisory 锁排队或每项目 DDL 对象数膨胀——结合 tables_total 定位 |
+
+Prometheus 规则示例（`tables_total` 以 server 实例 scrape 为准；`pgdump` 以 Pushgateway/textfile 序列为准——按 `job` label 选择，应用内恒 0 序列不参与）：
+
+```yaml
+groups:
+  - name: torchwood-scale-warning
+    rules:
+      - alert: TorchwoodScaleTablesWarn
+        expr: sum(torchwood_documentdb_tables_total{kind=~"project_schema|business"}) > 500
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "物理表计数超预警线（>500）——评估多集群分片规划（redesign §3.1 / §11-G1）"
+      - alert: TorchwoodScaleTablesCrit
+        expr: sum(torchwood_documentdb_tables_total{kind=~"project_schema|business"}) > 1500
+        for: 30m
+        labels: {severity: critical}
+        annotations:
+          summary: "物理表计数进入劣化区（>1500）——启动分片规划评估，勿扩容单集群硬扛"
+      - alert: TorchwoodPgDumpSlow
+        expr: torchwood_documentdb_pgdump_duration_seconds{job="torchwood-pgdump"} > 3600
+        labels: {severity: warning}
+        annotations:
+          summary: "全库 pg_dump 超 1h——schema 规模劣化信号（§3.1），结合 tables_total 评估分片"
+      - alert: TorchwoodSchemaMigrateSlow
+        expr: max(torchwood_documentdb_schema_migrate_duration_seconds) > 60
+        labels: {severity: warning}
+        annotations:
+          summary: "项目 schema 迁移重放超 60s——锁等待或对象数膨胀，评估分片（15-exit-poc C7）"
+```
+
+**告警语义**：任一指标越线不构成可用性故障，处置动作是**触发多集群分片规划评估**（§3.1 缓解 4 / §11-G1：project → cluster 路由表存控制面，项目迁移 = schema + catalog 行 + 路由重指成套搬迁；跨集群视图降级为控制面聚合指标）。分片出口必须有排期承诺、不能永远停在预警线（§9.3 教训 5，反面教材 Appwrite #6968）——触发后按 15-exit-poc.md C7 的决议记录推进。
 
 ---
 

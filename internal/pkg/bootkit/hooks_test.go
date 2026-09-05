@@ -1,6 +1,7 @@
-// 启动钩子接线测试（转出 POC 门禁 A1）：CollectionGrantsReconcileHook 必须
-// 注册进 NewOnStarts（cmd/server 与 cmd/worker 共享装配），且执行钩子等价于
-// 执行全量扫描——构造授权偏离终态的表，跑完钩子后恢复终态。
+// 启动钩子接线测试（转出 POC 门禁 A1 / B12）：CollectionGrantsReconcileHook 与
+// ScaleMetricsHook 必须注册进 NewOnStarts（cmd/server 与 cmd/worker 共享装配），
+// 且执行钩子等价于执行对应采集——A1 构造授权偏离终态的表跑完钩子后恢复终态，
+// B12 执行后三平面 tables_total 指标刷新为当前库真实计数。
 package bootkit
 
 import (
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"testing"
 
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/torchwooddev/torchwood/internal/domain/databases"
@@ -54,7 +56,7 @@ func TestCollectionGrantsReconcileHook_WiredInOnStarts(t *testing.T) {
 		_, err := documentdb.ReconcileCollectionColumnGrants(ctx, db)
 		return err
 	}
-	hooks := NewOnStarts(nil, db, logger, reconcile)
+	hooks := NewOnStarts(nil, db, logger, reconcile, nil)
 	require.Len(t, hooks, 3, "NewOnStarts 必须包含注入的 reconcile 钩子（A1 接线锁定）")
 	for i, hook := range hooks {
 		require.NoError(t, hook(ctx), "hook %d", i)
@@ -78,4 +80,47 @@ func TestCollectionGrantsReconcileHook_WiredInOnStarts(t *testing.T) {
 	sort.Strings(grants)
 	require.NotContains(t, grants, "_acl:UPDATE", "钩子执行后 R13a 旧形态多授必须被收回")
 	require.Contains(t, grants, "title:UPDATE", "钩子执行后数据列 UPDATE 授权必须在场")
+}
+
+// TestScaleMetricsHook_WiredInOnStarts 锁定门禁 B12 的钩子接线：规模预警线
+// 表计数采集以闭包注入（与 A1 同形态——cmd/server 组合根直调 documentdb，
+// 经 NewOnStarts 的 scaleMetrics 参数注入），执行钩子等价于执行采集——
+// 三平面 tables_total 指标被刷新为当前库的真实计数。
+func TestScaleMetricsHook_WiredInOnStarts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+
+	// 造业务文档面物理表，让 business 平面计数有非平凡对照物。
+	p := documentdb.NewPostgresDocumentDB(db, nil)
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	t.Cleanup(cleanup)
+	require.NoError(t, p.CreateDatabase(ctx, projectID, "app", "App DB"))
+	require.NoError(t, p.CreateCollection(ctx, projectID, "app", "docs", "Docs",
+		[]databases.Attribute{{ID: "title", Key: "title", Type: "string", Size: 256}},
+		nil, []databases.Permission{{Type: "read", Role: "any"}}, true))
+	businessSchema, err := ident.SchemaName(projectID, "app")
+	require.NoError(t, err)
+	var wantBusiness int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*)
+		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE c.relkind IN ('r', 'p') AND n.nspname = ?`, businessSchema).Scan(&wantBusiness))
+	require.GreaterOrEqual(t, wantBusiness, int64(1))
+
+	// 接线断言：未注入扩展钩子时仅 2 个基础钩子（nil 跳过语义）；
+	// 注入 scaleMetrics 闭包后为 3 个，执行后指标被刷新。
+	require.Len(t, NewOnStarts(nil, nil, nil, nil, nil), 2, "nil 扩展钩子必须被跳过")
+	scale := func(ctx context.Context) error {
+		_, err := documentdb.CollectScaleMetrics(ctx, db)
+		return err
+	}
+	hooks := NewOnStarts(nil, db, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, scale)
+	require.Len(t, hooks, 3, "NewOnStarts 必须包含注入的 scaleMetrics 钩子（B12 接线锁定）")
+	for i, hook := range hooks {
+		require.NoError(t, hook(ctx), "hook %d", i)
+	}
+	require.Equal(t, wantBusiness, int64(promtestutil.ToFloat64(documentdb.ScaleTablesTotal.WithLabelValues("business"))),
+		"钩子执行后 business 平面计数必须与 pg_class 复核查询一致")
 }

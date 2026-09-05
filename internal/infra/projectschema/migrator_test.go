@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/torchwooddev/torchwood/internal/infra/projectschema"
 	"github.com/torchwooddev/torchwood/internal/testutil"
@@ -193,4 +194,34 @@ func TestApply_ReadyCacheAndInvalidate(t *testing.T) {
 	require.NoError(t, projectschema.Apply(ctx, db, projectID))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regnamespace(?)`, schema).Scan(&ns))
 	require.NotNil(t, ns, "Invalidate 后 Apply 必须重建 schema")
+}
+
+// TestApply_MigrateDurationGauge 验证量化预警线迁移重放耗时指标（门禁 B12，
+// redesign §3.1 缓解 3）：就绪缓存命中直通不刷新指标；Invalidate 后重走
+// applyUpTo 的缓存未命中路径（advisory 锁等待 + 版本检查事务，稳态下无待
+// 应用文件）后指标必须刷成正值。语义为"最近一次 Apply"，失败路径同样刷新
+// （见 migrator.go 埋点注释），此处锁定成功路径的强性质。
+func TestApply_MigrateDurationGauge(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db := testutil.SetupTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	projectID, _, cleanup := testutil.CreateTestProject(ctx, db)
+	defer cleanup()
+
+	// 首次 Apply 建立就绪缓存（testutil 走 ApplyUpTo 不写缓存，不能依赖
+	// CreateTestProject 的副作用）；第二次 Apply 缓存命中直通，不得刷新指标。
+	require.NoError(t, projectschema.Apply(ctx, db, projectID))
+	mid := promtestutil.ToFloat64(projectschema.SchemaMigrateDurationSeconds)
+	require.NoError(t, projectschema.Apply(ctx, db, projectID))
+	require.Equal(t, mid, promtestutil.ToFloat64(projectschema.SchemaMigrateDurationSeconds),
+		"缓存命中直通不得刷新迁移耗时指标")
+
+	projectschema.Invalidate(db, projectID)
+	require.NoError(t, projectschema.Apply(ctx, db, projectID))
+	require.Greater(t, promtestutil.ToFloat64(projectschema.SchemaMigrateDurationSeconds), float64(0),
+		"真实迁移重放后指标必须为正")
 }

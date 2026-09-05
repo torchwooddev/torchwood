@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 
 	"github.com/google/wire"
@@ -53,6 +52,7 @@ var ProviderSet = wire.NewSet(
 	bootkit.NewOnStarts,
 	bootkit.NewOnStops,
 	NewGrantsReconcileHook,
+	NewScaleMetricsHook,
 	NewAppConfig,
 	NewComponents,
 	NewWorker,
@@ -100,7 +100,11 @@ var ProviderSet = wire.NewSet(
 // documentdb 域职责，仅 server 侧执行——worker 的依赖闭包不得包含
 // documentdb（import guard TestWorkerDepsGraph 守此边界），经 NewOnStarts
 // 的可选参数注入 nil 即跳过该钩子。
-func NewGrantsReconcileHook() func(context.Context) error { return nil }
+func NewGrantsReconcileHook() bootkit.GrantsReconcileHook { return nil }
+
+// NewScaleMetricsHook 返回 nil：规模预警线表计数采集（门禁 B12）同属
+// documentdb 域职责，仅 server 侧执行——边界论证同 NewGrantsReconcileHook。
+func NewScaleMetricsHook() bootkit.ScaleMetricsHook { return nil }
 
 func NewAppConfig(app lynx.App) (*config.AppConfig, error) {
 	var c config.AppConfig

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/google/wire"
 	"github.com/lynx-go/lynx"
@@ -47,6 +48,7 @@ var ProviderSet = wire.NewSet(
 	bootkit.NewOnStarts,
 	bootkit.NewOnStops,
 	NewGrantsReconcileHook,
+	NewScaleMetricsHook,
 	NewAppConfig,
 	NewComponents,
 	NewBuildInfo,
@@ -138,7 +140,7 @@ func NewSchemaManager(db *clients.Database, docDB databases.DocumentDB) *project
 // 文档层（import guard TestWorkerDepsGraph 守此边界），故经 NewOnStarts 的
 // 可选参数注入而非 bootkit 共享装配。失败语义同 bootkit 既有钩子：单表失败
 // 不阻断启动（documentdb 内部日志 + 失败计数指标），OnStart 先于监听。
-func NewGrantsReconcileHook(db *clients.Database, logger *slog.Logger) func(context.Context) error {
+func NewGrantsReconcileHook(db *clients.Database, logger *slog.Logger) bootkit.GrantsReconcileHook {
 	return func(ctx context.Context) error {
 		if db == nil {
 			return nil
@@ -155,6 +157,51 @@ func NewGrantsReconcileHook(db *clients.Database, logger *slog.Logger) func(cont
 				"scanned", res.Scanned, "reconciled", res.Reconciled,
 				"missing", res.Missing, "failed", res.Failed)
 		}
+		return nil
+	}
+}
+
+// scaleMetricsRefreshInterval 是规模预警线表计数的周期刷新间隔。表计数随
+// DDL 缓慢变化，小时级刷新足够追上预警线（>500/>1500，见 13-operations.md
+// §5.1）；单次采集是 pg_class × pg_namespace 的单语句聚合，开销可忽略。
+const scaleMetricsRefreshInterval = time.Hour
+
+// NewScaleMetricsHook 产出启动期规模预警线表计数采集闭包（门禁 B12，
+// docs/developer/15-exit-poc.md；redesign §3.1 缓解 3 / §4.7）：对当前库执行
+// pg_class × pg_namespace 聚合，更新 torchwood_documentdb_tables_total{kind}
+// 三平面计数。挂在 server 侧——worker 不碰文档层（import guard
+// TestWorkerDepsGraph 守此边界），经 NewOnStarts 的 scaleMetrics 参数注入。
+// 失败语义同 NewGrantsReconcileHook：采集失败只记日志，不阻断启动（规模
+// 观测缺失是可观测性降级而非可用性故障，下次周期刷新重试）。首次同步采集
+// 成功后拉起进程内小时级周期刷新 goroutine（进程生命周期，无显式停止——
+// 随进程退出回收；每次刷新带独立超时）。
+func NewScaleMetricsHook(db *clients.Database, logger *slog.Logger) bootkit.ScaleMetricsHook {
+	return func(ctx context.Context) error {
+		if db == nil {
+			return nil
+		}
+		res, err := documentdb.CollectScaleMetrics(ctx, db)
+		if err != nil {
+			if logger != nil {
+				logger.Error("documentdb scale metrics collect failed", "error", err)
+			}
+			return nil
+		}
+		if logger != nil {
+			logger.Info("documentdb scale metrics collected",
+				"catalog", res.Catalog, "project_schema", res.ProjectSchema, "business", res.Business)
+		}
+		go func() {
+			ticker := time.NewTicker(scaleMetricsRefreshInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				bgCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				if _, err := documentdb.CollectScaleMetrics(bgCtx, db); err != nil && logger != nil {
+					logger.Warn("documentdb scale metrics refresh failed", "error", err)
+				}
+				cancel()
+			}
+		}()
 		return nil
 	}
 }
