@@ -105,6 +105,39 @@ type DocumentDB interface {
 	ChangeFeed
 }
 
+// SchemaEvolution 是 schema 演进生命周期的可选端口（转出 POC 门禁 B4，
+// redesign §4.6）：以可选接口（非 DocumentDB 嵌入）演进，测试替身按需实现，
+// 消费方经类型断言探测（对齐 InternalIDCacheInvalidator 先例）。
+//
+// 删列两段契约：DeleteAttribute（SchemaApplier 既有方法，语义升级）= 段一
+// deprecated（读屏蔽写拒收，可回滚）；RetireAttribute = 段二物理删列（不可逆）；
+// RestoreAttribute = deprecated/migrating 回滚 active。
+type SchemaEvolution interface {
+	// MigrateAttribute 创建 copy 迁移任务（改类型/收紧）：新列（物理名带版本
+	// 后缀）→ 异步批量回填（批 500 行、限速、游标可恢复）→ 锁窗校验 → 原子
+	// swap → 旧列 deprecated；schema_version 在 swap commit 递增。迁移期间该
+	// 属性写入拒收（CATALOG.ATTRIBUTE_MIGRATING）；同 key 已有 backfilling
+	// 任务时重入（从游标续跑）。放宽（扩宽/required→optional）即时 ALTER。
+	MigrateAttribute(ctx context.Context, projectID, databaseID, collectionID, key string, target Attribute) (*AttributeMigration, error)
+	// RetireAttribute 是删列段二：deprecated 属性的物理列 / swap 后迁移残留
+	// 的旧列（latest swapped 任务）物理删除，不可逆。
+	RetireAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error
+	// RestoreAttribute 回滚：deprecated → active；migrating → 中止迁移
+	//（删除新列、任务置 failed）并恢复 active。
+	RestoreAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error
+}
+
+// AttributeMigration 是 copy 迁移任务的读回形态（MigrateAttribute 响应）。
+type AttributeMigration struct {
+	ID          string
+	AttrKey     string
+	Phase       string // backfilling | swapped | retired | failed
+	OldPhysical string // swap 后旧列物理名（retire 的 DROP 目标；机密细节不出 API）
+	NewPhysical string
+	RowsDone    int64
+	SchemaVersion int64
+}
+
 var (
 	_ Catalog      = (DocumentDB)(nil)
 	_ SchemaApplier = (DocumentDB)(nil)

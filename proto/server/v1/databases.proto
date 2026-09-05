@@ -109,8 +109,30 @@ service DatabasesService {
     option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/attributes", body: "*" };
   }
 
+  // DeleteAttribute 是删列两段的段一（B4，redesign §4.6）：属性置
+  // deprecated——读屏蔽写拒收，可经 RestoreAttribute 回滚。
   rpc DeleteAttribute(DeleteAttributeRequest) returns (shared.v1.Empty) {
     option (google.api.http) = { delete: "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}" };
+  }
+
+  // RestoreAttribute 回滚生命周期：deprecated → active；migrating → 中止
+  // 迁移（删除新列）并恢复 active。
+  rpc RestoreAttribute(RestoreAttributeRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:restore", body: "*" };
+  }
+
+  // RetireAttribute 是删列两段的段二（不可逆）：deprecated 属性的物理列
+  // 或 copy 迁移 swap 后的旧列残留物理删除。
+  rpc RetireAttribute(RetireAttributeRequest) returns (shared.v1.Empty) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:retire", body: "*" };
+  }
+
+  // MigrateAttribute 创建 copy 迁移任务（B4，redesign §4.6）：改类型/收紧 =
+  // 新列 → 异步批量回填（限速、可恢复）→ 锁窗校验 → 原子 swap → 旧列
+  // deprecated；schema_version 随迁移 commit 递增。放宽（扩宽/required→
+  // optional）即时 ALTER。响应为迁移任务读回（物理列名不出 API 契约）。
+  rpc MigrateAttribute(MigrateAttributeRequest) returns (AttributeMigration) {
+    option (google.api.http) = { post: "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:migrate", body: "*" };
   }
 
   rpc CreateIndex(CreateIndexRequest) returns (Index) {
@@ -306,6 +328,42 @@ message DeleteAttributeRequest {
   string key = 3;
 }
 
+message RestoreAttributeRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  string key = 3;
+}
+
+message RetireAttributeRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  string key = 3;
+}
+
+message MigrateAttributeRequest {
+  string database_id = 1;
+  string collection_id = 2;
+  string key = 3;
+  // 目标定义（key 不可变更；类型/宽度/required/array/default/dims 可迁）。
+  string type = 4;
+  int32 size = 5;
+  bool required = 6;
+  bool array = 7;
+  string default_value = 8;
+  optional int32 dims = 9;
+}
+
+// AttributeMigration 是 copy 迁移任务的读回（物理列名不出 API 契约）。
+// phase: backfilling（回填中，属性写入拒收）| swapped（迁移完成，旧列 deprecated
+// 残留待 retire）| retired | failed（重试同请求续跑，或 :restore 中止）。
+message AttributeMigration {
+  string id = 1;
+  string key = 2;
+  string phase = 3;
+  int64 rows_done = 4;
+  int64 schema_version = 5;
+}
+
 message Attribute {
   string id = 1;
   string key = 2;
@@ -316,6 +374,9 @@ message Attribute {
   string default_value = 7;
   // 向量维度：仅 vector 类型非零（其余类型省略）。
   optional int32 dims = 8;
+  // 生命周期状态（B4，§4.6）：active | migrating | deprecated | retired；
+  // 缺省 active。
+  optional string status = 9;
 }
 
 message CreateIndexRequest {

@@ -31,6 +31,7 @@ type onlineIndexEnv struct {
 	physical   string
 	collection string
 	database   string
+	docIDs     []string
 }
 
 func setupOnlineIndexEnv(t *testing.T, docs int) *onlineIndexEnv {
@@ -52,10 +53,11 @@ func setupOnlineIndexEnv(t *testing.T, docs int) *onlineIndexEnv {
 		physical: testPhysicalName(t, ctx, db, projectID, "app", "docs"),
 	}
 	for i := 0; i < docs; i++ {
-		_, err := p.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
-			Data: map[string]any{"code": "c" + strconv.Itoa(i), "qty": int64(i)},
+		doc, err := p.CreateDocument(ctx, projectID, "app", "docs", databases.Document{
+			Data: map[string]any{"code": "c" + strconv.Itoa(i), "qty": int64(i + 1)},
 		}, anyPerms(), databases.SystemPrincipal)
 		require.NoError(t, err)
+		env.docIDs = append(env.docIDs, doc.ID)
 	}
 	return env
 }

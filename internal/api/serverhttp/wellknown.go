@@ -85,6 +85,10 @@ var wellKnownVerbs = []wellKnownVerb{
 	{RPC: "ExportCollectionSchema", HTTP: "GET /v1/server/databases/{database_id}/collections/{collection_id}:exportSchema"},
 	{RPC: "CreateAttribute", HTTP: "POST /v1/server/databases/{database_id}/collections/{collection_id}/attributes"},
 	{RPC: "DeleteAttribute", HTTP: "DELETE /v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}"},
+	// B4 schema 演进生命周期（§4.6）：回滚 / 删列段二 / copy 迁移。
+	{RPC: "RestoreAttribute", HTTP: "POST /v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:restore"},
+	{RPC: "RetireAttribute", HTTP: "POST /v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:retire"},
+	{RPC: "MigrateAttribute", HTTP: "POST /v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:migrate"},
 	{RPC: "CreateIndex", HTTP: "POST /v1/server/databases/{database_id}/collections/{collection_id}/indexes"},
 	{RPC: "DeleteIndex", HTTP: "DELETE /v1/server/databases/{database_id}/collections/{collection_id}/indexes/{index_id}"},
 	{RPC: "CreateDocument", HTTP: "POST /v1/server/databases/{database_id}/collections/{collection_id}/documents"},

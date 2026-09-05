@@ -169,6 +169,17 @@ export interface Attribute {
   required: boolean;
   array: boolean;
   default_value?: string;
+  /** 生命周期状态（B4，§4.6）：active（缺省省略）| migrating | deprecated | retired。 */
+  status?: string;
+}
+
+/** copy 迁移任务读回（B4；物理列名不出 API 契约）。 */
+export interface AttributeMigration {
+  id: string;
+  key: string;
+  phase: string;
+  rows_done: string | number;
+  schema_version: string | number;
 }
 
 export interface Index {

@@ -55,8 +55,10 @@ func TestInvokeJSONBadJSON(t *testing.T) {
 // 113 → 114（2026-09-04，databases.proto 新增 AggregateDocuments）；
 // 114 → 115（2026-09-04，databases.proto 新增 ListChanges——阶段④事件补偿）；
 // 115 → 116（2026-09-05，databases.proto 新增 ExportCollectionSchema——B10
-// 集合契约 JSON Schema 导出，wrapper：DatabasesService.ExportCollectionSchema）。
-const expectedServerMethodCount = 116
+// 集合契约 JSON Schema 导出，wrapper：DatabasesService.ExportCollectionSchema）；
+// 116 → 119（2026-09-05，databases.proto 新增 Restore/Retire/MigrateAttribute
+// ——B4 schema 演进生命周期 §4.6，wrapper 同名三方法）。
+const expectedServerMethodCount = 119
 
 // TestInvokeJSONCompleteness 遍历 protoregistry.GlobalFiles 中 torchwood.server.v1
 // 包的全部方法（排除 APIKeysService），断言每个方法都能被解析并用空 JSON 构造

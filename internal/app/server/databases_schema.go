@@ -70,6 +70,11 @@ func JSONSchemaOfCollection(col *databases.Collection) map[string]any {
 	}
 	var required []any
 	for _, a := range col.Attributes {
+		// B4 生命周期：deprecated 属性读屏蔽写拒收——不进 required（其数据
+		// 在读回中不可见）；migrating 属性照常（读服务旧列）。
+		if a.StatusOrDefault() == databases.AttrStatusDeprecated {
+			continue
+		}
 		if a.Required {
 			required = append(required, a.Key)
 		}
@@ -135,6 +140,12 @@ func attributeJSONSchema(a databases.Attribute) map[string]any {
 	}
 	if a.Default != nil {
 		schema["default"] = a.Default
+	}
+	// B4 生命周期：deprecated 属性以 JSON Schema deprecated 关键字标注（读
+	// 屏蔽写拒收的契约信号；此前该关键字仅保留给 Options 通道）。
+	if a.StatusOrDefault() == databases.AttrStatusDeprecated ||
+		a.StatusOrDefault() == databases.AttrStatusMigrating {
+		schema["deprecated"] = true
 	}
 	if v, ok := a.Options["deprecated"]; ok {
 		if b, ok := v.(bool); ok && b {

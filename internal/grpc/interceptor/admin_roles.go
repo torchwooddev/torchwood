@@ -32,6 +32,10 @@ var adminRoleMethodRules = map[string][]string{
 	"/torchwood.server.v1.DatabasesService/DeleteCollection": {"owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/CreateAttribute":  {"owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/DeleteAttribute":  {"owner", "admin"},
+	// B4 schema 演进生命周期（§4.6）：同 schema DDL 写面，仅 owner/admin。
+	"/torchwood.server.v1.DatabasesService/RestoreAttribute": {"owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/RetireAttribute":  {"owner", "admin"},
+	"/torchwood.server.v1.DatabasesService/MigrateAttribute": {"owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/CreateIndex":      {"owner", "admin"},
 	"/torchwood.server.v1.DatabasesService/DeleteIndex":      {"owner", "admin"},
 	// DatabasesService 文档 CRUD 写方法（业务写，member 可做）

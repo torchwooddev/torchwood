@@ -261,6 +261,17 @@ func (p *postgresDocumentDB) listDocuments(ctx context.Context, projectID, datab
 			}
 		}
 	}
+	// B4 读屏蔽：deprecated 属性读回剥离（coll 已由 validateQueryFields 加载
+	// 时复用；SystemPrincipal 旁路路径此处补载——masking 是读契约，不分主体；
+	// 无 deprecated 属性时零改动跳过）。
+	if coll == nil {
+		var cerr error
+		coll, cerr = p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if cerr != nil {
+			return nil, p.mapError(cerr)
+		}
+	}
+	maskDeprecatedData(coll.Attributes, docs)
 
 	// 满页即发 keyset 续页 token（编码边界行 id，方向沿用本次请求）；不满页
 	// 无 next=尾页。has-more 以满页判定（续页无精确 total）。
@@ -484,6 +495,11 @@ func (p *postgresDocumentDB) listDocumentsKNN(ctx context.Context, projectID, da
 				}
 			}
 		}
+	}
+	// B4 读屏蔽：deprecated 属性读回剥离（与普通 list 同语义；集合无
+	// deprecated 属性时零改动跳过）。
+	if coll, err := p.GetCollection(ctx, projectID, databaseID, collectionID); err == nil && coll != nil {
+		maskDeprecatedData(coll.Attributes, docs)
 	}
 	return &databases.DocumentList{
 		Documents: docs,

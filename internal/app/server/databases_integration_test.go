@@ -490,8 +490,10 @@ func TestDatabases_UpdateCollection(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestDatabases_DeleteAttribute_DeleteIndex 覆盖 Schema 清理路径：删除 attribute
-// 同步 DROP COLUMN（可再建同名列），删除 index 同步 DROP INDEX（可再建同名索引）。
+// TestDatabases_DeleteAttribute_DeleteIndex 覆盖 Schema 清理路径（B4 两段语义）：
+// 删除 attribute = 置 deprecated（读屏蔽写拒收、契约条目仍在、同 key 重建拒绝），
+// RetireAttribute = 物理删列（条目移除、可再建同名列）；删除 index 同步 DROP
+// INDEX（可再建同名索引）。
 func TestDatabases_DeleteAttribute_DeleteIndex(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -525,7 +527,20 @@ func TestDatabases_DeleteAttribute_DeleteIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got.Indexes, 0)
 
+	// 段一：DeleteAttribute = deprecated（契约条目仍在）。
 	require.NoError(t, uc.DeleteAttribute(ctx, projectID, "app", "posts", "views"))
+	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, got.Attributes, 2)
+	require.Equal(t, databases.AttrStatusDeprecated, got.Attributes[1].StatusOrDefault())
+	// deprecated 期间同 key 重建拒绝（条目仍在契约中）。
+	err = uc.CreateAttribute(ctx, projectID, "app", "posts", databases.Attribute{
+		ID: "views", Key: "views", Type: "integer",
+	})
+	require.Error(t, err)
+
+	// 段二：RetireAttribute = 物理删列（条目移除）。
+	require.NoError(t, uc.RetireAttribute(ctx, projectID, "app", "posts", "views"))
 	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
 	require.NoError(t, err)
 	require.Len(t, got.Attributes, 1)
@@ -602,8 +617,9 @@ func TestDatabases_Document_Increment(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// TestDatabases_DeleteAttribute_CascadesDependentIndex（B8）：属性仍被索引引用时
-// 直接删属性，同一事务内依赖索引（document_indexes 行 + 物理 PG index）一并清理。
+// TestDatabases_DeleteAttribute_CascadesDependentIndex（B8 → B4 两段语义）：
+// 删除属性（deprecated 段一）时依赖索引保留（可回滚）；RetireAttribute 段二
+// 物理删列时同事务级联清理依赖索引（catalog 条目 + 物理 PG index）。
 func TestDatabases_DeleteAttribute_CascadesDependentIndex(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -627,11 +643,17 @@ func TestDatabases_DeleteAttribute_CascadesDependentIndex(t *testing.T) {
 		{ID: "idx_views", Type: "key", Attributes: []string{"views"}},
 	}, nil, true))
 
-	// 不先删索引，直接删属性：级联清理依赖索引。
+	// 段一：deprecated——可回滚语义，依赖索引保留。
 	require.NoError(t, uc.DeleteAttribute(ctx, projectID, "app", "posts", "views"))
 	got, err := uc.GetCollection(ctx, projectID, "app", "posts")
 	require.NoError(t, err)
-	require.Len(t, got.Indexes, 0, "依赖索引应随属性级联删除")
+	require.Len(t, got.Indexes, 1, "段一 deprecated 保留依赖索引（可回滚）")
+
+	// 段二：retire——物理删列 + 级联清理依赖索引（catalog 条目 + 物理索引）。
+	require.NoError(t, uc.RetireAttribute(ctx, projectID, "app", "posts", "views"))
+	got, err = uc.GetCollection(ctx, projectID, "app", "posts")
+	require.NoError(t, err)
+	require.Len(t, got.Indexes, 0, "依赖索引应随 retire 级联删除")
 	require.Len(t, got.Attributes, 1)
 
 	// 同名索引可重建（catalog 行与物理索引均已清理）。

@@ -1,6 +1,7 @@
 import { listQuery, type HttpTransport } from "../http.js";
 import type {
   Attribute,
+  AttributeMigration,
   BulkDocumentsResponse,
   Collection,
   Database,
@@ -177,6 +178,55 @@ export class ServerDatabasesService {
       "DELETE",
       `/v1/server/databases/${databaseId}/collections/${collectionId}/attributes/${key}`,
       { auth: "apiKey" }
+    );
+  }
+
+  /** 回滚属性生命周期（B4）：deprecated → active；migrating → 中止迁移。 */
+  async restoreAttribute(
+    databaseId: string,
+    collectionId: string,
+    key: string
+  ): Promise<void> {
+    await this.http.request<void>(
+      "POST",
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/attributes/${key}:restore`,
+      { auth: "apiKey", body: {} }
+    );
+  }
+
+  /** 物理删列（B4 删列两段段二，不可逆）。 */
+  async retireAttribute(
+    databaseId: string,
+    collectionId: string,
+    key: string
+  ): Promise<void> {
+    await this.http.request<void>(
+      "POST",
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/attributes/${key}:retire`,
+      { auth: "apiKey", body: {} }
+    );
+  }
+
+  /** 创建 copy 迁移任务（B4）：改类型/收紧异步回填 + 原子 swap；放宽即时。 */
+  async migrateAttribute(
+    databaseId: string,
+    collectionId: string,
+    key: string,
+    input: {
+      type: string;
+      size?: number;
+      required?: boolean;
+      array?: boolean;
+      default_value?: string;
+    }
+  ): Promise<AttributeMigration> {
+    return this.http.request<AttributeMigration>(
+      "POST",
+      `/v1/server/databases/${databaseId}/collections/${collectionId}/attributes/${key}:migrate`,
+      {
+        auth: "apiKey",
+        body: { database_id: databaseId, collection_id: collectionId, ...input },
+      }
     );
   }
 

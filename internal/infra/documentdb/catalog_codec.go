@@ -28,7 +28,9 @@ type attributeJSON struct {
 	Dims     int            `json:"dims,omitempty"`
 	Options  map[string]any `json:"options,omitempty"`
 	// Status 是 schema 演进生命周期状态（B4）：active 缺省省略——存量行不带
-	// 该字段，解码归一 active，零迁移。
+	// 该字段，解码归一 active，零迁移。attrs 保持"每逻辑 key 恰一条目"不变量
+	//（migrating/deprecated 均为该条目的状态迁移）；copy 迁移 swap 后的旧列
+	// 物理名记录在迁移账本（catalog_migrations.old_physical），不进 attrs。
 	Status string `json:"status,omitempty"`
 }
 

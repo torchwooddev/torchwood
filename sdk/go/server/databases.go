@@ -118,7 +118,8 @@ func (d *DatabasesService) CreateAttribute(ctx context.Context, collectionID, ke
 	})
 }
 
-// DeleteAttribute 删除集合属性。
+// DeleteAttribute 删除集合属性（B4 删列两段段一：置 deprecated——读屏蔽写拒收，
+// 可 RestoreAttribute 回滚；物理删列走 RetireAttribute）。
 func (d *DatabasesService) DeleteAttribute(ctx context.Context, collectionID, key string) error {
 	_, err := d.c.databases.DeleteAttribute(ctx, &serverv1.DeleteAttributeRequest{
 		DatabaseId:   d.db,
@@ -126,6 +127,42 @@ func (d *DatabasesService) DeleteAttribute(ctx context.Context, collectionID, ke
 		Key:          key,
 	})
 	return err
+}
+
+// RestoreAttribute 回滚属性生命周期（B4）：deprecated → active；migrating →
+// 中止迁移并恢复 active。
+func (d *DatabasesService) RestoreAttribute(ctx context.Context, collectionID, key string) error {
+	_, err := d.c.databases.RestoreAttribute(ctx, &serverv1.RestoreAttributeRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		Key:          key,
+	})
+	return err
+}
+
+// RetireAttribute 物理删列（B4 删列两段段二，不可逆）：deprecated 属性的物理
+// 列或 copy 迁移 swap 后的旧列残留删除。
+func (d *DatabasesService) RetireAttribute(ctx context.Context, collectionID, key string) error {
+	_, err := d.c.databases.RetireAttribute(ctx, &serverv1.RetireAttributeRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		Key:          key,
+	})
+	return err
+}
+
+// MigrateAttribute 创建 copy 迁移任务（B4）：改类型/收紧走异步回填 + 原子
+// swap（响应为任务读回）；放宽（扩宽/required→optional）即时 ALTER。
+func (d *DatabasesService) MigrateAttribute(ctx context.Context, collectionID, key, attrType string, size int32, required, array bool) (*serverv1.AttributeMigration, error) {
+	return d.c.databases.MigrateAttribute(ctx, &serverv1.MigrateAttributeRequest{
+		DatabaseId:   d.db,
+		CollectionId: collectionID,
+		Key:          key,
+		Type:         attrType,
+		Size:         size,
+		Required:     required,
+		Array:        array,
+	})
 }
 
 // CreateIndex 为集合创建索引（type 支持 key/unique/fulltext）。

@@ -75,6 +75,10 @@ func (p *postgresDocumentDB) createDocument(ctx context.Context, projectID, data
 			coll != nil && !databases.CollectionAllows(coll.Permissions, "create", databases.ExpandPermissionRoles(principal.Roles)) {
 			return doc, ErrPermissionDenied
 		}
+		// B4 生命周期：deprecated/migrating 属性写入拒收（coll 已加载，复用）。
+		if err := p.lifecycleViolation(ctx, projectID, databaseID, collectionID, coll, dataKeys(doc.Data)); err != nil {
+			return doc, err
+		}
 	}
 
 	vectorCols, err := p.vectorColumnsOf(ctx, projectID, databaseID, collectionID, schema, physical)
@@ -220,6 +224,10 @@ func (p *postgresDocumentDB) upsertDocument(ctx context.Context, projectID, data
 			return doc, err
 		}
 		if err := p.ensureCollectionAccessible(coll, principal); err != nil {
+			return doc, err
+		}
+		// B4 生命周期：deprecated/migrating 属性写入拒收（coll 已加载，复用）。
+		if err := p.lifecycleViolation(ctx, projectID, databaseID, collectionID, coll, dataKeys(doc.Data)); err != nil {
 			return doc, err
 		}
 		// 权限分叉以「conflictColumns 命中的目标行」为准，而非 doc.ID（P0-1）：
@@ -425,6 +433,18 @@ func (p *postgresDocumentDB) getDocument(ctx context.Context, projectID, databas
 	if doc == nil {
 		return nil, nil
 	}
+	// B4 读屏蔽：deprecated 属性读回剥离（数据仍在，RestoreAttribute 可回滚；
+	// 集合无 deprecated 属性时 masking 为零改动跳过——代价一次 catalog 点查，
+	// 优化挂账：负缓存 + DDL 失效）。
+	if !databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		coll, cerr := p.GetCollection(ctx, projectID, databaseID, collectionID)
+		if cerr != nil {
+			return nil, p.mapError(cerr)
+		}
+		if coll != nil {
+			maskDeprecatedDocument(coll.Attributes, doc)
+		}
+	}
 	// 权限回填已免费化（阶段③包 A）：to_jsonb(d.*) 含 _acl，parseDocumentJSON
 	// 顺带解析为 doc.Permissions。判定执行点（阶段③包 C）：业务集合由 SELECT
 	// policy 隐式过滤（0 行 → nil → NotFound，防枚举）；sentinel 系统集合（静态
@@ -480,6 +500,22 @@ func (p *postgresDocumentDB) updateDocument(ctx context.Context, projectID, data
 			return doc, databases.ErrVersionRequired
 		}
 		occ = true
+	}
+	// B4 生命周期：deprecated/migrating 属性写入拒收（data/increment/
+	// array_updates 三通道同查）。
+	if !principal.BypassesDocumentACL() {
+		incKeys := make([]string, 0, len(update.Increment))
+		for k := range update.Increment {
+			incKeys = append(incKeys, k)
+		}
+		arrKeys := make([]string, 0, len(update.ArrayUpdates))
+		for k := range update.ArrayUpdates {
+			arrKeys = append(arrKeys, k)
+		}
+		if err := p.lifecycleViolation(ctx, projectID, databaseID, collectionID, nil,
+			dataKeys(doc.Data), keysSet(incKeys), keysSet(arrKeys)); err != nil {
+			return doc, err
+		}
 	}
 	// 非 System 且非文档 owner（user:<id> 匹配）时，禁止写入写保护系统集合（纵深防御，
 	// 与 CreateDocument/DeleteDocument 对齐，安全评审 C1 第 2 层）。

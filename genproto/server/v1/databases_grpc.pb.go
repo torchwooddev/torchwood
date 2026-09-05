@@ -31,6 +31,9 @@ const (
 	DatabasesService_UpdateCollection_FullMethodName       = "/torchwood.server.v1.DatabasesService/UpdateCollection"
 	DatabasesService_CreateAttribute_FullMethodName        = "/torchwood.server.v1.DatabasesService/CreateAttribute"
 	DatabasesService_DeleteAttribute_FullMethodName        = "/torchwood.server.v1.DatabasesService/DeleteAttribute"
+	DatabasesService_RestoreAttribute_FullMethodName       = "/torchwood.server.v1.DatabasesService/RestoreAttribute"
+	DatabasesService_RetireAttribute_FullMethodName        = "/torchwood.server.v1.DatabasesService/RetireAttribute"
+	DatabasesService_MigrateAttribute_FullMethodName       = "/torchwood.server.v1.DatabasesService/MigrateAttribute"
 	DatabasesService_CreateIndex_FullMethodName            = "/torchwood.server.v1.DatabasesService/CreateIndex"
 	DatabasesService_DeleteIndex_FullMethodName            = "/torchwood.server.v1.DatabasesService/DeleteIndex"
 	DatabasesService_CreateDocument_FullMethodName         = "/torchwood.server.v1.DatabasesService/CreateDocument"
@@ -62,7 +65,20 @@ type DatabasesServiceClient interface {
 	DeleteCollection(ctx context.Context, in *GetCollectionRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	UpdateCollection(ctx context.Context, in *UpdateCollectionRequest, opts ...grpc.CallOption) (*Collection, error)
 	CreateAttribute(ctx context.Context, in *CreateAttributeRequest, opts ...grpc.CallOption) (*Attribute, error)
+	// DeleteAttribute 是删列两段的段一（B4，redesign §4.6）：属性置
+	// deprecated——读屏蔽写拒收，可经 RestoreAttribute 回滚。
 	DeleteAttribute(ctx context.Context, in *DeleteAttributeRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	// RestoreAttribute 回滚生命周期：deprecated → active；migrating → 中止
+	// 迁移（删除新列）并恢复 active。
+	RestoreAttribute(ctx context.Context, in *RestoreAttributeRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	// RetireAttribute 是删列两段的段二（不可逆）：deprecated 属性的物理列
+	// 或 copy 迁移 swap 后的旧列残留物理删除。
+	RetireAttribute(ctx context.Context, in *RetireAttributeRequest, opts ...grpc.CallOption) (*v1.Empty, error)
+	// MigrateAttribute 创建 copy 迁移任务（B4，redesign §4.6）：改类型/收紧 =
+	// 新列 → 异步批量回填（限速、可恢复）→ 锁窗校验 → 原子 swap → 旧列
+	// deprecated；schema_version 随迁移 commit 递增。放宽（扩宽/required→
+	// optional）即时 ALTER。响应为迁移任务读回（物理列名不出 API 契约）。
+	MigrateAttribute(ctx context.Context, in *MigrateAttributeRequest, opts ...grpc.CallOption) (*AttributeMigration, error)
 	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*Index, error)
 	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*v1.Empty, error)
 	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*v1.Document, error)
@@ -214,6 +230,36 @@ func (c *databasesServiceClient) DeleteAttribute(ctx context.Context, in *Delete
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(v1.Empty)
 	err := c.cc.Invoke(ctx, DatabasesService_DeleteAttribute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databasesServiceClient) RestoreAttribute(ctx context.Context, in *RestoreAttributeRequest, opts ...grpc.CallOption) (*v1.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(v1.Empty)
+	err := c.cc.Invoke(ctx, DatabasesService_RestoreAttribute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databasesServiceClient) RetireAttribute(ctx context.Context, in *RetireAttributeRequest, opts ...grpc.CallOption) (*v1.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(v1.Empty)
+	err := c.cc.Invoke(ctx, DatabasesService_RetireAttribute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *databasesServiceClient) MigrateAttribute(ctx context.Context, in *MigrateAttributeRequest, opts ...grpc.CallOption) (*AttributeMigration, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AttributeMigration)
+	err := c.cc.Invoke(ctx, DatabasesService_MigrateAttribute_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +430,20 @@ type DatabasesServiceServer interface {
 	DeleteCollection(context.Context, *GetCollectionRequest) (*v1.Empty, error)
 	UpdateCollection(context.Context, *UpdateCollectionRequest) (*Collection, error)
 	CreateAttribute(context.Context, *CreateAttributeRequest) (*Attribute, error)
+	// DeleteAttribute 是删列两段的段一（B4，redesign §4.6）：属性置
+	// deprecated——读屏蔽写拒收，可经 RestoreAttribute 回滚。
 	DeleteAttribute(context.Context, *DeleteAttributeRequest) (*v1.Empty, error)
+	// RestoreAttribute 回滚生命周期：deprecated → active；migrating → 中止
+	// 迁移（删除新列）并恢复 active。
+	RestoreAttribute(context.Context, *RestoreAttributeRequest) (*v1.Empty, error)
+	// RetireAttribute 是删列两段的段二（不可逆）：deprecated 属性的物理列
+	// 或 copy 迁移 swap 后的旧列残留物理删除。
+	RetireAttribute(context.Context, *RetireAttributeRequest) (*v1.Empty, error)
+	// MigrateAttribute 创建 copy 迁移任务（B4，redesign §4.6）：改类型/收紧 =
+	// 新列 → 异步批量回填（限速、可恢复）→ 锁窗校验 → 原子 swap → 旧列
+	// deprecated；schema_version 随迁移 commit 递增。放宽（扩宽/required→
+	// optional）即时 ALTER。响应为迁移任务读回（物理列名不出 API 契约）。
+	MigrateAttribute(context.Context, *MigrateAttributeRequest) (*AttributeMigration, error)
 	CreateIndex(context.Context, *CreateIndexRequest) (*Index, error)
 	DeleteIndex(context.Context, *DeleteIndexRequest) (*v1.Empty, error)
 	CreateDocument(context.Context, *CreateDocumentRequest) (*v1.Document, error)
@@ -464,6 +523,15 @@ func (UnimplementedDatabasesServiceServer) CreateAttribute(context.Context, *Cre
 }
 func (UnimplementedDatabasesServiceServer) DeleteAttribute(context.Context, *DeleteAttributeRequest) (*v1.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteAttribute not implemented")
+}
+func (UnimplementedDatabasesServiceServer) RestoreAttribute(context.Context, *RestoreAttributeRequest) (*v1.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RestoreAttribute not implemented")
+}
+func (UnimplementedDatabasesServiceServer) RetireAttribute(context.Context, *RetireAttributeRequest) (*v1.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RetireAttribute not implemented")
+}
+func (UnimplementedDatabasesServiceServer) MigrateAttribute(context.Context, *MigrateAttributeRequest) (*AttributeMigration, error) {
+	return nil, status.Error(codes.Unimplemented, "method MigrateAttribute not implemented")
 }
 func (UnimplementedDatabasesServiceServer) CreateIndex(context.Context, *CreateIndexRequest) (*Index, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateIndex not implemented")
@@ -725,6 +793,60 @@ func _DatabasesService_DeleteAttribute_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabasesServiceServer).DeleteAttribute(ctx, req.(*DeleteAttributeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabasesService_RestoreAttribute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestoreAttributeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).RestoreAttribute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_RestoreAttribute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).RestoreAttribute(ctx, req.(*RestoreAttributeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabasesService_RetireAttribute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetireAttributeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).RetireAttribute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_RetireAttribute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).RetireAttribute(ctx, req.(*RetireAttributeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DatabasesService_MigrateAttribute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MigrateAttributeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasesServiceServer).MigrateAttribute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatabasesService_MigrateAttribute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasesServiceServer).MigrateAttribute(ctx, req.(*MigrateAttributeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1049,6 +1171,18 @@ var DatabasesService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteAttribute",
 			Handler:    _DatabasesService_DeleteAttribute_Handler,
+		},
+		{
+			MethodName: "RestoreAttribute",
+			Handler:    _DatabasesService_RestoreAttribute_Handler,
+		},
+		{
+			MethodName: "RetireAttribute",
+			Handler:    _DatabasesService_RetireAttribute_Handler,
+		},
+		{
+			MethodName: "MigrateAttribute",
+			Handler:    _DatabasesService_MigrateAttribute_Handler,
 		},
 		{
 			MethodName: "CreateIndex",

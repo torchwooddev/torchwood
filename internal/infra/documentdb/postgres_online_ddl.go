@@ -66,12 +66,16 @@ func errOnlineIndexRetryable(err error) bool {
 func buildIndexStatement(schema, physical string, idx databases.Index, attrs []databases.Attribute, concurrently bool) (string, error) {
 	vectorAttrs := map[string]int{}
 	arrayAttrs := map[string]bool{}
+	deprecatedAttrs := map[string]bool{}
 	for _, a := range attrs {
 		if strings.ToLower(a.Type) == "vector" {
 			vectorAttrs[a.Key] = a.Dims
 		}
 		if a.Array {
 			arrayAttrs[a.Key] = true
+		}
+		if a.StatusOrDefault() == databases.AttrStatusDeprecated {
+			deprecatedAttrs[a.Key] = true
 		}
 	}
 	hasArrayCol := false
@@ -82,6 +86,11 @@ func buildIndexStatement(schema, physical string, idx databases.Index, attrs []d
 		}
 		if _, ok := vectorAttrs[attr]; ok {
 			hasVectorCol = true
+		}
+		if deprecatedAttrs[attr] {
+			// B4：deprecated 属性不可作为索引目标（读屏蔽后索引永不命中）。
+			return "", status.Errorf(codes.InvalidArgument,
+				"attribute %q is deprecated and cannot be indexed", attr)
 		}
 	}
 	if hasVectorCol || strings.ToLower(idx.Type) == "hnsw" {

@@ -367,6 +367,106 @@ func (d *Databases) DeleteIndex(ctx context.Context, projectID, databaseID, coll
 	return d.docDB.DeleteIndex(ctx, projectID, databaseID, collectionID, indexID)
 }
 
+// schemaEvolution 探测可选的 schema 演进端口（B4：仅 postgres 适配器实现；
+// 测试替身按需实现，未实现面 → Unimplemented）。
+func (d *Databases) schemaEvolution() (databases.SchemaEvolution, error) {
+	if evo, ok := d.docDB.(databases.SchemaEvolution); ok {
+		return evo, nil
+	}
+	return nil, status.Error(codes.Unimplemented, "schema evolution is not supported by this backend")
+}
+
+// RetireAttribute 是删列两段的段二（B4 §4.6）：deprecated 属性物理删列
+// （不可逆）；swap 后迁移残留旧列的退役同入口。
+func (d *Databases) RetireAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
+		return err
+	}
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
+	}
+	if err := d.validateCollectionID(collectionID); err != nil {
+		return status.Error(codes.InvalidArgument, "collection_id is required")
+	}
+	if err := d.ValidateIdentifier(key); err != nil {
+		return status.Error(codes.InvalidArgument, "key is required")
+	}
+	if _, err := d.resolveProject(ctx, projectID); err != nil {
+		return err
+	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
+	evo, err := d.schemaEvolution()
+	if err != nil {
+		return err
+	}
+	return evo.RetireAttribute(ctx, projectID, databaseID, collectionID, key)
+}
+
+// RestoreAttribute 回滚生命周期：deprecated → active；migrating → 中止迁移
+// 并恢复 active（§4.6 可回滚语义）。
+func (d *Databases) RestoreAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
+		return err
+	}
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return err
+	}
+	if err := d.validateCollectionID(collectionID); err != nil {
+		return status.Error(codes.InvalidArgument, "collection_id is required")
+	}
+	if err := d.ValidateIdentifier(key); err != nil {
+		return status.Error(codes.InvalidArgument, "key is required")
+	}
+	if _, err := d.resolveProject(ctx, projectID); err != nil {
+		return err
+	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
+	evo, err := d.schemaEvolution()
+	if err != nil {
+		return err
+	}
+	return evo.RestoreAttribute(ctx, projectID, databaseID, collectionID, key)
+}
+
+// MigrateAttribute 创建 copy 迁移任务（B4 §4.6 收紧/改类型行）：目标定义
+// 走 CreateAttribute 同款校验后交适配器（迁移分诊在 infra）。
+func (d *Databases) MigrateAttribute(ctx context.Context, projectID, databaseID, collectionID, key string, target databases.Attribute) (*databases.AttributeMigration, error) {
+	if err := shared.RequireServerWriteActor(ctx); err != nil {
+		return nil, err
+	}
+	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
+		return nil, err
+	}
+	if err := d.validateCollectionID(collectionID); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "collection_id is required")
+	}
+	if err := d.ValidateIdentifier(key); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "key is required")
+	}
+	if err := d.ValidateAttributeType(target.Type); err != nil {
+		return nil, err
+	}
+	if err := d.validateAttribute(target); err != nil {
+		return nil, err
+	}
+	target.Type = strings.ToLower(target.Type)
+	if _, err := d.resolveProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
+		return nil, shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
+	evo, err := d.schemaEvolution()
+	if err != nil {
+		return nil, err
+	}
+	return evo.MigrateAttribute(ctx, projectID, databaseID, collectionID, key, target)
+}
+
 func (d *Databases) ensureCollection(ctx context.Context, projectID, databaseID, collectionID string, principal databases.Principal) error {
 	if err := shared.RejectExternalDatabaseID(databaseID); err != nil {
 		return err

@@ -151,6 +151,13 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, ph
 	for _, attr := range coll.Attributes {
 		allowed[attr.Key] = struct{}{}
 	}
+	// deprecated 属性集（B4 读屏蔽：查询白名单拒绝）。
+	deprecatedAttrs := map[string]bool{}
+	for _, attr := range coll.Attributes {
+		if attr.StatusOrDefault() == databases.AttrStatusDeprecated {
+			deprecatedAttrs[attr.Key] = true
+		}
+	}
 	fulltextAttrs := map[string]struct{}{}
 	for _, idx := range coll.Indexes {
 		if strings.ToLower(idx.Type) == "fulltext" {
@@ -169,6 +176,11 @@ func (p *postgresDocumentDB) validateQueryFields(ctx context.Context, schema, ph
 		field := mapQueryField(name)
 		if _, ok := allowed[field]; !ok {
 			return status.Error(codes.InvalidArgument, fmt.Sprintf("invalid query field: %s", name))
+		}
+		// B4 生命周期：deprecated 属性读屏蔽——查询白名单拒绝（数据仍在，
+		// RestoreAttribute 可回滚）。migrating 属性查询放行（读服务旧列）。
+		if st, ok := deprecatedAttrs[mapQueryField(name)]; ok && st {
+			return status.Errorf(codes.InvalidArgument, "attribute %q is deprecated and not queryable", name)
 		}
 		if field == "_version" {
 			if isSystem {

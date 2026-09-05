@@ -341,6 +341,7 @@
     },
     "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}": {
       "delete": {
+        "summary": "DeleteAttribute 是删列两段的段一（B4，redesign §4.6）：属性置\ndeprecated——读屏蔽写拒收，可经 RestoreAttribute 回滚。",
         "operationId": "DatabasesService_DeleteAttribute",
         "responses": {
           "200": {
@@ -374,6 +375,159 @@
             "in": "path",
             "required": true,
             "type": "string"
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:migrate": {
+      "post": {
+        "summary": "MigrateAttribute 创建 copy 迁移任务（B4，redesign §4.6）：改类型/收紧 =\n新列 → 异步批量回填（限速、可恢复）→ 锁窗校验 → 原子 swap → 旧列\ndeprecated；schema_version 随迁移 commit 递增。放宽（扩宽/required→\noptional）即时 ALTER。响应为迁移任务读回（物理列名不出 API 契约）。",
+        "operationId": "DatabasesService_MigrateAttribute",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AttributeMigration"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/v1ErrorResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "database_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DatabasesServiceMigrateAttributeBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:restore": {
+      "post": {
+        "summary": "RestoreAttribute 回滚生命周期：deprecated → active；migrating → 中止\n迁移（删除新列）并恢复 active。",
+        "operationId": "DatabasesService_RestoreAttribute",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Empty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/v1ErrorResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "database_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DatabasesServiceRestoreAttributeBody"
+            }
+          }
+        ],
+        "tags": [
+          "DatabasesService"
+        ]
+      }
+    },
+    "/v1/server/databases/{database_id}/collections/{collection_id}/attributes/{key}:retire": {
+      "post": {
+        "summary": "RetireAttribute 是删列两段的段二（不可逆）：deprecated 属性的物理列\n或 copy 迁移 swap 后的旧列残留物理删除。",
+        "operationId": "DatabasesService_RetireAttribute",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Empty"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/v1ErrorResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "database_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DatabasesServiceRetireAttributeBody"
+            }
           }
         ],
         "tags": [
@@ -2187,6 +2341,38 @@
         }
       }
     },
+    "DatabasesServiceMigrateAttributeBody": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "目标定义（key 不可变更；类型/宽度/required/array/default/dims 可迁）。"
+        },
+        "size": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "array": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "type": "string"
+        },
+        "dims": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
+    "DatabasesServiceRestoreAttributeBody": {
+      "type": "object"
+    },
+    "DatabasesServiceRetireAttributeBody": {
+      "type": "object"
+    },
     "DatabasesServiceUpdateCollectionBody": {
       "type": "object",
       "properties": {
@@ -2495,8 +2681,35 @@
           "type": "integer",
           "format": "int32",
           "title": "向量维度：仅 vector 类型非零（其余类型省略）。"
+        },
+        "status": {
+          "type": "string",
+          "title": "生命周期状态（B4，§4.6）：active | migrating | deprecated | retired；\n缺省 active。"
         }
       }
+    },
+    "v1AttributeMigration": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "rows_done": {
+          "type": "string",
+          "format": "int64"
+        },
+        "schema_version": {
+          "type": "string",
+          "format": "int64"
+        }
+      },
+      "title": "AttributeMigration 是 copy 迁移任务的读回（物理列名不出 API 契约）。\nphase: backfilling（回填中，属性写入拒收）| swapped（迁移完成，旧列 deprecated\n残留待 retire）| retired | failed（重试同请求续跑，或 :restore 中止）。"
     },
     "v1BulkDocumentsResponse": {
       "type": "object",

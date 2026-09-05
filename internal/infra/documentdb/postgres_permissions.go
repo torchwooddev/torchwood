@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -499,6 +498,12 @@ func (p *postgresDocumentDB) bulkUpdateDocuments(
 			}
 		}
 	}
+	// B4 生命周期：deprecated/migrating 属性写入拒收（批 data 单次校验）。
+	if !principal.BypassesDocumentACL() {
+		if err := p.lifecycleViolation(ctx, projectID, databaseID, collectionID, nil, dataKeys(data)); err != nil {
+			return 0, err
+		}
+	}
 	wantEvents := p.pub != nil && !isSystem
 	pc, err := p.prefetchBulkAccess(ctx, projectID, databaseID, collectionID, tbl, ids, internalID, "update", principal, wantEvents)
 	if err != nil {
@@ -784,6 +789,11 @@ func (p *postgresDocumentDB) bulkDeleteDocuments(
 	return int64(len(ids)), nil
 }
 
+// DeleteAttribute 是删列两段的段一（转出 POC B4，redesign §4.6）：属性置
+// deprecated——读投影屏蔽（读回剥离该键）、查询白名单拒绝、写入拒收；物理
+// 列与数据保留（可回滚 RestoreAttribute）。段二 RetireAttribute 物理 DROP
+// COLUMN（CASCADE 清依赖索引）+ attrs 条目移除。
+// 语义升级自 B4 前的"即时物理删列"——契约对齐 §4.6 删列行（两段、可回滚）。
 func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, databaseID, collectionID, key string) error {
 	if _, err := p.resolveInternalID(ctx, projectID); err != nil {
 		return p.mapError(err)
@@ -791,7 +801,7 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 	if !safeNameRe.MatchString(key) {
 		return p.mapError(fmt.Errorf("invalid attribute key: %s", key))
 	}
-	_, schema, physical, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
+	_, _, _, err := p.resolvePhysicalTable(ctx, projectID, databaseID, collectionID)
 	if err != nil {
 		return p.mapError(err)
 	}
@@ -804,56 +814,31 @@ func (p *postgresDocumentDB) DeleteAttribute(ctx context.Context, projectID, dat
 		if err != nil {
 			return err
 		}
-		idxs, err := decodeIndexes(row.Indexes)
-		if err != nil {
-			return err
-		}
-		// B8：同事务清理依赖该属性的索引，避免幽灵索引指向已删列（与属性
-		// 是否存在无关，命中引用即清）。索引名前缀段用物理表名。
-		keptIdxs := make([]databases.Index, 0, len(idxs))
-		idxsChanged := false
-		for _, idx := range idxs {
-			if !slices.Contains(idx.Attributes, key) {
-				keptIdxs = append(keptIdxs, idx)
+		found := false
+		for i := range attrs {
+			if attrs[i].Key != key {
 				continue
 			}
-			idxsChanged = true
-			idxName := quoteIdent(fmt.Sprintf("idx_%s_%s", physical, idx.ID))
-			if _, err := p.conn(txCtx).ExecContext(txCtx,
-				fmt.Sprintf(`DROP INDEX IF EXISTS %s.%s`, quoteIdent(schema), idxName),
-			); err != nil {
-				return err
+			found = true
+			switch attrs[i].StatusOrDefault() {
+			case databases.AttrStatusDeprecated, databases.AttrStatusRetired:
+				return nil // 幂等：已 deprecated/retired
+			case databases.AttrStatusMigrating:
+				return fmt.Errorf("%w: %q", ErrAttributeMigrating, key)
 			}
+			attrs[i].Status = databases.AttrStatusDeprecated
 		}
-		if _, err := p.conn(txCtx).ExecContext(txCtx,
-			fmt.Sprintf(`ALTER TABLE %s DROP COLUMN IF EXISTS %s`, tableName(schema, physical), quoteIdent(key)),
-		); err != nil {
-			return err
-		}
-		// 属性不存在时保持旧语义（DELETE 0 行静默成功），仅在有实际变更时回写。
-		keptAttrs := make([]databases.Attribute, 0, len(attrs))
-		attrsChanged := false
-		for _, a := range attrs {
-			if a.Key == key {
-				attrsChanged = true
-				continue
-			}
-			keptAttrs = append(keptAttrs, a)
-		}
-		if !attrsChanged && !idxsChanged {
+		// 属性不存在时保持旧语义（0 行静默成功）。
+		if !found {
 			return nil
 		}
-		attrsJSON, err := encodeAttributes(keptAttrs)
-		if err != nil {
-			return err
-		}
-		idxsJSON, err := encodeIndexes(keptIdxs)
+		attrsJSON, err := encodeAttributes(attrs)
 		if err != nil {
 			return err
 		}
 		res, err := p.conn(txCtx).ExecContext(txCtx,
-			`UPDATE catalog_collections SET attrs = ?, indexes = ?, updated_at = ?, ddl_seq = ddl_seq + 1 WHERE project_id = ? AND database_id = ? AND collection_id = ? AND ddl_seq = ?`,
-			attrsJSON, idxsJSON, time.Now(), projectID, databaseID, collectionID, row.DDLSeq)
+			`UPDATE catalog_collections SET attrs = ?, updated_at = ?, ddl_seq = ddl_seq + 1 WHERE project_id = ? AND database_id = ? AND collection_id = ? AND ddl_seq = ?`,
+			attrsJSON, time.Now(), projectID, databaseID, collectionID, row.DDLSeq)
 		if err != nil {
 			return err
 		}

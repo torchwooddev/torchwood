@@ -28,6 +28,7 @@ type Attribute struct {
 // 属性生命周期状态值（catalog attrs JSONB 的 status 字段，codec omitempty）。
 const (
 	AttrStatusActive     = "active"
+	AttrStatusMigrating  = "migrating"
 	AttrStatusDeprecated = "deprecated"
 	AttrStatusRetired    = "retired"
 )

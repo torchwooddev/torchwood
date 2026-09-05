@@ -373,6 +373,67 @@ func (s *DatabasesService) DeleteAttribute(ctx context.Context, req *serverv1.De
 	return &sharedv1.Empty{}, nil
 }
 
+// RestoreAttribute 回滚生命周期（B4 §4.6 可回滚）：deprecated → active；
+// migrating → 中止迁移并恢复 active。
+func (s *DatabasesService) RestoreAttribute(ctx context.Context, req *serverv1.RestoreAttributeRequest) (*sharedv1.Empty, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
+	if err := s.databases.RestoreAttribute(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetKey()); err != nil {
+		return nil, err
+	}
+	return &sharedv1.Empty{}, nil
+}
+
+// RetireAttribute 是删列两段的段二（B4）：deprecated 属性物理删列 / swap 后
+// 迁移残留旧列退役（不可逆）。
+func (s *DatabasesService) RetireAttribute(ctx context.Context, req *serverv1.RetireAttributeRequest) (*sharedv1.Empty, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
+	if err := s.databases.RetireAttribute(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetKey()); err != nil {
+		return nil, err
+	}
+	return &sharedv1.Empty{}, nil
+}
+
+// MigrateAttribute 创建 copy 迁移任务（B4）：响应为迁移任务读回（物理列名
+// 不出契约）。
+func (s *DatabasesService) MigrateAttribute(ctx context.Context, req *serverv1.MigrateAttributeRequest) (*serverv1.AttributeMigration, error) {
+	projectID := s.projectID(ctx)
+	if projectID == "" {
+		return nil, status.Error(codes.Unauthenticated, "missing project context")
+	}
+	ctx = contexts.WithAuditResource(ctx, auditCollectionResource(req.GetDatabaseId(), req.GetCollectionId()))
+	target := databases.Attribute{
+		ID:       req.GetKey(),
+		Key:      req.GetKey(),
+		Type:     req.GetType(),
+		Size:     int(req.GetSize()),
+		Required: req.GetRequired(),
+		Array:    req.GetArray(),
+		Dims:     int(req.GetDims()),
+	}
+	if req.GetDefaultValue() != "" {
+		target.Default = req.GetDefaultValue()
+	}
+	mig, err := s.databases.MigrateAttribute(ctx, projectID, req.GetDatabaseId(), req.GetCollectionId(), req.GetKey(), target)
+	if err != nil {
+		return nil, err
+	}
+	return &serverv1.AttributeMigration{
+		Id:            mig.ID,
+		Key:           mig.AttrKey,
+		Phase:         mig.Phase,
+		RowsDone:      mig.RowsDone,
+		SchemaVersion: mig.SchemaVersion,
+	}, nil
+}
+
 func (s *DatabasesService) DeleteIndex(ctx context.Context, req *serverv1.DeleteIndexRequest) (*sharedv1.Empty, error) {
 	projectID := s.projectID(ctx)
 	if projectID == "" {
@@ -930,6 +991,11 @@ func mapCollection(c *databases.Collection) *serverv1.Collection {
 		if a.Dims != 0 {
 			dims := int32(a.Dims)
 			attr.Dims = &dims
+		}
+		// 生命周期状态（B4）：active 缺省省略（proto optional）。
+		if st := a.StatusOrDefault(); st != databases.AttrStatusActive {
+			statusStr := st
+			attr.Status = &statusStr
 		}
 		out.Attributes = append(out.Attributes, attr)
 	}
