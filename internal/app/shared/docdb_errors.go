@@ -32,12 +32,14 @@ var domainCodeGRPC = map[string]codes.Code{
 	databases.ErrCodeVersionColumnUnavailable: codes.InvalidArgument,
 	databases.ErrCodeInvalidArgument:          codes.InvalidArgument,
 	databases.ErrCodeTooLarge:                 codes.InvalidArgument,
+	databases.ErrCodeACLTooLarge:              codes.InvalidArgument,
 	databases.ErrCodeAttributeUnserializable:  codes.InvalidArgument,
 	databases.ErrCodeExhausted:                codes.ResourceExhausted,
 	databases.ErrCodeIdempotencyKeyConflict:   codes.InvalidArgument,
 	databases.ErrCodeIdempotencyInProgress:    codes.Aborted,
 	databases.ErrCodeAggregateOverflow:        codes.InvalidArgument,
 	databases.ErrCodeDDLConflict:              codes.Aborted,
+	databases.ErrCodeColumnLimitExceeded:      codes.InvalidArgument,
 	databases.ErrCodeResumeExpired:            codes.FailedPrecondition,
 }
 
@@ -54,12 +56,14 @@ var domainCodeMessage = map[string]string{
 	databases.ErrCodeVersionColumnUnavailable: databases.ErrVersionColumnUnavailable.Error(),
 	databases.ErrCodeInvalidArgument:          "invalid argument",
 	databases.ErrCodeTooLarge:                 "document payload too large",
+	databases.ErrCodeACLTooLarge:              "document acl has too many access control entries",
 	databases.ErrCodeAttributeUnserializable:  "attribute is not serializable",
 	databases.ErrCodeExhausted:                "resource exhausted",
 	databases.ErrCodeIdempotencyKeyConflict:   databases.ErrIdempotencyKeyConflict.Error(),
 	databases.ErrCodeIdempotencyInProgress:    "request with the same idempotency key is still in progress",
 	databases.ErrCodeAggregateOverflow:        databases.ErrAggregateOverflow.Error(),
 	databases.ErrCodeDDLConflict:              "concurrent schema modification conflict; re-read the collection and retry",
+	databases.ErrCodeColumnLimitExceeded:      "collection attribute count exceeds the soft limit",
 	databases.ErrCodeResumeExpired:            "resume cursor predates the oldest available event; re-sync with a full listing and resume from the latest seq",
 }
 

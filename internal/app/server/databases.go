@@ -144,6 +144,13 @@ func (d *Databases) CreateCollection(ctx context.Context, projectID, databaseID,
 			return err
 		}
 	}
+	// 每集合列数软预算（redesign §11-J H2）：PG 1600 列硬限留余量，建集合时
+	// 一次性声明即前置拒绝（域码 CATALOG.COLUMN_LIMIT_EXCEEDED）。
+	if len(attrs) > documents.MaxCollectionColumns {
+		return shared.DomainStatusWithViolations(databases.ErrCodeColumnLimitExceeded,
+			shared.FieldViolation{Field: "attributes",
+				Description: fmt.Sprintf("collection defines %d attributes, exceeds the %d-column soft limit", len(attrs), documents.MaxCollectionColumns)})
+	}
 	for _, idx := range idxs {
 		if err := d.ValidateIndex(idx); err != nil {
 			return err
@@ -281,6 +288,18 @@ func (d *Databases) CreateAttribute(ctx context.Context, projectID, databaseID, 
 	}
 	if databases.IsSystemCollection(projectID, databaseID, collectionID) {
 		return shared.MapDocumentDBError(databases.ErrPermissionDenied)
+	}
+	// 每集合列数软预算（redesign §11-J H2）：存量 attrs + 本次新增 ≤200
+	//（域码 CATALOG.COLUMN_LIMIT_EXCEEDED）。集合不存在时放行交由 adapter
+	// 报 NotFound，避免重复存在性语义。
+	col, err := d.docDB.GetCollection(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return shared.MapDocumentDBError(err)
+	}
+	if col != nil && len(col.Attributes)+1 > documents.MaxCollectionColumns {
+		return shared.DomainStatusWithViolations(databases.ErrCodeColumnLimitExceeded,
+			shared.FieldViolation{Field: "key",
+				Description: fmt.Sprintf("adding attribute %q would make %d attributes, exceeds the %d-column soft limit", attr.Key, len(col.Attributes)+1, documents.MaxCollectionColumns)})
 	}
 	return d.docDB.CreateAttribute(ctx, projectID, databaseID, collectionID, attr)
 }
@@ -693,6 +712,13 @@ func (d *Databases) ExecuteTransactions(
 		if len(op.Permissions) == 0 && (op.Type == databases.TransactionOpCreate || op.Type == databases.TransactionOpUpsert) {
 			op.Permissions = seedDocumentPermissions(principal)
 			opAllowed = true
+		}
+		// _acl ACE 数上限（redesign §11-J H2）：种子 ≤3 条天然合法；显式
+		// permissions 超限在进事务前拒绝（域码 DOCUMENT.ACL_TOO_LARGE）。
+		if len(op.Permissions) > documents.MaxDocumentACL {
+			return nil, false, shared.DomainStatusWithViolations(databases.ErrCodeACLTooLarge,
+				shared.FieldViolation{Field: fmt.Sprintf("ops[%d].permissions", i),
+					Description: fmt.Sprintf("permissions has %d access control entries, exceeds the %d-entry limit", len(op.Permissions), documents.MaxDocumentACL)})
 		}
 		perms, err := applyTxGrant(principal, op.Permissions, opAllowed)
 		if err != nil {

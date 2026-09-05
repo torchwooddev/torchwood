@@ -176,6 +176,7 @@
 - **要做什么**：在 app 校验层落地 H2 上限族（写入/DDL 前置拒绝 + 明确域码）。
 - **完成判据**：四个上限各有超限拒绝测试（含域码断言）；06-databases 输入上限小节同步。
 - **建议归属**：app/documents 校验会话。
+- **闭环（2026-09-05，app/documents 校验会话）**：四上限全部落地，常量集中 `internal/app/documents`（`MaxDocumentACL=64` / `MaxArrayElements=1000` / `MaxCollectionColumns=200` / `MaxObjectDepth=8`，注释标注 redesign §11-J H2，与 H1 常量同位）。`_acl` 校验收敛 app 层 documents 核（create/update/upsert/bulk 经 `validateACL` + Server execute-tx per-op，域码新设 `DOCUMENT.ACL_TOO_LARGE`；种子 ≤3 条天然合法无需豁免；RLS/adapter 层不设防——防御纵深已在列授权与 `tw_set_document_acl` 通道）；数组 1000 元素校验 data 通道（`ValidateDocumentPayload`，`[]any`/`[]string` 双形态）与 `array_updates` values 通道（超限复用 `DOCUMENT.TOO_LARGE`；DDL 通道无此面——array=true 已拒 default_value）；列数软限 200 落 CreateCollection（一次性声明）与 CreateAttribute（catalog 存量 +1）前置，域码新设 `CATALOG.COLUMN_LIMIT_EXCEEDED`（PG 1600 硬限留余量）；object 嵌套 ≤8 层并入 `ValidateDocumentPayload`（map 计一层、数组透明不计层，复用 `DOCUMENT.TOO_LARGE`）。测试：四上限各有超限拒绝（域码断言）+ 边界放行（`internal/app/documents/limits_test.go`、`internal/app/server/databases_limits_test.go`，execute-tx 面另有 ops[N].permissions violations 定位断言）；06-databases §6 输入上限小节已同步。
 
 ### B12 量化预警线 SLO 指标〔新发现〕
 

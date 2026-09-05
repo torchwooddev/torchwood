@@ -19,6 +19,8 @@ const (
 	ErrCodeVersionColumnUnavailable = "DOCUMENT.VERSION_COLUMN_UNAVAILABLE"
 	ErrCodeInvalidArgument          = "DOCUMENT.INVALID_ARGUMENT"
 	ErrCodeTooLarge                 = "DOCUMENT.TOO_LARGE"
+	// ACL_TOO_LARGE：文档 _acl ACE 数超上限（redesign §11-J H2：≤64）。
+	ErrCodeACLTooLarge = "DOCUMENT.ACL_TOO_LARGE"
 	// ATTRIBUTE_UNSERIALIZABLE：载荷属性值不可 JSON 序列化（如通道/函数值）。
 	ErrCodeAttributeUnserializable = "DOCUMENT.ATTRIBUTE_UNSERIALIZABLE"
 	ErrCodeExhausted               = "DOCUMENT.EXHAUSTED"
@@ -33,6 +35,9 @@ const (
 	// catalog DDL 乐观锁（阶段②包 B，redesign §4.4）：ddl_seq CAS 递增时
 	// 0 行受影响——并发 schema 变更先行提交，调用方应重读 catalog 后重试。
 	ErrCodeDDLConflict = "CATALOG.DDL_CONFLICT"
+	// COLUMN_LIMIT_EXCEEDED：集合属性列数超软预算（redesign §11-J H2：≤200，
+	// PG 1600 列硬限留余量）。
+	ErrCodeColumnLimitExceeded = "CATALOG.COLUMN_LIMIT_EXCEEDED"
 	// 事件重放窗口过期（阶段④ §4.5）：since_seq/last_seq 早于该集合最老
 	// 可用事件（24h published 保留 >> 1h 重放承诺），无法保证增量完整——
 	// 指引客户端全量重拉后重新续传。

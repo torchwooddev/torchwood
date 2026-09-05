@@ -24,10 +24,25 @@ const (
 	MaxAttributePayloadBytes = 256 << 10
 )
 
-// ValidateDocumentPayload 校验写入载荷大小（Create/Update/Upsert/Bulk 共用）。
-// Update 是部分更新，总量按本次提交的载荷计（合并后全量在 infra 读回后自然
-// 受单属性与列宽约束）。超限/不可序列化 → InvalidArgument，违规属性定位走
-// BadRequest violations（redesign §4.1，域码 TOO_LARGE/ATTRIBUTE_UNSERIALIZABLE）。
+// 文档/集合结构上限族（redesign §11-J H2 决议值）：_acl ≤64 ACE（校验收敛
+// app 层写路径——与种子/授予治理同层；RLS/adapter 不再设防，防御纵深已在
+// 列授权与 tw_set_document_acl 函数通道）；数组属性 ≤1000 元素（data 通道
+// 数组值 + array_updates 的 values；DDL 通道无此面——array=true 拒绝
+// default_value）；每集合列数软限 200（PG 1600 列硬限留余量，DDL 前置拒绝）；
+// object 嵌套 ≤8 层。
+const (
+	MaxDocumentACL       = 64
+	MaxArrayElements     = 1000
+	MaxCollectionColumns = 200
+	MaxObjectDepth       = 8
+)
+
+// ValidateDocumentPayload 校验写入载荷大小与结构（Create/Update/Upsert/Bulk/
+// execute-tx 共用）。Update 是部分更新，总量按本次提交的载荷计（合并后全量
+// 在 infra 读回后自然受单属性与列宽约束）。超限/不可序列化 → InvalidArgument，
+// 违规属性定位走 BadRequest violations（redesign §4.1，域码 TOO_LARGE/
+// ATTRIBUTE_UNSERIALIZABLE）；数组元素数与 object 嵌套深度属同一结构尺寸族
+// （redesign §11-J H2），复用 TOO_LARGE。
 func ValidateDocumentPayload(data map[string]any) error {
 	if len(data) == 0 {
 		return nil
@@ -43,11 +58,85 @@ func ValidateDocumentPayload(data map[string]any) error {
 			return shared.DomainStatusWithViolations(databases.ErrCodeTooLarge,
 				shared.FieldViolation{Field: "data." + k, Description: fmt.Sprintf("attribute %q is %d bytes, exceeds the %d-byte per-attribute limit", k, len(b), MaxAttributePayloadBytes)})
 		}
+		if n, ok := arrayValueLen(v); ok && n > MaxArrayElements {
+			return shared.DomainStatusWithViolations(databases.ErrCodeTooLarge,
+				shared.FieldViolation{Field: "data." + k, Description: fmt.Sprintf("attribute %q has %d array elements, exceeds the %d-element limit", k, n, MaxArrayElements)})
+		}
+		if err := checkObjectDepth(k, v, 1); err != nil {
+			return err
+		}
 		total += len(b)
 	}
 	if total > MaxDocumentPayloadBytes {
 		return shared.DomainStatusWithViolations(databases.ErrCodeTooLarge,
 			shared.FieldViolation{Field: "data", Description: fmt.Sprintf("document payload is %d bytes, exceeds the %d-byte limit", total, MaxDocumentPayloadBytes)})
+	}
+	return nil
+}
+
+// arrayValueLen 返回数据通道数组值的元素数；非数组值返回第二返回值 false。
+// 数组列的 JSON 反序列化产物为 []any，服务端构造路径（labels 等）为 []string。
+func arrayValueLen(v any) (int, bool) {
+	switch vv := v.(type) {
+	case []any:
+		return len(vv), true
+	case []string:
+		return len(vv), true
+	}
+	return 0, false
+}
+
+// checkObjectDepth 递归校验 object 嵌套 ≤ MaxObjectDepth 层（redesign §11-J
+// H2）：顶层属性对象为第 1 层，map 计一层、数组透明（元素与所在层同深）；
+// 超限 → InvalidArgument / DOCUMENT.TOO_LARGE。
+func checkObjectDepth(field string, v any, depth int) error {
+	switch vv := v.(type) {
+	case map[string]any:
+		if depth > MaxObjectDepth {
+			return shared.DomainStatusWithViolations(databases.ErrCodeTooLarge,
+				shared.FieldViolation{Field: "data." + field, Description: fmt.Sprintf("object nesting exceeds the %d-level limit", MaxObjectDepth)})
+		}
+		for _, e := range vv {
+			if err := checkObjectDepth(field, e, depth+1); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, e := range vv {
+			if err := checkObjectDepth(field, e, depth); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateACL 校验显式 permissions（_acl）的 ACE 数上限（redesign §11-J H2）。
+// create/upsert 空 ACE 的系统种子（≤3 条）在包装层生成后进入本核，天然合法
+// 无需豁免；模板展开（ExpandPermissionTemplates）为 1:1 替换不改变 ACE 数，
+// 对请求侧计数即可。超限 → InvalidArgument / DOCUMENT.ACL_TOO_LARGE。
+func validateACL(perms []databases.Permission) error {
+	if len(perms) <= MaxDocumentACL {
+		return nil
+	}
+	return shared.DomainStatusWithViolations(databases.ErrCodeACLTooLarge,
+		shared.FieldViolation{Field: "permissions", Description: fmt.Sprintf("permissions has %d access control entries, exceeds the %d-entry limit", len(perms), MaxDocumentACL)})
+}
+
+// validateArrayUpdates 校验数组原子更新请求的 op 合法性与 values 元素数上限
+// （redesign §11-J H2；列白名单/同列冲突等语义校验在 adapter 依 catalog attrs
+// 进行）。UNIQUE 忽略 values，但同一请求通道统一封顶。键排序保证多键超限时
+// 报错确定性。
+func validateArrayUpdates(arrayUpdates map[string]databases.ArrayUpdate) error {
+	keys := make([]string, 0, len(arrayUpdates))
+	for k := range arrayUpdates {
+		keys = append(keys, k)
+	}
+	for _, k := range sortedStrings(keys) {
+		if n := len(arrayUpdates[k].Values); n > MaxArrayElements {
+			return shared.DomainStatusWithViolations(databases.ErrCodeTooLarge,
+				shared.FieldViolation{Field: "array_updates." + k, Description: fmt.Sprintf("array update %q has %d values, exceeds the %d-element limit", k, n, MaxArrayElements)})
+		}
 	}
 	return nil
 }
@@ -89,6 +178,9 @@ func (d *Documents) CreateDocument(
 		return nil, false, status.Error(codes.InvalidArgument, "data is required")
 	}
 	if err := ValidateDocumentPayload(data); err != nil {
+		return nil, false, err
+	}
+	if err := validateACL(perms); err != nil {
 		return nil, false, err
 	}
 	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.CreateDocument", principal,
@@ -186,6 +278,12 @@ func (d *Documents) UpdateDocument(
 	if err := ValidateDocumentPayload(data); err != nil {
 		return nil, false, err
 	}
+	if err := validateACL(perms); err != nil {
+		return nil, false, err
+	}
+	if err := validateArrayUpdates(arrayUpdates); err != nil {
+		return nil, false, err
+	}
 	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.UpdateDocument", principal,
 		documentFingerprintBody{
 			Database:     databaseID,
@@ -242,6 +340,9 @@ func (d *Documents) UpsertDocument(
 	}
 	if len(conflictColumns) == 0 {
 		return nil, false, status.Error(codes.InvalidArgument, "conflict_columns is required")
+	}
+	if err := validateACL(perms); err != nil {
+		return nil, false, err
 	}
 	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.UpsertDocument", principal,
 		documentFingerprintBody{
@@ -342,6 +443,9 @@ func (d *Documents) BulkUpdateDocuments(
 		return 0, false, err
 	}
 	if err := ValidateDocumentPayload(data); err != nil {
+		return 0, false, err
+	}
+	if err := validateACL(perms); err != nil {
 		return 0, false, err
 	}
 	return idempotentExec(ctx, d.idem, projectID, requestID, "databases.BulkUpdateDocuments", principal,
