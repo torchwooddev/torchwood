@@ -108,7 +108,7 @@ func TestVectorSearch_EfSearch_DefaultByteIdentical(t *testing.T) {
 }
 
 // TestVectorSearch_EfSearch_RecallAndLatency：近重复簇 + 稀疏可见行数据形态
-//（B2 实测的 HNSW 饱和边界）上的召回/延迟对比取数——ef=40（缺省档）vs
+// （B2 实测的 HNSW 饱和边界）上的召回/延迟对比取数——ef=40（缺省档）vs
 // ef=200。判据（弱单调）：聚合召回 recall(200) ≥ recall(40)（更大 ef 的候选
 // 池严格更大，聚合意义下召回不降）；召回数字与延迟均值经 t.Logf 记录（转出
 // POC B7 闭环证据），不作时间/绝对召回断言（近似索引的图构建随机性使绝对

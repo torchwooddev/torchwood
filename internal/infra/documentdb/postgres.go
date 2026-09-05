@@ -101,6 +101,13 @@ type postgresDocumentDB struct {
 	// -> dims，会话 #10）。写路径的字面量编码/维度校验与读回投影覆盖都消费；
 	// DDL 路径维护，miss 时点查 catalog attrs。
 	vectorColumns sync.Map // "schema.physical" -> map[string]int
+	// physicalNameCache 缓存业务库集合的逻辑 ID → 物理表名（B13c，转出 POC：
+	// 阶段②预决策 4 挂账落地——点查占业务查询往返占比实测 ~26% ≥ 5% 判据）。
+	// 失效面 = catalog_collections 的全部删除路径（DeleteCollection /
+	// DeleteDatabase / import 清位）；CreateCollection 写穿覆盖（同名逻辑 ID
+	// 重建必得新物理名）。跨实例陈旧语义 fail-loud：他实例删建后陈旧名指向
+	// 已 DROP 的表 → PG 42P01 显式报错，无静默错写。
+	physicalNameCache sync.Map // "project\x1fdatabase\x1fcollection" -> physical string
 }
 
 func NewPostgresDocumentDB(db *clients.Database, pub shared.EventPublisher) databases.DocumentDB {

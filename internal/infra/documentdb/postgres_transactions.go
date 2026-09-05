@@ -179,19 +179,31 @@ func (p *postgresDocumentDB) executeTxOp(
 // lockTxTargets 对批内全部 op 目标按 (collection, documentID) 排序预取事务级
 // advisory 锁：并发批以相同顺序拿锁，消除"批 A 锁 d1 等 d2、批 B 锁 d2 等 d1"
 // 的批间互锁；单文档路径不受影响（语句级行锁仍与 op 串行化）。
+//
+// upsert 冲突值键预锁（转出 POC B13a，§4.8 裁决④挂账收口）：upsertDocument
+// 执行时对 (_tenant, 冲突值) 取第二族 advisory 锁（P0-1 串行化），该族锁按 op
+// 请求序获取——并发批以相反冲突键顺序执行时成环（死锁注入实测 8/8 轮 40P01）。
+// 修复 = 批首把全部 upsert op 的冲突值键**排序后预锁**：两族锁各自全局有序，
+// 且每批先取完 docID 族再取冲突键族，跨族不成环；upsertDocument 内的取锁在
+// 同事务内可重入（即时返回），P0-1 语义不变。冲突列非法/缺值的 op 跳过预锁
+// ——其执行体必然以 InvalidArgument 失败，无须互斥。
 func (p *postgresDocumentDB) lockTxTargets(ctx context.Context, projectID, databaseID string, ops []databases.TransactionOp) error {
 	internalID, err := p.resolveInternalID(ctx, projectID)
 	if err != nil {
 		return err
 	}
+	tenant := strconv.FormatInt(internalID, 10)
 	type target struct{ collection, document string }
 	targets := make([]target, 0, len(ops))
+	conflictKeys := make([]string, 0, len(ops))
 	seen := make(map[target]struct{}, len(ops))
+	seenConflict := make(map[string]struct{}, len(ops))
 	for _, op := range ops {
 		t := target{op.CollectionID, op.DocumentID}
 		// upsert 的目标是冲突行（预查前未知），锁键取 collection+conflict 语义
 		// 近似：与 upsertDocument 自身的 advisory lock 键（冲突值）不同键不互
-		// 斓——由 op 执行时的行锁兜底，此处只需覆盖确定 ID 的 op。
+		// 斥——由冲突值键族（下）与 op 执行时的行锁兜底，此处只需覆盖确定 ID
+		// 的 op。
 		if t.document == "" || t.collection == "" {
 			continue
 		}
@@ -200,6 +212,18 @@ func (p *postgresDocumentDB) lockTxTargets(ctx context.Context, projectID, datab
 		}
 		seen[t] = struct{}{}
 		targets = append(targets, t)
+		if op.Type == databases.TransactionOpUpsert && len(op.ConflictColumns) > 0 {
+			values, err := conflictArgs(op.ConflictColumns, op.Data)
+			if err != nil {
+				continue // 非法冲突列/缺值：执行体必然 InvalidArgument，无须预锁
+			}
+			key := conflictLockKey(values)
+			if _, dup := seenConflict[key]; dup {
+				continue
+			}
+			seenConflict[key] = struct{}{}
+			conflictKeys = append(conflictKeys, key)
+		}
 	}
 	sort.Slice(targets, func(i, j int) bool {
 		if targets[i].collection != targets[j].collection {
@@ -207,12 +231,21 @@ func (p *postgresDocumentDB) lockTxTargets(ctx context.Context, projectID, datab
 		}
 		return targets[i].document < targets[j].document
 	})
-	tenant := strconv.FormatInt(internalID, 10)
+	// 键族顺序：先 docID 族（已排序），后冲突值键族（排序后取锁）——两族各自
+	// 全局有序 + 每批族间顺序一致 = 并发批拿锁全序兼容，无 hold-and-wait 环。
+	sort.Strings(conflictKeys)
 	for _, t := range targets {
 		if _, err := p.conn(ctx).ExecContext(ctx,
 			`SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))`,
 			tenant, t.collection+"."+t.document); err != nil {
 			return fmt.Errorf("acquire tx target lock: %w", err)
+		}
+	}
+	for _, key := range conflictKeys {
+		if _, err := p.conn(ctx).ExecContext(ctx,
+			`SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))`,
+			tenant, key); err != nil {
+			return fmt.Errorf("acquire upsert conflict key lock: %w", err)
 		}
 	}
 	return nil

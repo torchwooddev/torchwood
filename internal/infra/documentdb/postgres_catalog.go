@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -74,7 +75,7 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 	if err != nil {
 		return p.mapError(err)
 	}
-	return p.mapError(p.withOwnerTx(ctx, func(txCtx context.Context) error {
+	if err := p.withOwnerTx(ctx, func(txCtx context.Context) error {
 		if _, err := p.conn(txCtx).ExecContext(txCtx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, quoteIdent(schema))); err != nil {
 			return err
 		}
@@ -88,7 +89,13 @@ func (p *postgresDocumentDB) DeleteDatabase(ctx context.Context, projectID, id s
 		_, err := p.conn(txCtx).NewDelete().Model((*model.DocumentDatabase)(nil)).
 			Where("project_id = ? AND database_id = ?", projectID, id).Exec(txCtx)
 		return err
-	}))
+	}); err != nil {
+		return p.mapError(err)
+	}
+	// 物理名缓存（B13c）：库已删，批量失效该库全部集合键（同名库重建后的
+	// 新集合得新物理名）。
+	p.dropDatabasePhysicalNames(projectID, id)
+	return nil
 }
 
 // EnsureCatalog 对项目数据面执行 projectschema.Apply。职责已收缩（阶段②包 A）：
@@ -142,8 +149,11 @@ func (p *postgresDocumentDB) businessSchema(projectID, databaseID string) (strin
 //     coll 对象，System/bypass 聚合与列表路径（跳过 GetCollection）同样可用；
 //   - 行缺失 → NotFound（物理名是内部实现细节，物理表与 catalog 行同生共死）。
 //
-// 热路径代价 = 业务库 +1 次主键点查（sentinel 零）；进程内缓存按预决策 4
-// 挂账未做（评估后置）。
+// 物理名进程内缓存（B13c，转出 POC 落地；阶段②预决策 4 的"评估后置"收口）：
+// 点查实测占业务查询单次往返的 ~26%（≥5% 判据 → 缓存），热路径命中后零额外
+// 往返。失效面 = catalog_collections 的全部删除路径（DeleteCollection /
+// DeleteDatabase / import 清位）+ CreateCollection 写穿覆盖；跨实例陈旧语义
+// fail-loud（42P01 表不存在），无静默错写。
 func (p *postgresDocumentDB) resolvePhysicalTable(ctx context.Context, projectID, databaseID, collectionID string) (int64, string, string, error) {
 	internalID, schema, err := p.documentSchema(ctx, projectID, databaseID)
 	if err != nil {
@@ -151,6 +161,10 @@ func (p *postgresDocumentDB) resolvePhysicalTable(ctx context.Context, projectID
 	}
 	if databaseID == ident.ProjectDataPlaneID {
 		return internalID, schema, collectionID, nil
+	}
+	if cached, ok := p.physicalNameCache.Load(physicalNameCacheKey(projectID, databaseID, collectionID)); ok {
+		physical, _ := cached.(string)
+		return internalID, schema, physical, nil
 	}
 	var physical string
 	err = p.conn(ctx).NewSelect().Model((*model.DocumentCollection)(nil)).
@@ -163,7 +177,36 @@ func (p *postgresDocumentDB) resolvePhysicalTable(ctx context.Context, projectID
 		}
 		return 0, "", "", p.mapError(err)
 	}
+	p.physicalNameCache.Store(physicalNameCacheKey(projectID, databaseID, collectionID), physical)
 	return internalID, schema, physical, nil
+}
+
+// physicalNameCacheKey 是 physicalNameCache 的键（\x1f 分隔，键段自身不含
+// 该控制字符——project/database/collection ID 校验均限可见字符）。
+func physicalNameCacheKey(projectID, databaseID, collectionID string) string {
+	return projectID + "\x1f" + databaseID + "\x1f" + collectionID
+}
+
+// storePhysicalName 在 CreateCollection 提交后写穿覆盖（同名逻辑 ID 重建必得
+// 新物理名，覆盖即失效）。
+func (p *postgresDocumentDB) storePhysicalName(projectID, databaseID, collectionID, physical string) {
+	p.physicalNameCache.Store(physicalNameCacheKey(projectID, databaseID, collectionID), physical)
+}
+
+// dropPhysicalName 在 DeleteCollection / import 清位后失效单键。
+func (p *postgresDocumentDB) dropPhysicalName(projectID, databaseID, collectionID string) {
+	p.physicalNameCache.Delete(physicalNameCacheKey(projectID, databaseID, collectionID))
+}
+
+// dropDatabasePhysicalNames 在 DeleteDatabase 后失效该库全部集合键。
+func (p *postgresDocumentDB) dropDatabasePhysicalNames(projectID, databaseID string) {
+	prefix := projectID + "\x1f" + databaseID + "\x1f"
+	p.physicalNameCache.Range(func(k, _ any) bool {
+		if ks, ok := k.(string); ok && strings.HasPrefix(ks, prefix) {
+			p.physicalNameCache.Delete(k)
+		}
+		return true
+	})
 }
 
 func tableName(schema, collectionID string) string {

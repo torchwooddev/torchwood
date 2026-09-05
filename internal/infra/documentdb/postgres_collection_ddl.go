@@ -114,6 +114,11 @@ func (p *postgresDocumentDB) CreateCollection(ctx context.Context, projectID, da
 	if txErr == nil && physicalName != "" {
 		// vector 列缓存（会话 #10）：DDL 提交后刷新（事务内不缓存，回滚撤销）。
 		p.storeVectorColumns(schema, physicalName, attrs)
+		// 物理名缓存（B13c）：写穿覆盖——删建同逻辑 ID 后旧键若残留（跨实例
+		// 语义），此处收敛为本实例新名。
+		if databaseID != ident.ProjectDataPlaneID {
+			p.storePhysicalName(projectID, databaseID, collectionID, physicalName)
+		}
 	}
 	return p.mapError(txErr)
 }
@@ -292,6 +297,8 @@ func (p *postgresDocumentDB) DeleteCollection(ctx context.Context, projectID, da
 	if delErr == nil {
 		// vector 列缓存（会话 #10）：表已删，清键防陈旧维度残留。
 		p.dropVectorColumns(schema, physical)
+		// 物理名缓存（B13c）：删建同逻辑 ID 必得新物理名，陈旧键必须失效。
+		p.dropPhysicalName(projectID, databaseID, collectionID)
 	}
 	return p.mapError(delErr)
 }

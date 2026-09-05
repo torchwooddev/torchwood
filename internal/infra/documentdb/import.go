@@ -197,6 +197,9 @@ func ImportProject(ctx context.Context, db *clients.Database, projectID, inDir s
 		if err != nil {
 			return nil, fmt.Errorf("import: rebuild %s/%s: %w", c.DatabaseID, c.CollectionID, err)
 		}
+		// 物理名缓存（B13c）：import 清位重建后写穿（manifest 携带的原物理名
+		// 即重建后的物理名），防本实例陈旧键指向已 DROP 的表。
+		p.storePhysicalName(projectID, c.DatabaseID, c.CollectionID, c.PhysicalName)
 		report.CollectionsRestored = append(report.CollectionsRestored,
 			c.DatabaseID+"/"+c.CollectionID)
 	}
