@@ -16,12 +16,14 @@ jobs:
     services:
       postgres:
         # 与 docker/local/docker-compose.yml 对齐：pgvector 0.8.6 + PG18
-        # （vector 列 + HNSW 索引，iterative scan 需 ≥0.8）。
+        # （vector 列 + HNSW 索引，iterative scan 需 ≥0.8）。locale=C 对齐
+        # 原 alpine 镜像的排序语义（Debian 基座默认 en_US.utf8）。
         image: pgvector/pgvector:0.8.6-pg18
         env:
           POSTGRES_USER: torchwood
           POSTGRES_PASSWORD: torchwood
           POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: "--locale=C"
         ports:
           - 5432:5432
         options: >-
