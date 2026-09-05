@@ -152,6 +152,68 @@ func keepNonNil(children []*sharedv1.Filter) []*sharedv1.Filter {
 }
 
 // ---------------------------------------------------------------------------
+// VectorSearch（KNN 算子，会话 #10）：非 filter 节点——距离承载排序，
+// limit 即 k（top-k 可见近邻）。DSL 字符串不支持 vector_search（向量
+// 不该手写，typed builder only）；与 orders/pageToken 互斥（服务端拒绝）。
+// ---------------------------------------------------------------------------
+
+// VectorSearchBuilder 链式构造 shared.v1.VectorSearch。
+type VectorSearchBuilder struct {
+	v sharedv1.VectorSearch
+}
+
+// VectorSearch 创建 KNN 查询构造器（metric 缺省 COSINE）。values 须与目标
+// vector 属性的声明维度等长（服务端按 catalog 校验）；目标属性须存在与
+// metric 匹配的 hnsw 索引。
+func VectorSearch(attribute string, values ...float64) *VectorSearchBuilder {
+	b := &VectorSearchBuilder{}
+	b.v.Attribute = attribute
+	b.v.Values = append([]float64{}, values...)
+	b.v.Metric = sharedv1.DistanceMetric_DISTANCE_METRIC_COSINE
+	return b
+}
+
+// MetricCosine 余弦距离（PG <=>，hnsw COSINE 索引）。
+func (b *VectorSearchBuilder) MetricCosine() *VectorSearchBuilder {
+	b.v.Metric = sharedv1.DistanceMetric_DISTANCE_METRIC_COSINE
+	return b
+}
+
+// MetricL2 欧氏距离（PG <->，hnsw L2 索引）。
+func (b *VectorSearchBuilder) MetricL2() *VectorSearchBuilder {
+	b.v.Metric = sharedv1.DistanceMetric_DISTANCE_METRIC_L2
+	return b
+}
+
+// MetricInnerProduct 负内积（PG <#>，hnsw INNER_PRODUCT 索引；值域
+// (-inf, 0]，越小越近）。
+func (b *VectorSearchBuilder) MetricInnerProduct() *VectorSearchBuilder {
+	b.v.Metric = sharedv1.DistanceMetric_DISTANCE_METRIC_INNER_PRODUCT
+	return b
+}
+
+// MaxDistance 距离阈值：仅保留 top-k 中距离 <= max 的行（服务端后置过滤）。
+func (b *VectorSearchBuilder) MaxDistance(max float64) *VectorSearchBuilder {
+	md := max
+	b.v.MaxDistance = &md
+	return b
+}
+
+// Build 产出 *shared.v1.VectorSearch。
+func (b *VectorSearchBuilder) Build() *sharedv1.VectorSearch {
+	out := &sharedv1.VectorSearch{
+		Attribute: b.v.GetAttribute(),
+		Metric:    b.v.GetMetric(),
+	}
+	out.Values = append(out.Values, b.v.GetValues()...)
+	if b.v.MaxDistance != nil {
+		md := b.v.GetMaxDistance()
+		out.MaxDistance = &md
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 // Query 构造器（链式）
 // ---------------------------------------------------------------------------
 
@@ -166,6 +228,13 @@ func New() *Builder { return &Builder{} }
 // Filter 设置过滤树（多次调用后者覆盖）。
 func (b *Builder) Filter(f *sharedv1.Filter) *Builder {
 	b.q.Filter = f
+	return b
+}
+
+// VectorSearch 设置 KNN 算子（会话 #10；与 OrderAsc/OrderDesc/PageToken
+// 互斥——服务端显式拒绝非法组合）。PageSize 即 k。
+func (b *Builder) VectorSearch(v *sharedv1.VectorSearch) *Builder {
+	b.q.VectorSearch = v
 	return b
 }
 
@@ -206,6 +275,7 @@ func (b *Builder) Build() *sharedv1.Query {
 		PageToken: b.q.GetPageToken(),
 	}
 	out.Filter = b.q.GetFilter()
+	out.VectorSearch = b.q.GetVectorSearch()
 	out.Orders = append(out.Orders, b.q.GetOrders()...)
 	out.Select = append(out.Select, b.q.GetSelect()...)
 	return out

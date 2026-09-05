@@ -47,7 +47,7 @@
 - **数组列（阶段③-b，redesign §3.1/§10.5 P0）**：属性 `array=true` 落地 PG 原生 `T[]` 列（元素类型仅 string/integer/float/boolean/datetime）；查询算子 `containsAny`（`&&`）/`containsAll`（`@>`）仅 array 属性可用（白名单）；写侧 `UpdateDocumentRequest.array_updates` 四算子（APPEND/PREPEND/REMOVE/UNIQUE）编译为单语句 SET（与 data/increment 组合、OCC 不变）；数组列 key 索引自动 GIN array_ops，unique 对数组列拒绝。
 - **事件链（阶段④，redesign §4.5）**：outbox 行带全局 `seq`（000028 identity，B1：单文档全序、集合内分配序、空洞=回滚事务不丢事件）+ AFTER INSERT 触发器 `pg_notify('tw_outbox','')` 唤醒 worker（LISTEN + 5s 兜底，零额外客户端语句）；投递走 Redis Stream `torchwood:events`（每实例一消费组 XREADGROUP/XACK，XTRIM ~100k，Stream 只管传输、重放窗口在 outbox 表）；补偿 = `:changes?since_seq=`（双面 RPC）+ WS subscribe 帧 `last_seq` 门控重放（窗口外 `EVENTS.RESUME_EXPIRED`）；慢消费者 buffer 1024 满水位带 `resync:<last_seq>` close 断开，客户端重连带 last_seq 即重同步；信封载荷上限 1MiB（对齐 H1），`transaction_id` 标识 execute-tx 批（事件序 = op 序）。
 - sentinel `_`（`ident.ProjectDataPlaneID`）仅内部寻址 / 对外 `RejectExternalDatabaseID` 拒绝；系统资源不再是文档集合。`default` 是普通第一库（可删可重建）。DDL 只走两段式 `businessSchema`，永不解析一段式。`project.id` / `database.id` 规则见 `docs/developer/06-databases.md`。
-- 动态文档查询使用 Appwrite 风格 DSL（`pkg/query`），支持 `equal`、`greaterThan`、`contains`、`containsAny`、`containsAll`、`orderDesc`、`limit` 等（后三个数组算子/构造器仅 array=true 属性可用，服务端白名单校验）。
+- 动态文档查询使用 Appwrite 风格 DSL（`pkg/query`），支持 `equal`、`greaterThan`、`contains`、`containsAny`、`containsAll`、`orderDesc`、`limit` 等（后三个数组算子/构造器仅 array=true 属性可用，服务端白名单校验）。向量近邻查询走 `query.vectorSearch`（KNN 一等算子，非 filter 节点；typed builder only，DSL 字符串不支持；需 metric 匹配的 hnsw 索引，iterative scan 为契约——语义见 `docs/developer/06-databases.md` §6）。
 
 ## 编辑时应遵循的模式
 - 保持端口在 domain、适配器在 infra。

@@ -115,7 +115,9 @@ CREATE INDEX idx_c_ab12cd34_acl ON tw_shop_app.c_ab12cd34 USING gin (_acl);
 | `DeleteIndex` | `DROP INDEX IF EXISTS` + indexes JSONB 删除 + CAS（`RunInTx` 原子，`DeleteIndex`） |
 | `UpdateCollection` | 权限替换与字段更新同一 UPDATE，统一刷 `updated_at` + ddl_seq CAS（空 patch no-op；并发冲突 → `CATALOG.DDL_CONFLICT`） |
 
-类型映射（`pgTypeFor`）：`string/email/url→VARCHAR(n)/TEXT`、`integer→BIGINT`、`float→DOUBLE PRECISION`、`boolean→BOOLEAN`、`datetime→TIMESTAMPTZ`、`json→JSONB`。**数组属性（阶段③-b，redesign §3.1/§10.5 P0）**：`array=true` 落地 PG 原生数组列（`pgArrayTypeFor` 单源 DDL 与参数 cast）：`string→TEXT[]`、`integer→BIGINT[]`、`float→DOUBLE PRECISION[]`、`boolean→BOOLEAN[]`、`datetime→TIMESTAMPTZ[]`；元素类型仅限该标量子集（email/url/json 拒绝），数组列不带 DEFAULT（缺省 NULL）。数组列的 key 索引自动选 `GIN (col array_ops)`（`&&`/`@>` 可走索引）且仅支持单列索引；unique/fulltext 对数组列拒绝（PG 数组无唯一约束语义）。
+类型映射（`pgTypeFor`）：`string/email/url→VARCHAR(n)/TEXT`、`integer→BIGINT`、`float→DOUBLE PRECISION`、`boolean→BOOLEAN`、`datetime→TIMESTAMPTZ`、`json→JSONB`、`vector→VECTOR(dims)`。**数组属性（阶段③-b，redesign §3.1/§10.5 P0）**：`array=true` 落地 PG 原生数组列（`pgArrayTypeFor` 单源 DDL 与参数 cast）：`string→TEXT[]`、`integer→BIGINT[]`、`float→DOUBLE PRECISION[]`、`boolean→BOOLEAN[]`、`datetime→TIMESTAMPTZ[]`；元素类型仅限该标量子集（email/url/json 拒绝），数组列不带 DEFAULT（缺省 NULL）。数组列的 key 索引自动选 `GIN (col array_ops)`（`&&`/`@>` 可走索引）且仅支持单列索引；unique/fulltext 对数组列拒绝（PG 数组无唯一约束语义）。
+
+**vector 属性（会话 #10，§10.5 P0 最后一项）**：`type=vector` + `dims`（必填，2..2000 = pgvector HNSW 可索引上限；非 vector 类型设置 dims 拒绝），落地 pgvector 原生 `VECTOR(dims)` 列（扩展由迁移 000030 启用，镜像 `pgvector/pgvector:0.8.6-pg18`）。`default_value` 与 `array=true` 对 vector 拒绝。写入值 = JSON 浮点数组（编码为 pgvector 字面量 + `?::vector` 绑定，维度绑定前校验）；读回契约 = JSON 数组（`to_jsonb(vector)` 原生输出字符串——原型 3 实证，读回投影以 `to_jsonb(d.*) || jsonb_build_object(col::text::jsonb)` 逐列覆盖）。**维度变更 = 新列 + 数据重灌**（换模型即换列名，不走 schema 演进状态机）。**hnsw 索引**：`CreateIndex type=hnsw`（单列、`distance_metric∈{COSINE,L2,INNER_PRODUCT}` 缺省 COSINE、orders 拒绝、metric 归一大写落 catalog），DDL `USING hnsw (col vector_cosine_ops|vector_l2_ops|vector_ip_ops)`；同列可建多 metric 索引；vector 列×key/unique/fulltext、非 vector 列×hnsw、数组列×hnsw 全拒绝；vector 列×key/unique/fulltext 拒绝。
 
 ## 6 查询（单 typed AST，C7）
 
@@ -131,8 +133,9 @@ CREATE INDEX idx_c_ab12cd34_acl ON tw_shop_app.c_ab12cd34 USING gin (_acl);
 |  | `search`/`notSearch` | `to_tsvector('simple',col::text) @@ plainto_tsquery('simple',?)`（not → `NOT (...)`） |
 |  | `isNull`/`isNotNull` | `IS NULL` / `IS NOT NULL` |
 |  | `containsAny`/`containsAll`（阶段③-b §10.5 P0） | `col && ?::T[]`（交集非空）/ `col @> ?::T[]`（子集）；**仅 array=true 属性可用**（白名单，标量列/系统列拒绝）；参数 pgTextArray 字面量 + 按列元素类型 cast；NULL 列与空数组列不命中 |
+| KNN | `vectorSearch`（会话 #10 §10.5 P0，**非 filter 节点**） | `SELECT …, (col <op> $vec) AS __dist … WHERE <policy+filters> ORDER BY col <op> $vec LIMIT k`；op：COSINE `<=>` / L2 `<->` / INNER_PRODUCT `<#>`（负内积） |
 | 排序 | `orders[]`（attribute+desc） | `ORDER BY d.k1 dir1, …, d._id <首键方向>`（与 cursor 续页路径同构的 `_id` tiebreaker） |
-| 分页 | `pageSize`/`pageToken` | LIMIT；**keyset-only（C2 完成态，见 §9）**：`pageToken` 只认 `ka:/kb:` token；count/aggregate 对排序/分页算子（orders/pageSize/pageToken/cursor）显式拒绝（R9+R9b，整集语义） |
+| 分页 | `pageSize`/`pageToken` | LIMIT；**keyset-only（C2 完成态，见 §9）**：`pageToken` 只认 `ka:/kb:` token；count/aggregate 对排序/分页算子（orders/pageSize/pageToken/cursor）显式拒绝（R9+R9b，整集语义）；KNN 下 pageSize 即 k、pageToken 拒绝（多页 KNN 挂账） |
 | 投影 | `select[]` | 返回后裁剪 `Data` |
 
 别名 `$id→_id`、`$createdAt→_created_at`、`$updatedAt→_updated_at`、`$version→_version`（`mapQueryField`）。
@@ -144,6 +147,8 @@ CREATE INDEX idx_c_ab12cd34_acl ON tw_shop_app.c_ab12cd34 USING gin (_acl);
 **编译与校验**（`postgres_query_compile.go`）：`astFrom` 收归一后的 AST（无字符串回退）；`validateQueryFields` 白名单=系统列+已声明 attribute，`search` 需命中 `fulltext` 索引，`containsAny/containsAll` 需命中 array=true 属性（阶段③-b 白名单），`_version` 缺列返回 `version_column_unavailable`（`InvalidArgument`），系统集合敏感列（`users.password_hash/prefs/labels` 等）黑名单仅按 `IsSystemCollection` 生效。
 
 **数组写侧原子算子（阶段③-b §10.5 P0）**：`UpdateDocumentRequest.array_updates`（`map<string, ArrayUpdate>`，client+server 双面）编译为单语句 SET 子句，与 data/increment 可组合（同列冲突 → InvalidArgument）、OCC 不变：`APPEND` → `COALESCE(col,'{}') || ?::T[]`、`PREPEND` → `?::T[] || COALESCE(col,'{}')`、`REMOVE` → 差集（移空后为空数组非 NULL，NULL 列保持 NULL）、`UNIQUE` → 保首次出现序去重（WITH ORDINALITY）。data 通道对数组列是整列替换（值编码为数组字面量，目标列类型推断）；读回经 `to_jsonb` 自动投影为 JSON 数组。Intersect/Diff/Insert/Filter 挂账转出 POC 前。
+
+**vector_search 查询语义（会话 #10，redesign §10.5 P0 / §11-J D2）**：`query.vectorSearch = {attribute, values[], metric, maxDistance?}`（**非 filter 树节点**——距离不可作布尔谓词，排序由距离承载）；`pageSize` 即 k（top-k **可见**近邻，缺省 25、上限 100）；与普通 `filter` 可组合（AND），与 `orders`/`pageToken` 互斥（InvalidArgument）；DSL 字符串不支持（向量不该手写，SDK typed builder only——`sdk/go/query.VectorSearch` / TS `vectorSearch()`）。前置校验（显式拒绝原则）：目标列必须是声明的 vector 属性、`values` 与 `dims` 等长、且存在与 `metric` 匹配的 hnsw 索引（无索引/metric 不符 → InvalidArgument——search 需 fulltext 索引的同款纪律）；vector 属性不得进普通 filter（白名单仅放行 isNull/isNotNull）与 order。**iterative scan 为契约**（D2）：查询事务内 `SET LOCAL hnsw.iterative_scan = 'strict_order'`（GUC 默认 off；off = "先取全局 k 再滤"，RLS×KNN 召回错误——开发期实证 1000 行 5 可见时 off 返回 0/5、on 返回 5/5；strict_order 保序，`distances` 回传与文档顺序一致）；RLS policy（`tw_visible`）作为 securityQuals 隐式参与过滤——**vector 与文档同事务、同 RLS 判定管辖**（对 Appwrite VectorsDB 独立产品线的核心差异，集成测试 `TestVectorSearch_SparseVisibilityRecall` 锁定）。`maxDistance` 在 top-k 结果上后置过滤（可证等价；距离谓词进 WHERE 会使规划器放弃 HNSW 索引——开发期 10 万行实证 Seq Scan）；`ListDocumentsResponse.distances`（server/client 双面）与 `documents` 平行回传距离，不污染 `Document.Data`、不持久化、不进事件；count/aggregate 拒绝 KNN（整集语义）。已知边界：近重复不可见簇 + 极低可见率（如 99% 行向量几乎相同且不可见）下 HNSW 图导航可能饱和、返回 < k 行（近似索引固有边界，ef_search 不暴露的首期已知限制——挂账转出 POC 前评估 ef_search/hnsw.iterative_scan 调参暴露）。
 
 ## 7 权限模型（`_acl` 内嵌 + RLS 判定执行点，阶段③）
 

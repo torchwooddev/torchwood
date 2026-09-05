@@ -45,6 +45,22 @@ export interface QueryOrder {
   desc?: boolean;
 }
 
+/** KNN 距离度量（与 hnsw 索引的 distance_metric 同枚举域）。 */
+export type DistanceMetric = "COSINE" | "L2" | "INNER_PRODUCT";
+
+/**
+ * 向量近邻查询（会话 #10 §10.5 P0）：非 filter 树节点——距离承载排序，
+ * pageSize 即 k（top-k 可见近邻）。attribute 须为声明的 vector 属性且
+ * 存在 metric 匹配的 hnsw 索引；与 orders/pageToken 互斥（服务端拒绝）。
+ * DSL 字符串不支持 vector_search（向量不该手写，typed builder only）。
+ */
+export interface VectorSearch {
+  attribute: string;
+  values: number[];
+  metric?: DistanceMetric;
+  maxDistance?: number;
+}
+
 /** shared.v1.Query 的 JSON 形态（POST documents:list 的 body 即此对象）。 */
 export interface QueryAst {
   filter?: FilterNode;
@@ -52,6 +68,7 @@ export interface QueryAst {
   select?: string[];
   pageSize?: number;
   pageToken?: string;
+  vectorSearch?: VectorSearch;
 }
 
 function cmp(attribute: string, values: string[]): QueryComparison {
@@ -165,4 +182,28 @@ export function orderAsc(attribute: string): QueryOrder {
 
 export function orderDesc(attribute: string): QueryOrder {
   return { attribute, desc: true };
+}
+
+/**
+ * KNN 构造器（metric 缺省 COSINE）。示例：
+ *   vectorSearch("emb", [0.1, 0.2, 0.3]).metric("L2").maxDistance(0.5)
+ * values 须与目标 vector 属性的声明维度等长（服务端按 catalog 校验）。
+ */
+export function vectorSearch(attribute: string, values: number[]) {
+  const v: VectorSearch = { attribute, values };
+  return {
+    /** 距离度量（须与目标列 hnsw 索引的 distance_metric 匹配）。 */
+    metric(m: DistanceMetric) {
+      v.metric = m;
+      return this;
+    },
+    /** 距离阈值：仅保留 top-k 中距离 <= max 的行。 */
+    maxDistance(max: number) {
+      v.maxDistance = max;
+      return this;
+    },
+    build(): VectorSearch {
+      return v;
+    },
+  };
 }

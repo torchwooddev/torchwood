@@ -220,19 +220,23 @@ export class ServerDatabasesService {
 
   // C7 单 AST：带 query（过滤/排序/投影）时走 POST :list（body 即 Query
   // JSON，分页字段并入）；无 query 时保留 GET 简单分页（page_size/page_token）。
+  // KNN（vector_search）查询时 distances 与 documents 平行回传（会话 #10）。
   async listDocuments(
     databaseId: string,
     collectionId: string,
     params?: DocumentListParams
-  ): Promise<{ documents: Document[]; meta?: ListMeta }> {
+  ): Promise<{ documents: Document[]; meta?: ListMeta; distances?: number[] }> {
     if (params?.query) {
       const body = documentsQueryBody(params.query, params.page_size, params.page_token);
-      const res = await this.http.request<{ documents: Document[]; meta?: ListMeta }>(
-        "POST",
-        `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:list`,
-        { auth: "apiKey", body }
-      );
-      return { documents: res.documents ?? [], meta: res.meta };
+      const res = await this.http.request<{
+        documents: Document[];
+        meta?: ListMeta;
+        distances?: number[];
+      }>("POST", `/v1/server/databases/${databaseId}/collections/${collectionId}/documents:list`, {
+        auth: "apiKey",
+        body,
+      });
+      return { documents: res.documents ?? [], meta: res.meta, distances: res.distances };
     }
     const res = await this.http.request<{ documents: Document[]; meta?: ListMeta }>(
       "GET",

@@ -218,9 +218,18 @@ func (d *DatabasesService) DeleteDocument(ctx context.Context, collectionID, doc
 	return err
 }
 
+// DocumentsResult 是 ListDocuments 的结果（会话 #10 起 KNN 距离随行返回）：
+// Distances 与 Documents 平行，仅 vector_search 查询时非空。
+type DocumentsResult struct {
+	Documents     []*sharedv1.Document
+	NextPageToken string
+	Distances     []float64
+}
+
 // ListDocuments 按 typed AST 查询列出文档（C7 单 AST：服务端不再消费 DSL
-// 字符串；分页走 q.PageSize/q.PageToken），返回文档列表与下一页游标（空表示无更多）。
-func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, q *sharedv1.Query) ([]*sharedv1.Document, string, error) {
+// 字符串；分页走 q.PageSize/q.PageToken）。vector_search（KNN）查询时
+// result.Distances 与 result.Documents 平行回传距离。
+func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID string, q *sharedv1.Query) (*DocumentsResult, error) {
 	req := &serverv1.ListDocumentsRequest{
 		DatabaseId:   d.db,
 		CollectionId: collectionID,
@@ -228,13 +237,17 @@ func (d *DatabasesService) ListDocuments(ctx context.Context, collectionID strin
 	}
 	resp, err := d.c.databases.ListDocuments(ctx, req)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	var next string
 	if resp.Meta != nil {
 		next = resp.Meta.NextPageToken
 	}
-	return resp.Documents, next, nil
+	return &DocumentsResult{
+		Documents:     resp.Documents,
+		NextPageToken: next,
+		Distances:     resp.Distances,
+	}, nil
 }
 
 // DocumentsPager 是 ListDocuments 的 AIP-158 分页迭代器（P3-15）。
@@ -265,23 +278,24 @@ func (p *DocumentsPager) Next(ctx context.Context) ([]*sharedv1.Document, error)
 	if p.done {
 		return nil, nil
 	}
-	// proto 消息含锁不可值拷贝；分页参数逐字段组装（filter/orders/select
-	// 指针共享只读）。
+	// proto 消息含锁不可值拷贝；分页参数逐字段组装（filter/orders/select/
+	// vector_search 指针共享只读）。
 	q := &sharedv1.Query{PageSize: p.pageSize, PageToken: p.nextToken}
 	if p.query != nil {
 		q.Filter = p.query.GetFilter()
 		q.Orders = p.query.GetOrders()
 		q.Select = p.query.GetSelect()
+		q.VectorSearch = p.query.GetVectorSearch()
 	}
-	docs, next, err := p.svc.ListDocuments(ctx, p.collectionID, q)
+	res, err := p.svc.ListDocuments(ctx, p.collectionID, q)
 	if err != nil {
 		return nil, err
 	}
-	p.nextToken = next
-	if next == "" {
+	p.nextToken = res.NextPageToken
+	if res.NextPageToken == "" {
 		p.done = true
 	}
-	return docs, nil
+	return res.Documents, nil
 }
 
 // All 顺序拉取所有页并合并（注意大集合内存占用）。

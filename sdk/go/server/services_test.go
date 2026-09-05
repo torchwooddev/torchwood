@@ -397,11 +397,11 @@ func TestDatabases_CountAndListDocuments(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(42), count)
 
-	docs, next, err := c.Databases.ListDocuments(ctx, "messages",
+	res, err := c.Databases.ListDocuments(ctx, "messages",
 		&sharedv1.Query{Filter: eqFilter("channel_id", "ch1"), PageSize: 20})
 	require.NoError(t, err)
-	require.Len(t, docs, 2)
-	require.Equal(t, "next-token", next)
+	require.Len(t, res.Documents, 2)
+	require.Equal(t, "next-token", res.NextPageToken)
 }
 
 // eqFilter 是测试用的 equal 过滤构造捷径。
