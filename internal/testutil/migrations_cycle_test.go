@@ -42,8 +42,7 @@ func TestMigrations_UpDownUpCycle(t *testing.T) {
 	wantLatest := latestMigrationVersion(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
-	adminDB := newAdminDB(adminDSN)
-	defer func() { _ = adminDB.Close() }()
+	adminDB := sharedAdmin()
 
 	// 建库 + up→down→up 全程持集群级 lifecycle 锁（并行安全契约见 db.go 包注释）。
 	// fn 内 require 失败走 FailNow/Goexit，锁由 runInDBLifecycleLock 的 defer 释放，
@@ -64,13 +63,11 @@ func runMigrationCycle(ctx context.Context, t *testing.T, adminDB *bun.DB, baseD
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cleanupCancel()
-		// adminDB 已随测试函数 defer 关闭，删库自建连接；外层锁此时已释放，
-		// 删库段自行持锁（与 SetupTestDB 的建库/迁移/删库段互斥）。
-		cleanupDB := newAdminDB(AdminDSN())
-		defer func() { _ = cleanupDB.Close() }()
-		if err := runInDBLifecycleLock(cleanupCtx, cleanupDB, func(ctx context.Context) error {
+		// 外层测试锁此时已释放，删库段自行持锁（与 SetupTestDB 的建库/迁移/
+		// 删库段互斥）；复用进程级共享 admin 池（db.go sharedAdmin）。
+		if err := runInDBLifecycleLock(cleanupCtx, sharedAdmin(), func(ctx context.Context) error {
 			return retryOnClusterContention(ctx, func() error {
-				return dropTestDatabase(ctx, cleanupDB, dbName)
+				return dropTestDatabase(ctx, sharedAdmin(), dbName)
 			})
 		}); err != nil {
 			t.Errorf("drop test db %s: %v", dbName, err)

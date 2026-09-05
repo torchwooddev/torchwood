@@ -34,6 +34,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -206,6 +207,20 @@ func AdminDSN() string {
 	return os.Getenv("TORCHWOOD_TEST_ADMIN_DATABASE_SOURCE")
 }
 
+// sharedAdminOnce / sharedAdminDB 是进程级共享的 admin 连接池。每次
+// SetupTestDB 的建库/迁移/删库段都需要 admin 连接，进程内复用单一池避免
+// 每测试新建池的连接建立洪峰（-p 4 满负载实证 PG 认证层拥堵：SASL
+// read timeout）。sql.DB 并发安全，池不 Close（进程退出即回收）。
+var (
+	sharedAdminOnce sync.Once
+	sharedAdminDB   *bun.DB
+)
+
+func sharedAdmin() *bun.DB {
+	sharedAdminOnce.Do(func() { sharedAdminDB = newAdminDB(AdminDSN()) })
+	return sharedAdminDB
+}
+
 // SetupTestDB creates a fresh test database, runs migrations, and returns a bun DB client.
 func SetupTestDB(t *testing.T) *clients.Database {
 	t.Helper()
@@ -224,8 +239,7 @@ func SetupTestDB(t *testing.T) *clients.Database {
 		t.Fatalf("parse test dsn: %v", err)
 	}
 
-	adminDB := newAdminDB(adminDSN)
-	defer func() { _ = adminDB.Close() }()
+	adminDB := sharedAdmin()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -236,6 +250,9 @@ func SetupTestDB(t *testing.T) *clients.Database {
 		// 300KiB 文档 JSON）；测试库统一放宽到 2MiB。
 		pgdriver.WithBufferSize(2<<20),
 	))
+	// 单库稳态连接上限：测试内部并发（模拟冲突、并行上传等）最多十余根，
+	// 上限防池无界扩张放大集群连接压力；超出仅排队不报错。
+	sqldb.SetMaxOpenConns(16)
 	db := &clients.Database{DB: bun.NewDB(sqldb, pgdialect.New())}
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -255,11 +272,9 @@ func SetupTestDB(t *testing.T) *clients.Database {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cleanupCancel()
-		cleanupDB := newAdminDB(adminDSN)
-		defer func() { _ = cleanupDB.Close() }()
-		err := runInDBLifecycleLock(cleanupCtx, cleanupDB, func(ctx context.Context) error {
+		err := runInDBLifecycleLock(cleanupCtx, adminDB, func(ctx context.Context) error {
 			return retryOnClusterContention(ctx, func() error {
-				return dropTestDatabase(ctx, cleanupDB, dbName)
+				return dropTestDatabase(ctx, adminDB, dbName)
 			})
 		})
 		if err != nil {
@@ -337,7 +352,12 @@ func runMigrations(ctx context.Context, db *bun.DB) error {
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", f, err)
 		}
-		if _, err := db.ExecContext(ctx, string(sqlBytes)); err != nil {
+		// 单迁移对瞬时过载重试：静态 SQL 多语句经 pgdriver simple protocol
+		// 单次往返执行，PG 侧为一个隐式事务——失败全回滚，重放安全。
+		if err := retryOnClusterContention(ctx, func() error {
+			_, err := db.ExecContext(ctx, string(sqlBytes))
+			return err
+		}); err != nil {
 			return fmt.Errorf("execute migration %s: %w", f, err)
 		}
 	}
