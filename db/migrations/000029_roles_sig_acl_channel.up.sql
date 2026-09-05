@@ -22,16 +22,10 @@
 --     （fail-closed，与漏注入同语义）。app.roles/app.tenant GUC 可被任何持
 --     SQL 会话者 set_config 伪造，验签后伪造通道封死。
 --   - 密钥 = HMAC-SHA256(security.jwt.secret, 'tw-roles-guc-v1') 的 hex，
---     Go 侧进程内派生（page-token 同模式），启动钩子落 tw_secrets
+--     Go 侧进程内派生（page-token 同模式），启动钩子 UPSERT 进 tw_secrets
 --     （表不授予任何运行时角色——仅验签函数经 SECURITY DEFINER 以 owner 读）。
---     sig 格式 "<exp_unix>|<hexmac>"，窗口 60s（DB 时钟偏差容差）。
---
--- A4 修订（转出 POC 门禁，2026-09-05，原地修订——存量本地库需重建）：
---   tw_secrets 单钥 UPSERT 改双钥槽位（is_current 布尔）：新钥落 current、
---   旧 current 降级 previous（third 条直接删，previous 至多保留紧邻上一把；
---   部分唯一索引保证每 purpose 至多一把 current），tw_sig_match 改"任一钥
---   命中即通过"——滚动重启换钥期间，旧进程签发的 sig 在 60s TTL 窗口内经
---   previous 验签通过、窗口外（exp 过期）依旧拒绝，消除换钥降级窗口。
+--     单密钥 + 滚动重启轮换；双钥窗口挂账转出 POC 前。sig 格式
+--     "<exp_unix>|<hexmac>"，窗口 60s（DB 时钟偏差容差）。
 --   - tw_set_document_acl 是 _acl 删改（UPDATE/REPLACE）的唯一通道：p_table
 --     经 catalog physical_name 白名单校验（防注入）；EXECUTE 仅授 tw_app、
 --     REVOKE FROM public。
@@ -39,27 +33,19 @@
 -- pgcrypto：验签需要 hmac()（trusted extension，DB owner 可装）。
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- 签名密钥表：Go 组合根启动期双钥平移（clients.SyncRolesSigKey）。
+-- 签名密钥表：Go 组合根启动期 UPSERT（clients.SyncRolesSigKey）。
 -- 不授予任何角色：tw_app 不可读（否则可自签），仅验签函数经
 -- SECURITY DEFINER 以 owner（迁移执行者）身份读取。
--- 双钥槽位（A4）：is_current = TRUE 为 current（验签优先信任面），FALSE 为
--- previous（紧邻上一把，换钥窗口内旧 sig 的命中面）；主键 (purpose, key_hex)
--- 允许同 purpose 两行，部分唯一索引保证每 purpose 至多一把 current。
 CREATE TABLE public.tw_secrets (
-    purpose    TEXT NOT NULL,
+    purpose    TEXT PRIMARY KEY,
     key_hex    TEXT NOT NULL,
-    is_current BOOLEAN NOT NULL DEFAULT TRUE,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (purpose, key_hex)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 REVOKE ALL ON public.tw_secrets FROM PUBLIC;
-CREATE UNIQUE INDEX tw_secrets_single_current ON public.tw_secrets (purpose) WHERE is_current;
 
 -- tw_sig_match：sig 验签单源（消息 = tenant|roles|exp）。仅做密码学校验；
 -- "仅 tw_app 身份"的限定由调用方（tw_roles/tw_tenant）承载。密钥缺失/格式
 -- 错/过期/mac 不符 → false（fail-closed）。search_path 锁定 pg_catalog。
--- A4：任一钥命中即通过——current/previous 两行都进 EXISTS 面，过期判定
--- 先于钥匹配，previous 命中无法给窗口外的 sig 续命。
 CREATE FUNCTION public.tw_sig_match()
 RETURNS boolean
 LANGUAGE sql STABLE
@@ -69,16 +55,15 @@ AS $$
     SELECT COALESCE((
         SELECT sig.exp ~ '^[0-9]+$'
            AND (sig.exp)::bigint >= (EXTRACT(epoch FROM now()))::bigint
-           AND EXISTS (
-               SELECT 1 FROM public.tw_secrets k
-               WHERE k.purpose = 'tw-roles-guc-v1'
-                 AND encode(public.hmac(
-                       COALESCE(current_setting('app.tenant', true), '') || '|' ||
-                       current_setting('app.roles', true) || '|' || sig.exp,
-                       k.key_hex, 'sha256'), 'hex') = sig.mac
-           )
+           AND encode(public.hmac(
+                   COALESCE(current_setting('app.tenant', true), '') || '|' ||
+                   current_setting('app.roles', true) || '|' || sig.exp,
+                   k.key_hex, 'sha256'), 'hex') = sig.mac
         FROM (SELECT split_part(current_setting('app.roles_sig', true), '|', 1) AS exp,
                      split_part(current_setting('app.roles_sig', true), '|', 2) AS mac) sig
+        LEFT JOIN LATERAL (
+            SELECT key_hex FROM public.tw_secrets WHERE purpose = 'tw-roles-guc-v1' LIMIT 1
+        ) k ON true
     ), false)
 $$;
 

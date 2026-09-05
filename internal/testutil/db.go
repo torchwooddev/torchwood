@@ -1,9 +1,33 @@
+// Package testutil 提供集成测试公共基建。
+//
+// # 并行安全契约（转出门禁 A6，`go test ./... -p 4` 稳定性）
+//
+//   - 隔离库生命周期互斥：SetupTestDB 与迁移循环测试的 CREATE DATABASE、
+//     迁移执行（含 000026 的 CREATE ROLE/GRANT membership 等集群目录写）、
+//     pg_terminate_backend + DROP DATABASE 段全部持有集群级 advisory lock
+//     （testDBLifecycleLockKey）——`-p N` 下每个包是独立进程，进程内互斥锁
+//     无效，因此互斥点选在 PG 服务端：跨进程、跨包内 t.Parallel 均互斥。
+//     锁只包建库/迁移/删库段，库内用例执行不持锁，并行度不受影响。
+//     迁移段入锁的原因：000026 up 的 GRANT membership 与迁移循环 down 的
+//     REVOKE 并发更新 pg_auth_members 同一目录行会撞 XX000 tuple concurrently
+//     deleted（角色保留方案下 GRANT/REVOKE 仍存在，必须串行化）。
+//   - 瞬时故障重试：建库/删库语句对集群瞬时过载（连接打满 too many clients、
+//     i/o timeout 等）做指数退避重试（≤3 次）兜底；CREATE DATABASE 在前次
+//     响应丢失后重试撞"已存在"（42P04）视为成功。
+//   - 角色对象所有权策略：000026 建的 tw_owner/tw_app/tw_system 是集群级角色、
+//     被所有并行测试库共享——up 以原子幂等方式创建（duplicate 容错），down 仅
+//     清理本库（REASSIGN/DROP OWNED + REVOKE membership）且不 DROP ROLE。
+//     因此角色名下对象恒属于某个测试库、随该库 DROP DATABASE 一并消亡，
+//     不产生跨库清理义务，迁移循环 down 与并行库无集群对象竞争（详见
+//     db/migrations/000026_rbac_roles.down.sql 头注释）。
 package testutil
 
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -24,6 +48,122 @@ import (
 )
 
 var testDBSeq atomic.Uint64
+
+// testDBLifecycleLockKey 是隔离库生命周期互斥的集群级 advisory lock key。
+// 任意进程内所有测试库的 CREATE/DROP DATABASE 段经它在 PG 服务端全局串行化，
+// 避免 pg_database 行级 AccessExclusiveLock 争用与连接数打满（A6 根因①）。
+const testDBLifecycleLockKey = int64(0x7477_6C69_665F_6462) // "twlif_db"
+
+// runInDBLifecycleLock 在集群级 advisory lock 下执行 fn（见包注释并行安全契约）。
+// 连接建立与取锁本身也受集群过载影响（admin 池建连被拒 / 读超时），一并纳入
+// 瞬时错误重试，每次重试重新取连接。锁绑定单一连接，fn 返回后解锁；解锁使用
+// 独立短超时 ctx，不受外层 ctx 耗尽影响，保证锁必然释放。
+func runInDBLifecycleLock(ctx context.Context, admin *bun.DB, fn func(ctx context.Context) error) error {
+	var conn *sql.Conn
+	if err := retryOnClusterContention(ctx, func() error {
+		if conn != nil {
+			_ = conn.Close()
+			conn = nil
+		}
+		c, err := admin.DB.Conn(ctx) // 内嵌 *sql.DB：原生 Conn，bun.Conn 包装不适合跨重试持柄
+		if err != nil {
+			return err
+		}
+		conn = c
+		// 原生 *sql.Conn 不经 bun 的 `?`→`$n` 重写，pgdriver 只认 `$n` 占位符。
+		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", testDBLifecycleLockKey); err != nil {
+			return fmt.Errorf("acquire test db lifecycle lock: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("acquire admin conn for lifecycle lock: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+	defer func() {
+		unlockCtx, unlockCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer unlockCancel()
+		_, _ = conn.ExecContext(unlockCtx, "SELECT pg_advisory_unlock($1)", testDBLifecycleLockKey)
+	}()
+	return fn(ctx)
+}
+
+// testDBRetryAttempts 是建库/删库段对集群瞬时过载的最大重试次数（含初次共 4 次）。
+const testDBRetryAttempts = 3
+
+// retryOnClusterContention 对瞬时过载类错误做指数退避重试（250ms/500ms/1s），
+// 非瞬时错误立即返回（见包注释并行安全契约）。
+func retryOnClusterContention(ctx context.Context, fn func() error) error {
+	var err error
+	for attempt := 0; ; attempt++ {
+		err = fn()
+		if err == nil || attempt >= testDBRetryAttempts || !isTransientClusterError(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(250<<attempt) * time.Millisecond):
+		}
+	}
+}
+
+// isTransientClusterError 判断是否为单 PG 实例被并行测试打满时的瞬时错误
+// （连接数上限 / 网络中断）。这类错误退避重试即可恢复，不是测试逻辑失败。
+func isTransientClusterError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	var pgErr pgdriver.Error
+	if errors.As(err, &pgErr) {
+		switch pgErr.Field('C') {
+		case "53300", // too_many_connections
+			"57P03",          // cannot_connect_now
+			"08000",          // connection_exception
+			"08006",          // connection_failure
+			"08001", "08004": // sqlclient_unable_to_establish / connection_rejected
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"too many clients",
+		"i/o timeout",
+		"connection reset",
+		"broken pipe",
+		"cannot connect now",
+		"server closed the connection",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// isDuplicateDatabaseError 报告 CREATE DATABASE 是否因库已存在而失败
+// （42P04 duplicate_database）：重试窗口内前次执行可能已在服务端生效。
+func isDuplicateDatabaseError(err error) bool {
+	var pgErr pgdriver.Error
+	if errors.As(err, &pgErr) {
+		return pgErr.Field('C') == "42P04"
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "already exists")
+}
+
+// createTestDatabase 在 lifecycle 锁内建库（含瞬时过载重试与 duplicate 容错）。
+func createTestDatabase(ctx context.Context, admin *bun.DB, dbName string) error {
+	return retryOnClusterContention(ctx, func() error {
+		_, err := admin.ExecContext(ctx, "CREATE DATABASE "+dbName)
+		if err != nil && isDuplicateDatabaseError(err) {
+			return nil
+		}
+		return err
+	})
+}
 
 // TestDSN returns the DSN for integration tests, read from the
 // TORCHWOOD_TEST_DATABASE_SOURCE environment variable. There is no
@@ -60,21 +200,8 @@ func SetupTestDB(t *testing.T) *clients.Database {
 	adminDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
 	defer func() { _ = adminDB.Close() }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-
-	if _, err := adminDB.ExecContext(ctx, "CREATE DATABASE "+dbName); err != nil {
-		t.Fatalf("create test db: %v", err)
-	}
-	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cleanupCancel()
-		cleanupDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
-		defer func() { _ = cleanupDB.Close() }()
-		if err := dropTestDatabase(cleanupCtx, cleanupDB, dbName); err != nil {
-			t.Errorf("drop test db %s: %v", dbName, err)
-		}
-	})
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(
 		pgdriver.WithDSN(testDSN),
@@ -85,9 +212,34 @@ func SetupTestDB(t *testing.T) *clients.Database {
 	db := &clients.Database{DB: bun.NewDB(sqldb, pgdialect.New())}
 	t.Cleanup(func() { _ = db.Close() })
 
-	if err := runMigrations(ctx, db.DB); err != nil {
-		t.Fatalf("run migrations: %v", err)
+	// 建库 + 迁移持集群级 advisory lock（并行安全契约见包注释）：迁移中的
+	// 000026 up（CREATE ROLE + GRANT membership）是集群目录写，与其他包并行
+	// 迁移以及迁移循环测试 down 的 REVOKE 并发会撞 pg_auth_members 行竞态
+	// （XX000 tuple concurrently deleted），故一并串行化；SyncRolesSigKey 只写
+	// 本库 tw_secrets，在锁外。
+	if err := runInDBLifecycleLock(ctx, adminDB, func(ctx context.Context) error {
+		if err := createTestDatabase(ctx, adminDB, dbName); err != nil {
+			return err
+		}
+		return runMigrations(ctx, db.DB)
+	}); err != nil {
+		t.Fatalf("create test db / run migrations: %v", err)
 	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cleanupCancel()
+		cleanupDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
+		defer func() { _ = cleanupDB.Close() }()
+		err := runInDBLifecycleLock(cleanupCtx, cleanupDB, func(ctx context.Context) error {
+			return retryOnClusterContention(ctx, func() error {
+				return dropTestDatabase(ctx, cleanupDB, dbName)
+			})
+		})
+		if err != nil {
+			t.Errorf("drop test db %s: %v", dbName, err)
+		}
+	})
+
 	// roles_sig（000029，阶段③-b 包 C）：进程内派生签名密钥并落库 tw_secrets，
 	// tw_roles() 验签依赖——漏接则所有 tw_app RLS 查询 fail-closed（测试红）。
 	if err := clients.InitRolesSigKey(TestRolesSigMaster); err != nil {
@@ -105,7 +257,11 @@ const TestRolesSigMaster = "integration-test-roles-sig-master-0123456789abcdef"
 func uniqueTestDBName() string {
 	// Postgres folds unquoted identifiers to lowercase; keep the generated
 	// name lowercase so the DSN database name matches the created database.
-	return strings.ToLower(fmt.Sprintf("%s_%d_%d", testDBPrefix(), os.Getpid(), testDBSeq.Add(1)))
+	// UnixNano 成分：进程被杀（cleanup 未跑）会留下孤儿库，pid 复用 + seq 归零
+	// 时旧格式名可能与之相撞，CREATE 的 duplicate 容错会误放行连上旧库——
+	// 迁移撞 42P07 relation already exists（2026-09-05 验收实测）；时间成分
+	// 使撞名概率归零。
+	return strings.ToLower(fmt.Sprintf("%s_%d_%d_%x", testDBPrefix(), os.Getpid(), testDBSeq.Add(1), time.Now().UnixNano()))
 }
 
 func testDBPrefix() string {

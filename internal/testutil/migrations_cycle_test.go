@@ -25,6 +25,12 @@ import (
 // golang-migrate 库代码驱动，在独立临时库上跑完整 up→down(全部)→up 循环，
 // 并断言 down 全量后 public schema 无业务表残留——任何 down SQL 损坏在此红。
 //
+// 并行安全（A6）：000026 down 为集群角色保留形态（不 DROP ROLE，见该迁移头
+// 注释），本测试不删集群级角色、与并行库无 2BP01 依赖冲突；但 up/down 的
+// CREATE ROLE/GRANT/REVOKE membership 仍是集群目录写，与并行包的迁移段并发
+// 会撞 XX000 tuple concurrently deleted——因此建库与整个循环持
+// runInDBLifecycleLock 与其他测试互斥（db.go 包注释）。
+//
 // 环境快失败模式与 SetupTestDB 一致：TORCHWOOD_TEST_* 未设置时跳过
 // （CI backend job 与本地 `task docker:up` + .env 均提供）。
 func TestMigrations_UpDownUpCycle(t *testing.T) {
@@ -35,7 +41,45 @@ func TestMigrations_UpDownUpCycle(t *testing.T) {
 	}
 
 	wantLatest := latestMigrationVersion(t)
-	sqldb := newMigrationTestDB(t, adminDSN, baseDSN)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	adminDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
+	defer func() { _ = adminDB.Close() }()
+
+	// 建库 + up→down→up 全程持集群级 lifecycle 锁（并行安全契约见 db.go 包注释）。
+	// fn 内 require 失败走 FailNow/Goexit，锁由 runInDBLifecycleLock 的 defer 释放，
+	// t.Cleanup 的删库仍会执行。
+	runInDBLifecycleLock(ctx, adminDB, func(ctx context.Context) error {
+		runMigrationCycle(ctx, t, adminDB, baseDSN, wantLatest)
+		return nil
+	})
+}
+
+// runMigrationCycle 在 lifecycle 锁内创建临时库并执行完整 up→down(全部)→up 循环。
+func runMigrationCycle(ctx context.Context, t *testing.T, adminDB *bun.DB, baseDSN string, wantLatest uint) {
+	dbName := uniqueTestDBName()
+	testDSN, err := replaceDatabaseName(baseDSN, dbName)
+	require.NoError(t, err)
+
+	require.NoError(t, createTestDatabase(ctx, adminDB, dbName))
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cleanupCancel()
+		// adminDB 已随测试函数 defer 关闭，删库自建连接；外层锁此时已释放，
+		// 删库段自行持锁（与 SetupTestDB 的建库/迁移/删库段互斥）。
+		cleanupDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(AdminDSN()))), pgdialect.New())
+		defer func() { _ = cleanupDB.Close() }()
+		if err := runInDBLifecycleLock(cleanupCtx, cleanupDB, func(ctx context.Context) error {
+			return retryOnClusterContention(ctx, func() error {
+				return dropTestDatabase(ctx, cleanupDB, dbName)
+			})
+		}); err != nil {
+			t.Errorf("drop test db %s: %v", dbName, err)
+		}
+	})
+
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(testDSN)))
+	t.Cleanup(func() { _ = sqldb.Close() })
 
 	srcDrv, err := iofs.New(os.DirFS(migrationsDir(t)), ".")
 	require.NoError(t, err)
@@ -88,35 +132,6 @@ func migrationsDir(t *testing.T) string {
 	root, err := repoRoot()
 	require.NoError(t, err)
 	return filepath.Join(root, "db", "migrations")
-}
-
-// newMigrationTestDB 创建独立临时库并返回裸 *sql.DB；cleanup 负责删库与断连。
-func newMigrationTestDB(t *testing.T, adminDSN, baseDSN string) *sql.DB {
-	t.Helper()
-	dbName := uniqueTestDBName()
-	testDSN, err := replaceDatabaseName(baseDSN, dbName)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	adminDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
-	defer func() { _ = adminDB.Close() }()
-	if _, err := adminDB.ExecContext(ctx, "CREATE DATABASE "+dbName); err != nil {
-		t.Fatalf("create migration test db: %v", err)
-	}
-	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cleanupCancel()
-		cleanupDB := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(adminDSN))), pgdialect.New())
-		defer func() { _ = cleanupDB.Close() }()
-		if err := dropTestDatabase(cleanupCtx, cleanupDB, dbName); err != nil {
-			t.Errorf("drop test db %s: %v", dbName, err)
-		}
-	})
-
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(testDSN)))
-	t.Cleanup(func() { _ = sqldb.Close() })
-	return sqldb
 }
 
 // publicTablesExcluding 列出 public schema 下除 exclude 外的全部表名。
