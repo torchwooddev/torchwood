@@ -64,7 +64,10 @@ func TestSessionRepository_CRUDAndEvict(t *testing.T) {
 		UserID:     user.ID,
 		SecretHash: plain,
 		Provider:   domainauth.ProviderEmail,
-		ExpireAt:   now.Add(3 * time.Hour),
+		// 2.5h：不得与 s4 的 3h 相同——DeleteOldestByUser 按 expire_at 排序，
+		// expire 相同的 tie 无第二排序键、删除选择不确定（-p 4 下实证 flake：
+		// s4 被误删导致断言 {s1, s4} 不含 s4）。
+		ExpireAt: now.Add(150 * time.Minute),
 	}
 	require.NoError(t, repo.Insert(ctx, projectID, sPlain))
 	gotPlain, err := repo.GetByID(ctx, projectID, sPlain.ID)
