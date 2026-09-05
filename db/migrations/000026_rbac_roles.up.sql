@@ -8,17 +8,23 @@
 -- 依赖顺序：projectschema 0012 的 schema 级 GRANT 依赖本迁移先建出三角色
 --（public 迁移先于项目 schema Apply：服务启动与 testutil 均满足）。
 
+-- 并行安全（A6）：三角色是集群级对象，多库（go test -p N 并行建库跑迁移）可能
+-- 同时到达本迁移；"IF NOT EXISTS 检查 + CREATE"非原子（检查时另一库尚未提交），
+-- 用 PL/pgSQL 异常容错实现原子幂等——duplicate 视为另一库已建成就绪，语义不变。
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tw_owner') THEN
+    BEGIN
         CREATE ROLE tw_owner NOLOGIN;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tw_app') THEN
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
         CREATE ROLE tw_app NOLOGIN;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tw_system') THEN
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
         CREATE ROLE tw_system NOLOGIN BYPASSRLS;
-    END IF;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
 END
 $$;
 
